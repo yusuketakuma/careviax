@@ -61,7 +61,7 @@ describe('PharmacyCooperationSetupContent', () => {
                   status: 'active',
                 },
               ],
-              hasMore: false,
+              meta: { limit: 20, has_more: false, next_cursor: null },
             }),
             { status: 200 },
           );
@@ -181,12 +181,14 @@ describe('PharmacyCooperationSetupContent', () => {
         if (url === '/api/partner-pharmacies' && init?.method === 'POST') {
           return new Response(
             JSON.stringify({
-              id: 'partner_pharmacy_2',
-              pharmacy_code: 'P002',
-              name: '新協力薬局',
-              tel: null,
-              status: 'active',
-              updated_at: '2026-06-19T10:30:00.000Z',
+              data: {
+                id: 'partner_pharmacy_2',
+                pharmacy_code: 'P002',
+                name: '新協力薬局',
+                tel: null,
+                status: 'active',
+                updated_at: '2026-06-19T10:30:00.000Z',
+              },
             }),
             { status: 201 },
           );
@@ -617,9 +619,12 @@ describe('PharmacyCooperationSetupContent', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/partner-pharmacies' && init?.method === 'POST') {
-        return new Response(JSON.stringify({ id: 'partner_pharmacy_2', status: 'active' }), {
-          status: 201,
-        });
+        return new Response(
+          JSON.stringify({ data: { id: 'partner_pharmacy_2', status: 'active' } }),
+          {
+            status: 201,
+          },
+        );
       }
       return originalFetch!(input, init);
     });

@@ -79,7 +79,15 @@ export const GET = withAuthContext(
       }),
     );
 
-    return success(buildCursorPage(rows, limit, (row) => row.id));
+    const page = buildCursorPage(rows, limit, (row) => row.id);
+    return success({
+      data: page.data,
+      meta: {
+        limit,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+      },
+    });
   },
   {
     permission: 'canVisit',
@@ -125,7 +133,7 @@ export const POST = withAuthContext(
       return created;
     });
 
-    return success(partnerPharmacy, 201);
+    return success({ data: partnerPharmacy }, 201);
   },
   {
     permission: 'canManagePatientSharing',

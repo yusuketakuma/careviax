@@ -215,8 +215,36 @@ const completeUploadResponseSchema = apiDataSchema(
   }),
 );
 
+const currentCursorMetaSchema = z
+  .object({
+    limit: z.number().int().min(1),
+    has_more: z.boolean(),
+    next_cursor: z.string().trim().min(1).nullable(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.has_more && !value.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['next_cursor'],
+        message: 'next_cursor is required when has_more is true',
+      });
+    }
+  });
+
 const pharmacySitesResponseSchema = apiDataSchema(z.array(pharmacySiteRowSchema));
-const partnerPharmacyPageSchema = cursorPaginatedPageSchema(partnerPharmacyRowSchema);
+const partnerPharmacyPageSchema: z.ZodType<CursorPaginatedPage<PartnerPharmacyRow>> = z
+  .object({
+    data: z.array(partnerPharmacyRowSchema),
+    meta: currentCursorMetaSchema,
+  })
+  .transform(({ data, meta }) => ({
+    data,
+    hasMore: meta.has_more,
+    ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
+  }));
+const partnerPharmacyResponseSchema = apiDataSchema(partnerPharmacyRowSchema).transform(
+  ({ data }) => data,
+);
 const pharmacyPartnershipPageSchema = cursorPaginatedPageSchema(pharmacyPartnershipRowSchema);
 const pharmacyContractPageSchema = cursorPaginatedPageSchema(pharmacyContractRowSchema);
 const contractTemplatesResponseSchema = apiDataSchema(z.array(contractTemplateRowSchema));
@@ -995,7 +1023,7 @@ export function PharmacyCooperationSetupContent() {
       });
       return readApiJson<PartnerPharmacyRow>(response, {
         fallbackMessage: '協力薬局の登録に失敗しました',
-        schema: partnerPharmacyRowSchema,
+        schema: partnerPharmacyResponseSchema,
       });
     },
     onSuccess: async () => {

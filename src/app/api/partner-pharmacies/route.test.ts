@@ -65,6 +65,7 @@ describe('/api/partner-pharmacies GET', () => {
         id: 'partner_pharmacy_1',
         name: '連携薬局',
         pharmacy_code: 'EXT-001',
+        tel: null,
         status: 'active',
         updated_at: new Date('2026-04-01T00:00:00.000Z'),
       },
@@ -82,6 +83,26 @@ describe('/api/partner-pharmacies GET', () => {
     const response = await GET(createGetRequest('?limit=20'));
 
     expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({
+      data: [
+        {
+          id: 'partner_pharmacy_1',
+          name: '連携薬局',
+          pharmacy_code: 'EXT-001',
+          tel: null,
+          status: 'active',
+          updated_at: '2026-04-01T00:00:00.000Z',
+        },
+      ],
+      meta: {
+        limit: 20,
+        has_more: false,
+        next_cursor: null,
+      },
+    });
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
     expect(partnerPharmacyFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { org_id: 'org_1' },
@@ -165,7 +186,17 @@ describe('/api/partner-pharmacies POST', () => {
 
     expect(response.status).toBe(201);
     const body = await response.json();
-    expect(partnerPharmacyRowSchema.safeParse(body).success).toBe(true);
+    expect(body).toEqual({
+      data: {
+        id: 'partner_pharmacy_1',
+        name: '連携薬局',
+        pharmacy_code: 'EXT-001',
+        tel: null,
+        status: 'active',
+      },
+    });
+    expect(body).not.toHaveProperty('id');
+    expect(partnerPharmacyRowSchema.safeParse(body.data).success).toBe(true);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
     expect(partnerPharmacyCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
