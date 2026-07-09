@@ -58,6 +58,8 @@ const MEDICATION_STOCK_DISPLAY_ID_MIGRATION =
   'prisma/migrations/20260707090000_add_medication_stock_ledger/migration.sql';
 const MEDICATION_STOCK_VISIT_CONTEXT_DISPLAY_ID_MIGRATION =
   'prisma/migrations/20260708093000_add_medication_stock_visit_observation_context/migration.sql';
+const STANDARD_CLINICAL_INTEGRATION_DISPLAY_ID_MIGRATION =
+  'prisma/migrations/20260709170000_rebuild_standard_clinical_integration/migration.sql';
 const PATIENT_DISPLAY_ID_W1_MODELS = [
   'Patient',
   'Residence',
@@ -243,6 +245,19 @@ const MEDICATION_STOCK_DISPLAY_ID_MODELS = [
 const MEDICATION_STOCK_VISIT_CONTEXT_DISPLAY_ID_MODELS = [
   'MedicationStockObservationContext',
 ] as const satisfies readonly DisplayIdModel[];
+const STANDARD_CLINICAL_INTEGRATION_DISPLAY_ID_MODELS = [
+  'ClinicalExternalSystem',
+  'ClinicalExternalReference',
+  'ClinicalFhirResourceCache',
+  'ClinicalDisclosureGrant',
+  'YreseClinicalEvent',
+  'YreseOutboundEvent',
+  'ClinicalSyncQueueItem',
+  'ClinicalProvenanceRecord',
+  'HomeCarePatientProfile',
+  'MedicationTimelineItem',
+  'ResidualMedicationAssessment',
+] as const satisfies readonly DisplayIdModel[];
 // Permanent defer: nullable/hybrid org_id requires explicit tenant-vs-global semantics.
 const PERMANENT_DEFERRED_DISPLAY_ID_SCHEMA_MODELS = [
   'DrugAlertRule',
@@ -372,6 +387,13 @@ const DISPLAY_ID_SCHEMA_WAVES = [
     schemaFile: 'medication.prisma',
     migrationPath: MEDICATION_STOCK_VISIT_CONTEXT_DISPLAY_ID_MIGRATION,
     models: MEDICATION_STOCK_VISIT_CONTEXT_DISPLAY_ID_MODELS,
+    createdWithNullableDisplayId: true,
+  },
+  {
+    label: 'W12 standard-clinical-integration-domain',
+    schemaFile: 'standard-clinical-integration.prisma',
+    migrationPath: STANDARD_CLINICAL_INTEGRATION_DISPLAY_ID_MIGRATION,
+    models: STANDARD_CLINICAL_INTEGRATION_DISPLAY_ID_MODELS,
     createdWithNullableDisplayId: true,
   },
 ] as const;
@@ -505,9 +527,9 @@ function parseSequence(id: string): bigint {
 describe('display_id registry and format contract', () => {
   it('covers every Prisma model through registry, explicit business exclusion, or infrastructure exclusion', () => {
     const schemaModels = readSchemaModels();
-    expect(schemaModels).toHaveLength(154);
-    expect(Object.keys(DISPLAY_ID_REGISTRY)).toHaveLength(152);
-    expect(DISPLAY_ID_EXCLUDED_MODELS).toEqual(['Setting']);
+    expect(schemaModels).toHaveLength(166);
+    expect(Object.keys(DISPLAY_ID_REGISTRY)).toHaveLength(163);
+    expect(DISPLAY_ID_EXCLUDED_MODELS).toEqual(['Setting', 'ClinicalFhirRawResourceVault']);
     expect(DISPLAY_ID_INFRASTRUCTURE_MODELS).toEqual(['IdSequence']);
 
     const covered = new Set([
@@ -523,7 +545,7 @@ describe('display_id registry and format contract', () => {
     const entries = Object.entries(DISPLAY_ID_REGISTRY);
     const prefixes = entries.map(([, entry]) => entry.prefix);
     expect(new Set(prefixes).size).toBe(prefixes.length);
-    expect(prefixes).toHaveLength(152);
+    expect(prefixes).toHaveLength(163);
     for (const prefix of prefixes) {
       expect(prefix).toMatch(/^[a-z]{1,6}$/);
     }
@@ -534,7 +556,7 @@ describe('display_id registry and format contract', () => {
       counts[entry.scope] = (counts[entry.scope] ?? 0) + 1;
       return counts;
     }, {});
-    expect(scopeCounts).toEqual({ global: 13, org: 138, orgViaParent: 1 });
+    expect(scopeCounts).toEqual({ global: 13, org: 149, orgViaParent: 1 });
 
     expect(
       entries

@@ -13,8 +13,8 @@ prisma/migrations と prisma/rls-policies.sql の RLS 有効化実態（ENABLE /
 
 | 指標 | 件数 |
 | --- | ---: |
-| テナントテーブル（org_id 列を持つモデル） | 138 |
-| RLS 完全被覆（ENABLE+FORCE+POLICY） | 135 |
+| テナントテーブル（org_id 列を持つモデル） | 151 |
+| RLS 完全被覆（ENABLE+FORCE+POLICY） | 148 |
 | RLS 完全欠落（ギャップ 1a） | 3 |
 | ENABLE のみ/policy 不完全（即修正対象） | 0 |
 | SSOT ドリフト（migration 済・rls-policies.sql 欠、ギャップ 1b） | 0 |
@@ -40,7 +40,7 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 
 ## 参考: RLS 完全被覆テーブル一覧
 
-以下 135 テーブルは ENABLE+FORCE+POLICY が揃い、SSOT にも反映済み（contract テストで機械検証）。
+以下 148 テーブルは ENABLE+FORCE+POLICY が揃い、SSOT にも反映済み（contract テストで機械検証）。
 
 <details><summary>展開</summary>
 
@@ -56,6 +56,13 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 - `CareReportSendRequest`
 - `CareTeamLink`
 - `ClaimCooperationNote`
+- `ClinicalDisclosureGrant`
+- `ClinicalExternalReference`
+- `ClinicalExternalSystem`
+- `ClinicalFhirRawResourceVault`
+- `ClinicalFhirResourceCache`
+- `ClinicalProvenanceRecord`
+- `ClinicalSyncQueueItem`
 - `CommunicationEvent`
 - `CommunicationRequest`
 - `CommunicationResponse`
@@ -87,6 +94,7 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 - `FormularyChangeRequest`
 - `FormularyTemplate`
 - `HandoffBoard`
+- `HomeCarePatientProfile`
 - `InboundCommunicationAttachment`
 - `InboundCommunicationEvent`
 - `InboundCommunicationSignal`
@@ -100,7 +108,9 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 - `MedicationIssue`
 - `MedicationProfile`
 - `MedicationStockEvent`
+- `MedicationStockObservationContext`
 - `MedicationStockSnapshot`
+- `MedicationTimelineItem`
 - `Membership`
 - `Notification`
 - `NotificationRule`
@@ -152,6 +162,7 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 - `QrScanDraft`
 - `Residence`
 - `ResidualMedication`
+- `ResidualMedicationAssessment`
 - `SavedView`
 - `ServiceArea`
 - `SetAudit`
@@ -179,5 +190,7 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 - `WebhookDelivery`
 - `WebhookRegistration`
 - `WorkflowException`
+- `YreseClinicalEvent`
+- `YreseOutboundEvent`
 
 </details>

@@ -41,6 +41,113 @@
 
 ## 直近の作業
 
+- codex: `FHIR-READY-DB-001` pre-release destructive-ready yrese / JP Core / FHIR standard integration DB spine.
+  - current task:
+    未リリース前提で、yrese を SoR、PH-OS を在宅業務 SoW/SoE として分離する
+    JP Core/FHIR Ready DB 構造へ作り直す。第一スライスとして、Patient / MedicationRequest /
+    MedicationDispense / MedicationStatement を PH-OS 内部IDへ置換せず、外部リソースID、
+    identifier、version、hash、validation、purpose、provenance、sync queue、home-care profile、
+    medication timeline、residual medication assessment を tenant scoped な DB spine として追加する。
+  - files inspected:
+    `git status --short --untracked-files=all`, `ops/refactor/STATE.md`,
+    `prisma/schema/{patient,prescription,medication,drug,admin}.prisma`,
+    `prisma/rls-policies.sql`, recent medication-stock / inbound-communication migrations,
+    `src/server/adapters/fhir/index.ts`, `src/server/adapters/fhir/index.test.ts`,
+    `src/lib/db/display-id-registry.ts`, `src/lib/db/display-id.test.ts`,
+    `src/lib/admin/data-explorer-catalog.ts`, `src/server/services/data-explorer.ts`,
+    `src/tools/rls-policy-contract.test.ts`, official JP Core v1.2.0 / FHIR R4 medication
+    pages, and bounded db / privacy / medication-safety / implementation planning reviews.
+  - files changed:
+    `prisma/schema/standard-clinical-integration.prisma`,
+    `prisma/migrations/20260709170000_rebuild_standard_clinical_integration/migration.sql`,
+    `prisma/rls-policies.sql`, `docs/security/rls-gap-ledger.md`,
+    `src/lib/db/display-id-registry.ts`, `src/lib/db/display-id.test.ts`,
+    `src/lib/admin/data-explorer-catalog.ts`, `src/server/services/data-explorer.ts`,
+    `src/server/adapters/fhir/index.ts`, `src/server/adapters/fhir/index.test.ts`,
+    `src/server/services/standard-clinical-integration-db-contract.test.ts`, and
+    `src/server/services/patient-movement-timeline-presenter.ts`.
+  - bugs found:
+    Existing DB shape had no durable external clinical identity spine for yrese/FHIR resources;
+    no DB-backed FHIR resource version/hash/validation cache; no dedicated yrese clinical
+    inbound ledger, minimized outbound event table, server-side integration sync queue,
+    clinical provenance ledger, first-class disclosure purpose grant, home-care patient
+    profile, medication timeline, or structured residual assessment matching the supplied
+    PH-OS spec. The FHIR adapter collapsed scope to Patient / MedicationRequest only and
+    did not normalize JP Core profile metadata, identifiers, subject references, MedicationDispense,
+    or MedicationStatement. `typecheck:no-unused` also exposed an unrelated stale unused
+    presenter parameter.
+  - bugs fixed:
+    Added a create-only, pre-release destructive-ready standard clinical integration spine
+    with tenant-scoped identity/reference/cache/vault/disclosure/event/outbox/queue/provenance/
+    homecare/timeline/residual-assessment models and SQL constraints. Expanded FHIR adapter
+    normalization and tests so MedicationRequest, MedicationDispense, and MedicationStatement
+    remain separate clinical facts. Removed the unrelated unused presenter parameter without
+    behavior change.
+  - security risks found:
+    Raw FHIR JSON could become a durable PHI mirror if stored directly in ordinary business,
+    queue, event, webhook, or audit tables. Generic full-row audit triggers would overcapture
+    raw clinical payloads if attached to FHIR/yrese tables. Missing RLS / FORCE RLS / purpose
+    binding / idempotency constraints would weaken tenant isolation and replay safety.
+  - security risks reduced:
+    Non-vault integration tables store hashes, identifiers, minimized metadata, and normalized
+    summaries instead of raw resources. Raw FHIR payload storage, if needed, is isolated in
+    `ClinicalFhirRawResourceVault` with encrypted bytes, retention expiry, legal hold, and no
+    display ID. All new tenant tables use `public.app_enforced_org_id()` + FORCE RLS in both
+    migration and SSOT. yrese event/provenance ledgers are append-only and do not use the
+    generic `ph_os_write_audit_log()` full-row trigger. Data Explorer classifies the new models
+    as backend-only and excludes them from generic row browsing/editing.
+  - performance issues found:
+    No runtime hot-path issue. The absent integration spine would have forced application-layer
+    fuzzy lookups and replay scans later.
+  - performance issues improved:
+    Added tenant-scoped unique indexes and lookup indexes for external resource identity,
+    current FHIR cache rows, queue claim paths, outbox status, provenance traceability,
+    patient/case timeline queries, and sync-state queries.
+  - validation commands:
+    `pnpm exec prisma format --schema=prisma/schema`;
+    `pnpm exec prisma validate --schema=prisma/schema`;
+    `pnpm db:generate`;
+    `pnpm vitest run src/server/adapters/fhir/index.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run src/server/services/standard-clinical-integration-db-contract.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run src/lib/admin/data-explorer-catalog.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run src/lib/db/display-id.test.ts --reporter=dot --testTimeout=30000`;
+    `UPDATE_RLS_LEDGER=1 pnpm exec vitest run src/tools/rls-policy-contract.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm rls-policy-contract:check`;
+    `pnpm exec eslint src/lib/admin/data-explorer-catalog.ts src/lib/db/display-id-registry.ts src/lib/db/display-id.test.ts src/server/adapters/fhir/index.ts src/server/adapters/fhir/index.test.ts src/server/services/data-explorer.ts src/server/services/standard-clinical-integration-db-contract.test.ts`;
+    `pnpm db:raw-read-org-guard:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm dto-direct-prisma-return:check`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`;
+    `pnpm vitest run src/server/services/patient-movement-timeline-presenter.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec prettier --check ...changed TS/MD files`;
+    `git diff --check`.
+  - validation results:
+    Prisma format/validate/generate passed. FHIR adapter tests passed 8/8. Standard clinical
+    integration DB contract tests passed 5/5. Data Explorer catalog tests passed 3/3.
+    Display ID tests passed 21/21 with 6 DB-only tests skipped. RLS contract passed 24/24
+    and regenerated `docs/security/rls-gap-ledger.md`. ESLint, raw-read org guard,
+    query-shape, DTO direct Prisma return, `typecheck`, `typecheck:no-unused`, presenter
+    tests 47/47, Prettier check, and `git diff --check` passed. No migration was applied
+    to any live or persistent DB.
+  - Oracle note:
+    Oracle consultation is normally required for DB/PHI/migration finalization. `npx -y
+@steipete/oracle status --hours 8 --limit 5` still shows the unrelated
+    `insurance-config-envelope` browser session as `running`; a duplicate high-risk consult
+    was not started. The slice instead used official JP Core/FHIR references, bounded
+    db/privacy/medication-safety planning reviews, and local static/type/test gates.
+  - remaining work:
+    This is the first DB spine slice, not full import jobs or UI wiring. Next slices must
+    implement idempotent yrese webhook ingestion, FHIR cache write services, medication code
+    resolution against `DrugMaster` / `DrugPackage`, patient identity verification workflows,
+    visit/timeline UI presenters, retention purge jobs, and disposable DB migration apply proof.
+    Production/staging migration apply, push, deploy, external send, and destructive data
+    operations remain not performed.
+  - next action:
+    Commit this validated DB spine slice with explicit path staging, then continue with a
+    focused import/write service around `ClinicalExternalReference` + `ClinicalFhirResourceCache`
+    - `ClinicalProvenanceRecord`.
+
 - codex: `API-CONTRACT-001DQ` pharmacy site insurance config response envelope cleanup.
   - current task:
     `PATCH /api/pharmacy-sites/:id/insurance-configs/:configId` の success DTO を明示化し、

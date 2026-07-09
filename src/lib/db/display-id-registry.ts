@@ -1,5 +1,5 @@
 export const DISPLAY_ID_GLOBAL_ORG_ID = '__global__';
-export const DISPLAY_ID_EXCLUDED_MODELS = ['Setting'] as const;
+export const DISPLAY_ID_EXCLUDED_MODELS = ['Setting', 'ClinicalFhirRawResourceVault'] as const;
 export const DISPLAY_ID_INFRASTRUCTURE_MODELS = ['IdSequence'] as const;
 export const RESERVED_DISPLAY_ID_PREFIXES = ['cfg'] as const;
 
@@ -26,6 +26,12 @@ export const DISPLAY_ID_REGISTRY = {
   CareReportSendRequest: { prefix: 'crsr', scope: 'org' },
   CareTeamLink: { prefix: 'ctl', scope: 'org' },
   ClaimCooperationNote: { prefix: 'ccn', scope: 'org' },
+  ClinicalDisclosureGrant: { prefix: 'cdg', scope: 'org' },
+  ClinicalExternalReference: { prefix: 'cer', scope: 'org' },
+  ClinicalExternalSystem: { prefix: 'ces', scope: 'org' },
+  ClinicalFhirResourceCache: { prefix: 'cfr', scope: 'org' },
+  ClinicalProvenanceRecord: { prefix: 'cpr', scope: 'org' },
+  ClinicalSyncQueueItem: { prefix: 'csq', scope: 'org' },
   CommunicationEvent: { prefix: 'cev', scope: 'org' },
   CommunicationRequest: { prefix: 'creq', scope: 'org' },
   CommunicationResponse: { prefix: 'cres', scope: 'org' },
@@ -67,6 +73,7 @@ export const DISPLAY_ID_REGISTRY = {
   GenericDrugMapping: { prefix: 'gdm', scope: 'global' },
   HandoffBoard: { prefix: 'hb', scope: 'org' },
   HandoffItem: { prefix: 'h', scope: 'orgViaParent', parent: 'HandoffBoard' },
+  HomeCarePatientProfile: { prefix: 'hcpp', scope: 'org' },
   IncidentReport: { prefix: 'x', scope: 'org' },
   InboundCommunicationAttachment: { prefix: 'icatt', scope: 'org' },
   InboundCommunicationEvent: { prefix: 'icev', scope: 'org' },
@@ -85,6 +92,7 @@ export const DISPLAY_ID_REGISTRY = {
   MedicationStockEvent: { prefix: 'msev', scope: 'org' },
   MedicationStockObservationContext: { prefix: 'msoc', scope: 'org' },
   MedicationStockSnapshot: { prefix: 'mss', scope: 'org' },
+  MedicationTimelineItem: { prefix: 'mti', scope: 'org' },
   Membership: { prefix: 'mem', scope: 'org' },
   Notification: { prefix: 'n', scope: 'org' },
   NotificationRule: { prefix: 'nrul', scope: 'org' },
@@ -140,6 +148,7 @@ export const DISPLAY_ID_REGISTRY = {
   QrScanDraft: { prefix: 'q', scope: 'org' },
   Residence: { prefix: 'res', scope: 'org' },
   ResidualMedication: { prefix: 'rmed', scope: 'org' },
+  ResidualMedicationAssessment: { prefix: 'rma', scope: 'org' },
   SavedView: { prefix: 'sv', scope: 'org' },
   ServiceArea: { prefix: 'sarea', scope: 'org' },
   SetAudit: { prefix: 'seta', scope: 'org' },
@@ -169,6 +178,8 @@ export const DISPLAY_ID_REGISTRY = {
   WebhookDelivery: { prefix: 'whd', scope: 'org' },
   WebhookRegistration: { prefix: 'whr', scope: 'org' },
   WorkflowException: { prefix: 'w', scope: 'org' },
+  YreseClinicalEvent: { prefix: 'yce', scope: 'org' },
+  YreseOutboundEvent: { prefix: 'yoe', scope: 'org' },
 } as const satisfies Record<string, DisplayIdRegistryEntry>;
 
 export type DisplayIdModel = keyof typeof DISPLAY_ID_REGISTRY;

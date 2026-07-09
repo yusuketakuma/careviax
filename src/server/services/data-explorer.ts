@@ -82,6 +82,18 @@ const READ_ONLY_MODELS: ReadonlySet<string> = new Set([
   'PatientMedicalProcedure',
   'PatientNarcoticUse',
   'PatientFieldRevision',
+  'HomeCarePatientProfile',
+  'MedicationTimelineItem',
+  'ResidualMedicationAssessment',
+  'ClinicalExternalSystem',
+  'ClinicalExternalReference',
+  'ClinicalFhirResourceCache',
+  'ClinicalFhirRawResourceVault',
+  'ClinicalDisclosureGrant',
+  'YreseClinicalEvent',
+  'YreseOutboundEvent',
+  'ClinicalSyncQueueItem',
+  'ClinicalProvenanceRecord',
   // 医療安全・インシデント記録
   'IncidentReport',
   // 同意・情報連携の法的証跡
@@ -161,9 +173,56 @@ const NON_EDITABLE_MODEL_FIELDS: Record<string, ReadonlySet<string>> = {
   ]),
 };
 const DENIED_MODEL_FIELDS: Record<string, ReadonlySet<string>> = {
+  ClinicalDisclosureGrant: new Set(['allowed_resource_types']),
+  ClinicalExternalReference: new Set(['identifier_value_hash']),
+  ClinicalExternalSystem: new Set(['base_url_hash', 'capabilities']),
+  ClinicalFhirRawResourceVault: new Set([
+    'resource_hash',
+    'encryption_key_id',
+    'encrypted_payload',
+  ]),
+  ClinicalFhirResourceCache: new Set([
+    'identifier_summary',
+    'normalized_summary',
+    'content_hash',
+    'etag_hash',
+    'validation_errors',
+  ]),
+  ClinicalProvenanceRecord: new Set(['input_hash', 'output_hash', 'transformation_summary']),
+  ClinicalSyncQueueItem: new Set([
+    'idempotency_key_hash',
+    'request_fingerprint_hash',
+    'metadata',
+    'last_error_metadata',
+  ]),
   FileAsset: new Set(['storage_key', 'original_name', 'etag', 'metadata']),
+  MedicationTimelineItem: new Set([
+    'medication_coding',
+    'medication_display',
+    'medication_text',
+    'dosage_text',
+    'derived_from_item_ids',
+  ]),
+  ResidualMedicationAssessment: new Set([
+    'medication_reference_ids',
+    'details',
+    'attachment_file_ids',
+  ]),
   WebhookRegistration: new Set(['url']),
   WebhookDelivery: new Set(['payload', 'url']),
+  YreseClinicalEvent: new Set([
+    'resource_refs',
+    'resource_hash',
+    'payload_hash',
+    'metadata',
+    'idempotency_key_hash',
+  ]),
+  YreseOutboundEvent: new Set([
+    'resource_hash',
+    'payload_hash',
+    'idempotency_key_hash',
+    'last_error_metadata',
+  ]),
 };
 const DENIED_FIELD_PATTERNS = [
   /(^|_)secret($|_)/i,
@@ -234,6 +293,21 @@ const DATA_EXPLORER_MODEL_EXCLUSIONS: ReadonlySet<string> = new Set([
   // identities / break-glass sessions in the tenant Data Explorer.
   'PlatformOperator',
   'BreakGlassSession',
+  // yrese / JP Core / FHIR integration spine rows hold clinical identifiers,
+  // hashes, sync state, and minimized PHI-adjacent metadata. Dedicated API
+  // presenters must expose only purpose-bound DTOs instead of raw table rows.
+  'ClinicalExternalSystem',
+  'ClinicalExternalReference',
+  'ClinicalFhirResourceCache',
+  'ClinicalFhirRawResourceVault',
+  'ClinicalDisclosureGrant',
+  'YreseClinicalEvent',
+  'YreseOutboundEvent',
+  'ClinicalSyncQueueItem',
+  'ClinicalProvenanceRecord',
+  'HomeCarePatientProfile',
+  'MedicationTimelineItem',
+  'ResidualMedicationAssessment',
 ] as const);
 const GLOBAL_DATA_EXPLORER_MODELS: ReadonlySet<string> = new Set([
   'DrugAlertRule',

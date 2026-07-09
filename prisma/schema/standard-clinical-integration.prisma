@@ -1,0 +1,571 @@
+enum ClinicalExternalSystemType {
+  yrese_fhir
+  yrese_pharmacy_api
+  yrese_webhook
+  official_adapter
+  bulk_export
+  manual_import
+}
+
+enum ClinicalExternalSystemStatus {
+  draft
+  active
+  paused
+  disabled
+}
+
+enum ClinicalFhirResourceType {
+  patient
+  coverage
+  medication
+  medication_request
+  medication_dispense
+  medication_statement
+  practitioner
+  practitioner_role
+  organization
+  allergy_intolerance
+  condition
+  observation
+  care_plan
+  task
+  appointment
+  communication
+  document_reference
+  audit_event
+  provenance
+  consent
+  encounter
+  care_team
+  bundle
+  other
+}
+
+enum ClinicalLocalResourceType {
+  patient
+  care_case
+  prescription_intake
+  prescription_line
+  dispense_result
+  medication_profile
+  medication_stock_item
+  medication_stock_event
+  visit_schedule
+  visit_record
+  residual_medication_assessment
+  followup_task
+  care_report
+  audit_log
+  none
+  other
+}
+
+enum ClinicalExternalReferenceStatus {
+  candidate
+  verified
+  needs_review
+  superseded
+  rejected
+  retired
+}
+
+enum ClinicalMatchConfidence {
+  exact_identifier
+  exact_resource_id
+  verified_manual
+  derived
+  ambiguous
+  none
+}
+
+enum ClinicalIntegrationDirection {
+  inbound
+  outbound
+}
+
+enum ClinicalSyncStatus {
+  local_only_unverified
+  pending_yrese_sync
+  pending_fhir_validation
+  pending_external_reverify
+  synced
+  conflict_requires_review
+  failed
+  ignored
+}
+
+enum ClinicalFhirValidationStatus {
+  not_validated
+  valid
+  invalid
+  unsupported_profile
+  skipped
+}
+
+enum ClinicalEventReceiptStatus {
+  accepted
+  held_for_review
+  rejected
+  failed
+  ignored
+}
+
+enum ClinicalPayloadSensitivity {
+  none
+  limited_phi
+  phi
+}
+
+enum ClinicalOutboxStatus {
+  pending
+  claimed
+  sent
+  failed
+  dead_letter
+  cancelled
+}
+
+enum ClinicalQueueStatus {
+  pending
+  running
+  succeeded
+  failed
+  dead_letter
+  cancelled
+  conflict_requires_review
+}
+
+enum ClinicalPurposeOfUse {
+  treatment
+  care_coordination
+  payment
+  healthcare_operations
+  patient_request
+  legal_required
+  break_glass
+  test_synthetic
+}
+
+enum ClinicalRawVaultAccessPolicy {
+  step_up_required
+  system_replay_only
+  legal_hold
+}
+
+enum HomeCarePatientStatus {
+  candidate
+  active
+  paused
+  ended
+}
+
+enum HomeCareCareType {
+  home
+  facility
+  online_followup
+}
+
+enum MedicationTimelineSourceKind {
+  medication_request
+  medication_dispense
+  medication_statement
+  residual_assessment
+  adherence_assessment
+  visit_execution
+  followup
+}
+
+enum ResidualMedicationAssessmentResult {
+  no_issue
+  residual_exists
+  overuse_suspected
+  underuse_suspected
+  needs_prescriber_contact
+}
+
+model ClinicalExternalSystem {
+  id               String                       @id @default(cuid())
+  org_id           String
+  display_id       String?
+  system_key       String
+  system_type      ClinicalExternalSystemType
+  status           ClinicalExternalSystemStatus @default(draft)
+  jp_core_version  String?
+  fhir_version     String?
+  base_url_hash    String?
+  capabilities     Json?
+  last_verified_at DateTime?
+  disabled_at      DateTime?
+  created_at       DateTime                     @default(now())
+  updated_at       DateTime                     @updatedAt
+
+  @@unique([id, org_id])
+  @@unique([org_id, display_id])
+  @@unique([org_id, system_key])
+  @@index([org_id])
+  @@index([org_id, status])
+}
+
+model ClinicalExternalReference {
+  id                    String                          @id @default(cuid())
+  org_id                String
+  display_id            String?
+  external_system_id    String
+  resource_type         ClinicalFhirResourceType
+  external_resource_id  String
+  external_version_id   String?
+  identifier_system     String?
+  identifier_value_hash String?
+  local_resource_type   ClinicalLocalResourceType
+  local_resource_id     String?
+  patient_id            String?
+  case_id               String?
+  status                ClinicalExternalReferenceStatus @default(candidate)
+  confidence            ClinicalMatchConfidence         @default(none)
+  first_seen_at         DateTime                        @default(now())
+  last_seen_at          DateTime                        @default(now())
+  verified_at           DateTime?
+  verified_by           String?
+  retired_at            DateTime?
+  created_at            DateTime                        @default(now())
+  updated_at            DateTime                        @updatedAt
+
+  @@unique([id, org_id])
+  @@unique([org_id, display_id])
+  @@unique([org_id, external_system_id, resource_type, external_resource_id])
+  @@index([org_id])
+  @@index([org_id, external_system_id, resource_type, status])
+  @@index([org_id, local_resource_type, local_resource_id])
+  @@index([org_id, patient_id, resource_type, last_seen_at])
+  @@index([org_id, case_id, resource_type, last_seen_at])
+  @@index([org_id, status, updated_at])
+}
+
+model ClinicalFhirResourceCache {
+  id                    String                       @id @default(cuid())
+  org_id                String
+  display_id            String?
+  external_system_id    String
+  external_reference_id String?
+  patient_id            String?
+  case_id               String?
+  resource_type         ClinicalFhirResourceType
+  resource_id           String
+  version_id            String?
+  profile_urls          String[]
+  identifier_summary    Json?
+  normalized_summary    Json?
+  content_hash          String
+  etag_hash             String?
+  last_modified_at      DateTime?
+  fetched_at            DateTime                     @default(now())
+  expires_at            DateTime?
+  is_current            Boolean                      @default(true)
+  validation_status     ClinicalFhirValidationStatus @default(not_validated)
+  validation_errors     Json?
+  created_at            DateTime                     @default(now())
+  updated_at            DateTime                     @updatedAt
+
+  @@unique([id, org_id])
+  @@unique([org_id, display_id])
+  @@index([org_id])
+  @@index([org_id, external_system_id, resource_type, resource_id])
+  @@index([org_id, external_reference_id])
+  @@index([org_id, patient_id, resource_type, fetched_at])
+  @@index([org_id, case_id, resource_type, fetched_at])
+  @@index([org_id, expires_at])
+  @@index([org_id, validation_status, fetched_at])
+}
+
+model ClinicalFhirRawResourceVault {
+  id                String                       @id @default(cuid())
+  org_id            String
+  cache_id          String
+  resource_hash     String
+  encryption_key_id String
+  encrypted_payload Bytes
+  expires_at        DateTime
+  legal_hold_until  DateTime?
+  access_policy     ClinicalRawVaultAccessPolicy @default(step_up_required)
+  created_at        DateTime                     @default(now())
+  updated_at        DateTime                     @updatedAt
+
+  @@unique([id, org_id])
+  @@unique([org_id, cache_id])
+  @@index([org_id])
+  @@index([org_id, expires_at])
+  @@index([org_id, resource_hash])
+}
+
+model ClinicalDisclosureGrant {
+  id                     String                     @id @default(cuid())
+  org_id                 String
+  display_id             String?
+  external_system_id     String
+  patient_id             String
+  case_id                String?
+  recipient_system_key   String
+  purpose_of_use         ClinicalPurposeOfUse
+  consent_record_id      String?
+  share_case_id          String?
+  allowed_resource_types ClinicalFhirResourceType[]
+  valid_from             DateTime
+  valid_until            DateTime?
+  revoked_at             DateTime?
+  revoked_by             String?
+  created_by             String?
+  created_at             DateTime                   @default(now())
+  updated_at             DateTime                   @updatedAt
+
+  @@unique([id, org_id])
+  @@unique([org_id, display_id])
+  @@index([org_id])
+  @@index([org_id, patient_id, purpose_of_use, valid_from])
+  @@index([org_id, case_id, purpose_of_use, valid_from])
+  @@index([org_id, external_system_id, recipient_system_key])
+  @@index([org_id, consent_record_id])
+}
+
+model YreseClinicalEvent {
+  id                     String                       @id @default(cuid())
+  org_id                 String
+  display_id             String?
+  external_system_id     String
+  direction              ClinicalIntegrationDirection
+  event_type             String
+  external_event_id      String?
+  schema_version         String
+  resource_refs          String[]
+  resource_hash          String?
+  payload_hash           String
+  payload_profile        String?
+  sensitivity            ClinicalPayloadSensitivity   @default(phi)
+  metadata               Json?
+  receipt_status         ClinicalEventReceiptStatus   @default(accepted)
+  occurred_at            DateTime?
+  received_at            DateTime                     @default(now())
+  aggregate_type         ClinicalLocalResourceType?
+  aggregate_id           String?
+  external_reference_id  String?
+  fhir_resource_cache_id String?
+  idempotency_key_hash   String
+  error_code             String?
+  created_at             DateTime                     @default(now())
+
+  @@unique([id, org_id])
+  @@unique([org_id, display_id])
+  @@unique([org_id, idempotency_key_hash])
+  @@index([org_id])
+  @@index([org_id, external_system_id, event_type, received_at])
+  @@index([org_id, receipt_status, received_at])
+  @@index([org_id, aggregate_type, aggregate_id, received_at])
+  @@index([org_id, external_reference_id])
+  @@index([org_id, fhir_resource_cache_id])
+}
+
+model YreseOutboundEvent {
+  id                   String                    @id @default(cuid())
+  org_id               String
+  display_id           String?
+  external_system_id   String
+  event_type           String
+  payload_profile      String
+  payload_version      String
+  resource_type        ClinicalFhirResourceType?
+  resource_id          String?
+  resource_version_id  String?
+  resource_hash        String?
+  patient_id           String?
+  case_id              String?
+  purpose_of_use       ClinicalPurposeOfUse?
+  consent_record_id    String?
+  payload_hash         String
+  idempotency_key_hash String
+  status               ClinicalOutboxStatus      @default(pending)
+  next_attempt_at      DateTime?
+  claimed_at           DateTime?
+  claimed_by           String?
+  sent_at              DateTime?
+  attempt_count        Int                       @default(0)
+  max_attempts         Int                       @default(8)
+  last_error_code      String?
+  last_error_metadata  Json?
+  created_at           DateTime                  @default(now())
+  updated_at           DateTime                  @updatedAt
+
+  @@unique([id, org_id])
+  @@unique([org_id, display_id])
+  @@unique([org_id, idempotency_key_hash])
+  @@index([org_id])
+  @@index([org_id, external_system_id, status, next_attempt_at])
+  @@index([org_id, patient_id, created_at])
+  @@index([org_id, case_id, created_at])
+  @@index([org_id, resource_type, resource_id])
+}
+
+model ClinicalSyncQueueItem {
+  id                       String                       @id @default(cuid())
+  org_id                   String
+  display_id               String?
+  external_system_id       String
+  direction                ClinicalIntegrationDirection
+  operation                String
+  aggregate_type           ClinicalLocalResourceType
+  aggregate_id             String?
+  external_reference_id    String?
+  yrese_event_id           String?
+  fhir_resource_cache_id   String?
+  status                   ClinicalQueueStatus          @default(pending)
+  priority                 Int                          @default(100)
+  next_attempt_at          DateTime                     @default(now())
+  locked_at                DateTime?
+  locked_by                String?
+  attempt_count            Int                          @default(0)
+  max_attempts             Int                          @default(8)
+  idempotency_key_hash     String
+  request_fingerprint_hash String?
+  conflict_reference_id    String?
+  metadata                 Json?
+  last_error_code          String?
+  last_error_metadata      Json?
+  completed_at             DateTime?
+  created_at               DateTime                     @default(now())
+  updated_at               DateTime                     @updatedAt
+
+  @@unique([id, org_id])
+  @@unique([org_id, display_id])
+  @@unique([org_id, external_system_id, operation, idempotency_key_hash])
+  @@index([org_id])
+  @@index([org_id, status, next_attempt_at, priority, created_at])
+  @@index([org_id, locked_at])
+  @@index([org_id, aggregate_type, aggregate_id, created_at])
+  @@index([org_id, external_reference_id])
+  @@index([org_id, yrese_event_id])
+  @@index([org_id, fhir_resource_cache_id])
+}
+
+model ClinicalProvenanceRecord {
+  id                     String                       @id @default(cuid())
+  org_id                 String
+  display_id             String?
+  subject_type           ClinicalLocalResourceType
+  subject_id             String
+  activity               String
+  direction              ClinicalIntegrationDirection
+  external_reference_id  String?
+  fhir_resource_cache_id String?
+  yrese_event_id         String?
+  audit_log_id           String?
+  input_hash             String?
+  output_hash            String?
+  adapter_version        String?
+  jp_core_version        String?
+  fhir_version           String?
+  transformation_summary Json?
+  recorded_by            String?
+  recorded_at            DateTime                     @default(now())
+  created_at             DateTime                     @default(now())
+
+  @@unique([id, org_id])
+  @@unique([org_id, display_id])
+  @@unique([org_id, subject_type, subject_id, activity, input_hash])
+  @@index([org_id])
+  @@index([org_id, subject_type, subject_id, recorded_at])
+  @@index([org_id, external_reference_id])
+  @@index([org_id, fhir_resource_cache_id])
+  @@index([org_id, yrese_event_id])
+  @@index([org_id, audit_log_id])
+}
+
+model HomeCarePatientProfile {
+  id                          String                       @id @default(cuid())
+  org_id                      String
+  display_id                  String?
+  patient_id                  String
+  case_id                     String?
+  yrese_patient_reference_id  String?
+  fhir_patient_ref            String?
+  status                      HomeCarePatientStatus        @default(candidate)
+  care_type                   HomeCareCareType
+  primary_pharmacy_site_id    String?
+  assigned_pharmacist_id      String?
+  facility_id                 String?
+  consent_status              String?
+  last_yrese_sync_at          DateTime?
+  last_fhir_validation_status ClinicalFhirValidationStatus @default(not_validated)
+  sync_status                 ClinicalSyncStatus           @default(local_only_unverified)
+  created_at                  DateTime                     @default(now())
+  updated_at                  DateTime                     @updatedAt
+
+  @@unique([id, org_id])
+  @@unique([org_id, display_id])
+  @@unique([org_id, patient_id])
+  @@index([org_id])
+  @@index([org_id, status, care_type])
+  @@index([org_id, case_id])
+  @@index([org_id, facility_id])
+  @@index([org_id, yrese_patient_reference_id])
+}
+
+model MedicationTimelineItem {
+  id                     String                       @id @default(cuid())
+  org_id                 String
+  display_id             String?
+  patient_id             String
+  case_id                String?
+  source_kind            MedicationTimelineSourceKind
+  source_reference_id    String
+  external_reference_id  String?
+  fhir_resource_cache_id String?
+  medication_coding      Json?
+  medication_display     String?
+  medication_text        String?
+  status                 String?
+  authored_at            DateTime?
+  effective_at           DateTime?
+  dispensed_at           DateTime?
+  asserted_at            DateTime?
+  quantity_value         Decimal?                     @db.Decimal(12, 4)
+  quantity_unit          String?
+  dosage_text            String?
+  derived_from_item_ids  String[]
+  sync_status            ClinicalSyncStatus           @default(local_only_unverified)
+  created_at             DateTime                     @default(now())
+  updated_at             DateTime                     @updatedAt
+
+  @@unique([id, org_id])
+  @@unique([org_id, display_id])
+  @@unique([org_id, source_kind, source_reference_id])
+  @@index([org_id])
+  @@index([org_id, patient_id, effective_at])
+  @@index([org_id, case_id, effective_at])
+  @@index([org_id, external_reference_id])
+  @@index([org_id, fhir_resource_cache_id])
+  @@index([org_id, sync_status, updated_at])
+}
+
+model ResidualMedicationAssessment {
+  id                       String                             @id @default(cuid())
+  org_id                   String
+  display_id               String?
+  patient_id               String
+  case_id                  String?
+  visit_record_id          String?
+  medication_reference_ids String[]
+  result                   ResidualMedicationAssessmentResult
+  details                  String?
+  attachment_file_ids      String[]
+  created_by               String
+  assessed_at              DateTime                           @default(now())
+  sync_status              ClinicalSyncStatus                 @default(local_only_unverified)
+  created_at               DateTime                           @default(now())
+  updated_at               DateTime                           @updatedAt
+
+  @@unique([id, org_id])
+  @@unique([org_id, display_id])
+  @@index([org_id])
+  @@index([org_id, patient_id, assessed_at])
+  @@index([org_id, case_id, assessed_at])
+  @@index([org_id, visit_record_id])
+  @@index([org_id, sync_status, updated_at])
+}

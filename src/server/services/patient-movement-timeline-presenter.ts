@@ -176,7 +176,7 @@ function relatedEntityIdOf(event: TimelineEvent) {
   return rest.length > 0 ? rest.join(':') : null;
 }
 
-function privacyLevelOf(event: TimelineEvent, category: PatientMovementCategory) {
+function privacyLevelOf(category: PatientMovementCategory) {
   if (category === 'communication') return 'detail';
   return 'summary';
 }
@@ -210,7 +210,7 @@ export function toPatientMovementTimelineEvent(
     severity: severityOf(event),
     badges: statusLabel ? [{ label: statusLabel, tone: statusBadgeTone(event) }] : [],
     metadata: metadataOf(event),
-    privacy_level: privacyLevelOf(event, category),
+    privacy_level: privacyLevelOf(category),
     raw_available: false,
   };
 }

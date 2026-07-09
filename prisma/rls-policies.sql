@@ -1007,3 +1007,88 @@ CREATE POLICY tenant_isolation ON "InboundSourceMapping"
   USING ("org_id" = public.app_enforced_org_id())
   WITH CHECK ("org_id" = public.app_enforced_org_id());
 ALTER TABLE "InboundSourceMapping" FORCE ROW LEVEL SECURITY;
+
+-- ─── Standard Clinical Integration / yrese + JP Core FHIR Spine ───────────
+ALTER TABLE "ClinicalExternalSystem" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ClinicalExternalSystem";
+CREATE POLICY tenant_isolation ON "ClinicalExternalSystem"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "ClinicalExternalSystem" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "ClinicalExternalReference" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ClinicalExternalReference";
+CREATE POLICY tenant_isolation ON "ClinicalExternalReference"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "ClinicalExternalReference" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "ClinicalFhirResourceCache" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ClinicalFhirResourceCache";
+CREATE POLICY tenant_isolation ON "ClinicalFhirResourceCache"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "ClinicalFhirResourceCache" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "ClinicalFhirRawResourceVault" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ClinicalFhirRawResourceVault";
+CREATE POLICY tenant_isolation ON "ClinicalFhirRawResourceVault"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "ClinicalFhirRawResourceVault" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "ClinicalDisclosureGrant" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ClinicalDisclosureGrant";
+CREATE POLICY tenant_isolation ON "ClinicalDisclosureGrant"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "ClinicalDisclosureGrant" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "YreseClinicalEvent" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "YreseClinicalEvent";
+CREATE POLICY tenant_isolation ON "YreseClinicalEvent"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "YreseClinicalEvent" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "YreseOutboundEvent" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "YreseOutboundEvent";
+CREATE POLICY tenant_isolation ON "YreseOutboundEvent"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "YreseOutboundEvent" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "ClinicalSyncQueueItem" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ClinicalSyncQueueItem";
+CREATE POLICY tenant_isolation ON "ClinicalSyncQueueItem"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "ClinicalSyncQueueItem" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "ClinicalProvenanceRecord" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ClinicalProvenanceRecord";
+CREATE POLICY tenant_isolation ON "ClinicalProvenanceRecord"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "ClinicalProvenanceRecord" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "HomeCarePatientProfile" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "HomeCarePatientProfile";
+CREATE POLICY tenant_isolation ON "HomeCarePatientProfile"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "HomeCarePatientProfile" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "MedicationTimelineItem" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "MedicationTimelineItem";
+CREATE POLICY tenant_isolation ON "MedicationTimelineItem"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "MedicationTimelineItem" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "ResidualMedicationAssessment" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ResidualMedicationAssessment";
+CREATE POLICY tenant_isolation ON "ResidualMedicationAssessment"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "ResidualMedicationAssessment" FORCE ROW LEVEL SECURITY;
