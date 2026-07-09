@@ -189,14 +189,16 @@ describe('/api/pharmacy-contracts/[id]/versions POST', () => {
     const auditText = JSON.stringify(createAuditLogEntryMock.mock.calls);
     expect(auditText).not.toContain('unit price revision');
     await expect(response.json()).resolves.toMatchObject({
-      id: 'contract_version_2',
-      version_no: 2,
-      status: 'active',
-      has_terms_snapshot: true,
-      active_fee_rule: {
-        id: 'fee_rule_2',
-        billing_model: 'fixed_per_visit',
-        unit_price: 6600,
+      data: {
+        id: 'contract_version_2',
+        version_no: 2,
+        status: 'active',
+        has_terms_snapshot: true,
+        active_fee_rule: {
+          id: 'fee_rule_2',
+          billing_model: 'fixed_per_visit',
+          unit_price: 6600,
+        },
       },
     });
   });
