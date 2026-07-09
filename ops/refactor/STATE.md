@@ -114,13 +114,15 @@
     and 0 new violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier
     check, scoped diff check, and full typecheck passed.
   - commit:
-    Pending explicit scoped commit for this implementation slice.
+    Implementation, tests, allowlist cleanup, Plans/archive sync, Oracle note, and ledger
+    evidence committed as `148e2c191` (`fix(api): envelope physician report draft response`)
+    and pushed to `origin/main`.
   - remaining work:
     `API-CONTRACT-001` remains Partial with 108 allowlisted response-shape violations.
     Existing unrelated dirty/untracked memory/config/docs files remain unstaged.
   - next action:
-    Commit and push this implementation slice, then record the commit hash/push result in
-    this ledger before selecting the next allowlist head.
+    Continue the next safe `API-CONTRACT-001` allowlist head unless a higher-priority
+    `Plans.md` queue item is selected first.
 
 - codex: `PATIENT-BOARD-LASTVISIT-JST-001` patient list last-visit DateTime boundary fix.
   - commit:
