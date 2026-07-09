@@ -53,7 +53,7 @@
 
 - codex: prescription intake patient-safety states, touch/readability, and paired API convergence.
   - commit:
-    pending scoped commit (this entry will be amended with the hash after validation-backed commit).
+    `5082de335 fix(prescriptions): align intake UI with lookup contracts`.
   - current task:
     `/prescriptions/new` の患者・ケース・前回処方・QR下書き・医療機関・後発候補を、UI SSOT の
     loading/empty/data/error/stale 分離、12px 下限、全 breakpoint 44px、患者識別、frontend/backend
@@ -165,6 +165,29 @@
     `imagegen` was omitted because this is state-token convergence within the committed visual
     direction. Conflict resolution still needs a dedicated shared diff/confirmation pass; browser
     proof remains in the repo-wide runtime blocker.
+
+- claude maker + codex checker: QR scan live-region contract correction.
+  - commit:
+    `e2cd5fc98 fix(qr-scan): correct live-region contracts for screen readers`.
+  - files changed:
+    `src/app/(dashboard)/qr-scan/page.tsx` and
+    `src/app/(dashboard)/qr-scan/page.contract.test.ts`.
+  - bugs found / fixed:
+    Seven alert regions combined `role="alert"` with explicit `aria-live`, which can produce duplicate
+    VoiceOver announcements. Genuine failures now rely on alert's implicit assertive behavior. The
+    successful no-match result was reclassified from an alert/polite contradiction to
+    `role="status"` + `aria-live="polite"`, preserving the SSOT compatibility requirement without
+    announcing a normal search outcome as a failure. A contract test pins every status region to
+    polite and rejects alert/live duplication.
+  - frontend/backend parity / security / performance:
+    Existing QR parsing, patient matching, search endpoint, authorization, payload, and mutation
+    behavior are unchanged; only assistive announcement semantics changed. No PHI field, raw error,
+    request, effect, dependency, or polling path was added.
+  - validation / UI/imagegen / remaining:
+    QR scan passed 2 files / 16 tests plus exact ESLint, Prettier and `git diff --check`; Codex rejected
+    the first revision until the no-match status regained explicit polite, then approved. `imagegen`
+    was omitted because this is an a11y semantics fix. Browser/VoiceOver device proof remains in the
+    repo-wide runtime/device blocker.
 
 - codex: schedule calendar stale-state, safe-navigation, touch-target, and typography alignment.
   - commit:
