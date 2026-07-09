@@ -41,6 +41,108 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001BU` partner pharmacy response envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, route test, and setup reader updates committed as
+    `f43e08eb9a8ede073138b43900687945f4751dab` (`fix(api): envelope partner pharmacy responses`).
+    State record is this entry and will be committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/partner-pharmacies/route.ts` from the public response-shape allowlist by moving GET
+    list success to `data + meta` and POST create success to `data`, without keeping legacy root
+    `hasMore`, `nextCursor`, or raw partner pharmacy fields.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `ops/refactor/STATE.md`, `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/partner-pharmacies/route.ts`,
+    `src/app/api/partner-pharmacies/route.test.ts`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`,
+    `src/lib/pharmacy-cooperation/api-contracts.ts`, route/reader usage search results, and
+    `gbrain search "API-CONTRACT partner-pharmacies route response envelope data meta"`.
+  - files changed:
+    `Plans.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/partner-pharmacies/route.ts`,
+    `src/app/api/partner-pharmacies/route.test.ts`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`,
+    and this ledger.
+  - implementation:
+    `GET /api/partner-pharmacies` list success now returns
+    `success({ data, meta: { limit, has_more, next_cursor } })`. `POST /api/partner-pharmacies`
+    create success now returns `success({ data: partnerPharmacy }, 201)`. Route tests assert the
+    new-only list and create bodies and reject root `hasMore`, `nextCursor`, and raw row fields.
+    The pharmacy cooperation setup screen now parses partner pharmacy list `payload.meta` and POST
+    create `payload.data` only. Other cooperation list endpoints still use their existing
+    `cursorPaginatedPageSchema` contracts and were not changed. Existing auth/permission checks,
+    status filter validation, RLS create/read, compact audit metadata, and error behavior were not
+    changed. The partner-pharmacies allowlist entry was removed, and `Plans.md` records
+    `API-CONTRACT-001BU` with allowlist debt reduced from 111 to 109.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. This slice is
+    a mechanical response-envelope/test/allowlist cleanup.
+  - imagegen:
+    Not used. This is API/frontend reader contract cleanup with no visible UI/UX reconstruction.
+  - Next.js docs:
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` was read in this
+    run before editing. This slice changes JSON response construction only and does not change route
+    placement, supported methods, runtime behavior, or transaction semantics.
+  - bugs found:
+    Partner pharmacy list success still returned cursor metadata at the response root, and partner
+    pharmacy create success still returned raw row fields at the response root.
+  - bugs fixed:
+    Partner pharmacy list success now uses `data + meta`, create success now uses `data`, setup
+    reader fixtures use current envelopes for this endpoint, and `api-response-shape:check` now
+    reports 109 allowlisted violations and 0 new violations.
+  - security risks found:
+    None.
+  - security risks reduced:
+    Removed legacy root success fields from partner pharmacy responses while preserving permission
+    gates, org scoping, RLS wrapping, and compact audit metadata.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None. No query shape, pagination limit, selected columns, create payload, audit write, or
+    transaction boundary changed.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/partner-pharmacies/route.ts src/app/api/partner-pharmacies/route.test.ts src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`;
+    `pnpm vitest run src/app/api/partner-pharmacies/route.test.ts`;
+    `pnpm vitest run src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint Plans.md tools/api-response-shape-allowlist.json src/app/api/partner-pharmacies/route.ts src/app/api/partner-pharmacies/route.test.ts src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/partner-pharmacies/route.ts src/app/api/partner-pharmacies/route.test.ts src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/partner-pharmacies/route.ts src/app/api/partner-pharmacies/route.test.ts src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write passed for owned files. Partner pharmacies route test passed (1 file / 7 tests).
+    Pharmacy cooperation setup content test passed (1 file / 16 tests). API response shape guard
+    passed (109 allowlisted violations, 0 new violations). Plans active board check passed. Scoped
+    ESLint exited successfully with only ignored-file warnings for `Plans.md` and
+    `tools/api-response-shape-allowlist.json`. Scoped Prettier check, scoped `git diff --check`, and
+    full typecheck passed. `pnpm format:check` again confirmed owned changed files are formatted,
+    then failed on unrelated pre-existing untracked Markdown files:
+    `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+    `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+    `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+    `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+    `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+    `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+    `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+    `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+    `skills/_candidates.md`.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 84 allowlist entries / 109 allowlisted response-shape
+    violations. Next immediate allowlist targets start with
+    `src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts`, followed by
+    `src/app/api/partner-visit-records/[id]/review/route.ts`.
+  - next action:
+    Commit this STATE entry separately, push `f43e08eb` plus the state commit to `origin/main`, then
+    continue with `src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts` under the
+    same Oracle-paused and no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001BT` notification response envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, and route/frontend fixture updates committed as
