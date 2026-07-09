@@ -33843,3 +33843,78 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   Commit this ledger update with only `ops/refactor/STATE.md` staged, then
   continue the next allowlist cleanup from
   `src/app/api/pharmacy-contracts/[id]/versions/route.ts` unless redirected.
+
+## 2026-07-09 API-CONTRACT-001DB — pharmacy contract version response envelope
+
+- current task:
+  `API-CONTRACT-001` allowlist debt reduction focused on
+  `src/app/api/pharmacy-contracts/[id]/versions/route.ts` POST create success.
+- files inspected:
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/pharmacy-contracts/[id]/versions/route.ts`;
+  `src/app/api/pharmacy-contracts/[id]/versions/route.test.ts`;
+  `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`;
+  `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`.
+- files changed:
+  `src/app/api/pharmacy-contracts/[id]/versions/route.ts`;
+  `src/app/api/pharmacy-contracts/[id]/versions/route.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `POST /api/pharmacy-contracts/:id/versions` returned the safe contract
+  version DTO at the response root, keeping one response-shape allowlist
+  violation.
+- bugs fixed:
+  POST create success now returns `success({ data: safeVersion }, 201)`, and
+  the route test fixes the safe version DTO envelope. No direct frontend reader
+  for this route was found.
+- security risks found:
+  No new auth/authz, tenant isolation, validation, audit, or data minimization
+  issue in this slice. Existing contract/org scope validation, active-period
+  overlap guard, fee-rule creation, and audit metadata minimization remain in
+  place.
+- security risks reduced:
+  Removed one legacy public success root from the pharmacy contract version
+  mutation endpoint without changing authorization, validation, or audit
+  behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this was a response contract cleanup. Existing version lookup, overlap
+  check, and nested fee-rule write behavior are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was API response contract work
+  only, so image generation was not applicable.
+- Oracle note:
+  No Oracle/GPT-5.5 Pro consult was run. This was a bounded allowlist envelope
+  migration following the established local pattern, with focused route tests
+  and contract gates available.
+- validation commands:
+  `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-contracts/[id]/versions/route.ts' 'src/app/api/pharmacy-contracts/[id]/versions/route.test.ts'`;
+  `pnpm vitest run 'src/app/api/pharmacy-contracts/[id]/versions/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`; `pnpm plans:active:check`;
+  `pnpm exec eslint 'src/app/api/pharmacy-contracts/[id]/versions/route.ts' 'src/app/api/pharmacy-contracts/[id]/versions/route.test.ts'`;
+  `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-contracts/[id]/versions/route.ts' 'src/app/api/pharmacy-contracts/[id]/versions/route.test.ts'`;
+  `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-contracts/[id]/versions/route.ts' 'src/app/api/pharmacy-contracts/[id]/versions/route.test.ts'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Pharmacy contract versions route tests passed 1
+  file / 6 tests. Scoped ESLint, `api-response-shape:check` (71 allowlisted
+  violations, 0 new), `plans:active:check`, scoped diff check, and typecheck
+  passed.
+- commit:
+  Implementation, route test, allowlist cleanup, and Plans/archive sync were
+  committed as `cad06f8b444c514dcf8d511cdbe566d776c6423a`
+  (`fix(api): envelope pharmacy contract version response`). Push not
+  performed.
+- remaining work:
+  `API-CONTRACT-001` remains Partial with 71 allowlisted violations. Next
+  allowlist head is `src/app/api/pharmacy-contracts/route.ts` with one expected
+  legacy response shape violation. Existing unrelated dirty/untracked
+  memory/docs and `.codex`/`.harness-mem` files remain unstaged.
+- next action:
+  Commit this ledger update with only `ops/refactor/STATE.md` staged, then
+  continue the next allowlist cleanup from `src/app/api/pharmacy-contracts/route.ts`
+  unless redirected.
