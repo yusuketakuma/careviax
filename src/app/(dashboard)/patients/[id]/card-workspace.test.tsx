@@ -4847,7 +4847,45 @@ describe('CardWorkspace', () => {
       // --- 2 static GETs use buildOrgHeaders (exact URLs) ---
       const pharmacyCfg = queryConfigs.find((c) => c.queryKey?.[0] === 'pharmacy-partnerships');
       fetchMock.mockClear();
-      await pharmacyCfg?.queryFn?.();
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                id: 'partnership_1',
+                status: 'active',
+                effective_from: '2026-06-01T00:00:00.000Z',
+                effective_to: null,
+                base_site: { id: 'site_1', name: '基幹薬局' },
+                partner_pharmacy: {
+                  id: 'partner_pharmacy_1',
+                  name: '協力薬局',
+                  status: 'active',
+                },
+              },
+            ],
+            meta: { limit: 20, has_more: false, next_cursor: null },
+          }),
+      } as unknown as Response);
+      const pharmacyResult = await pharmacyCfg?.queryFn?.();
+      expect(pharmacyResult).toEqual({
+        data: [
+          {
+            id: 'partnership_1',
+            status: 'active',
+            effective_from: '2026-06-01T00:00:00.000Z',
+            effective_to: null,
+            base_site: { id: 'site_1', name: '基幹薬局' },
+            partner_pharmacy: {
+              id: 'partner_pharmacy_1',
+              name: '協力薬局',
+              status: 'active',
+            },
+          },
+        ],
+        meta: { limit: 20, has_more: false, next_cursor: null },
+      });
       {
         const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
         expect(url).toBe('/api/pharmacy-partnerships?status=active&limit=20');

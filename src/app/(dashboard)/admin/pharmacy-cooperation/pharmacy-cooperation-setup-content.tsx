@@ -245,7 +245,19 @@ const partnerPharmacyPageSchema: z.ZodType<CursorPaginatedPage<PartnerPharmacyRo
 const partnerPharmacyResponseSchema = apiDataSchema(partnerPharmacyRowSchema).transform(
   ({ data }) => data,
 );
-const pharmacyPartnershipPageSchema = cursorPaginatedPageSchema(pharmacyPartnershipRowSchema);
+const pharmacyPartnershipPageSchema: z.ZodType<CursorPaginatedPage<PharmacyPartnershipRow>> = z
+  .object({
+    data: z.array(pharmacyPartnershipRowSchema),
+    meta: currentCursorMetaSchema,
+  })
+  .transform(({ data, meta }) => ({
+    data,
+    hasMore: meta.has_more,
+    ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
+  }));
+const pharmacyPartnershipResponseSchema = apiDataSchema(pharmacyPartnershipRowSchema).transform(
+  ({ data }) => data,
+);
 const pharmacyPartnershipActivationResponseSchema = apiDataSchema(
   pharmacyPartnershipRowSchema,
 ).transform(({ data }) => data);
@@ -1061,7 +1073,7 @@ export function PharmacyCooperationSetupContent() {
       });
       return readApiJson<PharmacyPartnershipRow>(response, {
         fallbackMessage: '薬局間連携の作成に失敗しました',
-        schema: pharmacyPartnershipRowSchema,
+        schema: pharmacyPartnershipResponseSchema,
       });
     },
     onSuccess: async () => {

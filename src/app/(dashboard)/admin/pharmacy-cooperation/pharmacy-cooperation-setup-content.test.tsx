@@ -99,7 +99,7 @@ describe('PharmacyCooperationSetupContent', () => {
                   },
                 },
               ],
-              hasMore: false,
+              meta: { limit: 20, has_more: false, next_cursor: null },
             }),
             { status: 200 },
           );
@@ -196,17 +196,19 @@ describe('PharmacyCooperationSetupContent', () => {
         if (url === '/api/pharmacy-partnerships' && init?.method === 'POST') {
           return new Response(
             JSON.stringify({
-              id: 'partnership_2',
-              status: 'draft',
-              base_site_id: 'site_1',
-              partner_pharmacy_id: 'partner_pharmacy_1',
-              effective_from: '2026-06-01T00:00:00.000Z',
-              effective_to: null,
-              base_site: { id: 'site_1', name: '基幹薬局' },
-              partner_pharmacy: {
-                id: 'partner_pharmacy_1',
-                name: '協力薬局',
-                status: 'active',
+              data: {
+                id: 'partnership_2',
+                status: 'draft',
+                base_site_id: 'site_1',
+                partner_pharmacy_id: 'partner_pharmacy_1',
+                effective_from: '2026-06-01T00:00:00.000Z',
+                effective_to: null,
+                base_site: { id: 'site_1', name: '基幹薬局' },
+                partner_pharmacy: {
+                  id: 'partner_pharmacy_1',
+                  name: '協力薬局',
+                  status: 'active',
+                },
               },
             }),
             { status: 201 },
@@ -393,6 +395,45 @@ describe('PharmacyCooperationSetupContent', () => {
     expect(await screen.findByText('薬局間協力設定を表示できません')).toBeTruthy();
     expect(screen.getByText(/マスタ一覧の取得に失敗しました。/)).toBeTruthy();
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+  });
+
+  it('rejects legacy pharmacy partnership list success roots before rendering setup', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-partnerships?limit=20') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'partnership_1',
+                status: 'draft',
+                base_site_id: 'site_1',
+                partner_pharmacy_id: 'partner_pharmacy_1',
+                effective_from: '2026-06-01T00:00:00.000Z',
+                effective_to: null,
+                base_site: { id: 'site_1', name: '基幹薬局' },
+                partner_pharmacy: {
+                  id: 'partner_pharmacy_1',
+                  name: '協力薬局',
+                  status: 'active',
+                },
+              },
+            ],
+            hasMore: false,
+            nextCursor: null,
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力設定を表示できません')).toBeTruthy();
+    expect(screen.getByText(/マスタ一覧の取得に失敗しました。/)).toBeTruthy();
   });
 
   it('does not expose raw backend details in the setup error state', async () => {

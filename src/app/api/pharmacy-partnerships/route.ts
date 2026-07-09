@@ -8,6 +8,7 @@ import { internalError, notFound, success, validationError } from '@/lib/api/res
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import { toPharmacyPartnershipRowContract } from '@/lib/pharmacy-cooperation/api-contracts';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
@@ -108,7 +109,15 @@ const authenticatedGET = withAuthContext(
       }),
     );
 
-    return success(buildCursorPage(rows, limit, (row) => row.id));
+    const page = buildCursorPage(rows, limit, (row) => row.id);
+    return success({
+      data: page.data.map(toPharmacyPartnershipRowContract),
+      meta: {
+        limit,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+      },
+    });
   },
   {
     permission: 'canVisit',
@@ -125,7 +134,7 @@ export const GET: typeof authenticatedGET = async (req, routeContext) => {
   }
 };
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -197,10 +206,19 @@ export const POST = withAuthContext(
     });
 
     if ('response' in result) return result.response ?? validationError('入力値が不正です');
-    return success(result.partnership, 201);
+    return success({ data: toPharmacyPartnershipRowContract(result.partnership) }, 201);
   },
   {
     permission: 'canManagePatientSharing',
     message: '薬局間連携の作成権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (error) {
+    unstable_rethrow(error);
+    return withSensitiveNoStore(internalError());
+  }
+};

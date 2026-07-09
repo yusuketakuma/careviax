@@ -82,6 +82,7 @@ import { POST as pharmacistsPost } from '../pharmacists/route';
 import { POST as visitScheduleProposalsPost } from '../visit-schedule-proposals/route';
 import { POST as visitPreparationBriefBatchPost } from '../visit-preparations/brief-batch/route';
 import { POST as visitSchedulesReschedulePost } from '../visit-schedules/[id]/reschedule/route';
+import { POST as pharmacyPartnershipsPost } from '../pharmacy-partnerships/route';
 import { POST as pharmacyPartnershipActivatePost } from '../pharmacy-partnerships/[id]/activate/route';
 
 type Handler = (req: NextRequest) => Promise<Response | undefined>;
@@ -248,6 +249,10 @@ const routes: RouteEntry[] = [
       }),
   },
   {
+    name: 'pharmacy-partnerships POST',
+    handler: (req) => pharmacyPartnershipsPost(req, emptyRouteContext),
+  },
+  {
     name: 'pharmacy-partnerships/[id]/activate POST',
     handler: (req) =>
       pharmacyPartnershipActivatePost(req, {
@@ -329,6 +334,7 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'set-audits POST' ||
         route.name === 'dispense-results POST' ||
         route.name === 'dispense-audits POST' ||
+        route.name === 'pharmacy-partnerships POST' ||
         route.name === 'pharmacy-partnerships/[id]/activate POST'
       ) {
         expectSensitiveNoStore(response);
@@ -377,6 +383,7 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'set-audits POST' ||
         route.name === 'dispense-results POST' ||
         route.name === 'dispense-audits POST' ||
+        route.name === 'pharmacy-partnerships POST' ||
         route.name === 'pharmacy-partnerships/[id]/activate POST'
       ) {
         expectSensitiveNoStore(response);
@@ -427,6 +434,7 @@ describe('protected POST routes auth/body matrix', () => {
         route.name === 'set-audits POST' ||
         route.name === 'dispense-results POST' ||
         route.name === 'dispense-audits POST' ||
+        route.name === 'pharmacy-partnerships POST' ||
         route.name === 'pharmacy-partnerships/[id]/activate POST'
       ) {
         expectSensitiveNoStore(response);

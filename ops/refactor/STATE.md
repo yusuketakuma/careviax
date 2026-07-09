@@ -41,6 +41,121 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001DP` pharmacy partnerships list/create response envelope cleanup.
+  - current task:
+    `GET /api/pharmacy-partnerships` の list success を legacy cursor root から
+    `{ data, meta: { limit, has_more, next_cursor } }` へ、`POST /api/pharmacy-partnerships`
+    の create success を legacy row root から `{ data: partnership }` へ移行し、admin
+    pharmacy cooperation setup reader、route/UI/protected route matrix tests、
+    response-shape allowlist、Plans / archive を同期する。あわせて root POST の
+    sensitive no-store と unexpected-error fallback を明示的に補強する。
+  - commit:
+    pending feature commit; replace with hash after scoped commit.
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `Plans.md`, `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/pharmacy-partnerships/route.ts`,
+    `src/app/api/pharmacy-partnerships/route.test.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/api/__tests__/protected-post-routes.test.ts`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `src/lib/pharmacy-cooperation/api-contracts.ts`,
+    `src/lib/api/response-schemas.ts`, `src/lib/api/response.ts`,
+    target GitHub context for Oracle, and bounded subagent code-map /
+    API-contract / privacy review outputs.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/pharmacy-partnerships/route.ts`,
+    `src/app/api/pharmacy-partnerships/route.test.ts`,
+    `src/app/api/__tests__/protected-post-routes.test.ts`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`,
+    and `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`.
+  - bugs found:
+    The root pharmacy partnerships route still returned GET cursor fields
+    (`hasMore` / `nextCursor`) and POST partnership row fields at the public
+    success response root, keeping a response-shape allowlist entry with
+    `expectedCount: 2`. The admin setup list/create readers consumed those legacy
+    shapes. The POST route lacked explicit sensitive no-store coverage around all
+    outcomes, had no outer sanitized fallback for auth-plumbing or handler
+    unexpected errors, and was absent from the protected POST route matrix.
+  - bugs fixed:
+    GET now returns strict `{ data, meta }` with `meta.has_more` /
+    `meta.next_cursor`; POST now returns strict `{ data }`. Both success paths map
+    Prisma rows through `toPharmacyPartnershipRowContract`, so raw org, contact
+    snapshot, approval, creator/updater, and timestamp fields are not serialized.
+    The admin setup reader unwraps the new envelopes and rejects legacy list/create
+    roots. The patient card static query test proves its cast-based reader tolerates
+    `{ data, meta }`. The root POST export now applies sensitive no-store and
+    sanitized `internalError()` fallback while preserving Next control-flow rethrows.
+    The stale allowlist entry was removed, dropping `API-CONTRACT-001`
+    response-shape debt from 52 to 50.
+  - security risks found:
+    No permission/RLS/audit/query predicate/lifecycle behavior change was needed.
+    The risk was response-contract drift, raw DTO field exposure if a future code
+    path returned Prisma rows directly, and inconsistent cache/error hardening on a
+    sensitive pharmacy mutation route.
+  - security risks reduced:
+    Route tests now lock DTO minimization, no-store on success/client errors/auth
+    matrix outcomes/sanitized 500, and no raw thrown message leakage. The protected
+    POST matrix now covers root pharmacy partnership create. `canVisit`,
+    `canManagePatientSharing`, org-scoped base-site / partner-pharmacy validation,
+    archived partner rejection, RLS context, and audit metadata behavior are
+    preserved.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract and route-hardening cleanup.
+  - UI/UX note:
+    No visible layout or interaction change. The admin setup surface reads the same
+    operationally relevant partnership details from standardized envelopes, so
+    image generation was not applicable.
+  - Oracle note:
+    Oracle escalation was used because this slice touches PHI-adjacent pharmacy
+    partnership API behavior, auth/no-store/error handling, and DTO minimization.
+    `npx -y @steipete/oracle --help` reported Oracle CLI v0.15.1. The consult
+    (`pharmacy-partnershi-envelope`) returned GO, confirmed attached local files as
+    current truth because GitHub `main` was older than the dirty diff, accepted
+    leaving top-level legacy error helpers as residual `API-CONTRACT-001` debt for
+    this success-envelope slice, and recommended one additional admin legacy GET
+    rejection test; that test was added and passed.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-partnerships/route.ts' 'src/app/api/pharmacy-partnerships/route.test.ts' 'src/app/api/__tests__/protected-post-routes.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`;
+    `pnpm vitest run 'src/app/api/pharmacy-partnerships/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run 'src/app/api/__tests__/protected-post-routes.test.ts' --reporter=dot --testNamePattern 'pharmacy-partnerships POST|pharmacy-partnerships/\\[id\\]/activate POST' --testTimeout=30000`;
+    `pnpm vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testNamePattern 'converges static-collection GET/POST callsites' --testTimeout=30000`;
+    `pnpm vitest run 'src/app/api/__tests__/protected-get-routes.test.ts' --reporter=dot --testNamePattern 'pharmacy-partnerships GET' --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/pharmacy-partnerships/route.ts' 'src/app/api/pharmacy-partnerships/route.test.ts' 'src/app/api/__tests__/protected-post-routes.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-partnerships/route.ts' 'src/app/api/pharmacy-partnerships/route.test.ts' 'src/app/api/__tests__/protected-post-routes.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-partnerships/route.ts' 'src/app/api/pharmacy-partnerships/route.test.ts' 'src/app/api/__tests__/protected-post-routes.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `npx -y @steipete/oracle --help`;
+    Oracle browser consult with `--browser-inline-files` and focused local file set;
+    follow-up `pnpm vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testNamePattern 'pharmacy partnership|薬局間連携|legacy' --testTimeout=30000`.
+  - validation results:
+    Route tests passed 1 file / 14 tests. Admin setup tests passed 1 file / 17
+    tests after adding the Oracle-requested legacy GET rejection case. Protected
+    POST matrix focused run passed 6 tests / 145 skipped, and protected GET focused
+    run passed 3 tests / 381 skipped; both emitted existing expected
+    `security_event` stderr only. Patient card static callsite focused test passed
+    1 test / 93 skipped. `api-response-shape:check` passed with 50 allowlisted
+    violations and 0 new violations. `plans:active:check`, scoped ESLint, scoped
+    Prettier check, scoped diff check, and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 50 allowlisted response-shape
+    violations. Success-envelope burn-down can continue independently from the
+    broader legacy error/request_id/frontend reader normalization debt.
+  - next action:
+    Commit this slice, record the feature commit hash in this ledger, then continue
+    allowlist burn-down from the current head:
+    `src/app/api/pharmacy-sites/[id]/insurance-configs/[configId]/route.ts`.
+
 - codex: `API-CONTRACT-001DO` pharmacy partnership activation response envelope cleanup.
   - current task:
     `POST /api/pharmacy-partnerships/:id/activate` の success response を legacy

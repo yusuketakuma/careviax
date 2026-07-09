@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   withOrgContextMock,
@@ -61,6 +62,19 @@ function createPostRequest(body: unknown) {
   });
 }
 
+async function expectErrorEnvelope(
+  response: Response,
+  status: number,
+  expected: Record<string, unknown>,
+) {
+  expect(response.status).toBe(status);
+  expectSensitiveNoStore(response);
+  const body = await response.json();
+  expect(body).toMatchObject(expected);
+  expect(body).not.toHaveProperty('data');
+  return body as Record<string, unknown>;
+}
+
 describe('/api/pharmacy-partnerships GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -70,6 +84,18 @@ describe('/api/pharmacy-partnerships GET', () => {
         status: 'active',
         base_site_id: 'site_1',
         partner_pharmacy_id: 'partner_pharmacy_1',
+        effective_from: new Date('2026-06-01T00:00:00.000Z'),
+        effective_to: null,
+        base_site: { id: 'site_1', name: '基幹薬局' },
+        partner_pharmacy: { id: 'partner_pharmacy_1', name: '連携薬局', status: 'active' },
+        org_id: 'org_1',
+        contact_snapshot: { contact_name: 'private ops contact' },
+        approved_by_base: 'base_manager',
+        approved_by_partner: 'partner_manager',
+        approved_at: new Date('2026-03-01T00:00:00.000Z'),
+        created_by: 'user_creator',
+        updated_by: 'user_updater',
+        created_at: new Date('2026-03-01T00:00:00.000Z'),
         updated_at: new Date('2026-04-01T00:00:00.000Z'),
       },
     ]);
@@ -86,8 +112,40 @@ describe('/api/pharmacy-partnerships GET', () => {
     const response = await GET(createGetRequest('?limit=20'));
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      data: [
+        {
+          id: 'partnership_1',
+          status: 'active',
+          base_site_id: 'site_1',
+          partner_pharmacy_id: 'partner_pharmacy_1',
+          effective_from: '2026-06-01T00:00:00.000Z',
+          effective_to: null,
+          base_site: { id: 'site_1', name: '基幹薬局' },
+          partner_pharmacy: { id: 'partner_pharmacy_1', name: '連携薬局', status: 'active' },
+        },
+      ],
+      meta: {
+        limit: 20,
+        has_more: false,
+        next_cursor: null,
+      },
+    });
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
+    const responseText = JSON.stringify(body);
+    expect(responseText).not.toContain('org_id');
+    expect(responseText).not.toContain('contact_snapshot');
+    expect(responseText).not.toContain('private ops contact');
+    expect(responseText).not.toContain('created_by');
+    expect(responseText).not.toContain('updated_by');
+    expect(responseText).not.toContain('approved_by_base');
+    expect(responseText).not.toContain('approved_by_partner');
+    expect(responseText).not.toContain('approved_at');
+    expect(responseText).not.toContain('created_at');
+    expect(responseText).not.toContain('updated_at');
     expect(pharmacyPartnershipFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { org_id: 'org_1' },
@@ -104,6 +162,7 @@ describe('/api/pharmacy-partnerships GET', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(pharmacyPartnershipFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -127,10 +186,7 @@ describe('/api/pharmacy-partnerships GET', () => {
     async (query, field, message) => {
       const response = await GET(createGetRequest(query));
 
-      expect(response.status).toBe(400);
-      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-      expect(response.headers.get('Pragma')).toBe('no-cache');
-      await expect(response.json()).resolves.toMatchObject({
+      await expectErrorEnvelope(response, 400, {
         code: 'VALIDATION_ERROR',
         message: '検索条件が不正です',
         details: { [field]: [message] },
@@ -143,10 +199,7 @@ describe('/api/pharmacy-partnerships GET', () => {
   it('rejects unsupported status values before loading partnerships', async () => {
     const response = await GET(createGetRequest('?status=deleted'));
 
-    expect(response.status).toBe(400);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
-    await expect(response.json()).resolves.toMatchObject({
+    await expectErrorEnvelope(response, 400, {
       code: 'VALIDATION_ERROR',
       message: '検索条件が不正です',
       details: { status: ['対応していないステータスです'] },
@@ -162,10 +215,10 @@ describe('/api/pharmacy-partnerships GET', () => {
 
     const response = await GET(createGetRequest('?limit=20'));
 
-    expect(response.status).toBe(500);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
-    const body = await response.json();
+    const body = await expectErrorEnvelope(response, 500, {
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
     expect(body).toMatchObject({
       code: 'INTERNAL_ERROR',
       message: 'サーバー内部でエラーが発生しました',
@@ -188,6 +241,15 @@ describe('/api/pharmacy-partnerships POST', () => {
       partner_pharmacy_id: 'partner_pharmacy_1',
       effective_from: new Date('2026-06-01T00:00:00.000Z'),
       effective_to: new Date('2026-12-31T00:00:00.000Z'),
+      org_id: 'org_1',
+      contact_snapshot: { contact_name: 'private ops contact' },
+      approved_by_base: null,
+      approved_by_partner: null,
+      approved_at: null,
+      created_by: 'user_creator',
+      updated_by: 'user_updater',
+      created_at: new Date('2026-06-19T10:00:00.000Z'),
+      updated_at: new Date('2026-06-19T10:00:00.000Z'),
       base_site: { id: 'site_1', name: '基幹薬局' },
       partner_pharmacy: { id: 'partner_pharmacy_1', name: '連携薬局', status: 'active' },
     });
@@ -221,8 +283,22 @@ describe('/api/pharmacy-partnerships POST', () => {
     );
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(pharmacyPartnershipRowSchema.safeParse(body).success).toBe(true);
+    expect(Object.keys(body).sort()).toEqual(['data']);
+    expect(pharmacyPartnershipRowSchema.safeParse(body.data).success).toBe(true);
+    expect(body.data).not.toHaveProperty('approved_by_base');
+    expect(body.data).not.toHaveProperty('approved_by_partner');
+    expect(body.data).not.toHaveProperty('approved_at');
+    expect(body.data).not.toHaveProperty('updated_by');
+    const responseText = JSON.stringify(body);
+    expect(responseText).not.toContain('org_id');
+    expect(responseText).not.toContain('contact_snapshot');
+    expect(responseText).not.toContain('private ops contact');
+    expect(responseText).not.toContain('created_by');
+    expect(responseText).not.toContain('updated_by');
+    expect(responseText).not.toContain('created_at');
+    expect(responseText).not.toContain('updated_at');
     expect(baseSiteFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'site_1', org_id: 'org_1' },
       select: { id: true },
@@ -256,6 +332,66 @@ describe('/api/pharmacy-partnerships POST', () => {
     );
   });
 
+  it('rejects invalid create payloads before reading or writing partnership data', async () => {
+    const response = await POST(
+      createPostRequest({
+        base_site_id: '',
+        partner_pharmacy_id: '',
+        effective_from: '2026-12-31',
+        effective_to: '2026-06-01',
+      }),
+    );
+
+    await expectErrorEnvelope(response, 400, {
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        base_site_id: ['基準薬局店舗IDは必須です'],
+        partner_pharmacy_id: ['協力薬局IDは必須です'],
+        effective_to: ['終了日は開始日以降を指定してください'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacyPartnershipCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store not found when the base site is outside the organization scope', async () => {
+    baseSiteFindFirstMock.mockResolvedValue(null);
+
+    const response = await POST(
+      createPostRequest({
+        base_site_id: 'site_404',
+        partner_pharmacy_id: 'partner_pharmacy_1',
+      }),
+    );
+
+    await expectErrorEnvelope(response, 404, {
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '基準薬局店舗が見つかりません',
+    });
+    expect(pharmacyPartnershipCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store not found when the partner pharmacy is outside the organization scope', async () => {
+    partnerPharmacyFindFirstMock.mockResolvedValue(null);
+
+    const response = await POST(
+      createPostRequest({
+        base_site_id: 'site_1',
+        partner_pharmacy_id: 'partner_pharmacy_404',
+      }),
+    );
+
+    await expectErrorEnvelope(response, 404, {
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '協力薬局が見つかりません',
+    });
+    expect(pharmacyPartnershipCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
   it('rejects archived partner pharmacies before create or audit side effects', async () => {
     partnerPharmacyFindFirstMock.mockResolvedValue({
       id: 'partner_pharmacy_1',
@@ -269,7 +405,36 @@ describe('/api/pharmacy-partnerships POST', () => {
       }),
     );
 
-    expect(response.status).toBe(400);
+    await expectErrorEnvelope(response, 400, {
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        partner_pharmacy_id: ['アーカイブ済み協力薬局は連携先に指定できません'],
+      },
+    });
+    expect(pharmacyPartnershipCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when partnership creation fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw partnership create failure patient=患者A token=secret'),
+    );
+
+    const response = await POST(
+      createPostRequest({
+        base_site_id: 'site_1',
+        partner_pharmacy_id: 'partner_pharmacy_1',
+      }),
+    );
+
+    const body = await expectErrorEnvelope(response, 500, {
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('raw partnership create failure');
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('token=secret');
     expect(pharmacyPartnershipCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
