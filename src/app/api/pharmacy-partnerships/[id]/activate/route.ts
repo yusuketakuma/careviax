@@ -1,9 +1,11 @@
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { toPharmacyPartnershipRowContract } from '@/lib/pharmacy-cooperation/api-contracts';
 
@@ -81,7 +83,7 @@ function activationConflictFor(
   return null;
 }
 
-export const POST = withAuthContext<{ id: string }>(
+const authenticatedPOST = withAuthContext<{ id: string }>(
   async (req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -190,10 +192,19 @@ export const POST = withAuthContext<{ id: string }>(
     });
 
     if ('response' in result) return result.response ?? validationError('入力値が不正です');
-    return success(toPharmacyPartnershipRowContract(result.partnership));
+    return success({ data: toPharmacyPartnershipRowContract(result.partnership) });
   },
   {
     permission: 'canManagePatientSharing',
     message: '薬局間連携の有効化権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

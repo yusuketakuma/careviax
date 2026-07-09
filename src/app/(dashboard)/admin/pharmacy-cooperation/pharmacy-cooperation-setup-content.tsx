@@ -246,6 +246,9 @@ const partnerPharmacyResponseSchema = apiDataSchema(partnerPharmacyRowSchema).tr
   ({ data }) => data,
 );
 const pharmacyPartnershipPageSchema = cursorPaginatedPageSchema(pharmacyPartnershipRowSchema);
+const pharmacyPartnershipActivationResponseSchema = apiDataSchema(
+  pharmacyPartnershipRowSchema,
+).transform(({ data }) => data);
 const pharmacyContractPageSchema = cursorPaginatedPageSchema(pharmacyContractRowSchema);
 const pharmacyContractResponseSchema = apiDataSchema(pharmacyContractRowSchema).transform(
   ({ data }) => data,
@@ -1083,7 +1086,7 @@ export function PharmacyCooperationSetupContent() {
       });
       return readApiJson<PharmacyPartnershipRow>(response, {
         fallbackMessage: '薬局間連携の有効化に失敗しました',
-        schema: pharmacyPartnershipRowSchema,
+        schema: pharmacyPartnershipActivationResponseSchema,
       });
     },
     onSuccess: async () => {

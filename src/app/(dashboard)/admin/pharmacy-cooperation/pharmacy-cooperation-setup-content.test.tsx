@@ -215,17 +215,19 @@ describe('PharmacyCooperationSetupContent', () => {
         if (url === '/api/pharmacy-partnerships/partnership_1/activate') {
           return new Response(
             JSON.stringify({
-              id: 'partnership_1',
-              status: 'active',
-              base_site_id: 'site_1',
-              partner_pharmacy_id: 'partner_pharmacy_1',
-              effective_from: '2026-06-01T00:00:00.000Z',
-              effective_to: null,
-              base_site: { id: 'site_1', name: '基幹薬局' },
-              partner_pharmacy: {
-                id: 'partner_pharmacy_1',
-                name: '協力薬局',
+              data: {
+                id: 'partnership_1',
                 status: 'active',
+                base_site_id: 'site_1',
+                partner_pharmacy_id: 'partner_pharmacy_1',
+                effective_from: '2026-06-01T00:00:00.000Z',
+                effective_to: null,
+                base_site: { id: 'site_1', name: '基幹薬局' },
+                partner_pharmacy: {
+                  id: 'partner_pharmacy_1',
+                  name: '協力薬局',
+                  status: 'active',
+                },
               },
             }),
             { status: 200 },
