@@ -34002,3 +34002,96 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   Commit this ledger update with only `ops/refactor/STATE.md` staged, then
   continue the next allowlist cleanup from
   `src/app/api/pharmacy-cooperation-message-threads/route.ts` unless redirected.
+
+## 2026-07-09 API-CONTRACT-001DD — pharmacy cooperation message responses envelope
+
+- current task:
+  `API-CONTRACT-001` allowlist debt reduction focused on
+  `src/app/api/pharmacy-cooperation-message-threads/route.ts` GET thread list
+  and POST message create success responses.
+- files inspected:
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `package.json`;
+  `src/app/api/pharmacy-cooperation-message-threads/route.ts`;
+  `src/app/api/pharmacy-cooperation-message-threads/route.test.ts`;
+  `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`;
+  `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`;
+  `src/app/api/__tests__/protected-get-routes.test.ts`;
+  `src/app/api/__tests__/protected-post-routes.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`.
+- files changed:
+  `src/app/api/pharmacy-cooperation-message-threads/route.ts`;
+  `src/app/api/pharmacy-cooperation-message-threads/route.test.ts`;
+  `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`;
+  `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/pharmacy-cooperation-message-threads` still returned legacy root
+  cursor fields, and `POST /api/pharmacy-cooperation-message-threads` still
+  returned the create result at the response root, keeping two response-shape
+  allowlist violations.
+- bugs fixed:
+  GET thread list now returns `success({ data, meta: { has_more, next_cursor } })`.
+  POST create now returns `success({ data: { thread, notification_count } }, 201)`.
+  The pharmacy cooperation workflow reader unwraps the message create
+  `payload.data` and converts message thread `meta.has_more` /
+  `meta.next_cursor` to its existing page state. Route and workflow tests now
+  assert the current envelope and still reject malformed legacy create success.
+- security risks found:
+  No new auth/authz, tenant isolation, validation, audit, notification, logging,
+  or PHI minimization issue in this slice. Existing active share-case access,
+  visit request context validation, read/create audit minimization,
+  notification PHI minimization, and sensitive no-store/error behavior remain in
+  place.
+- security risks reduced:
+  Removed two legacy public success roots from the pharmacy cooperation message
+  endpoint without changing authorization, validation, audit, notification, or
+  PHI handling behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this was a response contract cleanup. Existing cursor read and message
+  create transaction behavior are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was API response contract and
+  reader schema work only, so image generation was not applicable.
+- Oracle note:
+  No Oracle/GPT-5.5 Pro consult was run. This was a bounded allowlist envelope
+  migration following the established local pattern, with focused route/UI tests
+  and contract gates available.
+- validation commands:
+  `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-cooperation-message-threads/route.ts' 'src/app/api/pharmacy-cooperation-message-threads/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`;
+  `pnpm vitest run 'src/app/api/pharmacy-cooperation-message-threads/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`; `pnpm plans:active:check`;
+  `pnpm exec eslint 'src/app/api/pharmacy-cooperation-message-threads/route.ts' 'src/app/api/pharmacy-cooperation-message-threads/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`;
+  `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-cooperation-message-threads/route.ts' 'src/app/api/pharmacy-cooperation-message-threads/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`;
+  `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-cooperation-message-threads/route.ts' 'src/app/api/pharmacy-cooperation-message-threads/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Pharmacy cooperation message route tests passed 1
+  file / 9 tests. Pharmacy cooperation workflow content tests passed 1 file /
+  31 tests after correcting the test fixture to update only the message-thread
+  page to `meta` while leaving unrelated visit-request/partner-record cursor
+  fixtures on their existing contract. The route is not present in the
+  protected GET/POST route matrices by name, so no matrix subset was available
+  for this slice. Scoped ESLint, `api-response-shape:check` (68 allowlisted
+  violations, 0 new), `plans:active:check`, scoped diff check, and typecheck
+  passed.
+- commit:
+  Implementation, reader/schema updates, tests, allowlist cleanup, and
+  Plans/archive sync were committed as
+  `2275d35cead72773479c5218bf68fa7e6118e59d`
+  (`fix(api): envelope cooperation message responses`). Push not performed.
+- remaining work:
+  `API-CONTRACT-001` remains Partial with 68 allowlisted violations. Next
+  allowlist head is `src/app/api/pharmacy-drug-stock-requests/[id]/route.ts`
+  with one expected legacy response shape violation. Existing unrelated
+  dirty/untracked memory/docs and `.codex`/`.harness-mem` files remain
+  unstaged.
+- next action:
+  Commit this ledger update with only `ops/refactor/STATE.md` staged, then
+  continue the next allowlist cleanup from
+  `src/app/api/pharmacy-drug-stock-requests/[id]/route.ts` unless redirected.
