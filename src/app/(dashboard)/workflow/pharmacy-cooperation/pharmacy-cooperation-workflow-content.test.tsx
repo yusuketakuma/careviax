@@ -446,7 +446,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
           init?.method === 'POST'
         ) {
           return new Response(
-            JSON.stringify({ id: 'share_case_activation_ready', status: 'active' }),
+            JSON.stringify({ data: { id: 'share_case_activation_ready', status: 'active' } }),
             {
               status: 200,
             },

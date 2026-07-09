@@ -1492,7 +1492,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
     async (route) => {
       requests.shareCaseActivations.push(captureRouteRequest(route));
       state.shareCaseStatus = 'active';
-      await fulfillJson(route, { id: PHARMACY_COOP_SHARE_CASE_ID, status: 'active' });
+      await fulfillJson(route, { data: { id: PHARMACY_COOP_SHARE_CASE_ID, status: 'active' } });
     },
   );
 

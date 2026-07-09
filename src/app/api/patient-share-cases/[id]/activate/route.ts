@@ -210,7 +210,7 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
 
     if ('response' in result)
       return withSensitiveNoStore(result.response ?? validationError('患者共有ケースIDが不正です'));
-    return withSensitiveNoStore(success(result.shareCase));
+    return withSensitiveNoStore(success({ data: result.shareCase }));
   },
   {
     permission: 'canManagePatientSharing',

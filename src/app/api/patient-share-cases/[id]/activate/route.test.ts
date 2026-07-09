@@ -399,8 +399,32 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
         },
       },
     );
-    const bodyText = JSON.stringify(await response.json());
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        id: 'share_case_1',
+        status: 'active',
+        consent_verified_at: '2026-06-19T00:00:00.000Z',
+        activated_at: '2026-06-19T00:00:00.000Z',
+        patient_link: {
+          id: 'patient_link_1',
+          match_status: 'accepted',
+          has_partner_patient_id: true,
+        },
+        partnership: {
+          id: 'partnership_1',
+          status: 'active',
+          partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
+        },
+      },
+    });
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('status');
+    expect(body).not.toHaveProperty('patient_link');
+    expect(body.data.patient_link).not.toHaveProperty('partner_patient_id');
+    const bodyText = JSON.stringify(body);
     expect(bodyText).toContain('has_partner_patient_id');
+    expect(bodyText).not.toContain('partner_patient_1');
     expect(bodyText).not.toContain('partner_patient_snapshot');
     expect(bodyText).not.toContain('identity_proof');
   });

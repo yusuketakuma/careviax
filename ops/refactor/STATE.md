@@ -41,6 +41,92 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001BZ` patient share case activation response envelope cleanup.
+  - current task:
+    `POST /api/patient-share-cases/:id/activate` の success response を legacy root
+    share-case payload から `{ data: ... }` envelope へ移行し、workflow test fixtures と
+    response-shape allowlist / Plans を同期する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `Plans.md`, `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `tools/scripts/check-api-response-shape.mjs`,
+    `src/lib/api/response.ts`,
+    `src/app/api/patient-share-cases/[id]/activate/route.ts`,
+    `src/app/api/patient-share-cases/[id]/activate/route.test.ts`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`,
+    `tools/tests/ui-route-mocked-smoke.spec.ts`, and this ledger.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patient-share-cases/[id]/activate/route.ts`,
+    `src/app/api/patient-share-cases/[id]/activate/route.test.ts`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`,
+    `tools/tests/ui-route-mocked-smoke.spec.ts`, and this ledger.
+  - bugs found:
+    The patient share case activation route returned the sanitized share-case DTO at
+    the public success response root, keeping one API response-shape allowlist entry
+    alive. Workflow component and UI smoke fixtures also still modeled the old root
+    success shape.
+  - bugs fixed:
+    Activation success now returns `success({ data: result.shareCase })`. Focused
+    route tests assert the root no longer exposes `id`, `status`, or `patient_link`,
+    and that raw `partner_patient_id` / `partner_patient_1`, `partner_patient_snapshot`,
+    and `identity_proof` are not serialized. Workflow and UI-smoke fixtures now use
+    the current `{ data: ... }` activation shape. The response-shape allowlist entry
+    for this route was removed and measured debt is 104.
+  - security risks found:
+    No auth permission, org/RLS scope, consent/link/approval validation, partnership
+    validity check, audit entry, no-store wrapper, or sanitized error response changed.
+    Oracle noted the existing success DTO still includes workflow metadata such as
+    approval user ids and accepted/declined timestamps; because this slice only moves
+    the existing DTO under `data`, any additional payload minimization should be a
+    separate hardening contract change.
+  - security risks reduced:
+    Removed share-case success fields from the response root and added PHI-adjacent
+    negative assertions for raw partner patient linkage material.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. The workflow mutation already ignores
+    the activation response body and invalidates/refetches on success; only test/mock
+    response fixtures changed, so image generation was not applicable.
+  - Oracle note:
+    Ran Oracle dry-run and browser consult session `api-contract-share-case-activate`
+    with the route, route test, and response helper attached; workflow consumer behavior
+    and fixture changes were summarized in the prompt. Oracle reported GitHub access
+    succeeded, gave a commit-ready judgment, recommended keeping payload minimization
+    separate, and requested `partner_patient_id` / raw partner patient id negative
+    assertions plus repo-wide consumer grep before commit. Those assertions and grep
+    were completed. Transcript artifact:
+    `/Users/yusuke/.oracle/sessions/api-contract-share-case-activate/artifacts/transcript.md`.
+  - validation commands:
+    `rg -n "activateShareCase|patient-share-cases/.*/activate|patient-share-cases/\\$\\{[^}]+\\}/activate" src tools test`;
+    `pnpm vitest run 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' --reporter=dot`;
+    `pnpm vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patient-share-cases/[id]/activate/route.ts' 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patient-share-cases/[id]/activate/route.ts' 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patient-share-cases/[id]/activate/route.ts' 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Consumer grep found the workflow mutation, route/rate-limit catalog entries, and UI
+    smoke/API tests; no consumer reads activation response body fields. Route test passed
+    1 file / 9 tests. Pharmacy cooperation workflow component test passed 1 file / 31 tests.
+    `api-response-shape:check` passed with 104 allowlisted violations and 0 new violations.
+    `plans:active:check` passed. Scoped ESLint, scoped Prettier check, scoped diff check,
+    and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 104 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.ts`.
+  - next action:
+    Commit and push this activation envelope slice with explicit owned paths only, then
+    record the implementation commit hash and push result in this ledger.
+
 - codex: `API-CONTRACT-001BY` partner visit records draft save response envelope cleanup.
   - current task:
     `POST /api/partner-visit-records` の create/update success response を legacy root
