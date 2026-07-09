@@ -33918,3 +33918,87 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   Commit this ledger update with only `ops/refactor/STATE.md` staged, then
   continue the next allowlist cleanup from `src/app/api/pharmacy-contracts/route.ts`
   unless redirected.
+
+## 2026-07-09 API-CONTRACT-001DC — pharmacy contract create response envelope
+
+- current task:
+  `API-CONTRACT-001` allowlist debt reduction focused on
+  `src/app/api/pharmacy-contracts/route.ts` POST create success.
+- files inspected:
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/pharmacy-contracts/route.ts`;
+  `src/app/api/pharmacy-contracts/route.test.ts`;
+  `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`;
+  `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`;
+  `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx`;
+  `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx`;
+  `src/lib/pharmacy-cooperation/api-contracts.ts`;
+  `src/lib/pharmacy-cooperation/api-contracts.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`.
+- files changed:
+  `src/app/api/pharmacy-contracts/route.ts`;
+  `src/app/api/pharmacy-contracts/route.test.ts`;
+  `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`;
+  `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `POST /api/pharmacy-contracts` returned the safe contract DTO at the response
+  root, keeping one response-shape allowlist violation.
+- bugs fixed:
+  POST create success now returns `success({ data: safeContract }, 201)`. The
+  pharmacy cooperation setup screen unwraps `payload.data` for create success,
+  and its malformed success test continues to reject legacy root contract rows.
+- security risks found:
+  No new auth/authz, tenant isolation, validation, audit, or data minimization
+  issue in this slice. Existing partnership/org scope validation, active-period
+  overlap guard, initial version/fee-rule creation, and audit metadata
+  minimization remain in place.
+- security risks reduced:
+  Removed one legacy public success root from the pharmacy contract creation
+  endpoint without changing authorization, validation, or audit behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this was a response contract cleanup. Existing GET cursor page, create
+  transaction, overlap check, and nested version/fee-rule write behavior are
+  unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was API response contract and
+  reader schema work only, so image generation was not applicable.
+- Oracle note:
+  No Oracle/GPT-5.5 Pro consult was run. This was a bounded allowlist envelope
+  migration following the established local pattern, with focused route/UI tests
+  and contract gates available.
+- validation commands:
+  `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-contracts/route.ts' 'src/app/api/pharmacy-contracts/route.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`;
+  `pnpm vitest run 'src/app/api/pharmacy-contracts/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`; `pnpm plans:active:check`;
+  `pnpm exec eslint 'src/app/api/pharmacy-contracts/route.ts' 'src/app/api/pharmacy-contracts/route.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`;
+  `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-contracts/route.ts' 'src/app/api/pharmacy-contracts/route.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`;
+  `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-contracts/route.ts' 'src/app/api/pharmacy-contracts/route.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Pharmacy contracts route tests passed 1 file /
+  11 tests. Pharmacy cooperation setup content tests passed 1 file / 16 tests.
+  The route is not present in the protected GET/POST route matrices by name, so
+  no matrix subset was available for this slice. Scoped ESLint,
+  `api-response-shape:check` (70 allowlisted violations, 0 new),
+  `plans:active:check`, scoped diff check, and typecheck passed.
+- commit:
+  Implementation, reader/schema updates, tests, allowlist cleanup, and
+  Plans/archive sync were committed as
+  `5cf29443301ce5baab036e8dfb3936ac03d30caf`
+  (`fix(api): envelope pharmacy contract create response`). Push not performed.
+- remaining work:
+  `API-CONTRACT-001` remains Partial with 70 allowlisted violations. Next
+  allowlist head is
+  `src/app/api/pharmacy-cooperation-message-threads/route.ts` with two expected
+  legacy response shape violations. Existing unrelated dirty/untracked
+  memory/docs and `.codex`/`.harness-mem` files remain unstaged.
+- next action:
+  Commit this ledger update with only `ops/refactor/STATE.md` staged, then
+  continue the next allowlist cleanup from
+  `src/app/api/pharmacy-cooperation-message-threads/route.ts` unless redirected.
