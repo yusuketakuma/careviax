@@ -5,6 +5,13 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Clock, Lock, Phone } from 'lucide-react';
 
+import { resolveSupportContact } from './support-contact';
+
+// SSOT 6.3: lockout の連絡先にプレースホルダ固定値(03-XXXX-XXXX 等)を出さない。
+// 未認証画面で org 解決は不可能なため、導入先ごとに build 時 env で注入し、
+// 未設定時は捏造せず「自施設の管理者へ」の一般文言にフォールバックする。
+const SUPPORT_CONTACT = resolveSupportContact();
+
 export default function LockoutPage() {
   return (
     <section
@@ -48,7 +55,9 @@ export default function LockoutPage() {
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-tag-info/20 bg-tag-info/10 text-sm font-semibold text-tag-info">
                 1
               </span>
-              <span className="pt-0.5">一定時間（30分）経過後、自動的にロックが解除されます。</span>
+              <span className="pt-0.5">
+                一定時間が経過すると、自動的にロックが解除されます。時間をおいて再度お試しください。
+              </span>
             </li>
             <li className="flex items-start gap-2">
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-tag-info/20 bg-tag-info/10 text-sm font-semibold text-tag-info">
@@ -64,11 +73,35 @@ export default function LockoutPage() {
             <Phone className="h-4 w-4" aria-hidden="true" />
             管理者連絡先
           </div>
-          <div className="space-y-1 leading-6 text-tag-info">
-            <p>システム管理部門</p>
-            <p>TEL: 03-XXXX-XXXX（平日 9:00-18:00）</p>
-            <p>Email: admin@example-pharmacy.jp</p>
-          </div>
+          {SUPPORT_CONTACT.hasContact ? (
+            <div className="space-y-1 leading-6 text-foreground">
+              {SUPPORT_CONTACT.name ? <p>{SUPPORT_CONTACT.name}</p> : null}
+              {SUPPORT_CONTACT.phone ? (
+                <p>
+                  TEL:{' '}
+                  <a className="underline underline-offset-2" href={`tel:${SUPPORT_CONTACT.phone}`}>
+                    {SUPPORT_CONTACT.phone}
+                  </a>
+                </p>
+              ) : null}
+              {SUPPORT_CONTACT.email ? (
+                <p>
+                  Email:{' '}
+                  <a
+                    className="underline underline-offset-2"
+                    href={`mailto:${SUPPORT_CONTACT.email}`}
+                  >
+                    {SUPPORT_CONTACT.email}
+                  </a>
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="leading-6 text-muted-foreground">
+              {/* 実在しない機能(ロック解除画面等)を約束しない(SSOT 2.11 片翼禁止)。 */}
+              ご利用の施設のシステム管理者にお問い合わせください。本人確認後の対応を依頼してください。
+            </p>
+          )}
         </div>
 
         <Link href="/login">
