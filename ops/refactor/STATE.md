@@ -42,6 +42,9 @@
 ## 直近の作業
 
 - codex: `PATIENT-BOARD-LASTVISIT-JST-001` patient list last-visit DateTime boundary fix.
+  - commit:
+    Implementation, Plans cleanup, and ledger evidence committed as `794d833b7`
+    (`fix(patients): anchor last visit filters to JST`) and pushed to `origin/main`.
   - current task:
     `Plans.md` P2 `PATIENT-BOARD-LASTVISIT-JST-001` を live code に照合し、`/api/patients`
     の `last_visit_from` / `last_visit_to` post-filter が runtime local midnight で
@@ -115,8 +118,8 @@
     derived `priority` / `next_visit` ordering; do not mark it complete with a naive
     top-level `take`. Other active `Plans.md` queue items remain.
   - next action:
-    Commit and push only the owned paths for this slice, then continue the next safe
-    active-queue item.
+    Continue the next safe active-queue item, likely API-CONTRACT-001 allowlist burn-down
+    or another bounded correctness slice if P1/human-gated work remains unsafe.
 
 - codex: `CDS-CATEGORY-DISABLE-COLLATERAL-001` stale Plans queue cleanup.
   - commit:
