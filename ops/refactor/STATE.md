@@ -41,6 +41,96 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CT` patient detail response envelope cleanup.
+  - current task:
+    `GET /api/patients/:id` の patient detail success response を legacy raw patient
+    detail root から `{ data: patientDetail }` envelope へ移行し、base patient detail
+    readers、route/UI tests、response-shape allowlist、Plans / archive を同期する。
+  - commit:
+    `5903204af fix(api): envelope patient detail response`
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/route.ts`,
+    `src/app/api/patients/[id]/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`,
+    `src/app/(dashboard)/visits/[id]/capture/capture-content.tsx`,
+    `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`,
+    `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx`,
+    patient medication / management-plan / visit-record print pages and tests,
+    `Plans.md`, `docs/plans-archive.md`, and `ops/refactor/STATE.md`.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `ops/refactor/STATE.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/route.ts`,
+    `src/app/api/patients/[id]/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx`,
+    `src/app/(dashboard)/visits/[id]/capture/capture-content.tsx`,
+    `src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx`,
+    `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`,
+    `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/medications/print/page.tsx`,
+    `src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/management-plan/print/page.tsx`,
+    `src/app/(dashboard)/patients/[id]/management-plan/print/page.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx`, and
+    `src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx`.
+  - bugs found:
+    The patient detail GET route returned detailed patient fields at the public
+    success response root, keeping one API response-shape allowlist entry alive.
+    Multiple base patient detail readers consumed the legacy raw body directly.
+  - bugs fixed:
+    GET success now returns `success({ data: patientDetail })`. External share,
+    visit capture fallback, prescription intake, safety check, medications, and print
+    readers unwrap `payload.data`. Targeted tests assert the current envelope. The
+    stale allowlist entry was removed. Response-shape debt dropped from 84 to 83.
+  - security risks found:
+    No visit permission check, patient id validation, assignment-scope lookup, PHI
+    read audit, external-viewer masking, no-store wrapper, not-found response, or
+    sanitized internal-error response changed.
+  - security risks reduced:
+    Removed detailed patient fields from the response root and aligned base readers
+    to the standardized success envelope.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. Readers unwrap the same patient
+    detail payload from the new envelope before rendering, so image generation was
+    not applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration
+    directive and the repeated envelope-only local pattern. Validation covered route
+    and consumer tests, contract ratchet, scoped lint/format, and full typecheck.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts' 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx' 'src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.tsx' 'src/app/(dashboard)/patients/[id]/medications/print/page.tsx' 'src/app/(dashboard)/patients/[id]/management-plan/print/page.tsx' 'src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx' 'src/app/(dashboard)/patients/[id]/management-plan/print/page.test.tsx' 'src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx'`;
+    `pnpm vitest run 'src/app/api/patients/[id]/route.test.ts' 'src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx' 'src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx' 'src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx' 'src/app/(dashboard)/patients/[id]/management-plan/print/page.test.tsx' 'src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts' 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx' 'src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx' 'src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx' 'src/app/(dashboard)/patients/[id]/medications/print/page.tsx' 'src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx' 'src/app/(dashboard)/patients/[id]/management-plan/print/page.tsx' 'src/app/(dashboard)/patients/[id]/management-plan/print/page.test.tsx' 'src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx' 'src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts' 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx' 'src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx' 'src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx' 'src/app/(dashboard)/patients/[id]/medications/print/page.tsx' 'src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx' 'src/app/(dashboard)/patients/[id]/management-plan/print/page.tsx' 'src/app/(dashboard)/patients/[id]/management-plan/print/page.test.tsx' 'src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx' 'src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts' 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx' 'src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx' 'src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.test.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx' 'src/app/(dashboard)/patients/[id]/medications/print/page.tsx' 'src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx' 'src/app/(dashboard)/patients/[id]/management-plan/print/page.tsx' 'src/app/(dashboard)/patients/[id]/management-plan/print/page.test.tsx' 'src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx' 'src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Focused tests passed 8 files / 134 tests. `api-response-shape:check` passed with
+    83 allowlisted violations and 0 new violations. `plans:active:check` passed.
+    Scoped ESLint, scoped Prettier check, scoped diff check, and full typecheck
+    passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 83 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patients/[id]/visits/route.ts`.
+  - next action:
+    Continue allowlist debt burn-down from the next allowlist head:
+    `src/app/api/patients/[id]/visits/route.ts`.
+
 - codex: `API-CONTRACT-001CS` patient restore response envelope cleanup.
   - current task:
     `PATCH /api/patients/:id/restore` の patient restore success response を legacy
