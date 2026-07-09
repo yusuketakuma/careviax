@@ -307,6 +307,72 @@
     Commit this webhook/worker slice with explicit path staging, then continue with patient identity
     verification and medication timeline presenter wiring.
 
+- codex: `FHIR-READY-LINKAGE-001` external clinical reference patient linkage verification.
+  - current task:
+    yrese/FHIR 由来 resource が `patient_id` 未照合で `ClinicalSyncQueueItem` の
+    `PATIENT_ID_REQUIRED_FOR_TIMELINE_PROJECTION` conflict に残った場合、PH-OS 側の権限内で
+    薬剤師/管理者が外部clinical referenceを既存患者へ明示リンクできる API を追加する。リンク後は
+    FHIR cache に `patient_id` を反映し、該当 conflict queue を pending に戻して worker が再処理できる
+    状態にする。
+  - files inspected:
+    `git status --short --untracked-files=all`, `ops/refactor/STATE.md`,
+    Next.js route handler local docs, `src/app/api/patients/check-duplicate/route.ts`,
+    `src/app/api/patients/[id]/structured-care/route.ts`, `src/server/services/patient-access.ts`,
+    `src/lib/api/request-body.ts`, `src/lib/auth/context.ts`, and standard clinical integration
+    schema/service files.
+  - files changed:
+    `src/server/services/standard-clinical-patient-linkage.ts`,
+    `src/server/services/standard-clinical-patient-linkage.test.ts`, and
+    `src/app/api/patients/[id]/external-clinical-references/verify/route.ts`.
+  - bugs found:
+    The new queue worker correctly refused to project medication timeline rows without a PH-OS
+    `patient_id`, but there was no scoped workflow to convert a reviewed external reference into a
+    verified patient linkage and requeue the conflict.
+  - bugs fixed:
+    Added `verifyClinicalExternalReferencePatientLink()` to mark a clinical external reference as
+    `verified` / `verified_manual`, write the selected `patient_id` onto related FHIR cache rows,
+    requeue patient-link conflicts, and append provenance without raw PHI. Added authenticated
+    no-store `POST /api/patients/[id]/external-clinical-references/verify`, using the standard
+    `withAuthContext` wrapper plus patient assignment scope before applying the link.
+  - security risks found:
+    A linkage API could become an IDOR path if it allowed arbitrary patient IDs or external reference
+    IDs outside the authenticated org/assignment scope, or if it logged/stored raw clinical payloads
+    during manual verification.
+  - security risks reduced:
+    Route requires `canVisit`, verifies the patient through assignment-scoped org query, executes
+    writes inside RLS org context, and returns only counts plus IDs already supplied by the caller.
+    Provenance stores fixed activity metadata and hashes/IDs only; no raw FHIR body, patient name, or
+    external payload is persisted by this slice.
+  - performance issues found:
+    No hot-path issue.
+  - performance issues improved:
+    Requeue is a bounded indexed `updateMany` by org/external reference/status/error code, avoiding
+    scan-heavy retry repair.
+  - validation commands:
+    `pnpm exec prettier --write src/server/services/standard-clinical-patient-linkage.ts src/server/services/standard-clinical-patient-linkage.test.ts 'src/app/api/patients/[id]/external-clinical-references/verify/route.ts'`;
+    `pnpm vitest run src/server/services/standard-clinical-patient-linkage.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/server/services/standard-clinical-patient-linkage.ts src/server/services/standard-clinical-patient-linkage.test.ts 'src/app/api/patients/[id]/external-clinical-references/verify/route.ts'`;
+    `pnpm route-auth-wrapper:check`;
+    `pnpm api-response-shape:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm dto-direct-prisma-return:check`;
+    `pnpm db:raw-read-org-guard:check`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`;
+    `pnpm exec prettier --check 'src/app/api/patients/[id]/external-clinical-references/verify/route.ts' src/server/services/standard-clinical-patient-linkage.ts src/server/services/standard-clinical-patient-linkage.test.ts`;
+    `git diff --check`.
+  - validation results:
+    Patient linkage service tests passed 3/3. ESLint, route-auth wrapper, API response shape,
+    query-shape guard, DTO direct Prisma return guard, raw-read org guard, `typecheck`,
+    `typecheck:no-unused`, Prettier check, and `git diff --check` passed.
+  - remaining work:
+    No live DB migration was applied, no deploy was run, and no external yrese/FHIR endpoint was
+    called. A UI for reviewing suggested link candidates and a medication timeline read/display
+    surface still need implementation.
+  - next action:
+    Commit this linkage slice with explicit path staging, then implement medication timeline read
+    API/presenter against `MedicationTimelineItem`.
+
 - codex: `API-CONTRACT-001DQ` pharmacy site insurance config response envelope cleanup.
   - current task:
     `PATCH /api/pharmacy-sites/:id/insurance-configs/:configId` の success DTO を明示化し、
