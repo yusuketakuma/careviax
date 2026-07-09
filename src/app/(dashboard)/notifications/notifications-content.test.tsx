@@ -221,7 +221,10 @@ describe('NotificationsContent', () => {
   });
 
   it('loads notifications through the shared path and org header helpers', async () => {
-    const notificationsPayload = { data: [] };
+    const notificationsPayload = {
+      data: [],
+      meta: { limit: 50, has_more: false, next_cursor: null },
+    };
     const fetchMock = stubJsonFetch(notificationsPayload);
 
     render(<NotificationsContent />);
@@ -238,7 +241,7 @@ describe('NotificationsContent', () => {
   });
 
   it('marks notifications read through the shared collection path and JSON org headers', async () => {
-    const fetchMock = stubJsonFetch({});
+    const fetchMock = stubJsonFetch({ data: { message: '1件を既読にしました' } });
 
     render(<NotificationsContent />);
 

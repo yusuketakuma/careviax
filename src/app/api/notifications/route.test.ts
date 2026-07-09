@@ -47,6 +47,16 @@ const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const PATCH = (req: NextRequest) => rawPATCH(req, emptyRouteContext);
 
+const notificationItem = {
+  id: 'notice_1',
+  type: 'business',
+  title: '訪問確認',
+  message: '患者さんへの連絡確認があります',
+  link: '/notifications',
+  created_at: '2026-07-09T00:00:00.000Z',
+  is_read: false,
+};
+
 function createRequest(url: string, headers?: Record<string, string>) {
   return new NextRequest(url, { headers });
 }
@@ -134,6 +144,43 @@ describe('/api/notifications GET', () => {
     ]);
   });
 
+  it('returns notification list in a data/meta envelope without legacy cursor fields', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    findManyMock.mockResolvedValueOnce([
+      notificationItem,
+      {
+        ...notificationItem,
+        id: 'notice_2',
+        title: '訪問確認 2',
+      },
+    ]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/notifications?limit=1', { 'x-org-id': 'org_1' }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      data: [notificationItem],
+      meta: {
+        limit: 1,
+        has_more: true,
+        next_cursor: 'notice_1',
+      },
+    });
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+      }),
+    );
+  });
+
   it('returns only unread count for header summary requests', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
@@ -210,9 +257,9 @@ describe('/api/notifications GET', () => {
       },
       data: { is_read: true, read_at: expect.any(Date) },
     });
-    await expect(response.json()).resolves.toMatchObject({
-      message: '2件を既読にしました',
-    });
+    const body = await response.json();
+    expect(body).toEqual({ data: { message: '2件を既読にしました' } });
+    expect(body).not.toHaveProperty('message');
   });
 
   it('rejects malformed patch bodies before updating notifications', async () => {
@@ -257,9 +304,9 @@ describe('/api/notifications GET', () => {
       where: { org_id: 'org_1', user_id: 'user_1', is_read: false },
       data: { is_read: true, read_at: expect.any(Date) },
     });
-    await expect(response.json()).resolves.toMatchObject({
-      message: '全て既読にしました',
-    });
+    const body = await response.json();
+    expect(body).toEqual({ data: { message: '全て既読にしました' } });
+    expect(body).not.toHaveProperty('message');
   });
 
   it('returns a sanitized no-store 500 when marking notifications fails unexpectedly', async () => {

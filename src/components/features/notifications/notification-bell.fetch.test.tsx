@@ -98,9 +98,19 @@ function createFetchMock() {
       return Promise.resolve(jsonResponse({ data: { unreadCount: 1 } }));
     }
     if (url === '/api/notifications?limit=20') {
-      return Promise.resolve(jsonResponse({ data: [notification] }));
+      return Promise.resolve(
+        jsonResponse({
+          data: [notification],
+          meta: { limit: 20, has_more: false, next_cursor: null },
+        }),
+      );
     }
-    return Promise.resolve(jsonResponse({ data: [] }));
+    if (url === '/api/notifications') {
+      return Promise.resolve(jsonResponse({ data: { message: '1件を既読にしました' } }));
+    }
+    return Promise.resolve(
+      jsonResponse({ data: [], meta: { limit: 20, has_more: false, next_cursor: null } }),
+    );
   });
 }
 

@@ -65,7 +65,15 @@ async function authenticatedGET(req: NextRequest) {
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
 
-    return success(buildCursorPage(notifications, limit, (notification) => notification.id));
+    const page = buildCursorPage(notifications, limit, (notification) => notification.id);
+    return success({
+      data: page.data,
+      meta: {
+        limit,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+      },
+    });
   });
 }
 
@@ -110,7 +118,7 @@ async function authenticatedPATCH(req: NextRequest) {
           }),
         { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
       );
-      return success({ message: '全て既読にしました' });
+      return success({ data: { message: '全て既読にしました' } });
     }
 
     if (payload.all !== undefined && payload.all !== false) {
@@ -146,7 +154,7 @@ async function authenticatedPATCH(req: NextRequest) {
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
 
-    return success({ message: `${ids.length}件を既読にしました` });
+    return success({ data: { message: `${ids.length}件を既読にしました` } });
   });
 }
 

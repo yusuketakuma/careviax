@@ -71,6 +71,7 @@ const NOTIFICATIONS_DATA = {
       created_at: '2026-06-17T00:00:00.000Z',
     },
   ],
+  meta: { limit: 12, has_more: false, next_cursor: null },
 };
 
 describe('RealtimePage', () => {
