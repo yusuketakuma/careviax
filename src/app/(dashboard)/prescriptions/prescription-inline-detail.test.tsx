@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
@@ -71,6 +71,42 @@ describe('PrescriptionInlineDetail', () => {
     fetchMock.mockReset();
     vi.mocked(buildOrgHeaders).mockClear();
     vi.stubGlobal('fetch', fetchMock);
+  });
+
+  it('reserves the detail shape while the prescription is loading', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: null,
+      isLoading: true,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    const { container } = render(<PrescriptionInlineDetail intakeId="rx_1" />);
+
+    expect(screen.getByRole('status', { name: '処方詳細を読み込み中' })).toBeTruthy();
+    expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThan(3);
+  });
+
+  it('shows a PHI-safe retryable error instead of a raw query error', () => {
+    const refetch = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: new Error('patient_name=山田 token=secret'),
+      refetch,
+    });
+
+    render(<PrescriptionInlineDetail intakeId="rx_1" />);
+
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '処方詳細を表示できません' })).toBeTruthy();
+    expect(document.body.textContent).not.toContain('patient_name=山田');
+    expect(document.body.textContent).not.toContain('token=secret');
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   it('shows patient history links and encodes prescription detail links from the detail pane', () => {

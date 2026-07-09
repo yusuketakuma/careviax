@@ -85,7 +85,7 @@ function PrescriptionFilterGroup({
 }) {
   return (
     <>
-      <span className="shrink-0 text-[10px] font-medium text-muted-foreground">{label}</span>
+      <span className="shrink-0 text-xs font-medium text-muted-foreground">{label}</span>
       {options.map((opt) => {
         const isActive = activeValue === opt.value;
         return (
@@ -94,7 +94,7 @@ function PrescriptionFilterGroup({
             type="button"
             onClick={() => onSelect(opt.value)}
             className={cn(
-              'inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded px-2 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:px-1.5',
+              'inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:px-1.5',
               isActive ? activeClassName : inactiveClassName,
             )}
           >
@@ -116,7 +116,7 @@ function PrescriptionShortcutRail() {
   return (
     <div className="flex items-center gap-4 border-t bg-muted/30 px-3 py-1">
       <Keyboard className="size-3 text-muted-foreground" aria-hidden="true" />
-      <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
+      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
         <span>
           <kbd className="rounded border bg-background px-1 font-mono">↑</kbd>
           <kbd className="ml-0.5 rounded border bg-background px-1 font-mono">↓</kbd> 選択

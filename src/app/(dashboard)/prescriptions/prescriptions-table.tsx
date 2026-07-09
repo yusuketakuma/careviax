@@ -49,11 +49,11 @@ export type PrescriptionIntakeRow = {
 
 function StatusDot({ status }: { status: string }) {
   const config = CYCLE_STATUS_CONFIG[status];
-  if (!config) return <span className="text-[10px]">{status}</span>;
+  if (!config) return <span className="text-xs">{status}</span>;
   return (
     <Badge
       variant={config.variant}
-      className={cn('h-5 px-1.5 text-[10px] leading-none', config.className)}
+      className={cn('h-5 px-1.5 text-xs leading-none', config.className)}
     >
       {config.label}
     </Badge>
@@ -71,7 +71,7 @@ function ExpiryCell({ date }: { date: string | null }) {
 
   if (daysLeft < 0) {
     return (
-      <span className="text-[10px] font-medium text-destructive">
+      <span className="text-xs font-medium text-state-blocked">
         <AlertTriangle className="mr-0.5 inline size-2.5" aria-hidden="true" />
         期限切
       </span>
@@ -79,14 +79,14 @@ function ExpiryCell({ date }: { date: string | null }) {
   }
   if (daysLeft === 0) {
     return (
-      <span className="text-[10px] font-medium text-destructive">
+      <span className="text-xs font-medium text-state-blocked">
         <Clock className="mr-0.5 inline size-2.5" aria-hidden="true" />
         本日
       </span>
     );
   }
   if (daysLeft === 1) {
-    return <span className="text-[10px] font-medium text-state-confirm">明日</span>;
+    return <span className="text-xs font-medium text-state-confirm">明日</span>;
   }
   return null; // 2日以上先は非表示（コンパクト化）
 }
@@ -122,7 +122,7 @@ const PRESCRIPTION_TABLE_COLUMNS: ColumnDef<PrescriptionIntakeRow>[] = [
       return (
         <div className="leading-tight">
           <div className="font-medium text-foreground">{patient.name}</div>
-          <div className="text-[10px] text-muted-foreground">{patient.name_kana}</div>
+          <div className="text-xs text-muted-foreground">{patient.name_kana}</div>
         </div>
       );
     },
@@ -169,7 +169,7 @@ const PRESCRIPTION_TABLE_COLUMNS: ColumnDef<PrescriptionIntakeRow>[] = [
       <div className="flex items-center justify-end gap-1">
         <ExpiryCell date={row.original.prescription_expiry_date} />
         {row.original.source_type === 'refill' && row.original.refill_remaining_count != null && (
-          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
+          <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
             <RefreshCw className="size-2.5" aria-hidden="true" />
             {row.original.refill_remaining_count}
           </span>

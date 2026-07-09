@@ -9,6 +9,8 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
+import { ErrorState } from '@/components/ui/error-state';
+import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { PatientHistoryQuickLinks } from '@/components/features/patients/patient-history-quick-links';
 import { PatientHistorySummary } from '@/components/features/patients/patient-history-summary';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
@@ -106,13 +108,13 @@ const prescriptionLineColumns: ColumnDef<PrescriptionLine>[] = [
       <div>
         <div className="font-medium leading-tight">{row.original.drug_name}</div>
         {row.original.drug_code ? (
-          <span className="text-[10px] text-muted-foreground">{row.original.drug_code}</span>
+          <span className="text-xs text-muted-foreground">{row.original.drug_code}</span>
         ) : null}
         {row.original.dosage_form ? (
-          <span className="ml-1 text-[10px] text-muted-foreground">{row.original.dosage_form}</span>
+          <span className="ml-1 text-xs text-muted-foreground">{row.original.dosage_form}</span>
         ) : null}
         {row.original.packaging_instructions ? (
-          <div className="text-[10px] text-state-confirm">
+          <div className="text-xs text-state-confirm">
             包: {row.original.packaging_instructions}
           </div>
         ) : null}
@@ -147,15 +149,15 @@ const prescriptionLineColumns: ColumnDef<PrescriptionLine>[] = [
     meta: { mobileLabel: '区分' } satisfies DataTableColumnMeta<PrescriptionLine>,
     cell: ({ row }) =>
       row.original.is_generic ? (
-        <span className="rounded bg-tag-info/10 px-1 py-0.5 text-[9px] font-medium text-tag-info">
+        <span className="rounded bg-tag-info/10 px-1 py-0.5 text-xs font-medium text-tag-info">
           後発
         </span>
       ) : row.original.is_generic_name_prescription ? (
-        <span className="rounded bg-state-done/10 px-1 py-0.5 text-[9px] font-medium text-state-done">
+        <span className="rounded bg-state-done/10 px-1 py-0.5 text-xs font-medium text-state-done">
           一般名
         </span>
       ) : (
-        <span className="text-[10px] text-muted-foreground">先発</span>
+        <span className="text-xs text-muted-foreground">先発</span>
       ),
   },
 ];
@@ -167,7 +169,7 @@ const prescriptionLineColumns: ColumnDef<PrescriptionLine>[] = [
 export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
   const orgId = useOrgId();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['prescription-intake-detail', orgId, intakeId],
     queryFn: async () => {
       const res = await fetch(buildPrescriptionIntakeApiPath(intakeId), {
@@ -180,17 +182,31 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-        読込中...
+      <div className="h-full space-y-3 p-3" role="status" aria-label="処方詳細を読み込み中">
+        <div className="flex items-center gap-2 border-b pb-3">
+          <Skeleton className="h-5 w-16" />
+          <Skeleton className="h-5 w-28" />
+          <Skeleton className="ml-auto h-11 w-24" />
+        </div>
+        <Skeleton className="h-4 w-3/4" />
+        <SkeletonRows rows={4} cols={5} status={false} />
+        <span className="sr-only">処方詳細を読み込み中です。</span>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="flex h-full items-center justify-center text-xs text-destructive">
-        読み込みに失敗しました
-      </div>
+      <ErrorState
+        variant="server"
+        title="処方詳細を表示できません"
+        cause="処方受付と薬剤明細を取得できませんでした。"
+        nextAction="通信状態を確認して再試行してください。"
+        onRetry={() => void refetch()}
+        headingLevel={3}
+        live="assertive"
+        className="h-full rounded-none border-0 px-4 py-6"
+      />
     );
   }
 
@@ -207,17 +223,14 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
     <div className="flex h-full flex-col overflow-hidden">
       {/* ── ヘッダ: 患者 + ステータス ── */}
       <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-3 py-2">
-        <Badge
-          variant={statusConfig.variant}
-          className={`text-[11px] ${statusConfig.className ?? ''}`}
-        >
+        <Badge variant={statusConfig.variant} className={`text-xs ${statusConfig.className ?? ''}`}>
           {statusConfig.label}
         </Badge>
         <div className="flex items-baseline gap-1.5">
           <span className="text-sm font-semibold text-foreground">{patient.name}</span>
-          <span className="text-[10px] text-muted-foreground">{patient.name_kana}</span>
+          <span className="text-xs text-muted-foreground">{patient.name_kana}</span>
           {patient.birth_date && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {format(parseISO(patient.birth_date), 'yyyy/MM/dd')}
               {patient.gender ? ` ${GENDER_LABELS[patient.gender] ?? ''}` : ''}
             </span>
@@ -227,7 +240,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
           <Button
             variant="ghost"
             size="sm"
-            className="!h-auto !min-h-11 !min-w-11 px-2 text-[10px] sm:!h-auto sm:!min-h-11 sm:!min-w-11"
+            className="!h-auto !min-h-11 !min-w-11 px-2 text-xs sm:!h-auto sm:!min-h-11 sm:!min-w-11"
             asChild
           >
             <Link href={prescriptionDetailHref}>
@@ -238,7 +251,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
           <Button
             variant="ghost"
             size="sm"
-            className="!h-auto !min-h-11 !min-w-11 px-2 text-[10px] sm:!h-auto sm:!min-h-11 sm:!min-w-11"
+            className="!h-auto !min-h-11 !min-w-11 px-2 text-xs sm:!h-auto sm:!min-h-11 sm:!min-w-11"
             asChild
           >
             <Link href={buildPatientHref(patient.id)}>患者</Link>
@@ -247,7 +260,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
       </div>
 
       {/* ── 処方メタ情報 ── */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 border-b px-3 py-2 text-[11px] text-muted-foreground">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 border-b px-3 py-2 text-xs text-muted-foreground">
         <span>{SOURCE_LABELS[data.source_type] ?? data.source_type}</span>
         <span>
           処方日: {format(parseISO(data.prescribed_date), 'yyyy/MM/dd (E)', { locale: ja })}
@@ -271,7 +284,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
             分割 {data.split_dispense_current}/{data.split_dispense_total}回
           </span>
         )}
-        <span className="text-[10px]">ID: {prescriptionDisplayLabel}</span>
+        <span className="text-xs">ID: {prescriptionDisplayLabel}</span>
       </div>
 
       <PatientHistoryQuickLinks patientId={patient.id} patientName={patient.name} />
@@ -296,7 +309,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
         <div className="border-t">
           <div className="flex items-center gap-1.5 bg-state-confirm/10 px-3 py-1.5">
             <MessageSquare className="size-3 text-state-confirm" aria-hidden="true" />
-            <span className="text-[11px] font-semibold text-state-confirm">
+            <span className="text-xs font-semibold text-state-confirm">
               疑義照会 {inquiries.length}件
             </span>
           </div>
@@ -304,13 +317,13 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
             {inquiries.map((inq) => {
               const resultCfg = inq.result ? INQUIRY_RESULT_CONFIG[inq.result] : null;
               return (
-                <div key={inq.id} className="border-b border-border/30 px-3 py-1.5 text-[11px]">
+                <div key={inq.id} className="border-b border-border/30 px-3 py-1.5 text-xs">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="font-medium">{inq.reason}</span>
                     {resultCfg && (
                       <span
                         className={cn(
-                          'rounded px-1 py-0.5 text-[9px] font-medium',
+                          'rounded px-1 py-0.5 text-xs font-medium',
                           STATUS_TOKENS[resultCfg.role].badgeClassName,
                         )}
                       >
@@ -323,16 +336,16 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
                       </span>
                     )}
                     {inq.proposal_origin === 'pre_issuance' && (
-                      <span className="rounded bg-tag-info/10 px-1 py-0.5 text-[9px] font-medium text-tag-info">
+                      <span className="rounded bg-tag-info/10 px-1 py-0.5 text-xs font-medium text-tag-info">
                         事前提案反映
                       </span>
                     )}
                     {inq.residual_adjustment && (
-                      <span className="rounded bg-state-confirm/10 px-1 py-0.5 text-[9px] font-medium text-state-confirm">
+                      <span className="rounded bg-state-confirm/10 px-1 py-0.5 text-xs font-medium text-state-confirm">
                         残薬調整
                       </span>
                     )}
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       → {inq.inquiry_to_physician}
                     </span>
                   </div>
@@ -349,7 +362,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
         <Button
           variant="default"
           size="sm"
-          className="!h-auto !min-h-11 px-3 text-[11px] sm:!h-auto sm:!min-h-11"
+          className="!h-auto !min-h-11 px-3 text-xs sm:!h-auto sm:!min-h-11"
           asChild
         >
           <Link href="/dispense">調剤キューへ</Link>
@@ -357,7 +370,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
         <Button
           variant="outline"
           size="sm"
-          className="!h-auto !min-h-11 px-3 text-[11px] sm:!h-auto sm:!min-h-11"
+          className="!h-auto !min-h-11 px-3 text-xs sm:!h-auto sm:!min-h-11"
           asChild
         >
           <Link href={prescriptionDetailHref}>全画面表示</Link>
