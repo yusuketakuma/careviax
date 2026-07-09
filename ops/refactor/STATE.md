@@ -42,6 +42,9 @@
 ## 直近の作業
 
 - codex: `CDS-CATEGORY-DISABLE-COLLATERAL-001` stale Plans queue cleanup.
+  - commit:
+    Plans cleanup and ledger evidence committed as `7d080cf27`
+    (`docs(plans): mark cds collateral disable fix complete`) and pushed to `origin/main`.
   - current task:
     `Plans.md` では Not started のままだった CDS category disable collateral bug を live
     checker/test と git history に照合し、実装済みなら active queue から除外する。
