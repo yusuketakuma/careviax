@@ -447,7 +447,7 @@ vi.mock('@tanstack/react-query', () => ({
     }
     if (key === 'generic-recommendations') {
       return {
-        data: { recommendations: genericRecommendationsDataMock.current },
+        data: { data: { recommendations: genericRecommendationsDataMock.current } },
         isLoading: false,
         isError: false,
       };
@@ -3222,8 +3222,10 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     const templatesBody = { data: [] };
     const genericCandidatesBody = { data: [] };
     const recommendationsBody = {
-      recommendations: [],
-      reason: 'generic_name_missing',
+      data: {
+        recommendations: [],
+        reason: 'generic_name_missing',
+      },
     };
     const ingredientGroupBody = {
       generic_name: null,

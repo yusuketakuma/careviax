@@ -76,10 +76,12 @@ async function authenticatedGET(req: NextRequest, params: Promise<{ id: string }
         if (!target) return notFound('対象の医薬品が見つかりません');
         if (!target.generic_name) {
           return success({
-            site,
-            target,
-            recommendations: [],
-            reason: 'generic_name_missing',
+            data: {
+              site,
+              target,
+              recommendations: [],
+              reason: 'generic_name_missing',
+            },
           });
         }
 
@@ -130,23 +132,25 @@ async function authenticatedGET(req: NextRequest, params: Promise<{ id: string }
         const targetPrice = toNumber(target.drug_price);
 
         return success({
-          site,
-          target,
-          mapping: mapping?.price_comparison ?? null,
-          recommendations: candidates.map((candidate) => {
-            const candidatePrice = toNumber(candidate.drug_price);
-            const priceDelta =
-              targetPrice != null && candidatePrice != null ? candidatePrice - targetPrice : null;
-            return {
-              ...candidate,
-              site_stock: stockByDrugId.get(candidate.id) ?? null,
-              price_delta: priceDelta,
-              price_delta_percent:
-                priceDelta != null && targetPrice && targetPrice > 0
-                  ? (priceDelta / targetPrice) * 100
-                  : null,
-            };
-          }),
+          data: {
+            site,
+            target,
+            mapping: mapping?.price_comparison ?? null,
+            recommendations: candidates.map((candidate) => {
+              const candidatePrice = toNumber(candidate.drug_price);
+              const priceDelta =
+                targetPrice != null && candidatePrice != null ? candidatePrice - targetPrice : null;
+              return {
+                ...candidate,
+                site_stock: stockByDrugId.get(candidate.id) ?? null,
+                price_delta: priceDelta,
+                price_delta_percent:
+                  priceDelta != null && targetPrice && targetPrice > 0
+                    ? (priceDelta / targetPrice) * 100
+                    : null,
+              };
+            }),
+          },
         });
       },
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },

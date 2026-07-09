@@ -119,18 +119,20 @@ describe('/api/drug-masters/[id]/generic-recommendations', () => {
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
-      site: { id: 'site_1' },
-      recommendations: [
-        {
-          id: 'generic_1',
-          price_delta: -10,
-          price_delta_percent: -50,
-          site_stock: {
-            is_stocked: true,
-            reorder_point: 10,
+      data: {
+        site: { id: 'site_1' },
+        recommendations: [
+          {
+            id: 'generic_1',
+            price_delta: -10,
+            price_delta_percent: -50,
+            site_stock: {
+              is_stocked: true,
+              reorder_point: 10,
+            },
           },
-        },
-      ],
+        ],
+      },
     });
     expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -143,6 +145,41 @@ describe('/api/drug-masters/[id]/generic-recommendations', () => {
         take: 5,
       }),
     );
+  });
+
+  it('returns a data envelope when the target has no generic name', async () => {
+    prismaMock.drugMaster.findFirst.mockResolvedValue({
+      id: 'brand_1',
+      yj_code: '123456789012',
+      drug_name: 'ノルバスク錠5mg',
+      generic_name: null,
+      drug_price: 20,
+      unit: '錠',
+      is_generic: false,
+    });
+
+    const response = await GET(
+      createRequest('http://localhost/api/drug-masters/brand_1/generic-recommendations'),
+      { params: Promise.resolve({ id: 'brand_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        site: null,
+        target: {
+          id: 'brand_1',
+          generic_name: null,
+        },
+        recommendations: [],
+        reason: 'generic_name_missing',
+      },
+    });
+    expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.genericDrugMapping.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
   });
 
   it('rejects malformed limit values before site or target lookup', async () => {

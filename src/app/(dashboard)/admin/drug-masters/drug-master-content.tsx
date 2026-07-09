@@ -560,7 +560,9 @@ function DrugMasterOperationalContent({
   const genericRecommendationsQuery = useQuery({
     queryKey: ['generic-recommendations', orgId, effectiveSelectedSiteId, selectedDrugId],
     queryFn: async () => {
-      if (!selectedDrugId) return { recommendations: [] as GenericRecommendation[] };
+      if (!selectedDrugId) {
+        return { data: { recommendations: [] as GenericRecommendation[] } };
+      }
       const params = new URLSearchParams({ limit: '8' });
       if (effectiveSelectedSiteId) params.set('site_id', effectiveSelectedSiteId);
       const res = await fetch(
@@ -569,7 +571,7 @@ function DrugMasterOperationalContent({
           headers: buildOrgHeaders(orgId),
         },
       );
-      return readApiJson<{ recommendations: GenericRecommendation[] }>(
+      return readApiJson<{ data: { recommendations: GenericRecommendation[] } }>(
         res,
         '推奨後発品の取得に失敗しました',
       );
@@ -1359,7 +1361,7 @@ function DrugMasterOperationalContent({
     }
     return stockConfig?.preferred_generic?.drug_name ?? '保存済みの採用後発薬を確認してください';
   })();
-  const genericRecommendations = genericRecommendationsQuery.data?.recommendations ?? [];
+  const genericRecommendations = genericRecommendationsQuery.data?.data.recommendations ?? [];
   const ingredientGroup = ingredientGroupQuery.data ?? null;
   const drugSafetyDisplay = detailQuery.data
     ? buildDrugSafetyDisplayViewModel(detailQuery.data)
