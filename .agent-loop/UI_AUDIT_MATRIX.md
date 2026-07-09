@@ -20,6 +20,68 @@ responsive 非悪化 / AN-6 auth/billing/security/migration/権限/API契約/DB 
 
 ---
 
+## 2026-07-10 live delta — 128 page entrypoints / frontend-backend paired completion
+
+The 114-screen / 2026-06-20 counts above are a historical audit snapshot. The live repository now
+contains **128 `page.tsx` entrypoints**, **60 `loading.tsx` files**, **22 `error.tsx` files**, and
+**1 `not-found.tsx` file**. An absent leaf boundary is not automatically a defect because App Router
+boundaries inherit from parent segments; each route must be checked against its effective boundary.
+
+The old task-local AN-4/AN-6 "presentational only / API logic requires a separate stop" posture is
+superseded for the active objective. A UI capability is complete only when its frontend and backend
+contract land together. Product API, authorization, PHI audit, server services, DTOs, release gates,
+and tests are in scope when the screen needs them. Migration application, deployment, production
+mutation, secret rotation, destructive operations, and external sending remain explicit human gates.
+
+### Live route-family inventory
+
+| Family                | Page entrypoints | Paired backend / source boundary                                                                                                | Completion rule                                                                                                                                             |
+| --------------------- | ---------------: | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth                  |                7 | NextAuth/Cognito challenge, session, lockout and password flows                                                                 | UI states must match real challenge/error/recovery contracts; no placeholder support identity.                                                              |
+| Dashboard admin       |               39 | Admin BFF/API routes, org/site settings, role/capability checks, audit                                                          | Every visible action needs a server-enforced admin capability, validation, result/error state, and focused test.                                            |
+| Dashboard operational |               74 | Patient, prescription, dispensing, schedule, visit, report, communication, billing, task and workflow BFF/API/service contracts | Authorized DTOs, tenant/assignment/case scope, PHI read/write audit, state metadata, OCC/idempotency where relevant, and UI state tests must move together. |
+| Legal                 |                2 | Static repository content                                                                                                       | Backend is explicitly N/A; page metadata, readable layout, navigation and print/mobile behavior still require verification.                                 |
+| Platform              |                2 | Platform-tenant authorization and organization administration                                                                   | Platform role and tenant isolation must be proven before org data is rendered or mutated.                                                                   |
+| Public shared         |                1 | External-access token/OTP/grant scope                                                                                           | Public DTO must stay minimized, expiry/rate-limit/consent/audit enforced, and no dashboard DTO reused directly.                                             |
+| Offline               |                1 | Service worker, encrypted local stores and sync APIs                                                                            | Offline/queued/syncing/conflict/failure must be distinct; no plaintext PHI or false-synced success.                                                         |
+| Dashboard preview     |                1 | PHI-free reference/sample data only                                                                                             | Must remain visibly non-production and must not expose functioning production writes.                                                                       |
+| Root                  |                1 | Session-aware redirect/bootstrap                                                                                                | No duplicated shell or legacy route; redirect must not disclose PHI.                                                                                        |
+| **Total**             |          **128** |                                                                                                                                 | Every entrypoint must be verified or carry an explicit N/A reason.                                                                                          |
+
+### Required paired-contract columns for every screen slice
+
+Before a route is marked complete, its evidence packet must name all of the following:
+
+1. frontend entrypoint and primary/shared component;
+2. BFF/API/server service or an explicit static/redirect N/A reason;
+3. authorization, tenant/org, assignment/case, consent/purpose and PHI audit boundary as applicable;
+4. response/DTO identity and count/state metadata, plus write validation/OCC/idempotency/release gate;
+5. loading, exact empty, data, partial, error, forbidden, stale, offline and conflict behavior, marking
+   genuinely inapplicable states N/A rather than silently omitting them;
+6. desktop/mobile/keyboard/44px/focus/heading evidence;
+7. focused frontend and backend tests plus type/lint/format/static gates;
+8. browser/runtime evidence or a concrete environment blocker. A code-only pass must not be reported
+   as visual/runtime completion.
+
+`docs/frontend-screen-contracts.md` is the detailed contract for the seven highest-frequency
+operational families. All other routes inherit the same paired-completion rule. A server foundation
+without a usable UI remains `Partial`; a UI control without a reachable, authorized backend remains
+disabled or absent. A shared server-only capability gate must open or close both sides together.
+
+### Current implementation waves
+
+| Wave | Scope                                                                       | Status / evidence                                                                                                                                                                       |
+| ---- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | SSOT, live inventory, non-PHI visual direction, seven core screen contracts | Active. `design/generated/ph-os-all-screen-direction-20260710.png` and `docs/frontend-screen-contracts.md` exist; this live 128-entrypoint delta replaces the stale count for planning. |
+| 1    | P1 patient safety and data-loss states                                      | Capture patient/safety shutter gate + SSR/API auth/audit parity landed (`41cd3d8e0`, `3008f6bba`). Visit/report stale-after-refetch preservation landed (`96c718d3a`).                  |
+| 2    | Dashboard and billing false-signal cleanup                                  | In progress in isolated lanes. Preserve dashboard information architecture while fixing sub-12px clinical labels, alert-fatigue colors, false-zero/loading and raw-state tokens.        |
+| 3    | Shared typography/state primitives and shell convergence                    | Pending after Wave 2 review. Apply shared-first fixes before route-local copies.                                                                                                        |
+| 4    | Remaining operational/admin/auth/platform/legal/print routes                | Pending family-by-family paired contracts and focused tests.                                                                                                                            |
+| 5    | Full desktop/mobile/a11y/state/PHI/runtime sweep                            | Pending. Browser proof is currently blocked by the missing compatible local app/database runtime; webpack build is also not green in the present resource envelope.                     |
+
+Do not use the historical High/Medium/Low counts as proof that the 128-entrypoint objective is done.
+Completion is route evidence plus paired contract coverage, not file count or cosmetic consistency alone.
+
 ## 0. 人間(origin)からの明示優先要件 — **最優先(P-A/P-B)**
 
 ### P-A. 操作のわかりにくさ・操作手順と矛盾した画面配置・伝わりにくい説明文(全画面横断) — High
