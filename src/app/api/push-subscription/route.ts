@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     { requestContext: ctx },
   );
 
-  return success({ ok: true });
+  return success({ data: { ok: true } });
 }
 
 export async function DELETE(req: NextRequest) {
@@ -101,5 +101,5 @@ export async function DELETE(req: NextRequest) {
     { requestContext: ctx },
   );
 
-  return success({ ok: true });
+  return success({ data: { ok: true } });
 }
