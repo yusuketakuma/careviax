@@ -327,7 +327,7 @@ function NoteCard({
                     size="sm"
                     variant="ghost"
                     disabled={Boolean(item.converted_task_id)}
-                    className="h-6 shrink-0 px-2 text-xs text-tag-info hover:bg-tag-info/10"
+                    className="shrink-0 px-2 text-xs text-tag-info hover:bg-tag-info/10"
                     onClick={() => onConvertToTask(note, item, index)}
                   >
                     <ArrowRight className="mr-1 size-3" aria-hidden="true" />
@@ -413,7 +413,7 @@ function NoteCard({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 px-2 text-xs"
+                  className="px-2 text-xs"
                   onClick={() => onGenerateReport(note)}
                   disabled={generating}
                 >
@@ -532,11 +532,11 @@ function ActivityCard({ activity }: { activity: CommunityActivity }) {
           </div>
           <div>
             <p className="text-xs text-muted-foreground">参加者数</p>
-            <p>{activity.attendee_count ?? 0}名</p>
+            <p className="tabular-nums">{activity.attendee_count ?? 0}名</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">紹介件数</p>
-            <p>{activity.referrals_generated ?? 0}件</p>
+            <p className="tabular-nums">{activity.referrals_generated ?? 0}件</p>
           </div>
         </div>
         {activity.outcome_summary ? (
