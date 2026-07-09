@@ -1,4 +1,5 @@
 import { drainYreseClinicalSyncQueue } from '@/server/services/standard-clinical-sync-queue';
+import { purgeExpiredClinicalFhirRawResourceVault } from '@/server/services/standard-clinical-raw-vault-retention';
 import { runJob } from './runner';
 
 type YreseClinicalSyncQueueDrainJobContext = {
@@ -19,6 +20,30 @@ export function drainYreseClinicalSyncQueueJob(
         };
       }
       return drainYreseClinicalSyncQueue({ orgId: context.orgId });
+    },
+    context.orgId,
+  );
+}
+
+type ClinicalRawVaultRetentionPurgeJobContext = {
+  orgId?: string;
+};
+
+export function purgeExpiredClinicalFhirRawResourceVaultJob(
+  context: ClinicalRawVaultRetentionPurgeJobContext = {},
+) {
+  return runJob(
+    'clinical_fhir_raw_vault_retention_purge',
+    async () => {
+      if (!context.orgId) {
+        return {
+          processedCount: 0,
+          deletedCount: 0,
+          scannedCount: 0,
+          errors: ['org_scope_required'],
+        };
+      }
+      return purgeExpiredClinicalFhirRawResourceVault({ orgId: context.orgId });
     },
     context.orgId,
   );

@@ -31,6 +31,7 @@ const {
   cleanupExpiredBulkExportArtifactsMock,
   retryWebhookDeliveriesMock,
   drainYreseClinicalSyncQueueJobMock,
+  purgeExpiredClinicalFhirRawResourceVaultJobMock,
   checkFacilityStandardExpiryMock,
   checkCredentialExpiryMock,
   checkConsentExpiryMock,
@@ -70,6 +71,7 @@ const {
   cleanupExpiredBulkExportArtifactsMock: vi.fn(),
   retryWebhookDeliveriesMock: vi.fn(),
   drainYreseClinicalSyncQueueJobMock: vi.fn(),
+  purgeExpiredClinicalFhirRawResourceVaultJobMock: vi.fn(),
   checkFacilityStandardExpiryMock: vi.fn(),
   checkCredentialExpiryMock: vi.fn(),
   checkConsentExpiryMock: vi.fn(),
@@ -121,6 +123,7 @@ vi.mock('@/server/jobs', () => ({
   cleanupExpiredBulkExportArtifacts: cleanupExpiredBulkExportArtifactsMock,
   retryWebhookDeliveries: retryWebhookDeliveriesMock,
   drainYreseClinicalSyncQueueJob: drainYreseClinicalSyncQueueJobMock,
+  purgeExpiredClinicalFhirRawResourceVaultJob: purgeExpiredClinicalFhirRawResourceVaultJobMock,
   checkFacilityStandardExpiry: checkFacilityStandardExpiryMock,
   checkCredentialExpiry: checkCredentialExpiryMock,
   checkConsentExpiry: checkConsentExpiryMock,
@@ -199,6 +202,12 @@ describe('/api/jobs/[jobType] POST', () => {
       conflictCount: 1,
       failedCount: 0,
       skippedCount: 1,
+    });
+    purgeExpiredClinicalFhirRawResourceVaultJobMock.mockResolvedValue({
+      processedCount: 2,
+      deletedCount: 2,
+      scannedCount: 2,
+      errors: [],
     });
     cleanupExpiredBulkExportArtifactsMock.mockResolvedValue({
       processedCount: 3,
@@ -706,6 +715,86 @@ describe('/api/jobs/[jobType] POST', () => {
       failedCount: 0,
       skippedCount: 1,
     });
+  });
+
+  it('scopes authenticated raw vault retention purges to the admin organization', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'clinical-fhir-raw-vault-retention-purge' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(purgeExpiredClinicalFhirRawResourceVaultJobMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+    });
+    await expectJobSuccessData(response, {
+      jobType: 'clinical-fhir-raw-vault-retention-purge',
+      processedCount: 2,
+      scannedCount: 2,
+      deletedCount: 2,
+      errorCount: 0,
+    });
+  });
+
+  it('does not allow API-key raw vault retention purges to use x-org-id as organization scope', async () => {
+    purgeExpiredClinicalFhirRawResourceVaultJobMock.mockResolvedValueOnce({
+      processedCount: 0,
+      deletedCount: 0,
+      scannedCount: 0,
+      errors: ['org_scope_required'],
+    });
+
+    const response = await POST(createRequest({ 'x-api-key': 'job-secret', 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'clinical-fhir-raw-vault-retention-purge' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(purgeExpiredClinicalFhirRawResourceVaultJobMock).toHaveBeenCalledWith(undefined);
+    await expectJobSuccessData(response, {
+      jobType: 'clinical-fhir-raw-vault-retention-purge',
+      processedCount: 0,
+      scannedCount: 0,
+      deletedCount: 0,
+      errorCount: 1,
+      errors: ['org_scope_required'],
+    });
+  });
+
+  it('sanitizes raw vault retention purge responses instead of spreading job output', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    purgeExpiredClinicalFhirRawResourceVaultJobMock.mockResolvedValueOnce({
+      processedCount: 1,
+      deletedCount: 1,
+      scannedCount: 2,
+      errors: [
+        'clinical_raw_vault_purge_failed',
+        'LEAK encrypted_payload=secret resource_hash=sha256:abc',
+      ],
+      selectedIds: ['vault_1'],
+      resource_hash: 'sha256:abc',
+      encrypted_payload: 'secret',
+    });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'clinical-fhir-raw-vault-retention-purge' }),
+    });
+    const body = await expectJobSuccessData(response, {
+      jobType: 'clinical-fhir-raw-vault-retention-purge',
+      processedCount: 1,
+      scannedCount: 2,
+      deletedCount: 1,
+      errorCount: 1,
+      errors: ['clinical_raw_vault_purge_failed'],
+    });
+
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('selectedIds');
+    expect(serialized).not.toContain('resource_hash');
+    expect(serialized).not.toContain('encrypted_payload');
+    expect(serialized).not.toContain('sha256:abc');
   });
 
   it('returns 200 when admin executes visit record retention checks', async () => {

@@ -40,6 +40,7 @@ import {
   cleanupExpiredBulkExportArtifacts,
   retryWebhookDeliveries,
   drainYreseClinicalSyncQueueJob,
+  purgeExpiredClinicalFhirRawResourceVaultJob,
 } from '@/server/jobs';
 
 type JobExecutionContext = {
@@ -53,6 +54,20 @@ type JobHandler = (context: JobExecutionContext) => Promise<{
   errors?: string[];
   [key: string]: unknown;
 }>;
+
+const RAW_VAULT_PURGE_SAFE_ERROR_CODES = new Set([
+  'org_scope_required',
+  'invalid_limit',
+  'clinical_raw_vault_purge_failed',
+]);
+
+function safeRawVaultPurgeErrors(errors: unknown): string[] {
+  if (!Array.isArray(errors)) return [];
+  return errors.filter(
+    (error): error is string =>
+      typeof error === 'string' && RAW_VAULT_PURGE_SAFE_ERROR_CODES.has(error),
+  );
+}
 
 const JOB_HANDLERS: Record<string, JobHandler> = {
   daily: runDailyOperations,
@@ -102,6 +117,10 @@ const JOB_HANDLERS: Record<string, JobHandler> = {
     ),
   'yrese-clinical-sync-queue-drain': (context) =>
     drainYreseClinicalSyncQueueJob(
+      context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
+    ),
+  'clinical-fhir-raw-vault-retention-purge': (context) =>
+    purgeExpiredClinicalFhirRawResourceVaultJob(
       context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
     ),
   'daily-facility-standard-expiry': checkFacilityStandardExpiry,
@@ -182,6 +201,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
           errorCount: typeof result.errorCount === 'number' ? result.errorCount : 0,
           limited: result.limited === true,
           limit: typeof result.limit === 'number' ? result.limit : undefined,
+        },
+      }) as NextResponse;
+    }
+    if (jobType === 'clinical-fhir-raw-vault-retention-purge') {
+      const safeErrors = safeRawVaultPurgeErrors(result.errors);
+      return success({
+        data: {
+          jobType,
+          processedCount: result.processedCount,
+          scannedCount: typeof result.scannedCount === 'number' ? result.scannedCount : 0,
+          deletedCount: typeof result.deletedCount === 'number' ? result.deletedCount : 0,
+          errorCount: safeErrors.length,
+          ...(safeErrors.length > 0 ? { errors: safeErrors } : {}),
         },
       }) as NextResponse;
     }

@@ -535,6 +535,79 @@
     conflicts or a retention purge job. DB migration apply, deploy, secret changes, and external
     yrese/FHIR sends still require an explicit target environment and current authorization.
 
+- codex: `FHIR-READY-RETENTION-001` raw FHIR vault retention purge job.
+  - current task:
+    `ClinicalFhirRawResourceVault` の期限切れ raw FHIR payload を、legal hold と access policy を
+    尊重しながら org scoped に削除する retention purge service / job / admin job API entry を追加する。
+    通常 operational tables へ raw FHIR body を保持しない方針を補完し、raw vault に保存された
+    encrypted payload の保存期間を bounded にする。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `ops/refactor/STATE.md`,
+    `src/server/jobs/standard-clinical-sync.ts`, `src/server/jobs/index.ts`,
+    `src/app/api/jobs/[jobType]/route.ts`, `src/app/api/jobs/route.ts`,
+    related job route tests, and existing standard clinical DB spine / validation entries.
+  - files changed:
+    `src/server/services/standard-clinical-raw-vault-retention.ts`,
+    `src/server/services/standard-clinical-raw-vault-retention.test.ts`,
+    `src/server/jobs/standard-clinical-sync.ts`,
+    `src/server/jobs/standard-clinical-sync.test.ts`,
+    `src/server/jobs/index.ts`,
+    `src/app/api/jobs/[jobType]/route.ts`,
+    `src/app/api/jobs/[jobType]/route.test.ts`,
+    `src/app/api/jobs/route.ts`, and `src/app/api/jobs/route.test.ts`.
+  - bugs found:
+    The DB spine had `expires_at`, `legal_hold_until`, and raw vault access-policy fields but no
+    service/job to enforce retention. A raw vault purge endpoint could accidentally allow API-key
+    global execution, spread raw job output into API responses, or delete legal-hold rows if the
+    eligibility predicate was not centralized and rechecked during delete.
+  - bugs fixed:
+    Added `purgeExpiredClinicalFhirRawResourceVault()` with RLS org context, bounded limit, minimal
+    id-only candidate selection, centralized eligibility predicate, and race-safe delete recheck.
+    Added `clinical-fhir-raw-vault-retention-purge` job wrapper that refuses missing org scope,
+    registered it in the job handler/catalog, and sanitized job API responses to fixed safe error
+    codes and counts only.
+  - security risks found:
+    Raw FHIR vault rows contain encrypted PHI payloads and resource hashes; purge jobs can leak
+    those values through selected IDs, raw errors, or spread job output. API-key execution without
+    org scoping would also risk cross-tenant destructive deletion.
+  - security risks reduced:
+    The purge selects only IDs, never encrypted payload/hash fields; refuses API-key/no-org purge;
+    excludes `legal_hold` access policy and rows under active `legal_hold_until`; and the job API
+    only returns `processedCount`, `scannedCount`, `deletedCount`, `errorCount`, and whitelisted
+    error codes.
+  - performance issues found:
+    An unbounded purge could scan/delete too many vault rows in one job execution.
+  - performance issues improved:
+    Purge is limited to 100 rows by default and capped at 500, ordered by expiry/id, using the
+    same indexed predicate for candidate selection and delete recheck.
+  - validation commands:
+    `pnpm exec prettier --write src/app/api/jobs/route.ts src/app/api/jobs/route.test.ts 'src/app/api/jobs/[jobType]/route.ts' 'src/app/api/jobs/[jobType]/route.test.ts' src/server/jobs/index.ts src/server/jobs/standard-clinical-sync.ts src/server/jobs/standard-clinical-sync.test.ts src/server/services/standard-clinical-raw-vault-retention.ts src/server/services/standard-clinical-raw-vault-retention.test.ts`;
+    `pnpm vitest run src/server/services/standard-clinical-raw-vault-retention.test.ts src/server/jobs/standard-clinical-sync.test.ts 'src/app/api/jobs/[jobType]/route.test.ts' src/app/api/jobs/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/app/api/jobs/route.ts src/app/api/jobs/route.test.ts 'src/app/api/jobs/[jobType]/route.ts' 'src/app/api/jobs/[jobType]/route.test.ts' src/server/services/standard-clinical-raw-vault-retention.ts src/server/services/standard-clinical-raw-vault-retention.test.ts src/server/jobs/standard-clinical-sync.ts src/server/jobs/standard-clinical-sync.test.ts src/server/jobs/index.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`;
+    `pnpm api-response-shape:check`;
+    `pnpm route-auth-wrapper:check`;
+    `pnpm db:raw-read-org-guard:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm dto-direct-prisma-return:check`;
+    `pnpm exec prettier --check src/app/api/jobs/route.ts src/app/api/jobs/route.test.ts 'src/app/api/jobs/[jobType]/route.ts' 'src/app/api/jobs/[jobType]/route.test.ts' src/server/jobs/index.ts src/server/jobs/standard-clinical-sync.ts src/server/jobs/standard-clinical-sync.test.ts src/server/services/standard-clinical-raw-vault-retention.ts src/server/services/standard-clinical-raw-vault-retention.test.ts`;
+    `git diff --check`.
+  - validation results:
+    Focused retention/job/API tests passed 46/46. ESLint, `typecheck`, `typecheck:no-unused`,
+    API response shape, route-auth wrapper, raw-read org guard, query-shape guard, DTO direct
+    Prisma return guard, Prettier check, and `git diff --check` passed. The first focused test run
+    failed on stale mock state and an overbroad string assertion against `legal_hold_until`; both
+    were corrected and rerun successfully.
+  - remaining work:
+    No live DB migration was applied, no deploy was run, no external yrese/FHIR endpoint was called,
+    and no environment secret was changed. The purge job is registered but no production scheduler
+    or environment target has been configured by this slice.
+  - next action:
+    Commit this retention purge slice with explicit path staging, then record the commit hash in
+    this STATE ledger. Continue toward review UI / conflict handling or environment migration
+    proof only when the required target/authorization is explicit.
+
 - codex: `API-CONTRACT-001DQ` pharmacy site insurance config response envelope cleanup.
   - current task:
     `PATCH /api/pharmacy-sites/:id/insurance-configs/:configId` の success DTO を明示化し、

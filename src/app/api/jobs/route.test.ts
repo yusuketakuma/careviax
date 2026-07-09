@@ -134,6 +134,10 @@ describe('/api/jobs GET', () => {
           job_type: 'webhook-delivery-retry',
           endpoint: '/api/jobs/webhook-delivery-retry',
         }),
+        expect.objectContaining({
+          job_type: 'clinical-fhir-raw-vault-retention-purge',
+          endpoint: '/api/jobs/clinical-fhir-raw-vault-retention-purge',
+        }),
       ]),
     );
 

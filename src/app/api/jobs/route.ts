@@ -142,6 +142,11 @@ const JOB_DEFINITIONS = [
     schedule_hint: '5分毎 + 要求時',
     endpoint: '/api/jobs/yrese-clinical-sync-queue-drain',
   },
+  {
+    job_type: 'clinical-fhir-raw-vault-retention-purge',
+    schedule_hint: '毎日 + 要求時',
+    endpoint: '/api/jobs/clinical-fhir-raw-vault-retention-purge',
+  },
   { job_type: 'evening', schedule_hint: '毎夕', endpoint: '/api/jobs/evening' },
   {
     job_type: 'evening-unrecorded-visits',
