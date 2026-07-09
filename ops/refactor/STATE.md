@@ -41,10 +41,119 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001BT` notification response envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, and route/frontend fixture updates committed as
+    `f6449a5f194e9aeb031cbd806e143aea165f91f8` (`fix(api): envelope notification responses`).
+    State record is this entry and will be committed separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/notifications/route.ts` from the public response-shape allowlist by moving GET list
+    success to `data + meta` and PATCH mark-read success to `data`, without keeping legacy root
+    `hasMore`, `nextCursor`, or `message` fields.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `ops/refactor/STATE.md`, `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/notifications/route.ts`, `src/app/api/notifications/route.test.ts`,
+    `src/components/features/notifications/notification-bell.tsx`,
+    `src/components/features/notifications/notification-bell.fetch.test.tsx`,
+    `src/app/(dashboard)/notifications/notifications-content.tsx`,
+    `src/app/(dashboard)/notifications/notifications-content.test.tsx`,
+    `src/app/(dashboard)/admin/realtime/page.tsx`,
+    `src/app/(dashboard)/admin/realtime/page.test.tsx`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/api/__tests__/protected-patch-delete-routes.test.ts`, route/reader usage search
+    results, and `gbrain search "API response envelope notifications route data meta message hasMore nextCursor"`.
+  - files changed:
+    `Plans.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/notifications/route.ts`, `src/app/api/notifications/route.test.ts`,
+    `src/components/features/notifications/notification-bell.fetch.test.tsx`,
+    `src/app/(dashboard)/notifications/notifications-content.test.tsx`,
+    `src/app/(dashboard)/admin/realtime/page.test.tsx`, and this ledger.
+  - implementation:
+    `GET /api/notifications` list success now returns
+    `success({ data, meta: { limit, has_more, next_cursor } })`. Summary GET keeps the existing
+    `data.unreadCount` envelope. PATCH mark-all and mark-selected success now return
+    `success({ data: { message } })`. Route tests assert the new-only list and mutation bodies and
+    reject root `hasMore`, `nextCursor`, and `message`. Notification bell, notification inbox, and
+    admin realtime success fixtures now use the current envelope. Existing auth context, admin
+    cross-user gate, RLS reads/updates, no-store wrapping, withRoutePerformance, and PHI-safe
+    logging were not changed. The notifications allowlist entry was removed, and `Plans.md` records
+    `API-CONTRACT-001BT` with allowlist debt reduced from 114 to 111.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. This slice is
+    a mechanical response-envelope/test/allowlist cleanup.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX reconstruction.
+  - Next.js docs:
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` was read in this
+    run before editing. This slice changes JSON response construction only and does not change route
+    placement, supported methods, runtime behavior, or transaction semantics.
+  - bugs found:
+    Notification list success still returned cursor metadata at the response root, and notification
+    PATCH success still returned root `message`.
+  - bugs fixed:
+    Notification list success now uses `data + meta`, PATCH success now uses `data.message`, reader
+    fixtures use current envelopes only, and `api-response-shape:check` now reports 111 allowlisted
+    violations and 0 new violations.
+  - security risks found:
+    None.
+  - security risks reduced:
+    Removed legacy root success fields from notification responses while preserving the existing
+    user/org authorization checks, RLS scoping, no-store headers, and sanitized error logging.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None. No query shape, pagination limit, updateMany predicate, or transaction boundary changed.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/notifications/route.ts src/app/api/notifications/route.test.ts src/components/features/notifications/notification-bell.fetch.test.tsx src/app/(dashboard)/notifications/notifications-content.test.tsx src/app/(dashboard)/admin/realtime/page.test.tsx`;
+    `pnpm vitest run src/app/api/notifications/route.test.ts`;
+    `pnpm vitest run src/components/features/notifications/notification-bell.fetch.test.tsx`;
+    `pnpm vitest run src/app/(dashboard)/notifications/notifications-content.test.tsx`;
+    `pnpm vitest run src/app/(dashboard)/admin/realtime/page.test.tsx`;
+    `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts -t notifications`;
+    `pnpm vitest run src/app/api/__tests__/protected-patch-delete-routes.test.ts -t notifications`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint Plans.md tools/api-response-shape-allowlist.json src/app/api/notifications/route.ts src/app/api/notifications/route.test.ts src/components/features/notifications/notification-bell.fetch.test.tsx src/app/(dashboard)/notifications/notifications-content.test.tsx src/app/(dashboard)/admin/realtime/page.test.tsx`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/notifications/route.ts src/app/api/notifications/route.test.ts src/components/features/notifications/notification-bell.fetch.test.tsx src/app/(dashboard)/notifications/notifications-content.test.tsx src/app/(dashboard)/admin/realtime/page.test.tsx`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/notifications/route.ts src/app/api/notifications/route.test.ts src/components/features/notifications/notification-bell.fetch.test.tsx src/app/(dashboard)/notifications/notifications-content.test.tsx src/app/(dashboard)/admin/realtime/page.test.tsx`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write passed for owned files. Notifications route test passed (1 file / 11 tests).
+    Notification bell fetch tests passed (1 file / 8 tests). Notifications content tests passed (1
+    file / 12 tests). Admin realtime page tests passed (1 file / 13 tests). Protected GET smoke for
+    notifications passed (3 passed, 381 skipped). Protected PATCH smoke for notifications passed (2
+    passed, 78 skipped). API response shape guard passed (111 allowlisted violations, 0 new
+    violations). Plans active board check passed. Scoped ESLint exited successfully with only
+    ignored-file warnings for `Plans.md` and `tools/api-response-shape-allowlist.json`. Scoped
+    Prettier check, scoped `git diff --check`, and full typecheck passed. `pnpm format:check` again
+    confirmed owned changed files are formatted, then failed on unrelated pre-existing untracked
+    Markdown files:
+    `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+    `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+    `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+    `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+    `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+    `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+    `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+    `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+    `skills/_candidates.md`.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 111 allowlisted response-shape violations. Next immediate
+    allowlist targets start with `src/app/api/partner-pharmacies/route.ts`, followed by
+    `src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts`.
+  - next action:
+    Commit this STATE entry separately, push `f6449a5f` plus the state commit to `origin/main`, then
+    continue with `src/app/api/partner-pharmacies/route.ts` under the same Oracle-paused and
+    no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001BS` medication profile list success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, and route test update committed as `44f3f195c` (`fix(api):
-    envelope medication profile list`). State record is this entry and will be committed separately
+envelope medication profile list`). State record is this entry and will be committed separately
     before pushing the slice.
   - current task:
     Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
@@ -67,9 +176,9 @@
     `src/app/api/medication-profiles/route.test.ts`, and this ledger.
   - implementation:
     `GET /api/medication-profiles` now returns `success({ data, meta: { limit, has_more,
-    next_cursor } })`, including the inaccessible-patient empty-list path. Existing frontend readers
+next_cursor } })`, including the inaccessible-patient empty-list path. Existing frontend readers
     already consume `payload.data` only, so no reader code change was needed. `POST
-    /api/medication-profiles` already used `data` envelope; the route test now asserts that shape.
+/api/medication-profiles` already used `data` envelope; the route test now asserts that shape.
     Existing auth, request context, patient access checks, DrugMaster validation, display-id
     allocation, RLS create, no-store wrapping, withRoutePerformance, and PHI-safe logging were not
     changed. The medication-profiles allowlist entry was removed, and `Plans.md` records
@@ -138,7 +247,7 @@
 - codex: `API-CONTRACT-001BR` medication cycle collection success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, and route test update committed as `7753449ee` (`fix(api):
-    envelope medication cycle collection`). State record is this entry and will be committed
+envelope medication cycle collection`). State record is this entry and will be committed
     separately before pushing the slice.
   - current task:
     Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
@@ -160,7 +269,7 @@
     this ledger.
   - implementation:
     `GET /api/medication-cycles` now returns `success({ data, meta: { limit, has_more, next_cursor,
-    total_count } })`; `POST /api/medication-cycles` now returns `success({ data: cycle }, 201)`.
+total_count } })`; `POST /api/medication-cycles` now returns `success({ data: cycle }, 201)`.
     Route tests assert the new list/create shapes and reject old root pagination fields. The
     safety-check cycle lookup already consumes `payload.data` only, so no reader change was needed.
     Existing auth, query validation, case assignment scope, org reference validation, case access
@@ -228,7 +337,7 @@
 - codex: `API-CONTRACT-001BQ` medication cycle transition success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, and route test update committed as `0b4a92fc8` (`fix(api):
-    envelope medication cycle transition`). State record is this entry and will be committed
+envelope medication cycle transition`). State record is this entry and will be committed
     separately before pushing the slice.
   - current task:
     Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
