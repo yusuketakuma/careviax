@@ -29000,3 +29000,92 @@ responses`) and pushed to `origin/main`.
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next API response envelope cleanup from
   `src/app/api/drug-masters/[id]/package-insert/route.ts` unless redirected.
+
+## 2026-07-09 - API-CONTRACT-001BC drug master package insert envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` public response envelope burn-down without legacy
+  compatibility fields. Move `GET /api/drug-masters/:id/package-insert`
+  success to a `data` envelope.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `ops/refactor/STATE.md`; `Plans.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `src/app/api/drug-masters/[id]/package-insert/route.ts`;
+  `src/app/api/drug-masters/[id]/package-insert/route.test.ts`;
+  package insert usage search results; and
+  `gbrain search "API-CONTRACT drug-masters package-insert response envelope"`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/drug-masters/[id]/package-insert/route.ts`;
+  `src/app/api/drug-masters/[id]/package-insert/route.test.ts`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/drug-masters/:id/package-insert` returned the raw package insert
+  detail object at the public response root. Route tests also consumed raw root
+  `drug`, `package_insert`, `version_history`, `interactions`, and
+  `applicable_alert_rules`.
+- bugs fixed:
+  Success now returns `success({ data: ... })`. The route test helper asserts
+  and returns `payload.data`, with no legacy root fallback. Response-shape debt
+  dropped from 137 to 136 allowlisted violations.
+- security risks found:
+  No auth, org scoping, drug lookup, package insert lookup, interaction lookup,
+  alert rule filtering, JSON section formatting, error sanitization, or
+  no-store behavior changed.
+- security risks reduced:
+  Removed raw package insert detail success fields from the public API root
+  while preserving existing authenticated route gates and sanitized error
+  behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing package insert,
+  interaction, and alert rule query behavior is unchanged.
+- UI/UX note:
+  No visible UI/UX change. This was API/test contract work only, so image
+  generation was not applicable.
+- Oracle note:
+  Oracle consultation remains paused per current user instruction, so no
+  Oracle/GPT-5.5 Pro consult was run. The slice stayed mechanical and avoided
+  changing package insert semantics.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/drug-masters/[id]/package-insert/route.ts src/app/api/drug-masters/[id]/package-insert/route.test.ts`;
+  `pnpm vitest run src/app/api/drug-masters/[id]/package-insert/route.test.ts`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/drug-masters/[id]/package-insert/route.ts src/app/api/drug-masters/[id]/package-insert/route.test.ts`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/drug-masters/[id]/package-insert/route.ts src/app/api/drug-masters/[id]/package-insert/route.test.ts`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/drug-masters/[id]/package-insert/route.ts src/app/api/drug-masters/[id]/package-insert/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm format:check`.
+- validation results:
+  Prettier passed. Package insert route tests passed 1 file / 13 tests.
+  `api-response-shape:check` passed with 136 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier
+  check, scoped diff check, and typecheck passed. `pnpm format:check` still
+  fails only on unrelated pre-existing untracked Markdown files:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+  `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+  `skills/_candidates.md`.
+- commit:
+  Drug master package insert response envelope migration, route tests,
+  allowlist cleanup, and Plans sync committed as
+  `f3966d025b3b084c92495287ecb381d5506d53b8`
+  (`fix(api): envelope drug master package insert`). Push is pending this
+  ledger update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Next allowlist head is
+  `src/app/api/drug-masters/[id]/route.ts` with two expected legacy response
+  shape violations, followed by `src/app/api/drug-masters/batch/route.ts`.
+  Existing unrelated dirty/untracked memory/docs files remain unstaged.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next API response envelope cleanup from
+  `src/app/api/drug-masters/[id]/route.ts` unless redirected.
