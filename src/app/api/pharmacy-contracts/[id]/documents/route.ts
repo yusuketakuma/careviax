@@ -293,7 +293,7 @@ export const POST = withAuthContext<{ id: string }>(
 
     if ('response' in prepared) return prepared.response ?? validationError('入力値が不正です');
     if (parsed.data.mode === 'preview') {
-      return success({ mode: 'preview', ...prepared.preview });
+      return success({ data: { mode: 'preview', ...prepared.preview } });
     }
 
     let generatedFile: StoredFileRecord | null = null;
@@ -349,7 +349,7 @@ export const POST = withAuthContext<{ id: string }>(
         return { document, preview: prepared.preview };
       });
 
-      return success({ ...saved.document, preview: saved.preview }, 201);
+      return success({ data: { ...saved.document, preview: saved.preview } }, 201);
     } catch (cause) {
       if (generatedFile) {
         await deleteGeneratedFile(generatedFile).catch((cleanupCause) => {

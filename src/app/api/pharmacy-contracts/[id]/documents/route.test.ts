@@ -252,15 +252,17 @@ describe('/api/pharmacy-contracts/[id]/documents', () => {
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
 
     await expect(response.json()).resolves.toMatchObject({
-      mode: 'preview',
-      document_type: 'basic_contract',
-      snapshot: {
-        template: { id: 'template_1', version: 3 },
-        version: { id: 'version_1', version_no: 1 },
-        fee_schedule: {
-          billing_model: 'fixed_per_visit',
-          unit_price: 5500,
-          tax_category: 'taxable',
+      data: {
+        mode: 'preview',
+        document_type: 'basic_contract',
+        snapshot: {
+          template: { id: 'template_1', version: 3 },
+          version: { id: 'version_1', version_no: 1 },
+          fee_schedule: {
+            billing_model: 'fixed_per_visit',
+            unit_price: 5500,
+            tax_category: 'taxable',
+          },
         },
       },
     });
@@ -281,8 +283,10 @@ describe('/api/pharmacy-contracts/[id]/documents', () => {
     expect(contractDocumentCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      mode: 'preview',
-      document_type: 'basic_contract',
+      data: {
+        mode: 'preview',
+        document_type: 'basic_contract',
+      },
     });
   });
 
@@ -380,16 +384,18 @@ describe('/api/pharmacy-contracts/[id]/documents', () => {
     const auditText = JSON.stringify(createAuditLogEntryMock.mock.calls);
     expect(auditText).not.toContain('基幹薬局 と 協力薬局 の契約本文');
     await expect(response.json()).resolves.toMatchObject({
-      id: 'contract_document_1',
-      file_id: 'file_1',
-      preview: {
-        snapshot: {
-          articles: expect.arrayContaining([
-            expect.objectContaining({
-              article_no: 1,
-              body: '基幹薬局 と 協力薬局 の契約本文',
-            }),
-          ]),
+      data: {
+        id: 'contract_document_1',
+        file_id: 'file_1',
+        preview: {
+          snapshot: {
+            articles: expect.arrayContaining([
+              expect.objectContaining({
+                article_no: 1,
+                body: '基幹薬局 と 協力薬局 の契約本文',
+              }),
+            ]),
+          },
         },
       },
     });
@@ -463,11 +469,13 @@ describe('/api/pharmacy-contracts/[id]/documents', () => {
     );
     expect(deleteGeneratedFileMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      id: 'contract_document_2',
-      file_id: 'generated_file_1',
-      preview: {
-        snapshot: {
-          contract: { id: 'contract_1' },
+      data: {
+        id: 'contract_document_2',
+        file_id: 'generated_file_1',
+        preview: {
+          snapshot: {
+            contract: { id: 'contract_1' },
+          },
         },
       },
     });

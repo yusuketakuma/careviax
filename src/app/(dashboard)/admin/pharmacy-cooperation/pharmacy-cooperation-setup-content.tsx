@@ -249,12 +249,16 @@ const pharmacyPartnershipPageSchema = cursorPaginatedPageSchema(pharmacyPartners
 const pharmacyContractPageSchema = cursorPaginatedPageSchema(pharmacyContractRowSchema);
 const contractTemplatesResponseSchema = apiDataSchema(z.array(contractTemplateRowSchema));
 const contractDocumentsResponseSchema = apiDataSchema(z.array(contractDocumentRowSchema));
-const contractDocumentPreviewResponseSchema = contractDocumentPreviewSchema.extend({
-  mode: z.literal('preview'),
-});
-const savedContractDocumentResponseSchema = contractDocumentRowSchema.extend({
-  preview: contractDocumentPreviewSchema,
-});
+const contractDocumentPreviewResponseSchema = apiDataSchema(
+  contractDocumentPreviewSchema.extend({
+    mode: z.literal('preview'),
+  }),
+).transform(({ data }) => data);
+const savedContractDocumentResponseSchema = apiDataSchema(
+  contractDocumentRowSchema.extend({
+    preview: contractDocumentPreviewSchema,
+  }),
+).transform(({ data }) => data);
 
 function todayDateKey() {
   return formatUtcDateKey(new Date());

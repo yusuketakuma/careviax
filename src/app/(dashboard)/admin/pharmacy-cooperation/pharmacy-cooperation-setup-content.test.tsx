@@ -289,21 +289,25 @@ describe('PharmacyCooperationSetupContent', () => {
             },
           };
           if (body.mode === 'preview') {
-            return new Response(JSON.stringify({ mode: 'preview', ...preview }), { status: 200 });
+            return new Response(JSON.stringify({ data: { mode: 'preview', ...preview } }), {
+              status: 200,
+            });
           }
           return new Response(
             JSON.stringify({
-              id: 'contract_document_2',
-              contract_id: 'contract_1',
-              version_id: 'contract_version_1',
-              template_id: 'template_contract_1',
-              file_id: body.signed_file_id ?? (body.generate_pdf ? 'generated_file_1' : null),
-              document_type: 'basic_contract',
-              hash_value: 'hash_saved',
-              signed_at: body.signed_at ?? null,
-              created_at: '2026-06-19T11:00:00.000Z',
-              updated_at: '2026-06-19T11:00:00.000Z',
-              preview,
+              data: {
+                id: 'contract_document_2',
+                contract_id: 'contract_1',
+                version_id: 'contract_version_1',
+                template_id: 'template_contract_1',
+                file_id: body.signed_file_id ?? (body.generate_pdf ? 'generated_file_1' : null),
+                document_type: 'basic_contract',
+                hash_value: 'hash_saved',
+                signed_at: body.signed_at ?? null,
+                created_at: '2026-06-19T11:00:00.000Z',
+                updated_at: '2026-06-19T11:00:00.000Z',
+                preview,
+              },
             }),
             { status: 201 },
           );
