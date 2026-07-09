@@ -239,6 +239,64 @@ describe('PrescriptionHistoryContent', () => {
     ).toBe(true);
   });
 
+  it('distinguishes an empty filter result from an empty history and restores all rows', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return { data: {}, isLoading: false, isError: false };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [
+            {
+              id: 'intake_1',
+              cycle_id: 'cycle_1',
+              source_type: 'manual',
+              prescribed_date: '2026-06-01',
+              prescriber_name: '佐藤医師',
+              prescriber_institution: '青空クリニック',
+              prescription_expiry_date: null,
+              original_document_url: null,
+              original_collected_at: null,
+              original_collected_by: null,
+              refill_remaining_count: null,
+              refill_next_dispense_date: null,
+              split_dispense_total: null,
+              split_dispense_current: null,
+              split_next_dispense_date: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              cycle: { overall_status: 'active' },
+              lines: [],
+            },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+      };
+    });
+
+    render(<PrescriptionHistoryContent />);
+
+    const routeFilter = screen.getByLabelText('剤形フィルタ');
+    const methodFilter = screen.getByLabelText('調剤方法フィルタ');
+    expect(routeFilter.className).toContain('min-h-11');
+    expect(methodFilter.className).toContain('min-h-11');
+
+    fireEvent.change(routeFilter, { target: { value: 'external' } });
+
+    expect(screen.getByText('条件に一致する処方履歴はありません')).toBeTruthy();
+    expect(screen.queryByText('処方履歴がありません')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '絞り込みを解除' }));
+    expect((routeFilter as HTMLSelectElement).value).toBe('');
+    expect((methodFilter as HTMLSelectElement).value).toBe('');
+    expect(screen.queryByText('条件に一致する処方履歴はありません')).toBeNull();
+  });
+
   it('surfaces drug-master fetch failure as a non-blocking notice with retry (no false-empty)', () => {
     const refetchMaster = vi.fn();
     useOrgIdMock.mockReturnValue('org_1');

@@ -35,6 +35,7 @@ describe('PatientHistoryQuickLinks', () => {
     expect(screen.getByRole('link', { name: /処方歴/ }).getAttribute('href')).toBe(
       '/patients/patient_1/prescriptions',
     );
+    expect(screen.getByRole('link', { name: /処方歴/ }).className).toContain('min-h-11');
     expect(screen.getByRole('link', { name: /訪問歴/ }).getAttribute('href')).toBe(
       '/patients/patient_1#card-recent-activities',
     );

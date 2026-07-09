@@ -1,13 +1,14 @@
 'use client';
 
-import { useId, useMemo } from 'react';
+import { useId } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { Clock, FileText, History, Pill } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { FileText, History, Pill } from 'lucide-react';
+import { SegmentError, SegmentLoading, SegmentStaleBanner } from '@/components/ui/segment-state';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useStaleAfterRefetchError } from '@/lib/hooks/use-stale-after-refetch-error';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
 import { formatDateLabel as formatDate } from '@/lib/ui/date-format';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -93,53 +94,65 @@ export function PatientHistorySummary({
     enabled: Boolean(orgId && patientId),
   });
 
-  const previousPrescription = useMemo(
-    () =>
-      prescriptionsQuery.data?.data.find((item) => item.id !== excludePrescriptionIntakeId) ?? null,
-    [excludePrescriptionIntakeId, prescriptionsQuery.data],
-  );
-  const previousVisit = useMemo(
-    () => visitsQuery.data?.data.find((item) => item.id !== excludeVisitRecordId) ?? null,
-    [excludeVisitRecordId, visitsQuery.data],
-  );
-  const isLoading = prescriptionsQuery.isLoading || visitsQuery.isLoading;
-  const hasError = Boolean(prescriptionsQuery.error || visitsQuery.error);
+  // Both endpoints are capped at five rows; direct derivation is cheaper and clearer than
+  // memo bookkeeping for these bounded arrays.
+  const previousPrescription =
+    prescriptionsQuery.data?.data.find((item) => item.id !== excludePrescriptionIntakeId) ?? null;
+  const previousVisit =
+    visitsQuery.data?.data.find((item) => item.id !== excludeVisitRecordId) ?? null;
+  const prescriptionsState = useStaleAfterRefetchError(prescriptionsQuery);
+  const visitsState = useStaleAfterRefetchError(visitsQuery);
 
   return (
     <section
       className={className ?? 'border-b border-border/70 bg-muted/10 px-3 py-2'}
       aria-labelledby={headingId}
     >
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-2">
         <div>
-          <h2 id={headingId} className="text-xs font-semibold text-foreground">
+          <h2 id={headingId} className="text-sm font-semibold leading-5 text-foreground">
             直近過去歴サマリー
           </h2>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs leading-5 text-muted-foreground">
             今回分を除いた直近の処方・訪問を同じ画面内で確認します。
           </p>
         </div>
-        {isLoading ? (
-          <Badge variant="outline" className="gap-1 text-[10px]">
-            <Clock className="size-3" aria-hidden="true" />
-            読込中
-          </Badge>
-        ) : null}
       </div>
 
-      {hasError ? (
-        <p className="rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs text-destructive">
-          過去歴の一部を取得できませんでした。患者別履歴リンクから確認してください。
-        </p>
-      ) : (
-        <div className="grid gap-2 lg:grid-cols-2">
+      <div className="grid gap-2 lg:grid-cols-2">
+        {prescriptionsState.isInitialLoading ? (
+          <SegmentLoading
+            label="過去処方を読み込み中"
+            description="直近の処方を確認しています。"
+            rows={2}
+            cols={1}
+            size="compact"
+          />
+        ) : prescriptionsState.isInitialError ? (
+          <SegmentError
+            title="過去処方を表示できません"
+            cause="処方履歴を取得できませんでした。"
+            nextAction="通信状態を確認して再読み込みしてください。"
+            onRetry={() => void prescriptionsQuery.refetch()}
+            headingLevel={3}
+            className="gap-3 px-3 py-4 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+          />
+        ) : (
           <div className="rounded-lg border border-border/70 bg-card px-2.5 py-2">
-            <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-foreground">
+            <h3 className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-foreground">
               <Pill className="size-3.5 text-primary" aria-hidden="true" />
               過去処方
-            </div>
+            </h3>
+            {prescriptionsState.isStaleAfterRefetchError ? (
+              <SegmentStaleBanner
+                title="前回取得した処方を表示中"
+                description="最新の処方履歴を取得できませんでした。表示内容が古い可能性があります。"
+                onRetry={() => void prescriptionsQuery.refetch()}
+                className="mb-2 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+              />
+            ) : null}
             {previousPrescription ? (
-              <div className="space-y-0.5 text-[11px]">
+              <div className="space-y-0.5 text-xs leading-5">
                 <Link
                   href={buildPrescriptionHref(previousPrescription.id)}
                   className="inline-flex min-h-11 min-w-11 items-center font-medium text-primary hover:underline"
@@ -154,17 +167,44 @@ export function PatientHistorySummary({
                 </p>
               </div>
             ) : (
-              <p className="text-[11px] text-muted-foreground">過去処方はありません</p>
+              <p className="text-xs leading-5 text-muted-foreground">過去処方はありません</p>
             )}
           </div>
+        )}
 
+        {visitsState.isInitialLoading ? (
+          <SegmentLoading
+            label="過去訪問を読み込み中"
+            description="直近の訪問記録を確認しています。"
+            rows={2}
+            cols={1}
+            size="compact"
+          />
+        ) : visitsState.isInitialError ? (
+          <SegmentError
+            title="過去訪問を表示できません"
+            cause="訪問履歴を取得できませんでした。"
+            nextAction="通信状態を確認して再読み込みしてください。"
+            onRetry={() => void visitsQuery.refetch()}
+            headingLevel={3}
+            className="gap-3 px-3 py-4 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+          />
+        ) : (
           <div className="rounded-lg border border-border/70 bg-card px-2.5 py-2">
-            <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-foreground">
+            <h3 className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-foreground">
               <History className="size-3.5 text-primary" aria-hidden="true" />
               過去訪問
-            </div>
+            </h3>
+            {visitsState.isStaleAfterRefetchError ? (
+              <SegmentStaleBanner
+                title="前回取得した訪問を表示中"
+                description="最新の訪問履歴を取得できませんでした。表示内容が古い可能性があります。"
+                onRetry={() => void visitsQuery.refetch()}
+                className="mb-2 [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+              />
+            ) : null}
             {previousVisit ? (
-              <div className="space-y-0.5 text-[11px]">
+              <div className="space-y-0.5 text-xs leading-5">
                 <Link
                   href={buildVisitHref(previousVisit.id)}
                   className="inline-flex min-h-11 min-w-11 items-center font-medium text-primary hover:underline"
@@ -186,13 +226,13 @@ export function PatientHistorySummary({
                 </p>
               </div>
             ) : (
-              <p className="text-[11px] text-muted-foreground">過去訪問はありません</p>
+              <p className="text-xs leading-5 text-muted-foreground">過去訪問はありません</p>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+      <div className="mt-2 flex flex-wrap gap-2 text-xs leading-5">
         <Link
           href={buildPatientHref(patientId, '/prescriptions')}
           className="inline-flex min-h-11 min-w-11 items-center gap-1 text-primary hover:underline"

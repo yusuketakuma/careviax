@@ -779,17 +779,14 @@ function DrugLineRow({
           {hasTallManName && (
             <Badge
               variant="outline"
-              className="h-4 border-tag-hazard/40 px-1 text-[10px] font-normal text-tag-hazard"
+              className="h-5 border-tag-hazard/40 px-1 text-xs font-normal text-tag-hazard"
             >
               Tall Man
             </Badge>
           )}
           {line.is_generic && (
             // 後発/先発は分類値（状態でない）→ 色を付けず枠線のみ(SSOT: state-color-migration-map)。
-            <Badge
-              variant="outline"
-              className="h-4 px-1 text-[10px] font-normal text-muted-foreground"
-            >
+            <Badge variant="outline" className="h-5 px-1 text-xs font-normal text-muted-foreground">
               後発
             </Badge>
           )}
@@ -798,46 +795,46 @@ function DrugLineRow({
           )}
           {medicationResolutionIncomplete && (
             <span
-              className="inline-flex items-center gap-0.5 rounded border border-state-confirm/30 bg-state-confirm/10 px-1 py-0.5 text-[10px] font-bold text-state-confirm"
+              className="inline-flex items-center gap-0.5 rounded border border-state-confirm/30 bg-state-confirm/10 px-1 py-0.5 text-xs font-bold text-state-confirm"
               role="alert"
             >
-              <AlertTriangle className="size-2.5" aria-hidden="true" />
+              <AlertTriangle className="size-3" aria-hidden="true" />
               薬剤未解決
             </span>
           )}
           {masterInfo?.is_narcotic && (
-            <span className="inline-flex items-center gap-0.5 rounded bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-bold text-tag-hazard">
-              <AlertTriangle className="size-2.5" aria-hidden="true" />
+            <span className="inline-flex items-center gap-0.5 rounded bg-tag-hazard/10 px-1 py-0.5 text-xs font-bold text-tag-hazard">
+              <AlertTriangle className="size-3" aria-hidden="true" />
               麻薬
             </span>
           )}
           {masterInfo?.is_psychotropic && (
-            <span className="inline-flex items-center gap-0.5 rounded bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-bold text-tag-hazard">
-              <Shield className="size-2.5" aria-hidden="true" />
+            <span className="inline-flex items-center gap-0.5 rounded bg-tag-hazard/10 px-1 py-0.5 text-xs font-bold text-tag-hazard">
+              <Shield className="size-3" aria-hidden="true" />
               向精神
             </span>
           )}
           {masterInfo?.is_high_risk && (
-            <span className="inline-flex items-center gap-0.5 rounded border border-tag-hazard/30 bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-bold text-tag-hazard">
-              <AlertTriangle className="size-2.5" aria-hidden="true" />
+            <span className="inline-flex items-center gap-0.5 rounded border border-tag-hazard/30 bg-tag-hazard/10 px-1 py-0.5 text-xs font-bold text-tag-hazard">
+              <AlertTriangle className="size-3" aria-hidden="true" />
               ハイリスク
             </span>
           )}
           {masterInfo?.is_lasa_risk && (
-            <span className="inline-flex items-center gap-0.5 rounded border border-tag-hazard/30 bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-bold text-tag-hazard">
+            <span className="inline-flex items-center gap-0.5 rounded border border-tag-hazard/30 bg-tag-hazard/10 px-1 py-0.5 text-xs font-bold text-tag-hazard">
               LASA
             </span>
           )}
           {masterInfo?.drug_price != null && (
-            <span className="text-[10px] tabular-nums text-muted-foreground">
+            <span className="text-xs tabular-nums text-muted-foreground">
               ¥{Number(masterInfo.drug_price).toFixed(1)}
             </span>
           )}
           {changeBadge && (
             <span
-              className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium ${changeBadge.color}`}
+              className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-medium ${changeBadge.color}`}
             >
-              <changeBadge.icon className="size-2.5" aria-hidden="true" />
+              <changeBadge.icon className="size-3" aria-hidden="true" />
               {changeBadge.label}
             </span>
           )}
@@ -873,7 +870,7 @@ function DrugLineRow({
           )}
           {methodCfg && (
             <span
-              className={`rounded px-1 py-0.5 text-[10px] font-medium leading-none ${methodCfg.color}`}
+              className={`rounded px-1 py-0.5 text-xs font-medium leading-none ${methodCfg.color}`}
             >
               {methodCfg.label}
             </span>
@@ -1134,13 +1131,13 @@ function PrescriptionIntakeCard({
                   {statusCfg && statusRole && statusRole !== 'neutral' && (
                     // 色は SSOT role 駆動（on_hold=confirm / cancelled=blocked を区別）。
                     // 隣接ラベルが非色シグナルを担うため showIcon は省く。
-                    <StateBadge role={statusRole} showIcon={false} className="h-5 text-[10px]">
+                    <StateBadge role={statusRole} showIcon={false} className="h-5 text-xs">
                       {statusCfg.label}
                     </StateBadge>
                   )}
                   {isDo && (
-                    <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">
-                      <Copy className="size-2.5" aria-hidden="true" />
+                    <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-xs font-bold text-muted-foreground">
+                      <Copy className="size-3" aria-hidden="true" />
                       Do
                     </span>
                   )}
@@ -1579,6 +1576,7 @@ export function PrescriptionHistoryContent() {
       }))
       .filter((intake) => intake.lines.length > 0);
   }, [data, routeFilter, methodFilter]);
+  const hasActiveFilters = Boolean(routeFilter || methodFilter);
 
   const overlapSet = useMemo(() => buildOverlapSet(data?.data ?? []), [data]);
   const latestIntake = data?.data?.[0] ?? null;
@@ -1742,7 +1740,7 @@ export function PrescriptionHistoryContent() {
         <select
           value={routeFilter}
           onChange={(e) => setRouteFilter(e.target.value)}
-          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+          className="min-h-11 rounded-md border border-input bg-background px-3 text-sm"
           aria-label="剤形フィルタ"
         >
           {ROUTE_FILTER_OPTIONS.map((o) => (
@@ -1754,7 +1752,7 @@ export function PrescriptionHistoryContent() {
         <select
           value={methodFilter}
           onChange={(e) => setMethodFilter(e.target.value)}
-          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+          className="min-h-11 rounded-md border border-input bg-background px-3 text-sm"
           aria-label="調剤方法フィルタ"
         >
           {METHOD_FILTER_OPTIONS.map((o) => (
@@ -1780,7 +1778,7 @@ export function PrescriptionHistoryContent() {
           <button
             type="button"
             onClick={() => void refetchMaster()}
-            className="inline-flex min-h-[44px] items-center rounded-md border border-state-confirm/40 px-3 text-xs font-medium text-state-confirm hover:bg-state-confirm/10 sm:min-h-0 sm:py-1"
+            className="inline-flex min-h-11 items-center rounded-md border border-state-confirm/40 px-3 text-xs font-medium text-state-confirm hover:bg-state-confirm/10"
           >
             再試行
           </button>
@@ -1789,8 +1787,24 @@ export function PrescriptionHistoryContent() {
 
       {/* Timeline（処方履歴: 主データ） */}
       {filteredIntakes.length === 0 ? (
-        <div className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed">
-          <p className="text-sm text-muted-foreground">処方履歴がありません</p>
+        <div className="flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-4 text-center">
+          <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+            {hasActiveFilters ? '条件に一致する処方履歴はありません' : '処方履歴がありません'}
+          </p>
+          {hasActiveFilters ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-11 sm:min-h-11"
+              onClick={() => {
+                setRouteFilter('');
+                setMethodFilter('');
+              }}
+            >
+              絞り込みを解除
+            </Button>
+          ) : null}
         </div>
       ) : (
         <div className="relative space-y-3">
@@ -1848,9 +1862,7 @@ export function PrescriptionHistoryContent() {
                       <p className="font-medium text-foreground">{item.drugName}</p>
                       <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
                     </div>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${item.color}`}
-                    >
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${item.color}`}>
                       {item.label}
                     </span>
                   </div>

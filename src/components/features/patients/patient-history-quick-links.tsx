@@ -83,10 +83,10 @@ export function PatientHistoryQuickLinks({
     >
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-0.5">
-          <h2 id={headingId} className="text-xs font-semibold text-foreground">
+          <h2 id={headingId} className="text-sm font-semibold leading-5 text-foreground">
             患者の過去歴
           </h2>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs leading-5 text-muted-foreground">
             今回の内容を判断する前に、過去処方・訪問記録・統合履歴を同じ患者文脈で確認します。
           </p>
         </div>
@@ -97,13 +97,13 @@ export function PatientHistoryQuickLinks({
               <Link
                 key={item.key}
                 href={item.href}
-                className="group rounded-lg border border-border/70 bg-background px-2.5 py-2 text-left transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group min-h-11 rounded-lg border border-border/70 bg-background px-2.5 py-2 text-left transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground group-hover:text-primary">
                   <Icon className="size-3.5" aria-hidden="true" />
                   {item.label}
                 </span>
-                <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
+                <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
                   {item.description}
                 </span>
               </Link>

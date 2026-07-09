@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -99,6 +99,167 @@ function primeQueries(opts: { previousPrescriptionId?: string; previousVisitId?:
 }
 
 describe('PatientHistorySummary', () => {
+  it('shows independent loading states without claiming either history is empty', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isPending: true,
+      isError: false,
+      isRefetchError: false,
+      refetch: vi.fn(),
+    });
+
+    render(<PatientHistorySummary patientId="patient_1" />);
+
+    expect(screen.getByRole('status', { name: '過去処方を読み込み中' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '過去訪問を読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('過去処方はありません')).toBeNull();
+    expect(screen.queryByText('過去訪問はありません')).toBeNull();
+  });
+
+  it('keeps the successful visit segment visible when prescriptions fail and offers retry', () => {
+    const prescriptionRefetch = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'patient-history-summary-prescriptions') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isPending: false,
+          isError: true,
+          isRefetchError: false,
+          error: new Error('provider details must not render'),
+          refetch: prescriptionRefetch,
+        };
+      }
+      return {
+        data: {
+          data: [
+            {
+              id: 'visit_1',
+              visit_date: '2026-04-10T10:00:00.000Z',
+              outcome_status: 'completed',
+              soap_assessment: '眠気なく継続可',
+              next_visit_suggestion_date: null,
+            },
+          ],
+        },
+        isLoading: false,
+        isPending: false,
+        isError: false,
+        isRefetchError: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    });
+
+    render(<PatientHistorySummary patientId="patient_1" />);
+
+    expect(
+      screen.getByRole('heading', { level: 3, name: '過去処方を表示できません' }),
+    ).toBeTruthy();
+    expect(screen.getByText('眠気なく継続可')).toBeTruthy();
+    expect(screen.queryByText('provider details must not render')).toBeNull();
+    expect(screen.queryByText('過去処方はありません')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(prescriptionRefetch).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the successful prescription segment visible when visits fail and offers retry', () => {
+    const visitRefetch = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'patient-history-summary-prescriptions') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'previous_intake',
+                prescribed_date: '2026-04-01T00:00:00.000Z',
+                prescriber_name: '佐藤医師',
+                lines: [{ drug_name: 'アムロジピン錠5mg', dose: '1錠' }],
+              },
+            ],
+          },
+          isLoading: false,
+          isPending: false,
+          isError: false,
+          isRefetchError: false,
+          error: null,
+          refetch: vi.fn(),
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        isPending: false,
+        isError: true,
+        isRefetchError: false,
+        error: new Error('provider details must not render'),
+        refetch: visitRefetch,
+      };
+    });
+
+    render(<PatientHistorySummary patientId="patient_1" />);
+
+    expect(
+      screen.getByRole('heading', { level: 3, name: '過去訪問を表示できません' }),
+    ).toBeTruthy();
+    expect(screen.getByText('アムロジピン錠5mg')).toBeTruthy();
+    expect(screen.queryByText('provider details must not render')).toBeNull();
+    expect(screen.queryByText('過去訪問はありません')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(visitRefetch).toHaveBeenCalledOnce();
+  });
+
+  it('keeps cached prescription data visible and labels it stale after refetch failure', () => {
+    const prescriptionRefetch = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'patient-history-summary-prescriptions') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'previous_intake',
+                prescribed_date: '2026-04-01T00:00:00.000Z',
+                prescriber_name: '佐藤医師',
+                lines: [{ drug_name: 'アムロジピン錠5mg', dose: '1錠' }],
+              },
+            ],
+          },
+          isLoading: false,
+          isPending: false,
+          isError: true,
+          isRefetchError: true,
+          error: new Error('refresh failed'),
+          refetch: prescriptionRefetch,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        isPending: false,
+        isError: false,
+        isRefetchError: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    });
+
+    render(<PatientHistorySummary patientId="patient_1" />);
+
+    expect(screen.getByText('前回取得した処方を表示中')).toBeTruthy();
+    expect(screen.getByText('アムロジピン錠5mg')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '2026/04/01' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(prescriptionRefetch).toHaveBeenCalledOnce();
+  });
+
   it('shows previous prescription and visit summaries in the current workflow page', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {

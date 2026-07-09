@@ -51,6 +51,74 @@
 
 ## 直近の作業
 
+- codex: patient prescription/history readable typography and independent FE/API states.
+  - current task:
+    `/patients/[id]/prescriptions` と処方詳細内の共通過去歴サマリー/クイックリンクを、
+    UI SSOT の12px下限・44px操作・原因+次行動・partial/stale stateへ揃え、既存の患者処方GETと
+    訪問記録GETが返す権限付きデータを欠落なく表現する。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`, `docs/uiux-improvement-plan.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `src/components/ui/segment-state.tsx`,
+    `src/lib/hooks/use-stale-after-refetch-error.ts`, patient/prescription navigation and API-path
+    helpers, `src/app/api/patients/[id]/prescriptions/route.ts` + tests,
+    `src/app/api/visit-records/route.ts` + tests, and all changed frontend/test files below.
+  - files changed:
+    `.agent-loop/UI_AUDIT_MATRIX.md`,
+    `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx`,
+    `src/components/features/patients/patient-history-summary.tsx`,
+    `src/components/features/patients/patient-history-summary.test.tsx`,
+    `src/components/features/patients/patient-history-quick-links.tsx`,
+    `src/components/features/patients/patient-history-quick-links.test.tsx`, and
+    `src/components/features/patients/patient-history-typography.test.ts`.
+  - bugs found / fixed:
+    `PatientHistorySummary` previously rendered false-empty copy while either query was initially
+    loading, and any one API failure hid the other API's valid patient history. It also had no
+    segment retry path and discarded cached content after refetch failure. Prescription and visit
+    now render independent skeleton, initial error + retry, cached stale banner + retry, exact
+    empty, and data states; raw provider errors are not echoed. The main prescription timeline now
+    distinguishes an empty dataset from a filter with zero matches and offers a 44px reset action.
+    Its two selects and drug-master retry no longer shrink below 44px. Across the three patient
+    history sources, 22 sub-12px clinical/auxiliary labels were raised to `text-xs` with compatible
+    badge/icon sizing, reducing the live repo count from 43 files / 122 occurrences to
+    40 files / 100 occurrences. A static family ratchet prevents regression.
+  - frontend/backend parity:
+    No new endpoint or speculative server capability was introduced. The prescription summary
+    continues to use `/api/patients/[id]/prescriptions?limit=5`; the visit summary uses
+    `/api/visit-records?patient_id=...&limit=5`. Both existing GETs require `canVisit`, enforce
+    org plus patient assignment/case scope, return sensitive no-store responses, validate IDs/query
+    values, and emit sanitized internal errors. Focused route suites prove the DTOs consumed by the
+    UI. Their broader PHI read-audit classification remains an explicit route-coverage policy item;
+    this slice did not broaden disclosure or claim that gap closed.
+  - security/privacy:
+    Existing shared encoded path helpers and org headers remain in use; hostile path IDs stay one
+    encoded segment. Partial/error UI uses fixed PHI-safe copy and never exposes query error text.
+    No auth, authorization, RLS, consent, audit, mutation, database, export, or external sharing
+    boundary changed.
+  - performance:
+    The UI reuses the two existing React Query requests and cached results; it adds no network call,
+    polling, effect, dependency, or unbounded computation. Cached data remains visible on refetch
+    failure instead of forcing a blank replacement render.
+  - validation:
+    Focused frontend suites passed 4 files / 47 tests. Paired backend suites
+    (`patients/[id]/prescriptions` and `visit-records`) passed 2 files / 108 tests. Exact-path
+    ESLint, Prettier, `git diff --check`, `pnpm frontend-contract:check`, `pnpm colors:check`,
+    `pnpm api-response-shape:check`, `pnpm route-auth-wrapper:check`,
+    `pnpm db:raw-read-org-guard:check`, and `pnpm client-phi-log:check` passed. A strict
+    slice-only TypeScript/no-unused config passed; after a transient unrelated ExpiryBadge WIP import
+    was completed, full
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false --incremental false --skipLibCheck`
+    and `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` also passed.
+  - UI/imagegen:
+    `imagegen` was intentionally omitted because this is a state/readability correction within the
+    already generated repo-wide non-PHI direction, not a new visual reconstruction.
+  - remaining / next action:
+    Browser/mobile visual proof remains blocked by the missing compatible local app/database runtime;
+    the resource-heavy Next build is not claimed green. Continue the next typography/state family
+    (visit/schedule/prescription-intake/print) after the scoped commit. No deploy, migration,
+    production mutation, external send, or destructive cache action ran.
+
 - codex: `(auth)/lockout` honest support-contact and unlock guidance alignment.
   - current task:
     ロックアウト画面に残っていた架空の電話番号・メールアドレス・固定30分表示を廃止し、
