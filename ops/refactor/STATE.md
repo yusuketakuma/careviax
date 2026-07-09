@@ -52,6 +52,8 @@
 ## 直近の作業
 
 - codex: schedule team-board readable timeline and independent stale API states.
+  - commit:
+    `77d8b3533 fix(schedules): preserve stale team board context`.
   - current task:
     `/schedules` の全員チームボードを、UI SSOT の12px下限・44px再試行・API部分成功契約へ
     揃える。日次ボードとコックピットの初回失敗をブロッキング表示し、キャッシュ取得後の
