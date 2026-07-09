@@ -30768,3 +30768,46 @@ has_more, next_cursor } })`. The route test asserts the `data + meta`
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next API response envelope cleanup from
   `src/app/api/me/org/route.ts` unless redirected.
+
+## 2026-07-09 Plans.md v9 再構成（Active Plan Board v9 / archive 分離）
+
+- claude: ユーザー指示「Plans.md 再構成: コードスキャン→実装済み/未実装分類→完了検証→完了削除→不足追記→改善点追記」。
+  - 検証: 並列 subagent（stock/perf/api-platform/frontend/BE改善/FE改善）+ 直接 grep 照合。実測 gate:
+    `api-response-shape:check`=109 allowlisted（旧board記載129はstale）、`db:query-shape:check`=0、`plans:active:check` green。
+  - 主要所見:
+    - `MedicationStockObservationContext` migration は `prisma/migrations/20260708093000_...` で repo 配置済み（af38c8e42）。
+      `STOCK-001-VISIT-CONTEXT-APPLY` の残gateは staging/実環境適用 evidence のみに縮小。
+    - `FileAsset` model + `file-storage` service + expiry cleanup 実装済み → `FILE-LIFE-001` を Not started → Partial へ訂正。
+      残: malware scan gate / retention・legal hold（`file-storage.ts:1641` retention gap）。
+    - `DomainEventOutbox` / `SupportSession` / `GlobalUser` は schema 不在 → Not started 維持が正。
+    - BE監査新規4件: `RLS-RAW-READ-GUARD-001`(P1: raw prisma read 106ファイルの RLS 単層防御)、
+      `PUSH-SUB-ATOMICITY-001`、`ROUTE-CTRLFLOW-RETHROW-001`、`PERF-DB-RX-INTAKE-DRUGCODE-001`。
+    - FE監査新規1件: `FE-FALSE-EMPTY-002`（schedule-day-planner-hooks / use-nav-badges の error 未消費）。
+  - 変更:
+    - `Plans.md` 3,851行/700KB → 307行/163KB。Active Plan Board v8 → **v9**（Done 25 / Partial 7 / Impl queue 30 / FE queue 9 / Program backlog / External prerequisites）。
+    - 旧 v8/v3 board・証跡・REFERENCE/PARTIAL 詳細・旧 cc:WIP プログラム背景を既存 `docs/plans-archive.md`（2026-06-20 完了トラックアーカイブ）へ追記合成で**無削除**移管（計6,930行。既存部・移管部とも git HEAD と byte-identical を diff 確認）
+      （`PLAN-ARCHIVE-001` 実行済み。git HEAD 323-3830行と byte-identical を diff で確認）。
+    - 旧 cc:WIP 3件を v9 へ吸収: platform console → `PLATFORM-OPS-CONSOLE-P1` + Program backlog(P-2)、
+      roadmap v2 W3 → Program backlog 表 + External prerequisites、display_id → `DISPLAY-ID-002`(HG)/`DISPLAY-ID-003`。
+    - `check-plans-active-board.mjs` / `.test.ts` を v9 見出しへ追随（fixture 5/5 pass）。
+  - files: `Plans.md`, `docs/plans-archive.md`(既存へ追記), `tools/scripts/check-plans-active-board.mjs`, `tools/scripts/check-plans-active-board.test.ts`, this ledger。
+  - 未コミット。commit はユーザー確認後。
+
+## 2026-07-09 Plans.md v9 — 検証 subagent 最終報告の反映（追補）
+
+- claude: 5レーン（stock/perf/api-platform/frontend/FE改善）の最終報告到着後、v9 board を追補更新。
+  - status 訂正: `TENANT-SUPPORT-001` Not started→Partial（break-glass = `PlatformOperator`/`BreakGlassSession` 実装済み）、
+    `API-LIST-001` Not started→Partial（list-envelope/pagination primitive 済、generated_at と2系統統一が残）、
+    `PERF-RTE-001A` Not started→Partial（p50/95/99+CloudWatch flush+cron 済、live AWS のみ残）、
+    `PERF-DB-READ-SLO-001` 残スコープ縮小（perf-smoke tool + dashboard 接続済、seeded 実行証跡のみ残）、
+    FE-DISPENSE/SCHEDULE/VISIT-001 Not started→Partial（基盤実装済みの洗練待ち）。
+  - 新規タスク追加（queue 30→34）: `FE-ADMIN-ERROR-BOUNDARY-001`（admin 38セグメント error.tsx 無し）、
+    `FE-PHI-SAFE-CLIENT-LOG-001`（notifications console.warn の error 直出力）、
+    `STOCK-VISIT-API-CAPABILITY-GUARD-001`（observation POST の migration 未適用ガード欠落）、
+    `PERF-DB-SLO-TAKE-LINT-001`（SLO宣言 vs 実装 take の drift 検査欠落）。
+  - `FE-FALSE-EMPTY-002` へ mention-input.tsx:59 を追加（3箇所目）。
+  - `STOCK-001-VISIT-DB-INTEGRATION` に「db-contract test は静的regex照合で実DB証跡でない」注記。
+  - `ROUTE-PERF-MEASURE-001` 昇格bulletを実態（helper済・採用8/395）へ更新。
+  - 検証で健全確認（起票不要）: rate-limit 網羅（Edge middleware global）、auth 抜けなし、PHI logger redaction、
+    FE state color token 統一、icon aria-label 33/33、touch-target 44px encode、empty catch 0件。
+  - gate: `plans:active:check` green、fixture 5/5、`api-response-shape` 109、`query-shape` 0。

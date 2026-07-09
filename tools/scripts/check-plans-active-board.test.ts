@@ -49,7 +49,7 @@ function fixturePlans(
 
   return `# PH-OS Pharmacy — Implementation Plan
 
-### 2026-07-08 Active Plan Board v8 — 実装済み / 未実装分類 \`cc:ACTIVE\`
+### 2026-07-09 Active Plan Board v9 — 実装済み / 未実装分類 \`cc:ACTIVE\`
 
 **現在の分類サマリー**:
 
@@ -88,7 +88,7 @@ ${implementationRows}
 - \`DASH-SUMMARY-RAIL-001\`: done.
 - \`DASH-PROCESS-TILE-LINKS-001\`: done.
 
-### 2026-07-08 Archived Plan Board v3 — 旧分類証跡 \`cc:REFERENCE\`
+### 2026-07-09 Archived Plan Board — 旧分類証跡 \`cc:REFERENCE\`
 
 ${archiveNote}
 

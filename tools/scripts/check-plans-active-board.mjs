@@ -2,15 +2,15 @@
 // Plans.md active-board ratchet (PLANS-ACTIVE-LINT-001).
 //
 // This check keeps the implementation entrypoint narrow: the current active
-// backlog is Active Plan Board v8 only. Archived/reference sections may keep
+// backlog is Active Plan Board v9 only. Archived/reference sections may keep
 // historical unchecked tasks, but they must not drift into active counts.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const REPO_ROOT = process.cwd();
 const PLANS_PATH = 'Plans.md';
-const ACTIVE_HEADING = '### 2026-07-08 Active Plan Board v8';
-const ARCHIVE_HEADING = '### 2026-07-08 Archived Plan Board';
+const ACTIVE_HEADING = '### 2026-07-09 Active Plan Board v9';
+const ARCHIVE_HEADING = '### 2026-07-09 Archived Plan Board';
 
 const ACTIVE_QUEUE_HEADINGS = [
   'Implementation-ready queue — 未実装 / Partial 残スコープのみ',
@@ -41,7 +41,7 @@ function extractActiveLines(content) {
   const archiveIndex = findLineIndex(lines, ARCHIVE_HEADING);
   if (archiveIndex === -1) fail(`${ARCHIVE_HEADING} is missing`);
   if (archiveIndex <= activeIndex)
-    fail('Archived Plan Board must appear after Active Plan Board v8');
+    fail('Archived Plan Board must appear after Active Plan Board v9');
   return lines.slice(activeIndex, archiveIndex);
 }
 
@@ -148,7 +148,7 @@ function assertNoLegacyActiveDashboardRail(activeLines) {
   const activeText = activeLines.join('\n');
   if (activeText.includes('`DASH-P1-010-RAIL`')) {
     fail(
-      'completed Dashboard Summary Rail legacy ID `DASH-P1-010-RAIL` is still present in Active Plan Board v8',
+      'completed Dashboard Summary Rail legacy ID `DASH-P1-010-RAIL` is still present in Active Plan Board v9',
     );
   }
 }
