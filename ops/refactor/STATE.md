@@ -46,6 +46,8 @@
     `PATCH /api/patients/:id/restore` の patient restore success response を legacy
     raw restored patient root から `{ data: updated }` envelope へ移行し、route test、
     response-shape allowlist、Plans / archive を同期する。
+  - commit:
+    `1ded9ae0e fix(api): envelope patient restore response`
   - files inspected:
     `git status --short --untracked-files=all`,
     `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
@@ -101,8 +103,8 @@
     Next recommended response-shape slice is the current allowlist head:
     `src/app/api/patients/[id]/route.ts`.
   - next action:
-    Commit this patient restore envelope slice with explicit owned paths only, then
-    continue allowlist debt burn-down from the next allowlist head.
+    Continue allowlist debt burn-down from the next allowlist head:
+    `src/app/api/patients/[id]/route.ts`.
 
 - codex: `API-CONTRACT-001CR` patient readiness response envelope cleanup.
   - current task:
