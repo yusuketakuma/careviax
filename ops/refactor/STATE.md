@@ -435,6 +435,8 @@
     and external yrese/FHIR connectivity tests.
 
 - codex: `FHIR-READY-VALIDATION-001` JP Core/FHIR cache validation gate.
+  - commit:
+    `9b508f614 feat(integration): gate FHIR cache validation` pushed to `origin/main`.
   - current task:
     yrese webhook/FHIR cache import service の次段として、FHIR cache row が `valid` として
     業務タイムラインへ投影される条件を厳格化する。外部入力の `validationStatus: valid` を
@@ -529,10 +531,9 @@
     ConceptMap checks, retention purge, review UI for blocked FHIR cache rows, and environment
     migration/deploy/connectivity proof remain.
   - next action:
-    Commit this validation gate slice with explicit path staging, then continue with either a
-    review surface for `FHIR_PROFILE_VALIDATION_REQUIRED` / identity conflicts or a retention purge
-    job. DB migration apply, deploy, secret changes, and external yrese/FHIR sends still require an
-    explicit target environment and current authorization.
+    Continue with either a review surface for `FHIR_PROFILE_VALIDATION_REQUIRED` / identity
+    conflicts or a retention purge job. DB migration apply, deploy, secret changes, and external
+    yrese/FHIR sends still require an explicit target environment and current authorization.
 
 - codex: `API-CONTRACT-001DQ` pharmacy site insurance config response envelope cleanup.
   - current task:
