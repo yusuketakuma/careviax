@@ -514,6 +514,17 @@ describe('/api/inquiry-records/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        id: 'inquiry_1',
+        result: 'changed',
+        change_detail: '1日2回へ変更',
+      },
+    });
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('result');
+    expect(body).not.toHaveProperty('change_detail');
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
       expect.any(Function),

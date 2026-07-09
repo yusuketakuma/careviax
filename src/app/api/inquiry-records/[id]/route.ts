@@ -427,7 +427,7 @@ async function authenticatedPATCH(
     },
   });
 
-  return success(inquiryResult.inquiry);
+  return success({ data: inquiryResult.inquiry });
 }
 
 export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
