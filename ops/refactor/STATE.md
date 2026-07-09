@@ -41,6 +41,106 @@
 
 ## 直近の作業
 
+- codex: `FHIR-READY-VALIDATION-DETAIL-001` FHIR validation conflict detail API.
+  - commit:
+    `8b4a1ec0f feat(integration): add FHIR validation conflict detail API`
+  - current task:
+    `queue_display_id` keyed の FHIR validation detail/review API を backend に追加し、
+    `FHIR_PROFILE_VALIDATION_REQUIRED` で止まった clinical sync conflict について、
+    internal queue/cache IDs や raw FHIR payload を出さずに capped validation diagnostics を
+    admin が確認できる状態へ進める。DB migration、live DB 適用、push、deploy、外部 yrese/FHIR call
+    は行わない。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `git log --oneline -10`,
+    `ops/refactor/STATE.md`, `src/server/services/standard-clinical-sync-conflict-review.ts`,
+    `src/server/services/standard-clinical-sync-conflict-review.test.ts`,
+    `src/app/api/integration/clinical-sync/conflicts/route.ts`,
+    `src/app/api/integration/clinical-sync/conflicts/route.test.ts`,
+    `src/lib/api/route-params.ts`, `src/lib/db/display-id.ts`, and
+    `src/lib/db/display-id-registry.ts`.
+  - files changed:
+    `src/server/services/standard-clinical-sync-conflict-review.ts`,
+    `src/server/services/standard-clinical-sync-conflict-review.test.ts`,
+    `src/app/api/integration/clinical-sync/conflicts/[displayId]/route.ts`, and
+    `src/app/api/integration/clinical-sync/conflicts/[displayId]/route.test.ts`.
+  - bugs found:
+    The conflict list could identify FHIR profile validation blocks, but there was no safe detail
+    endpoint keyed by `queue_display_id`. Without this, the next review flow would either need to
+    expose internal queue/cache IDs or operate without enough validation diagnostics to resolve
+    JP Core/profile problems.
+  - bugs fixed:
+    Added `getClinicalSyncFhirValidationDetail()` and
+    `GET /api/integration/clinical-sync/conflicts/[displayId]`. The service looks up only
+    inbound yrese `conflict_requires_review` rows with
+    `last_error_code = FHIR_PROFILE_VALIDATION_REQUIRED` by `org_id + queue_display_id`, then
+    reads the associated FHIR cache row under the same org. The route requires `canAdmin`,
+    validates that the route parameter is a `ClinicalSyncQueueItem` display ID (`csq...`),
+    uses `withOrgContext`, marks responses `force-dynamic` and sensitive no-store, and returns
+    `{ data: { conflict }, meta }`.
+  - security risks found:
+    Validation diagnostics can become a PHI leak if raw validator details, internal cache IDs,
+    resource IDs, hashes, identifier summaries, normalized summaries, queue metadata, idempotency
+    keys, or request fingerprints are copied into the admin detail response.
+  - security risks reduced:
+    The detail DTO omits internal queue/cache IDs and raw FHIR payloads. It returns only
+    resource type, validation status, profile URLs capped to 20 x 500 chars, resource/version
+    availability booleans, timestamps, and validation issues capped to 50 items with only
+    `code`, `path`, and `expected` strings capped to 500 chars. Tests include sentinel values for
+    raw details, patient IDs, hashes, summaries, cache ID, resource ID, and version ID and verify
+    they do not appear in serialized responses.
+  - performance issues found:
+    A broad detail lookup could scan queue or cache rows by non-tenant criteria.
+  - performance issues improved:
+    Detail lookup is point-scoped by `org_id + display_id` for the queue row and `org_id + cache id`
+    for the cache row, with no list fan-out.
+  - Oracle note:
+    Oracle/GPT-5.5 Pro review was attempted before finalization. `clinical-validation-detail`
+    failed before model review due to a ChatGPT Cloudflare challenge. API fallback preflight also
+    failed because `OPENAI_API_KEY` is missing. No Oracle advisory answer was available, so the
+    change was kept to a conservative read-only admin detail endpoint and verified locally.
+  - imagegen:
+    Omitted because this was backend-only integration API work with no UI/UX visual reconstruction.
+  - validation commands:
+    `pnpm exec prettier --write src/server/services/standard-clinical-sync-conflict-review.ts src/server/services/standard-clinical-sync-conflict-review.test.ts 'src/app/api/integration/clinical-sync/conflicts/[displayId]/route.ts' 'src/app/api/integration/clinical-sync/conflicts/[displayId]/route.test.ts'`;
+    `pnpm vitest run src/server/services/standard-clinical-sync-conflict-review.test.ts src/app/api/integration/clinical-sync/conflicts/route.test.ts 'src/app/api/integration/clinical-sync/conflicts/[displayId]/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/server/services/standard-clinical-sync-conflict-review.ts src/server/services/standard-clinical-sync-conflict-review.test.ts src/app/api/integration/clinical-sync/conflicts/route.test.ts 'src/app/api/integration/clinical-sync/conflicts/[displayId]/route.ts' 'src/app/api/integration/clinical-sync/conflicts/[displayId]/route.test.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`;
+    `pnpm api-response-shape:check`;
+    `pnpm route-auth-wrapper:check`;
+    `pnpm db:raw-read-org-guard:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm dto-direct-prisma-return:check`;
+    `pnpm exec prettier --check src/server/services/standard-clinical-sync-conflict-review.ts src/server/services/standard-clinical-sync-conflict-review.test.ts 'src/app/api/integration/clinical-sync/conflicts/[displayId]/route.ts' 'src/app/api/integration/clinical-sync/conflicts/[displayId]/route.test.ts'`;
+    `git diff --check`;
+    `pnpm lint`;
+    `npx -y @steipete/oracle --help`;
+    `git remote -v`; `git branch --show-current`; `git rev-parse HEAD`; `gh pr status`;
+    `npx -y @steipete/oracle --engine browser --model gpt-5.5-pro --browser-manual-login --browser-inline-files --browser-auto-reattach-delay 5s --browser-auto-reattach-interval 3s --browser-auto-reattach-timeout 60s --browser-thinking-time heavy --heartbeat 30 --slug "clinical-validation-detail" ...`;
+    `npx -y @steipete/oracle --engine api --model gpt-5.5-pro --preflight -p "preflight" --file src/server/services/standard-clinical-sync-conflict-review.ts`;
+    `git diff --cached --check`.
+  - validation results:
+    Focused conflict list/detail route/service tests passed 3 files / 16 tests. Scoped ESLint
+    passed. `typecheck` and `typecheck:no-unused` passed. API response shape, route auth wrapper,
+    raw-read org guard, query-shape guard, DTO direct Prisma return guard, Prettier check,
+    unstaged diff check, and staged diff check passed. Full `pnpm lint` exited 0 with warnings
+    only; warnings are in unrelated dirty `visit-medication-stock-observation-panel.tsx` and
+    existing `src/lib/platform/break-glass.test.ts`, not in the touched clinical files.
+  - unrelated dirty worktree:
+    During this slice, unrelated dirty/untracked files appeared under
+    `src/components/features/visits/visit-medication-stock-observation-panel.tsx`,
+    `src/types/medication-stock.ts`, and `src/lib/visits/*`, in addition to the existing
+    `.harness-mem/state/*.json` automatic updates. They were preserved and not staged.
+  - remaining work:
+    No live DB migration was applied, no deploy was run, no environment secret was changed, no
+    push was performed, and no external yrese/FHIR endpoint was called. The next product step is
+    UI/review workflow wiring on top of the list/detail APIs, or a real JP Core validator /
+    terminology/ConceptMap sandbox integration.
+  - next action:
+    Continue with the UI/review workflow or validator/terminology sandbox. DB migration apply,
+    deploy, push, secret changes, and external yrese/FHIR sends still require explicit current
+    authorization.
+
 - codex: `FHIR-READY-DISPLAY-ID-001` clinical sync queue public display ID on import.
   - commit:
     `62d5fd9f6 feat(integration): assign clinical sync queue display ids`
