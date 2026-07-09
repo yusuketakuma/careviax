@@ -29089,3 +29089,99 @@ responses`) and pushed to `origin/main`.
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next API response envelope cleanup from
   `src/app/api/drug-masters/[id]/route.ts` unless redirected.
+
+## 2026-07-09 - API-CONTRACT-001BD drug master detail envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` public response envelope burn-down without legacy
+  compatibility fields. Move `GET /api/drug-masters/:id` DB-hit and cache-hit
+  success responses to `data` envelopes, while keeping the admin detail query's
+  internal UI state as `DrugMasterDetail`.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `ops/refactor/STATE.md`; `Plans.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `src/app/api/drug-masters/[id]/route.ts`;
+  `src/app/api/drug-masters/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content-types.ts`;
+  drug master detail usage search results; and
+  `gbrain search "API-CONTRACT drug-masters detail route response envelope"`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/drug-masters/[id]/route.ts`;
+  `src/app/api/drug-masters/[id]/route.test.ts`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`;
+  `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/drug-masters/:id` returned raw drug detail success roots from both
+  DB-hit and cache-hit paths. The admin detail fetch also expected raw root
+  detail fields from the API response.
+- bugs fixed:
+  DB-hit and cache-hit success paths now return `success({ data: ... })`. Route
+  tests assert the data envelope for both paths, and the admin detail reader
+  unwraps `payload.data` before updating React Query state, so existing UI
+  consumers still receive `DrugMasterDetail`. No legacy root fallback remains.
+  Response-shape debt dropped from 136 to 134 allowlisted violations.
+- security risks found:
+  No authentication, membership lookup, drug lookup, cache key derivation,
+  interaction ordering, error sanitization, or no-store behavior changed.
+- security risks reduced:
+  Removed raw drug detail and safety relation fields from the public API root
+  while preserving existing authenticated read behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing cache read/write and drug
+  detail query behavior are unchanged.
+- UI/UX note:
+  No visible UI/UX change. This was API/frontend-reader/test contract work only,
+  so image generation was not applicable.
+- Oracle note:
+  Oracle consultation remains paused per current user instruction, so no
+  Oracle/GPT-5.5 Pro consult was run. The slice stayed mechanical and avoided
+  changing drug detail semantics.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/drug-masters/[id]/route.ts src/app/api/drug-masters/[id]/route.test.ts src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `pnpm vitest run src/app/api/drug-masters/[id]/route.test.ts`;
+  `pnpm vitest run src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/drug-masters/[id]/route.ts src/app/api/drug-masters/[id]/route.test.ts src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/drug-masters/[id]/route.ts src/app/api/drug-masters/[id]/route.test.ts src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/drug-masters/[id]/route.ts src/app/api/drug-masters/[id]/route.test.ts src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm format:check`.
+- validation results:
+  Prettier passed. Drug master detail route tests passed 1 file / 7 tests.
+  Admin drug master content tests passed 1 file / 97 tests.
+  `api-response-shape:check` passed with 134 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier
+  check, scoped diff check, and typecheck passed. `pnpm format:check` still
+  fails only on unrelated pre-existing untracked Markdown files:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+  `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+  `skills/_candidates.md`.
+- commit:
+  Drug master detail DB/cache response envelope migration, route tests,
+  frontend reader fixture, allowlist cleanup, and Plans sync committed as
+  `fd3d1daba25e0001f5211d43aa8b8938ed70772c`
+  (`fix(api): envelope drug master detail`). Push is pending this ledger
+  update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Next allowlist head is
+  `src/app/api/drug-masters/batch/route.ts` with two expected legacy response
+  shape violations, followed by `src/app/api/facility-visit-batches/[id]/route.ts`.
+  Existing unrelated dirty/untracked memory/docs files remain unstaged.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next API response envelope cleanup from
+  `src/app/api/drug-masters/batch/route.ts` unless redirected.
