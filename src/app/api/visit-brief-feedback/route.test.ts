@@ -40,6 +40,14 @@ function createMalformedJsonRequest() {
   });
 }
 
+async function expectMinimalFeedbackSuccess(response: Response) {
+  expect(response.status).toBe(201);
+  expectSensitiveNoStore(response);
+  const body = await response.json();
+  expect(body).toEqual({ data: { ok: true } });
+  expect(body).not.toHaveProperty('ok');
+}
+
 describe('/api/visit-brief-feedback POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -64,6 +72,27 @@ describe('/api/visit-brief-feedback POST', () => {
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
   });
 
+  it('short-circuits unauthenticated requests before parsing, RLS, or audit writes', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' },
+        { status: 401 },
+      ),
+    });
+
+    const response = (await POST(createMalformedJsonRequest()))!;
+
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'AUTH_UNAUTHENTICATED',
+      message: '認証が必要です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('records visit brief feedback through RLS context', async () => {
     const response = (await POST(
       createRequest({
@@ -76,8 +105,7 @@ describe('/api/visit-brief-feedback POST', () => {
       }),
     ))!;
 
-    expect(response.status).toBe(201);
-    expectSensitiveNoStore(response);
+    await expectMinimalFeedbackSuccess(response);
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'corg1234567890123456789012',
       expect.any(Function),
@@ -166,7 +194,7 @@ describe('/api/visit-brief-feedback POST', () => {
       }),
     ))!;
 
-    expect(response.status).toBe(201);
+    await expectMinimalFeedbackSuccess(response);
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'visit_brief_feedback_needs_review',

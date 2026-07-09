@@ -83,7 +83,7 @@ const authenticatedPOST = async (req: NextRequest) => {
   // Access-scope and tenant misses stay indistinguishable from absent patients.
   if (!feedbackRecorded) return notFound('患者が見つかりません');
 
-  return success({ ok: true }, 201);
+  return success({ data: { ok: true } }, 201);
 };
 
 export const POST: typeof authenticatedPOST = async (req) => {
