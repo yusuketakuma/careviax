@@ -18,9 +18,7 @@ const CAPTURED_AT = new Date(2026, 5, 13, 10, 30, 45);
 
 describe('CAPTURE_CATEGORY_OPTIONS', () => {
   it('target の 3 チップ(残薬写真=紫 / セット設置=緑 / 説明資料=紫)を表示順で持つ', () => {
-    expect(
-      CAPTURE_CATEGORY_OPTIONS.map((option) => ({ label: option.label })),
-    ).toEqual([
+    expect(CAPTURE_CATEGORY_OPTIONS.map((option) => ({ label: option.label }))).toEqual([
       { label: '残薬写真' },
       { label: 'セット設置' },
       { label: '説明資料' },
@@ -116,27 +114,50 @@ describe('resolveCapturePatientContext', () => {
     expect(
       resolveCapturePatientContext({
         patient_id: 'patient-1',
+        scheduled_date: '2026-04-09T00:00:00.000Z',
+        time_window_start: '10:30:00',
         case_: { patient: { name: '田中 一郎' } },
-        visit_record: { id: 'record-1' },
+        visit_record: {
+          id: 'record-1',
+          version: 2,
+          visit_started_at: '2026-04-09T01:00:00.000Z',
+          visit_ended_at: null,
+        },
       }),
     ).toEqual({
       patientId: 'patient-1',
       patientName: '田中 一郎',
+      visitDateTimeLabel: '4月9日 10:30',
       visitRecordId: 'record-1',
+      visitRecordVersion: 2,
+      visitStartedAt: '2026-04-09T01:00:00.000Z',
+      visitEndedAt: null,
     });
   });
 
   it('記録未作成・患者名なしは null として扱う', () => {
     expect(
       resolveCapturePatientContext({ patient_id: 'patient-1', case_: null, visit_record: null }),
-    ).toEqual({ patientId: 'patient-1', patientName: null, visitRecordId: null });
+    ).toEqual({
+      patientId: 'patient-1',
+      patientName: null,
+      visitDateTimeLabel: null,
+      visitRecordId: null,
+      visitRecordVersion: null,
+      visitStartedAt: null,
+      visitEndedAt: null,
+    });
   });
 
   it('オブジェクト以外や空文字は安全に null へ落とす', () => {
     expect(resolveCapturePatientContext(null)).toEqual({
       patientId: null,
       patientName: null,
+      visitDateTimeLabel: null,
       visitRecordId: null,
+      visitRecordVersion: null,
+      visitStartedAt: null,
+      visitEndedAt: null,
     });
     expect(
       resolveCapturePatientContext({
@@ -144,6 +165,14 @@ describe('resolveCapturePatientContext', () => {
         case_: { patient: { name: '   ' } },
         visit_record: { id: 42 },
       }),
-    ).toEqual({ patientId: null, patientName: null, visitRecordId: null });
+    ).toEqual({
+      patientId: null,
+      patientName: null,
+      visitDateTimeLabel: null,
+      visitRecordId: null,
+      visitRecordVersion: null,
+      visitStartedAt: null,
+      visitEndedAt: null,
+    });
   });
 });

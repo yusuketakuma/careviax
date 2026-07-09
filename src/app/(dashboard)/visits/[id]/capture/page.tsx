@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth/config';
 import { prisma } from '@/lib/db/client';
 import { resolveLocalUserByIdentity } from '@/lib/auth/user-resolution';
 import { EvidenceCaptureContent } from './capture-content';
-import type { CapturePatientContext } from './capture.shared';
+import { resolveCapturePatientContext, type CapturePatientContext } from './capture.shared';
 
 export const metadata: Metadata = {
   title: '写真・証跡を撮る — PH-OS',
@@ -25,6 +25,8 @@ async function resolveInitialCapturePatientContext(
   const schedule = await prisma.visitSchedule.findFirst({
     where: { id: visitId, org_id: orgId },
     select: {
+      scheduled_date: true,
+      time_window_start: true,
       case_: { select: { patient: { select: { id: true, name: true } } } },
       visit_record: {
         select: {
@@ -41,6 +43,11 @@ async function resolveInitialCapturePatientContext(
   return {
     patientId: schedule.case_?.patient.id ?? null,
     patientName: schedule.case_?.patient.name ?? null,
+    visitDateTimeLabel: resolveCapturePatientContext({
+      scheduled_date: schedule.scheduled_date.toISOString(),
+      time_window_start: schedule.time_window_start?.toISOString() ?? null,
+      visit_record: schedule.visit_record,
+    }).visitDateTimeLabel,
     visitRecordId: schedule.visit_record?.id ?? null,
     visitRecordVersion: schedule.visit_record?.version ?? null,
     visitStartedAt: schedule.visit_record?.visit_started_at?.toISOString() ?? null,

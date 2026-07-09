@@ -16,6 +16,7 @@ import {
 } from '@/lib/offline/evidence-drafts';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
+import { VisitHeaderSafetyTags, type VisitHeaderSafety } from '../record/visit-step-nav';
 import { pickVisitPatientId } from '../brief/visit-brief-review.shared';
 import type { EvidenceCategoryId } from '../../evidence/evidence-gallery.shared';
 import {
@@ -92,6 +93,7 @@ export function EvidenceCaptureContent({
           return {
             patientId,
             patientName,
+            visitDateTimeLabel: null,
             visitRecordId: visitId,
             visitRecordVersion:
               typeof record.version === 'number' && Number.isInteger(record.version)
@@ -108,6 +110,57 @@ export function EvidenceCaptureContent({
     },
   });
   const patientContext = patientQuery.data ?? null;
+  const resolvedPatientId = patientContext?.patientId ?? null;
+  const patientSafetyQuery = useQuery<{
+    safety: { visible_safety_tags: string[]; hidden_safety_tag_count: number };
+  }>({
+    queryKey: ['visit-capture-patient-safety', resolvedPatientId, orgId],
+    queryFn: async () => {
+      if (!resolvedPatientId) throw new Error('患者IDが未解決です');
+      const res = await fetch(buildPatientApiPath(resolvedPatientId, '/header-summary'), {
+        headers: buildOrgHeaders(orgId),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) throw new Error('患者安全タグの取得に失敗しました');
+      const data =
+        payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload;
+      const safety =
+        data && typeof data === 'object' && 'safety' in data
+          ? (data.safety as {
+              visible_safety_tags?: unknown;
+              hidden_safety_tag_count?: unknown;
+            })
+          : null;
+      return {
+        safety: {
+          visible_safety_tags: Array.isArray(safety?.visible_safety_tags)
+            ? safety.visible_safety_tags.filter((tag): tag is string => typeof tag === 'string')
+            : [],
+          hidden_safety_tag_count:
+            typeof safety?.hidden_safety_tag_count === 'number' &&
+            Number.isInteger(safety.hidden_safety_tag_count)
+              ? safety.hidden_safety_tag_count
+              : 0,
+        },
+      };
+    },
+    enabled: !!orgId && !!resolvedPatientId,
+    retry: false,
+  });
+  const patientLoading = !orgId || patientQuery.isPending;
+  const patientUnresolved =
+    !patientLoading && (patientQuery.isError || !resolvedPatientId || !patientContext?.patientName);
+  const headerSafety: VisitHeaderSafety = {
+    tags: patientSafetyQuery.data?.safety.visible_safety_tags ?? [],
+    hiddenCount: patientSafetyQuery.data?.safety.hidden_safety_tag_count ?? 0,
+    unavailable: patientSafetyQuery.isError,
+  };
+  const shutterDisabledReasonId = 'capture-shutter-disabled-reason';
+  const shutterDisabledReason = patientLoading
+    ? '患者情報を確認中のため撮影できません。'
+    : patientUnresolved
+      ? '患者情報を確認できないため撮影できません。訪問記録で患者を確認してください。'
+      : null;
 
   // 実カメラの起動を試みる(権限なし/非対応はプレースホルダー表示のまま)
   useEffect(() => {
@@ -154,6 +207,10 @@ export function EvidenceCaptureContent({
         toast.error('組織情報を取得できませんでした。再読み込みしてから撮影してください。');
         return;
       }
+      if (!resolvedPatientId) {
+        toast.error('患者情報を確認できないため撮影できません。訪問記録で患者を確認してください。');
+        return;
+      }
       const capturedAt = new Date();
       // 端末保存(=オフライン queue)前に長辺 1600px / JPEG 品質 0.85 へ縮小する(W2-F1)。
       // fail-open: 変換失敗(HEIC 等デコード不能を含む)時は元の Blob をそのまま保存する。
@@ -165,7 +222,7 @@ export function EvidenceCaptureContent({
       await saveEvidenceDraft({
         orgId,
         scheduleId: visitId,
-        patientId: patientContext?.patientId ?? undefined,
+        patientId: resolvedPatientId,
         category: selectedCategory,
         fileName: buildEvidenceDraftFileName(selectedCategory, capturedAt, resizedMimeType),
         mimeType: resizedMimeType,
@@ -187,7 +244,7 @@ export function EvidenceCaptureContent({
           });
       }
     },
-    [orgId, patientContext?.patientId, selectedCategory, visitId],
+    [orgId, resolvedPatientId, selectedCategory, visitId],
   );
 
   /** カメラ映像の現フレームを JPEG 化(カメラ非起動時は null) */
@@ -213,6 +270,10 @@ export function EvidenceCaptureContent({
 
   async function handleShutterClick() {
     if (saving) return;
+    if (shutterDisabledReason) {
+      toast.error(shutterDisabledReason);
+      return;
+    }
     setSaving(true);
     try {
       const blob = await captureFromVideo();
@@ -275,7 +336,6 @@ export function EvidenceCaptureContent({
     }
   }
 
-  const patientLoading = !orgId || patientQuery.isPending;
   const captureSummary = buildCaptureStatusSummary({
     categoryId: selectedCategory,
     patientName: patientContext?.patientName,
@@ -301,23 +361,32 @@ export function EvidenceCaptureContent({
       data-testid="evidence-capture-page"
     >
       {/* 専用ヘッダー(没入型: アプリシェルなし) */}
-      <h1 className="text-lg font-bold leading-7 text-primary">PH-OS 写真</h1>
-      {patientLoading ? (
-        <p className="mt-4 text-[15px] font-bold leading-6 text-muted-foreground">
-          患者情報を取得中...
-        </p>
-      ) : patientContext?.patientName ? (
-        <p
-          className="mt-4 text-[15px] font-bold leading-6 text-foreground"
-          data-testid="capture-patient-name"
-        >
-          {patientContext.patientName} 様
-        </p>
-      ) : (
-        <p className="mt-4 text-[15px] font-bold leading-6 text-muted-foreground">
-          患者情報を取得できませんでした
-        </p>
-      )}
+      <header
+        className="sticky top-0 z-20 -mx-6 -mt-6 border-b border-border/70 bg-background px-6 py-4"
+        data-testid="capture-patient-safety-header"
+      >
+        <h1 className="text-lg font-bold leading-7 text-primary">PH-OS 写真</h1>
+        {patientLoading ? (
+          <p className="mt-3 text-sm font-bold leading-6 text-muted-foreground">
+            患者情報を取得中...
+          </p>
+        ) : patientContext?.patientName ? (
+          <div className="mt-3 space-y-1.5">
+            <p
+              className="text-sm font-bold leading-6 text-foreground"
+              data-testid="capture-patient-name"
+            >
+              {patientContext.patientName} 様
+              {patientContext.visitDateTimeLabel ? `　${patientContext.visitDateTimeLabel}` : ''}
+            </p>
+            <VisitHeaderSafetyTags safety={headerSafety} />
+          </div>
+        ) : (
+          <p className="mt-3 text-sm font-bold leading-6 text-state-blocked" role="alert">
+            患者情報を取得できませんでした
+          </p>
+        )}
+      </header>
 
       {/* カメラプレビュー(起動不可時は黒枠+「カメラ」) */}
       <section
@@ -431,12 +500,18 @@ export function EvidenceCaptureContent({
         type="button"
         size="lg"
         className="mt-6 h-12 w-full text-[15px] font-bold"
-        disabled={saving || patientLoading}
+        disabled={saving || Boolean(shutterDisabledReason)}
+        aria-describedby={shutterDisabledReason ? shutterDisabledReasonId : undefined}
         onClick={handleShutterClick}
         data-testid="capture-shutter"
       >
         {captureSummary.categoryLabel}を撮る
       </Button>
+      {shutterDisabledReason ? (
+        <p id={shutterDisabledReasonId} className="mt-2 text-xs font-medium text-state-blocked">
+          {shutterDisabledReason}
+        </p>
+      ) : null}
 
       {/* オフライン保存の説明(target どおりの文言) */}
       <section

@@ -1,4 +1,5 @@
 import { format } from 'date-fns';
+import { timeIsoToString } from '@/lib/visits/time-of-day';
 import type { EvidenceCategoryId } from '../../evidence/evidence-gallery.shared';
 
 /**
@@ -55,6 +56,7 @@ export function buildEvidenceDraftFileName(
 export type CapturePatientContext = {
   patientId: string | null;
   patientName: string | null;
+  visitDateTimeLabel: string | null;
   visitRecordId: string | null;
   visitRecordVersion: number | null;
   visitStartedAt: string | null;
@@ -102,6 +104,7 @@ export function resolveCapturePatientContext(payload: unknown): CapturePatientCo
   const empty: CapturePatientContext = {
     patientId: null,
     patientName: null,
+    visitDateTimeLabel: null,
     visitRecordId: null,
     visitRecordVersion: null,
     visitStartedAt: null,
@@ -111,6 +114,8 @@ export function resolveCapturePatientContext(payload: unknown): CapturePatientCo
 
   const source = payload as {
     patient_id?: unknown;
+    scheduled_date?: unknown;
+    time_window_start?: unknown;
     case_?: { patient?: { name?: unknown } | null } | null;
     visit_record?: {
       id?: unknown;
@@ -125,6 +130,14 @@ export function resolveCapturePatientContext(payload: unknown): CapturePatientCo
 
   const rawName = source.case_?.patient?.name;
   const patientName = typeof rawName === 'string' && rawName.trim() ? rawName.trim() : null;
+  const scheduledDate =
+    typeof source.scheduled_date === 'string' && source.scheduled_date.trim()
+      ? source.scheduled_date
+      : null;
+  const timeWindowStart =
+    typeof source.time_window_start === 'string' && source.time_window_start.trim()
+      ? source.time_window_start
+      : null;
 
   const rawRecordId = source.visit_record?.id;
   const visitRecordId = typeof rawRecordId === 'string' && rawRecordId ? rawRecordId : null;
@@ -141,13 +154,30 @@ export function resolveCapturePatientContext(payload: unknown): CapturePatientCo
     typeof source.visit_record?.visit_ended_at === 'string'
       ? source.visit_record.visit_ended_at
       : null;
+  const visitDateTimeLabel = formatCaptureVisitDateTimeLabel(
+    scheduledDate ?? visitStartedAt,
+    scheduledDate ? timeWindowStart : undefined,
+  );
 
   return {
     patientId,
     patientName,
+    visitDateTimeLabel,
     visitRecordId,
     visitRecordVersion,
     visitStartedAt,
     visitEndedAt,
   };
+}
+
+function formatCaptureVisitDateTimeLabel(
+  dateOrDateTime: string | null,
+  timeValue?: string | null,
+): string | null {
+  if (!dateOrDateTime) return null;
+  const parsed = new Date(dateOrDateTime);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  const dateLabel = format(parsed, 'M月d日');
+  const timeLabel = timeIsoToString(timeValue) ?? timeIsoToString(dateOrDateTime);
+  return timeLabel ? `${dateLabel} ${timeLabel}` : dateLabel;
 }

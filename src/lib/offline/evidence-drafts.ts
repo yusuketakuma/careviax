@@ -23,7 +23,7 @@ import {
 export type SaveEvidenceDraftInput = {
   orgId: string;
   scheduleId: string;
-  patientId?: string;
+  patientId: string;
   category: string;
   fileName: string;
   mimeType: string;
