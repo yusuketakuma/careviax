@@ -29755,3 +29755,94 @@ has_more, next_cursor } })`. The route test asserts the `data + meta`
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next API response envelope cleanup from
   `src/app/api/interventions/route.ts` unless redirected.
+
+## 2026-07-09 API-CONTRACT-001BK interventions list envelope
+
+- current task:
+  `API-CONTRACT-001BK` response-shape cleanup for
+  `GET /api/interventions`.
+- files inspected:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/interventions/route.ts`;
+  `src/app/api/interventions/route.test.ts`;
+  `src/components/features/medications/intervention-panel.tsx`;
+  `src/components/features/medications/intervention-panel.test.tsx`;
+  `ops/refactor/STATE.md`; `git status --short --branch --untracked-files=all`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/interventions/route.ts`;
+  `src/app/api/interventions/route.test.ts`;
+  `src/components/features/medications/intervention-panel.tsx`;
+  `src/components/features/medications/intervention-panel.test.tsx`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/interventions` returned the cursor page object directly through
+  `success(buildCursorPage(...))`, leaving legacy root `hasMore` and
+  `nextCursor` pagination fields in the public success body.
+- bugs fixed:
+  GET success now returns `success({ data, meta })` with
+  `meta.limit`, `meta.has_more`, and `meta.next_cursor`. The route test asserts
+  the new envelope and rejects root `hasMore` / `nextCursor`. The intervention
+  panel reader now treats `payload.data` as required and no longer has an
+  optional-data fallback. Response-shape debt dropped from 126 to 125
+  allowlisted violations.
+- security risks found:
+  No canVisit permission, membership/auth context, patient assignment access,
+  patient/issue scope validation, no-store behavior, or POST creation
+  semantics changed.
+- security risks reduced:
+  Removed legacy root pagination fields from a PHI-sensitive intervention list
+  response while preserving existing authorization and scoped patient access
+  behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing Prisma query shape,
+  pagination limit, order, and scope filters are unchanged.
+- UI/UX note:
+  No visible UI/UX change. This was API/frontend reader contract work only, so
+  image generation was not applicable.
+- Oracle note:
+  Oracle consultation remains paused per current user instruction, so no
+  Oracle/GPT-5.5 Pro consult was run.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/interventions/route.ts src/app/api/interventions/route.test.ts src/components/features/medications/intervention-panel.tsx src/components/features/medications/intervention-panel.test.tsx`;
+  `pnpm vitest run src/app/api/interventions/route.test.ts`;
+  `pnpm vitest run src/components/features/medications/intervention-panel.test.tsx`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/interventions/route.ts src/app/api/interventions/route.test.ts src/components/features/medications/intervention-panel.tsx src/components/features/medications/intervention-panel.test.tsx`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/interventions/route.ts src/app/api/interventions/route.test.ts src/components/features/medications/intervention-panel.tsx src/components/features/medications/intervention-panel.test.tsx`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/interventions/route.ts src/app/api/interventions/route.test.ts src/components/features/medications/intervention-panel.tsx src/components/features/medications/intervention-panel.test.tsx`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm format:check`.
+- validation results:
+  Prettier passed. Intervention route tests passed 1 file / 15 tests.
+  Intervention panel tests passed 1 file / 6 tests.
+  `api-response-shape:check` passed with 125 allowlisted violations and 0 new
+  violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier
+  check, scoped diff check, and typecheck passed. `pnpm format:check` still
+  fails only on unrelated pre-existing untracked Markdown files:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+  `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+  `skills/_candidates.md`.
+- commit:
+  Intervention list response envelope migration, reader update, tests,
+  allowlist cleanup, and Plans sync committed as
+  `8bda63c27ab8d7d7c97cdc1ffb792f0756699dd49`
+  (`fix(api): envelope intervention list`). Push is pending this ledger update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Next allowlist head is
+  `src/app/api/jobs/[jobType]/route.ts` with four expected legacy response
+  shape violations. Existing unrelated dirty/untracked memory/docs files remain
+  unstaged.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next API response envelope cleanup from
+  `src/app/api/jobs/[jobType]/route.ts` unless redirected.
