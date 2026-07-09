@@ -141,7 +141,7 @@ function Field({
   if (value == null || value === '') return null;
   return (
     <div className="min-w-0">
-      <dt className="text-[11px] leading-tight text-muted-foreground">{label}</dt>
+      <dt className="text-xs leading-tight text-muted-foreground">{label}</dt>
       <dd
         className={cn(
           'mt-0.5 truncate text-xs leading-snug font-medium tabular-nums',
@@ -255,19 +255,19 @@ export function PatientHeader({
           <span className="text-sm tabular-nums text-muted-foreground">{ageGender}</span>
         ) : null}
         {careLevelLabel ? (
-          <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground">
+          <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
             {careLevelLabel}
           </span>
         ) : null}
         {homeStatusLabel ? (
-          <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+          <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
             {homeStatusLabel}
           </span>
         ) : null}
         {isArchived ? (
           <span
             data-testid="patient-header-archive-badge"
-            className="inline-flex items-center gap-1 rounded-full border border-state-blocked/40 bg-state-blocked/10 px-2 py-0.5 text-[11px] font-semibold text-state-blocked"
+            className="inline-flex items-center gap-1 rounded-full border border-state-blocked/40 bg-state-blocked/10 px-2 py-0.5 text-xs font-semibold text-state-blocked"
           >
             <Archive className="size-3" aria-hidden="true" />
             アーカイブ中
@@ -306,7 +306,7 @@ export function PatientHeader({
           data-testid="patient-header-safety"
           className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-tag-hazard/30 bg-tag-hazard/5 px-4 py-2"
         >
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-tag-hazard">
+          <span className="inline-flex items-center gap-1 text-xs font-bold text-tag-hazard">
             <ShieldAlert aria-hidden className="size-3.5" />
             安全
           </span>
@@ -325,7 +325,7 @@ export function PatientHeader({
                 <span
                   key={tag}
                   className={cn(
-                    'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]',
+                    'inline-flex items-center rounded-full border px-2 py-0.5 text-xs',
                     getHandlingTagBadgeClass(tag),
                   )}
                 >

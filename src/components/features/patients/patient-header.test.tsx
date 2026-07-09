@@ -149,4 +149,22 @@ describe('PatientHeader', () => {
     rerender(<PatientHeader name="A" sticky={false} now={NOW} />);
     expect(screen.getByTestId('patient-header').className).not.toContain('sticky');
   });
+
+  it('keeps identity, clinical and safety labels at the 12px minimum', () => {
+    const { container } = render(
+      <PatientHeader
+        name="山田 太郎"
+        careLevelLabel="要介護3"
+        homeStatusLabel="在宅"
+        primaryDiagnosis="2型糖尿病"
+        archive={{ archived: true }}
+        safety={{ allergy: 'ペニシリン', handlingTags: ['narcotic', 'cold_storage'] }}
+        now={NOW}
+      />,
+    );
+
+    expect(container.innerHTML).not.toMatch(/text-\[(?:[0-9]|1[01])px\]/);
+    expect(screen.getByText('安全').className).toContain('text-xs');
+    expect(screen.getByText('麻薬').className).toContain('text-xs');
+  });
 });

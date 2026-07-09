@@ -10,6 +10,7 @@ const SHARED_SURFACE_FILES = [
   'src/components/features/search/command-palette.tsx',
   'src/components/features/collaboration/presence-avatars.tsx',
   'src/components/features/collaboration/field-lock-indicator.tsx',
+  'src/components/features/patients/patient-header.tsx',
   'src/components/features/workflow/workflow-page-header.tsx',
   'src/components/features/workflow/page-shortcut-links.tsx',
   'src/components/features/workflow/collaboration-workflow-panel.tsx',
