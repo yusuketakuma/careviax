@@ -36795,3 +36795,103 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   edits as completion. Browser/mobile and full build proof remain blocked by the current local
   runtime/resource constraints; no migration, deploy, production mutation, or destructive action was
   performed.
+
+## 2026-07-10 UI-W3-SHARED-TYPOGRAPHY — shared shell 12px minimum
+
+- current task:
+  Apply the PH-OS 12px auxiliary-text minimum to shared navigation, search, collaboration, workflow,
+  action-rail, notification, offline and help surfaces before continuing route-local typography
+  cleanup. Keep existing interaction, navigation, state, authorization and PHI contracts unchanged.
+- commit:
+  `3a3c61cb2 fix(ui): raise shared shell text to readable minimum`.
+- files inspected:
+  `docs/ui-ux-design-guidelines.md` sections 2.4, 3.4, 3.8 and 11;
+  Next.js bundled server/client component guidance;
+  the fourteen shared implementation files listed below; their existing focused tests; shared
+  `Button` size variants; live sub-12px inventory; and current dirty-tree ownership.
+- files changed:
+  `src/components/layout/app-header.tsx`;
+  `src/components/layout/sidebar.tsx`;
+  `src/components/layout/mobile-nav.tsx`;
+  `src/components/layout/shared-shell-typography.test.ts`;
+  `src/components/features/notifications/notification-bell.tsx`;
+  `src/components/features/offline/offline-draft-indicator.tsx`;
+  `src/components/features/search/command-palette.tsx`;
+  `src/components/features/collaboration/presence-avatars.tsx`;
+  `src/components/features/collaboration/field-lock-indicator.tsx`;
+  `src/components/features/workflow/workflow-page-header.tsx`;
+  `src/components/features/workflow/page-shortcut-links.tsx`;
+  `src/components/features/workflow/collaboration-workflow-panel.tsx`;
+  `src/components/features/workflow/main-workflow-route.tsx`;
+  `src/components/features/workspace/action-rail.tsx`;
+  `src/components/ui/help-popover.tsx`.
+- bugs found / fixed:
+  Shared chrome still rendered role labels, shortcut keys, workflow stages, collaboration indicators,
+  badge labels and help copy at 10px or 11px despite the SSOT 12px minimum. Notification and mobile
+  count badges also used fixed 16px/18px circles, so capped `99+` content could overflow. All fourteen
+  shared surfaces now use `text-xs` or larger. Mobile/notification/offline count badges use bounded
+  20px height with a minimum width and horizontal padding so multi-character counts can grow without
+  clipping. A static focused contract prevents sub-12px arbitrary classes from returning in this
+  shared set.
+- frontend/backend parity:
+  Backend is explicitly N/A for this presentational typography slice. No query key, endpoint,
+  request/response DTO, mutation, authorization, tenant/org, assignment, consent, audit, PHI or
+  offline persistence behavior changed. Existing component and fetch-contract tests continue to
+  cover navigation and notification data wiring.
+- security/privacy:
+  No user content, patient data, error payload, export, log, notification payload or permission
+  boundary changed. The notification and offline count text remains label-backed and no raw provider
+  data is introduced.
+- performance:
+  Class-only rendering changes and one static source contract test. No additional render state,
+  computation, network request, polling or dependency was added.
+- UI/imagegen:
+  The existing repo-wide non-PHI design reference and UI SSOT were used. A new image was omitted
+  because this is a constrained typography/accessibility correction with no information-architecture
+  reconstruction.
+- validation:
+  Focused Vitest passed 14 files / 108 tests; exact-path ESLint passed; exact-path Prettier and
+  `git diff --check` passed; standalone TypeScript noEmit passed; `pnpm typecheck:no-unused` passed;
+  and `pnpm frontend-contract:check` passed. Claude checker review was requested and remains pending
+  at the time this pre-commit ledger entry was written.
+- remaining / next action:
+  The live arbitrary sub-12px inventory is reduced but not complete: 47 files / 159 occurrences
+  remain in prescription, patient, visit, schedule, print and smaller route families. Commit only the
+  fifteen owned product/test paths after checker disposition, then continue family-by-family. Full
+  build and browser/mobile proof remain blocked by the documented webpack resource envelope and
+  missing compatible local app/database runtime.
+
+## 2026-07-10 UI-AUDIT-T3 — retire stale MasterEditorView finding
+
+- current task:
+  Revalidate the historical claim that five admin screens expose a data-disconnected
+  `MasterEditorView`, because that would violate the paired frontend/backend completion rule.
+- commit:
+  `4e71c80f9 docs(ui): retire stale master editor finding`.
+- files inspected:
+  Admin facilities, external-professionals, staff, professionals alias and vehicles pages/content;
+  `UsersContent`; `StaffKpiPanel`; their focused tests; corresponding facilities,
+  external-professionals, staff-metrics, pharmacists, pharmacy-sites and visit-vehicle-resources API
+  routes; `.agent-loop/UI_AUDIT_MATRIX.md`; and the live source tree for `MasterEditorView` references.
+- files changed:
+  `.agent-loop/UI_AUDIT_MATRIX.md` and this ledger entry.
+- finding corrected:
+  The finding is stale. The live tree has no `MasterEditorView` implementation or reference.
+  Facilities, external professionals and vehicles have dedicated TanStack Query/mutation content
+  with `DataTable` loading/error/empty/retry states and paired APIs. Staff composes real staff metrics
+  and user-management surfaces. The old professionals route is an explicit redirect to external
+  professionals, so its backend is correctly N/A. The matrix now closes the nonexistent common-stub
+  task while retaining screen-specific responsive, accessibility and state audits.
+- security/privacy and backend parity:
+  Live APIs keep org-scoped access and split lower-privilege reads from `canAdmin` writes where
+  applicable. This slice changes documentation only and does not weaken those boundaries or expose
+  PHI.
+- performance:
+  Documentation only; no runtime/query/render behavior changed. Closing the stale task avoids a
+  redundant abstraction and unnecessary duplicate fetch layer.
+- validation:
+  Live `rg` returned no `MasterEditorView` references; `pnpm frontend-contract:check` passed; the
+  matrix passes Prettier and scoped `git diff --check`.
+- remaining / next action:
+  Continue each admin route's real paired-contract audit rather than rebuilding a removed common
+  stub. Browser/runtime proof remains pending under the existing environment blocker.
