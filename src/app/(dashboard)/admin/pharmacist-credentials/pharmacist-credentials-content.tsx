@@ -4,9 +4,8 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { differenceInDays, format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
-import { AlertTriangle, Bell, CheckCircle2, XCircle } from 'lucide-react';
+import { differenceInDays, parseISO } from 'date-fns';
+import { AlertTriangle } from 'lucide-react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -14,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
+import { ExpiryBadge } from '@/components/ui/expiry-badge';
 import {
   Dialog,
   DialogContent,
@@ -127,55 +127,6 @@ const CREDENTIAL_REQUIRED_MESSAGES = {
 type CredentialNumericField = keyof typeof CREDENTIAL_NUMERIC_LIMITS;
 type CredentialFormErrors = Partial<Record<CredentialNumericField | 'expiry_date', string>>;
 type CredentialRequiredErrors = Partial<Record<keyof typeof CREDENTIAL_REQUIRED_MESSAGES, string>>;
-
-function ExpiryBadge({ expiryDate }: { expiryDate: string | null }) {
-  if (!expiryDate) {
-    return <span className="text-xs text-muted-foreground">—</span>;
-  }
-
-  const days = differenceInDays(parseISO(expiryDate), new Date());
-  const formatted = format(parseISO(expiryDate), 'yyyy/MM/dd', { locale: ja });
-
-  if (days < 0) {
-    return (
-      <Badge
-        variant="outline"
-        className="flex w-fit items-center gap-1 border-transparent bg-state-blocked/10 text-xs text-state-blocked"
-      >
-        <XCircle className="size-3" aria-hidden="true" />
-        {formatted}（期限切れ）
-      </Badge>
-    );
-  }
-  if (days <= 30) {
-    return (
-      <Badge
-        variant="outline"
-        className="flex w-fit items-center gap-1 border-transparent bg-state-blocked/10 text-xs text-state-blocked"
-      >
-        <Bell className="size-3" aria-hidden="true" />
-        {formatted}（残{days}日）
-      </Badge>
-    );
-  }
-  if (days <= 90) {
-    return (
-      <Badge
-        variant="outline"
-        className="flex w-fit items-center gap-1 border-transparent bg-state-confirm/10 text-xs text-state-confirm"
-      >
-        <Bell className="size-3" aria-hidden="true" />
-        {formatted}（残{days}日）
-      </Badge>
-    );
-  }
-  return (
-    <span className="flex items-center gap-1 text-xs text-state-done">
-      <CheckCircle2 className="size-3.5" aria-hidden="true" />
-      {formatted}
-    </span>
-  );
-}
 
 function toNullableNumberText(value: string) {
   const trimmed = value.trim();
@@ -443,7 +394,7 @@ export function PharmacistCredentialsContent() {
       {
         accessorKey: 'expiry_date',
         header: '有効期限',
-        cell: ({ row }) => <ExpiryBadge expiryDate={row.original.expiry_date} />,
+        cell: ({ row }) => <ExpiryBadge date={row.original.expiry_date} showDate />,
       },
       {
         accessorKey: 'tenure_years',
