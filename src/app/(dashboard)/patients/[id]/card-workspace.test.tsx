@@ -4173,7 +4173,7 @@ describe('CardWorkspace', () => {
     const getConfig = captureWorkspaceQueryConfig(scope, hostileId);
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+      .mockImplementation(async () => new Response(JSON.stringify({ data: {} }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -4274,7 +4274,7 @@ describe('CardWorkspace', () => {
     );
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+      .mockImplementation(async () => new Response(JSON.stringify({ data: {} }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     vi.mocked(buildPatientApiPath)
       .mockReturnValueOnce('/api/patients/__helper_patient__/overview')

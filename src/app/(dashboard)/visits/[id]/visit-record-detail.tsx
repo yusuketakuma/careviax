@@ -550,7 +550,11 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       const res = await fetch(buildPatientApiPath(record?.patient_id ?? '', '/header-summary'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PatientHeaderSummary>(res, '患者ヘッダー情報の取得に失敗しました');
+      const payload = await readApiJson<{ data: PatientHeaderSummary }>(
+        res,
+        '患者ヘッダー情報の取得に失敗しました',
+      );
+      return payload.data;
     },
     enabled: !!orgId && !!record?.patient_id,
   });

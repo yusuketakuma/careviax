@@ -643,9 +643,10 @@ export function VisitRecordForm({
       const res = await fetch(buildPatientApiPath(schedule?.patient_id ?? '', '/header-summary'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{
-        safety: { visible_safety_tags: string[]; hidden_safety_tag_count: number };
+      const payload = await readApiJson<{
+        data: { safety: { visible_safety_tags: string[]; hidden_safety_tag_count: number } };
       }>(res, '患者ヘッダー情報の取得に失敗しました');
+      return payload.data;
     },
     enabled: !!orgId && !!schedule?.patient_id,
   });

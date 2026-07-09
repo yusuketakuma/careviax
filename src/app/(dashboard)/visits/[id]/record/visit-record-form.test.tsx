@@ -391,7 +391,9 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
           // Pinned 安全タグ用の患者ヘッダサマリー(visible_safety_tags は critical 保証済み)。
           return new Response(
             JSON.stringify({
-              safety: { visible_safety_tags: ['allergy'], hidden_safety_tag_count: 2 },
+              data: {
+                safety: { visible_safety_tags: ['allergy'], hidden_safety_tag_count: 2 },
+              },
             }),
             { status: 200 },
           );

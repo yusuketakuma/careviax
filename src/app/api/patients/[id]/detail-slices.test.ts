@@ -329,7 +329,7 @@ describe('patient detail slice routes', () => {
     );
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toEqual(headerSummary);
+    await expect(response.json()).resolves.toEqual({ data: headerSummary });
   });
 
   it('returns no-store for invalid patient header summary ids', async () => {
