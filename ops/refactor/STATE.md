@@ -41,6 +41,56 @@
 
 ## 直近の作業
 
+- codex: `CDS-CATEGORY-DISABLE-COLLATERAL-001` stale Plans queue cleanup.
+  - current task:
+    `Plans.md` では Not started のままだった CDS category disable collateral bug を live
+    checker/test と git history に照合し、実装済みなら active queue から除外する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `Plans.md`, `ops/refactor/STATE.md`,
+    `src/server/cds/checker.ts`, `src/server/cds/checker.test.ts`, and git history for those CDS
+    files.
+  - files changed:
+    `Plans.md` and this ledger.
+  - coordination:
+    No subagent needed; this was a direct live-file reconciliation of an already implemented CDS
+    safety fix.
+  - implementation:
+    Confirmed `checkDispenseAlerts()` now runs built-in safety checks directly and no longer derives
+    category enablement from `matchingRules.some(rule.is_active)`. Custom `DrugAlertRule.is_active`
+    gates only each custom rule's own evaluation inside the relevant check. Confirmed regression
+    tests for inactive `allergy_cross`, `interaction`, and `renal_dose` custom rules still allowing
+    built-in allergy cross-check, interaction alert, and renal coverage notice. Moved
+    `CDS-CATEGORY-DISABLE-COLLATERAL-001` from Implementation queue to Done/frozen and updated
+    active counts.
+  - bugs found:
+    `Plans.md` still advertised `CDS-CATEGORY-DISABLE-COLLATERAL-001` as Not started even though
+    commit `e2cb966b2` already fixed it and added regression tests.
+  - bugs fixed:
+    Active implementation queue no longer asks Codex to reimplement an already completed CDS
+    safety fix.
+  - security risks found:
+    None in this cleanup.
+  - security risks reduced:
+    None directly. The existing completed CDS fix reduces medication-safety false negatives; this
+    cleanup keeps the active board from sending future work back through an obsolete approach.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None.
+  - validation commands:
+    `pnpm plans:active:check`;
+    `pnpm vitest run src/server/cds/checker.test.ts --reporter=dot`;
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md`;
+    `git diff --check -- Plans.md ops/refactor/STATE.md`.
+  - validation results:
+    `plans:active:check` passed. Focused CDS checker test passed (1 file / 40 tests). Prettier check
+    and scoped `git diff --check` passed.
+  - remaining work:
+    None for `CDS-CATEGORY-DISABLE-COLLATERAL-001`. Other active queue items remain.
+  - next action:
+    Commit only `Plans.md` and `ops/refactor/STATE.md`, push `origin/main`, then continue with the
+    next highest-value implementation queue item.
+
 - codex: `CI-GATE-V9-CONTRACTS-001` stale Plans queue cleanup.
   - commit:
     Plans cleanup and ledger evidence committed as `bc00e287f`
