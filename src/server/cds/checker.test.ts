@@ -1324,6 +1324,217 @@ describe('checkDispenseAlerts', () => {
     ).toBe(false);
   });
 
+  // CDS-CATEGORY-DISABLE-COLLATERAL-001:
+  // カスタム DrugAlertRule を1件 is_active=false にしても、組み込みの患者データ
+  // チェック（allergy_info クロスチェック、interaction、renal など）と fail-close
+  // カバレッジ通知は決して無効化されてはならない。以前はカテゴリ enablement を
+  // per-rule is_active から算出していたため、単一の非アクティブルールが重篤アレルギー
+  // 等の組み込みチェックを無言で消していた（患者安全 false-negative）。
+  it('CDS-CATEGORY-DISABLE-COLLATERAL-001: still fires the built-in allergy_info cross-check (and its X02 coverage notice) when the org has an inactive allergy_cross custom rule', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_allergy_nullcode',
+        drug_name: 'アムロジピン錠5mg',
+        drug_master_id: null,
+        drug_code: null,
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 14,
+      },
+    ]);
+    patientFindFirstMock.mockResolvedValue({
+      birth_date: new Date('1940-01-01T00:00:00.000Z'),
+      allergy_info: [
+        {
+          drug_name: 'アムロジピン',
+          category: 'drug',
+          severity: 'severe',
+        },
+      ],
+    });
+    // The org has exactly ONE custom allergy_cross rule and it is inactive.
+    // - The legacy managed-state probe (`alert_type: { in: [...] }`) would have seen an
+    //   inactive rule and disabled the whole allergy category.
+    // - The per-category custom-rule query filters `is_active: true`, so a real DB returns
+    //   nothing for the inactive rule (mocked as []).
+    drugAlertRuleFindManyMock.mockImplementation(async (args) => {
+      if (args?.where?.alert_type?.in) {
+        return [{ alert_type: 'allergy_cross', is_active: false }];
+      }
+      return [];
+    });
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    // Built-in allergy cross-check must still fire the critical alert — NOT [].
+    const allergyCross = alerts.filter((a) => a.type === 'allergy_cross');
+    expect(allergyCross).toEqual([
+      expect.objectContaining({
+        type: 'allergy_cross',
+        severity: 'critical',
+        details: expect.objectContaining({
+          allergy_drug: 'アムロジピン',
+          prescribed_drug: 'アムロジピン錠5mg',
+        }),
+      }),
+    ]);
+    // The X02 fail-close coverage notice (unresolved drug_code) must still emit.
+    expect(
+      alerts.some(
+        (a) => a.type === 'cds_data_quality' && a.details?.source === 'allergy_cross_check',
+      ),
+    ).toBe(true);
+  });
+
+  it('CDS-CATEGORY-DISABLE-COLLATERAL-001: still fires the built-in interaction check when the org has an inactive interaction custom rule', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_interaction_1',
+        drug_name: 'ワルファリンK錠1mg',
+        drug_master_id: null,
+        drug_code: '3332001',
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 14,
+      },
+    ]);
+    medicationProfileFindManyMock.mockResolvedValue([
+      {
+        id: 'profile_aspirin',
+        drug_name: 'アスピリン腸溶錠100mg',
+        drug_master_id: 'drug_med',
+      },
+    ]);
+    drugMasterFindManyMock.mockImplementation(async (args) => {
+      if (args?.where?.id) {
+        return [
+          {
+            id: 'drug_med',
+            yj_code: '3399001',
+            drug_name: 'アスピリン腸溶錠100mg',
+            tall_man_name: null,
+            therapeutic_category: '3399',
+            max_administration_days: null,
+            transitional_expiry_date: null,
+            is_narcotic: false,
+            is_psychotropic: false,
+            is_high_risk: false,
+            is_lasa_risk: false,
+            lasa_group_key: null,
+          },
+        ];
+      }
+      if (args?.where?.yj_code) {
+        return [
+          {
+            id: 'drug_line',
+            yj_code: '3332001',
+            drug_name: 'ワルファリンK錠1mg',
+            tall_man_name: null,
+            therapeutic_category: '3332',
+            max_administration_days: null,
+            transitional_expiry_date: null,
+            is_narcotic: false,
+            is_psychotropic: false,
+            is_high_risk: false,
+            is_lasa_risk: false,
+            lasa_group_key: null,
+          },
+        ];
+      }
+      return [];
+    });
+    drugInteractionFindManyMock.mockResolvedValue([
+      {
+        severity: 'contraindicated',
+        mechanism: '抗凝固作用増強',
+        clinical_effect: '出血リスク',
+        drug_a: { yj_code: '3332001' },
+        drug_b: { yj_code: '3399001' },
+      },
+    ]);
+    // One inactive interaction custom rule present in the org.
+    drugAlertRuleFindManyMock.mockImplementation(async (args) => {
+      if (args?.where?.alert_type?.in) {
+        return [{ alert_type: 'interaction', is_active: false }];
+      }
+      return [];
+    });
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'interaction',
+          severity: 'critical',
+          message: expect.stringContaining('併用禁忌'),
+        }),
+      ]),
+    );
+  });
+
+  it('CDS-CATEGORY-DISABLE-COLLATERAL-001: still emits the built-in renal X04 coverage notice when the org has an inactive renal_dose custom rule', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_renal_1',
+        drug_name: '腎機能調整薬錠',
+        drug_code: '8888001',
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 7,
+      },
+    ]);
+    // eGFR unrecorded → the built-in check must fail-close with a coverage notice.
+    patientLabObservationFindFirstMock.mockResolvedValue(null);
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_1',
+        yj_code: '8888001',
+        drug_name: '腎機能調整薬錠',
+        tall_man_name: null,
+        therapeutic_category: '9999',
+        max_administration_days: null,
+        transitional_expiry_date: null,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: false,
+        is_lasa_risk: false,
+        lasa_group_key: null,
+      },
+    ]);
+    drugPackageInsertFindManyMock.mockImplementation(async (args) => {
+      if (!args?.where?.dosage_adjustment_renal) return [];
+      return [
+        {
+          drug_master: { yj_code: '8888001', drug_name: '腎機能調整薬錠' },
+          dosage_adjustment_renal: [{ egfr_min: 30, egfr_max: 60, recommendation: '45では減量' }],
+        },
+      ];
+    });
+    // One inactive renal_dose custom rule present in the org.
+    drugAlertRuleFindManyMock.mockImplementation(async (args) => {
+      if (args?.where?.alert_type?.in) {
+        return [{ alert_type: 'renal_dose', is_active: false }];
+      }
+      return [];
+    });
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(
+      alerts.filter(
+        (alert) =>
+          alert.type === 'cds_data_quality' && alert.details?.source === 'renal_dose_coverage',
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        severity: 'warning',
+        details: expect.objectContaining({ source: 'renal_dose_coverage' }),
+      }),
+    ]);
+  });
+
   it('does not warn when the previous intake is not identical', async () => {
     prescriptionLineFindManyMock.mockResolvedValue([
       {

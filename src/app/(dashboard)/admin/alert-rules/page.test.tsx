@@ -412,7 +412,7 @@ describe('AlertRulesPage', () => {
     const workspaceClassName = screen.getByTestId('alert-rules-workspace').className;
     expect(workspaceClassName).toContain('[&_button]:!min-h-[44px]');
     expect(workspaceClassName).toContain('[&_input]:!min-h-[44px]');
-    expect(screen.getByRole('switch', { name: '有効化' }).className).toContain('!h-11');
+    expect(screen.getByRole('switch', { name: '強く表示' }).className).toContain('!h-11');
 
     // 共有 SelectTrigger の既定は sm で min-h-0/h-8 へ縮むため、ページ側の sm:min-h-[44px]
     // 上書きまで assert し、将来このデスクトップ 44px 契約が落ちる退行を捕捉する。

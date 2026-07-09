@@ -197,7 +197,7 @@ export default function AlertRulesPage() {
   const errorSummaryItems = collectFormErrorSummaryItems(errors, {
     alert_type: 'アラート種別',
     severity: '重要度',
-    is_active: '有効化',
+    is_active: '強く表示',
     message: '表示メッセージ',
     conditionText: '条件(JSON)',
   });
@@ -320,7 +320,7 @@ export default function AlertRulesPage() {
     <PageScaffold>
       <AdminPageHeader
         title="処方安全アラートルール"
-        description="相互作用、重複、高齢者 PIM などのルールを ON/OFF と条件 JSON で管理します。"
+        description="相互作用、重複、高齢者 PIM などの組み込み安全チェックは常に実行されます。ここでは追加ルールの表示強度（強く表示／標準）と条件 JSON を管理します。"
         shortcuts={getAdminAlertRulesShortcutLinks()}
         supportingContent={null}
       />
@@ -431,7 +431,7 @@ export default function AlertRulesPage() {
 
         <PageSection
           title={form.id ? 'ルールを編集' : 'ルールを登録'}
-          description="空条件 `{}` でも種別単位の ON/OFF ルールとして利用できます。"
+          description="空条件 `{}` でも種別単位の表示強度（強く表示／標準）ルールとして利用できます。組み込み安全チェック自体は常に実行されます。"
         >
           <form
             className="space-y-4"
@@ -503,10 +503,10 @@ export default function AlertRulesPage() {
             <div className="flex items-center justify-between rounded-lg border px-3 py-2">
               <div>
                 <Label htmlFor="alert-rule-active" className="text-sm font-medium">
-                  有効化
+                  強く表示
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  OFF にするとこのルールは実行対象から外れます
+                  ON でこのルールを強く表示、OFF で標準表示。組み込み安全チェックは常に実行されます。
                 </p>
               </div>
               <Controller

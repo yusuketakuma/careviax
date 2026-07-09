@@ -480,27 +480,6 @@ function matchesAlertRuleCondition(
   };
 }
 
-type ManagedAlertType =
-  | 'interaction'
-  | 'duplicate'
-  | 'allergy_cross'
-  | 'renal_dose'
-  | 'pim_elderly'
-  | 'high_risk'
-  | 'narcotic'
-  | 'max_days';
-
-const MANAGED_ALERT_TYPES: ManagedAlertType[] = [
-  'interaction',
-  'duplicate',
-  'allergy_cross',
-  'renal_dose',
-  'pim_elderly',
-  'high_risk',
-  'narcotic',
-  'max_days',
-];
-
 type DoPrescriptionRiskProfile = {
   key: string;
   label: string;
@@ -554,30 +533,6 @@ function scopedDrugAlertRuleWhere(
     ...where,
     OR: [{ org_id: orgId }, { org_id: null }],
   };
-}
-
-async function resolveManagedAlertTypeStates(orgId: string) {
-  const configuredRules = await prisma.drugAlertRule.findMany({
-    where: scopedDrugAlertRuleWhere(orgId, {
-      alert_type: {
-        in: MANAGED_ALERT_TYPES,
-      },
-    }),
-    select: {
-      alert_type: true,
-      is_active: true,
-    },
-  });
-
-  const states = new Map<ManagedAlertType, boolean>();
-  for (const alertType of MANAGED_ALERT_TYPES) {
-    const matchingRules = configuredRules.filter((rule) => rule.alert_type === alertType);
-    states.set(
-      alertType,
-      matchingRules.length === 0 ? true : matchingRules.some((rule) => rule.is_active),
-    );
-  }
-  return states;
 }
 
 function buildComparableLineKey(
@@ -2066,8 +2021,6 @@ export async function checkDispenseAlerts(
   cycleId: string,
   patientId: string,
 ): Promise<CdsAlert[]> {
-  const managedAlertStates = await resolveManagedAlertTypeStates(orgId);
-
   // Fetch prescription lines for this cycle
   const prescriptionLines = await prisma.prescriptionLine.findMany({
     where: {
@@ -2149,36 +2102,31 @@ export async function checkDispenseAlerts(
       ? [buildCdsIdentityUnresolvedAlert({ unresolvedPrescriptionLines, unresolvedCurrentMeds })]
       : [];
 
-  // Run all checks in parallel
+  // Run all checks in parallel.
+  //
+  // CDS-CATEGORY-DISABLE-COLLATERAL-001: 組み込みの安全チェック（患者 allergy_info
+  // クロスチェック、検査値ベースの renal/interaction 判定、及びそれらの fail-close
+  // カバレッジ通知）は常時有効にする。カスタム DrugAlertRule の `is_active` は
+  // 「そのルール自体の評価」だけをゲートするものであり（各チェック関数内の
+  // `is_active: true` フィルタで担保）、カテゴリ全体の組み込みチェックを止めては
+  // ならない。以前はカテゴリ enablement を `matchingRules.some(is_active)` で計算し
+  // ていたため、org がカスタムルールを1件 is_active=false にすると重篤アレルギー等の
+  // 組み込みチェックが無言で無効化される患者安全 false-negative が発生していた。
+  // カテゴリ単位の無効化を仕様として導入する場合は per-rule is_active とは別の明示的な
+  // org-level 設定が必要（現状そのモデルは存在しないため、常時有効が正）。
   const results = await Promise.all([
     Promise.resolve(prescriptionLineIdentityAlerts),
     Promise.resolve(identityUnresolvedAlerts),
-    managedAlertStates.get('interaction')
-      ? checkInteractions(cdsPrescriptionLines, currentMeds, masterByMedId)
-      : Promise.resolve([]),
-    managedAlertStates.get('duplicate')
-      ? checkDuplicates(cdsPrescriptionLines, currentMeds, masterByMedId)
-      : Promise.resolve([]),
-    managedAlertStates.get('max_days')
-      ? checkMaxDays(cdsPrescriptionLines, drugMasterMap)
-      : Promise.resolve([]),
+    checkInteractions(cdsPrescriptionLines, currentMeds, masterByMedId),
+    checkDuplicates(cdsPrescriptionLines, currentMeds, masterByMedId),
+    checkMaxDays(cdsPrescriptionLines, drugMasterMap),
     checkTransitionalExpiry(cdsPrescriptionLines, drugMasterMap),
-    managedAlertStates.get('allergy_cross')
-      ? checkAllergyReactions(orgId, cdsPrescriptionLines, patient, drugMasterMap)
-      : Promise.resolve([]),
-    managedAlertStates.get('narcotic')
-      ? checkNarcoticFlags(cdsPrescriptionLines, drugMasterMap)
-      : Promise.resolve([]),
-    managedAlertStates.get('high_risk')
-      ? checkHighRiskDrugs(orgId, cdsPrescriptionLines, drugMasterMap)
-      : Promise.resolve([]),
+    checkAllergyReactions(orgId, cdsPrescriptionLines, patient, drugMasterMap),
+    checkNarcoticFlags(cdsPrescriptionLines, drugMasterMap),
+    checkHighRiskDrugs(orgId, cdsPrescriptionLines, drugMasterMap),
     checkDoPrescriptionRisk(orgId, cycleId, patientId),
-    managedAlertStates.get('pim_elderly')
-      ? checkElderlyPIM(orgId, cdsPrescriptionLines, patient, drugMasterMap)
-      : Promise.resolve([]),
-    managedAlertStates.get('renal_dose')
-      ? checkRenalDoseAdjustment(cdsPrescriptionLines, patientId, orgId)
-      : Promise.resolve([]),
+    checkElderlyPIM(orgId, cdsPrescriptionLines, patient, drugMasterMap),
+    checkRenalDoseAdjustment(cdsPrescriptionLines, patientId, orgId),
     // Package insert audit — always enabled (regulatory information)
     checkPackageInsertAudit(cdsPrescriptionLines, patient),
     // PT-INR / K monitoring — always enabled
