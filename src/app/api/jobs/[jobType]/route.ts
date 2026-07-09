@@ -141,39 +141,46 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
     });
     if (jobType === 'bulk-export-artifact-cleanup') {
       return success({
-        jobType,
-        processedCount: result.processedCount,
-        scannedCount: result.scannedCount,
-        errorCount: result.errors?.length ?? 0,
+        data: {
+          jobType,
+          processedCount: result.processedCount,
+          scannedCount: result.scannedCount,
+          errorCount: result.errors?.length ?? 0,
+        },
       }) as NextResponse;
     }
     if (jobType === 'medication-history-bulk-export-drain') {
       return success({
-        jobType,
-        processedCount: result.processedCount,
-        errorCount: result.errors?.length ?? 0,
+        data: {
+          jobType,
+          processedCount: result.processedCount,
+          errorCount: result.errors?.length ?? 0,
+        },
       }) as NextResponse;
     }
     if (jobType === 'daily-case-risk-task-sync') {
       return success({
-        jobType,
-        processedCount: result.processedCount,
-        scannedCount: result.scannedCount,
-        upsertedTaskCount:
-          typeof result.upsertedTaskCount === 'number' ? result.upsertedTaskCount : 0,
-        resolvedStaleTaskCount:
-          typeof result.resolvedStaleTaskCount === 'number' ? result.resolvedStaleTaskCount : 0,
-        taskableFindingCount:
-          typeof result.taskableFindingCount === 'number' ? result.taskableFindingCount : 0,
-        skippedFindingCount:
-          typeof result.skippedFindingCount === 'number' ? result.skippedFindingCount : 0,
-        skippedCaseCount: typeof result.skippedCaseCount === 'number' ? result.skippedCaseCount : 0,
-        errorCount: typeof result.errorCount === 'number' ? result.errorCount : 0,
-        limited: result.limited === true,
-        limit: typeof result.limit === 'number' ? result.limit : undefined,
+        data: {
+          jobType,
+          processedCount: result.processedCount,
+          scannedCount: result.scannedCount,
+          upsertedTaskCount:
+            typeof result.upsertedTaskCount === 'number' ? result.upsertedTaskCount : 0,
+          resolvedStaleTaskCount:
+            typeof result.resolvedStaleTaskCount === 'number' ? result.resolvedStaleTaskCount : 0,
+          taskableFindingCount:
+            typeof result.taskableFindingCount === 'number' ? result.taskableFindingCount : 0,
+          skippedFindingCount:
+            typeof result.skippedFindingCount === 'number' ? result.skippedFindingCount : 0,
+          skippedCaseCount:
+            typeof result.skippedCaseCount === 'number' ? result.skippedCaseCount : 0,
+          errorCount: typeof result.errorCount === 'number' ? result.errorCount : 0,
+          limited: result.limited === true,
+          limit: typeof result.limit === 'number' ? result.limit : undefined,
+        },
       }) as NextResponse;
     }
-    return success({ jobType, ...result }) as NextResponse;
+    return success({ data: { jobType, ...result } }) as NextResponse;
   } catch (err) {
     logger.error(
       {

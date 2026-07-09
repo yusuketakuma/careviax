@@ -2163,7 +2163,9 @@ async function installFormularyRouteMocks(page: Page) {
 
   await page.route(apiPathPattern('/api/jobs/drug-master-freshness-check'), async (route) => {
     jobRequests.push(captureRouteRequest(route));
-    await fulfillJson(route, { jobType: 'drug-master-freshness-check', processedCount: 1 });
+    await fulfillJson(route, {
+      data: { jobType: 'drug-master-freshness-check', processedCount: 1 },
+    });
   });
 
   return { impactRequests, jobRequests };

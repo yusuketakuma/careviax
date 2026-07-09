@@ -338,7 +338,9 @@ describe('JobsDashboardContent', () => {
   it('reruns jobs through the row endpoint with org JSON headers and an empty body', async () => {
     const fetchMock = vi.fn(
       async () =>
-        new Response(JSON.stringify({ jobType: 'monthly', processedCount: 2 }), { status: 200 }),
+        new Response(JSON.stringify({ data: { jobType: 'monthly', processedCount: 2 } }), {
+          status: 200,
+        }),
     );
     vi.stubGlobal('fetch', fetchMock);
     useQueryMock.mockReturnValue({

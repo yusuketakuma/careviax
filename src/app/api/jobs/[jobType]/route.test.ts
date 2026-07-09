@@ -138,6 +138,14 @@ function createRequest(headers?: Record<string, string>) {
   });
 }
 
+async function expectJobSuccessData(response: Response, expected: Record<string, unknown>) {
+  const body = await response.json();
+  expect(body).toMatchObject({ data: expected });
+  expect(body).not.toHaveProperty('jobType');
+  expect(body).not.toHaveProperty('processedCount');
+  return body.data as Record<string, unknown>;
+}
+
 describe('/api/jobs/[jobType] POST', () => {
   const originalJobApiKey = process.env.JOB_API_KEY;
 
@@ -247,7 +255,7 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(checkMedicationDeadlinesMock).toHaveBeenCalledOnce();
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'daily-medication-check',
       processedCount: 3,
     });
@@ -333,7 +341,7 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(syncVisitSupportFeatureTasksMock).toHaveBeenCalledOnce();
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'daily-visit-support-sync',
       processedCount: 2,
     });
@@ -349,7 +357,7 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(checkPublicSubsidyExpiryMock).toHaveBeenCalledWith({ orgId: 'org_1' });
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'daily-public-subsidy-expiry',
       processedCount: 1,
     });
@@ -365,7 +373,18 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(syncCaseRiskCockpitRiskTasksMock).toHaveBeenCalledWith({ orgId: 'org_1' });
-    const bodyText = await response.text();
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        jobType: 'daily-case-risk-task-sync',
+        processedCount: 2,
+        scannedCount: 3,
+        upsertedTaskCount: 4,
+        resolvedStaleTaskCount: 1,
+      },
+    });
+    expect(body).not.toHaveProperty('jobType');
+    const bodyText = JSON.stringify(body);
     expect(bodyText).toContain('daily-case-risk-task-sync');
     expect(bodyText).toContain('"processedCount":2');
     expect(bodyText).toContain('"scannedCount":3');
@@ -411,7 +430,7 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(refreshSskDrugMasterMock).toHaveBeenCalledOnce();
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'drug-master-refresh',
       processedCount: 12,
     });
@@ -426,7 +445,7 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(refreshMhlwDrugReferencesMock).toHaveBeenCalledOnce();
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'drug-reference-refresh',
       processedCount: 120,
     });
@@ -441,7 +460,7 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(refreshAllFreeDrugMastersMock).toHaveBeenCalledOnce();
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'drug-master-auto-refresh',
       processedCount: 132,
       details: { ssk: 12, mhlw: 120 },
@@ -460,7 +479,7 @@ describe('/api/jobs/[jobType] POST', () => {
     expect(refreshMedicalInstitutionMasterMock).toHaveBeenCalledWith({
       targetOrgIds: ['org_1'],
     });
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'medical-institution-master-auto-refresh',
       processedCount: 2,
       scannedCount: 20,
@@ -490,7 +509,7 @@ describe('/api/jobs/[jobType] POST', () => {
     expect(refreshCareServiceOfficeMasterMock).toHaveBeenCalledWith({
       targetOrgIds: ['org_1'],
     });
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'care-service-office-master-auto-refresh',
       processedCount: 3,
       scannedCount: 30,
@@ -517,7 +536,7 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(refreshPmdaPackageInsertsDeltaMock).toHaveBeenCalledOnce();
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'pmda-package-insert-refresh',
       processedCount: 42,
     });
@@ -533,7 +552,7 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(drainMedicationHistoryBulkExportJobsMock).toHaveBeenCalledWith({ orgId: 'org_1' });
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'medication-history-bulk-export-drain',
       processedCount: 25,
     });
@@ -559,7 +578,12 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(cleanupExpiredBulkExportArtifactsMock).toHaveBeenCalledWith(undefined);
-    const payload = await response.json();
+    const payload = await expectJobSuccessData(response, {
+      jobType: 'bulk-export-artifact-cleanup',
+      processedCount: 3,
+      scannedCount: 12,
+      errorCount: 1,
+    });
     expect(payload).toMatchObject({
       jobType: 'bulk-export-artifact-cleanup',
       processedCount: 3,
@@ -579,7 +603,12 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(cleanupExpiredBulkExportArtifactsMock).toHaveBeenCalledWith({ orgId: 'org_1' });
-    const payload = await response.json();
+    const payload = await expectJobSuccessData(response, {
+      jobType: 'bulk-export-artifact-cleanup',
+      processedCount: 3,
+      scannedCount: 12,
+      errorCount: 1,
+    });
     expect(payload).toMatchObject({
       jobType: 'bulk-export-artifact-cleanup',
       processedCount: 3,
@@ -602,7 +631,11 @@ describe('/api/jobs/[jobType] POST', () => {
     });
 
     expect(response.status).toBe(200);
-    const payload = await response.json();
+    const payload = await expectJobSuccessData(response, {
+      jobType: 'medication-history-bulk-export-drain',
+      processedCount: 2,
+      errorCount: 1,
+    });
     expect(payload).toMatchObject({
       jobType: 'medication-history-bulk-export-drain',
       processedCount: 2,
@@ -621,7 +654,7 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(retryWebhookDeliveriesMock).toHaveBeenCalledWith(undefined);
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'webhook-delivery-retry',
       processedCount: 2,
       scannedCount: 2,
@@ -653,7 +686,7 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(checkVisitRecordRetentionMock).toHaveBeenCalledOnce();
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'daily-visit-record-retention',
       processedCount: 1,
     });
@@ -669,7 +702,7 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(checkPrescriptionOriginalRetentionMock).toHaveBeenCalledOnce();
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'daily-prescription-original-retention',
       processedCount: 1,
     });
@@ -688,7 +721,7 @@ describe('/api/jobs/[jobType] POST', () => {
       authType: 'auth',
       orgId: 'org_1',
     });
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'daily-pca-pump-rental-overdue',
       processedCount: 1,
     });
@@ -707,7 +740,7 @@ describe('/api/jobs/[jobType] POST', () => {
       authType: 'auth',
       orgId: 'org_1',
     });
-    await expect(response.json()).resolves.toMatchObject({
+    await expectJobSuccessData(response, {
       jobType: 'daily-pca-pump-return-inspection-pending',
       processedCount: 2,
     });

@@ -704,13 +704,12 @@ function DrugMasterOperationalContent({
         method: 'POST',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ jobType?: string; processedCount?: number; errors?: string[] }>(
-        res,
-        '一括更新の実行に失敗しました',
-      );
+      return readApiJson<{
+        data: { jobType?: string; processedCount?: number; errors?: string[] };
+      }>(res, '一括更新の実行に失敗しました');
     },
     onSuccess: async (result) => {
-      const processedCount = result.processedCount;
+      const processedCount = result.data.processedCount;
       toast.success(
         processedCount != null
           ? `フリーマスター一括更新が完了しました（${processedCount.toLocaleString()}件）`
@@ -741,15 +740,15 @@ function DrugMasterOperationalContent({
         method: 'POST',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ processedCount?: number; errors?: string[] }>(
+      return readApiJson<{ data: { processedCount?: number; errors?: string[] } }>(
         res,
         'マスター鮮度チェックに失敗しました',
       );
     },
     onSuccess: async (result) => {
       toast.success(
-        result.processedCount != null
-          ? `マスター鮮度チェックが完了しました（${result.processedCount.toLocaleString()}件）`
+        result.data.processedCount != null
+          ? `マスター鮮度チェックが完了しました（${result.data.processedCount.toLocaleString()}件）`
           : 'マスター鮮度チェックが完了しました',
       );
       await queryClient.invalidateQueries({ queryKey: ['drug-master-status'] });

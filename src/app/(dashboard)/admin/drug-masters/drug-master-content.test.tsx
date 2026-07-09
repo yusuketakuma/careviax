@@ -998,14 +998,14 @@ describe('DrugMasterContent', () => {
     }
   });
 
-  it('reads auto-refresh processedCount from the top-level job response', async () => {
+  it('reads auto-refresh processedCount from the current job data envelope', async () => {
     render(<DrugMasterContent />);
 
     confirmAutoRefreshAction();
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
-        jsonResponse({ jobType: 'drug-master-auto-refresh', processedCount: 7 }, 200),
+        jsonResponse({ data: { jobType: 'drug-master-auto-refresh', processedCount: 7 } }, 200),
       ),
     );
     try {
