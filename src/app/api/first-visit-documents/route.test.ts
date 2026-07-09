@@ -202,7 +202,17 @@ describe('/api/first-visit-documents', () => {
         }),
       );
       const body = await response.json();
+      expect(body).toMatchObject({
+        data: expect.arrayContaining([expect.objectContaining({ id: 'doc_1' })]),
+        meta: {
+          limit: 50,
+          has_more: false,
+          next_cursor: null,
+        },
+      });
       expect(body.data).toHaveLength(1);
+      expect(body).not.toHaveProperty('hasMore');
+      expect(body).not.toHaveProperty('nextCursor');
     });
 
     it('returns 200 with a valid case filter', async () => {

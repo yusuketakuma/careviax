@@ -174,7 +174,16 @@ async function authenticatedGET(req: NextRequest) {
       },
     });
 
-    return success(buildCursorPage(docs, limit, (doc) => doc.id));
+    const page = buildCursorPage(docs, limit, (doc) => doc.id);
+
+    return success({
+      data: page.data,
+      meta: {
+        limit,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+      },
+    });
   });
 }
 
