@@ -51,6 +51,78 @@
 
 ## 直近の作業
 
+- codex integration: shared offline conflict confirmation and exact-version overwrite parity.
+  - commit:
+    `db6903494 fix(offline-sync): add conflict diff confirmation dialog`.
+  - current task:
+    `/offline-sync` の二択不可逆競合解消を SSOT §5.7 の共通差分確認へ揃え、保持／破棄の表示、
+    pending/failure/cancel、IndexedDB discard、`POST /api/visit-records` exact-version overwrite を
+    frontend/backend 同時完了として固定する。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`, `src/components/ui/alert-dialog.tsx`,
+    `src/components/ui/button-variants.ts`, `src/components/ui/confirm-dialog.tsx` + tests,
+    offline-sync content/shared/tests, `src/lib/stores/sync-engine.ts` + tests,
+    `src/lib/validations/visit-record.ts`, and `src/app/api/visit-records/route.ts` + tests.
+  - files changed:
+    `docs/ui-ux-design-guidelines.md`, `src/components/ui/confirm-dialog.tsx`,
+    `src/components/ui/conflict-diff-dialog.tsx`,
+    `src/components/ui/conflict-diff-dialog.test.tsx`,
+    `src/app/(dashboard)/offline-sync/offline-sync-content.tsx`,
+    `src/app/(dashboard)/offline-sync/offline-sync-content.test.tsx`,
+    `src/app/api/visit-records/route.test.ts`, and this state file.
+  - bugs found / fixed:
+    The conflict screen used a bespoke inline confirmation that warned about irreversibility but did
+    not restate which clinical text/result would remain versus be lost at the final click. Its two
+    choices also had unequal warning strength. Shared `ConflictDiffDialog`, built as a thin
+    `ConfirmDialog` wrapper, now presents explicit keep/discard blocks for every field with equal
+    destructive confirmation. The comparison stacks on narrow screens instead of forcing a cramped
+    three-column table, and discarded content remains readable rather than struck through. Shared
+    optional ConfirmDialog action props keep both actions at 44px on desktop as well as mobile.
+    Irreversible confirmation no longer closes optimistically: it remains visible until mutation
+    success, blocks confirm/cancel/dismiss while pending, announces progress, and preserves a safe
+    inline retry message after failure. Screen-level tests pin server/local keep-discard reversal,
+    correct mutation choice, cancel-without-write, and failure retention.
+  - frontend/backend parity:
+    Choosing the server version intentionally performs only `discardSyncQueueItem`: the server is
+    already canonical, so the local encrypted queue item/draft is removed without an unnecessary API
+    write. Choosing the local version calls `overwriteVisitRecordConflict`, which rechecks the current
+    queue item, then posts `conflict_resolution=overwrite`, `existing_record_id`, and
+    `expected_version` to `/api/visit-records`. The existing backend requires visit permission,
+    org/schedule assignment and clinical finalization, matches the current record ID/version, and uses
+    guarded `updateMany` optimistic locking. New route tests prove exact-version success and sensitive
+    no-store 409/no write for a stale version; production backend code needed no change.
+  - security/privacy:
+    Final confirmation shows only the already authorized/decrypted local and server snapshots needed
+    for the operational decision. Provider errors and raw storage payloads are not persisted in the
+    inline alert. Stale server versions fail closed without a write, while the backend retains existing
+    auth, org/RLS, patient/schedule assignment, optimistic concurrency, audit, and no-store boundaries.
+    The server-choice local deletion remains intentionally irreversible and is now explicit at the
+    decision point.
+  - performance:
+    No request, polling, dependency, or query was added. Server-choice resolution avoids a redundant
+    network call. The local overwrite keeps the existing single preflight plus single POST path; the
+    responsive diff renders only the bounded conflict fields already held in memory.
+  - validation:
+    Focused Vitest passed 4 files / 112 tests:
+    `src/components/ui/confirm-dialog.test.tsx`,
+    `src/components/ui/conflict-diff-dialog.test.tsx`,
+    `src/app/(dashboard)/offline-sync/offline-sync-content.test.tsx`, and
+    `src/app/api/visit-records/route.test.ts`. Exact-path ESLint and Prettier passed for the owned
+    UI/API test paths and SSOT doc; `git diff --check` passed. Claude independent checker returned
+    APPROVE for the working tree. Full `pnpm typecheck` was attempted after the commit but is not
+    claimed green because concurrent peer P3-2 work currently leaves
+    `src/app/(dashboard)/select-mode/select-mode-content.tsx` with a JSX syntax error
+    (TS1005/TS2657). That path was not part of `db6903494` and was left untouched.
+  - UI/imagegen:
+    `imagegen` was intentionally omitted because this is a shared confirmation/state/accessibility
+    correction within the committed non-PHI visual direction, not a new screen concept.
+  - remaining / next action:
+    Re-run full `pnpm typecheck` once the peer P3-2 select-mode/select-site/clerk-support scaffold
+    slice is stabilized. Continue visit medication management, then schedule offline/day and print
+    families. Browser/mobile visual proof remains blocked by the missing compatible local
+    app/database runtime. No push, deploy, migration, production mutation, external send, cache
+    deletion, or destructive operation ran.
+
 - codex: visit-brief feedback access, resilient states, and readable interaction parity.
   - commit:
     `917e762d9 fix(visit-brief): align feedback UI and access controls`.
