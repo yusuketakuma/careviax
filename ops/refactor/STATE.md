@@ -51,6 +51,50 @@
 
 ## 直近の作業
 
+- codex: `(auth)/lockout` honest support-contact and unlock guidance alignment.
+  - current task:
+    ロックアウト画面に残っていた架空の電話番号・メールアドレス・固定30分表示を廃止し、
+    未認証画面で安全に参照できる公開support設定と、未設定時の正直な施設管理者案内へ揃える。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`, `docs/uiux-improvement-plan.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `node_modules/next/dist/docs/01-app/02-guides/environment-variables.md`,
+    `src/app/(auth)/login/page.tsx`, `src/lib/auth/config.ts`,
+    `src/server/services/cognito-auth.ts`, and the lockout files below.
+  - files changed:
+    `.env.example`, `src/app/(auth)/lockout/page.tsx`,
+    `src/app/(auth)/lockout/page.test.tsx`,
+    `src/app/(auth)/lockout/support-contact.ts`, and
+    `src/app/(auth)/lockout/support-contact.test.ts`.
+  - bugs found / fixed:
+    The screen fabricated `03-XXXX-XXXX`, a non-routable example email, office hours, and a
+    fixed 30-minute unlock estimate. It now reads optional build-time public support contact
+    values, trims blanks, renders accessible `tel:` / `mailto:` links only when configured,
+    and otherwise directs the user to their own facility administrator. The fallback no longer
+    promises a manual unlock UI or another backend capability that does not exist in this repo.
+    The existing Cognito/NextAuth error-to-lockout navigation remains unchanged.
+  - security/privacy:
+    `.env.example` explicitly marks the contact values as public-at-build-time and suitable only
+    for universally visible support details. No organization, user, credential, PHI, auth flow,
+    Cognito call, API route, or database boundary changed.
+  - performance:
+    Contact normalization runs once at module initialization and adds no request, polling, or
+    client state. No dependency or runtime data fetch was added.
+  - validation:
+    `pnpm vitest run 'src/app/(auth)/login/page.test.tsx' 'src/app/(auth)/lockout/page.test.tsx' 'src/app/(auth)/lockout/support-contact.test.ts' --reporter=dot --testTimeout=30000`
+    passed 3 files / 10 tests; exact-path ESLint passed; exact-path Prettier check passed;
+    `git diff --check` passed; and
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false --incremental false --skipLibCheck`
+    passed.
+  - UI/imagegen:
+    `imagegen` was intentionally omitted for this copy/configuration contract correction; it did
+    not reconstruct the screen layout, and the committed repo-wide PH-OS design reference remains
+    applicable.
+  - remaining / next action:
+    This auth slice is complete locally. Continue the patient prescription/history family with
+    matched UI states, API/auth inspection, and the SSOT 12px typography floor. No deploy,
+    production configuration change, Cognito mutation, migration, or production data operation ran.
+
 - codex: `P2-6` billing candidates export-preview false-zero prevention.
   - commit:
     `b7107b5a2 fix(billing): avoid false-zero export preview` and
