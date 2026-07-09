@@ -846,10 +846,13 @@ function DrugMasterOperationalContent({
           decision_note: payload.decision_note ?? null,
         }),
       });
-      return readApiJson<{
-        request: FormularyChangeRequestItem;
-        stock: PharmacyDrugStockConfig | null;
+      const body = await readApiJson<{
+        data: {
+          request: FormularyChangeRequestItem;
+          stock: PharmacyDrugStockConfig | null;
+        };
       }>(res, '採用品変更申請の決裁に失敗しました');
+      return body.data;
     },
     onSuccess: async (result) => {
       toast.success(

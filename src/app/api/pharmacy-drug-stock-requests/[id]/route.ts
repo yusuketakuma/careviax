@@ -165,7 +165,7 @@ export const PATCH = withAuthContext(
       return conflict('この申請はすでに処理済みです');
     }
 
-    return success({ request: result.request, stock: result.stock });
+    return success({ data: { request: result.request, stock: result.stock } });
   },
   { permission: 'canAdmin' },
 );

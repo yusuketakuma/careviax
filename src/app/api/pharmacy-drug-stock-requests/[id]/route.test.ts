@@ -83,8 +83,10 @@ describe('/api/pharmacy-drug-stock-requests/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      request: { id: 'request_1', status: 'approved' },
-      stock: { id: 'stock_1' },
+      data: {
+        request: { id: 'request_1', status: 'approved' },
+        stock: { id: 'stock_1' },
+      },
     });
     expect(prismaMock.pharmacyDrugStock.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -161,8 +163,10 @@ describe('/api/pharmacy-drug-stock-requests/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      request: { id: 'request_1', status: 'rejected' },
-      stock: null,
+      data: {
+        request: { id: 'request_1', status: 'rejected' },
+        stock: null,
+      },
     });
     expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith(

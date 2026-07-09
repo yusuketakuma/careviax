@@ -1369,7 +1369,7 @@ describe('DrugMasterContent', () => {
     vi.mocked(buildOrgJsonHeaders).mockReturnValue(jsonHeaders);
     vi.mocked(buildOrgHeaders).mockReturnValue(orgHeaders);
     const fetchMock = vi.fn(async () =>
-      jsonResponse({ request: { status: 'approved' }, data: {}, deleted: true }, 200),
+      jsonResponse({ data: { request: { status: 'approved' }, stock: null } }, 200),
     );
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
