@@ -33413,3 +33413,84 @@ has_more, next_cursor } })`. The route test asserts the `data + meta`
   - 検証で健全確認（起票不要）: rate-limit 網羅（Edge middleware global）、auth 抜けなし、PHI logger redaction、
     FE state color token 統一、icon aria-label 33/33、touch-target 44px encode、empty catch 0件。
   - gate: `plans:active:check` green、fixture 5/5、`api-response-shape` 109、`query-shape` 0。
+
+## 2026-07-09 API-CONTRACT-001CW — patients/check-duplicate success envelope
+
+- current task:
+  `API-CONTRACT-001` allowlist debt reduction focused on
+  `src/app/api/patients/check-duplicate/route.ts`.
+- files inspected:
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/patients/check-duplicate/route.ts`;
+  `src/app/api/patients/check-duplicate/route.test.ts`;
+  `src/components/features/patients/patient-form.tsx`;
+  `src/components/features/patients/patient-form.test.tsx`;
+  `src/app/api/__tests__/protected-get-routes.test.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`.
+- files changed:
+  `src/app/api/patients/check-duplicate/route.ts`;
+  `src/app/api/patients/check-duplicate/route.test.ts`;
+  `src/components/features/patients/patient-form.tsx`;
+  `src/components/features/patients/patient-form.test.tsx`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `GET /api/patients/check-duplicate` returned duplicate candidates at legacy
+  root `duplicates`, and the patient form reader still consumed that root
+  shape.
+- bugs fixed:
+  The duplicate-check success response now returns
+  `success({ data: { duplicates } })`. Patient form duplicate lookup unwraps
+  `payload.data?.duplicates`, and route/component tests assert the current
+  envelope. The 409 create-patient conflict `details.duplicates` contract was
+  intentionally left unchanged.
+- security risks found:
+  No new auth/authz or PHI exposure issue in this slice. The route already uses
+  visit permission, org-scoped duplicate detection, validation, and sensitive
+  no-store wrapping.
+- security risks reduced:
+  Removed one legacy public success root field from a patient lookup endpoint
+  without changing permission checks, query validation, org scoping, or
+  sanitized error handling.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this was a response contract cleanup. Duplicate detection query shape
+  and bounded `take: 10` behavior are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was API/frontend reader
+  contract work only, so image generation was not applicable.
+- Oracle note:
+  No Oracle/GPT-5.5 Pro consult was run. This was a bounded allowlist envelope
+  migration following the established local pattern, with focused tests and
+  contract gates available.
+- validation commands:
+  `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/patients/check-duplicate/route.ts src/app/api/patients/check-duplicate/route.test.ts src/components/features/patients/patient-form.tsx src/components/features/patients/patient-form.test.tsx`;
+  `pnpm vitest run src/app/api/patients/check-duplicate/route.test.ts src/components/features/patients/patient-form.test.tsx --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testNamePattern 'patients/check-duplicate GET' --testTimeout=30000`;
+  `pnpm api-response-shape:check`; `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/patients/check-duplicate/route.ts src/app/api/patients/check-duplicate/route.test.ts src/components/features/patients/patient-form.tsx src/components/features/patients/patient-form.test.tsx`;
+  `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/patients/check-duplicate/route.ts src/app/api/patients/check-duplicate/route.test.ts src/components/features/patients/patient-form.tsx src/components/features/patients/patient-form.test.tsx`;
+  `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json src/app/api/patients/check-duplicate/route.ts src/app/api/patients/check-duplicate/route.test.ts src/components/features/patients/patient-form.tsx src/components/features/patients/patient-form.test.tsx`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Focused route + patient form tests passed 2
+  files / 38 tests. Protected GET auth matrix for `patients/check-duplicate
+  GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
+  `api-response-shape:check` passed with 80 allowlisted violations and 0 new
+  violations. `plans:active:check` passed after syncing stale count references.
+  Scoped ESLint, scoped diff check, and typecheck passed.
+- commit:
+  Implementation, reader, tests, allowlist cleanup, and Plans/archive sync were
+  committed as `6e779a14c3b06a01d4c09f2db2ab646ccbbd2c22`
+  (`fix(api): envelope patient duplicate check response`). Push not performed.
+- remaining work:
+  `API-CONTRACT-001` remains Partial with 80 allowlisted violations. Next
+  allowlist head is `src/app/api/patients/route.ts` with four expected legacy
+  response shape violations. Existing unrelated dirty/untracked memory/docs and
+  `.codex`/`.harness-mem` files remain unstaged.
+- next action:
+  Commit this ledger update with only `ops/refactor/STATE.md` staged, then
+  continue the next allowlist cleanup from `src/app/api/patients/route.ts`
+  unless redirected.
