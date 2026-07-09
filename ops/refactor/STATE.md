@@ -52,6 +52,8 @@
 ## 直近の作業
 
 - codex: schedule calendar stale-state, safe-navigation, touch-target, and typography alignment.
+  - commit:
+    `6deda8a0d fix(schedules): harden calendar states and navigation`.
   - current task:
     `/schedules` 月カレンダーの主スケジュールと算定プレビューを独立した loading/error/stale
     状態へ揃え、患者/訪問導線、月移動、日詳細、7列内ラベルを安全かつ読みやすくする。
