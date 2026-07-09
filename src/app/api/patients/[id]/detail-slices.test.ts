@@ -232,7 +232,7 @@ const sliceRoutes = [
       communication_priority: { targets: [], warnings: [] },
     },
     expectedBody: {
-      visit_preparation: { blockers: [] },
+      data: { visit_preparation: { blockers: [] } },
     },
   },
 ] satisfies Array<{
@@ -660,7 +660,7 @@ describe('patient detail slice routes', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      visit_preparation: { blockers: [] },
+      data: { visit_preparation: { blockers: [] } },
     });
   });
 

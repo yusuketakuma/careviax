@@ -317,7 +317,7 @@ describe('PatientWorkflowPreviewCard', () => {
     const hostileId = 'pt/1?x=y#z';
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(buildPreviewData()));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ data: buildPreviewData() }));
     vi.stubGlobal('fetch', fetchMock);
     useOrgIdMock.mockReturnValue('org_1');
 
@@ -355,7 +355,7 @@ describe('PatientWorkflowPreviewCard', () => {
   it('routes the workflow-preview fetch through buildPatientWorkflowPreviewApiPath', async () => {
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(buildPreviewData()));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ data: buildPreviewData() }));
     vi.stubGlobal('fetch', fetchMock);
     useOrgIdMock.mockReturnValue('org_1');
 
@@ -425,7 +425,7 @@ describe('PatientWorkflowPreviewCard', () => {
   it.each(['.', '..'])(
     'fails closed for exact dot-segment patientId %p instead of normalizing the API path',
     async (dotId) => {
-      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(buildPreviewData()));
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ data: buildPreviewData() }));
       vi.stubGlobal('fetch', fetchMock);
       useOrgIdMock.mockReturnValue('org_1');
 

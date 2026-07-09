@@ -78,10 +78,11 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
       const response = await fetch(buildPatientWorkflowPreviewApiPath(patientId), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
-      return readApiJson<PatientWorkflowPreviewSnapshot>(
+      const payload = await readApiJson<{ data: PatientWorkflowPreviewSnapshot }>(
         response,
         'ワークフロープレビューの取得に失敗しました',
       );
+      return payload.data;
     },
   });
 
