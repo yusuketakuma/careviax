@@ -19,6 +19,7 @@ import {
 
 function createMockTx() {
   return {
+    $queryRaw: vi.fn().mockResolvedValue([{ first_value: BigInt(1) }]),
     clinicalExternalSystem: {
       upsert: vi.fn().mockResolvedValue({ id: 'external_system_1' }),
     },
@@ -34,7 +35,9 @@ function createMockTx() {
       upsert: vi.fn().mockResolvedValue({ id: 'fhir_cache_1' }),
     },
     clinicalSyncQueueItem: {
-      upsert: vi.fn().mockResolvedValue({ id: 'sync_queue_1' }),
+      upsert: vi.fn().mockResolvedValue({ id: 'sync_queue_1', display_id: null }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findFirst: vi.fn().mockResolvedValue(null),
     },
     clinicalProvenanceRecord: {
       create: vi.fn().mockResolvedValue({ id: 'provenance_1' }),
@@ -124,6 +127,7 @@ function serializeCalls(tx: MockTx): string {
     cacheUpdateMany: tx.clinicalFhirResourceCache.updateMany.mock.calls,
     cacheUpsert: tx.clinicalFhirResourceCache.upsert.mock.calls,
     queue: tx.clinicalSyncQueueItem.upsert.mock.calls,
+    queueDisplayIdFill: tx.clinicalSyncQueueItem.updateMany.mock.calls,
     provenance: tx.clinicalProvenanceRecord.create.mock.calls,
   });
 }
@@ -137,6 +141,7 @@ describe('importYreseClinicalWebhook', () => {
       externalSystemId: 'external_system_1',
       yreseClinicalEventId: 'yrese_event_1',
       queueItemId: 'sync_queue_1',
+      queueItemDisplayId: 'csq0000000001',
       importedResources: [
         {
           resourceType: ClinicalFhirResourceType.medication_request,
@@ -210,6 +215,7 @@ describe('importYreseClinicalWebhook', () => {
     );
     expect(tx.clinicalSyncQueueItem.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
+        select: { id: true, display_id: true },
         create: expect.objectContaining({
           status: ClinicalQueueStatus.pending,
           priority: 50,
@@ -217,6 +223,15 @@ describe('importYreseClinicalWebhook', () => {
         }),
       }),
     );
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.clinicalSyncQueueItem.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'sync_queue_1',
+        org_id: 'org_1',
+        display_id: null,
+      },
+      data: { display_id: 'csq0000000001' },
+    });
     expect(tx.clinicalProvenanceRecord.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -249,6 +264,24 @@ describe('importYreseClinicalWebhook', () => {
       }),
     );
     expect('update' in tx.yreseClinicalEvent).toBe(false);
+  });
+
+  it('reuses an existing sync queue display_id on idempotent queue upsert replay', async () => {
+    const tx = createMockTx();
+    tx.clinicalSyncQueueItem.upsert.mockResolvedValueOnce({
+      id: 'sync_queue_existing',
+      display_id: 'csq0000000042',
+    });
+
+    const result = await importWithMockTx(baseInput(), tx);
+
+    expect(result).toMatchObject({
+      queueItemId: 'sync_queue_existing',
+      queueItemDisplayId: 'csq0000000042',
+    });
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    expect(tx.clinicalSyncQueueItem.updateMany).not.toHaveBeenCalled();
+    expect(tx.clinicalSyncQueueItem.findFirst).not.toHaveBeenCalled();
   });
 
   it('does not persist raw FHIR payloads, patient names, medication text, dosage text, or identifier values', async () => {

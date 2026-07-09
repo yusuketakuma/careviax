@@ -14,6 +14,7 @@ import {
   Prisma as PrismaNamespace,
 } from '@prisma/client';
 import { type RequestAuthContext } from '@/lib/auth/request-context';
+import { allocateDisplayId } from '@/lib/db/display-id';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { FHIR_R4_VERSION, JP_CORE_VERSION } from '@/server/adapters/fhir';
@@ -55,6 +56,7 @@ const FHIR_RESOURCE_TYPE_MAP: Readonly<Record<string, ClinicalFhirResourceType>>
 
 type ClinicalImportTx = Pick<
   Prisma.TransactionClient,
+  | '$queryRaw'
   | 'clinicalExternalSystem'
   | 'clinicalExternalReference'
   | 'clinicalFhirResourceCache'
@@ -134,6 +136,7 @@ export interface ImportYreseClinicalWebhookResult {
   readonly externalSystemId: string;
   readonly yreseClinicalEventId: string;
   readonly queueItemId: string;
+  readonly queueItemDisplayId: string;
   readonly importedResources: readonly ImportedFhirResourceResult[];
 }
 
@@ -152,6 +155,11 @@ interface ParsedFhirResource {
   readonly normalizedSummary: Record<string, unknown>;
   readonly contentHash: string;
 }
+
+type QueueItemDisplayIdRow = {
+  readonly id: string;
+  readonly display_id: string | null;
+};
 
 function stableJson(value: unknown): string {
   return JSON.stringify(sortJsonValue(value));
@@ -662,6 +670,52 @@ async function createOrFindProvenance(args: {
   }
 }
 
+async function ensureQueueItemDisplayId(args: {
+  readonly tx: ClinicalImportTx;
+  readonly orgId: string;
+  readonly queueItem: QueueItemDisplayIdRow;
+}): Promise<QueueItemDisplayIdRow & { display_id: string }> {
+  if (args.queueItem.display_id) {
+    return { id: args.queueItem.id, display_id: args.queueItem.display_id };
+  }
+
+  const displayId = await allocateDisplayId(
+    args.tx as unknown as Prisma.TransactionClient,
+    'ClinicalSyncQueueItem',
+    args.orgId,
+  );
+  const filled = await args.tx.clinicalSyncQueueItem.updateMany({
+    where: {
+      id: args.queueItem.id,
+      org_id: args.orgId,
+      display_id: null,
+    },
+    data: { display_id: displayId },
+  });
+
+  if (filled.count === 1) {
+    return { id: args.queueItem.id, display_id: displayId };
+  }
+  if (filled.count !== 0) {
+    throw new Error('Clinical sync queue display_id fill updated an unexpected number of rows');
+  }
+
+  const current = await args.tx.clinicalSyncQueueItem.findFirst({
+    where: {
+      id: args.queueItem.id,
+      org_id: args.orgId,
+    },
+    select: {
+      id: true,
+      display_id: true,
+    },
+  });
+  if (!current?.display_id) {
+    throw new Error('Clinical sync queue display_id fill did not converge');
+  }
+  return { id: current.id, display_id: current.display_id };
+}
+
 async function upsertQueueItem(args: {
   readonly tx: ClinicalImportTx;
   readonly orgId: string;
@@ -672,7 +726,7 @@ async function upsertQueueItem(args: {
   readonly firstResource?: ImportedFhirResourceResult;
 }) {
   const operation = args.input.queue?.operation ?? `yrese.${args.input.webhook.eventType}.process`;
-  return args.tx.clinicalSyncQueueItem.upsert({
+  const queueItem = await args.tx.clinicalSyncQueueItem.upsert({
     where: {
       org_id_external_system_id_operation_idempotency_key_hash: {
         org_id: args.orgId,
@@ -719,7 +773,12 @@ async function upsertQueueItem(args: {
         payload_storage: 'hash_only',
       }),
     },
-    select: { id: true },
+    select: { id: true, display_id: true },
+  });
+  return ensureQueueItemDisplayId({
+    tx: args.tx,
+    orgId: args.orgId,
+    queueItem,
   });
 }
 
@@ -820,6 +879,7 @@ async function importWithinTransaction(
     externalSystemId: system.id,
     yreseClinicalEventId: event.id,
     queueItemId: queueItem.id,
+    queueItemDisplayId: queueItem.display_id,
     importedResources,
   };
 }
