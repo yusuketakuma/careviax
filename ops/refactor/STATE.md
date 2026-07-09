@@ -42,6 +42,9 @@
 ## 直近の作業
 
 - codex: `CI-GATE-V9-CONTRACTS-001` stale Plans queue cleanup.
+  - commit:
+    Plans cleanup and ledger evidence committed as `bc00e287f`
+    (`docs(plans): mark v9 contract ci gate complete`) and pushed to `origin/main`.
   - current task:
     `Plans.md` では Not started のままだった v9 contract CI gate を live workflow と guard
     fixture test に照合し、実装済みなら active queue から除外する。
