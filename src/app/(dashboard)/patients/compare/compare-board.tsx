@@ -34,7 +34,8 @@ async function fetchPatientOverview(orgId: string, patientId: string): Promise<P
   const res = await fetch(buildPatientApiPath(patientId, '/overview'), {
     headers: buildOrgHeaders(orgId),
   });
-  return readApiJson<PatientOverview>(res, '患者情報の取得に失敗しました');
+  const payload = await readApiJson<{ data: PatientOverview }>(res, '患者情報の取得に失敗しました');
+  return payload.data;
 }
 
 /** 止まっている理由の重大度ドット(色だけに依存しないよう sr-only で重大/注意を併記)。 */

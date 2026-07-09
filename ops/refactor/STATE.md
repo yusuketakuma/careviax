@@ -41,6 +41,97 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CP` patient overview response envelope cleanup.
+  - current task:
+    `GET /api/patients/:id/overview` の patient overview success response を legacy
+    raw patient overview root から `{ data: overview }` envelope へ移行し、dashboard
+    readers、route tests、response-shape allowlist、Plans / archive を同期する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/overview/route.ts`,
+    `src/app/api/patients/[id]/overview/route.test.ts`,
+    `src/app/api/patients/[id]/detail-slices.test.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `src/app/(dashboard)/patients/compare/compare-board.tsx`,
+    `src/app/(dashboard)/patients/compare/compare-board.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx`,
+    `Plans.md`, `docs/plans-archive.md`, and `ops/refactor/STATE.md`.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `ops/refactor/STATE.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/overview/route.ts`,
+    `src/app/api/patients/[id]/overview/route.test.ts`,
+    `src/app/api/patients/[id]/detail-slices.test.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/compare/compare-board.tsx`,
+    `src/app/(dashboard)/patients/compare/compare-board.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx`,
+    `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx`, and
+    `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx`.
+  - bugs found:
+    The patient overview route returned the patient overview object at the public
+    success response root, keeping one API response-shape allowlist entry alive.
+    Dashboard readers for patient workspace, compare board, collaboration, and edit
+    still consumed the legacy raw overview body.
+  - bugs fixed:
+    GET success now returns `success({ data: overview })`. Dashboard readers now read
+    `payload.data`, and targeted fixtures/assertions use the current envelope. The
+    stale allowlist entry was removed. Response-shape debt dropped from 88 to 87.
+  - security risks found:
+    No visit permission check, patient id validation, org/RLS scoped overview read,
+    PHI read audit behavior, no-store wrapper, not-found response, or sanitized
+    internal-error response changed.
+  - security risks reduced:
+    Removed patient overview fields from the response root and aligned readers to the
+    standardized success envelope.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. Only existing overview data
+    readers were adjusted to the `data` envelope, so image generation was not
+    applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration
+    directive and the repeated envelope-only local pattern. Validation covered route
+    and dashboard reader tests, contract ratchet, scoped lint/format, and full
+    typecheck.
+  - validation commands:
+    `pnpm vitest run 'src/app/api/patients/[id]/overview/route.test.ts' --reporter=dot`;
+    `pnpm vitest run 'src/app/api/patients/[id]/detail-slices.test.ts' --reporter=dot`;
+    `pnpm vitest run 'src/app/(dashboard)/patients/compare/compare-board.test.tsx' 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/overview/route.ts' 'src/app/api/patients/[id]/overview/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/compare/compare-board.tsx' 'src/app/(dashboard)/patients/compare/compare-board.test.tsx' 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.tsx' 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/overview/route.ts' 'src/app/api/patients/[id]/overview/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/compare/compare-board.tsx' 'src/app/(dashboard)/patients/compare/compare-board.test.tsx' 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.tsx' 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/overview/route.ts' 'src/app/api/patients/[id]/overview/route.test.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/compare/compare-board.tsx' 'src/app/(dashboard)/patients/compare/compare-board.test.tsx' 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.tsx' 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Patient overview route tests passed 1 file / 4 tests. Patient detail slice tests
+    initially exposed one stale table-driven raw overview body expectation, which was
+    fixed; rerun passed 1 file / 56 tests. Dashboard reader tests passed 3 files / 20
+    tests, and card workspace tests passed 1 file / 94 tests.
+    `api-response-shape:check` passed with 87 allowlisted violations and 0 new
+    violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier check,
+    scoped diff check, and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 87 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patients/[id]/prescriptions/route.ts`.
+  - next action:
+    Commit this patient overview envelope slice with explicit owned paths only, then
+    continue allowlist debt burn-down from the next allowlist head.
+
 - codex: `API-CONTRACT-001CO` patient labs collection create response envelope cleanup.
   - current task:
     `POST /api/patients/:id/labs` の patient lab observation create success response を

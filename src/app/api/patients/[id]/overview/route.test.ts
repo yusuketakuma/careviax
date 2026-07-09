@@ -111,7 +111,7 @@ describe('GET /api/patients/[id]/overview PHI read audit', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ id: 'patient_1' });
+    await expect(response.json()).resolves.toMatchObject({ data: { id: 'patient_1' } });
   });
 
   it('does not record an audit when the patient is not found', async () => {

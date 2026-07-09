@@ -96,7 +96,7 @@ const sliceRoutes = [
     get: overviewGet,
     serviceMock: getPatientOverviewMock,
     successData: { id: 'patient_1', name: '患者A' },
-    expectedBody: { id: 'patient_1' },
+    expectedBody: { data: { id: 'patient_1' } },
   },
   {
     name: 'visits',
@@ -410,7 +410,7 @@ describe('patient detail slice routes', () => {
     );
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({ id: 'patient_1' });
+    await expect(response.json()).resolves.toMatchObject({ data: { id: 'patient_1' } });
   });
 
   it('returns no-store for invalid patient overview ids', async () => {

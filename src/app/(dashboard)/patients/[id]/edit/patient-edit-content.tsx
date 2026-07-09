@@ -210,7 +210,11 @@ export function PatientEditContent({ patientId }: { patientId: string }) {
       const response = await fetch(buildPatientApiPath(patientId, '/overview'), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
-      return readApiJson<PatientOverview>(response, '患者情報の取得に失敗しました');
+      const payload = await readApiJson<{ data: PatientOverview }>(
+        response,
+        '患者情報の取得に失敗しました',
+      );
+      return payload.data;
     },
     enabled: Boolean(orgId),
     refetchOnReconnect: false,

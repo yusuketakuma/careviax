@@ -28,7 +28,7 @@ const authenticatedGET = withAuthContext(
     // PHI 閲覧監査（3省2GL アクセス記録）。ベストエフォート、await しない。
     recordPhiReadAuditForRequest(ctx, { patientId: id, view: 'patient_overview' });
 
-    return success(overview);
+    return success({ data: overview });
   },
   {
     permission: 'canVisit',

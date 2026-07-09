@@ -79,7 +79,7 @@ describe('CompareBoard', () => {
       return queries.map(() => ({ data: undefined, isLoading: true, error: null }));
     });
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(overview));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: overview }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {

@@ -4842,8 +4842,10 @@ export function CardWorkspace({
       const res = await fetch(buildPatientApiPath(patientId, '/overview'), {
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) throw new Error('患者情報の取得に失敗しました');
-      return res.json();
+      const payload = await readApiJson<{ data: PatientOverview }>(res, {
+        fallbackMessage: '患者情報の取得に失敗しました',
+      });
+      return payload.data;
     },
     enabled: Boolean(orgId),
     initialData: initialPatient ?? undefined,

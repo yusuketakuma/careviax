@@ -191,7 +191,9 @@ describe('CollaborationContent realtime presence policy', () => {
       return { isPending: false, mutate: vi.fn() };
     });
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ name: '田中 一郎' }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ data: { name: '田中 一郎' } }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -256,7 +258,9 @@ describe('CollaborationContent realtime presence policy', () => {
       },
     );
     vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__/overview');
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ name: '田中 一郎' }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ data: { name: '田中 一郎' } }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {

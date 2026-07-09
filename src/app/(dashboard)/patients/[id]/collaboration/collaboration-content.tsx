@@ -74,7 +74,11 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
       const res = await fetch(buildPatientApiPath(patientId, '/overview'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PatientOverview>(res, '患者情報の取得に失敗しました');
+      const payload = await readApiJson<{ data: PatientOverview }>(
+        res,
+        '患者情報の取得に失敗しました',
+      );
+      return payload.data;
     },
     enabled: Boolean(orgId),
   });
