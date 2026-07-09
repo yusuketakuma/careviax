@@ -41,6 +41,80 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001BW` partner visit record review response envelope cleanup.
+  - current task:
+    `POST /api/partner-visit-records/[id]/review` の confirm/return success response を
+    legacy root partner visit record payload から `{ data: ... }` envelope へ移行し、
+    response-shape allowlist debt を 108 から 107 へ減らす。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `Plans.md`,
+    `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/partner-visit-records/[id]/review/route.ts`,
+    `src/app/api/partner-visit-records/[id]/review/route.test.ts`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`,
+    `src/lib/api/response.ts`, and this ledger.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/partner-visit-records/[id]/review/route.ts`,
+    `src/app/api/partner-visit-records/[id]/review/route.test.ts`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`,
+    and this ledger.
+  - bugs found:
+    The partner visit record review route returned sanitized partner visit record fields at
+    the public success response root after confirm/return. This kept one legacy response-shape
+    allowlist entry alive and required the workflow test fixture to accept the old root shape.
+  - bugs fixed:
+    Confirm/return success now returns `success({ data: partnerVisitRecord })`. Route tests
+    assert the `data` envelope for representative confirm and return success paths while
+    preserving no-store, OCC, notification, audit, and sanitized error coverage. The workflow
+    UI does not consume this success body; its fixture was updated to the current envelope.
+    The response-shape allowlist entry for this route was removed and measured debt is 107.
+  - security risks found:
+    No auth permission, org/RLS scope, optimistic concurrency, status transition, claim
+    cooperation note upsert, notification metadata, audit payload, no-store wrapper, or
+    error response changed. No secrets or raw PHI/PII were sent to Oracle; only source/tests
+    were attached.
+  - security risks reduced:
+    Removed PHI-adjacent partner visit record fields from the success response root and kept
+    the public mutation response aligned with the explicit `data` envelope contract.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. Only a test fixture for an unused mutation
+    response body changed, so image generation was not applicable.
+  - Oracle note:
+    Ran Oracle dry-run and browser consult session `api-contract-partner-review` with route,
+    route test, workflow fixture test, and response helper. The session completed and saved
+    `/Users/yusuke/.oracle/sessions/api-contract-partner-review/artifacts/transcript.md`,
+    but the answer was only a non-actionable preface and did not explicitly confirm GitHub
+    access. No concrete blocker or code change was identified; local validation below is the
+    basis for committing.
+  - validation commands:
+    `pnpm vitest run 'src/app/api/partner-visit-records/[id]/review/route.test.ts' --reporter=dot`;
+    `pnpm vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/partner-visit-records/[id]/review/route.ts' 'src/app/api/partner-visit-records/[id]/review/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/partner-visit-records/[id]/review/route.ts' 'src/app/api/partner-visit-records/[id]/review/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/partner-visit-records/[id]/review/route.ts' 'src/app/api/partner-visit-records/[id]/review/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Route test passed 1 file / 8 tests. Pharmacy cooperation workflow component test passed
+    1 file / 31 tests. `api-response-shape:check` passed with 107 allowlisted violations
+    and 0 new violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier
+    check, scoped diff check, and full typecheck passed.
+  - commit:
+    Pending explicit scoped commit for this implementation slice.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 107 allowlisted response-shape violations.
+    Existing unrelated dirty/untracked memory/config/docs files remain unstaged.
+  - next action:
+    Commit and push this implementation slice, then record the commit hash/push result in
+    this ledger before selecting the next allowlist head.
+
 - codex: `API-CONTRACT-001BV` physician report draft response envelope cleanup.
   - current task:
     `POST /api/partner-visit-records/[id]/physician-report-draft` の success response を

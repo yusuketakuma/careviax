@@ -173,6 +173,16 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: rawRecordId,
+        status: 'confirmed',
+        has_record_content: false,
+        attachment_count: 0,
+        has_returned_reason: false,
+        has_base_confirmation_snapshot: false,
+      },
+    });
     expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'visit_request_1',
@@ -344,6 +354,12 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'partner_visit_record_1',
+        status: 'returned',
+      },
+    });
     expect(partnerVisitRecordUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

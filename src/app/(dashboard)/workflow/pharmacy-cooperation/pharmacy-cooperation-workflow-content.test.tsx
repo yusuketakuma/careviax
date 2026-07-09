@@ -625,7 +625,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
         }
         if (url === '/api/partner-visit-records/partner_record_submitted/review') {
           return new Response(
-            JSON.stringify({ id: 'partner_record_submitted', status: 'returned' }),
+            JSON.stringify({ data: { id: 'partner_record_submitted', status: 'returned' } }),
             {
               status: 200,
             },

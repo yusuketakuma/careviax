@@ -347,7 +347,7 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
     }
 
     if ('response' in result) return result.response ?? validationError('入力値が不正です');
-    return success(result.partnerVisitRecord);
+    return success({ data: result.partnerVisitRecord });
   },
   {
     permission: 'canManagePatientSharing',
