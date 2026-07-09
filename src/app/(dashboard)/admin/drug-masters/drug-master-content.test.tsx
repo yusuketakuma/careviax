@@ -1499,28 +1499,30 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
   // `requestOverwrite`) is stamped by the PRODUCTION mutationFn, so tests run the real captured
   // mutationFn (R3) instead of hand-injecting those fields.
   const makeTemplateServerResponse = () => ({
-    itemCount: 12,
-    appliedCount: 0,
-    skippedCount: 0,
-    overwrite: false,
-    dryRun: true,
-    preview: {
-      summary: {
-        item_count: 12,
-        create_count: 3,
-        update_count: 1,
-        skip_existing_count: 0,
-        apply_count: 4,
-      },
-      rows: [
-        {
-          action: 'create' as const,
-          drug_master_id: 'drug_1',
-          reorder_point: null,
-          preferred_generic_id: null,
-          drug_master: { id: 'drug_1', yj_code: '111111111111', drug_name: 'テンプレ薬' },
+    data: {
+      itemCount: 12,
+      appliedCount: 0,
+      skippedCount: 0,
+      overwrite: false,
+      dryRun: true,
+      preview: {
+        summary: {
+          item_count: 12,
+          create_count: 3,
+          update_count: 1,
+          skip_existing_count: 0,
+          apply_count: 4,
         },
-      ],
+        rows: [
+          {
+            action: 'create' as const,
+            drug_master_id: 'drug_1',
+            reorder_point: null,
+            preferred_generic_id: null,
+            drug_master: { id: 'drug_1', yj_code: '111111111111', drug_name: 'テンプレ薬' },
+          },
+        ],
+      },
     },
   });
 

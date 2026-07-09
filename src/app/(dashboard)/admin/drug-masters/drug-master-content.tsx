@@ -1070,12 +1070,12 @@ function DrugMasterOperationalContent({
           dry_run: dryRun,
         }),
       });
-      const json = await readApiJson<FormularyTemplatePreviewResponse>(
+      const json = await readApiJson<{ data: FormularyTemplatePreviewResponse }>(
         res,
         '採用品テンプレートの適用に失敗しました',
       );
       return {
-        ...json,
+        ...json.data,
         requestTargetSiteId,
         requestTemplateId,
         requestOverwrite,

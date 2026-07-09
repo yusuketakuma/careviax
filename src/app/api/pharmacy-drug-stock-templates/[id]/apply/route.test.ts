@@ -100,18 +100,20 @@ describe('/api/pharmacy-drug-stock-templates/[id]/apply', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      itemCount: 2,
-      invalidItemCount: 0,
-      appliedCount: 1,
-      skippedCount: 1,
-      overwrite: false,
-      dryRun: false,
-      preview: {
-        summary: {
-          item_count: 2,
-          create_count: 1,
-          skip_existing_count: 1,
-          apply_count: 1,
+      data: {
+        itemCount: 2,
+        invalidItemCount: 0,
+        appliedCount: 1,
+        skippedCount: 1,
+        overwrite: false,
+        dryRun: false,
+        preview: {
+          summary: {
+            item_count: 2,
+            create_count: 1,
+            skip_existing_count: 1,
+            apply_count: 1,
+          },
         },
       },
     });
@@ -187,34 +189,36 @@ describe('/api/pharmacy-drug-stock-templates/[id]/apply', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      itemCount: 2,
-      invalidItemCount: 0,
-      appliedCount: 0,
-      skippedCount: 1,
-      overwrite: false,
-      dryRun: true,
-      preview: {
-        summary: {
-          item_count: 2,
-          source_item_count: 2,
-          invalid_item_count: 0,
-          create_count: 1,
-          update_count: 0,
-          skip_existing_count: 1,
-          apply_count: 1,
+      data: {
+        itemCount: 2,
+        invalidItemCount: 0,
+        appliedCount: 0,
+        skippedCount: 1,
+        overwrite: false,
+        dryRun: true,
+        preview: {
+          summary: {
+            item_count: 2,
+            source_item_count: 2,
+            invalid_item_count: 0,
+            create_count: 1,
+            update_count: 0,
+            skip_existing_count: 1,
+            apply_count: 1,
+          },
+          rows: [
+            {
+              action: 'create',
+              drug_master_id: 'drug_new',
+              drug_master: { yj_code: '111111111111', drug_name: '新規薬' },
+            },
+            {
+              action: 'skip_existing',
+              drug_master_id: 'drug_existing',
+              drug_master: { yj_code: '222222222222', drug_name: '既存薬' },
+            },
+          ],
         },
-        rows: [
-          {
-            action: 'create',
-            drug_master_id: 'drug_new',
-            drug_master: { yj_code: '111111111111', drug_name: '新規薬' },
-          },
-          {
-            action: 'skip_existing',
-            drug_master_id: 'drug_existing',
-            drug_master: { yj_code: '222222222222', drug_name: '既存薬' },
-          },
-        ],
       },
     });
     expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
@@ -256,28 +260,30 @@ describe('/api/pharmacy-drug-stock-templates/[id]/apply', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      itemCount: 1,
-      sourceItemCount: 5,
-      invalidItemCount: 4,
-      appliedCount: 0,
-      skippedCount: 0,
-      preview: {
-        summary: {
-          item_count: 1,
-          source_item_count: 5,
-          invalid_item_count: 4,
-          create_count: 1,
-          apply_count: 1,
-        },
-        rows: [
-          {
-            action: 'create',
-            drug_master_id: 'drug_valid',
-            reorder_point: 8,
-            preferred_generic_id: null,
-            drug_master: { drug_name: '有効薬' },
+      data: {
+        itemCount: 1,
+        sourceItemCount: 5,
+        invalidItemCount: 4,
+        appliedCount: 0,
+        skippedCount: 0,
+        preview: {
+          summary: {
+            item_count: 1,
+            source_item_count: 5,
+            invalid_item_count: 4,
+            create_count: 1,
+            apply_count: 1,
           },
-        ],
+          rows: [
+            {
+              action: 'create',
+              drug_master_id: 'drug_valid',
+              reorder_point: 8,
+              preferred_generic_id: null,
+              drug_master: { drug_name: '有効薬' },
+            },
+          ],
+        },
       },
     });
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
@@ -322,23 +328,25 @@ describe('/api/pharmacy-drug-stock-templates/[id]/apply', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      itemCount: 1,
-      sourceItemCount: 2,
-      invalidItemCount: 1,
-      missingDrugMasterIds: ['drug_missing'],
-      preview: {
-        summary: {
-          item_count: 1,
-          source_item_count: 2,
-          invalid_item_count: 1,
-        },
-        rows: [
-          {
-            action: 'create',
-            drug_master_id: 'drug_valid',
-            drug_master: { drug_name: '有効薬' },
+      data: {
+        itemCount: 1,
+        sourceItemCount: 2,
+        invalidItemCount: 1,
+        missingDrugMasterIds: ['drug_missing'],
+        preview: {
+          summary: {
+            item_count: 1,
+            source_item_count: 2,
+            invalid_item_count: 1,
           },
-        ],
+          rows: [
+            {
+              action: 'create',
+              drug_master_id: 'drug_valid',
+              drug_master: { drug_name: '有効薬' },
+            },
+          ],
+        },
       },
     });
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
@@ -377,18 +385,20 @@ describe('/api/pharmacy-drug-stock-templates/[id]/apply', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      itemCount: 0,
-      sourceItemCount: 1,
-      invalidItemCount: 1,
-      invalidPreferredGenericIds: ['generic_missing'],
-      preview: {
-        summary: {
-          item_count: 0,
-          source_item_count: 1,
-          invalid_item_count: 1,
-          apply_count: 0,
+      data: {
+        itemCount: 0,
+        sourceItemCount: 1,
+        invalidItemCount: 1,
+        invalidPreferredGenericIds: ['generic_missing'],
+        preview: {
+          summary: {
+            item_count: 0,
+            source_item_count: 1,
+            invalid_item_count: 1,
+            apply_count: 0,
+          },
+          rows: [],
         },
-        rows: [],
       },
     });
     expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();

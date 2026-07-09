@@ -226,18 +226,20 @@ export const POST = withAuthContext(
 
     if (parsed.data.dry_run) {
       return success({
-        template: { id: template.id, name: template.name },
-        targetSite,
-        itemCount: validItems.length,
-        sourceItemCount,
-        invalidItemCount: totalInvalidItemCount,
-        ...(missingDrugMasterIds.length ? { missingDrugMasterIds } : {}),
-        ...(invalidPreferredGenericIds.length ? { invalidPreferredGenericIds } : {}),
-        appliedCount: 0,
-        skippedCount: validItems.length - preview.summary.apply_count,
-        overwrite: parsed.data.overwrite,
-        dryRun: true,
-        preview,
+        data: {
+          template: { id: template.id, name: template.name },
+          targetSite,
+          itemCount: validItems.length,
+          sourceItemCount,
+          invalidItemCount: totalInvalidItemCount,
+          ...(missingDrugMasterIds.length ? { missingDrugMasterIds } : {}),
+          ...(invalidPreferredGenericIds.length ? { invalidPreferredGenericIds } : {}),
+          appliedCount: 0,
+          skippedCount: validItems.length - preview.summary.apply_count,
+          overwrite: parsed.data.overwrite,
+          dryRun: true,
+          preview,
+        },
       });
     }
 
@@ -296,16 +298,18 @@ export const POST = withAuthContext(
     });
 
     return success({
-      template: { id: template.id, name: template.name },
-      targetSite,
-      itemCount: validItems.length,
-      sourceItemCount,
-      invalidItemCount: totalInvalidItemCount,
-      appliedCount,
-      skippedCount: validItems.length - appliedCount,
-      overwrite: parsed.data.overwrite,
-      dryRun: false,
-      preview,
+      data: {
+        template: { id: template.id, name: template.name },
+        targetSite,
+        itemCount: validItems.length,
+        sourceItemCount,
+        invalidItemCount: totalInvalidItemCount,
+        appliedCount,
+        skippedCount: validItems.length - appliedCount,
+        overwrite: parsed.data.overwrite,
+        dryRun: false,
+        preview,
+      },
     });
   },
   { permission: 'canAdmin' },
