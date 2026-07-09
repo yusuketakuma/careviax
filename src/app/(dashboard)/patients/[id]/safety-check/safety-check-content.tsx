@@ -356,7 +356,11 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
       const response = await fetch(buildPatientApiPath(patientId), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PatientSummaryResponse>(response, '患者情報の取得に失敗しました');
+      const payload = await readApiJson<{ data: PatientSummaryResponse }>(
+        response,
+        '患者情報の取得に失敗しました',
+      );
+      return payload.data;
     },
     enabled: !!orgId,
   });

@@ -116,7 +116,7 @@ describe('PatientVisitRecordsPrintPage', () => {
 
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve(patientSnapshot),
+      json: () => Promise.resolve({ data: patientSnapshot }),
     } as unknown as Response);
     vi.stubGlobal('fetch', fetchMock);
 
@@ -244,7 +244,7 @@ describe('PatientVisitRecordsPrintPage', () => {
 
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve(patientSnapshot),
+      json: () => Promise.resolve({ data: patientSnapshot }),
     } as unknown as Response);
     vi.stubGlobal('fetch', fetchMock);
     vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__');

@@ -662,11 +662,12 @@ export function PrescriptionIntakeForm() {
   const { data: selectedPatientData } = useQuery({
     queryKey: ['selected-patient', orgId, selectedPatientId],
     queryFn: async () => {
-      const patient = await fetchOrgJson<SelectedPatientDetail>({
+      const payload = await fetchOrgJson<{ data: SelectedPatientDetail }>({
         url: buildSelectedPatientApiUrl(selectedPatientId),
         orgId,
         errorMessage: '患者情報の取得に失敗しました',
       });
+      const patient = payload.data;
       return {
         id: patient.id,
         name: patient.name,

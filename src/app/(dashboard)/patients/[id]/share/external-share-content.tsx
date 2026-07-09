@@ -236,17 +236,18 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         cache: 'no-store',
       });
 
-      const payload = await readApiJson<ExternalShareOverview>(
+      const payload = await readApiJson<{ data: ExternalShareOverview }>(
         response,
         '共有状況を取得できませんでした',
       );
+      const overview = payload.data;
       return {
-        name: payload.name ?? null,
-        external_shares: payload.external_shares ?? [],
-        self_reports: payload.self_reports ?? [],
-        current_medications: payload.current_medications ?? [],
-        visit_schedules: payload.visit_schedules ?? [],
-        care_reports: payload.care_reports ?? [],
+        name: overview.name ?? null,
+        external_shares: overview.external_shares ?? [],
+        self_reports: overview.self_reports ?? [],
+        current_medications: overview.current_medications ?? [],
+        visit_schedules: overview.visit_schedules ?? [],
+        care_reports: overview.care_reports ?? [],
       };
     },
   });

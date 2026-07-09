@@ -127,7 +127,8 @@ export default function PatientVisitRecordsPrintPage() {
         cache: 'no-store',
       });
       if (!response.ok) throw new Error('患者情報を取得できませんでした');
-      return response.json();
+      const payload = (await response.json()) as { data: PatientResponse };
+      return payload.data;
     },
   });
 

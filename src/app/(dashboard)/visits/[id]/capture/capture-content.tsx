@@ -83,7 +83,11 @@ export function EvidenceCaptureContent({
         const patientId = pickVisitPatientId(record);
         if (patientId) {
           const patientRes = await fetch(buildPatientApiPath(patientId), { headers });
-          const patient = patientRes.ok ? await patientRes.json().catch(() => null) : null;
+          const patientPayload = patientRes.ok ? await patientRes.json().catch(() => null) : null;
+          const patient =
+            patientPayload && typeof patientPayload === 'object' && 'data' in patientPayload
+              ? patientPayload.data
+              : patientPayload;
           const patientName = typeof patient?.name === 'string' ? patient.name : null;
           return {
             patientId,

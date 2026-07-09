@@ -269,7 +269,7 @@ describe('ManagementPlanPrintPage', () => {
       return { data: undefined, isLoading: true, error: null };
     });
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(okJson(patientSnapshot));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(okJson({ data: patientSnapshot }));
     vi.stubGlobal('fetch', fetchMock);
     vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__');
 

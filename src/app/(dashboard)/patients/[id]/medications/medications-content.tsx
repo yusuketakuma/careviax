@@ -707,13 +707,16 @@ export function MedicationsContent({
       const response = await fetch(buildPatientApiPath(patientId), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{
-        name: string;
-        name_kana: string;
-        birth_date: string;
-        gender: string;
-        allergy_info: string[] | null;
+      const payload = await readApiJson<{
+        data: {
+          name: string;
+          name_kana: string;
+          birth_date: string;
+          gender: string;
+          allergy_info: string[] | null;
+        };
       }>(response, '患者情報の取得に失敗しました');
+      return payload.data;
     },
     enabled: !!orgId && !hasPatientContext,
   });

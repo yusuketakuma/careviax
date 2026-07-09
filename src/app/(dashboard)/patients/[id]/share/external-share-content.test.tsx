@@ -176,12 +176,14 @@ describe('ExternalShareContent', () => {
       if (url.startsWith('/api/patients/')) {
         return new Response(
           JSON.stringify({
-            name: '佐藤 花子',
-            external_shares: [],
-            self_reports: [],
-            current_medications: [],
-            visit_schedules: [],
-            care_reports: [],
+            data: {
+              name: '佐藤 花子',
+              external_shares: [],
+              self_reports: [],
+              current_medications: [],
+              visit_schedules: [],
+              care_reports: [],
+            },
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );

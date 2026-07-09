@@ -114,7 +114,7 @@ describe('EvidenceCaptureContent', () => {
         return jsonResponse({ patient_id: patientId });
       }
       if (url === '/api/patients/__helper_pt__') {
-        return jsonResponse({ name: '田中 一郎' });
+        return jsonResponse({ data: { name: '田中 一郎' } });
       }
       return jsonResponse({}, 500);
     });

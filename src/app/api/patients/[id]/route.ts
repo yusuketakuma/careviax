@@ -1311,103 +1311,105 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       recordPhiReadAuditForRequest(ctx, { patientId: id, view: 'patient_detail' });
 
       return success({
-        id: patient.id,
-        display_id: patient.display_id,
-        name: patient.name,
-        name_kana: patient.name_kana,
-        birth_date: patient.birth_date,
-        gender: patient.gender,
-        billing_support_flag: patient.billing_support_flag,
-        primary_pharmacist_id: patient.primary_pharmacist_id,
-        backup_pharmacist_id: patient.backup_pharmacist_id,
-        primary_staff_id: patient.primary_staff_id,
-        backup_staff_id: patient.backup_staff_id,
-        allergy_info: patient.allergy_info,
-        notes: patient.notes,
-        archived_at: patient.archived_at,
-        archived_by: patient.archived_by,
-        created_at: patient.created_at,
-        updated_at: patient.updated_at,
-        scheduling_preference: patient.scheduling_preference,
-        phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(patient.phone) : patient.phone,
-        medical_insurance_number: privacy.sensitiveFieldsMasked
-          ? maskInsuranceNumber(patient.medical_insurance_number)
-          : patient.medical_insurance_number,
-        care_insurance_number: privacy.sensitiveFieldsMasked
-          ? maskInsuranceNumber(patient.care_insurance_number)
-          : patient.care_insurance_number,
-        residences: (patient.residences ?? []).map((residence) => ({
-          ...residence,
-          address: privacy.addressFieldsMasked
-            ? maskAddressDetail(residence.address)
-            : residence.address,
-        })),
-        contacts: (patient.contacts ?? []).map((contact) => ({
-          ...contact,
-          phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
-          fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
-          email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
-          address: privacy.addressFieldsMasked
-            ? maskAddressDetail(contact.address)
-            : contact.address,
-        })),
-        current_medications: currentMedications,
-        visit_schedules: visitSchedules,
-        monthly_visit_count: currentMonthVisitCount,
-        visit_records: visitRecords,
-        care_reports: careReports,
-        self_reports: selfReports,
-        external_shares: externalShares.map((item) => ({
-          ...item,
-          scope: toPublicExternalAccessScope(item.scope),
-          granted_to_contact: privacy.sensitiveFieldsMasked
-            ? maskContactValue(item.granted_to_contact)
-            : item.granted_to_contact,
-        })),
-        open_tasks: openTasks,
-        medication_issues: medicationIssues,
-        communication_queue: communicationQueue,
-        risk_summary: riskSummary,
-        home_care_feature_summary: homeCareFeatureSummary,
-        visit_brief: visitBrief,
-        first_visit_documents: firstVisitDocuments.map((rawItem) => {
-          const item = {
-            ...rawItem,
-          } as typeof rawItem & { document_url?: unknown };
-          delete item.document_url;
-
-          return {
-            ...item,
-            emergency_contacts: normalizeFirstVisitDocumentContacts(item.emergency_contacts).map(
-              (contact) => ({
-                ...contact,
-                phone: privacy.sensitiveFieldsMasked
-                  ? maskPhoneNumber(contact.phone)
-                  : contact.phone,
-                fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
-                email: privacy.sensitiveFieldsMasked
-                  ? maskContactValue(contact.email)
-                  : contact.email,
-              }),
-            ),
-          };
-        }),
-        billing_summary: {
-          evidence: billingEvidence.map((item) => ({
-            ...item,
-            blockers:
-              billingEvidenceBlockers.find((blocker) => blocker.id === item.id)?.blockers ?? [],
+        data: {
+          id: patient.id,
+          display_id: patient.display_id,
+          name: patient.name,
+          name_kana: patient.name_kana,
+          birth_date: patient.birth_date,
+          gender: patient.gender,
+          billing_support_flag: patient.billing_support_flag,
+          primary_pharmacist_id: patient.primary_pharmacist_id,
+          backup_pharmacist_id: patient.backup_pharmacist_id,
+          primary_staff_id: patient.primary_staff_id,
+          backup_staff_id: patient.backup_staff_id,
+          allergy_info: patient.allergy_info,
+          notes: patient.notes,
+          archived_at: patient.archived_at,
+          archived_by: patient.archived_by,
+          created_at: patient.created_at,
+          updated_at: patient.updated_at,
+          scheduling_preference: patient.scheduling_preference,
+          phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(patient.phone) : patient.phone,
+          medical_insurance_number: privacy.sensitiveFieldsMasked
+            ? maskInsuranceNumber(patient.medical_insurance_number)
+            : patient.medical_insurance_number,
+          care_insurance_number: privacy.sensitiveFieldsMasked
+            ? maskInsuranceNumber(patient.care_insurance_number)
+            : patient.care_insurance_number,
+          residences: (patient.residences ?? []).map((residence) => ({
+            ...residence,
+            address: privacy.addressFieldsMasked
+              ? maskAddressDetail(residence.address)
+              : residence.address,
           })),
-          candidates: billingCandidates,
-          claimable_count: billingEvidence.filter((item) => item.claimable).length,
-          blocked_count: billingEvidence.filter((item) => !item.claimable).length,
-        },
-        lab_summary: labSummary,
-        timeline_events: [],
-        privacy: {
-          sensitive_fields_masked: privacy.sensitiveFieldsMasked,
-          address_fields_masked: privacy.addressFieldsMasked,
-          can_view_detail: privacy.canViewDetail,
+          contacts: (patient.contacts ?? []).map((contact) => ({
+            ...contact,
+            phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
+            fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
+            email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
+            address: privacy.addressFieldsMasked
+              ? maskAddressDetail(contact.address)
+              : contact.address,
+          })),
+          current_medications: currentMedications,
+          visit_schedules: visitSchedules,
+          monthly_visit_count: currentMonthVisitCount,
+          visit_records: visitRecords,
+          care_reports: careReports,
+          self_reports: selfReports,
+          external_shares: externalShares.map((item) => ({
+            ...item,
+            scope: toPublicExternalAccessScope(item.scope),
+            granted_to_contact: privacy.sensitiveFieldsMasked
+              ? maskContactValue(item.granted_to_contact)
+              : item.granted_to_contact,
+          })),
+          open_tasks: openTasks,
+          medication_issues: medicationIssues,
+          communication_queue: communicationQueue,
+          risk_summary: riskSummary,
+          home_care_feature_summary: homeCareFeatureSummary,
+          visit_brief: visitBrief,
+          first_visit_documents: firstVisitDocuments.map((rawItem) => {
+            const item = {
+              ...rawItem,
+            } as typeof rawItem & { document_url?: unknown };
+            delete item.document_url;
+
+            return {
+              ...item,
+              emergency_contacts: normalizeFirstVisitDocumentContacts(item.emergency_contacts).map(
+                (contact) => ({
+                  ...contact,
+                  phone: privacy.sensitiveFieldsMasked
+                    ? maskPhoneNumber(contact.phone)
+                    : contact.phone,
+                  fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
+                  email: privacy.sensitiveFieldsMasked
+                    ? maskContactValue(contact.email)
+                    : contact.email,
+                }),
+              ),
+            };
+          }),
+          billing_summary: {
+            evidence: billingEvidence.map((item) => ({
+              ...item,
+              blockers:
+                billingEvidenceBlockers.find((blocker) => blocker.id === item.id)?.blockers ?? [],
+            })),
+            candidates: billingCandidates,
+            claimable_count: billingEvidence.filter((item) => item.claimable).length,
+            blocked_count: billingEvidence.filter((item) => !item.claimable).length,
+          },
+          lab_summary: labSummary,
+          timeline_events: [],
+          privacy: {
+            sensitive_fields_masked: privacy.sensitiveFieldsMasked,
+            address_fields_masked: privacy.addressFieldsMasked,
+            can_view_detail: privacy.canViewDetail,
+          },
         },
       });
     },

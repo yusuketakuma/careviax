@@ -666,21 +666,23 @@ describe('/api/patients/[id]', () => {
     expect(auditLogFindManyMock).not.toHaveBeenCalled();
     expect(userFindManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      monthly_visit_count: 0,
-      timeline_events: [],
-      first_visit_documents: [],
-      home_care_feature_summary: {
-        totals: {
-          blocked: 0,
-          attention: 0,
-          monitoring: 0,
-          ready: 20,
+      data: {
+        monthly_visit_count: 0,
+        timeline_events: [],
+        first_visit_documents: [],
+        home_care_feature_summary: {
+          totals: {
+            blocked: 0,
+            attention: 0,
+            monitoring: 0,
+            ready: 20,
+          },
         },
-      },
-      visit_brief: {
-        context: 'patient',
-        ai_summary: {
-          provider: 'rule',
+        visit_brief: {
+          context: 'patient',
+          ai_summary: {
+            provider: 'rule',
+          },
         },
       },
     });
@@ -963,26 +965,28 @@ describe('/api/patients/[id]', () => {
 
     if (!response) throw new Error('response is required');
     await expect(response.json()).resolves.toMatchObject({
-      phone: '***-****-5678',
-      medical_insurance_number: '***-890',
-      care_insurance_number: '***-655',
-      residences: [
-        {
-          address: '東京都千代田***',
+      data: {
+        phone: '***-****-5678',
+        medical_insurance_number: '***-890',
+        care_insurance_number: '***-655',
+        residences: [
+          {
+            address: '東京都千代田***',
+          },
+        ],
+        contacts: [
+          {
+            phone: '***-****-5678',
+            fax: '***-****-9999',
+            email: 'f***@example.com',
+            address: '東京都千代田***',
+          },
+        ],
+        privacy: {
+          sensitive_fields_masked: true,
+          address_fields_masked: true,
+          can_view_detail: false,
         },
-      ],
-      contacts: [
-        {
-          phone: '***-****-5678',
-          fax: '***-****-9999',
-          email: 'f***@example.com',
-          address: '東京都千代田***',
-        },
-      ],
-      privacy: {
-        sensitive_fields_masked: true,
-        address_fields_masked: true,
-        can_view_detail: false,
       },
     });
   });
@@ -1047,7 +1051,7 @@ describe('/api/patients/[id]', () => {
       }),
     );
     expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
-    expect(payload.external_shares).toEqual([
+    expect(payload.data.external_shares).toEqual([
       expect.objectContaining({
         id: 'grant_visible',
         scope: { care_reports: true },
@@ -1057,8 +1061,8 @@ describe('/api/patients/[id]', () => {
         scope: { medication_list: true },
       }),
     ]);
-    expect(JSON.stringify(payload.external_shares)).not.toContain('grant_hidden');
-    expect(JSON.stringify(payload.external_shares)).not.toContain('allowed_case_ids');
+    expect(JSON.stringify(payload.data.external_shares)).not.toContain('grant_hidden');
+    expect(JSON.stringify(payload.data.external_shares)).not.toContain('allowed_case_ids');
   });
 
   it('includes first-visit documents with normalized emergency contacts', async () => {
@@ -1099,25 +1103,27 @@ describe('/api/patients/[id]', () => {
     if (!response) throw new Error('response is required');
     const payload = await response.json();
     expect(payload).toMatchObject({
-      first_visit_documents: [
-        {
-          id: 'first_visit_1',
-          case_id: 'case_1',
-          delivered_to: '長男 山田',
-          emergency_contacts: [
-            {
-              id: 'contact_1',
-              name: '長男 山田',
-              relation: 'child',
-              phone: '090-0000-1111',
-              is_primary: true,
-              is_emergency_contact: true,
-            },
-          ],
-        },
-      ],
+      data: {
+        first_visit_documents: [
+          {
+            id: 'first_visit_1',
+            case_id: 'case_1',
+            delivered_to: '長男 山田',
+            emergency_contacts: [
+              {
+                id: 'contact_1',
+                name: '長男 山田',
+                relation: 'child',
+                phone: '090-0000-1111',
+                is_primary: true,
+                is_emergency_contact: true,
+              },
+            ],
+          },
+        ],
+      },
     });
-    expect(JSON.stringify(payload.first_visit_documents)).not.toContain('document_url');
+    expect(JSON.stringify(payload.data.first_visit_documents)).not.toContain('document_url');
     expect(firstVisitDocumentFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         select: expect.not.objectContaining({
@@ -2135,10 +2141,10 @@ describe('/api/patients/[id]', () => {
     expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
     expect(auditLogFindManyMock).not.toHaveBeenCalled();
     const json = await response.json();
-    expect(json.billing_summary.evidence).toEqual([]);
-    expect(json.billing_summary.candidates).toEqual([]);
-    expect(JSON.stringify(json.timeline_events)).not.toContain('billing_candidate');
-    expect(JSON.stringify(json.timeline_events)).not.toContain('/billing/candidates');
+    expect(json.data.billing_summary.evidence).toEqual([]);
+    expect(json.data.billing_summary.candidates).toEqual([]);
+    expect(JSON.stringify(json.data.timeline_events)).not.toContain('billing_candidate');
+    expect(JSON.stringify(json.data.timeline_events)).not.toContain('/billing/candidates');
     expect(JSON.stringify(json)).not.toContain('在宅患者訪問薬剤管理指導料');
     expect(JSON.stringify(json)).not.toContain('山田花子');
     expect(JSON.stringify(json)).not.toContain('R-001');
@@ -2163,7 +2169,9 @@ describe('/api/patients/[id]', () => {
     if (!response) throw new Error('response is required');
 
     await expect(response.json()).resolves.toMatchObject({
-      monthly_visit_count: 5,
+      data: {
+        monthly_visit_count: 5,
+      },
     });
   });
 });
