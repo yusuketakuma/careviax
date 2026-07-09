@@ -41,6 +41,109 @@
 
 ## 直近の作業
 
+- codex: `FHIR-READY-CONFLICT-REVIEW-001` clinical sync conflict review API.
+  - commit:
+    `5bf22e49d feat(integration): add clinical sync conflict review API`
+  - current task:
+    `ClinicalSyncQueueItem.status = conflict_requires_review` のうち、在宅薬剤
+    timeline 投影を止める `PATIENT_ID_REQUIRED_FOR_TIMELINE_PROJECTION` と
+    `FHIR_PROFILE_VALIDATION_REQUIRED` を admin が安全に一覧確認できる read-only API
+    と service DTO を追加する。DB migration、live DB 適用、外部 yrese/FHIR call、
+    raw FHIR payload 表示は行わない。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `ops/refactor/STATE.md`,
+    `prisma/schema/standard-clinical-integration.prisma`,
+    `src/server/services/standard-clinical-sync-queue.ts`,
+    `src/server/services/standard-clinical-integration-import.ts`,
+    `src/server/services/standard-clinical-patient-linkage.ts`,
+    `src/app/api/patients/[id]/external-clinical-references/verify/route.ts`,
+    `src/app/api/patients/[id]/medication-timeline/route.ts`,
+    `src/lib/auth/context.ts`, `src/lib/api/response.ts`,
+    `src/lib/api/sensitive-response.ts`, and Oracle/GPT-5.5 Pro advisory output.
+  - files changed:
+    `src/server/services/standard-clinical-sync-conflict-review.ts`,
+    `src/server/services/standard-clinical-sync-conflict-review.test.ts`,
+    `src/app/api/integration/clinical-sync/conflicts/route.ts`, and
+    `src/app/api/integration/clinical-sync/conflicts/route.test.ts`.
+  - bugs found:
+    The clinical sync queue could already mark patient-link and FHIR profile conflicts, but
+    there was no bounded org-scoped review API. A naive list endpoint could have exposed raw
+    FHIR validation errors, queue metadata, FHIR cache IDs, hashes/fingerprints, or cache/source
+    identifiers across a high-fanout admin surface.
+  - bugs fixed:
+    Added `listClinicalSyncConflicts()` with service-side code allowlisting, inbound/yrese queue
+    filtering, bounded limit normalization, org-scoped queue/reference/cache lookups, and explicit
+    union DTOs. Added admin-only `GET /api/integration/clinical-sync/conflicts` with sensitive
+    no-store, `force-dynamic`, strict single `error_code` validation, and `{ data, meta }`
+    response envelope.
+  - security risks found:
+    `external_reference_id` acts as the existing patient-link verify action input, so returning it
+    outside the patient-link conflict would widen mutation capability. FHIR cache rows contain
+    resource IDs, validation errors, profile arrays, hashes, summaries, and source references that
+    can become PHI-adjacent when copied into review lists.
+  - security risks reduced:
+    The list DTO returns `external_reference_id` only inside `patient_link_review` for
+    `PATIENT_ID_REQUIRED_FOR_TIMELINE_PROJECTION`. It omits raw validation errors, raw FHIR
+    payloads, `fhir_resource_cache_id`, cache/source IDs, queue IDs, operation strings, metadata,
+    identifier/normalized summaries, content/etag hashes, idempotency hashes, and request
+    fingerprints. FHIR validation rows expose only resource type, validation status, capped
+    profile URLs, and availability booleans.
+  - performance issues found:
+    An unbounded conflict list could scan too many queue rows and fan out into reference/cache
+    reads.
+  - performance issues improved:
+    Review listing defaults to 50 rows, caps at 100, orders by priority/created time, and batches
+    secondary reference/cache reads by unique IDs only when needed.
+  - Oracle note:
+    High-risk PHI/medical boundary consultation was completed before implementation. The first
+    `clinical-conflict-review` Oracle browser run failed before model review because file uploads
+    timed out. The retry `clinical-conflict-inline` used inline files and returned Conditional Go:
+    implement only with admin/org scoping, service-side allowlists, no `validation_errors`, no raw
+    metadata/hash/fingerprint/cache ID fields, `external_reference_id` only for patient-link
+    conflicts, and route/test coverage for no-store and query validation. Those requirements were
+    accepted and implemented.
+  - imagegen:
+    Omitted because this was backend-only integration review API work with no UI/UX visual
+    reconstruction.
+  - validation commands:
+    `npx -y @steipete/oracle --help`;
+    `git remote -v`; `git branch --show-current`; `git rev-parse HEAD`;
+    `gh pr status`;
+    `npx -y @steipete/oracle --dry-run summary --files-report ...`;
+    `npx -y @steipete/oracle --engine browser --model gpt-5.5-pro --browser-manual-login --browser-auto-reattach-delay 5s --browser-auto-reattach-interval 3s --browser-auto-reattach-timeout 60s --browser-thinking-time heavy --heartbeat 30 --slug "clinical-conflict-review" ...`;
+    `npx -y @steipete/oracle status --hours 72 --limit 5`;
+    `npx -y @steipete/oracle --engine browser --model gpt-5.5-pro --browser-manual-login --browser-inline-files --browser-auto-reattach-delay 5s --browser-auto-reattach-interval 3s --browser-auto-reattach-timeout 60s --browser-thinking-time heavy --heartbeat 30 --slug "clinical-conflict-inline" ...`;
+    `pnpm exec prettier --write src/server/services/standard-clinical-sync-conflict-review.ts src/server/services/standard-clinical-sync-conflict-review.test.ts src/app/api/integration/clinical-sync/conflicts/route.ts src/app/api/integration/clinical-sync/conflicts/route.test.ts`;
+    `pnpm vitest run src/server/services/standard-clinical-sync-conflict-review.test.ts src/app/api/integration/clinical-sync/conflicts/route.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/server/services/standard-clinical-sync-conflict-review.ts src/server/services/standard-clinical-sync-conflict-review.test.ts src/app/api/integration/clinical-sync/conflicts/route.ts src/app/api/integration/clinical-sync/conflicts/route.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`;
+    `pnpm lint`;
+    `pnpm api-response-shape:check`;
+    `pnpm route-auth-wrapper:check`;
+    `pnpm db:raw-read-org-guard:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm dto-direct-prisma-return:check`;
+    `pnpm exec prettier --check src/server/services/standard-clinical-sync-conflict-review.ts src/server/services/standard-clinical-sync-conflict-review.test.ts src/app/api/integration/clinical-sync/conflicts/route.ts src/app/api/integration/clinical-sync/conflicts/route.test.ts`;
+    `git diff --check`;
+    `git diff --cached --check`.
+  - validation results:
+    Focused conflict review tests passed 2 files / 9 tests. Scoped ESLint passed.
+    `typecheck` and `typecheck:no-unused` passed. Full `pnpm lint` exited 0 with two existing
+    warnings in `src/lib/platform/break-glass.test.ts`; no errors. API response shape,
+    route-auth wrapper, raw-read org guard, query-shape guard, DTO direct Prisma return guard,
+    Prettier check, unstaged diff check, and staged diff check passed.
+  - remaining work:
+    No DB migration was applied, no deploy was run, no environment secret was changed, and no
+    external yrese/FHIR endpoint was called. A UI review surface / step-up detail endpoint for
+    full FHIR validation diagnostics, real JP Core profile validator runtime/sandbox,
+    terminology/ConceptMap checks, and environment migration/deploy/connectivity proof remain.
+  - next action:
+    Continue with either the UI/step-up review flow for blocked FHIR validation diagnostics or
+    the real validator/terminology sandbox integration. DB migration apply, deploy, secret
+    changes, and external yrese/FHIR sends still require an explicit target environment and
+    current authorization.
+
 - codex: `FHIR-READY-DB-001` pre-release destructive-ready yrese / JP Core / FHIR standard integration DB spine.
   - commit:
     `e8c52954e feat(db): add standard clinical integration spine`
