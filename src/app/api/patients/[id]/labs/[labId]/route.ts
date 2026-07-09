@@ -142,5 +142,5 @@ export async function PATCH(
     { requestContext: ctx },
   );
 
-  return success(updated);
+  return success({ data: updated });
 }

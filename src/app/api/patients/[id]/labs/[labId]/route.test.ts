@@ -177,6 +177,12 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
       where: { id: 'lab_1' },
       data: { note: '再確認済み' },
     });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'lab_1',
+        note: '再確認済み',
+      },
+    });
   });
 
   it('uses normalized raw patient and lab ids for DB reads and writes', async () => {
@@ -262,6 +268,12 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
     expect(patientLabObservationUpdateMock).toHaveBeenCalledWith({
       where: { id: 'lab_1' },
       data: { note: '再確認済み', source_visit_record_id: null },
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'lab_1',
+        note: '再確認済み',
+      },
     });
   });
 });
