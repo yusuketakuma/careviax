@@ -1182,11 +1182,14 @@ function DrugMasterOperationalContent({
           due_in_days: 30,
         }),
       });
-      return readApiJson<{
-        matchedCount: number;
-        updatedCount: number;
-        skippedUnresolvedCount: number;
+      const body = await readApiJson<{
+        data: {
+          matchedCount: number;
+          updatedCount: number;
+          skippedUnresolvedCount: number;
+        };
       }>(res, '安全性フォローアップの作成に失敗しました');
+      return body.data;
     },
     onSuccess: async (result) => {
       toast.success(

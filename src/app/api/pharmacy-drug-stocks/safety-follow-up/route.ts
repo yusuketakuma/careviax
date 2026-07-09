@@ -83,13 +83,15 @@ export const POST = withAuthContext(
 
     if (parsed.data.dry_run || targetStocks.length === 0) {
       return success({
-        site,
-        queue: parsed.data.queue,
-        matchedCount: targetStocks.length,
-        updatedCount: 0,
-        skippedUnresolvedCount,
-        dueDate: dueDate.toISOString(),
-        dryRun: parsed.data.dry_run,
+        data: {
+          site,
+          queue: parsed.data.queue,
+          matchedCount: targetStocks.length,
+          updatedCount: 0,
+          skippedUnresolvedCount,
+          dueDate: dueDate.toISOString(),
+          dryRun: parsed.data.dry_run,
+        },
       });
     }
 
@@ -128,13 +130,15 @@ export const POST = withAuthContext(
     });
 
     return success({
-      site,
-      queue: parsed.data.queue,
-      matchedCount: targetStocks.length,
-      updatedCount: result.count,
-      skippedUnresolvedCount,
-      dueDate: dueDate.toISOString(),
-      dryRun: false,
+      data: {
+        site,
+        queue: parsed.data.queue,
+        matchedCount: targetStocks.length,
+        updatedCount: result.count,
+        skippedUnresolvedCount,
+        dueDate: dueDate.toISOString(),
+        dryRun: false,
+      },
     });
   },
   { permission: 'canAdmin' },

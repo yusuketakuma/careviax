@@ -44,6 +44,30 @@ function createMalformedJsonRequest() {
   });
 }
 
+type SafetyFollowUpPayload = {
+  site: { id: string; name: string };
+  queue: string;
+  matchedCount: number;
+  updatedCount: number;
+  skippedUnresolvedCount: number;
+  dryRun: boolean;
+};
+
+async function readSafetyFollowUpPayload(response: Response): Promise<SafetyFollowUpPayload> {
+  const payload: unknown = await response.json();
+  expect(payload).toMatchObject({
+    data: {
+      site: expect.objectContaining({ id: expect.any(String) }),
+      queue: expect.any(String),
+      matchedCount: expect.any(Number),
+      updatedCount: expect.any(Number),
+      skippedUnresolvedCount: expect.any(Number),
+      dryRun: expect.any(Boolean),
+    },
+  });
+  return (payload as { data: SafetyFollowUpPayload }).data;
+}
+
 describe('/api/pharmacy-drug-stocks/safety-follow-up', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -80,7 +104,8 @@ describe('/api/pharmacy-drug-stocks/safety-follow-up', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readSafetyFollowUpPayload(response);
+    expect(json).toMatchObject({
       site: { id: 'site_1' },
       queue: 'high_risk',
       matchedCount: 2,
@@ -138,7 +163,8 @@ describe('/api/pharmacy-drug-stocks/safety-follow-up', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readSafetyFollowUpPayload(response);
+    expect(json).toMatchObject({
       queue: 'controlled',
       matchedCount: 1,
       updatedCount: 0,
