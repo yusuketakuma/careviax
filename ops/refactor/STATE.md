@@ -34859,3 +34859,98 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   Commit this implementation/ledger slice with only owned paths staged, then
   continue allowlist cleanup from `src/app/api/pharmacy-invoices/route.ts`
   unless redirected.
+
+## 2026-07-09 API-CONTRACT-001DN — pharmacy invoice draft envelope
+
+- current task:
+  `API-CONTRACT-001` allowlist debt reduction focused on
+  `src/app/api/pharmacy-invoices/route.ts` POST billing draft success response.
+- files inspected:
+  `git status --short --untracked-files=all`;
+  `ops/refactor/STATE.md`; `tools/api-response-shape-allowlist.json`;
+  `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`;
+  `src/app/api/pharmacy-invoices/route.ts`;
+  `src/app/api/pharmacy-invoices/route.test.ts`;
+  `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx`;
+  `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx`;
+  `tools/tests/ui-major-screens.spec.ts`;
+  `tools/tests/ui-route-mocked-smoke.spec.ts`;
+  `src/server/services/pharmacy-invoices.ts`; `src/lib/api/response.ts`;
+  `src/lib/api/response-schemas.ts`; `src/lib/api/client-json.ts`;
+  `Plans.md`; `docs/plans-archive.md`.
+- files changed:
+  `src/app/api/pharmacy-invoices/route.ts`;
+  `src/app/api/pharmacy-invoices/route.test.ts`;
+  `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx`;
+  `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx`;
+  `tools/tests/ui-major-screens.spec.ts`;
+  `tools/tests/ui-route-mocked-smoke.spec.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `POST /api/pharmacy-invoices` returned draft creation/reuse fields at the
+  response root, keeping one response-shape allowlist violation. The billing UI
+  draft mutation and direct API checks also expected that root draft result.
+- bugs fixed:
+  Invoice draft POST success now returns `success({ data: { message,
+...result.invoice } }, status)`. The partner cooperation billing draft
+  mutation validates `apiDataSchema(invoiceDraftResultSchema)` and unwraps
+  `json.data`. Route tests, component mocks, ui-major direct API checks, and
+  route-mocked smoke mocks now read or provide nested draft success data.
+- security risks found:
+  Billing route is high-risk by policy. Oracle/GPT-5.5 Pro was attempted before
+  implementation: the large file run failed during attachment upload, the
+  reduced inline run saved only a one-sentence incomplete answer, and follow-up
+  failed with a browser prompt-textarea timeout. `OPENAI_API_KEY` was missing,
+  so API-mode fallback was unavailable. The route change was kept to the
+  established envelope-only pattern and verified locally.
+- security risks reduced:
+  Removed one legacy public success root from the billing draft endpoint
+  without changing `canManageBilling`, RLS org context, Serializable
+  transaction, draft creation/reuse semantics, new/reused status codes,
+  service/audit behavior, no-store wrapping, or error response shape.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this was a response contract cleanup. Existing transaction and service
+  execution behavior are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was API response contract and
+  reader schema work only, so image generation was not applicable.
+- Oracle note:
+  Oracle sessions: `invoice-draft-envelope-review` failed before model review
+  because browser attachments did not finish uploading; `invoice-draft-envelope-review-small`
+  reattached as completed but contained only the truncated sentence "Current
+  evidence narrows this to a wire-contract-only change"; follow-up session
+  `your-previous-answer-was-truncated` failed before prompt entry. No complete
+  advisory answer was available for this slice.
+- validation commands:
+  `npx -y @steipete/oracle --help`;
+  `git remote -v`; `git branch --show-current`; `git rev-parse HEAD`;
+  `git status --short --untracked-files=all`;
+  `npx -y @steipete/oracle --dry-run summary --files-report ...`;
+  `npx -y @steipete/oracle --engine browser --model gpt-5.5-pro --browser-manual-login --browser-auto-reattach-delay 5s --browser-auto-reattach-interval 3s --browser-auto-reattach-timeout 60s --browser-thinking-time heavy --heartbeat 30 --slug "invoice-draft-envelope-review" ...`;
+  `npx -y @steipete/oracle --engine browser --model gpt-5.5-pro --browser-manual-login --browser-auto-reattach-delay 5s --browser-auto-reattach-interval 3s --browser-auto-reattach-timeout 60s --browser-attachments never --heartbeat 30 --slug "invoice-draft-envelope-review-small" ...`;
+  `npx -y @steipete/oracle --followup invoice-draft-envelope-review-small --engine browser --model gpt-5.5-pro --browser-manual-login --browser-auto-reattach-delay 5s --browser-auto-reattach-interval 3s --browser-auto-reattach-timeout 60s --browser-attachments never --heartbeat 30 ...`;
+  `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-invoices/route.ts' 'src/app/api/pharmacy-invoices/route.test.ts' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' tools/tests/ui-major-screens.spec.ts tools/tests/ui-route-mocked-smoke.spec.ts`;
+  `pnpm vitest run 'src/app/api/pharmacy-invoices/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm api-response-shape:check`; `pnpm plans:active:check`;
+  `pnpm exec eslint 'src/app/api/pharmacy-invoices/route.ts' 'src/app/api/pharmacy-invoices/route.test.ts' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' tools/tests/ui-major-screens.spec.ts tools/tests/ui-route-mocked-smoke.spec.ts`;
+  `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-invoices/route.ts' 'src/app/api/pharmacy-invoices/route.test.ts' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' tools/tests/ui-major-screens.spec.ts tools/tests/ui-route-mocked-smoke.spec.ts`;
+  `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-invoices/route.ts' 'src/app/api/pharmacy-invoices/route.test.ts' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' tools/tests/ui-major-screens.spec.ts tools/tests/ui-route-mocked-smoke.spec.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Prettier write/check passed. Pharmacy invoices route tests passed 1 file / 14
+  tests. Partner cooperation billing content tests passed 1 file / 12 tests.
+  Scoped ESLint, `api-response-shape:check` (53 allowlisted violations, 0 new),
+  `plans:active:check`, scoped diff check, and typecheck passed.
+- remaining work:
+  `API-CONTRACT-001` remains Partial with 53 allowlisted violations. Next
+  allowlist head is
+  `src/app/api/pharmacy-partnerships/[id]/activate/route.ts` with one expected
+  legacy response shape violation. Existing unrelated dirty/untracked
+  memory/docs and `.codex`/`.harness-mem` files remain unstaged.
+- next action:
+  Commit this implementation/ledger slice with only owned paths staged, then
+  push the committed allowlist work to `origin/main`.

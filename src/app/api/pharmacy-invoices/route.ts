@@ -236,10 +236,12 @@ export const POST = withAuthContext(
       return withSensitiveNoStore(
         success(
           {
-            message: result.reused
-              ? '既存の薬局間請求書ドラフトを返しました'
-              : '薬局間請求書ドラフトを作成しました',
-            ...result.invoice,
+            data: {
+              message: result.reused
+                ? '既存の薬局間請求書ドラフトを返しました'
+                : '薬局間請求書ドラフトを作成しました',
+              ...result.invoice,
+            },
           },
           result.reused ? 200 : 201,
         ),

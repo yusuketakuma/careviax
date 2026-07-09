@@ -241,11 +241,15 @@ describe('/api/pharmacy-invoices POST', () => {
         billingMonth: expect.objectContaining({ canonical: '2026-06-01' }),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
-      message: '薬局間請求書ドラフトを作成しました',
-      id: 'invoice_1',
-      total: 6050,
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        message: '薬局間請求書ドラフトを作成しました',
+        id: 'invoice_1',
+        total: 6050,
+      },
     });
+    expect(body).not.toHaveProperty('id');
   });
 
   it('returns existing active draft idempotently', async () => {
@@ -276,11 +280,15 @@ describe('/api/pharmacy-invoices POST', () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      message: '既存の薬局間請求書ドラフトを返しました',
-      id: 'invoice_existing',
-      reused_existing_draft: true,
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        message: '既存の薬局間請求書ドラフトを返しました',
+        id: 'invoice_existing',
+        reused_existing_draft: true,
+      },
     });
+    expect(body).not.toHaveProperty('id');
   });
 
   it('rejects invalid billing month before transaction side effects', async () => {

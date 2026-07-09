@@ -233,6 +233,7 @@ const invoiceDraftResultSchema = z.object({
   reused_existing_draft: z.boolean(),
   message: z.string().optional(),
 });
+const invoiceDraftResponseSchema = apiDataSchema(invoiceDraftResultSchema);
 
 const candidateGenerationResultSchema = z.object({
   message: z.string(),
@@ -1027,10 +1028,11 @@ export function PartnerCooperationBillingContent() {
           document_kind: documentKind,
         }),
       });
-      return readApiJson<InvoiceDraftResult>(response, {
+      const json = await readApiJson(response, {
         fallbackMessage: '薬局間月次ドキュメントの作成に失敗しました',
-        schema: invoiceDraftResultSchema,
+        schema: invoiceDraftResponseSchema,
       });
+      return json.data;
     },
     onSuccess: async (result) => {
       setLastDraft(result);

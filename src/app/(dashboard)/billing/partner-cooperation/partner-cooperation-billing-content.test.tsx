@@ -207,18 +207,20 @@ describe('PartnerCooperationBillingContent', () => {
         if (url === '/api/pharmacy-invoices' && init?.method === 'POST') {
           return new Response(
             JSON.stringify({
-              message: '薬局間請求書ドラフトを作成しました',
-              id: 'invoice_1',
-              contract_id: 'contract_1',
-              document_kind: 'invoice',
-              billing_month: '2026-06-01',
-              subtotal: 5500,
-              tax_amount: 550,
-              total: 6050,
-              status: 'draft',
-              reused_existing_draft: false,
-              item_count: 1,
-              items: [],
+              data: {
+                message: '薬局間請求書ドラフトを作成しました',
+                id: 'invoice_1',
+                contract_id: 'contract_1',
+                document_kind: 'invoice',
+                billing_month: '2026-06-01',
+                subtotal: 5500,
+                tax_amount: 550,
+                total: 6050,
+                status: 'draft',
+                reused_existing_draft: false,
+                item_count: 1,
+                items: [],
+              },
             }),
             { status: 201 },
           );
@@ -340,9 +342,11 @@ describe('PartnerCooperationBillingContent', () => {
       if (url === '/api/pharmacy-invoices' && init?.method === 'POST') {
         return new Response(
           JSON.stringify({
-            id: 'invoice_1',
-            billing_month: '2026-06-01',
-            total: 6050,
+            data: {
+              id: 'invoice_1',
+              billing_month: '2026-06-01',
+              total: 6050,
+            },
           }),
           { status: 201 },
         );

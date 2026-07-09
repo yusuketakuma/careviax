@@ -2453,16 +2453,19 @@ test.describe('major authenticated screens', () => {
       },
     });
     expect(invoiceDraftResponse.status()).toBe(201);
-    const invoiceDraft = (await invoiceDraftResponse.json()) as {
-      id: string;
-      document_kind: string;
-      status: string;
-      subtotal: number;
-      tax_amount: number;
-      total: number;
-      item_count: number;
-      has_snapshot: boolean;
+    const invoiceDraftResponseBody = (await invoiceDraftResponse.json()) as {
+      data: {
+        id: string;
+        document_kind: string;
+        status: string;
+        subtotal: number;
+        tax_amount: number;
+        total: number;
+        item_count: number;
+        has_snapshot: boolean;
+      };
     };
+    const invoiceDraft = invoiceDraftResponseBody.data;
     expect(invoiceDraft).toMatchObject({
       document_kind: 'invoice',
       status: 'draft',
@@ -2871,16 +2874,19 @@ test.describe('major authenticated screens', () => {
       },
     });
     expect(reportDraftResponse.status()).toBe(201);
-    const reportDraft = (await reportDraftResponse.json()) as {
-      id: string;
-      document_kind: string;
-      status: string;
-      subtotal: number;
-      tax_amount: number;
-      total: number;
-      item_count: number;
-      has_snapshot: boolean;
+    const reportDraftResponseBody = (await reportDraftResponse.json()) as {
+      data: {
+        id: string;
+        document_kind: string;
+        status: string;
+        subtotal: number;
+        tax_amount: number;
+        total: number;
+        item_count: number;
+        has_snapshot: boolean;
+      };
     };
+    const reportDraft = reportDraftResponseBody.data;
     expect(reportDraft).toMatchObject({
       document_kind: 'free_cooperation_report',
       status: 'draft',
