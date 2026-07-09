@@ -46,6 +46,8 @@
     `GET /api/patients/:id/readiness` の patient readiness success response を legacy
     raw readiness root から `{ data: readiness }` envelope へ移行し、readiness card
     reader、route/detail/card tests、response-shape allowlist、Plans / archive を同期する。
+  - commit:
+    `f00c8cefb fix(api): envelope patient readiness response`
   - files inspected:
     `git status --short --untracked-files=all`,
     `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
@@ -111,8 +113,8 @@
     Next recommended response-shape slice is the current allowlist head:
     `src/app/api/patients/[id]/restore/route.ts`.
   - next action:
-    Commit this patient readiness envelope slice with explicit owned paths only, then
-    continue allowlist debt burn-down from the next allowlist head.
+    Continue allowlist debt burn-down from the next allowlist head:
+    `src/app/api/patients/[id]/restore/route.ts`.
 
 - codex: `API-CONTRACT-001CQ` patient prescriptions response envelope cleanup.
   - current task:
