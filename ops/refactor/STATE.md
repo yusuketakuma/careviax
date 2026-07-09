@@ -6,7 +6,16 @@
 > validation、remaining/next action はこのファイルへ集約する。
 > 再開手順: このファイル → `git status --short --untracked-files=all` → `git log --oneline -15`。
 
-## 体制（2026-07-04 ユーザー指示）
+## 体制（2026-07-10 最新ユーザー指示）
+
+- 現行は `codex + Claude checker/scout` 連携。agmsg の `phos` team で通信を維持し、
+  Claude は read-only review・新規task探索、codex は計画・編集・validation・台帳更新を担当する。
+- メッセージ待ちの間も停止せず、dirty pathを避けてコードベースをscanし、根拠付きの未登録taskを
+  `Plans.md` に追加する。既存route/service/taskとの重複を確認してからqueueへ入れる。
+- commit / push は codex のみが、owned pathを明示stageして実行する。Claude は編集・commit・pushしない。
+- 下記2026-07-04/05のCodex単独運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
+
+## 旧体制（2026-07-04/05 履歴）
 
 - 現行は Codex 単独運用。codex が Plans 棚卸し、実装、validation、単一台帳更新、scoped commit、
   例外処理を一貫して担当する。
@@ -34,7 +43,8 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: Codex 単独運用体制（2026-07-04〜）。
+- Phase C（実装ループ）: Codex + Claude checker/scout 連携（2026-07-10〜）。
+  2026-07-04〜09のCodex単独運用は履歴とし、編集・validation・commit/pushの最終責任はCodexが維持する。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
