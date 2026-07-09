@@ -41,6 +41,85 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CV` patient workflow preview response envelope cleanup.
+  - current task:
+    `GET /api/patients/:id/workflow-preview` の patient workflow preview success response
+    を legacy raw workflow preview root から `{ data: preview }` envelope へ移行し、
+    workflow preview card reader、route/card tests、response-shape allowlist、Plans /
+    archive を同期する。
+  - commit:
+    `49c30f033 fix(api): envelope patient workflow preview response`
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/workflow-preview/route.ts`,
+    `src/app/api/patients/[id]/detail-slices.test.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx`,
+    `Plans.md`, `docs/plans-archive.md`, and `ops/refactor/STATE.md`.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `ops/refactor/STATE.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/workflow-preview/route.ts`,
+    `src/app/api/patients/[id]/detail-slices.test.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx`, and
+    `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx`.
+  - bugs found:
+    The patient workflow preview route returned `visit_preparation`,
+    `report_targets`, and `communication_priority` at the public success response
+    root, keeping one API response-shape allowlist entry alive. The workflow preview
+    card reader consumed the legacy raw body directly.
+  - bugs fixed:
+    GET success now returns `success({ data: preview })`. The workflow preview card
+    reader unwraps `payload.data`, and route/card tests assert the current envelope.
+    The stale allowlist entry was removed. Response-shape debt dropped from 82 to 81.
+  - security risks found:
+    No visit permission check, patient id validation, assignment-scope service read,
+    no-store wrapper, not-found response, or sanitized internal-error response
+    changed.
+  - security risks reduced:
+    Removed workflow preview fields from the response root and aligned the reader to
+    the standardized success envelope.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. The card unwraps the same workflow
+    preview payload from the new envelope before rendering, so image generation was
+    not applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration
+    directive and the repeated envelope-only local pattern. Validation covered
+    route/card tests, scoped protected auth check, contract ratchet, scoped
+    lint/format, and full typecheck.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/workflow-preview/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx'`;
+    `pnpm vitest run 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run 'src/app/api/__tests__/protected-get-routes.test.ts' --reporter=dot --testNamePattern 'patients/\\[id\\]/workflow-preview GET' --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/workflow-preview/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/workflow-preview/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/workflow-preview/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Patient detail slice and workflow preview card tests passed 2 files / 65 tests.
+    Scoped protected auth route check for `patients/[id]/workflow-preview GET`
+    passed 3 tests with 381 skipped in the shared matrix file.
+    `api-response-shape:check` passed with 81 allowlisted violations and 0 new
+    violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier check,
+    scoped diff check, and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 81 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patients/check-duplicate/route.ts`.
+  - next action:
+    Continue allowlist debt burn-down from the next allowlist head:
+    `src/app/api/patients/check-duplicate/route.ts`.
+
 - codex: `API-CONTRACT-001CU` patient visits response envelope cleanup.
   - current task:
     `GET /api/patients/:id/visits` の patient visits snapshot success response を
