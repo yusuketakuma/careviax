@@ -231,22 +231,24 @@ describe('PartnerCooperationBillingContent', () => {
             body.action === 'cancel' ? 'cancelled' : body.action === 'issue' ? 'issued' : 'sent';
           return new Response(
             JSON.stringify({
-              id: invoice.id,
-              contract_id: invoice.contract_id,
-              document_kind: invoice.document_kind,
-              invoice_no: invoice.invoice_no,
-              billing_month: invoice.billing_month,
-              subtotal: invoice.subtotal,
-              tax_amount: invoice.tax_amount,
-              total: invoice.total,
-              status: nextStatus,
-              issued_at: body.action === 'issue' ? '2026-06-19T00:00:00.000Z' : invoice.issued_at,
-              sent_at: null,
-              received_at: null,
-              payment_scheduled_for: null,
-              paid_at: null,
-              updated_at: '2026-06-19T00:00:00.000Z',
-              item_count: invoice.item_count,
+              data: {
+                id: invoice.id,
+                contract_id: invoice.contract_id,
+                document_kind: invoice.document_kind,
+                invoice_no: invoice.invoice_no,
+                billing_month: invoice.billing_month,
+                subtotal: invoice.subtotal,
+                tax_amount: invoice.tax_amount,
+                total: invoice.total,
+                status: nextStatus,
+                issued_at: body.action === 'issue' ? '2026-06-19T00:00:00.000Z' : invoice.issued_at,
+                sent_at: null,
+                received_at: null,
+                payment_scheduled_for: null,
+                paid_at: null,
+                updated_at: '2026-06-19T00:00:00.000Z',
+                item_count: invoice.item_count,
+              },
             }),
             { status: 200 },
           );
@@ -365,9 +367,12 @@ describe('PartnerCooperationBillingContent', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/pharmacy-invoices/invoice_existing' && init?.method === 'PATCH') {
-        return new Response(JSON.stringify({ id: 'invoice_existing', status: 'issued' }), {
-          status: 200,
-        });
+        return new Response(
+          JSON.stringify({ data: { id: 'invoice_existing', status: 'issued' } }),
+          {
+            status: 200,
+          },
+        );
       }
       return originalFetch!(input, init);
     });

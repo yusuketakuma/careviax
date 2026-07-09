@@ -247,6 +247,9 @@ const candidateGenerationResultSchema = z.object({
 const activeContractsResponseSchema = apiDataSchema(z.array(pharmacyCooperationContractRowSchema));
 const billingCandidatesResponseSchema = cursorPaginatedPageSchema(visitBillingCandidateRowSchema);
 const pharmacyInvoicesResponseSchema = apiDataSchema(z.array(pharmacyInvoiceRowSchema));
+const pharmacyInvoiceTransitionResponseSchema = apiDataSchema(
+  pharmacyInvoiceTransitionResultSchema,
+);
 
 const EMPTY_CONTRACTS: PharmacyContractRow[] = [];
 
@@ -358,10 +361,11 @@ async function patchInvoiceStatus(
     headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
     body: JSON.stringify(body),
   });
-  return readApiJson<PharmacyInvoiceTransitionResult>(response, {
+  const json = await readApiJson(response, {
     fallbackMessage: '月次ドキュメントの更新に失敗しました',
-    schema: pharmacyInvoiceTransitionResultSchema,
+    schema: pharmacyInvoiceTransitionResponseSchema,
   });
+  return json.data;
 }
 
 function KpiBox({

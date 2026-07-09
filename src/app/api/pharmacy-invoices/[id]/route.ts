@@ -103,7 +103,7 @@ export const PATCH = withAuthContext<{ id: string }>(
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
 
-      return withSensitiveNoStore(success(result));
+      return withSensitiveNoStore(success({ data: result }));
     } catch (error) {
       if (error instanceof PharmacyInvoiceTransitionError) {
         return withSensitiveNoStore(transitionErrorResponse(error));

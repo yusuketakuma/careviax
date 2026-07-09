@@ -2483,12 +2483,15 @@ test.describe('major authenticated screens', () => {
       },
     );
     expect(issueInvoiceResponse.status()).toBe(200);
-    const issuedInvoice = (await issueInvoiceResponse.json()) as {
-      id: string;
-      status: string;
-      invoice_no: string | null;
-      item_count: number;
+    const issuedInvoiceResponseBody = (await issueInvoiceResponse.json()) as {
+      data: {
+        id: string;
+        status: string;
+        invoice_no: string | null;
+        item_count: number;
+      };
     };
+    const issuedInvoice = issuedInvoiceResponseBody.data;
     expect(issuedInvoice).toMatchObject({
       id: invoiceDraft.id,
       status: 'issued',
@@ -2504,11 +2507,14 @@ test.describe('major authenticated screens', () => {
       },
     });
     expect(paymentResponse.status()).toBe(200);
-    const paidInvoice = (await paymentResponse.json()) as {
-      id: string;
-      status: string;
-      paid_at: string | null;
+    const paidInvoiceResponseBody = (await paymentResponse.json()) as {
+      data: {
+        id: string;
+        status: string;
+        paid_at: string | null;
+      };
     };
+    const paidInvoice = paidInvoiceResponseBody.data;
     expect(paidInvoice).toMatchObject({
       id: invoiceDraft.id,
       status: 'paid',
@@ -2895,12 +2901,15 @@ test.describe('major authenticated screens', () => {
       },
     );
     expect(issueReportResponse.status()).toBe(200);
-    const issuedReport = (await issueReportResponse.json()) as {
-      id: string;
-      status: string;
-      invoice_no: string | null;
-      item_count: number;
+    const issuedReportResponseBody = (await issueReportResponse.json()) as {
+      data: {
+        id: string;
+        status: string;
+        invoice_no: string | null;
+        item_count: number;
+      };
     };
+    const issuedReport = issuedReportResponseBody.data;
     expect(issuedReport).toMatchObject({
       id: reportDraft.id,
       status: 'issued',

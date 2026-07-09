@@ -34762,3 +34762,100 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   Commit this implementation/ledger slice with only owned paths staged, then
   continue allowlist cleanup from
   `src/app/api/pharmacy-invoices/[id]/route.ts` unless redirected.
+
+## 2026-07-09 API-CONTRACT-001DM — pharmacy invoice lifecycle envelope
+
+- current task:
+  `API-CONTRACT-001` allowlist debt reduction focused on
+  `src/app/api/pharmacy-invoices/[id]/route.ts` PATCH billing lifecycle success
+  response.
+- files inspected:
+  `git status --short --untracked-files=all`;
+  `ops/refactor/STATE.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/pharmacy-invoices/[id]/route.ts`;
+  `src/app/api/pharmacy-invoices/[id]/route.test.ts`;
+  `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx`;
+  `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx`;
+  `tools/tests/ui-major-screens.spec.ts`;
+  `src/server/services/pharmacy-invoices.ts`; `src/lib/api/response.ts`;
+  `src/lib/api/client-json.ts`; `src/lib/api/response-schemas.ts`;
+  `src/lib/api/rate-limit.ts`; `Plans.md`; `docs/plans-archive.md`.
+- files changed:
+  `src/app/api/pharmacy-invoices/[id]/route.ts`;
+  `src/app/api/pharmacy-invoices/[id]/route.test.ts`;
+  `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx`;
+  `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx`;
+  `tools/tests/ui-major-screens.spec.ts`;
+  `tools/api-response-shape-allowlist.json`; `Plans.md`;
+  `docs/plans-archive.md`; `ops/refactor/STATE.md`.
+- bugs found:
+  `PATCH /api/pharmacy-invoices/[id]` returned the invoice transition result at
+  the response root, keeping one response-shape allowlist violation. The
+  billing UI reader validated that root result directly, so it also needed an
+  envelope schema update before the route could safely change.
+- bugs fixed:
+  Invoice lifecycle PATCH success now returns `success({ data: result })`. The
+  partner cooperation billing mutation validates the full
+  `apiDataSchema(pharmacyInvoiceTransitionResultSchema)` envelope and unwraps
+  `json.data`. Route, component, and ui-major direct PATCH tests now read the
+  nested success data, and the UI malformed-success test rejects an envelope
+  whose inner transition result is incomplete.
+- security risks found:
+  Billing route was high-risk by policy, so Oracle/GPT-5.5 Pro was consulted
+  before implementation. Oracle could access the GitHub repository but reported
+  the exact local commit URL as 404, then reviewed remote main plus attached
+  local files. It gave Option A (response envelope only) a Go with conditions:
+  keep transition semantics unchanged, verify consumers, validate inner schema,
+  keep error responses unwrapped, and run focused gates.
+- security risks reduced:
+  Removed one legacy public success root from the billing lifecycle endpoint
+  without changing `canManageBilling`, RLS org context, Serializable
+  transaction, status transition, payment date handling, audit behavior,
+  no-store wrapping, or error response shape.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this was a response contract cleanup. Existing transaction and service
+  execution behavior are unchanged.
+- UI/UX note:
+  No visible layout or interaction change. This was API response contract and
+  reader schema work only, so image generation was not applicable.
+- Oracle note:
+  Ran `npx -y @steipete/oracle --help`, collected GitHub context, then ran
+  Oracle browser session `invoice-envelope-review` with files:
+  invoice route/test, partner cooperation billing component/test, pharmacy
+  invoice service, and response helper. Output saved to
+  `/tmp/careviax-oracle-invoice-envelope.md`. Advice accepted for the bounded
+  envelope migration and its consumer/test conditions.
+- validation commands:
+  `npx -y @steipete/oracle --help`;
+  `git remote -v`; `git branch --show-current`; `git rev-parse HEAD`;
+  `git status --short --untracked-files=all`;
+  `npx -y @steipete/oracle --dry-run summary --files-report ...`;
+  `npx -y @steipete/oracle --engine browser --model gpt-5.5-pro --browser-manual-login --browser-auto-reattach-delay 5s --browser-auto-reattach-interval 3s --browser-auto-reattach-timeout 60s --browser-thinking-time heavy --heartbeat 30 --slug "invoice-envelope-review" --write-output /tmp/careviax-oracle-invoice-envelope.md ...`;
+  `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-invoices/[id]/route.ts' 'src/app/api/pharmacy-invoices/[id]/route.test.ts' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' tools/tests/ui-major-screens.spec.ts`;
+  `pnpm vitest run 'src/app/api/pharmacy-invoices/[id]/route.test.ts' --reporter=dot --testTimeout=30000`;
+  `pnpm vitest run 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' --reporter=dot --testTimeout=30000`;
+  `rg -n "patchInvoiceStatus|pharmacyInvoiceTransitionResultSchema|/api/pharmacy-invoices/" 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' tools/tests/ui-major-screens.spec.ts src tools`;
+  `pnpm api-response-shape:check`; `pnpm plans:active:check`;
+  `pnpm exec eslint 'src/app/api/pharmacy-invoices/[id]/route.ts' 'src/app/api/pharmacy-invoices/[id]/route.test.ts' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' tools/tests/ui-major-screens.spec.ts`;
+  `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-invoices/[id]/route.ts' 'src/app/api/pharmacy-invoices/[id]/route.test.ts' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' tools/tests/ui-major-screens.spec.ts`;
+  `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-invoices/[id]/route.ts' 'src/app/api/pharmacy-invoices/[id]/route.test.ts' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' tools/tests/ui-major-screens.spec.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+- validation results:
+  Oracle returned Go for the bounded response envelope migration with the
+  stated conditions. Prettier write/check passed. Pharmacy invoice `[id]` route
+  tests passed 1 file / 3 tests. Partner cooperation billing content tests
+  passed 1 file / 12 tests. Consumer grep confirmed the PATCH success readers
+  in app UI and `tools/tests/ui-major-screens.spec.ts` were covered by this
+  slice. Scoped ESLint, `api-response-shape:check` (54 allowlisted violations,
+  0 new), `plans:active:check`, scoped diff check, and typecheck passed.
+- remaining work:
+  `API-CONTRACT-001` remains Partial with 54 allowlisted violations. Next
+  allowlist head is `src/app/api/pharmacy-invoices/route.ts` with one expected
+  legacy response shape violation. Existing unrelated dirty/untracked
+  memory/docs and `.codex`/`.harness-mem` files remain unstaged.
+- next action:
+  Commit this implementation/ledger slice with only owned paths staged, then
+  continue allowlist cleanup from `src/app/api/pharmacy-invoices/route.ts`
+  unless redirected.

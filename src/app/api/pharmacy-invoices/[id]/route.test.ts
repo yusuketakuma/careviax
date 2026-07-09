@@ -101,11 +101,15 @@ describe('/api/pharmacy-invoices/[id] PATCH', () => {
         occurredAt: new Date('2026-06-19T00:00:00.000Z'),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
-      id: 'invoice_1',
-      status: 'issued',
-      invoice_no: 'INV-202606-0001',
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        id: 'invoice_1',
+        status: 'issued',
+        invoice_no: 'INV-202606-0001',
+      },
     });
+    expect(body).not.toHaveProperty('id');
   });
 
   it('requires a scheduled payment date before transaction side effects', async () => {
