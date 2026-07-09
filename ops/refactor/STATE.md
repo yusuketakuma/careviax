@@ -41,6 +41,91 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001BQ` medication cycle transition success envelope cleanup.
+  - commit:
+    Implementation, Plans/allowlist, and route test update committed as `0b4a92fc8` (`fix(api):
+    envelope medication cycle transition`). State record is this entry and will be committed
+    separately before pushing the slice.
+  - current task:
+    Continue `Plans.md` highest-priority implementable work under `API-CONTRACT-001`. Remove
+    `src/app/api/medication-cycles/[id]/transition/route.ts` from the public response-shape allowlist
+    by moving the PATCH transition success body to the required `data` envelope, without keeping raw
+    updated cycle fields at the response root.
+  - files inspected:
+    `git status --short --branch --untracked-files=all`, `ops/refactor/STATE.md`, `Plans.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `src/app/api/medication-cycles/[id]/transition/route.ts`,
+    `src/app/api/medication-cycles/[id]/transition/route.test.ts`,
+    `src/lib/db/cycle-transition.ts`, `src/app/api/__tests__/protected-patch-delete-routes.test.ts`,
+    route/reader usage search results, and
+    `gbrain search "API-CONTRACT medication-cycles transition response envelope"`.
+  - files changed:
+    `Plans.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/medication-cycles/[id]/transition/route.ts`,
+    `src/app/api/medication-cycles/[id]/transition/route.test.ts`, and this ledger.
+  - implementation:
+    `PATCH /api/medication-cycles/:id/transition` now returns `success({ data: updated })`. Route
+    tests assert the current envelope for normal transition success, notification-upsert failure
+    success, and report transition success. Existing auth, permission resolution, case assignment
+    scope, optimistic lock check, allowed transition validation, transition log write,
+    best-effort status notification, and workflow refresh notification were not changed. No direct
+    frontend response reader was found for this PATCH route. The transition allowlist entry was
+    removed, and `Plans.md` records `API-CONTRACT-001BQ` with allowlist debt reduced from 117 to 116.
+  - Oracle:
+    User explicitly paused Oracle consultation. No Oracle prompt was sent or restarted. This slice is
+    a mechanical response-envelope/test/allowlist cleanup.
+  - imagegen:
+    Not used. This is an API contract/static guard cleanup with no visible UI/UX reconstruction.
+  - Next.js docs:
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` was read earlier in
+    this run. This slice changes JSON response construction only and does not change route placement,
+    supported methods, runtime behavior, or transaction semantics.
+  - bugs found:
+    Medication cycle transition success still returned updated cycle fields at the response root.
+  - bugs fixed:
+    Medication cycle transition success now uses the required `data` envelope, route tests cover the
+    new shape across success paths, and `api-response-shape:check` now reports 116 allowlisted
+    violations and 0 new violations.
+  - security risks found:
+    None.
+  - security risks reduced:
+    Removing root updated-cycle fields reduces public response-contract drift while preserving auth,
+    role permission checks, assignment scoping, and PHI-minimized workflow refresh payloads.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None. No transaction work, query shape, notification upsert, or realtime invalidation changed.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/medication-cycles/[id]/transition/route.ts src/app/api/medication-cycles/[id]/transition/route.test.ts`;
+    `pnpm vitest run src/app/api/medication-cycles/[id]/transition/route.test.ts`;
+    `pnpm vitest run src/app/api/__tests__/protected-patch-delete-routes.test.ts -t "medication-cycles/[id]/transition PATCH"`;
+    `pnpm vitest run src/app/api/__tests__/protected-patch-delete-routes.test.ts -t medication-cycles`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint src/app/api/medication-cycles/[id]/transition/route.ts src/app/api/medication-cycles/[id]/transition/route.test.ts`;
+    `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/medication-cycles/[id]/transition/route.ts src/app/api/medication-cycles/[id]/transition/route.test.ts`;
+    `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/medication-cycles/[id]/transition/route.ts src/app/api/medication-cycles/[id]/transition/route.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm format:check`.
+  - validation results:
+    Prettier write passed for owned files. Medication cycle transition route test passed (1 file / 10
+    tests). The first protected PATCH smoke filter matched no tests and skipped the file; rerunning
+    with `-t medication-cycles` passed the targeted protected route smoke (3 passed, 77 skipped). API
+    response shape guard passed (116 allowlisted violations, 0 new violations). Plans active board
+    check passed. Scoped ESLint passed. Scoped Prettier check passed. Scoped `git diff --check`
+    passed. Full typecheck passed. `pnpm format:check` again confirmed owned changed files are
+    formatted, then failed on unrelated pre-existing untracked Markdown files under `projects/` and
+    `skills/`; those files were not modified or staged.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 116 allowlisted response-shape violations. Next immediate
+    allowlist targets start with `src/app/api/medication-cycles/route.ts`, followed by
+    `src/app/api/medication-profiles/route.ts`.
+  - next action:
+    Commit this STATE entry separately, push `0b4a92fc8` plus the state commit to `origin/main`, then
+    continue with `src/app/api/medication-cycles/route.ts` under the same Oracle-paused and
+    no-legacy-root constraints.
+
 - codex: `API-CONTRACT-001BP` medication cycle history success envelope cleanup.
   - commit:
     Implementation, Plans/allowlist, route test, and workflow fetcher update committed as
