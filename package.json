@@ -65,6 +65,7 @@
     "db:check-visit-route-order-conflicts": "tsx tools/scripts/check-visit-route-order-conflicts.ts",
     "db:explain-care-report-index-candidates": "tsx tools/scripts/explain-care-report-index-candidates.ts",
     "db:query-shape:check": "node tools/scripts/check-query-shape.mjs",
+    "db:raw-read-org-guard:check": "node tools/scripts/check-raw-read-org-guard.mjs",
     "db:read-slo:check": "node tools/scripts/check-read-path-slo.mjs",
     "db:external-access-case-boundary-audit": "tsx tools/scripts/external-access-case-boundary-audit.ts",
     "db:handoff-confirmation-tasks:inventory": "tsx tools/scripts/handoff-confirmation-task-inventory.ts",

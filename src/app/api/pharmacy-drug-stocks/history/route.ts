@@ -39,12 +39,15 @@ const authenticatedGET = withAuthContext(
     });
     if (!site) return notFound('対象の薬局拠点が見つかりません');
 
-    const stock = await prisma.pharmacyDrugStock.findUnique({
+    // RLS-RAW-READ-GUARD-001: add an explicit org_id filter so this raw read
+    // (outside withOrgContext) is org-scoped in the app layer, not just via the
+    // parent site lookup. findUnique -> findFirst because org_id is not part of
+    // the unique key.
+    const stock = await prisma.pharmacyDrugStock.findFirst({
       where: {
-        site_id_drug_master_id: {
-          site_id: site.id,
-          drug_master_id: parsed.data.drug_master_id,
-        },
+        org_id: authCtx.orgId,
+        site_id: site.id,
+        drug_master_id: parsed.data.drug_master_id,
       },
       select: { id: true, drug_master_id: true },
     });

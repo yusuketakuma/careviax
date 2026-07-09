@@ -53,8 +53,10 @@ export const PATCH = withAuthContext(
 
     // B4: For dispense_audit_rejected, cycle must have moved past 'dispensing'
     if (existing.exception_type === 'dispense_audit_rejected' && existing.cycle_id) {
+      // RLS-RAW-READ-GUARD-001: explicit org_id filter for this raw read
+      // outside withOrgContext (defense-in-depth beyond the parent lookup).
       const cycle = await prisma.medicationCycle.findFirst({
-        where: { id: existing.cycle_id },
+        where: { id: existing.cycle_id, org_id: ctx.orgId },
         select: { overall_status: true },
       });
       if (cycle?.overall_status === 'dispensing') {

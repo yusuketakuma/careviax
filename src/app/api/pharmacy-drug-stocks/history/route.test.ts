@@ -8,7 +8,7 @@ const { authMock, loggerErrorMock, prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     membership: { findFirst: vi.fn() },
     pharmacySite: { findFirst: vi.fn() },
-    pharmacyDrugStock: { findUnique: vi.fn() },
+    pharmacyDrugStock: { findFirst: vi.fn() },
     auditLog: { findMany: vi.fn() },
   },
 }));
@@ -46,7 +46,7 @@ describe('/api/pharmacy-drug-stocks/history', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
     prismaMock.pharmacySite.findFirst.mockResolvedValue({ id: 'site_1', name: '本店' });
-    prismaMock.pharmacyDrugStock.findUnique.mockResolvedValue({
+    prismaMock.pharmacyDrugStock.findFirst.mockResolvedValue({
       id: 'stock_1',
       drug_master_id: 'drug_1',
     });
@@ -147,7 +147,7 @@ describe('/api/pharmacy-drug-stocks/history', () => {
       message: 'クエリパラメータが不正です',
     });
     expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
-    expect(prismaMock.pharmacyDrugStock.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.findMany).not.toHaveBeenCalled();
   });
 
@@ -186,7 +186,7 @@ describe('/api/pharmacy-drug-stocks/history', () => {
   });
 
   it('returns an empty history when the drug is not configured for the site', async () => {
-    prismaMock.pharmacyDrugStock.findUnique.mockResolvedValue(null);
+    prismaMock.pharmacyDrugStock.findFirst.mockResolvedValue(null);
 
     const response = await GET(createRequest(), { params: Promise.resolve({}) });
 
@@ -208,7 +208,7 @@ describe('/api/pharmacy-drug-stocks/history', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
     expectNoStore(response);
-    expect(prismaMock.pharmacyDrugStock.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.findMany).not.toHaveBeenCalled();
   });
 
@@ -224,7 +224,7 @@ describe('/api/pharmacy-drug-stocks/history', () => {
       code: 'AUTH_UNAUTHENTICATED',
     });
     expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
-    expect(prismaMock.pharmacyDrugStock.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.findMany).not.toHaveBeenCalled();
   });
 

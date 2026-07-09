@@ -104,8 +104,10 @@ async function authenticatedPOST(
   if (!patient) return notFound('患者が見つかりません');
 
   const [link, profileTask] = await Promise.all([
-    prisma.patientMcsLink.findUnique({
-      where: { patient_id: id },
+    // RLS-RAW-READ-GUARD-001: explicit org_id filter for this raw read outside
+    // withOrgContext (findUnique -> findFirst since org_id is not in the key).
+    prisma.patientMcsLink.findFirst({
+      where: { patient_id: id, org_id: ctx.orgId },
       select: {
         source_url: true,
         mcs_project_url: true,

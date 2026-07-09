@@ -1758,7 +1758,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
           },
         },
       });
-      prismaMock.visitHandoffExtraction.findUnique.mockResolvedValueOnce(null);
+      prismaMock.visitHandoffExtraction.findFirst.mockResolvedValueOnce(null);
     },
     handler: () =>
       visitRecordHandoffGet(

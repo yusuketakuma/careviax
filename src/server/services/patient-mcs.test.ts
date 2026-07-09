@@ -154,7 +154,7 @@ function mockPatientMcsSyncLookups(existingProjectId = 'project_new') {
     name: '板屋 美恵子',
     name_kana: 'イタヤ ミエコ',
   } as never);
-  vi.mocked(prisma.patientMcsLink.findUnique).mockResolvedValueOnce({
+  vi.mocked(prisma.patientMcsLink.findFirst).mockResolvedValueOnce({
     id: 'link_1',
     source_url: 'https://www.medical-care.net/patients/123',
     mcs_patient_id: '123',

@@ -199,8 +199,10 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     return withSensitiveNoStore(await forbiddenResponse('この訪問記録を閲覧する権限がありません'));
   }
 
-  const handoffExtraction = await prisma.visitHandoffExtraction.findUnique({
-    where: { visit_record_id: id },
+  // RLS-RAW-READ-GUARD-001: explicit org_id filter for this raw read outside
+  // withOrgContext (findUnique -> findFirst since org_id is not in the key).
+  const handoffExtraction = await prisma.visitHandoffExtraction.findFirst({
+    where: { visit_record_id: id, org_id: ctx.orgId },
     select: {
       status: true,
       retry_count: true,

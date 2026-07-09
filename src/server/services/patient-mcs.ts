@@ -899,8 +899,10 @@ export async function syncPatientMcsTimeline(
     throw new Error('患者が見つかりません');
   }
 
-  const existingLink = await prisma.patientMcsLink.findUnique({
-    where: { patient_id: patientId },
+  // RLS-RAW-READ-GUARD-001: explicit org_id filter for this raw read outside
+  // withOrgContext (findUnique -> findFirst since org_id is not in the key).
+  const existingLink = await prisma.patientMcsLink.findFirst({
+    where: { patient_id: patientId, org_id: orgId },
     select: {
       id: true,
       source_url: true,

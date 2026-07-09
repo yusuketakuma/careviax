@@ -1,0 +1,490 @@
+{
+  "entries": [
+    {
+      "path": "src/app/api/admin/inventory-forecast/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-001",
+      "reason": "drugMaster is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/admin/organizations/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-002",
+      "reason": "Admin console read (organization/user); org scope is enforced by admin authz + the resolved target id, not a where org_id filter.",
+      "plannedAction": "Add an explicit org_id filter where the target model is org-scoped as the admin surface is hardened.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/app/api/auth/mfa/recovery/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-003",
+      "reason": "User identity lookup (user) by session id / cognitoSub / globally-unique email; resolved before or independent of org scope.",
+      "plannedAction": "Keep identity lookup global; email uniqueness is intentionally cross-org.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/dispense-tasks/[id]/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-004",
+      "reason": "drugMaster is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/dispense-tasks/[id]/workbench/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-005",
+      "reason": "drugMaster is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/drug-master-import-logs/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-006",
+      "reason": "drugMasterImportLog is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/drug-master-imports/status/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-007",
+      "reason": "drugMasterImportLog/drugMaster is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 5
+    },
+    {
+      "path": "src/app/api/drug-master-imports/status/route.ts",
+      "rule": "unverifiable_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-008",
+      "reason": "drugMaster/drugPackage/drugPackageInsert/drugInteraction/genericDrugMapping is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 5
+    },
+    {
+      "path": "src/app/api/drug-masters/[id]/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-009",
+      "reason": "drugMaster is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/drug-masters/batch/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-010",
+      "reason": "drugMaster is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/external-access/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-011",
+      "reason": "externalAccessGrant list/cursor read receives a caller-built where (args.where) already carrying org_id: ctx.orgId; org-scoped but not statically resolvable through the parameter.",
+      "plannedAction": "Consider inlining the org_id filter or routing through withOrgContext to make the scope statically verifiable.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/app/api/me/activity-summary/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-012",
+      "reason": "\"me\" self endpoint read (visitRecord/visitSchedule); scoped to the authenticated actor (user id / pharmacist_id), not a where org_id filter.",
+      "plannedAction": "Add org_id defense-in-depth alongside the actor filter in a follow-up.",
+      "expectedCount": 4
+    },
+    {
+      "path": "src/app/api/me/mfa/verify/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-013",
+      "reason": "\"me\" self endpoint read (user); scoped to the authenticated actor (user id / pharmacist_id), not a where org_id filter.",
+      "plannedAction": "Add org_id defense-in-depth alongside the actor filter in a follow-up.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/me/preferences/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-014",
+      "reason": "\"me\" self endpoint read (setting); scoped to the authenticated actor (user id / pharmacist_id), not a where org_id filter.",
+      "plannedAction": "Add org_id defense-in-depth alongside the actor filter in a follow-up.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/app/api/me/profile/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-015",
+      "reason": "\"me\" self endpoint read (user); scoped to the authenticated actor (user id / pharmacist_id), not a where org_id filter.",
+      "plannedAction": "Add org_id defense-in-depth alongside the actor filter in a follow-up.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/app/api/me/site/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-016",
+      "reason": "\"me\" self endpoint read (user); scoped to the authenticated actor (user id / pharmacist_id), not a where org_id filter.",
+      "plannedAction": "Add org_id defense-in-depth alongside the actor filter in a follow-up.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/me/sites/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-017",
+      "reason": "\"me\" self endpoint read (user); scoped to the authenticated actor (user id / pharmacist_id), not a where org_id filter.",
+      "plannedAction": "Add org_id defense-in-depth alongside the actor filter in a follow-up.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/medication-cycles/[id]/history/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-018",
+      "reason": "User identity lookup (user) by session id / cognitoSub / globally-unique email; resolved before or independent of org scope.",
+      "plannedAction": "Keep identity lookup global; email uniqueness is intentionally cross-org.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/pharmacists/import/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-019",
+      "reason": "User identity lookup (user) by session id / cognitoSub / globally-unique email; resolved before or independent of org scope.",
+      "plannedAction": "Keep identity lookup global; email uniqueness is intentionally cross-org.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/pharmacists/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-020",
+      "reason": "User identity lookup (user) by session id / cognitoSub / globally-unique email; resolved before or independent of org scope.",
+      "plannedAction": "Keep identity lookup global; email uniqueness is intentionally cross-org.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stock-requests/[id]/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-021",
+      "reason": "drugMaster is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stock-requests/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-022",
+      "reason": "drugMaster is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stock-templates/[id]/apply/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-023",
+      "reason": "drugMaster is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stocks/impact/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-024",
+      "reason": "pharmacyDrugStock reads derive their where from baseWhere (org_id: authCtx.orgId) via spread through computed member-access / function-param; org-scoped but not statically resolvable. drugMasterChangeEvent is a global master table.",
+      "plannedAction": "Refactor the queue where map so the org filter is statically visible at each call-site.",
+      "expectedCount": 4
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stocks/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-025",
+      "reason": "drugMaster is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/app/api/platform/tenants/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-026",
+      "reason": "Platform break-glass cross-tenant read (organization) for the operator console; intentionally not org-scoped and audited elsewhere.",
+      "plannedAction": "Keep as break-glass; ensure the platform console read stays behind operator authz + audit.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/presence/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-027",
+      "reason": "User identity lookup (user) by session id / cognitoSub / globally-unique email; resolved before or independent of org scope.",
+      "plannedAction": "Keep identity lookup global; email uniqueness is intentionally cross-org.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/set-plans/[id]/calendar/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-028",
+      "reason": "drugMaster is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/app/api/settings/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-029",
+      "reason": "Setting rows (setting) are keyed by scope/scope_id; org scoping is carried by the resolved scope_id, not a direct org_id filter.",
+      "plannedAction": "Fold org_id into the setting where clause once the settings scope model is revisited.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/server/cds/checker.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-030",
+      "reason": "drugMaster/drugInteraction/drugPackageInsert is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 13
+    },
+    {
+      "path": "src/server/jobs/daily-prescription-original-retention.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-031",
+      "reason": "System cron/batch job scans prescriptionIntake rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/server/jobs/daily/billing.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-032",
+      "reason": "System cron/batch job scans organization rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/server/jobs/daily/cleanup.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-033",
+      "reason": "System cron/batch job scans qrScanDraft rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/server/jobs/daily/compliance-expiry.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-034",
+      "reason": "System cron/batch job scans facilityStandardRegistration/pharmacistCredential/consentRecord rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 3
+    },
+    {
+      "path": "src/server/jobs/daily/conferences.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-035",
+      "reason": "System cron/batch job scans conferenceNote/careCase rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/server/jobs/daily/followups.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-036",
+      "reason": "System cron/batch job scans managementPlan/visitScheduleContactLog/residence/patientSelfReport/patient/communityActivity rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 6
+    },
+    {
+      "path": "src/server/jobs/daily/patient-status.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-037",
+      "reason": "System cron/batch job scans organization rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/server/jobs/daily/preparation.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-038",
+      "reason": "System cron/batch job scans visitSchedule rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 3
+    },
+    {
+      "path": "src/server/jobs/daily/prescriptions.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-039",
+      "reason": "System cron/batch job scans visitSchedule/prescriptionIntake rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 4
+    },
+    {
+      "path": "src/server/jobs/daily/reports.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-040",
+      "reason": "System cron/batch job scans careReport rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/server/jobs/daily/visit-support.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-041",
+      "reason": "System cron/batch job scans careCase/firstVisitDocument/patientSelfReport/inquiryRecord/visitSchedule rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 5
+    },
+    {
+      "path": "src/server/jobs/daily/visits.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-042",
+      "reason": "System cron/batch job scans visitRecord/medicationCycle rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/server/jobs/drug-master.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-043",
+      "reason": "System cron/batch job scans membership/integrationJob/drugMasterImportLog/drugMaster rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 4
+    },
+    {
+      "path": "src/server/jobs/drug-master.ts",
+      "rule": "unverifiable_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-044",
+      "reason": "System cron/batch job scans drugMaster rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/server/jobs/evening.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-045",
+      "reason": "System cron/batch job scans visitSchedule/visitRecord rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/server/jobs/next-day.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-046",
+      "reason": "System cron/batch job scans visitRecord/careReport rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/server/services/label-dictionary.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-047",
+      "reason": "labelDictionary is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/server/services/mfa-recovery.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-048",
+      "reason": "Setting rows (setting) are keyed by scope/scope_id; org scoping is carried by the resolved scope_id, not a direct org_id filter.",
+      "plannedAction": "Fold org_id into the setting where clause once the settings scope model is revisited.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/server/services/patient-service.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-049",
+      "reason": "patient list read where is built by buildDbWhere(orgId, ...) / applyPatientAssignmentWhere and passed via variable/param; org-scoped but not statically resolvable.",
+      "plannedAction": "Expose an org-scoped read seam so the builder-produced where is statically verifiable.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/server/services/prescription-intake-service.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-050",
+      "reason": "drugMaster is a global master/infra table with no org_id column; reads are intentionally global.",
+      "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/server/jobs/daily/emergency.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-051",
+      "reason": "System cron/batch job scans businessHoliday/pharmacistShift rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
+      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 2
+    },
+    {
+      "path": "src/server/jobs/monthly.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-052",
+      "reason": "System monthly cron/batch job aggregates visitRecord/prescriptionIntake/conferenceNote rows across all orgs, keyed/grouped by org_id (in-memory aggregation + per-org settings upsert); no cross-tenant leak because output is partitioned per org_id.",
+      "plannedAction": "Keep cross-org aggregation; consider a dedicated cross-org read seam if the batch surface grows.",
+      "expectedCount": 4
+    },
+    {
+      "path": "src/server/jobs/runner.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-053",
+      "reason": "Job-failure admin/owner notification lookup (membership); org_id filter is applied conditionally via member-access (membershipFilter.org_id = orgId) when a job orgId is present, else intentionally cross-org, and dispatch re-enters withOrgContext(row.org_id) per org.",
+      "plannedAction": "Inline the org_id filter into the where literal (or route through withOrgContext) so the org scope is statically verifiable when a job orgId is present.",
+      "expectedCount": 1
+    },
+    {
+      "path": "src/server/services/external-access.ts",
+      "rule": "missing_org_scope",
+      "owner": "RLS-RAW-READ-GUARD-001",
+      "debtId": "RAW-READ-ORG-054",
+      "reason": "externalAccessGrant lookup by globally-unique token_hash (id-then-org-recheck); the fetched grant.org_id is verified against the signed token payload immediately after, so it is not a where org_id filter but is org-checked before use.",
+      "plannedAction": "Keep the token_hash lookup global; the post-fetch org_id equality check enforces tenant scope.",
+      "expectedCount": 1
+    }
+  ]
+}

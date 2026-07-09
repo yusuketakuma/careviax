@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   patientFindFirstMock,
-  patientMcsLinkFindUniqueMock,
+  patientMcsLinkFindFirstMock,
   taskFindFirstMock,
   taskUpsertMock,
   communicationEventCreateMock,
@@ -13,7 +13,7 @@ const {
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
-  patientMcsLinkFindUniqueMock: vi.fn(),
+  patientMcsLinkFindFirstMock: vi.fn(),
   taskFindFirstMock: vi.fn(),
   taskUpsertMock: vi.fn(),
   communicationEventCreateMock: vi.fn(),
@@ -31,7 +31,7 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: patientFindFirstMock,
     },
     patientMcsLink: {
-      findUnique: patientMcsLinkFindUniqueMock,
+      findFirst: patientMcsLinkFindFirstMock,
     },
     task: {
       findFirst: taskFindFirstMock,
@@ -83,7 +83,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
       ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
     });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1', name: '田中一郎' });
-    patientMcsLinkFindUniqueMock.mockResolvedValue({
+    patientMcsLinkFindFirstMock.mockResolvedValue({
       source_url: 'https://www.medical-care.net/patients/2463520',
       mcs_project_url: 'https://www.medical-care.net/projects/medical/57886227',
       project_title: '田中一郎 在宅チーム',
@@ -222,7 +222,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
   });
 
   it('falls back to a safe source URL when the saved project URL is malformed', async () => {
-    patientMcsLinkFindUniqueMock.mockResolvedValue({
+    patientMcsLinkFindFirstMock.mockResolvedValue({
       source_url: 'https://www.medical-care.net/patients/2463520',
       mcs_project_url: 'not-a-url',
       project_title: '田中一郎 在宅チーム',
@@ -277,7 +277,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
   });
 
   it('does not copy unsafe saved MCS URLs into the communication contact field', async () => {
-    patientMcsLinkFindUniqueMock.mockResolvedValue({
+    patientMcsLinkFindFirstMock.mockResolvedValue({
       source_url: 'https://example.com/patients/2463520',
       mcs_project_url: 'http://www.medical-care.net/projects/medical/57886227',
       project_title: '田中一郎 在宅チーム',

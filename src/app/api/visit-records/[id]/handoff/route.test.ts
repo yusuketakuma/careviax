@@ -11,7 +11,7 @@ const {
   buildVisitHandoffConfirmationWhereMock,
   visitRecordFindFirstMock,
   membershipFindFirstMock,
-  visitHandoffExtractionFindUniqueMock,
+  visitHandoffExtractionFindFirstMock,
   confirmHandoffMock,
   readConfirmableHandoffDataMock,
   VisitHandoffAlreadyConfirmedErrorMock,
@@ -27,7 +27,7 @@ const {
   buildVisitHandoffConfirmationWhereMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
-  visitHandoffExtractionFindUniqueMock: vi.fn(),
+  visitHandoffExtractionFindFirstMock: vi.fn(),
   confirmHandoffMock: vi.fn(),
   readConfirmableHandoffDataMock: vi.fn(),
   VisitHandoffAlreadyConfirmedErrorMock: class VisitHandoffAlreadyConfirmedError extends Error {},
@@ -52,7 +52,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     visitRecord: { findFirst: visitRecordFindFirstMock },
     membership: { findFirst: membershipFindFirstMock },
-    visitHandoffExtraction: { findUnique: visitHandoffExtractionFindUniqueMock },
+    visitHandoffExtraction: { findFirst: visitHandoffExtractionFindFirstMock },
   },
 }));
 
@@ -153,7 +153,7 @@ describe('/api/visit-records/[id]/handoff', () => {
       schedule: { pharmacist_id: 'user_1' },
     });
     membershipFindFirstMock.mockResolvedValue(null);
-    visitHandoffExtractionFindUniqueMock.mockResolvedValue(null);
+    visitHandoffExtractionFindFirstMock.mockResolvedValue(null);
     readConfirmableHandoffDataMock.mockImplementation((value: unknown) => {
       if (value === undefined || value === null) return { status: 'missing' };
       const handoff = value as { decision_rationale?: unknown; next_check_items?: unknown };
@@ -184,7 +184,7 @@ describe('/api/visit-records/[id]/handoff', () => {
 
     it('returns 200 with handoff data', async () => {
       visitRecordFindFirstMock.mockResolvedValue(buildVisitRecord());
-      visitHandoffExtractionFindUniqueMock.mockResolvedValue({
+      visitHandoffExtractionFindFirstMock.mockResolvedValue({
         status: 'succeeded',
         retry_count: 0,
         last_attempted_at: new Date('2026-04-01T00:00:00.000Z'),
@@ -343,7 +343,7 @@ describe('/api/visit-records/[id]/handoff', () => {
         authCtx.ctx,
         accessibleSchedule,
       );
-      expect(visitHandoffExtractionFindUniqueMock).not.toHaveBeenCalled();
+      expect(visitHandoffExtractionFindFirstMock).not.toHaveBeenCalled();
     });
 
     it('returns 404 when no handoff data', async () => {
@@ -412,7 +412,7 @@ describe('/api/visit-records/[id]/handoff', () => {
 
     it('returns redacted extraction status even when handoff data is not yet available', async () => {
       visitRecordFindFirstMock.mockResolvedValue(buildVisitRecord({ structured_soap: null }));
-      visitHandoffExtractionFindUniqueMock.mockResolvedValue({
+      visitHandoffExtractionFindFirstMock.mockResolvedValue({
         status: 'failed',
         retry_count: 2,
         last_attempted_at: new Date('2026-04-01T00:00:00.000Z'),
