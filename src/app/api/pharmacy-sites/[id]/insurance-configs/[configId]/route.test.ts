@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -60,6 +61,19 @@ function createDeleteRequest() {
   });
 }
 
+async function expectErrorEnvelope(
+  response: Response,
+  status: number,
+  expected: Record<string, unknown>,
+) {
+  expect(response.status).toBe(status);
+  expectSensitiveNoStore(response);
+  const body = await response.json();
+  expect(body).toMatchObject(expected);
+  expect(body).not.toHaveProperty('data');
+  return body as Record<string, unknown>;
+}
+
 describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -78,9 +92,21 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
     insuranceConfigFindManyMock.mockResolvedValue([]);
     insuranceConfigUpdateMock.mockResolvedValue({
       id: 'config_1',
+      site_id: 'site_1',
       revision_code: '2024',
       revision_label: '更新版',
       insurance_type: 'medical',
+      effective_from: new Date('2024-04-01T00:00:00.000Z'),
+      effective_to: null,
+      config: {
+        base_fee: 1,
+        operational_marker: 'admin-visible config value',
+      },
+      org_id: 'org_1',
+      display_id: 'internal_display_1',
+      created_at: new Date('2024-03-01T00:00:00.000Z'),
+      updated_at: new Date('2024-04-02T00:00:00.000Z'),
+      backend_only_marker: 'internal-only-marker',
     });
     insuranceConfigDeleteMock.mockResolvedValue({ id: 'config_1' });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
@@ -103,7 +129,7 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
         revision_label: '更新版',
         effective_from: '2024-04-01',
         effective_to: null,
-        config: { base_fee: 1 },
+        config: { base_fee: 1, raw_pii_marker: '患者 山田太郎 token=secret' },
       }),
       {
         params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
@@ -111,13 +137,40 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data']);
+    expect(body).toEqual({
+      data: {
+        id: 'config_1',
+        site_id: 'site_1',
+        revision_code: '2024',
+        revision_label: '更新版',
+        insurance_type: 'medical',
+        effective_from: '2024-04-01T00:00:00.000Z',
+        effective_to: null,
+        config: {
+          base_fee: 1,
+          operational_marker: 'admin-visible config value',
+        },
+      },
+    });
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('ok');
+    const responseText = JSON.stringify(body);
+    expect(responseText).not.toContain('org_id');
+    expect(responseText).not.toContain('display_id');
+    expect(responseText).not.toContain('created_at');
+    expect(responseText).not.toContain('updated_at');
+    expect(responseText).not.toContain('backend_only_marker');
+    expect(responseText).not.toContain('internal-only-marker');
     expect(insuranceConfigUpdateMock).toHaveBeenCalledWith({
       where: { id: 'config_1' },
       data: {
         revision_label: '更新版',
         effective_from: new Date('2024-04-01'),
         effective_to: null,
-        config: { base_fee: 1 },
+        config: { base_fee: 1, raw_pii_marker: '患者 山田太郎 token=secret' },
       },
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
@@ -131,10 +184,13 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
           revision_label: '更新版',
           effective_from: '2024-04-01',
           effective_to: null,
-          config: { base_fee: 1 },
+          config_changed_keys: ['base_fee', 'raw_pii_marker'],
         },
       }),
     });
+    const auditCallText = JSON.stringify(auditLogCreateMock.mock.calls[0]);
+    expect(auditCallText).not.toContain('患者 山田太郎');
+    expect(auditCallText).not.toContain('token=secret');
   });
 
   it('rejects non-object patch payloads before loading the insurance config', async () => {
@@ -142,8 +198,7 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
       params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
     }))!;
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
+    await expectErrorEnvelope(response, 400, {
       message: 'リクエストボディが不正です',
     });
     expect(insuranceConfigFindFirstMock).not.toHaveBeenCalled();
@@ -157,8 +212,7 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
       params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
     }))!;
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
+    await expectErrorEnvelope(response, 400, {
       message: 'リクエストボディが不正です',
     });
     expect(insuranceConfigFindFirstMock).not.toHaveBeenCalled();
@@ -180,8 +234,7 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
       },
     ))!;
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
+    await expectErrorEnvelope(response, 400, {
       code: 'VALIDATION_ERROR',
       message: '入力値が不正です',
     });
@@ -205,8 +258,7 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
       },
     ))!;
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
+    await expectErrorEnvelope(response, 400, {
       message: '保険設定IDが不正です',
     });
     expect(insuranceConfigFindFirstMock).not.toHaveBeenCalled();
@@ -241,7 +293,59 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(insuranceConfigUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('wraps auth failures with no-store before updating', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'AUTH_FORBIDDEN', message: 'forbidden' }), {
+        status: 403,
+      }),
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        revision_label: '更新版',
+        effective_from: '2024-04-01',
+        effective_to: null,
+        config: { base_fee: 1 },
+      }),
+      {
+        params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
+      },
+    ))!;
+
+    await expectErrorEnvelope(response, 403, {
+      code: 'AUTH_FORBIDDEN',
+      message: 'forbidden',
+    });
+    expect(insuranceConfigUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when update fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw insurance config update failure token=secret'),
+    );
+
+    const response = (await PATCH(
+      createPatchRequest({
+        revision_label: '更新版',
+        effective_from: '2024-04-01',
+        effective_to: null,
+        config: { base_fee: 1 },
+      }),
+      {
+        params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
+      },
+    ))!;
+
+    const body = await expectErrorEnvelope(response, 500, {
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('raw insurance config update failure');
+    expect(JSON.stringify(body)).not.toContain('token=secret');
   });
 
   it('rejects blank config route ids before deleting the insurance config', async () => {
@@ -249,12 +353,30 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
       params: Promise.resolve({ id: 'site_1', configId: '   ' }),
     }))!;
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
+    await expectErrorEnvelope(response, 400, {
       message: '保険設定IDが不正です',
     });
     expect(insuranceConfigFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(insuranceConfigDeleteMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('wraps auth failures with no-store before deleting', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'AUTH_UNAUTHENTICATED', message: 'login' }), {
+        status: 401,
+      }),
+    });
+
+    const response = (await DELETE(createDeleteRequest(), {
+      params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
+    }))!;
+
+    await expectErrorEnvelope(response, 401, {
+      code: 'AUTH_UNAUTHENTICATED',
+      message: 'login',
+    });
     expect(insuranceConfigDeleteMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -265,8 +387,29 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      data: { id: 'config_1' },
+    });
     expect(insuranceConfigDeleteMock).toHaveBeenCalledWith({
       where: { id: 'config_1' },
     });
+  });
+
+  it('returns a sanitized no-store 500 when delete fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw insurance config delete failure token=secret'),
+    );
+
+    const response = (await DELETE(createDeleteRequest(), {
+      params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
+    }))!;
+
+    const body = await expectErrorEnvelope(response, 500, {
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('raw insurance config delete failure');
+    expect(JSON.stringify(body)).not.toContain('token=secret');
   });
 });

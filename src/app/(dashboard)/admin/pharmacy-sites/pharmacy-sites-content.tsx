@@ -277,7 +277,7 @@ export function PharmacySitesContent() {
         buildPharmacySiteInsuranceConfigApiPath(deleteConfig.siteId, deleteConfig.configId),
         { method: 'DELETE', headers: buildOrgHeaders(orgId) },
       );
-      if (!response.ok) throw new Error('削除に失敗しました');
+      return readApiJson<unknown>(response, '削除に失敗しました');
     },
     onSuccess: async () => {
       toast.success('保険設定を削除しました');

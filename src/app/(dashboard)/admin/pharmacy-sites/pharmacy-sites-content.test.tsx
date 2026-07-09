@@ -337,6 +337,9 @@ describe('PharmacySitesContent', () => {
           { status: 200 },
         );
       }
+      if (url.includes('/insurance-configs/') && init?.method === 'DELETE') {
+        return new Response(JSON.stringify({ data: { id: configId } }), { status: 200 });
+      }
       return new Response(JSON.stringify({}), { status: 200 });
     });
     vi.stubGlobal('fetch', fetchMock);

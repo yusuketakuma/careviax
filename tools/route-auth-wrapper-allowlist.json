@@ -1413,7 +1413,7 @@
       "path": "src/app/api/pharmacy-sites/[id]/insurance-configs/[configId]/route.ts",
       "expectedCount": 2,
       "permissions": ["canAdmin"],
-      "sensitiveNoStore": false,
+      "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
       "debtId": "CORE-ROUTE-001",

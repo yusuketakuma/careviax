@@ -41,6 +41,79 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001DQ` pharmacy site insurance config response envelope cleanup.
+  - current task:
+    `PATCH /api/pharmacy-sites/:id/insurance-configs/:configId` の success DTO を明示化し、
+    `DELETE /api/pharmacy-sites/:id/insurance-configs/:configId` の success response を
+    legacy `{ ok: true }` から `{ data: { id } }` envelope へ移行する。あわせて
+    PATCH/DELETE の sensitive no-store、sanitized unexpected-error fallback、route-local
+    auth failure no-store、audit diff minimization、allowlist / Plans / archive を同期する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `src/app/api/pharmacy-sites/[id]/insurance-configs/[configId]/route.ts`,
+    `src/app/api/pharmacy-sites/[id]/insurance-configs/[configId]/route.test.ts`,
+    `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx`,
+    `tools/api-response-shape-allowlist.json`,
+    `tools/route-auth-wrapper-allowlist.json`, `Plans.md`, `docs/plans-archive.md`,
+    bounded subagent code-map / API-contract / privacy review outputs, and JP Core/FHIR
+    recon begun for the next DB rebuild slice after the user redirected scope.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `tools/route-auth-wrapper-allowlist.json`,
+    `src/app/api/pharmacy-sites/[id]/insurance-configs/[configId]/route.ts`,
+    `src/app/api/pharmacy-sites/[id]/insurance-configs/[configId]/route.test.ts`,
+    `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx`, and
+    `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx`.
+  - bugs found:
+    DELETE still returned legacy `{ ok: true }` success shape, keeping one
+    `api-response-shape` allowlist violation. PATCH returned the Prisma update row
+    shape without an explicit public DTO guard, and PATCH audit changes persisted the
+    full free-form `config` payload. PATCH/DELETE lacked route-local no-store coverage
+    for auth responses and outer sanitized unexpected-error fallback.
+  - bugs fixed:
+    DELETE now returns `{ data: { id } }`; PATCH success serializes only the intended
+    insurance config DTO fields. PATCH/DELETE wrap all outcomes in sensitive no-store
+    and sanitized internal-error fallback while preserving Next control-flow rethrows.
+    Update audit changes now store date/label metadata plus `config_changed_keys`
+    instead of full config contents. The stale response-shape allowlist entry was
+    removed, reducing `API-CONTRACT-001` debt from 50 to 49.
+  - security risks found:
+    Response DTO drift and audit overcapture could expose internal org/display/timestamp
+    fields or free-form config values beyond the operational need. Cache hardening was
+    inconsistent on a sensitive admin configuration mutation route.
+  - security risks reduced:
+    Public responses exclude `org_id`, `display_id`, timestamps, and backend-only
+    fields. Audit payloads no longer persist raw config values, and success/client
+    error/auth/sanitized 500 responses carry sensitive no-store headers. Existing
+    `canAdmin`, org/site/config scoped checks, overlap validation, RLS context,
+    update/delete behavior, and audit action names were preserved.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract, cache, error, and audit minimization hardening.
+  - validation commands:
+    `pnpm vitest run 'src/app/api/pharmacy-sites/[id]/insurance-configs/[configId]/route.test.ts' --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx' --reporter=dot --testNamePattern 'delete insurance config|update insurance config' --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm route-auth-wrapper:check`;
+    `pnpm plans:active:check`.
+  - validation results:
+    Route tests passed 1 file / 12 tests. Focused admin UI tests passed 3 tests
+    / 18 skipped. `api-response-shape:check` passed with 49 allowlisted violations
+    and 0 new violations. `route-auth-wrapper:check` and `plans:active:check` passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 49 allowlisted response-shape violations.
+    The user has redirected the active implementation scope to an unreleased,
+    destructive PH-OS/yrese JP Core/FHIR-ready DB rebuild, so further API envelope
+    burn-down is paused.
+  - next action:
+    Commit this isolated API-contract slice, then rebuild the DB schema around
+    yrese as SoR and PH-OS as home-care SoW/SoE using official JP Core/FHIR R4
+    guidance. Do not apply migrations to live DB, push, or deploy without explicit
+    current-task instruction.
+
 - codex: `API-CONTRACT-001DP` pharmacy partnerships list/create response envelope cleanup.
   - current task:
     `GET /api/pharmacy-partnerships` の list success を legacy cursor root から
