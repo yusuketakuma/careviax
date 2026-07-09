@@ -36548,3 +36548,81 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
 - next action:
   Commit this STATE ledger update, notify the checker with commit/validation
   evidence, then proceed to P1-2 unless redirected.
+
+## 2026-07-10 UI-P1-2 — stale-after-refetch false-error handling
+
+- current task:
+  Close the P1-2 UI/UX audit item where background refetch failures replaced
+  already visible operational data with full blocking errors in the visit and
+  report workspaces.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `ops/refactor/STATE.md`; `docs/ui-ux-design-guidelines.md`;
+  `src/app/(dashboard)/patients/patients-board.tsx`;
+  `src/app/(dashboard)/admin/metrics/metrics-dashboard-content.tsx`;
+  `src/components/ui/segment-state.tsx`;
+  `src/lib/hooks/use-realtime-query.ts`;
+  `src/app/(dashboard)/visits/visits-today.tsx`;
+  `src/app/(dashboard)/visits/visits-today.test.tsx`;
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`;
+  `src/app/(dashboard)/reports/report-share-workspace.test.tsx`;
+  `src/test/query-client-test-utils.tsx`.
+- files changed:
+  `src/lib/hooks/use-stale-after-refetch-error.ts`;
+  `src/lib/hooks/use-stale-after-refetch-error.test.ts`;
+  `src/app/(dashboard)/visits/visits-today.tsx`;
+  `src/app/(dashboard)/visits/visits-today.test.tsx`;
+  `src/app/(dashboard)/reports/report-share-workspace.tsx`;
+  `src/app/(dashboard)/reports/report-share-workspace.test.tsx`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `VisitsToday` and `ReportShareWorkspace` treated any query error as a
+  blocking full-segment error, even when TanStack Query retained previously
+  fetched data after a background refetch failure. That could erase visible
+  visit/report context during daily work and look like data loss.
+- bugs fixed:
+  Product commit `96c718d3a` adds shared
+  `useStaleAfterRefetchError`, keeps initial-load failures blocking, and treats
+  `data` plus `isRefetchError` or `isError` as stale refetch failure. The visit
+  and report workspaces now keep the previous board/workspace visible and show
+  `SegmentStaleBanner` with retry instead of replacing the content with
+  `SegmentError`.
+- security risks found:
+  Background refetch error messages can contain PHI or internal identifiers.
+  Existing blocking error paths already used PHI-safe generic messages; stale
+  banner paths needed the same property.
+- security risks reduced:
+  Added regression tests that refetch failures keep data visible while not
+  rendering raw patient names, tokens, or internal route/error strings in the
+  report workspace stale-warning path.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this change preserves existing query cadence and only changes render
+  state classification.
+- UI/UX note:
+  `docs/ui-ux-design-guidelines.md` stale/error guidance was consulted.
+  Image generation was omitted because this was state handling and reuse of the
+  existing shared `SegmentStaleBanner`, not a visual reconstruction.
+- validation commands:
+  `pnpm vitest run src/lib/hooks/use-stale-after-refetch-error.test.ts 'src/app/(dashboard)/visits/visits-today.test.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`;
+  `pnpm exec eslint --max-warnings=0 src/lib/hooks/use-stale-after-refetch-error.ts src/lib/hooks/use-stale-after-refetch-error.test.ts 'src/app/(dashboard)/visits/visits-today.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx' 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`;
+  `pnpm exec prettier --check src/lib/hooks/use-stale-after-refetch-error.ts src/lib/hooks/use-stale-after-refetch-error.test.ts 'src/app/(dashboard)/visits/visits-today.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx' 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`;
+  `git diff --check -- src/lib/hooks/use-stale-after-refetch-error.ts src/lib/hooks/use-stale-after-refetch-error.test.ts 'src/app/(dashboard)/visits/visits-today.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx' 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false --incremental false --skipLibCheck`.
+- validation results:
+  Focused stale/refetch tests passed 3 files / 40 tests. Scoped ESLint,
+  scoped Prettier check, scoped diff check, and TypeScript noEmit passed.
+  `pnpm build` and Next `typegen` were intentionally not started while the
+  capture lane was paused and dashboard/capture files were owned by other
+  workers.
+- remaining work:
+  Product slice committed as `96c718d3a`. Existing unrelated dirty work remains
+  unstaged, including `.codex/config.toml`, `.harness-mem/state/*`, Claude's
+  dashboard lane files, and root's paused capture lane files. Next UI/UX audit
+  candidates for Codex are P1-3 typography scale or P2-6 billing false-zero,
+  avoiding `src/app/(dashboard)/dashboard/**` and paused capture paths.
+- next action:
+  Commit this STATE ledger update with only `ops/refactor/STATE.md` staged,
+  notify checker with commit and validation evidence, then proceed to the next
+  non-conflicting UI/UX item.
