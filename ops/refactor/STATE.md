@@ -51,6 +51,53 @@
 
 ## 直近の作業
 
+- codex: `PUSH-SUB-ATOMICITY-001` push subscription mutation RLS/atomicity hardening.
+  - commit:
+    `db63de58a fix(api): scope push subscription mutations`
+  - current task:
+    `PushSubscription` は migration で `ENABLE/FORCE ROW LEVEL SECURITY` と
+    `org_id = public.app_enforced_org_id()` の tenant policy が有効だが、
+    `/api/push-subscription` の POST/DELETE が base `prisma.pushSubscription.*` を直接呼び、
+    `withOrgContext` / transaction-local RLS context 外で mutation していた。購読登録/削除を
+    request auth context 付きの org-scoped transaction seam へ寄せる。
+  - files inspected:
+    `Plans.md`, `ops/refactor/STATE.md`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`,
+    `src/app/api/push-subscription/route.ts`, `src/app/api/push-subscription/route.test.ts`,
+    `src/lib/db/rls.ts`, `src/lib/auth/context.ts`, `src/lib/auth/request-context.ts`,
+    `prisma/schema/admin.prisma`, and migration
+    `20260608143000_align_schema_migration_drift/migration.sql`.
+  - files changed:
+    `src/app/api/push-subscription/route.ts` and
+    `src/app/api/push-subscription/route.test.ts`.
+  - bugs found / fixed:
+    POST registration and DELETE unsubscribe now execute `tx.pushSubscription.upsert/deleteMany`
+    inside `withOrgContext(ctx.orgId, ..., { requestContext: ctx })` instead of using the base
+    Prisma client. Invalid payloads, malformed JSON, and non-HTTPS endpoints still fail before
+    entering the mutation seam.
+  - security/privacy:
+    Aligns push subscription writes with the table's FORCE RLS tenant policy and prevents
+    request-scoped mutation paths from relying on an unset DB session org. Endpoint/key validation
+    remains unchanged; no endpoint, p256dh, or auth key is logged or added to responses.
+  - performance:
+    One short transaction is added per successful subscribe/unsubscribe. There is no extra read or
+    unbounded work; correctness and RLS context are prioritized over avoiding the transaction.
+  - validation:
+    `pnpm vitest run src/app/api/push-subscription/route.test.ts --reporter=dot --testTimeout=30000`
+    passed 1 file / 10 tests; exact-path ESLint passed;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed;
+    `pnpm api-response-shape:check`, `pnpm route-auth-wrapper:check`,
+    `pnpm db:raw-read-org-guard:check`, `pnpm db:query-shape:check`,
+    `pnpm dto-direct-prisma-return:check`, Prettier check, and `git diff --check` passed.
+  - collaboration / unrelated dirty worktree:
+    Claude's visit medication-stock read-only verdict is `CONTINUE`; repo-wide UI/UX read-only audit
+    is in progress. Those UI/WIP files, `.harness-mem/state/*.json`, and the newly dirty
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx` were excluded from this commit.
+  - remaining / next action:
+    No DB migration/application, production data mutation, deploy, push, or external network call was
+    performed. After this docs update, continue the visit medication-stock parent form write wiring
+    unless the UI/UX audit matrix changes priority.
+
 - codex + claude checker: `SEC-EVENT-PATH-PII-SANITIZE-001` security event path segment sanitization.
   - commit:
     `d084dccc8 fix(security): sanitize audit path values`
