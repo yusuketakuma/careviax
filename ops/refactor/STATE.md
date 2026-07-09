@@ -41,6 +41,101 @@
 
 ## 直近の作業
 
+- codex: `SEC-EVENT-AUDIT-RLS-DROP-001` migration-free security event audit persistence.
+  - current task:
+    Claude からの agmsg request を `codex` として引き取り、`logSecurityEvent()` の
+    AuditLog 直書きが FORCE RLS 下で落ちる問題を、schema migration なしの範囲で修正する。
+  - files inspected:
+    `git status --short --untracked-files=all`, `ops/refactor/STATE.md`, `Plans.md`,
+    `src/lib/auth/security-events.ts`, `src/lib/auth/security-events.test.ts`,
+    `src/lib/db/rls.ts`, `src/lib/db/rls.test.ts`, `prisma/schema/admin.prisma`,
+    `prisma/rls-policies.sql`, `src/lib/utils/logger.ts`, `package.json`, `tsconfig.json`,
+    `tools/scripts/setup-rls-test-role.sql`, `git remote -v`, current branch/commit, Oracle CLI
+    help/status, and `gbrain search "CareViaX security event audit log RLS withOrgContext AuditLog"`.
+  - files changed:
+    `src/lib/auth/security-events.ts`, `src/lib/auth/security-events.test.ts`,
+    `src/lib/auth/security-events.rls.test.ts`, `Plans.md`, `tsconfig.json`, and this ledger.
+  - coordination:
+    agmsg inbox as `codex` on team `phos` received Claude's maker request. Sent ACK before work and
+    will send completion evidence after validation/ledger update.
+  - Oracle:
+    Required because this touches security/audit logs/RLS. First Oracle attempt
+    `security-event-rls-audit` failed before model response due attachment upload timeout. Retried
+    with reduced files as `security-event-rls-min`; GPT-5.5 Pro reported GitHub access succeeded and
+    gave conditional Go for the no-migration Option B: avoid importing `withOrgContext` to prevent a
+    cycle, use one `prisma.$transaction` with transaction-local `set_config(..., true)` and
+    `tx.auditLog.create` for org-known events, do not insert org-unknown events into AuditLog without
+    a schema/policy/table lane, and make org-unknown/invalid/persist failures fail-visible via safe
+    `logger.error`.
+  - implementation:
+    `logSecurityEvent()` now keeps fire-and-forget request semantics but persists org-known events
+    inside a short `prisma.$transaction` using only the handed-out `tx`: it sets
+    `app.current_org_id`, `app.rls_context_applied`, `app.current_actor_id`,
+    `app.current_ip_address`, and `app.current_user_agent` before `tx.auditLog.create`. It no longer
+    falls back to `org_id: "system"` for unknown orgs. Unknown/invalid org events skip DB insert and
+    emit safe `logger.error` events (`security_event.audit_log_org_unknown` /
+    `security_event.audit_log_invalid_org`); transaction failures emit
+    `security_event.audit_log_persist_failed`. The audit target path is query-stripped and
+    fingerprinted, details are allowlisted, and dedup now includes org scope so one org cannot
+    suppress another org's event. `tsconfig.json` now excludes ignored local `agmsg/` artifacts so
+    full project typecheck matches git-tracked project scope instead of local tool UI sources.
+    `Plans.md` marks the item Partial: org-known persistence is fixed and proven; org-unknown
+    durable persistence remains a human-gated schema/policy/table follow-up.
+  - bugs found:
+    `logSecurityEvent()` wrote `AuditLog` with the base Prisma client outside any RLS transaction,
+    and `org_id: "system"` could never satisfy the current AuditLog tenant policy when
+    `app.current_org_id` was unset. Unit tests masked this by mocking `auditLog.create`.
+    Full typecheck also picked up ignored local `agmsg/` UI sources because `tsconfig.json` included
+    all `**/*.ts(x)` but did not exclude the ignored artifact directory.
+  - bugs fixed:
+    Org-known security events now persist through real AuditLog FORCE RLS with a non-superuser /
+    non-BYPASSRLS role, and are readable only under the matching RLS context. Missing/invalid org
+    events are no longer silently attempted as `"system"` rows. The local `agmsg/` artifact no longer
+    breaks project typecheck.
+  - security risks found:
+    Security/auth/RLS events could be lost silently in production-shaped RLS. Raw path/details also
+    risked carrying unnecessary identifiers into audit target/details and failure telemetry.
+  - security risks reduced:
+    Org-known security events are persisted under transaction-local RLS context; org-unknown and
+    invalid-org cases become observable safe error events; raw query strings and non-allowlisted
+    details are not written to the security-event AuditLog payload.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None. The persistence transaction is intentionally short (`maxWait:2000`, `timeout:3000`) and
+    remains fire-and-forget.
+  - validation commands:
+    `npx -y @steipete/oracle --help`;
+    `npx -y @steipete/oracle status --hours 72 --limit 20`;
+    Oracle browser consult `security-event-rls-audit` (failed before response due attachment timeout);
+    Oracle browser consult `security-event-rls-min`;
+    `pnpm exec prettier --write src/lib/auth/security-events.ts src/lib/auth/security-events.test.ts src/lib/auth/security-events.rls.test.ts tsconfig.json Plans.md`;
+    `pnpm vitest run src/lib/auth/security-events.test.ts --reporter=dot`;
+    `RLS_PROOF_ADMIN_DATABASE_URL="${RLS_PROOF_ADMIN_DATABASE_URL:-postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e}" RLS_PROOF_DATABASE_URL="${RLS_PROOF_DATABASE_URL:-postgresql://ph_os_app:ph_os_app@localhost:5433/ph_os_e2e}" pnpm vitest run src/lib/auth/security-events.rls.test.ts src/lib/db/rls.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/lib/auth/security-events.ts src/lib/auth/security-events.test.ts src/lib/auth/security-events.rls.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm plans:active:check`;
+    `pnpm exec prettier --check Plans.md tsconfig.json src/lib/auth/security-events.ts src/lib/auth/security-events.test.ts src/lib/auth/security-events.rls.test.ts`;
+    `git diff --check -- Plans.md tsconfig.json src/lib/auth/security-events.ts src/lib/auth/security-events.test.ts src/lib/auth/security-events.rls.test.ts`;
+    `pnpm lint`;
+    final combined `RLS_PROOF_ADMIN_DATABASE_URL=... RLS_PROOF_DATABASE_URL=... pnpm vitest run src/lib/auth/security-events.test.ts src/lib/auth/security-events.rls.test.ts src/lib/db/rls.test.ts --reporter=dot --testTimeout=30000`.
+  - validation results:
+    Oracle reduced-file consult completed with conditional Go and GitHub access. Prettier write/check
+    passed for owned files. Focused unit test passed (1 file / 5 tests). Real RLS proof passed
+    (2 files / 6 tests), then final combined security/RLS suite passed (3 files / 11 tests).
+    Targeted ESLint passed. Full `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed after
+    excluding ignored local `agmsg/` artifacts from `tsconfig.json`. `pnpm plans:active:check` passed.
+    Scoped `git diff --check` passed. Full `pnpm lint` exited 0 with pre-existing warnings only in
+    `src/lib/platform/break-glass.test.ts` for `_tx` and `_input`.
+  - remaining work:
+    This slice intentionally does not create a durable database sink for org-unknown anonymous/system
+    security events. That requires the human-gated schema/policy/table lane described in `Plans.md`.
+    Product call sites should still be reviewed later for whether `org_id` comes from trusted auth
+    context versus untrusted request headers before treating an event as org-known.
+  - next action:
+    Send agmsg completion evidence to Claude for checker review, then commit this coherent slice if
+    review is accepted or the user asks to land it.
+
 - codex: `Plans.md` v9 additional multi-lane review hardening.
   - current task:
     Review fable5-restructured `Plans.md` v9 tasks with parallel perspectives
