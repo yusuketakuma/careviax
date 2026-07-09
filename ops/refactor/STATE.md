@@ -41,6 +41,84 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CB` patient share consents collection response envelope cleanup.
+  - current task:
+    `GET /api/patient-share-cases/:id/consents` の list success を `data + meta`
+    envelope へ、`POST /api/patient-share-cases/:id/consents` の create success を
+    `{ data: consent }` envelope へ移行し、workflow reader/fixtures と response-shape
+    allowlist / Plans を同期する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `src/app/api/patient-share-cases/[id]/consents/route.ts`,
+    `src/app/api/patient-share-cases/[id]/consents/route.test.ts`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`,
+    `src/lib/api/response-schemas.ts`, `tools/tests/ui-route-mocked-smoke.spec.ts`,
+    `tools/api-response-shape-allowlist.json`, `Plans.md`, `docs/plans-archive.md`,
+    and this ledger.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patient-share-cases/[id]/consents/route.ts`,
+    `src/app/api/patient-share-cases/[id]/consents/route.test.ts`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`,
+    `tools/tests/ui-route-mocked-smoke.spec.ts`, and this ledger.
+  - bugs found:
+    The patient share consents collection route returned GET cursor metadata as root
+    `hasMore` / `nextCursor` fields and POST create success as a raw consent DTO root,
+    keeping one API response-shape allowlist entry alive. Workflow readers/fixtures still
+    accepted the old route-local page/create shapes.
+  - bugs fixed:
+    GET success now returns `{ data: consentRows, meta: { has_more, next_cursor } }`.
+    POST create success now returns `{ data: consent }`. The workflow consent-list
+    reader converts `meta.has_more` / `meta.next_cursor` back to the local
+    `CursorPaginatedPage` shape, and the create reader unwraps `payload.data`. Component
+    and UI-smoke fixtures were updated to the current envelopes. Route tests assert
+    `hasMore` / `nextCursor` and raw consent fields are no longer exposed at the root.
+    The response-shape allowlist entry for this route was removed and measured debt is 102.
+  - security risks found:
+    No auth permission, org/RLS scope, safe consent DTO projection, consent record/file
+    validation, share-case transition, compact audit metadata, no-store wrapper, or
+    sanitized error response changed.
+  - security risks reduced:
+    Removed list pagination and create consent fields from the response root while keeping
+    raw consent person text out of response/audit assertions.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. The workflow reader shape and test/mock
+    responses changed only to match the current API envelope, so image generation was not
+    applicable.
+  - Oracle note:
+    No new Oracle consult was run for this slice. The immediately preceding consent revoke
+    Oracle browser session failed after a long run with `Chrome is no longer reachable`,
+    and the user redirected the loop to focus allowlist debt. This slice followed the same
+    bounded envelope-only pattern with focused consumer inspection, route tests, workflow
+    tests, contract ratchet, scoped lint/format, and full typecheck.
+  - validation commands:
+    `pnpm vitest run 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' --reporter=dot`;
+    `pnpm vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patient-share-cases/[id]/consents/route.ts' 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patient-share-cases/[id]/consents/route.ts' 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patient-share-cases/[id]/consents/route.ts' 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Consents route test passed 1 file / 9 tests. Pharmacy cooperation workflow component
+    test passed 1 file / 31 tests. `api-response-shape:check` passed with 102 allowlisted
+    violations and 0 new violations. `plans:active:check` passed. Scoped ESLint, scoped
+    Prettier check, scoped diff check, and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 102 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patient-share-cases/[id]/correction-requests/route.ts`.
+  - next action:
+    Commit and push this consents collection envelope slice with explicit owned paths only,
+    then continue allowlist debt burn-down from the next allowlist head.
+
 - codex: `API-CONTRACT-001CA` patient share consent revoke response envelope cleanup.
   - current task:
     `POST /api/patient-share-cases/:id/consents/:consentId/revoke` の normal revoke /

@@ -172,7 +172,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   updated_at: '2026-06-18T00:00:00.000Z',
                 },
               ],
-              hasMore: false,
+              meta: { has_more: false, next_cursor: null },
             }),
             { status: 200 },
           );
@@ -465,19 +465,21 @@ describe('PharmacyCooperationWorkflowContent', () => {
         if (url === '/api/patient-share-cases/share_case_1/consents' && init?.method === 'POST') {
           return new Response(
             JSON.stringify({
-              id: 'share_consent_created',
-              share_case_id: 'share_case_1',
-              consent_record_id: 'consent_record_2',
-              consent_date: '2026-06-19T00:00:00.000Z',
-              consent_method: 'paper_scan',
-              scope_keys: ['pdf_output', 'attachments'],
-              has_file_asset: true,
-              valid_until: null,
-              revoked_at: null,
-              revoked_by: null,
-              created_by: 'base_user',
-              created_at: '2026-06-19T00:00:00.000Z',
-              updated_at: '2026-06-19T00:00:00.000Z',
+              data: {
+                id: 'share_consent_created',
+                share_case_id: 'share_case_1',
+                consent_record_id: 'consent_record_2',
+                consent_date: '2026-06-19T00:00:00.000Z',
+                consent_method: 'paper_scan',
+                scope_keys: ['pdf_output', 'attachments'],
+                has_file_asset: true,
+                valid_until: null,
+                revoked_at: null,
+                revoked_by: null,
+                created_by: 'base_user',
+                created_at: '2026-06-19T00:00:00.000Z',
+                updated_at: '2026-06-19T00:00:00.000Z',
+              },
             }),
             { status: 201 },
           );
@@ -891,7 +893,10 @@ describe('PharmacyCooperationWorkflowContent', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/patient-share-cases/share_case_1/consents?limit=8') {
-        return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
+        return new Response(
+          JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+          { status: 200 },
+        );
       }
       return originalFetch!(input, init);
     });
@@ -1645,7 +1650,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/patient-share-cases/share_case_1/consents' && init?.method === 'POST') {
-        return new Response(JSON.stringify({ id: 'share_consent_created' }), { status: 201 });
+        return new Response(JSON.stringify({ data: { id: 'share_consent_created' } }), {
+          status: 201,
+        });
       }
       return originalFetch!(input, init);
     });

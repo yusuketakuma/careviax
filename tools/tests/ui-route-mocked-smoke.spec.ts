@@ -1506,12 +1506,15 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
         if (state.shareCaseStatus !== 'active') {
           state.shareCaseStatus = 'partner_confirmation_pending';
         }
-        await fulfillJson(route, buildPharmacyCoopConsent(true), 201);
+        await fulfillJson(route, { data: buildPharmacyCoopConsent(true) }, 201);
         return;
       }
 
       const consent = buildPharmacyCoopConsent(state.consentCreated);
-      await fulfillJson(route, { data: consent ? [consent] : [], hasMore: false });
+      await fulfillJson(route, {
+        data: consent ? [consent] : [],
+        meta: { has_more: false, next_cursor: null },
+      });
     },
   );
 

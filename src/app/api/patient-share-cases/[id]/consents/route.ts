@@ -137,8 +137,11 @@ const authenticatedGET = withAuthContext<{ id: string }>(
     if (!rows) return withSensitiveNoStore(notFound('患者共有ケースが見つかりません'));
     return withSensitiveNoStore(
       success({
-        ...rows,
         data: rows.data.map(toSafePatientShareConsent),
+        meta: {
+          has_more: rows.hasMore,
+          next_cursor: rows.nextCursor ?? null,
+        },
       }),
     );
   },
@@ -285,7 +288,7 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
     if ('response' in result) {
       return withSensitiveNoStore(result.response ?? validationError('入力値が不正です'));
     }
-    return withSensitiveNoStore(success(toSafePatientShareConsent(result.consent), 201));
+    return withSensitiveNoStore(success({ data: toSafePatientShareConsent(result.consent) }, 201));
   },
   {
     permission: 'canManagePatientSharing',

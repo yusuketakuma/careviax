@@ -30,7 +30,11 @@ import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-import { cursorPaginatedPageSchema, type CursorPaginatedPage } from '@/lib/api/response-schemas';
+import {
+  apiDataSchema,
+  cursorPaginatedPageSchema,
+  type CursorPaginatedPage,
+} from '@/lib/api/response-schemas';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { formatYen } from '@/lib/format/currency';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
@@ -551,7 +555,31 @@ const partnerVisitRecordResponseSchema = z.object({
   data: partnerVisitRecordRowSchema,
 });
 const correctionRequestPageSchema = patientShareCorrectionRequestPageSchema;
-const patientShareConsentPageSchema = cursorPaginatedPageSchema(patientShareConsentRowSchema);
+const patientShareConsentPageSchema = z
+  .object({
+    data: z.array(patientShareConsentRowSchema),
+    meta: z.object({
+      has_more: z.boolean(),
+      next_cursor: z.string().trim().min(1).nullable(),
+    }),
+  })
+  .superRefine((value, ctx) => {
+    if (value.meta.has_more && !value.meta.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor is required when has_more is true',
+      });
+    }
+  })
+  .transform(({ data, meta }) => ({
+    data,
+    hasMore: meta.has_more,
+    ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
+  }));
+const patientShareConsentResponseSchema = apiDataSchema(patientShareConsentRowSchema).transform(
+  ({ data }) => data,
+);
 const pharmacyCooperationMessageThreadPageSchema = cursorPaginatedPageSchema(
   pharmacyCooperationMessageThreadRowSchema,
 );
@@ -3120,7 +3148,7 @@ export function PharmacyCooperationWorkflowContent() {
       );
       return readApiJson<PatientShareConsentRow>(response, {
         fallbackMessage: '患者共有同意の登録に失敗しました',
-        schema: patientShareConsentRowSchema,
+        schema: patientShareConsentResponseSchema,
       });
     },
     onSuccess: async () => {

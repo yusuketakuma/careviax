@@ -142,7 +142,20 @@ describe('/api/patient-share-cases/[id]/consents', () => {
         where: { org_id: 'org_1', share_case_id: 'share_case_1' },
       }),
     );
-    const text = JSON.stringify(await response.json());
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: [
+        {
+          id: 'share_consent_1',
+          scope_keys: ['attachments', 'pdf_output'],
+          has_file_asset: true,
+        },
+      ],
+      meta: { has_more: false, next_cursor: null },
+    });
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
+    const text = JSON.stringify(body);
     expect(text).toContain('scope_keys');
     expect(text).toContain('has_file_asset');
     expect(text).not.toContain('山田花子');
@@ -228,10 +241,11 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     const body = await response.json();
     expect(body).toMatchObject({
       data: [{ id: 'share_consent_1', scope_keys: ['pdf_output'], has_file_asset: true }],
-      hasMore: true,
-      nextCursor: 'share_consent_1',
+      meta: { has_more: true, next_cursor: 'share_consent_1' },
     });
     expect(body.data).toHaveLength(1);
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
     const serializedBody = JSON.stringify(body);
     expect(serializedBody).not.toContain('share_consent_2');
     expect(serializedBody).not.toContain('山田花子');
@@ -358,7 +372,13 @@ describe('/api/patient-share-cases/[id]/consents', () => {
       }),
     );
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('山田花子');
-    expect(JSON.stringify(await response.json())).not.toContain('山田花子');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: { id: 'share_consent_1', scope_keys: ['pdf_output'], has_file_asset: true },
+    });
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('share_case_id');
+    expect(JSON.stringify(body)).not.toContain('山田花子');
   });
 
   it('returns a sanitized no-store 500 when consent creation fails unexpectedly', async () => {
