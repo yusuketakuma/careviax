@@ -168,15 +168,21 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
     );
     const body = await response.json();
     expect(body).toMatchObject({
-      scope_keys: [
-        'prescription_history',
-        'medication_profile',
-        'care_reports',
-        'attachments',
-        'pdf_output',
-      ],
-      output_actions: [],
+      data: {
+        scope_keys: [
+          'prescription_history',
+          'medication_profile',
+          'care_reports',
+          'attachments',
+          'pdf_output',
+        ],
+        output_actions: [],
+      },
     });
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('status');
+    expect(body).not.toHaveProperty('scope_keys');
+    expect(body).not.toHaveProperty('output_actions');
     const bodyText = JSON.stringify(body);
     expect(bodyText).not.toContain('share_scope');
     expect(bodyText).not.toContain('memo');
@@ -294,7 +300,9 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
     expect(patientShareCaseUpdateMock).toHaveBeenCalled();
     expect(createAuditLogEntryMock).toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      output_actions: ['pdf_output'],
+      data: {
+        output_actions: ['pdf_output'],
+      },
     });
   });
 

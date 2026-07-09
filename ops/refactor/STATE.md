@@ -41,6 +41,74 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CE` patient share case share-scope response envelope cleanup.
+  - current task:
+    `PATCH /api/patient-share-cases/:id` の share-scope update success response を
+    legacy root `{ id, status, updated_at, scope_keys, output_actions }` から
+    `{ data: { id, status, updated_at, scope_keys, output_actions } }` envelope へ移行し、
+    response-shape allowlist / Plans を同期する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `src/app/api/patient-share-cases/[id]/route.ts`,
+    `src/app/api/patient-share-cases/[id]/route.test.ts`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`,
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`,
+    `tools/tests/ui-route-mocked-smoke.spec.ts`, `tools/api-response-shape-allowlist.json`,
+    `Plans.md`, `docs/plans-archive.md`, and this ledger.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patient-share-cases/[id]/route.ts`,
+    `src/app/api/patient-share-cases/[id]/route.test.ts`, and this ledger.
+  - bugs found:
+    The patient share case PATCH route returned share-scope update fields at the public
+    success response root, keeping one API response-shape allowlist entry alive.
+  - bugs fixed:
+    PATCH success now returns a `data` envelope containing `id`, `status`, `updated_at`,
+    `scope_keys`, and `output_actions`. Focused route tests assert those fields are no
+    longer root fields while preserving the compact response body and PHI non-disclosure
+    assertions. The response-shape allowlist entry for this route was removed and measured
+    debt is 99.
+  - security risks found:
+    No auth permission, org/RLS scope, active consent coverage validation, share-scope
+    normalization, compact audit metadata, no-store wrapper, or sanitized error response
+    changed.
+  - security risks reduced:
+    Removed share-scope mutation fields from the response root while keeping raw
+    `share_scope`, memo text, and patient-name strings out of the response/audit
+    assertions.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. Repository grep found no workflow UI
+    caller for this direct PATCH route, so image generation was not applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration directive
+    and the repeated envelope-only local pattern. Validation stayed focused on route tests,
+    contract ratchet, scoped lint/format, and full typecheck.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patient-share-cases/[id]/route.ts' 'src/app/api/patient-share-cases/[id]/route.test.ts'`;
+    `pnpm vitest run 'src/app/api/patient-share-cases/[id]/route.test.ts' --reporter=dot`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patient-share-cases/[id]/route.ts' 'src/app/api/patient-share-cases/[id]/route.test.ts'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patient-share-cases/[id]/route.ts' 'src/app/api/patient-share-cases/[id]/route.test.ts'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patient-share-cases/[id]/route.ts' 'src/app/api/patient-share-cases/[id]/route.test.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Prettier passed. Patient share case PATCH route test passed 1 file / 7 tests.
+    `api-response-shape:check` passed with 99 allowlisted violations and 0 new violations.
+    `plans:active:check` passed. Scoped ESLint, scoped Prettier check, scoped diff check,
+    and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 99 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patient-share-cases/route.ts`.
+  - next action:
+    Commit and push this share-scope envelope slice with explicit owned paths only, then
+    continue allowlist debt burn-down from the next allowlist head.
+
 - codex: `API-CONTRACT-001CD` patient share patient-link response envelope cleanup.
   - current task:
     `PATCH /api/patient-share-cases/:id/patient-link` の success response を legacy root

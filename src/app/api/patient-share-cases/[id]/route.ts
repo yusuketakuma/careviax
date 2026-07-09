@@ -162,14 +162,16 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
 
     return withSensitiveNoStore(
       success({
-        id: result.shareCase.id,
-        status: result.shareCase.status,
-        updated_at: result.shareCase.updated_at,
-        scope_keys: enabledPatientShareScopeKeys(result.shareCase.share_scope),
-        output_actions: allowedPatientShareDataOutputActions({
-          shareCaseStatus: result.shareCase.status,
-          shareScope: result.shareCase.share_scope,
-        }),
+        data: {
+          id: result.shareCase.id,
+          status: result.shareCase.status,
+          updated_at: result.shareCase.updated_at,
+          scope_keys: enabledPatientShareScopeKeys(result.shareCase.share_scope),
+          output_actions: allowedPatientShareDataOutputActions({
+            shareCaseStatus: result.shareCase.status,
+            shareScope: result.shareCase.share_scope,
+          }),
+        },
       }),
     );
   },
