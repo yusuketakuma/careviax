@@ -36852,8 +36852,10 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
 - validation:
   Focused Vitest passed 14 files / 108 tests; exact-path ESLint passed; exact-path Prettier and
   `git diff --check` passed; standalone TypeScript noEmit passed; `pnpm typecheck:no-unused` passed;
-  and `pnpm frontend-contract:check` passed. Claude checker review was requested and remains pending
-  at the time this pre-commit ledger entry was written.
+  and `pnpm frontend-contract:check` passed. Claude checker independently returned APPROVE after a
+  broader 35-file / 259-test pass, confirmed zero sub-12px classes in the fourteen shared surfaces,
+  and verified the variable-width `99+` badge corrections. The checker identified patient-header
+  safety labels and route-local prescription typography as the next non-blocking burn-down targets.
 - remaining / next action:
   The live arbitrary sub-12px inventory is reduced but not complete: 47 files / 159 occurrences
   remain in prescription, patient, visit, schedule, print and smaller route families. Commit only the
@@ -36895,3 +36897,238 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
 - remaining / next action:
   Continue each admin route's real paired-contract audit rather than rebuilding a removed common
   stub. Browser/runtime proof remains pending under the existing environment blocker.
+
+## 2026-07-10 UI-W2-PATIENT-STATUS-COLORS — patient status 6-axis convergence
+
+- current task:
+  Replace the dashboard/my-day patient status icon's twelve raw Tailwind palettes with the ratified
+  PH-OS 6-axis state roles without changing derivation precedence, visible labels or server events.
+- commit:
+  `aeb449df0 fix(patients): map patient status icons to 6-axis state tokens`.
+- files inspected:
+  `docs/ui-ux-design-guidelines.md`; `src/app/globals.css`; patient status types/config/derivation;
+  dashboard patient-card and my-day consumers; patient-status-tracker service/tests; raw-state-color
+  allowlist; and existing status role precedents.
+- files changed:
+  `docs/ui-ux-design-guidelines.md`;
+  `src/lib/constants/status-labels.ts`;
+  `src/lib/patient/status-icon.ts`;
+  `src/lib/patient/status-icon.test.ts`;
+  `src/app/(dashboard)/dashboard/patient-card.test.tsx`;
+  `src/app/(dashboard)/my-day/my-day-content.test.tsx`;
+  `tools/raw-state-color-allowlist.json`.
+- bugs found / fixed:
+  A single operational status family used twelve unrelated raw color palettes, so similar urgency
+  could render differently and stable/hospitalized states consumed alert colors. The new exhaustive
+  `PATIENT_STATUS_ICON_ROLE` map is type-checked against every `PatientStatusIcon`, has no silent
+  fallback, and maps stable to neutral; new/first-visit/medication-change to info;
+  attention/overdue/report-pending/discharged/paused to confirm; urgent/no-contact to blocked; and
+  hospitalized to readonly. Domain-specific icons and Japanese labels remain visible.
+- frontend/backend parity:
+  `derivePatientStatusIcon` precedence and `patient-status-tracker` event labels/messages are
+  unchanged, so server projection and frontend display still share one config. No endpoint, DTO,
+  auth, assignment, PHI or persistence behavior changed.
+- security/medical safety:
+  Removes alert-fatigue colors from stable/hospitalized states while keeping urgent and no-contact
+  fail-visible as blocked. Tests pin the three disputed meanings, all twelve keys and both consuming
+  screens so role/config drift cannot silently hide a risk state.
+- performance:
+  One bounded constant lookup replaces hardcoded class literals. No additional render work, request,
+  dependency or runtime state was added.
+- UI/imagegen:
+  Image generation was omitted because this is an SSOT token migration with no layout or information
+  architecture reconstruction. The existing non-PHI all-screen reference remains applicable.
+- validation:
+  Focused Vitest passed 4 files / 33 tests including dashboard, my-day and server tracker coverage;
+  exact source ESLint, Prettier and scoped diff checks passed; `pnpm colors:check` passed with 0 drift;
+  and full standalone TypeScript noEmit passed. Codex checker returned APPROVE after the maker
+  addressed exhaustive typing, stale allowlist and consumer-test findings.
+- remaining / next action:
+  Continue T4 raw-state-color burn-down in other route families. Browser/CVD visual proof remains
+  pending under the existing runtime blocker.
+
+## 2026-07-10 UI-W2-CONFERENCES — touch targets and numeric scanning
+
+- current task:
+  Restore shared Button sizing on conference note actions and align operational counts for fast
+  scanning without changing conference workflows.
+- commit:
+  `05c600ead fix(conferences): restore Button touch-target contract and tabular numerals`.
+- files inspected / changed:
+  Inspected `conferences-content.tsx`, its content/page tests, shared `Button` variants and the UI
+  SSOT. Changed only `src/app/(dashboard)/conferences/conferences-content.tsx`.
+- bugs found / fixed:
+  Local `h-6` and `h-7` overrides bypassed the shared `size=sm` responsive sizing contract on task
+  conversion and report generation actions. The overrides are removed so the common mobile 44px
+  minimum and desktop compact size apply. Participant and referral counts now use `tabular-nums`.
+- frontend/backend parity:
+  Backend change is N/A for this presentational correction. Existing conference queries, task/report
+  mutations, encoded paths, permissions and response contracts are unchanged.
+- security/performance:
+  No payload, PHI, auth, mutation or audit behavior changed. No new computation, request or render
+  state was added.
+- UI/imagegen:
+  A new image was omitted because this is a local touch-target/numeric typography correction, not a
+  visual reconstruction.
+- validation:
+  Independent content+page Vitest passed 2 files / 22 tests; exact ESLint, Prettier and scoped diff
+  checks passed. Codex checker returned APPROVE before the scoped commit.
+- remaining / next action:
+  Continue conference family state/heading audit only where live evidence identifies a real gap;
+  do not reintroduce local Button height overrides.
+
+## 2026-07-10 UI-W3-PRESCRIPTION-LIST — readable clinical text and complete detail states
+
+- current task:
+  Raise prescription list/workspace/inline-detail clinical labels to the 12px minimum and replace the
+  inline detail's generic one-line loading/error copy with shape-matched loading and a retryable,
+  PHI-safe error state.
+- commit:
+  `08023627a fix(prescriptions): improve list readability and detail states`.
+- files inspected:
+  `docs/ui-ux-design-guidelines.md`; bundled Next.js server/client guidance;
+  `prescriptions-workspace.tsx`; `prescriptions-table.tsx`; `prescription-inline-detail.tsx` and their
+  focused tests; shared loading/error/button/table primitives; prescription route/path helpers; and
+  `GET /api/prescription-intakes/:id` with its route tests.
+- files changed:
+  `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`;
+  `src/app/(dashboard)/prescriptions/prescriptions-table.tsx`;
+  `src/app/(dashboard)/prescriptions/prescription-inline-detail.tsx`;
+  `src/app/(dashboard)/prescriptions/prescription-inline-detail.test.tsx`;
+  `src/app/(dashboard)/prescriptions/prescription-list-typography.contract.test.ts`.
+- bugs found / fixed:
+  Drug codes, dosage form, packaging, generic classification, patient kana/birth date, expiry cues,
+  refill counts, inquiry results, IDs, filters, shortcuts and actions were rendered at 9px to 11px.
+  All three list surfaces now use `text-xs` or larger while preserving 44px actions; expired/today
+  cues use the blocked state token and tomorrow remains confirm. Initial detail loading now reserves
+  the header/meta/four-row table shape with a named status region. Initial failure now renders an
+  assertive `ErrorState` with cause, next action and retry instead of a raw generic line.
+- frontend/backend parity:
+  The UI still uses the shared encoded intake path and org headers. The existing paired GET requires
+  `canVisit`, normalizes the ID, scopes by `org_id` plus prescription assignment and returns sensitive
+  no-store responses; its 25 route tests pass. No endpoint, DTO, query key, authorization or write
+  contract changed. The existing route does not record an explicit PHI-read audit; that pre-existing
+  policy gap is under checker review and this slice does not claim to resolve it silently.
+- security/privacy:
+  Query/provider error text is never rendered; a regression uses patient/token-like raw text and
+  proves it stays out of the DOM. No new PHI field, client log, export or notification payload was
+  added.
+- performance:
+  Loading uses a fixed 4x5 skeleton and the existing query/refetch. No extra request, polling,
+  dependency or unbounded render work was introduced.
+- UI/imagegen:
+  The existing cross-screen reference and SSOT were used. New image generation was omitted because
+  this slice changes typography and state completeness inside the established master/detail layout,
+  not the information architecture.
+- validation:
+  Frontend focused Vitest passed 4 files / 32 tests; paired backend route Vitest passed 1 file / 25
+  tests; exact ESLint, Prettier and scoped diff checks passed; `pnpm colors:check` passed with 0 drift;
+  standalone TypeScript noEmit passed; `pnpm route-auth-wrapper:check`,
+  `pnpm db:raw-read-org-guard:check` and `pnpm client-phi-log:check` passed. Claude checker returned
+  APPROVE and classified the pre-existing PHI detail read-audit inconsistency as a separate policy
+  backlog rather than a blocker for this non-disclosure-changing slice.
+- remaining / next action:
+  The five owned paths were committed without lockout or machine-state files. The existing
+  `ROUTE-AUTHZ-COVERAGE-001` Plans crosswalk now explicitly includes prescription detail GET and
+  requires route-level read-audit-required versus explicit-N/A classification plus test evidence.
+  Patient safety header labels are the next highest-risk typography target. Full
+  build/browser/mobile proof remains blocked by the documented environment constraints.
+
+## 2026-07-10 UI-W3-PATIENT-HEADER-TYPE — patient safety band readability
+
+- current task:
+  Close the highest-risk remaining shared typography gap in the sticky patient identity/clinical/
+  safety header without changing disclosure, ordering, sticky behavior or data contracts.
+- commit:
+  `4bb4f5342 fix(patients): raise safety header labels to readable minimum`.
+- files inspected:
+  `docs/ui-ux-design-guidelines.md`; `PatientHeader` implementation/tests; report, patient-detail,
+  safety-check and visit-detail consumers; the shared shell typography ratchet; and current dirty
+  ownership.
+- files changed:
+  `src/components/features/patients/patient-header.tsx`;
+  `src/components/features/patients/patient-header.test.tsx`;
+  `src/components/layout/shared-shell-typography.test.ts`.
+- bugs found / fixed:
+  Clinical field labels, care level, home status, archived state, the safety heading and medication
+  handling tags were still 11px in a sticky band used to prevent wrong-patient and missed-hazard
+  decisions. They now use the 12px minimum. The source ratchet now includes `PatientHeader`, and a
+  DOM regression renders identity, clinical, archive and safety tiers together.
+- frontend/backend parity:
+  Backend implementation change is N/A for this typography-only slice. Existing consumers continue
+  to supply server-authorized patient/header DTOs; no endpoint, field, query, auth, assignment, audit
+  or PHI disclosure changed.
+- security/medical safety:
+  Allergy, narcotic/cold-storage handling and archived/read-only cues remain visible with the same
+  state/hazard tokens and are more legible. No patient content is added to logs or external output.
+- performance:
+  Class-only changes and one additional static-ratchet path; no request, render state or dependency.
+- UI/imagegen:
+  New image generation was omitted because the sticky three-tier information architecture is
+  unchanged and only the SSOT minimum type size is corrected.
+- validation:
+  Focused Vitest passed 2 files / 25 tests; exact ESLint, Prettier, grep and scoped diff checks passed.
+  Claude checker independently returned APPROVE and confirmed zero sub-12px classes, preserved
+  data/order/sticky/API behavior and ratchet coverage.
+- remaining / next action:
+  The three owned paths were committed without peer or machine-state files. The remaining live
+  arbitrary sub-12px inventory is 43 files / 122 occurrences, concentrated in route-level patient
+  history, visit, schedule, prescription intake and print surfaces. Browser/mobile proof remains
+  blocked by the current runtime environment.
+
+## 2026-07-10 UI-W2-DASHBOARD-TOKENS — cockpit semantic tone and readable labels
+
+- current task / commit:
+  Preserve dashboard information architecture while correcting alert-fatigue colors, deadline
+  semantics, sub-12px labels and numeric scanning. Landed as
+  `5036afcae fix(dashboard): align cockpit colors and type sizes with state tokens`.
+- files changed:
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`;
+  `src/app/(dashboard)/dashboard/dashboard-clock.tsx`;
+  `src/app/(dashboard)/dashboard/dashboard-clock.test.tsx`;
+  `src/app/(dashboard)/dashboard/patient-card.tsx`.
+- bugs found / fixed:
+  Cockpit chips and patient metadata used 10px/11px labels; bottleneck/safety-confirmation copy used
+  raw destructive color; the deadline label was red even before it was overdue; patient date values
+  lacked tabular numerals. Labels now meet 12px, semantic state tokens replace raw danger color,
+  future deadlines use confirm while overdue uses blocked, and patient dates use `tabular-nums`.
+- frontend/backend parity:
+  Backend change is N/A. Dashboard DTO, query, count, authorization and source-link contracts are
+  unchanged; this is presentation over existing data only.
+- security/performance:
+  No PHI field, payload, log, query or render state changed. Correct deadline tone reduces alert
+  fatigue without hiding overdue work.
+- UI/imagegen:
+  The existing repo-wide non-PHI direction was used. No new image was required for this focused
+  token/typography correction.
+- validation:
+  Dashboard focused Vitest passed 4 files / 47 tests; exact ESLint, Prettier and diff checks passed.
+  The checker independently returned APPROVE before the scoped commit.
+- remaining:
+  Browser visual proof remains pending with the shared runtime blocker; dashboard structure and data
+  contract were intentionally not rewritten.
+
+## 2026-07-10 UI-W2-ERROR-STATE-TOKENS — shared failure semantics
+
+- current task / commit:
+  Correct the shared `ErrorState` network and forbidden color roles. Landed as
+  `099aace14 fix(ui): map error-state variants to correct state tokens`.
+- files changed:
+  `src/components/ui/error-state.tsx` and `src/components/ui/error-state.test.tsx`.
+- bugs found / fixed:
+  Network failure and authorization failure both consumed confirm, weakening the scarce actionable
+  warning color. Network now maps to blocked and forbidden maps to readonly; DOM regressions pin both
+  mappings and the absence of the old confirm token.
+- frontend/backend parity:
+  Backend is N/A for this shared visual primitive. HTTP/auth behavior and error payload handling are
+  unchanged; only already-classified UI variants change semantic color.
+- security/performance:
+  No error detail, PHI, request or logging behavior changed. Constant class lookup only.
+- UI/imagegen:
+  Image generation was omitted because this is a shared state-token correction, not layout design.
+- validation:
+  Focused Vitest passed 1 file / 11 tests; exact ESLint, Prettier and diff checks passed. Independent
+  reviewer returned APPROVE.
+- remaining:
+  Other `ErrorState` variants retain their existing semantics; further changes require a separate
+  SSOT role decision rather than opportunistic recoloring.
