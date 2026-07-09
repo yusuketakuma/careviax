@@ -373,6 +373,67 @@
     Commit this linkage slice with explicit path staging, then implement medication timeline read
     API/presenter against `MedicationTimelineItem`.
 
+- codex: `FHIR-READY-TIMELINE-001` medication timeline read API/presenter.
+  - current task:
+    `MedicationTimelineItem` を患者画面/APIから参照できる read surface と presenter を追加する。
+    FHIR resource 名や内部 FHIR cache/source reference ID を現場UI向けDTOに出さず、処方・調剤・服薬・
+    残薬・フォロー等の業務カテゴリに変換して返す。
+  - files inspected:
+    `git status --short --untracked-files=all`, `ops/refactor/STATE.md`,
+    Next.js route handler local docs, `src/app/api/patients/[id]/prescriptions/route.ts`,
+    `src/app/api/patients/[id]/structured-care/route.ts`, `src/server/services/patient-access.ts`,
+    `src/lib/api/pagination.ts`, and `prisma/schema/standard-clinical-integration.prisma`.
+  - files changed:
+    `src/server/services/standard-medication-timeline.ts`,
+    `src/server/services/standard-medication-timeline.test.ts`, and
+    `src/app/api/patients/[id]/medication-timeline/route.ts`.
+  - bugs found:
+    The worker could project verified medication FHIR cache rows into `MedicationTimelineItem`, but
+    there was no safe patient-scoped read API/presenter for the PH-OS UI to consume the resulting
+    timeline without exposing integration internals.
+  - bugs fixed:
+    Added `listStandardMedicationTimeline()` presenter with business-facing categories
+    (`prescription`, `dispensing`, `adherence`, etc.), medication label fallback, ISO dates,
+    quantity formatting, and no FHIR cache/source reference IDs. Added no-store authenticated
+    `GET /api/patients/[id]/medication-timeline` with patient assignment scope, optional `case_id`,
+    and bounded `limit`.
+  - security risks found:
+    A naive timeline endpoint could expose internal FHIR cache IDs, source reference IDs, or
+    implementation resource names to UI/API callers and could miss patient assignment scope.
+  - security risks reduced:
+    Route uses `withAuthContext(canVisit)`, RLS org context, assignment-scoped patient lookup, and
+    sensitive no-store. DTO excludes FHIR cache/source reference IDs and resource-type labels.
+  - performance issues found:
+    Timeline reads need bounded limits and indexed patient/case ordering.
+  - performance issues improved:
+    Route bounds `limit` to 1..200 and queries by org/patient/(case) with effective/updated ordering
+    matching the DB indexes added in the spine.
+  - validation commands:
+    `pnpm exec prettier --write src/server/services/standard-medication-timeline.ts src/server/services/standard-medication-timeline.test.ts 'src/app/api/patients/[id]/medication-timeline/route.ts'`;
+    `pnpm vitest run src/server/services/standard-medication-timeline.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec eslint src/server/services/standard-medication-timeline.ts src/server/services/standard-medication-timeline.test.ts 'src/app/api/patients/[id]/medication-timeline/route.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `pnpm route-auth-wrapper:check`;
+    `pnpm api-response-shape:check`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`;
+    `pnpm db:raw-read-org-guard:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm dto-direct-prisma-return:check`;
+    `pnpm exec prettier --check src/server/services/standard-medication-timeline.ts src/server/services/standard-medication-timeline.test.ts 'src/app/api/patients/[id]/medication-timeline/route.ts'`;
+    `git diff --check`.
+  - validation results:
+    Medication timeline presenter test passed 1/1. ESLint, `typecheck`, route-auth wrapper, API
+    response shape, `typecheck:no-unused`, raw-read org guard, query-shape guard, DTO direct Prisma
+    return guard, Prettier check, and `git diff --check` passed.
+  - remaining work:
+    No live DB migration was applied, no deploy was run, and no external yrese/FHIR endpoint was
+    called. UI integration, FHIR profile validation, retention purge, and richer identity candidate
+    review UX remain.
+  - next action:
+    Commit this timeline read API slice with explicit path staging. Remaining high-risk operations
+    still require an explicit environment target: DB migration apply, secret configuration, deploy,
+    and external yrese/FHIR connectivity tests.
+
 - codex: `API-CONTRACT-001DQ` pharmacy site insurance config response envelope cleanup.
   - current task:
     `PATCH /api/pharmacy-sites/:id/insurance-configs/:configId` の success DTO を明示化し、
