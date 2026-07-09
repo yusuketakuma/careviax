@@ -53,7 +53,8 @@
 
 - codex: `P2-6` billing candidates export-preview false-zero prevention.
   - commit:
-    pending scoped commit after this ledger update.
+    `b7107b5a2 fix(billing): avoid false-zero export preview` and
+    `8c923f04c fix(billing): require fresh export preview`.
   - current task:
     月次請求候補のCSV出力前確認で、preview 初回読込中/初回失敗を `0点/0円/0件` の実測値として
     見せない。取得失敗は再試行可能な共通状態表示へ寄せ、CSV出力はPHI-safeな理由つきで停止する。
@@ -72,7 +73,10 @@
     destructive error. The panel now distinguishes initial loading, initial error, stale
     refetch error with cached data, and valid preview data. Loading uses `Skeleton`, initial
     failure uses `SegmentError` with retry, stale refetch uses `SegmentStaleBanner`, and CSV
-    export is disabled until preview is available.
+    export is disabled until a fresh preview is available. A root review found two contract gaps
+    after the first code commit; the forward fix now makes preview loading/unavailable/refresh
+    required outrank true-zero wording and disables CSV export while preview data is refetching
+    or stale after a failed refetch.
   - security/privacy:
     Provider/API error details are not echoed into the panel or disabled reason; tests pin that
     raw patient/token-like error text is not shown. The CSV disabled reason remains PHI-safe and
@@ -82,7 +86,7 @@
     network request, polling, or unbounded render work was introduced.
   - validation:
     `pnpm vitest run 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx' --reporter=dot --testTimeout=30000`
-    passed 1 file / 14 tests; exact-path ESLint passed; Prettier check passed;
+    passed 1 file / 16 tests; exact-path ESLint passed; Prettier check passed;
     `git diff --check` passed for the two touched files; and
     `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false --incremental false --skipLibCheck`
     passed. `pnpm build` / Next typegen gates were not started because the current shared-worktree
@@ -92,8 +96,8 @@
     existing billing panel, not a visual reconstruction or new screen design. The PH-OS UI/UX
     SSOT was read and applied for loading/error/false-empty handling.
   - remaining / next action:
-    Commit this billing slice with explicit paths only. `src/components/ui/error-state*` is
-    Claude's non-overlapping lane and must not be staged with this billing commit.
+    Billing P2-6 is closed locally. Continue reviewing Claude's shared state-token lanes
+    read-only and keep the remaining status-icon/SSOT dirty files out of Codex-owned commits.
 
 - codex: repo-wide PH-OS all-screen UI/UX direction reference.
   - commit:
