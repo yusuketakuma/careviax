@@ -437,7 +437,7 @@ function UrgentNowSection({
                 data-count-basis={link.count_basis}
               >
                 <span>{link.label}</span>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                   {countLabel}
                 </span>
               </Link>
@@ -596,7 +596,7 @@ function ProcessNowSection({ tiles }: { tiles: ProcessNowTile[] }) {
         ))}
       </ol>
       {bottleneckNote ? (
-        <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm leading-5 text-destructive">
+        <p className="mt-3 rounded-md border border-state-blocked/30 bg-state-blocked/10 px-3 py-2 text-sm leading-5 text-state-blocked">
           {bottleneckNote}
         </p>
       ) : null}
@@ -1170,13 +1170,13 @@ function TeamConversationPanel({
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span
                     className={cn(
-                      'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold',
+                      'inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold',
                       badge.className,
                     )}
                   >
                     {badge.label}
                   </span>
-                  <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
                     {comment.entity_label}
                   </span>
                   <span className="ml-auto text-xs text-muted-foreground">
@@ -1216,7 +1216,7 @@ function TeamConversationPanel({
 
 function inboundPriorityBadge(item: CockpitInboundItem) {
   if (item.priority === 'urgent') {
-    return { label: '安全確認', className: 'bg-destructive/10 text-destructive' };
+    return { label: '安全確認', className: 'bg-state-blocked/10 text-state-blocked' };
   }
   if (item.has_medication_stock_signal) {
     return { label: '残数・薬剤', className: 'bg-state-confirm/10 text-state-confirm' };
@@ -1350,18 +1350,18 @@ function InboundFeedPanel({
             return (
               <li key={item.id} className="rounded-md border border-border/70 bg-background p-3">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                  <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">
                     {item.channel_label}
                   </span>
                   <span
                     className={cn(
-                      'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold',
+                      'inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold',
                       badge.className,
                     )}
                   >
                     {badge.label}
                   </span>
-                  <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
                     {inboundStatusLabel(item.status)}
                   </span>
                   <span className="ml-auto text-xs text-muted-foreground">

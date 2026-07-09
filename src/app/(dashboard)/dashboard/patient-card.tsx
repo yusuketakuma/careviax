@@ -108,15 +108,12 @@ export function PatientCardItem({ patient }: { patient: PatientCardType }) {
               )}
             </div>
             {parsedBirthDate && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {format(parsedBirthDate, 'yyyy/MM/dd')}生
               </p>
             )}
           </div>
-          <Badge
-            variant="outline"
-            className={`shrink-0 text-[10px] ${status.color} border-current`}
-          >
+          <Badge variant="outline" className={`shrink-0 text-xs ${status.color} border-current`}>
             {status.label}
           </Badge>
         </div>
@@ -141,7 +138,7 @@ export function PatientCardItem({ patient }: { patient: PatientCardType }) {
         {patient.conditions.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {patient.conditions.map((condition) => (
-              <Badge key={condition} variant="secondary" className="text-[10px] font-normal">
+              <Badge key={condition} variant="secondary" className="text-xs font-normal">
                 <HeartPulse className="mr-0.5 size-2.5" aria-hidden="true" />
                 {condition}
               </Badge>
@@ -150,7 +147,7 @@ export function PatientCardItem({ patient }: { patient: PatientCardType }) {
         )}
 
         {/* Row 4: Schedule dates */}
-        <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-xs">
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-xs tabular-nums">
           <div className="text-muted-foreground">
             <span className="font-medium">前回処方</span>{' '}
             <span>{formatShortDate(patient.last_prescription_date) ?? '—'}</span>
@@ -187,17 +184,17 @@ export function PatientCardItem({ patient }: { patient: PatientCardType }) {
           patient.readiness_flags.missing_first_visit_doc) && (
           <div className="flex flex-wrap gap-1">
             {patient.readiness_flags.missing_emergency_contact ? (
-              <StateBadge role="confirm" showIcon={false} className="text-[10px]">
+              <StateBadge role="confirm" showIcon={false}>
                 緊急連絡先不足
               </StateBadge>
             ) : null}
             {patient.readiness_flags.missing_primary_physician ? (
-              <StateBadge role="confirm" showIcon={false} className="text-[10px]">
+              <StateBadge role="confirm" showIcon={false}>
                 主治医未登録
               </StateBadge>
             ) : null}
             {patient.readiness_flags.missing_first_visit_doc ? (
-              <StateBadge role="confirm" showIcon={false} className="text-[10px]">
+              <StateBadge role="confirm" showIcon={false}>
                 初回文書未交付
               </StateBadge>
             ) : null}

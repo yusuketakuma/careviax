@@ -58,8 +58,15 @@ export const DeadlineCountdownLabel = memo(function DeadlineCountdownLabel({
   const now = useDashboardClock();
   const countdown = formatDeadlineCountdown(dueAt, now);
 
+  // 6軸状態色(SSOT 3.1): 期限超過=blocked(赤)。未超過は要対応=confirm(橙)に留め、
+  // 常時赤点灯による alert fatigue(SSOT 2.7)を避ける。raw destructive は使わない(SSOT 7.3)。
   return (
-    <p className="text-sm font-bold text-destructive">
+    <p
+      className={cn(
+        'text-sm font-bold',
+        countdown.overdue ? 'text-state-blocked' : 'text-state-confirm',
+      )}
+    >
       期限 {formatTimeOfDay(dueAt)} — {countdown.label}
     </p>
   );
