@@ -1527,28 +1527,30 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
   });
 
   const makeCopyServerResponse = () => ({
-    sourceCount: 5,
-    copiedCount: 0,
-    skippedCount: 0,
-    overwrite: false,
-    dryRun: true,
-    preview: {
-      summary: {
-        source_count: 5,
-        create_count: 2,
-        update_count: 0,
-        skip_existing_count: 0,
-        apply_count: 2,
-      },
-      rows: [
-        {
-          action: 'create' as const,
-          drug_master_id: 'drug_c',
-          reorder_point: null,
-          preferred_generic_id: null,
-          drug_master: { id: 'drug_c', yj_code: '999999999999', drug_name: 'コピー薬' },
+    data: {
+      sourceCount: 5,
+      copiedCount: 0,
+      skippedCount: 0,
+      overwrite: false,
+      dryRun: true,
+      preview: {
+        summary: {
+          source_count: 5,
+          create_count: 2,
+          update_count: 0,
+          skip_existing_count: 0,
+          apply_count: 2,
         },
-      ],
+        rows: [
+          {
+            action: 'create' as const,
+            drug_master_id: 'drug_c',
+            reorder_point: null,
+            preferred_generic_id: null,
+            drug_master: { id: 'drug_c', yj_code: '999999999999', drug_name: 'コピー薬' },
+          },
+        ],
+      },
     },
   });
 

@@ -984,12 +984,12 @@ function DrugMasterOperationalContent({
           dry_run: dryRun,
         }),
       });
-      const json = await readApiJson<FormularyCopyPreviewResponse>(
+      const body = await readApiJson<{ data: FormularyCopyPreviewResponse }>(
         res,
         '採用薬リストのコピーに失敗しました',
       );
       return {
-        ...json,
+        ...body.data,
         requestTargetSiteId,
         requestSourceSiteId,
         requestOverwrite,

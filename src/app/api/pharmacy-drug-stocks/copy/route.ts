@@ -117,14 +117,16 @@ export const POST = withAuthContext(
 
     if (dry_run) {
       return success({
-        sourceSite,
-        targetSite,
-        sourceCount: sourceStocks.length,
-        copiedCount: 0,
-        skippedCount: sourceStocks.length - operations.length,
-        overwrite,
-        dryRun: true,
-        preview,
+        data: {
+          sourceSite,
+          targetSite,
+          sourceCount: sourceStocks.length,
+          copiedCount: 0,
+          skippedCount: sourceStocks.length - operations.length,
+          overwrite,
+          dryRun: true,
+          preview,
+        },
       });
     }
 
@@ -180,14 +182,16 @@ export const POST = withAuthContext(
     });
 
     return success({
-      sourceSite,
-      targetSite,
-      sourceCount: sourceStocks.length,
-      copiedCount,
-      skippedCount: sourceStocks.length - copiedCount,
-      overwrite,
-      dryRun: false,
-      preview,
+      data: {
+        sourceSite,
+        targetSite,
+        sourceCount: sourceStocks.length,
+        copiedCount,
+        skippedCount: sourceStocks.length - copiedCount,
+        overwrite,
+        dryRun: false,
+        preview,
+      },
     });
   },
   { permission: 'canAdmin' },

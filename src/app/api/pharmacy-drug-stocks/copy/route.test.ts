@@ -44,6 +44,36 @@ function createMalformedJsonRequest() {
   });
 }
 
+type CopyPayload = {
+  sourceCount: number;
+  copiedCount: number;
+  skippedCount: number;
+  overwrite: boolean;
+  dryRun: boolean;
+  preview: {
+    summary: Record<string, number>;
+    rows: Array<Record<string, unknown>>;
+  };
+};
+
+async function readCopyPayload(response: Response): Promise<CopyPayload> {
+  const payload: unknown = await response.json();
+  expect(payload).toMatchObject({
+    data: {
+      sourceCount: expect.any(Number),
+      copiedCount: expect.any(Number),
+      skippedCount: expect.any(Number),
+      overwrite: expect.any(Boolean),
+      dryRun: expect.any(Boolean),
+      preview: {
+        summary: expect.any(Object),
+        rows: expect.any(Array),
+      },
+    },
+  });
+  return (payload as { data: CopyPayload }).data;
+}
+
 describe('/api/pharmacy-drug-stocks/copy', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -101,7 +131,8 @@ describe('/api/pharmacy-drug-stocks/copy', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readCopyPayload(response);
+    expect(json).toMatchObject({
       sourceCount: 2,
       copiedCount: 1,
       skippedCount: 1,
@@ -174,7 +205,8 @@ describe('/api/pharmacy-drug-stocks/copy', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readCopyPayload(response);
+    expect(json).toMatchObject({
       sourceCount: 1,
       copiedCount: 1,
       skippedCount: 0,
@@ -230,7 +262,8 @@ describe('/api/pharmacy-drug-stocks/copy', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await readCopyPayload(response);
+    expect(json).toMatchObject({
       copiedCount: 0,
       skippedCount: 1,
       dryRun: true,
