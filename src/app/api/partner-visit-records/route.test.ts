@@ -110,6 +110,11 @@ describe('/api/partner-visit-records', () => {
       revision_no: 1,
       status: 'draft',
       visit_at: new Date('2026-06-20T01:30:00.000Z'),
+      record_content: {
+        medication_adherence: '患者名 山田花子: 飲み忘れあり',
+        remaining_medications: 'A薬 10錠',
+      },
+      attachments: [{ file_id: 'file_1' }],
       owner_partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
       visit_request: { id: 'visit_request_1', status: 'accepted', urgency: 'normal' },
       claim_note: null,
@@ -388,8 +393,21 @@ describe('/api/partner-visit-records', () => {
     expect(auditText).not.toContain('山田花子');
     expect(auditText).not.toContain('飲み忘れ');
     expect(auditText).not.toContain('A薬');
-    const responseText = JSON.stringify(await response.json());
-    expect(responseText).toContain('has_record_content');
+    const responseBody = await response.json();
+    expect(responseBody).not.toHaveProperty('id');
+    expect(responseBody).not.toHaveProperty('status');
+    expect(responseBody).not.toHaveProperty('visit_request_id');
+    expect(responseBody).toMatchObject({
+      data: {
+        id: 'partner_visit_record_1',
+        status: 'draft',
+        has_record_content: true,
+        attachment_count: 1,
+        has_returned_reason: false,
+        has_base_confirmation_snapshot: false,
+      },
+    });
+    const responseText = JSON.stringify(responseBody);
     expect(responseText).not.toContain('山田花子');
     expect(responseText).not.toContain('飲み忘れ');
     expect(responseText).not.toContain('A薬');

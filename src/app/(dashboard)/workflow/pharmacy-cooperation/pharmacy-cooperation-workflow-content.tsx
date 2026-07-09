@@ -547,6 +547,9 @@ const patientShareCasePageSchema: z.ZodType<PatientShareCasePage> = z
   );
 const pharmacyVisitRequestPageSchema = cursorPaginatedPageSchema(pharmacyVisitRequestRowSchema);
 const partnerVisitRecordPageSchema = cursorPaginatedPageSchema(partnerVisitRecordRowSchema);
+const partnerVisitRecordResponseSchema = z.object({
+  data: partnerVisitRecordRowSchema,
+});
 const correctionRequestPageSchema = patientShareCorrectionRequestPageSchema;
 const patientShareConsentPageSchema = cursorPaginatedPageSchema(patientShareConsentRowSchema);
 const pharmacyCooperationMessageThreadPageSchema = cursorPaginatedPageSchema(
@@ -3292,7 +3295,7 @@ export function PharmacyCooperationWorkflowContent() {
       });
       return readApiJson<PartnerVisitRecordRow>(response, {
         fallbackMessage: '協力訪問記録の保存に失敗しました',
-        schema: partnerVisitRecordRowSchema,
+        schema: partnerVisitRecordResponseSchema.transform((payload) => payload.data),
       });
     },
     onSuccess: async () => {

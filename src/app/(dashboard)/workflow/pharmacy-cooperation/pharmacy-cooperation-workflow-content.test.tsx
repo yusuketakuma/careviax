@@ -594,31 +594,33 @@ describe('PharmacyCooperationWorkflowContent', () => {
         if (url === '/api/partner-visit-records' && init?.method === 'POST') {
           return new Response(
             JSON.stringify({
-              id: 'partner_record_draft',
-              visit_request_id: 'visit_request_record_ready',
-              share_case_id: 'share_case_active',
-              revision_no: 1,
-              status: 'draft',
-              pharmacist_name: '協力 太郎',
-              visit_at: '2026-06-20T01:30:00.000Z',
-              submitted_at: null,
-              confirmed_at: null,
-              updated_at: '2026-06-20T01:45:00.000Z',
-              owner_partner_pharmacy: {
-                id: 'partner_pharmacy_1',
-                name: '協力薬局',
-                status: 'active',
+              data: {
+                id: 'partner_record_draft',
+                visit_request_id: 'visit_request_record_ready',
+                share_case_id: 'share_case_active',
+                revision_no: 1,
+                status: 'draft',
+                pharmacist_name: '協力 太郎',
+                visit_at: '2026-06-20T01:30:00.000Z',
+                submitted_at: null,
+                confirmed_at: null,
+                updated_at: '2026-06-20T01:45:00.000Z',
+                owner_partner_pharmacy: {
+                  id: 'partner_pharmacy_1',
+                  name: '協力薬局',
+                  status: 'active',
+                },
+                visit_request: {
+                  id: 'visit_request_record_ready',
+                  status: 'recording',
+                  urgency: 'normal',
+                },
+                claim_note: null,
+                has_record_content: true,
+                attachment_count: 0,
+                has_returned_reason: false,
+                has_base_confirmation_snapshot: false,
               },
-              visit_request: {
-                id: 'visit_request_record_ready',
-                status: 'recording',
-                urgency: 'normal',
-              },
-              claim_note: null,
-              has_record_content: true,
-              attachment_count: 0,
-              has_returned_reason: false,
-              has_base_confirmation_snapshot: false,
             }),
             { status: 201 },
           );
@@ -1750,7 +1752,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/partner-visit-records' && init?.method === 'POST') {
-        return new Response(JSON.stringify({ id: 'partner_record_draft', status: 'draft' }), {
+        return new Response(JSON.stringify({ data: { id: 'partner_record_draft' } }), {
           status: 201,
         });
       }

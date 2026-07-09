@@ -403,7 +403,7 @@ const authenticatedPOST = withAuthContext(
     );
 
     if ('response' in result) return result.response ?? validationError('入力値が不正です');
-    return success(result.partnerVisitRecord, result.isCreate ? 201 : 200);
+    return success({ data: result.partnerVisitRecord }, result.isCreate ? 201 : 200);
   },
   {
     permission: 'canManagePatientSharing',
