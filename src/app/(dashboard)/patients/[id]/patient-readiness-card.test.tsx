@@ -105,7 +105,7 @@ describe('PatientReadinessCard', () => {
       },
     );
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: {} }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -143,7 +143,7 @@ describe('PatientReadinessCard', () => {
       },
     );
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: {} }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {

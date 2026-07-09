@@ -65,10 +65,11 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
       const response = await fetch(buildPatientApiPath(patientId, '/readiness'), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
-      return readApiJson<PatientReadinessSnapshot>(
+      const payload = await readApiJson<{ data: PatientReadinessSnapshot }>(
         response,
         'オンボーディング状況の取得に失敗しました',
       );
+      return payload.data;
     },
   });
 

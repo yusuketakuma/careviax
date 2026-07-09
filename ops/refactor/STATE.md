@@ -41,6 +41,79 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CR` patient readiness response envelope cleanup.
+  - current task:
+    `GET /api/patients/:id/readiness` の patient readiness success response を legacy
+    raw readiness root から `{ data: readiness }` envelope へ移行し、readiness card
+    reader、route/detail/card tests、response-shape allowlist、Plans / archive を同期する。
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/readiness/route.ts`,
+    `src/app/api/patients/[id]/detail-slices.test.ts`,
+    `src/app/api/__tests__/protected-get-routes.test.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-readiness-card.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-readiness-card.test.tsx`,
+    `Plans.md`, `docs/plans-archive.md`, and `ops/refactor/STATE.md`.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `ops/refactor/STATE.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/readiness/route.ts`,
+    `src/app/api/patients/[id]/detail-slices.test.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-readiness-card.tsx`, and
+    `src/app/(dashboard)/patients/[id]/patient-readiness-card.test.tsx`.
+  - bugs found:
+    The patient readiness route returned readiness fields at the public success
+    response root, keeping one API response-shape allowlist entry alive. The readiness
+    card reader consumed the legacy raw body directly.
+  - bugs fixed:
+    GET success now returns `success({ data: readiness })`. The readiness card reader
+    unwraps `payload.data`, and targeted route/card assertions use the current
+    envelope. The stale allowlist entry was removed. Response-shape debt dropped from
+    86 to 85.
+  - security risks found:
+    No visit permission check, patient id validation, service auth context, no-store
+    wrapper, not-found response, unstable rethrow behavior, or sanitized internal-error
+    response changed.
+  - security risks reduced:
+    Removed readiness fields from the response root and aligned the reader to the
+    standardized success envelope.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. The card unwraps the same readiness
+    payload from the new envelope before rendering, so image generation was not
+    applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration
+    directive and the repeated envelope-only local pattern. Validation covered
+    route/detail/card tests, contract ratchet, scoped lint/format, and full typecheck.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/readiness/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/patient-readiness-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-readiness-card.test.tsx'`;
+    `pnpm vitest run 'src/app/api/patients/[id]/detail-slices.test.ts' --reporter=dot`;
+    `pnpm vitest run 'src/app/(dashboard)/patients/[id]/patient-readiness-card.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/readiness/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/patient-readiness-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-readiness-card.test.tsx'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/readiness/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/patient-readiness-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-readiness-card.test.tsx'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/readiness/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/patient-readiness-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-readiness-card.test.tsx'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Patient detail slice tests passed 1 file / 56 tests. Patient readiness card tests
+    passed 1 file / 7 tests. `api-response-shape:check` passed with 85 allowlisted
+    violations and 0 new violations. `plans:active:check` passed. Scoped ESLint,
+    scoped Prettier check, scoped diff check, and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 85 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patients/[id]/restore/route.ts`.
+  - next action:
+    Commit this patient readiness envelope slice with explicit owned paths only, then
+    continue allowlist debt burn-down from the next allowlist head.
+
 - codex: `API-CONTRACT-001CQ` patient prescriptions response envelope cleanup.
   - current task:
     `GET /api/patients/:id/prescriptions` の patient prescriptions list success response

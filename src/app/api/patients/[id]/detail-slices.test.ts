@@ -215,8 +215,10 @@ const sliceRoutes = [
       items: [],
     },
     expectedBody: {
-      overall_status: 'ready',
-      completed_count: 6,
+      data: {
+        overall_status: 'ready',
+        completed_count: 6,
+      },
     },
   },
   {
@@ -634,8 +636,10 @@ describe('patient detail slice routes', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      overall_status: 'ready',
-      completed_count: 6,
+      data: {
+        overall_status: 'ready',
+        completed_count: 6,
+      },
     });
   });
 
