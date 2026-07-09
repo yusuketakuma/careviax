@@ -20,8 +20,8 @@ function createMockTx() {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     clinicalProvenanceRecord: {
-      create: vi.fn().mockResolvedValue({ id: 'provenance_1' }),
-      findFirst: vi.fn().mockResolvedValue(null),
+      createMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findFirst: vi.fn().mockResolvedValue({ id: 'provenance_1' }),
     },
   };
 }
@@ -80,16 +80,21 @@ describe('verifyClinicalExternalReferencePatientLink', () => {
         }),
       }),
     );
-    expect(tx.clinicalProvenanceRecord.create).toHaveBeenCalledWith(
+    expect(tx.clinicalProvenanceRecord.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           subject_type: ClinicalLocalResourceType.patient,
           subject_id: 'patient_1',
           activity: 'clinical_external_reference.patient_link_verified',
           external_reference_id: 'external_reference_1',
+          input_hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
           recorded_by: 'user_1',
         }),
+        skipDuplicates: true,
       }),
+    );
+    expect(tx.clinicalProvenanceRecord.createMany.mock.calls[0]?.[0]?.data).not.toHaveProperty(
+      'output_hash',
     );
   });
 
@@ -108,14 +113,12 @@ describe('verifyClinicalExternalReferencePatientLink', () => {
     expect(tx.clinicalExternalReference.update).not.toHaveBeenCalled();
     expect(tx.clinicalFhirResourceCache.updateMany).not.toHaveBeenCalled();
     expect(tx.clinicalSyncQueueItem.updateMany).not.toHaveBeenCalled();
-    expect(tx.clinicalProvenanceRecord.create).not.toHaveBeenCalled();
+    expect(tx.clinicalProvenanceRecord.createMany).not.toHaveBeenCalled();
   });
 
   it('finds existing provenance when a manual verification is replayed', async () => {
     const tx = createMockTx();
-    tx.clinicalProvenanceRecord.create.mockRejectedValueOnce(
-      Object.assign(new Error('duplicate'), { code: 'P2002' }),
-    );
+    tx.clinicalProvenanceRecord.createMany.mockResolvedValueOnce({ count: 0 });
     tx.clinicalProvenanceRecord.findFirst.mockResolvedValueOnce({ id: 'provenance_existing' });
 
     const result = await verifyClinicalExternalReferencePatientLink(tx as never, {
@@ -126,6 +129,9 @@ describe('verifyClinicalExternalReferencePatientLink', () => {
     });
 
     expect(result?.provenanceRecordId).toBe('provenance_existing');
+    expect(tx.clinicalProvenanceRecord.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skipDuplicates: true }),
+    );
     expect(tx.clinicalProvenanceRecord.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -133,9 +139,23 @@ describe('verifyClinicalExternalReferencePatientLink', () => {
           subject_type: ClinicalLocalResourceType.patient,
           subject_id: 'patient_1',
           activity: 'clinical_external_reference.patient_link_verified',
-          input_hash: 'external_reference_1',
+          input_hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
         }),
       }),
     );
+  });
+
+  it('fails closed when provenance cannot be read after the conflict-safe insert', async () => {
+    const tx = createMockTx();
+    tx.clinicalProvenanceRecord.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      verifyClinicalExternalReferencePatientLink(tx as never, {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        externalReferenceId: 'external_reference_1',
+        verifiedByUserId: 'user_1',
+      }),
+    ).rejects.toThrow('Patient linkage provenance was not recorded');
   });
 });

@@ -1,14 +1,17 @@
 import {
   ClinicalExternalReferenceStatus,
+  ClinicalIntegrationDirection,
   ClinicalLocalResourceType,
   ClinicalMatchConfidence,
   ClinicalQueueStatus,
-  ClinicalIntegrationDirection,
   type Prisma,
   Prisma as PrismaNamespace,
 } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { FHIR_R4_VERSION, JP_CORE_VERSION } from '@/server/adapters/fhir';
+
+const HASH_PREFIX = 'sha256:';
 
 type PatientLinkageTx = Pick<
   Prisma.TransactionClient,
@@ -33,16 +36,10 @@ export interface VerifyClinicalExternalReferencePatientLinkResult {
   readonly provenanceRecordId: string | null;
 }
 
-function isUniqueConstraintError(error: unknown): boolean {
-  if (error instanceof PrismaNamespace.PrismaClientKnownRequestError) {
-    return error.code === 'P2002';
-  }
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: unknown }).code === 'P2002'
-  );
+function hashLinkageInput(externalReferenceId: string): string {
+  return `${HASH_PREFIX}${createHash('sha256')
+    .update(`clinical_external_reference.patient_link_verified\0${externalReferenceId}`)
+    .digest('hex')}`;
 }
 
 async function createOrFindLinkageProvenance(args: {
@@ -52,41 +49,46 @@ async function createOrFindLinkageProvenance(args: {
   readonly externalReferenceId: string;
   readonly verifiedByUserId: string;
 }) {
-  try {
-    return await args.tx.clinicalProvenanceRecord.create({
-      data: {
-        org_id: args.orgId,
-        subject_type: ClinicalLocalResourceType.patient,
-        subject_id: args.patientId,
-        activity: 'clinical_external_reference.patient_link_verified',
-        direction: ClinicalIntegrationDirection.inbound,
-        external_reference_id: args.externalReferenceId,
-        input_hash: args.externalReferenceId,
-        output_hash: args.patientId,
-        recorded_by: args.verifiedByUserId,
-        adapter_version: 'standard-clinical-patient-linkage.v1',
-        jp_core_version: JP_CORE_VERSION,
-        fhir_version: FHIR_R4_VERSION,
-        transformation_summary: toPrismaJsonInput({
-          verification: 'manual',
-          raw_storage: 'not_persisted',
-        }),
-      },
-      select: { id: true },
-    });
-  } catch (error) {
-    if (!isUniqueConstraintError(error)) throw error;
-    return args.tx.clinicalProvenanceRecord.findFirst({
-      where: {
-        org_id: args.orgId,
-        subject_type: ClinicalLocalResourceType.patient,
-        subject_id: args.patientId,
-        activity: 'clinical_external_reference.patient_link_verified',
-        input_hash: args.externalReferenceId,
-      },
-      select: { id: true },
-    });
+  const inputHash = hashLinkageInput(args.externalReferenceId);
+  const activity = 'clinical_external_reference.patient_link_verified';
+
+  // The ledger is append-only. ON CONFLICT DO NOTHING avoids both an update
+  // trigger and a P2002 that would abort the surrounding transaction.
+  await args.tx.clinicalProvenanceRecord.createMany({
+    data: {
+      org_id: args.orgId,
+      subject_type: ClinicalLocalResourceType.patient,
+      subject_id: args.patientId,
+      activity,
+      direction: ClinicalIntegrationDirection.inbound,
+      external_reference_id: args.externalReferenceId,
+      input_hash: inputHash,
+      recorded_by: args.verifiedByUserId,
+      adapter_version: 'standard-clinical-patient-linkage.v1',
+      jp_core_version: JP_CORE_VERSION,
+      fhir_version: FHIR_R4_VERSION,
+      transformation_summary: toPrismaJsonInput({
+        verification: 'manual',
+        raw_storage: 'not_persisted',
+      }),
+    },
+    skipDuplicates: true,
+  });
+
+  const provenance = await args.tx.clinicalProvenanceRecord.findFirst({
+    where: {
+      org_id: args.orgId,
+      subject_type: ClinicalLocalResourceType.patient,
+      subject_id: args.patientId,
+      activity,
+      input_hash: inputHash,
+    },
+    select: { id: true },
+  });
+  if (!provenance) {
+    throw new Error('Patient linkage provenance was not recorded');
   }
+  return provenance;
 }
 
 export async function verifyClinicalExternalReferencePatientLink(

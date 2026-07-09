@@ -24,8 +24,7 @@ function createMockTx() {
       upsert: vi.fn().mockResolvedValue({ id: 'timeline_1' }),
     },
     clinicalProvenanceRecord: {
-      create: vi.fn().mockResolvedValue({ id: 'provenance_1' }),
-      findFirst: vi.fn().mockResolvedValue(null),
+      createMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
   };
 }
@@ -33,6 +32,8 @@ function createMockTx() {
 type MockTx = ReturnType<typeof createMockTx>;
 
 const now = new Date('2026-07-09T09:00:00+09:00');
+const VALID_CONTENT_HASH =
+  'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 const queueRecord = {
   id: 'queue_1',
@@ -57,7 +58,7 @@ const cacheRecord = {
   resource_id: 'medreq_1',
   version_id: 'v1',
   external_reference_id: 'external_reference_1',
-  content_hash: 'sha256:resource',
+  content_hash: VALID_CONTENT_HASH,
   validation_status: ClinicalFhirValidationStatus.valid,
   normalized_summary: {
     resource_type: 'MedicationRequest',
@@ -147,7 +148,7 @@ describe('drainYreseClinicalSyncQueue', () => {
     expect(JSON.stringify(tx.medicationTimelineItem.upsert.mock.calls)).not.toContain(
       'LEAK_MEDICATION_TEXT',
     );
-    expect(tx.clinicalProvenanceRecord.create).toHaveBeenCalledWith(
+    expect(tx.clinicalProvenanceRecord.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           org_id: 'org_1',
@@ -155,9 +156,13 @@ describe('drainYreseClinicalSyncQueue', () => {
           subject_id: 'timeline_1',
           fhir_resource_cache_id: 'cache_1',
           yrese_event_id: 'event_1',
-          input_hash: 'sha256:resource',
+          input_hash: VALID_CONTENT_HASH,
         }),
+        skipDuplicates: true,
       }),
+    );
+    expect(tx.clinicalProvenanceRecord.createMany.mock.calls[0]?.[0]?.data).not.toHaveProperty(
+      'output_hash',
     );
     expect(tx.clinicalSyncQueueItem.update).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -114,19 +114,7 @@ function sourceKindForResource(
   }
 }
 
-function isUniqueConstraintError(error: unknown): boolean {
-  if (error instanceof PrismaNamespace.PrismaClientKnownRequestError) {
-    return error.code === 'P2002';
-  }
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: unknown }).code === 'P2002'
-  );
-}
-
-async function createOrFindQueueProvenance(args: {
+async function recordQueueProvenance(args: {
   readonly tx: ClinicalSyncQueueTx;
   readonly orgId: string;
   readonly queue: QueueRecord;
@@ -134,42 +122,28 @@ async function createOrFindQueueProvenance(args: {
   readonly subjectType: ClinicalLocalResourceType;
   readonly subjectId: string;
 }) {
-  try {
-    return await args.tx.clinicalProvenanceRecord.create({
-      data: {
-        org_id: args.orgId,
-        subject_type: args.subjectType,
-        subject_id: args.subjectId,
-        activity: 'clinical_sync_queue.medication_timeline_projection',
-        direction: ClinicalIntegrationDirection.inbound,
-        external_reference_id: args.cache.external_reference_id ?? args.queue.external_reference_id,
-        fhir_resource_cache_id: args.cache.id,
-        yrese_event_id: args.queue.yrese_event_id,
-        input_hash: args.cache.content_hash,
-        output_hash: args.queue.id,
-        adapter_version: 'standard-clinical-sync-queue.v1',
-        jp_core_version: JP_CORE_VERSION,
-        fhir_version: FHIR_R4_VERSION,
-        transformation_summary: toPrismaJsonInput({
-          projector: 'medication_timeline',
-          raw_storage: 'not_persisted',
-        }),
-      },
-      select: { id: true },
-    });
-  } catch (error) {
-    if (!isUniqueConstraintError(error)) throw error;
-    return args.tx.clinicalProvenanceRecord.findFirst({
-      where: {
-        org_id: args.orgId,
-        subject_type: args.subjectType,
-        subject_id: args.subjectId,
-        activity: 'clinical_sync_queue.medication_timeline_projection',
-        input_hash: args.cache.content_hash,
-      },
-      select: { id: true },
-    });
-  }
+  // Provenance is append-only; conflict skipping is safe for idempotent queue replay.
+  return args.tx.clinicalProvenanceRecord.createMany({
+    data: {
+      org_id: args.orgId,
+      subject_type: args.subjectType,
+      subject_id: args.subjectId,
+      activity: 'clinical_sync_queue.medication_timeline_projection',
+      direction: ClinicalIntegrationDirection.inbound,
+      external_reference_id: args.cache.external_reference_id ?? args.queue.external_reference_id,
+      fhir_resource_cache_id: args.cache.id,
+      yrese_event_id: args.queue.yrese_event_id,
+      input_hash: args.cache.content_hash,
+      adapter_version: 'standard-clinical-sync-queue.v1',
+      jp_core_version: JP_CORE_VERSION,
+      fhir_version: FHIR_R4_VERSION,
+      transformation_summary: toPrismaJsonInput({
+        projector: 'medication_timeline',
+        raw_storage: 'not_persisted',
+      }),
+    },
+    skipDuplicates: true,
+  });
 }
 
 async function markQueueSucceeded(tx: ClinicalSyncQueueTx, queue: QueueRecord, now: Date) {
@@ -326,7 +300,7 @@ async function projectMedicationTimeline(args: {
     select: { id: true },
   });
 
-  await createOrFindQueueProvenance({
+  await recordQueueProvenance({
     tx,
     orgId: queue.org_id,
     queue,
