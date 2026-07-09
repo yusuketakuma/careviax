@@ -179,9 +179,9 @@ export default function MfaSetupPage() {
         throw new Error(payload?.message ?? '確認コードが正しくありません');
       }
       const payload = (await response.json()) as {
-        recoveryCodes?: string[];
+        data: { recoveryCodes: string[] };
       };
-      setRecoveryCodes(payload.recoveryCodes ?? []);
+      setRecoveryCodes(payload.data.recoveryCodes);
       setStep(3);
     } catch (err) {
       setError(messageFromError(err, '確認コードが正しくありません。もう一度お試しください。'));

@@ -76,4 +76,45 @@ describe('MfaSetupPage error message handling', () => {
       '確認コードが正しくありません。もう一度お試しください。',
     );
   });
+
+  it('reads recovery codes from the current MFA verification data envelope', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            secretCode: 'MFA-SECRET',
+            otpauthUri: 'otpauth://totp/ph-os:test@example.com?secret=MFASECRET',
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {
+              ok: true,
+              recoveryCodes: ['ABCD-EFGH', 'JKLM-NPQR'],
+            },
+          }),
+          { status: 200 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MfaSetupPage />);
+
+    await screen.findByText('MFA-SECRET');
+    fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+
+    for (let index = 0; index < 6; index += 1) {
+      fireEvent.change(screen.getByLabelText(`コード ${index + 1}桁目`), {
+        target: { value: String(index + 1) },
+      });
+    }
+    fireEvent.click(screen.getByRole('button', { name: '確認する' }));
+
+    expect(await screen.findByText('ABCD-EFGH')).toBeTruthy();
+    expect(screen.getByText('JKLM-NPQR')).toBeTruthy();
+  });
 });

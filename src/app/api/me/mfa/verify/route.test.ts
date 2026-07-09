@@ -143,8 +143,10 @@ describe('/api/me/mfa/verify POST', () => {
     });
     expect(issueMfaRecoveryCodesMock).toHaveBeenCalledWith('user_1');
     await expect(response.json()).resolves.toEqual({
-      ok: true,
-      recoveryCodes: ['ABCD-EFGH', 'JKLM-NPQR'],
+      data: {
+        ok: true,
+        recoveryCodes: ['ABCD-EFGH', 'JKLM-NPQR'],
+      },
     });
   });
 

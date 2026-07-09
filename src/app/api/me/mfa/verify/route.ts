@@ -70,5 +70,5 @@ export async function POST(req: NextRequest) {
 
   const recoveryCodes = await issueMfaRecoveryCodes(userId);
 
-  return withSensitiveNoStore(success({ ok: true, recoveryCodes }));
+  return withSensitiveNoStore(success({ data: { ok: true, recoveryCodes } }));
 }
