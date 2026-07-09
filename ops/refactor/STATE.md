@@ -41,6 +41,76 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CO` patient labs collection create response envelope cleanup.
+  - current task:
+    `POST /api/patients/:id/labs` の patient lab observation create success response を
+    legacy raw lab observation root から `{ data: lab }` envelope へ移行し、route test、
+    response-shape allowlist、Plans / archive を同期する。GET list は既存 `data`
+    envelope のまま維持する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/labs/route.ts`,
+    `src/app/api/patients/[id]/labs/route.test.ts`,
+    `src/app/api/patients/[id]/labs/[labId]/route.ts`,
+    `src/app/api/patients/[id]/labs/[labId]/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-labs-card.tsx`,
+    `Plans.md`, `docs/plans-archive.md`, and `ops/refactor/STATE.md`.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `ops/refactor/STATE.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/labs/route.ts`, and
+    `src/app/api/patients/[id]/labs/route.test.ts`.
+  - bugs found:
+    The patient labs POST route returned the created lab observation at the public
+    success response root, keeping one API response-shape allowlist entry alive. The
+    patient lab card create mutation reads the response only for success/error handling
+    and refetches after success.
+  - bugs fixed:
+    POST success now returns `success({ data: lab }, 201)`. Route tests assert the
+    current envelope for manual create, visit-record provenance create, and stale
+    source-visit cleanup create. The stale allowlist entry was removed. Response-shape
+    debt dropped from 89 to 88.
+  - security risks found:
+    No visit permission check, patient id validation, patient writable guard, source
+    visit provenance validation, display id allocation, GET no-store wrapper, GET
+    sanitized internal-error response, or RLS write context changed.
+  - security risks reduced:
+    Removed created lab observation fields from the response root.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. The lab card mutation ignores
+    successful create response bodies and refetches after success, so image generation
+    was not applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration
+    directive and the repeated envelope-only local pattern. Validation covered route
+    tests, contract ratchet, scoped lint/format, and full typecheck.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/labs/route.ts' 'src/app/api/patients/[id]/labs/route.test.ts'`;
+    `pnpm vitest run 'src/app/api/patients/[id]/labs/route.test.ts' --reporter=dot`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/labs/route.ts' 'src/app/api/patients/[id]/labs/route.test.ts'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/labs/route.ts' 'src/app/api/patients/[id]/labs/route.test.ts'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/labs/route.ts' 'src/app/api/patients/[id]/labs/route.test.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Prettier passed. Patient labs collection route tests passed 1 file / 19 tests.
+    `api-response-shape:check` passed with 88 allowlisted violations and 0 new
+    violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier check,
+    scoped diff check, and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 88 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patients/[id]/overview/route.ts`.
+  - next action:
+    Commit this patient labs collection envelope slice with explicit owned paths only,
+    then continue allowlist debt burn-down from the next allowlist head.
+
 - codex: `API-CONTRACT-001CN` patient lab detail response envelope cleanup.
   - current task:
     `PATCH /api/patients/:id/labs/:labId` の patient lab observation update success

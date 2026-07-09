@@ -191,5 +191,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     { requestContext: ctx },
   );
 
-  return success(lab, 201);
+  return success({ data: lab }, 201);
 }

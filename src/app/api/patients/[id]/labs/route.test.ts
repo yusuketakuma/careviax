@@ -337,6 +337,13 @@ describe('/api/patients/[id]/labs POST', () => {
     expect(JSON.stringify(patientLabObservationCreateMock.mock.calls)).not.toContain(
       encodeURIComponent(rawPatientId),
     );
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'lab_1',
+        display_id: 'plab0000000001',
+        patient_id: rawPatientId,
+      },
+    });
   });
 
   it('validates same-org same-patient assigned visit-record provenance before creating', async () => {
@@ -366,6 +373,13 @@ describe('/api/patients/[id]/labs POST', () => {
         source_type: 'visit_record',
         source_visit_record_id: 'visit_1',
       }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'lab_1',
+        source_type: 'visit_record',
+        source_visit_record_id: 'visit_1',
+      },
     });
   });
 
@@ -473,6 +487,13 @@ describe('/api/patients/[id]/labs POST', () => {
         source_type: 'manual',
         source_visit_record_id: null,
       }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'lab_1',
+        source_type: 'manual',
+        source_visit_record_id: null,
+      },
     });
   });
 });
