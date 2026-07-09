@@ -4107,7 +4107,7 @@ describe('CardWorkspace', () => {
     const getDocumentsConfig = captureDocumentsQueryConfig(hostileId);
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+      .mockResolvedValue(new Response(JSON.stringify({ data: {} }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {

@@ -1394,7 +1394,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
   await page.route(
     apiPathPattern(`/api/patients/${PHARMACY_COOP_PATIENT_ID}/documents`),
     async (route) => {
-      await fulfillJson(route, buildPharmacyCoopDocumentsSnapshot());
+      await fulfillJson(route, { data: buildPharmacyCoopDocumentsSnapshot() });
     },
   );
 

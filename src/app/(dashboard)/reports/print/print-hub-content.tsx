@@ -176,7 +176,11 @@ function usePrintHubData(
       const res = await fetch(buildPatientApiPath(explicitPatientId, '/documents'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PatientDocumentsForPrintResponse>(res, '患者文書の取得に失敗しました');
+      const payload = await readApiJson<{ data: PatientDocumentsForPrintResponse }>(
+        res,
+        '患者文書の取得に失敗しました',
+      );
+      return payload.data;
     },
     enabled: !!orgId && !!explicitPatientId && needsFirstVisitDocuments,
     staleTime: 60_000,

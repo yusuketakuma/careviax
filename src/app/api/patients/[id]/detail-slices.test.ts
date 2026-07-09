@@ -130,8 +130,10 @@ const sliceRoutes = [
       first_visit_documents: [],
     },
     expectedBody: {
-      patient: { id: 'patient_1', name: '患者A', name_kana: 'カンジャエー' },
-      first_visit_documents: [],
+      data: {
+        patient: { id: 'patient_1', name: '患者A', name_kana: 'カンジャエー' },
+        first_visit_documents: [],
+      },
     },
   },
   {
@@ -526,8 +528,10 @@ describe('patient detail slice routes', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      patient: { id: 'patient_1', name: '患者A', name_kana: 'カンジャエー' },
-      first_visit_documents: [],
+      data: {
+        patient: { id: 'patient_1', name: '患者A', name_kana: 'カンジャエー' },
+        first_visit_documents: [],
+      },
     });
   });
 

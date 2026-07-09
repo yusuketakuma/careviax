@@ -1548,10 +1548,10 @@ function PatientCardDocumentsPanel({
       const response = await fetch(`/api/patients/${encodePathSegment(patient.id)}/documents`, {
         headers: buildOrgHeaders(orgId ?? ''),
       });
-      if (!response.ok) {
-        throw new Error('文書情報の取得に失敗しました');
-      }
-      return response.json();
+      const payload = await readApiJson<{ data: PatientDocumentsSnapshot }>(response, {
+        fallbackMessage: '文書情報の取得に失敗しました',
+      });
+      return payload.data;
     },
     enabled: Boolean(orgId && patient.id),
   });

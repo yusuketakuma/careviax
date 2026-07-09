@@ -139,6 +139,10 @@ function firstVisitDocumentsResponse(patientId: string) {
   };
 }
 
+function firstVisitDocumentsApiResponse(patientId: string) {
+  return { data: firstVisitDocumentsResponse(patientId) };
+}
+
 function setPlansResponse(patientId: string) {
   return {
     data: [
@@ -222,37 +226,39 @@ describe('PrintHubContent', () => {
         if (url === '/api/patients/patient_1/documents') {
           return new Response(
             JSON.stringify({
-              patient: { id: 'patient_1', name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
-              print_readiness: {
-                overall_status: 'ready',
-                missing_required_count: 0,
-                warning_count: 0,
-                template_versions: [],
-                checks: [
+              data: {
+                patient: { id: 'patient_1', name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
+                print_readiness: {
+                  overall_status: 'ready',
+                  missing_required_count: 0,
+                  warning_count: 0,
+                  template_versions: [],
+                  checks: [
+                    {
+                      key: 'patient_profile',
+                      label: '患者基本情報',
+                      completed: true,
+                      severity: 'required',
+                      description: '差し込みできます。',
+                      action_href: '/patients/patient_1/edit',
+                      action_label: '基本情報を編集',
+                    },
+                  ],
+                },
+                first_visit_documents: [
                   {
-                    key: 'patient_profile',
-                    label: '患者基本情報',
-                    completed: true,
-                    severity: 'required',
-                    description: '差し込みできます。',
-                    action_href: '/patients/patient_1/edit',
-                    action_label: '基本情報を編集',
+                    id: 'doc_1',
+                    case_id: 'case_1',
+                    document_url: '/reports/print?copy=1',
+                    delivered_at: '2026-06-16T00:00:00.000Z',
+                    delivered_to: '山田 花子',
+                    created_at: '2026-06-16T00:00:00.000Z',
+                    updated_at: '2026-06-16T00:00:00.000Z',
+                    emergency_contacts: [],
+                    history: [],
                   },
                 ],
               },
-              first_visit_documents: [
-                {
-                  id: 'doc_1',
-                  case_id: 'case_1',
-                  document_url: '/reports/print?copy=1',
-                  delivered_at: '2026-06-16T00:00:00.000Z',
-                  delivered_to: '山田 花子',
-                  created_at: '2026-06-16T00:00:00.000Z',
-                  updated_at: '2026-06-16T00:00:00.000Z',
-                  emergency_contacts: [],
-                  history: [],
-                },
-              ],
             }),
             { status: 200 },
           );
@@ -309,7 +315,7 @@ describe('PrintHubContent', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/patients/patient_1/documents') {
-        return new Response(JSON.stringify(firstVisitDocumentsResponse('patient_1')), {
+        return new Response(JSON.stringify(firstVisitDocumentsApiResponse('patient_1')), {
           status: 200,
         });
       }
@@ -346,7 +352,7 @@ describe('PrintHubContent', () => {
       const url = String(input);
       if (url === `/api/patients/${encodedPatientId}/documents`) {
         expect(init?.headers).toEqual(buildOrgHeaders('org_1'));
-        return new Response(JSON.stringify(firstVisitDocumentsResponse(patientId)), {
+        return new Response(JSON.stringify(firstVisitDocumentsApiResponse(patientId)), {
           status: 200,
         });
       }
@@ -406,7 +412,7 @@ describe('PrintHubContent', () => {
       const url = String(input);
       if (url === '/api/patients/__helper_patient_1__/documents') {
         expect(init?.headers).toEqual(buildOrgHeaders('org_1'));
-        return new Response(JSON.stringify(firstVisitDocumentsResponse('patient_1')), {
+        return new Response(JSON.stringify(firstVisitDocumentsApiResponse('patient_1')), {
           status: 200,
         });
       }
@@ -767,15 +773,17 @@ describe('PrintHubContent', () => {
       if (url === '/api/patients/patient_1/documents') {
         return new Response(
           JSON.stringify({
-            patient: { id: 'patient_1', name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
-            print_readiness: {
-              overall_status: 'ready',
-              missing_required_count: 0,
-              warning_count: 0,
-              template_versions: [],
-              checks: [],
+            data: {
+              patient: { id: 'patient_1', name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
+              print_readiness: {
+                overall_status: 'ready',
+                missing_required_count: 0,
+                warning_count: 0,
+                template_versions: [],
+                checks: [],
+              },
+              first_visit_documents: [],
             },
-            first_visit_documents: [],
           }),
           { status: 200 },
         );
