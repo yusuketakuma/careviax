@@ -223,16 +223,18 @@ async function authenticatedGET(req: NextRequest) {
 
     return success({
       data: visibleData,
-      total_count: totalCount,
-      visible_count: visibleCount,
-      hidden_count: hiddenCount,
-      truncated: hiddenCount > 0,
-      count_basis: countBasis,
-      filters_applied: {
-        site_id: siteId,
-        include_collaborators: includeCollaborators,
+      meta: {
+        total_count: totalCount,
+        visible_count: visibleCount,
+        hidden_count: hiddenCount,
+        truncated: hiddenCount > 0,
+        count_basis: countBasis,
+        filters_applied: {
+          site_id: siteId,
+          include_collaborators: includeCollaborators,
+        },
+        limit,
       },
-      limit,
     });
   });
 }
@@ -367,7 +369,7 @@ async function authenticatedPOST(req: NextRequest) {
         { requestContext: ctx },
       );
 
-      return success(pharmacist, 201);
+      return success({ data: pharmacist }, 201);
     } catch {
       try {
         await deleteCognitoUser(identity.username);

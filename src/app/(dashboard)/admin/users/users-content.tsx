@@ -87,16 +87,18 @@ type UserItem = {
 
 type UsersListResponse = {
   data: UserItem[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-  count_basis?: 'memberships' | 'unique_users';
-  filters_applied?: {
-    site_id: string | null;
-    include_collaborators: boolean;
+  meta?: {
+    total_count?: number;
+    visible_count?: number;
+    hidden_count?: number;
+    truncated?: boolean;
+    count_basis?: 'memberships' | 'unique_users';
+    filters_applied?: {
+      site_id: string | null;
+      include_collaborators: boolean;
+    };
+    limit?: number;
   };
-  limit?: number;
 };
 
 type SiteOption = {
@@ -548,17 +550,18 @@ export function UsersContent() {
     },
   ];
 
+  const userListMeta = data?.meta;
   const summary = {
-    total: data?.total_count ?? users.length,
+    total: userListMeta?.total_count ?? users.length,
     active: users.filter((user) => user.account_status === 'active').length,
     invited: users.filter((user) => user.account_status === 'invited').length,
     suspended: users.filter(
       (user) => user.account_status === 'suspended' || user.account_status === 'retired',
     ).length,
   };
-  const visibleUserCount = data?.visible_count ?? users.length;
-  const hiddenUserCount = data?.hidden_count ?? Math.max(summary.total - users.length, 0);
-  const isUserListTruncated = Boolean(data?.truncated || hiddenUserCount > 0);
+  const visibleUserCount = userListMeta?.visible_count ?? users.length;
+  const hiddenUserCount = userListMeta?.hidden_count ?? Math.max(summary.total - users.length, 0);
+  const isUserListTruncated = Boolean(userListMeta?.truncated || hiddenUserCount > 0);
   const userListSummary = data
     ? isUserListTruncated
       ? `先頭${visibleUserCount.toLocaleString()}件を表示 / 他${hiddenUserCount.toLocaleString()}件`

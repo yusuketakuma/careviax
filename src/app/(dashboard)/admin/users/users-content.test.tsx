@@ -27,13 +27,15 @@ const queryRefetchMock = vi.hoisted(() => vi.fn());
 const adminUsersResponseMock = vi.hoisted(() => ({
   current: null as null | {
     data: unknown[];
-    total_count?: number;
-    visible_count?: number;
-    hidden_count?: number;
-    truncated?: boolean;
-    count_basis?: string;
-    filters_applied?: Record<string, unknown>;
-    limit?: number;
+    meta?: {
+      total_count?: number;
+      visible_count?: number;
+      hidden_count?: number;
+      truncated?: boolean;
+      count_basis?: string;
+      filters_applied?: Record<string, unknown>;
+      limit?: number;
+    };
   },
 }));
 
@@ -142,11 +144,13 @@ vi.mock('@tanstack/react-query', () => ({
           ? undefined
           : (adminUsersResponseMock.current ?? {
               data: [user],
-              total_count: 1,
-              visible_count: 1,
-              hidden_count: 0,
-              truncated: false,
-              count_basis: 'unique_users',
+              meta: {
+                total_count: 1,
+                visible_count: 1,
+                hidden_count: 0,
+                truncated: false,
+                count_basis: 'unique_users',
+              },
             }),
         isLoading: false,
         isError: queryErrorKeysMock.has('admin-users'),
@@ -590,16 +594,18 @@ describe('UsersContent', () => {
   it('shows hidden user counts when the staff master list is truncated', () => {
     adminUsersResponseMock.current = {
       data: [user],
-      total_count: 3,
-      visible_count: 1,
-      hidden_count: 2,
-      truncated: true,
-      count_basis: 'unique_users',
-      filters_applied: {
-        site_id: null,
-        include_collaborators: true,
+      meta: {
+        total_count: 3,
+        visible_count: 1,
+        hidden_count: 2,
+        truncated: true,
+        count_basis: 'unique_users',
+        filters_applied: {
+          site_id: null,
+          include_collaborators: true,
+        },
+        limit: 500,
       },
-      limit: 500,
     };
 
     render(<UsersContent />);
@@ -621,11 +627,13 @@ describe('UsersContent', () => {
     }));
     adminUsersResponseMock.current = {
       data: manyUsers,
-      total_count: 51,
-      visible_count: 51,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'unique_users',
+      meta: {
+        total_count: 51,
+        visible_count: 51,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'unique_users',
+      },
     };
 
     render(<UsersContent />);

@@ -284,16 +284,18 @@ describe('/api/pharmacists GET', () => {
           deactivation_reason: '長期休職',
         }),
       ],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'unique_users',
-      filters_applied: {
-        site_id: null,
-        include_collaborators: true,
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'unique_users',
+        filters_applied: {
+          site_id: null,
+          include_collaborators: true,
+        },
+        limit: 500,
       },
-      limit: 500,
     });
   });
 
@@ -314,16 +316,18 @@ describe('/api/pharmacists GET', () => {
       },
     });
     await expect(response.json()).resolves.toMatchObject({
-      total_count: 3,
-      visible_count: 1,
-      hidden_count: 2,
-      truncated: true,
-      count_basis: 'memberships',
-      filters_applied: {
-        site_id: null,
-        include_collaborators: false,
+      meta: {
+        total_count: 3,
+        visible_count: 1,
+        hidden_count: 2,
+        truncated: true,
+        count_basis: 'memberships',
+        filters_applied: {
+          site_id: null,
+          include_collaborators: false,
+        },
+        limit: 1,
       },
-      limit: 1,
     });
   });
 
@@ -464,11 +468,13 @@ describe('/api/pharmacists GET', () => {
     const payload = await response.json();
     expect(payload).toMatchObject({
       data: [expect.objectContaining({ id: 'user_1', name: '重複 ユーザー' })],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'unique_users',
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'unique_users',
+      },
     });
     expect(payload.data).toHaveLength(1);
   });
@@ -502,16 +508,18 @@ describe('/api/pharmacists GET', () => {
       }),
     });
     await expect(response.json()).resolves.toMatchObject({
-      total_count: 3,
-      visible_count: 1,
-      hidden_count: 2,
-      truncated: true,
-      count_basis: 'unique_users',
-      filters_applied: {
-        site_id: null,
-        include_collaborators: true,
+      meta: {
+        total_count: 3,
+        visible_count: 1,
+        hidden_count: 2,
+        truncated: true,
+        count_basis: 'unique_users',
+        filters_applied: {
+          site_id: null,
+          include_collaborators: true,
+        },
+        limit: 1,
       },
-      limit: 1,
     });
   });
 
@@ -708,6 +716,12 @@ describe('/api/pharmacists POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'user_1',
+        email: 'external@example.com',
+      },
+    });
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       site_id: undefined,
     });
