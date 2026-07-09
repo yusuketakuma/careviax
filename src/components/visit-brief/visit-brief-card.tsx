@@ -62,6 +62,9 @@ const PATIENT_CHANGE_TYPE_META: Record<
   },
 };
 
+const FEEDBACK_ERROR_MESSAGE =
+  '要約フィードバックを保存できませんでした。通信状態を確認し、もう一度評価を選択してください。';
+
 export function VisitBriefCard({
   brief,
   title = 'AI訪問要点サマリー',
@@ -81,6 +84,10 @@ export function VisitBriefCard({
     ai?: 'helpful' | 'needs_review';
     rule?: 'helpful' | 'needs_review';
   }>({});
+  const [feedbackError, setFeedbackError] = useState<{
+    summaryKind: 'ai' | 'rule';
+    message: string;
+  } | null>(null);
   const medicationChanges = brief.medication_changes.slice(0, compact ? 3 : 5);
   const duplicateMedicationChangeNames = findDuplicateMedicationChangeNames(medicationChanges);
   const patientChanges = brief.patient_changes.slice(0, compact ? 3 : 6);
@@ -121,59 +128,81 @@ export function VisitBriefCard({
       });
       return readApiJson<unknown>(res, 'フィードバック送信に失敗しました');
     },
+    onMutate: () => {
+      setFeedbackError(null);
+    },
     onSuccess: (_data, variables) => {
       setFeedbackState((current) => ({
         ...current,
         [variables.summaryKind]: variables.rating,
       }));
+      setFeedbackError(null);
       toast.success('要約フィードバックを保存しました');
     },
-    onError: (error) => {
+    onError: (error, variables) => {
+      setFeedbackError({
+        summaryKind: variables.summaryKind,
+        message: FEEDBACK_ERROR_MESSAGE,
+      });
       toast.error(messageFromError(error, 'フィードバック送信に失敗しました'));
     },
   });
+  const pendingFeedbackKind = feedbackMutation.isPending
+    ? feedbackMutation.variables?.summaryKind
+    : undefined;
 
   return (
     <Card className="border-border shadow-sm">
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="size-4 text-tag-info" aria-hidden="true" />
-              {title}
-              {brief.patient.archive?.archived ? (
-                <StateBadge role="readonly" className="text-[11px] font-bold">
-                  アーカイブ中
-                </StateBadge>
-              ) : null}
+            <CardTitle asChild>
+              <h2 className="flex items-center gap-2 text-base">
+                <Sparkles className="size-4 text-tag-info" aria-hidden="true" />
+                {title}
+                {brief.patient.archive?.archived ? (
+                  <StateBadge role="readonly" className="text-xs font-bold">
+                    アーカイブ中
+                  </StateBadge>
+                ) : null}
+              </h2>
             </CardTitle>
             <CardDescription className="mt-1">{description}</CardDescription>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="要約表示">
             <Badge variant={brief.ai_summary.provider === 'openai' ? 'default' : 'outline'}>
               {brief.ai_summary.provider === 'openai' ? 'AI短文化' : 'ルール要約'}
             </Badge>
             <Button
               type="button"
               size="sm"
+              className="min-h-11 sm:min-h-11"
               variant={summaryMode === 'compare' ? 'default' : 'outline'}
               onClick={() => setSummaryMode('compare')}
+              aria-pressed={summaryMode === 'compare'}
+              disabled={feedbackMutation.isPending}
             >
               比較
             </Button>
             <Button
               type="button"
               size="sm"
+              className="min-h-11 sm:min-h-11"
               variant={summaryMode === 'ai' ? 'default' : 'outline'}
               onClick={() => setSummaryMode('ai')}
+              aria-pressed={summaryMode === 'ai'}
+              disabled={feedbackMutation.isPending}
             >
               AI
             </Button>
             <Button
               type="button"
               size="sm"
+              className="min-h-11 sm:min-h-11"
               variant={summaryMode === 'rule' ? 'default' : 'outline'}
               onClick={() => setSummaryMode('rule')}
+              aria-pressed={summaryMode === 'rule'}
+              disabled={feedbackMutation.isPending}
             >
               ルール
             </Button>
@@ -203,6 +232,11 @@ export function VisitBriefCard({
                   : '24h集計なし',
               ]}
               feedbackValue={feedbackState.ai}
+              feedbackError={
+                feedbackError?.summaryKind === 'ai' ? feedbackError.message : undefined
+              }
+              feedbackPending={pendingFeedbackKind === 'ai'}
+              feedbackDisabled={feedbackMutation.isPending}
               onFeedback={(rating) => feedbackMutation.mutate({ summaryKind: 'ai', rating })}
             />
             <SummaryPanel
@@ -217,6 +251,11 @@ export function VisitBriefCard({
                 `id ${brief.rule_summary.generation_id.slice(0, 8)}`,
               ]}
               feedbackValue={feedbackState.rule}
+              feedbackError={
+                feedbackError?.summaryKind === 'rule' ? feedbackError.message : undefined
+              }
+              feedbackPending={pendingFeedbackKind === 'rule'}
+              feedbackDisabled={feedbackMutation.isPending}
               onFeedback={(rating) => feedbackMutation.mutate({ summaryKind: 'rule', rating })}
             />
           </div>
@@ -238,6 +277,9 @@ export function VisitBriefCard({
                 : '24h集計なし',
             ]}
             feedbackValue={feedbackState.ai}
+            feedbackError={feedbackError?.summaryKind === 'ai' ? feedbackError.message : undefined}
+            feedbackPending={pendingFeedbackKind === 'ai'}
+            feedbackDisabled={feedbackMutation.isPending}
             onFeedback={(rating) => feedbackMutation.mutate({ summaryKind: 'ai', rating })}
           />
         ) : (
@@ -253,6 +295,11 @@ export function VisitBriefCard({
               `id ${brief.rule_summary.generation_id.slice(0, 8)}`,
             ]}
             feedbackValue={feedbackState.rule}
+            feedbackError={
+              feedbackError?.summaryKind === 'rule' ? feedbackError.message : undefined
+            }
+            feedbackPending={pendingFeedbackKind === 'rule'}
+            feedbackDisabled={feedbackMutation.isPending}
             onFeedback={(rating) => feedbackMutation.mutate({ summaryKind: 'rule', rating })}
           />
         )}
@@ -372,7 +419,7 @@ export function VisitBriefCard({
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium text-foreground">{item.drug_name}</p>
                       {item.drug_code && duplicateMedicationChangeNames.has(item.drug_name) ? (
-                        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                           {item.drug_code}
                         </span>
                       ) : null}
@@ -474,7 +521,7 @@ export function VisitBriefCard({
                     {item.action_href ? (
                       <Link
                         href={item.action_href}
-                        className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       >
                         共有を確認
                         <ArrowUpRight className="size-3.5" aria-hidden="true" />
@@ -504,9 +551,7 @@ export function VisitBriefCard({
                     </div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.reason}</p>
                     {item.caution ? (
-                      <p className="mt-1 text-[11px] leading-5 text-state-confirm">
-                        {item.caution}
-                      </p>
+                      <p className="mt-1 text-xs leading-5 text-state-confirm">{item.caution}</p>
                     ) : null}
                   </li>
                 ))}
@@ -528,7 +573,7 @@ export function VisitBriefCard({
                       <p className="font-medium text-foreground">{item.title}</p>
                       <span
                         className={cn(
-                          'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                          'rounded-full border px-2 py-0.5 text-xs font-medium',
                           severityClass(item.severity),
                         )}
                       >
@@ -539,7 +584,7 @@ export function VisitBriefCard({
                     {item.action_href ? (
                       <Link
                         href={item.action_href}
-                        className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       >
                         {item.action_label ?? '依頼を確認'}
                         <ArrowUpRight className="size-3.5" aria-hidden="true" />
@@ -588,7 +633,7 @@ export function VisitBriefCard({
                     <p className="font-medium text-foreground">{item.title}</p>
                     <span
                       className={cn(
-                        'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                        'rounded-full border px-2 py-0.5 text-xs font-medium',
                         severityClass(item.severity),
                       )}
                     >
@@ -598,7 +643,7 @@ export function VisitBriefCard({
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.summary}</p>
                   <Link
                     href={item.href}
-                    className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     確認する
                     <ArrowUpRight className="size-3.5" aria-hidden="true" />
@@ -636,10 +681,10 @@ function Section({
 }) {
   return (
     <section className="space-y-2">
-      <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+      <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
         <Icon className="size-3.5" aria-hidden="true" />
         {title}
-      </p>
+      </h3>
       {children}
     </section>
   );
@@ -654,6 +699,9 @@ function SummaryPanel({
   generatedAt,
   metadata,
   feedbackValue,
+  feedbackError,
+  feedbackPending,
+  feedbackDisabled,
   onFeedback,
 }: {
   kind: 'ai' | 'rule';
@@ -664,10 +712,14 @@ function SummaryPanel({
   generatedAt: string;
   metadata: string[];
   feedbackValue?: 'helpful' | 'needs_review';
+  feedbackError?: string;
+  feedbackPending: boolean;
+  feedbackDisabled: boolean;
   onFeedback: (rating: 'helpful' | 'needs_review') => void;
 }) {
   return (
     <div
+      aria-busy={feedbackPending || undefined}
       className={cn(
         'rounded-xl border p-4',
         kind === 'ai' ? 'border-tag-info/30 bg-tag-info/5' : 'border-border bg-muted/50',
@@ -675,9 +727,9 @@ function SummaryPanel({
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          <h3 className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
             {heading}
-          </p>
+          </h3>
           <p className="mt-1 text-sm font-semibold text-foreground">{headline}</p>
         </div>
         <Badge variant={kind === 'ai' ? 'default' : 'outline'}>
@@ -694,31 +746,50 @@ function SummaryPanel({
       {sourceRefs.length > 0 ? (
         <p className="mt-3 text-xs text-muted-foreground">根拠: {sourceRefs.join(' / ')}</p>
       ) : null}
-      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+      <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
         {metadata.filter(Boolean).map((item) => (
           <Badge key={item} variant="secondary">
             {item}
           </Badge>
         ))}
       </div>
+      {feedbackError ? (
+        <p
+          role="alert"
+          className="mt-3 rounded-md border border-state-blocked/30 bg-state-blocked/10 px-3 py-2 text-sm text-state-blocked"
+        >
+          {feedbackError}
+        </p>
+      ) : null}
+      {feedbackPending ? (
+        <p role="status" aria-live="polite" className="mt-3 text-sm text-muted-foreground">
+          フィードバックを保存中です...
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           生成 {generatedAt.slice(0, 16).replace('T', ' ')}
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2" role="group" aria-label={`${heading}の評価`}>
           <Button
             type="button"
             size="sm"
+            className="min-h-11 sm:min-h-11"
             variant={feedbackValue === 'helpful' ? 'default' : 'outline'}
             onClick={() => onFeedback('helpful')}
+            disabled={feedbackDisabled}
+            aria-pressed={feedbackValue === 'helpful'}
           >
             実用的
           </Button>
           <Button
             type="button"
             size="sm"
+            className="min-h-11 sm:min-h-11"
             variant={feedbackValue === 'needs_review' ? 'default' : 'outline'}
             onClick={() => onFeedback('needs_review')}
+            disabled={feedbackDisabled}
+            aria-pressed={feedbackValue === 'needs_review'}
           >
             要修正
           </Button>

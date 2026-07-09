@@ -84,6 +84,14 @@ function renderBriefCard(brief: VisitBrief) {
 }
 
 describe('VisitBriefCard', () => {
+  it('keeps the card title and clinical sections in a consistent heading hierarchy', () => {
+    renderBriefCard(buildBrief());
+
+    expect(screen.getByRole('heading', { level: 2, name: 'AI訪問要点サマリー' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: 'ルール要約' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: '本日確認' })).toBeTruthy();
+  });
+
   it('renders conference summary and highlighted risks when available', () => {
     renderBriefCard(buildBrief());
 
@@ -347,6 +355,12 @@ describe('VisitBriefCard', () => {
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith('訪問要約フィードバックの送信権限がありません');
       });
+      expect(screen.getByRole('alert').textContent).toContain(
+        '要約フィードバックを保存できませんでした',
+      );
+      expect((screen.getByRole('button', { name: '実用的' }) as HTMLButtonElement).disabled).toBe(
+        false,
+      );
       expect(fetchMock).toHaveBeenCalledWith('/api/visit-brief-feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
@@ -362,6 +376,61 @@ describe('VisitBriefCard', () => {
           is_fallback: false,
         }),
       });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('disables both feedback choices while a save is pending to prevent duplicate audits', async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => new Promise<Response>(() => undefined));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderBriefCard(buildBrief());
+
+      const helpfulButton = screen.getByRole('button', { name: '実用的' }) as HTMLButtonElement;
+      const reviewButton = screen.getByRole('button', { name: '要修正' }) as HTMLButtonElement;
+      fireEvent.click(helpfulButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('status').textContent).toContain('フィードバックを保存中です');
+      });
+      expect(helpfulButton.disabled).toBe(true);
+      expect(reviewButton.disabled).toBe(true);
+      expect((screen.getByRole('button', { name: '比較' }) as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+      fireEvent.click(reviewButton);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('exposes pressed state for summary modes and saved feedback choices', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify({ data: { ok: true } }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderBriefCard(buildBrief());
+
+      const ruleMode = screen.getByRole('button', { name: 'ルール' });
+      const compareMode = screen.getByRole('button', { name: '比較' });
+      expect(ruleMode.getAttribute('aria-pressed')).toBe('true');
+      expect(compareMode.getAttribute('aria-pressed')).toBe('false');
+
+      fireEvent.click(compareMode);
+      expect(compareMode.getAttribute('aria-pressed')).toBe('true');
+      expect(ruleMode.getAttribute('aria-pressed')).toBe('false');
+
+      const ruleHelpfulButtons = screen.getAllByRole('button', { name: '実用的' });
+      fireEvent.click(ruleHelpfulButtons[1]!);
+      await waitFor(() => expect(toast.success).toHaveBeenCalled());
+      expect(ruleHelpfulButtons[1]!.getAttribute('aria-pressed')).toBe('true');
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

@@ -158,7 +158,7 @@ describe('PatientVisitBriefSection', () => {
     expect(screen.getByText('訪問前要約を読み込めませんでした')).toBeTruthy();
     expect(screen.queryByTestId('visit-brief-card')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
 
     expect(refetchVisitBriefMock).toHaveBeenCalledTimes(1);
   });
@@ -184,5 +184,55 @@ describe('PatientVisitBriefSection', () => {
     expect(screen.getAllByTestId('skeleton').length).toBeGreaterThan(0);
     expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
     expect(screen.queryByTestId('visit-brief-card')).toBeNull();
+  });
+
+  it('preserves an authorized cached brief and marks it stale after a refetch failure', () => {
+    const refetchVisitBriefMock = vi.fn();
+    useQueryMock.mockReturnValue({
+      data: { data: { patient: { id: 'patient_1' } } },
+      isLoading: false,
+      isError: true,
+      isRefetchError: true,
+      refetch: refetchVisitBriefMock,
+    });
+
+    render(
+      <PatientVisitBriefSection
+        patientId="patient_1"
+        title="訪問前要約"
+        description="確認事項"
+        compact
+      />,
+    );
+
+    expect(screen.getByText('前回取得した訪問前要約を表示中')).toBeTruthy();
+    expect(screen.getByTestId('visit-brief-card')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetchVisitBriefMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails visibly when a successful response omits the required brief payload', () => {
+    const refetchVisitBriefMock = vi.fn();
+    useQueryMock.mockReturnValue({
+      data: {},
+      isLoading: false,
+      isError: false,
+      isRefetchError: false,
+      refetch: refetchVisitBriefMock,
+    });
+
+    render(
+      <PatientVisitBriefSection
+        patientId="patient_1"
+        title="訪問前要約"
+        description="確認事項"
+        compact
+      />,
+    );
+
+    expect(screen.getByText('訪問前要約の内容を確認できませんでした')).toBeTruthy();
+    expect(screen.queryByTestId('visit-brief-card')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetchVisitBriefMock).toHaveBeenCalledTimes(1);
   });
 });

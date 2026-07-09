@@ -51,6 +51,83 @@
 
 ## 直近の作業
 
+- codex: visit-brief feedback access, resilient states, and readable interaction parity.
+  - commit:
+    pending scoped commit.
+  - current task:
+    患者詳細の訪問前ブリーフと `POST /api/visit-brief-feedback` を、患者アクセス境界、
+    loading/error/stale/malformed-success、永続的な送信失敗、二重監査防止、12px下限、44px操作領域、
+    semantic heading/pressed/busy の frontend/backend 同時完了ルールへ揃える。
+  - files inspected:
+    `docs/ui-ux-design-guidelines.md`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`,
+    `src/lib/hooks/use-stale-after-refetch-error.ts`, `src/components/ui/segment-state.tsx`,
+    `src/server/services/patient-access.ts`, visit-brief card/section/tests,
+    feedback API/tests, paired patient visit-brief API, service, AI, diff, cache, and access tests.
+  - files changed:
+    `.agent-loop/UI_AUDIT_MATRIX.md`, `src/app/api/visit-brief-feedback/route.ts`,
+    `src/app/api/visit-brief-feedback/route.test.ts`,
+    `src/components/visit-brief/patient-visit-brief-section.tsx`,
+    `src/components/visit-brief/patient-visit-brief-section.test.tsx`,
+    `src/components/visit-brief/visit-brief-card.tsx`,
+    `src/components/visit-brief/visit-brief-card.test.tsx`,
+    `src/components/visit-brief/visit-brief-card.ui-contract.test.ts`, and this state file.
+  - bugs found / fixed:
+    The feedback route previously required only `canVisit`, then accepted an arbitrary patient ID and
+    wrote its generation feedback to the audit log. It now bounds identifiers/provider metadata and
+    verifies the target through shared org/role patient access inside the same RLS transaction before
+    creating the audit entry. Inaccessible, cross-org, or absent patients receive an indistinguishable
+    sensitive no-store 404 and create no audit. The patient brief section previously replaced cached
+    data with an error after a refetch failure and silently rendered nothing for a malformed successful
+    response. It now distinguishes initial loading/error, cached stale data, and invalid payloads with
+    retryable shape-matched states. Feedback failure was toast-only and repeat clicks could create
+    duplicate audit entries; each panel now keeps a safe inline alert, exposes pending status, disables
+    both ratings and mode switches during the request, and retains the saved pressed state. Seven
+    10/11px labels now meet the 12px minimum, action/mode/feedback controls remain at least 44px on every
+    breakpoint, and the card/clinical sections use h2/h3 hierarchy with labeled groups and pressed/busy
+    semantics.
+  - frontend/backend parity:
+    The card reads the existing patient visit-brief contract and writes only through
+    `POST /api/visit-brief-feedback`. The UI now represents every observable read/write state while the
+    backend validates auth, org/access scope, bounded payloads, sensitive caching, and audit behavior.
+    Focused tests cover both sides. Rule-generation IDs are ephemeral and are not persisted for server
+    provenance lookup, so this slice does not claim generation-to-patient binding or API idempotency;
+    duplicate prevention is scoped to the active UI request.
+  - security/privacy:
+    A direct audit-log poisoning path for inaccessible patients is closed without disclosing whether a
+    patient exists. Raw provider errors, PHI-bearing failure objects, tokens, and hidden DTO fields are
+    not rendered. Previously authorized cached clinical data remains visible behind an explicit stale
+    warning, consistent with the dashboard disclosure boundary. Existing generation provenance and
+    repository-wide PHI read-audit consistency remain separately tracked limitations.
+  - performance:
+    No request, query, polling interval, dependency, or unbounded computation was added. The existing
+    React Query cache is preserved on transient refetch failures. One bounded patient access lookup is
+    added before an audit write; failed scope checks stop before the write.
+  - validation:
+    Visit-brief UI plus paired feedback/patient route suites passed 5 files / 36 tests; supporting
+    service/AI/diff/access/cache suites passed 5 files / 43 tests. Exact-path ESLint, Prettier,
+    `git diff --check`, full
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false --incremental false --skipLibCheck`,
+    and serial `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+    `pnpm frontend-contract:check`, `pnpm plans:active:check`, `pnpm colors:check`,
+    `pnpm api-response-shape:check`, `pnpm route-auth-wrapper:check`,
+    `pnpm db:raw-read-org-guard:check`, and `pnpm client-phi-log:check` all passed. Claude independently
+    reviewed access-before-audit/no-audit denial, fail-visible malformed success, stale preservation,
+    touch/typography/ARIA contracts, reran 4 files / 33 tests, and approved.
+  - UI/imagegen:
+    `imagegen` was intentionally omitted because this slice applies state, accessibility, readability,
+    and authorization corrections within the already committed all-screen non-PHI visual direction;
+    it does not introduce a new layout concept.
+  - remaining / next action:
+    The live sub-12 count is now 36 files / 66 occurrences. Continue with visit medication management,
+    then schedule offline/day and print families. Browser/mobile visual proof remains blocked by the
+    missing compatible local app/database runtime, and Next build is not claimed green because the
+    existing `.next/cache/webpack` resource envelope has produced exit 137/termination without a safe
+    non-destructive build path. Oracle remains unavailable from the established session preflight; the
+    scoped tests, full type gates, global guards, and independent checker are the available safety gate.
+    No deploy, migration, production mutation, external send, cache deletion, or destructive operation
+    ran.
+
 - codex: prescription intake patient-safety states, touch/readability, and paired API convergence.
   - commit:
     `5082de335 fix(prescriptions): align intake UI with lookup contracts`.

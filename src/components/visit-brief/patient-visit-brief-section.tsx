@@ -3,10 +3,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { VisitBriefCard } from '@/components/visit-brief/visit-brief-card';
 import { readApiJson } from '@/lib/api/client-json';
-import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useStaleAfterRefetchError } from '@/lib/hooks/use-stale-after-refetch-error';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import type { VisitBrief } from '@/types/visit-brief';
 
@@ -46,6 +47,7 @@ export function PatientVisitBriefSection({
     data,
     isLoading,
     isError,
+    isRefetchError,
     refetch: refetchVisitBrief,
   } = useQuery({
     queryKey: ['patient-visit-brief', patientId, orgId],
@@ -57,23 +59,52 @@ export function PatientVisitBriefSection({
     },
     enabled: !!orgId,
   });
+  const visitBriefState = useStaleAfterRefetchError({
+    data,
+    isLoading,
+    isError,
+    isRefetchError,
+  });
 
-  if (isLoading) return <PatientVisitBriefLoadingState compact={compact} />;
-  if (isError) {
+  if (!orgId || visitBriefState.isInitialLoading) {
+    return <PatientVisitBriefLoadingState compact={compact} />;
+  }
+  if (visitBriefState.isInitialError) {
     return (
-      <ErrorState
-        variant="server"
-        size="inline"
+      <SegmentError
         headingLevel={3}
         title="訪問前要約を読み込めませんでした"
-        description="患者の訪問前要約を取得できませんでした。通信状態を確認して再試行してください。"
+        cause="患者の訪問前要約を取得できませんでした。"
+        nextAction="通信状態を確認して再試行してください。"
         onRetry={() => void refetchVisitBrief()}
+        className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
       />
     );
   }
-  if (!data?.data) return null;
+  if (!data?.data) {
+    return (
+      <SegmentError
+        headingLevel={3}
+        title="訪問前要約の内容を確認できませんでした"
+        cause="要約APIの応答に必要な患者データがありません。"
+        nextAction="再読み込みしてください。"
+        onRetry={() => void refetchVisitBrief()}
+        className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+      />
+    );
+  }
 
   return (
-    <VisitBriefCard brief={data.data} title={title} description={description} compact={compact} />
+    <div className="space-y-3">
+      {visitBriefState.isStaleAfterRefetchError ? (
+        <SegmentStaleBanner
+          title="前回取得した訪問前要約を表示中"
+          description="最新の患者・処方・多職種情報を取得できませんでした。表示内容が古い可能性があります。"
+          onRetry={() => void refetchVisitBrief()}
+          className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+        />
+      ) : null}
+      <VisitBriefCard brief={data.data} title={title} description={description} compact={compact} />
+    </div>
   );
 }

@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { requireAuthContextMock, withOrgContextMock, auditLogCreateMock } = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-  auditLogCreateMock: vi.fn(),
-}));
+const { requireAuthContextMock, withOrgContextMock, auditLogCreateMock, patientFindFirstMock } =
+  vi.hoisted(() => ({
+    requireAuthContextMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    auditLogCreateMock: vi.fn(),
+    patientFindFirstMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
@@ -50,11 +52,15 @@ describe('/api/visit-brief-feedback POST', () => {
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        patient: {
+          findFirst: patientFindFirstMock,
+        },
         auditLog: {
           create: auditLogCreateMock,
         },
       }),
     );
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
   });
 
@@ -82,6 +88,13 @@ describe('/api/visit-brief-feedback POST', () => {
         }),
       }),
     );
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'patient_1',
+        org_id: 'corg1234567890123456789012',
+      },
+      select: { id: true },
+    });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'corg1234567890123456789012',
@@ -91,6 +104,53 @@ describe('/api/visit-brief-feedback POST', () => {
         target_id: 'gen_1',
       }),
     });
+  });
+
+  it('returns a no-store not-found response without auditing inaccessible patients', async () => {
+    patientFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await POST(
+      createRequest({
+        patient_id: 'patient_outside_scope',
+        context: 'patient',
+        generation_id: 'gen_1',
+        summary_kind: 'ai',
+        rating: 'helpful',
+      }),
+    ))!;
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '患者が見つかりません',
+    });
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'patient_outside_scope',
+        org_id: 'corg1234567890123456789012',
+      },
+      select: { id: true },
+    });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized feedback identifiers before patient lookup or audit logging', async () => {
+    const response = (await POST(
+      createRequest({
+        patient_id: 'p'.repeat(192),
+        context: 'patient',
+        generation_id: 'g'.repeat(192),
+        summary_kind: 'rule',
+        rating: 'needs_review',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('records the corrected summary for 一部修正する into the audit changes', async () => {

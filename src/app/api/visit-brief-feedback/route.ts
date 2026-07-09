@@ -3,23 +3,26 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, internalError } from '@/lib/api/response';
+import { success, validationError, internalError, notFound } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
+import { canAccessPatient } from '@/server/services/patient-access';
+
+const boundedId = z.string().trim().min(1).max(191);
 
 const feedbackSchema = z.object({
-  patient_id: z.string().min(1),
+  patient_id: boundedId,
   context: z.enum(['patient', 'schedule']),
-  generation_id: z.string().min(1),
+  generation_id: boundedId,
   summary_kind: z.enum(['ai', 'rule']),
   rating: z.enum(['helpful', 'needs_review']),
   comment: z.string().max(500).optional(),
   // 「一部修正する」で薬剤師が編集・保存した訂正後の本文。AuditLog の changes に構造化保存する。
   corrected_summary: z.string().min(1).max(2000).optional(),
-  provider: z.string().optional(),
-  requested_provider: z.string().optional(),
-  model: z.string().nullable().optional(),
+  provider: z.string().max(100).optional(),
+  requested_provider: z.string().max(100).optional(),
+  model: z.string().max(191).nullable().optional(),
   is_fallback: z.boolean().optional(),
 });
 
@@ -39,9 +42,17 @@ const authenticatedPOST = async (req: NextRequest) => {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  await withOrgContext(
+  const feedbackRecorded = await withOrgContext(
     ctx.orgId,
     async (tx) => {
+      const canAccessTargetPatient = await canAccessPatient({
+        db: tx,
+        orgId: ctx.orgId,
+        patientId: parsed.data.patient_id,
+        accessContext: { userId: ctx.userId, role: ctx.role },
+      });
+      if (!canAccessTargetPatient) return false;
+
       await createAuditLogEntry(tx, ctx, {
         action:
           parsed.data.rating === 'helpful'
@@ -62,11 +73,15 @@ const authenticatedPOST = async (req: NextRequest) => {
           is_fallback: parsed.data.is_fallback ?? false,
         },
       });
+      return true;
     },
     {
       requestContext: ctx,
     },
   );
+
+  // Access-scope and tenant misses stay indistinguishable from absent patients.
+  if (!feedbackRecorded) return notFound('患者が見つかりません');
 
   return success({ ok: true }, 201);
 };
