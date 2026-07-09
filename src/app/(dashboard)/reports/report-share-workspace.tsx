@@ -8,13 +8,14 @@ import { toast } from 'sonner';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DataTable, type DataTableColumnMeta } from '@/components/ui/data-table';
 import { Skeleton } from '@/components/ui/loading';
-import { SegmentError } from '@/components/ui/segment-state';
+import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state';
 import { GuardedWorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { useStaleAfterRefetchError } from '@/lib/hooks/use-stale-after-refetch-error';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
 import type { GeneratedCareReportSummary } from '@/lib/reports/generate-from-visit-contract';
@@ -838,10 +839,11 @@ export function ReportShareWorkspace() {
 
   const now = new Date();
   const data = workspaceQuery.data ?? null;
+  const workspaceState = useStaleAfterRefetchError(workspaceQuery);
   const actionRail = (
     <GuardedWorkspaceActionRail
-      isLoading={isBootstrappingOrg || workspaceQuery.isLoading}
-      isError={workspaceQuery.isError}
+      isLoading={isBootstrappingOrg || workspaceState.isInitialLoading}
+      isError={workspaceState.isInitialError}
       onRetry={() => void workspaceQuery.refetch()}
       loadingTestId="workspace-action-rail-loading"
       loadingAriaLabel="報告アクションを読み込み中"
@@ -877,9 +879,9 @@ export function ReportShareWorkspace() {
       </div>
 
       <div className="mt-4">
-        {isBootstrappingOrg || workspaceQuery.isLoading ? (
+        {isBootstrappingOrg || workspaceState.isInitialLoading ? (
           <WorkspaceSkeleton />
-        ) : workspaceQuery.isError || !data ? (
+        ) : workspaceState.isInitialError || !data ? (
           <div className="rounded-lg border border-border/70 bg-card p-4">
             <SegmentError
               title="報告・共有を表示できません"
@@ -900,6 +902,13 @@ export function ReportShareWorkspace() {
               {actionRail}
             </aside>
             <div className="min-w-0 space-y-4 lg:col-start-1 lg:row-start-1">
+              {workspaceState.isStaleAfterRefetchError ? (
+                <SegmentStaleBanner
+                  title="前回取得した報告ワークスペースを表示中"
+                  description="最新の報告・共有状態を取得できませんでした。下書き、返信待ち、送付前確認は前回取得時点の情報です。"
+                  onRetry={() => void workspaceQuery.refetch()}
+                />
+              ) : null}
               <TodayDraftsCard
                 data={data}
                 onGenerateDraft={(input) => generateDraftMutation.mutate(input)}

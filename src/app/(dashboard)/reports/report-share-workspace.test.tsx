@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 import type { ReportsTodayWorkspaceResponse } from '@/types/reports-today-workspace';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -421,8 +422,8 @@ function stubWorkspaceFailure(message: string) {
   return fetchMock;
 }
 
-function renderWorkspace() {
-  return render(<ReportShareWorkspace />, { wrapper: createQueryClientWrapper() });
+function renderWorkspace(queryClient: QueryClient = createTestQueryClient()) {
+  return render(<ReportShareWorkspace />, { wrapper: createQueryClientWrapper(queryClient) });
 }
 
 afterEach(() => {
@@ -1186,6 +1187,50 @@ describe('ReportShareWorkspace', () => {
           String(input).includes('/api/care-reports/today-workspace'),
         ).length,
       ).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('keeps the last report workspace and shows a stale warning when a refetch fails', async () => {
+    let workspaceCalls = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/care-reports/today-workspace')) {
+        workspaceCalls += 1;
+        return workspaceCalls === 1
+          ? new Response(JSON.stringify({ data: TODAY_WORKSPACE }), { status: 200 })
+          : new Response(
+              JSON.stringify({
+                message: 'DB timeout patient_name=山田 token=secret',
+              }),
+              { status: 500 },
+            );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const queryClient = createTestQueryClient();
+    renderWorkspace(queryClient);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('report-today-drafts')).toBeTruthy();
+    });
+
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ['care-reports', 'today-workspace', 'org_1'] });
+    });
+
+    expect(screen.getByTestId('report-today-drafts')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText('前回取得した報告ワークスペースを表示中')).toBeTruthy();
+    });
+    expect(screen.queryByText('報告・共有を表示できません')).toBeNull();
+    expect(document.body.textContent).not.toContain('patient_name=山田');
+    expect(document.body.textContent).not.toContain('token=secret');
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    await waitFor(() => {
+      expect(workspaceCalls).toBeGreaterThanOrEqual(3);
     });
   });
 

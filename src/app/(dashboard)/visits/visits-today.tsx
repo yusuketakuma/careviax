@@ -6,7 +6,7 @@ import { ja } from 'date-fns/locale';
 import { AlertTriangle, Check } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/loading';
-import { SegmentError } from '@/components/ui/segment-state';
+import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state';
 import {
   WorkspaceActionRail,
   type BlockedReason,
@@ -18,6 +18,7 @@ import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { useStaleAfterRefetchError } from '@/lib/hooks/use-stale-after-refetch-error';
 import { WORKFLOW_DASHBOARD_INVALIDATION_EVENTS } from '@/lib/realtime/workflow-invalidation-policy';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
@@ -231,6 +232,7 @@ export function VisitsToday() {
 
   const now = new Date();
   const data = boardQuery.data ?? null;
+  const boardState = useStaleAfterRefetchError(boardQuery);
   const dateLabel = `${format(now, 'M/d(EEE)', { locale: ja })} — 出発前の最終確認`;
   const firstVisitHref = data?.cards[0]?.visit_mode_href ?? null;
   const firstScheduleHref = data?.cards[0]?.schedule_id
@@ -302,9 +304,9 @@ export function VisitsToday() {
       </div>
 
       <div className="mt-4">
-        {isBootstrappingOrg || boardQuery.isLoading ? (
+        {isBootstrappingOrg || boardState.isInitialLoading ? (
           <BoardSkeleton />
-        ) : boardQuery.isError || !data ? (
+        ) : boardState.isInitialError || !data ? (
           <div className="rounded-lg border border-border/70 bg-card p-4">
             <SegmentError
               title="本日の訪問を表示できません"
@@ -316,6 +318,13 @@ export function VisitsToday() {
           </div>
         ) : (
           <div className="space-y-4">
+            {boardState.isStaleAfterRefetchError ? (
+              <SegmentStaleBanner
+                title="前回取得した訪問準備を表示中"
+                description="最新の訪問準備を取得できませんでした。表示中の予定と準備チェックは前回取得時点の情報です。"
+                onRetry={() => void boardQuery.refetch()}
+              />
+            ) : null}
             <div className="min-w-0 space-y-4">
               <section
                 aria-labelledby="visits-today-list-heading"

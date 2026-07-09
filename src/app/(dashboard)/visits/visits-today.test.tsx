@@ -333,6 +333,7 @@ describe('VisitsToday', () => {
       data: undefined,
       isLoading: false,
       isError: true,
+      isRefetchError: false,
       error: new Error(
         '患者: 山田 太郎 token=secret route=/api/visits/today-preparation?patient_id=patient_1',
       ),
@@ -347,6 +348,27 @@ describe('VisitsToday', () => {
     expect(document.body.textContent).not.toContain('token=secret');
     expect(document.body.textContent).not.toContain('/api/visits/today-preparation');
     expect(screen.queryByText('本日の訪問予定はありません。')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the last visit board and shows a stale warning when a refetch fails', () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: buildFixture(),
+      isLoading: false,
+      isError: true,
+      isRefetchError: true,
+      error: new Error('background refetch failed'),
+      refetch: refetchMock,
+    });
+
+    render(<VisitsToday />);
+
+    expect(screen.getByTestId('visits-today-list')).toBeTruthy();
+    expect(screen.getByText('前回取得した訪問準備を表示中')).toBeTruthy();
+    expect(screen.queryByText('本日の訪問を表示できません')).toBeNull();
+    expect(screen.getByText('伊藤 キヨ 様')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetchMock).toHaveBeenCalledTimes(1);
