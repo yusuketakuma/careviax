@@ -523,7 +523,11 @@ export function WorkflowDashboardView({
                         {item.patient_name ?? '患者未設定'} / {item.status}
                       </p>
                     </div>
-                    <Badge variant={item.priority === 'urgent' ? 'destructive' : 'outline'}>
+                    {/* 至急=confirm(橙、確定表 PRIORITY_ROLE)。raw destructive を状態に流用しない(SSOT 7.3)。 */}
+                    <Badge
+                      variant="outline"
+                      className={item.priority === 'urgent' ? priorityClass('urgent') : ''}
+                    >
                       {COMMUNICATION_QUEUE_CHANNEL_LABELS[item.channel] ?? item.channel}
                     </Badge>
                   </div>
@@ -926,7 +930,11 @@ export function WorkflowDashboardView({
                         {item.open_tasks}
                       </p>
                     </div>
-                    <Badge variant={item.level === 'high' ? 'destructive' : 'outline'}>
+                    {/* リスク最上位=blocked(赤、確定表 PatientStatusIcon urgent と同判断)。raw destructive 不使用(SSOT 7.3)。 */}
+                    <Badge
+                      variant="outline"
+                      className={item.level === 'high' ? roleBadgeClass('blocked') : ''}
+                    >
                       {RISK_LEVEL_LABELS[item.level] ?? item.level} / {item.score}
                     </Badge>
                   </div>
@@ -1314,7 +1322,12 @@ export function WorkflowDashboardView({
                         {SELF_REPORT_STATUS_LABELS[report.status] ?? report.status}
                       </Badge>
                       <Badge variant="secondary">{report.category}</Badge>
-                      {report.requested_callback && <Badge variant="destructive">折返し希望</Badge>}
+                      {/* 折返し希望=要対応(confirm橙)。止まっていない状態に赤を流用しない(SSOT 7.3)。 */}
+                      {report.requested_callback && (
+                        <Badge variant="outline" className={roleBadgeClass('confirm')}>
+                          折返し希望
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   <p className="text-sm leading-6 text-muted-foreground">{report.subject}</p>
@@ -1497,11 +1510,8 @@ function QueueCard({ label, count }: { label: string; count: number }) {
         <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
       </CardHeader>
       <CardContent>
-        <span
-          className={`text-3xl font-bold tabular-nums ${count > 0 ? 'text-state-confirm' : ''}`}
-        >
-          {count}
-        </span>
+        {/* KPI 件数に色を付けない(SSOT 7.2)。運用キューは常態的に>0のため存在だけで橙点灯させない(SSOT 2.7 alert fatigue)。 */}
+        <span className="text-3xl font-bold tabular-nums">{count}</span>
       </CardContent>
     </Card>
   );
