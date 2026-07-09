@@ -446,10 +446,12 @@ const pharmacyCooperationMessageThreadRowSchema = z.object({
   messages: z.array(pharmacyCooperationMessageRowSchema),
 });
 
-const messageThreadResultSchema = z.object({
-  thread: pharmacyCooperationMessageThreadRowSchema,
-  notification_count: z.number(),
-});
+const messageThreadResultSchema = apiDataSchema(
+  z.object({
+    thread: pharmacyCooperationMessageThreadRowSchema,
+    notification_count: z.number(),
+  }),
+).transform(({ data }) => data);
 
 const reportDraftResultSchema = z.object({
   message: z.string(),
@@ -584,9 +586,30 @@ const patientShareConsentPageSchema = z
 const patientShareConsentResponseSchema = apiDataSchema(patientShareConsentRowSchema).transform(
   ({ data }) => data,
 );
-const pharmacyCooperationMessageThreadPageSchema = cursorPaginatedPageSchema(
-  pharmacyCooperationMessageThreadRowSchema,
-);
+const pharmacyCooperationMessageThreadPageSchema: z.ZodType<
+  CursorPaginatedPage<PharmacyCooperationMessageThreadRow>
+> = z
+  .object({
+    data: z.array(pharmacyCooperationMessageThreadRowSchema),
+    meta: z.object({
+      has_more: z.boolean(),
+      next_cursor: z.string().trim().min(1).nullable(),
+    }),
+  })
+  .superRefine((value, ctx) => {
+    if (value.meta.has_more && !value.meta.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor is required when has_more is true',
+      });
+    }
+  })
+  .transform(({ data, meta }) => ({
+    data,
+    hasMore: meta.has_more,
+    ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
+  }));
 
 type MessageForm = {
   body: string;

@@ -448,7 +448,10 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   ],
                 },
               ],
-              hasMore: false,
+              meta: {
+                has_more: false,
+                next_cursor: null,
+              },
             }),
             { status: 200 },
           );
@@ -586,31 +589,33 @@ describe('PharmacyCooperationWorkflowContent', () => {
           const body = JSON.parse(String(init.body));
           return new Response(
             JSON.stringify({
-              thread: {
-                id: 'message_thread_created',
-                org_id: 'org_1',
-                share_case_id: body.share_case_id,
-                visit_request_id: body.visit_request_id ?? null,
-                context_type: body.visit_request_id ? 'visit_request' : 'patient_share_case',
-                status: 'open',
-                created_by: 'base_user',
-                last_message_at: '2026-06-20T01:45:00.000Z',
-                created_at: '2026-06-20T01:45:00.000Z',
-                updated_at: '2026-06-20T01:45:00.000Z',
-                messages: [
-                  {
-                    id: 'message_created_1',
-                    org_id: 'org_1',
-                    thread_id: 'message_thread_created',
-                    sender_user_id: 'base_user',
-                    sender_side: 'base_pharmacy',
-                    body: body.body,
-                    created_at: '2026-06-20T01:45:00.000Z',
-                    updated_at: '2026-06-20T01:45:00.000Z',
-                  },
-                ],
+              data: {
+                thread: {
+                  id: 'message_thread_created',
+                  org_id: 'org_1',
+                  share_case_id: body.share_case_id,
+                  visit_request_id: body.visit_request_id ?? null,
+                  context_type: body.visit_request_id ? 'visit_request' : 'patient_share_case',
+                  status: 'open',
+                  created_by: 'base_user',
+                  last_message_at: '2026-06-20T01:45:00.000Z',
+                  created_at: '2026-06-20T01:45:00.000Z',
+                  updated_at: '2026-06-20T01:45:00.000Z',
+                  messages: [
+                    {
+                      id: 'message_created_1',
+                      org_id: 'org_1',
+                      thread_id: 'message_thread_created',
+                      sender_user_id: 'base_user',
+                      sender_side: 'base_pharmacy',
+                      body: body.body,
+                      created_at: '2026-06-20T01:45:00.000Z',
+                      updated_at: '2026-06-20T01:45:00.000Z',
+                    },
+                  ],
+                },
+                notification_count: 1,
               },
-              notification_count: 1,
             }),
             { status: 201 },
           );

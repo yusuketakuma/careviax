@@ -289,14 +289,22 @@ export const GET = withAuthContext(
 
       return {
         data: {
-          ...page,
           data: page.data,
+          meta: {
+            has_more: page.hasMore,
+            next_cursor: page.nextCursor ?? null,
+          },
         },
       };
     });
 
     if (hasResponse(result)) return withSensitiveNoStore(result.response);
-    return withSensitiveNoStore(success(result.data));
+    return withSensitiveNoStore(
+      success({
+        data: result.data.data,
+        meta: result.data.meta,
+      }),
+    );
   },
   {
     permission: 'canManagePatientSharing',
@@ -422,7 +430,7 @@ export const POST = withAuthContext(
     });
 
     if (hasResponse(result)) return withSensitiveNoStore(result.response);
-    return withSensitiveNoStore(success(result.data, 201));
+    return withSensitiveNoStore(success({ data: result.data }, 201));
   },
   {
     permission: 'canManagePatientSharing',

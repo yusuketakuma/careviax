@@ -220,8 +220,22 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
     expect(auditText).not.toContain('山田花子');
     expect(auditText).not.toContain('A薬');
 
-    const body = JSON.stringify(await response.json());
-    expect(body).toContain('患者名 山田花子');
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          id: 'thread_1',
+          messages: [
+            expect.objectContaining({
+              body: '患者名 山田花子: A薬の確認をお願いします',
+            }),
+          ],
+        }),
+      ],
+      meta: {
+        has_more: false,
+        next_cursor: null,
+      },
+    });
   });
 
   it.each([
@@ -359,8 +373,19 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
     expect(notificationText).not.toContain('山田花子');
     expect(notificationText).not.toContain('A薬');
 
-    const body = JSON.stringify(await response.json());
-    expect(body).toContain('患者名 山田花子');
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        thread: expect.objectContaining({
+          id: 'thread_1',
+          messages: [
+            expect.objectContaining({
+              body: '患者名 山田花子: A薬の確認をお願いします',
+            }),
+          ],
+        }),
+        notification_count: 1,
+      },
+    });
   });
 
   it('rejects inactive or inaccessible share cases before thread side effects', async () => {
