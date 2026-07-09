@@ -245,8 +245,10 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
       where: { id: 'insurance_1' },
     });
     await expect(response.json()).resolves.toMatchObject({
-      id: 'insurance_1',
-      deleted: true,
+      data: {
+        id: 'insurance_1',
+        deleted: true,
+      },
     });
   });
 
@@ -445,7 +447,9 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
       },
     });
     expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({ id: 'insurance_1', deleted: true });
+    await expect(response.json()).resolves.toMatchObject({
+      data: { id: 'insurance_1', deleted: true },
+    });
   });
 
   it('DELETE returns 409 when expected_updated_at is stale before the write (CXR1-CONC02)', async () => {

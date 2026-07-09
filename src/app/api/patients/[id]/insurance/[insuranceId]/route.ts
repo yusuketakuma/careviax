@@ -357,7 +357,7 @@ async function authenticatedDELETE(
     return staleInsuranceConflict(expectedUpdatedAt as Date, current.updated_at);
   }
 
-  return success({ id: insuranceId, deleted: true });
+  return success({ data: { id: insuranceId, deleted: true } });
 }
 
 export async function DELETE(

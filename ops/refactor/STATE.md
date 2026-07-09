@@ -41,6 +41,73 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CM` patient insurance delete response envelope cleanup.
+  - current task:
+    `DELETE /api/patients/:id/insurance/:insuranceId` の patient insurance delete success
+    response を legacy root `{ id, deleted }` から `{ data: { id, deleted } }` envelope へ
+    移行し、route test、response-shape allowlist、Plans / archive を同期する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/insurance/[insuranceId]/route.ts`,
+    `src/app/api/patients/[id]/insurance/[insuranceId]/route.test.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx`,
+    `src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx`,
+    `Plans.md`, `docs/plans-archive.md`, and `ops/refactor/STATE.md`.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `ops/refactor/STATE.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/insurance/[insuranceId]/route.ts`, and
+    `src/app/api/patients/[id]/insurance/[insuranceId]/route.test.ts`.
+  - bugs found:
+    The patient insurance DELETE route returned `{ id, deleted }` at the public success
+    response root, keeping one API response-shape allowlist entry alive. The patient
+    insurance card delete mutation does not depend on the success body and already
+    invalidates/refetches after success.
+  - bugs fixed:
+    DELETE success now returns `success({ data: { id, deleted: true } })`. Route tests
+    assert both plain delete and guarded delete success use the current envelope. The
+    stale allowlist entry was removed. Response-shape debt dropped from 91 to 90.
+  - security risks found:
+    No visit permission check, patient id / insurance id validation, patient writable
+    guard, assignment-scope lookup, optimistic concurrency guard, no-store wrapper,
+    not-found/conflict response, or sanitized internal-error response changed.
+  - security risks reduced:
+    Removed insurance delete identifiers from the response root.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. The card mutation ignores successful
+    delete response bodies and refetches after success, so image generation was not
+    applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration
+    directive and the repeated envelope-only local pattern. Validation covered route
+    tests, contract ratchet, scoped lint/format, and full typecheck.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/insurance/[insuranceId]/route.ts' 'src/app/api/patients/[id]/insurance/[insuranceId]/route.test.ts'`;
+    `pnpm vitest run 'src/app/api/patients/[id]/insurance/[insuranceId]/route.test.ts' --reporter=dot`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/insurance/[insuranceId]/route.ts' 'src/app/api/patients/[id]/insurance/[insuranceId]/route.test.ts'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/insurance/[insuranceId]/route.ts' 'src/app/api/patients/[id]/insurance/[insuranceId]/route.test.ts'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/insurance/[insuranceId]/route.ts' 'src/app/api/patients/[id]/insurance/[insuranceId]/route.test.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Prettier passed. Patient insurance detail route tests passed 1 file / 28 tests.
+    `api-response-shape:check` passed with 90 allowlisted violations and 0 new
+    violations. `plans:active:check` passed. Scoped ESLint, scoped Prettier check,
+    scoped diff check, and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 90 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patients/[id]/labs/[labId]/route.ts`.
+  - next action:
+    Commit this patient insurance delete envelope slice with explicit owned paths only,
+    then continue allowlist debt burn-down from the next allowlist head.
+
 - codex: `API-CONTRACT-001CL` patient home operations response envelope cleanup.
   - current task:
     `GET /api/patients/:id/home-operations` の home operations snapshot success response を
