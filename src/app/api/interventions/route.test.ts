@@ -138,6 +138,13 @@ describe('/api/interventions', () => {
       );
       const body = await response.json();
       expect(body.data).toHaveLength(1);
+      expect(body.meta).toEqual({
+        limit: 50,
+        has_more: false,
+        next_cursor: null,
+      });
+      expect(body).not.toHaveProperty('hasMore');
+      expect(body).not.toHaveProperty('nextCursor');
     });
 
     it.each([

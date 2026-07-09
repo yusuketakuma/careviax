@@ -377,12 +377,12 @@ export function InterventionPanel({
         if (issueId) params.set('issue_id', issueId);
         const res = await fetch(`/api/interventions?${params.toString()}`);
         if (cancelled) return;
-        const json = await readApiJson<{ data?: Intervention[] }>(
+        const json = await readApiJson<{ data: Intervention[] }>(
           res,
           '介入記録の読み込みに失敗しました',
         );
         if (cancelled) return;
-        setInterventions(json.data ?? []);
+        setInterventions(json.data);
       } catch {
         if (!cancelled) setFetchError(true);
       } finally {

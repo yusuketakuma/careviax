@@ -50,6 +50,27 @@ describe('InterventionPanel new intervention form', () => {
     expect(screen.queryByText('介入記録の読み込みに失敗しました。')).toBeNull();
   });
 
+  it('loads interventions from the current data envelope', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        data: [buildIntervention({ description: '服薬支援を実施' })],
+        meta: {
+          limit: 50,
+          has_more: false,
+          next_cursor: null,
+        },
+      }),
+    );
+
+    render(<InterventionPanel patientId="patient_1" issueId="issue_1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('服薬支援を実施')).toBeTruthy();
+    });
+    expect(screen.queryByText('介入記録はありません。')).toBeNull();
+    expect(fetch).toHaveBeenCalledWith('/api/interventions?patient_id=patient_1&issue_id=issue_1');
+  });
+
   it('shows the intervention type label, not the raw enum, in the closed select trigger', async () => {
     // A bare <SelectValue /> leaks the raw default enum. Explicit children keep SSR labels stable.
     openCreateDialog();

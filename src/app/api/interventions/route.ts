@@ -136,8 +136,17 @@ export const GET = withAuthContext(
       },
     });
 
+    const page = buildCursorPage(interventions, limit, (intervention) => intervention.id);
+
     return withSensitiveNoStore(
-      success(buildCursorPage(interventions, limit, (intervention) => intervention.id)),
+      success({
+        data: page.data,
+        meta: {
+          limit,
+          has_more: page.hasMore,
+          next_cursor: page.nextCursor ?? null,
+        },
+      }),
     );
   },
   {
