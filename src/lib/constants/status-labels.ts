@@ -1,4 +1,5 @@
 import type { StatusRole } from '@/lib/constants/status-tokens';
+import type { PatientStatusIcon } from '@/types/dashboard-home';
 
 /**
  * セマンティック状態ロールの型。
@@ -290,6 +291,27 @@ export const PATIENT_CONTACT_STATUS_ROLE: Record<string, StatusRoleOrNeutral> = 
   change_requested: 'confirm',
   unreachable: 'blocked',
 };
+
+/** PatientStatusIcon(患者ステータスアイコン、dashboard/my-day 患者カード).
+ * stable は意図的に neutral(旧「安定=緑」不採用、CASE active=neutral と同じ判断)。
+ * urgent(リスク最上位 level=high/score>=7)=blocked、overdue_visit=confirm(まだ動ける
+ * 要対応。事後の no_show=blocked とは別事象)、hospitalized=readonly(訪問対象外=閲覧的、
+ * 常時赤/橙は alert fatigue)、discharged(退院直後)=confirm(フォロー再開の要対応。
+ * CaseStatus.discharged=readonly とは意味が異なる)、no_contact=blocked(unreachable 先例)。 */
+export const PATIENT_STATUS_ICON_ROLE = {
+  stable: 'neutral',
+  new: 'info',
+  first_visit_soon: 'info',
+  attention: 'confirm',
+  urgent: 'blocked',
+  overdue_visit: 'confirm',
+  report_pending: 'confirm',
+  medication_change: 'info',
+  hospitalized: 'readonly',
+  discharged: 'confirm',
+  no_contact: 'blocked',
+  paused: 'confirm',
+} as const satisfies Record<PatientStatusIcon, StatusRoleOrNeutral>;
 
 /** RequestStatus(疑義照会など依頼). responded/closed=done、escalated/cancelled/expired=blocked/confirm、received/in_progress=info、sent=waiting、draft=neutral。 */
 export const REQUEST_STATUS_ROLE: Record<string, StatusRoleOrNeutral> = {

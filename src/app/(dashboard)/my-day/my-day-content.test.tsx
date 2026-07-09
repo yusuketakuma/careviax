@@ -712,6 +712,11 @@ describe('MyDayContent', () => {
     expect(href).not.toContain('#frag');
     expect(screen.getByText('安定 → 要対応')).toBeTruthy();
     expect(screen.queryByText('undefined')).toBeNull();
+
+    // 6軸状態色(SSOT 3.1 / 確定表 PatientStatusIcon): 遷移先 urgent のチップは
+    // state-blocked トークンで描かれ、旧 raw Tailwind パレットへ回帰しない。
+    expect(statusChangeLink.querySelector('.text-state-blocked')).toBeTruthy();
+    expect(statusChangeLink.innerHTML).not.toMatch(/(?:red|rose|orange|amber)-\d{2,3}/);
   });
 
   it('syncs visit focus changes back into the URL', async () => {

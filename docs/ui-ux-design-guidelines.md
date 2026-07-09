@@ -958,6 +958,27 @@ PWA + Dexie のオフライン訪問業務、および AWS 依存サービスの
 | change_requested | confirm | 変更要望=要確認 |
 | unreachable      | blocked | 連絡不能        |
 
+### PatientStatusIcon — `PATIENT_STATUS_ICON_ROLE`
+
+患者ステータスアイコン（dashboard / my-day の患者カード）。旧実装の raw Tailwind 12色
+（green/blue/sky/yellow/red/orange/amber/indigo/purple/teal/rose/gray）を廃し 6軸へ写像
+（2026-07-10 ratified、Claude 提案・Codex 承認）。
+
+| value             | role     | 備考                                                                    |
+| ----------------- | -------- | ----------------------------------------------------------------------- |
+| stable            | neutral  | 安定＝状態色を付けない（CASE active=neutral と同判断、旧「緑」不採用）  |
+| new               | info     | 新規＝段階の入口                                                        |
+| first_visit_soon  | info     | 初回予定＝予定                                                          |
+| attention         | confirm  | 要確認                                                                  |
+| urgent            | blocked  | リスク最上位（level=high / score>=7）                                   |
+| overdue_visit     | confirm  | 訪問遅延＝まだ動ける要対応（事後の no_show=blocked とは別事象）         |
+| report_pending    | confirm  | 報告未提出＝要対応                                                      |
+| medication_change | info     | 処方変更＝「変更=info」の明文どおり                                     |
+| hospitalized      | readonly | 入院中＝訪問対象外（常時赤/橙は alert fatigue）                         |
+| discharged        | confirm  | 退院直後＝フォロー再開の要対応（CaseStatus.discharged=readonly とは別） |
+| no_contact        | blocked  | 連絡不通（PatientContact unreachable=blocked と同判断）                 |
+| paused            | confirm  | 休止中（CASE on_hold=confirm と同判断）                                 |
+
 ### RequestStatus — `REQUEST_STATUS_ROLE`
 
 | value       | role     | 備考                    |

@@ -74,4 +74,19 @@ describe('PatientCardItem', () => {
     expect(intakeHref).not.toContain('#frag');
     expect(intakeHref).not.toContain('&patient_id=evil');
   });
+
+  // 6軸状態色(SSOT 3.1 / 確定表 PatientStatusIcon): 患者カードのステータスチップ/バッジは
+  // 中央トークンで描かれ、旧 raw Tailwind パレット(red-600 等)へ回帰しない。
+  it('renders the status chip with 6-axis state tokens (urgent=blocked)', () => {
+    vi.mocked(buildPatientHref).mockReturnValue('/patients/__helper_patient__');
+
+    const { container } = render(
+      <PatientCardItem patient={{ ...patient, status_icon: 'urgent' }} />,
+    );
+
+    expect(container.querySelector('.text-state-blocked')).toBeTruthy();
+    expect(container.innerHTML).not.toMatch(
+      /(?:green|blue|sky|yellow|red|orange|amber|indigo|purple|teal|rose|gray)-\d{2,3}/,
+    );
+  });
 });

@@ -8,12 +8,6 @@
       "expectedCount": 12
     },
     {
-      "path": "src/lib/patient/status-icon.ts",
-      "classification": "status_enum",
-      "reason": "患者ステータス enum の識別色マップ。12 値のカテゴリ identity で、状態トークンの意味 (blocked/done/confirm/waiting/readonly) とは 1:1 対応しない (SSOT §2 で意図的除外)。",
-      "expectedCount": 6
-    },
-    {
       "path": "src/lib/collaboration/presence-contract.ts",
       "classification": "presence_identity",
       "reason": "協働プレゼンス (誰がどこを見ているか) の人物/ロール識別色。ワークフロー状態ではなく参加者 identity (SSOT §2 で意図的除外)。",
