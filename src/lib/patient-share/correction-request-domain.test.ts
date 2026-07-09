@@ -55,7 +55,7 @@ describe('correction-request-domain', () => {
     expect(
       patientShareCorrectionRequestPageSchema.safeParse({
         data: [row],
-        hasMore: false,
+        meta: { has_more: false, next_cursor: null },
       }).success,
     ).toBe(true);
     const parsedWithReason = patientShareCorrectionRequestRowSchema.safeParse({

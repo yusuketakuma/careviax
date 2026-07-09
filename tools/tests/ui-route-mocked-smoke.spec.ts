@@ -1521,7 +1521,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
   await page.route(
     apiPathPattern(`/api/patient-share-cases/${PHARMACY_COOP_SHARE_CASE_ID}/correction-requests`),
     async (route) => {
-      await fulfillJson(route, { data: [], hasMore: false });
+      await fulfillJson(route, { data: [], meta: { has_more: false, next_cursor: null } });
     },
   );
 

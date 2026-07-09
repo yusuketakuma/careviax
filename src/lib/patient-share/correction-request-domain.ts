@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { cursorPaginatedPageSchema } from '@/lib/api/response-schemas';
 
 export const PATIENT_SHARE_CORRECTION_TARGET_TYPES = [
   'patient_profile',
@@ -37,9 +36,28 @@ export const patientShareCorrectionRequestRowSchema = z.object({
   updated_at: z.string(),
 });
 
-export const patientShareCorrectionRequestPageSchema = cursorPaginatedPageSchema(
-  patientShareCorrectionRequestRowSchema,
-);
+export const patientShareCorrectionRequestPageSchema = z
+  .object({
+    data: z.array(patientShareCorrectionRequestRowSchema),
+    meta: z.object({
+      has_more: z.boolean(),
+      next_cursor: z.string().trim().min(1).nullable(),
+    }),
+  })
+  .superRefine((value, ctx) => {
+    if (value.meta.has_more && !value.meta.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor is required when has_more is true',
+      });
+    }
+  })
+  .transform(({ data, meta }) => ({
+    data,
+    hasMore: meta.has_more,
+    ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
+  }));
 
 export type PatientShareCorrectionRequestRow = z.infer<
   typeof patientShareCorrectionRequestRowSchema

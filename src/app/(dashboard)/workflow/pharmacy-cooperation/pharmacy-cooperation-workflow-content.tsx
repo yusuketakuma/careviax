@@ -555,6 +555,9 @@ const partnerVisitRecordResponseSchema = z.object({
   data: partnerVisitRecordRowSchema,
 });
 const correctionRequestPageSchema = patientShareCorrectionRequestPageSchema;
+const correctionRequestResponseSchema = apiDataSchema(
+  patientShareCorrectionRequestRowSchema,
+).transform(({ data }) => data);
 const patientShareConsentPageSchema = z
   .object({
     data: z.array(patientShareConsentRowSchema),
@@ -3218,7 +3221,7 @@ export function PharmacyCooperationWorkflowContent() {
       );
       return readApiJson<CorrectionRequestRow>(response, {
         fallbackMessage: '修正依頼の作成に失敗しました',
-        schema: patientShareCorrectionRequestRowSchema,
+        schema: correctionRequestResponseSchema,
       });
     },
     onSuccess: async () => {

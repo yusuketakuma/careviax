@@ -198,23 +198,32 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   updated_at: '2026-06-18T01:00:00.000Z',
                 },
               ],
-              hasMore: false,
+              meta: { has_more: false, next_cursor: null },
             }),
             { status: 200 },
           );
         }
         if (url === '/api/patient-share-cases/share_case_1/correction-requests?limit=8') {
-          return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
+          return new Response(
+            JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+            { status: 200 },
+          );
         }
         if (
           url === '/api/patient-share-cases/share_case_accept_ready/correction-requests?limit=8'
         ) {
-          return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
+          return new Response(
+            JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+            { status: 200 },
+          );
         }
         if (
           url === '/api/patient-share-cases/share_case_activation_ready/correction-requests?limit=8'
         ) {
-          return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
+          return new Response(
+            JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+            { status: 200 },
+          );
         }
         if (url === '/api/pharmacy-visit-requests?limit=8') {
           return new Response(
@@ -498,20 +507,22 @@ describe('PharmacyCooperationWorkflowContent', () => {
         if (url === '/api/patient-share-cases/share_case_active/correction-requests') {
           return new Response(
             JSON.stringify({
-              id: 'correction_2',
-              share_case_id: 'share_case_active',
-              target_owner: 'partner_pharmacy',
-              target_type: 'patient_profile',
-              target_id: null,
-              field_path: 'notes',
-              request_type: 'correction',
-              status: 'open',
-              requested_by: 'base_user',
-              responded_by: null,
-              resolved_by: null,
-              resolved_at: null,
-              created_at: '2026-06-19T10:20:00.000Z',
-              updated_at: '2026-06-19T10:20:00.000Z',
+              data: {
+                id: 'correction_2',
+                share_case_id: 'share_case_active',
+                target_owner: 'partner_pharmacy',
+                target_type: 'patient_profile',
+                target_id: null,
+                field_path: 'notes',
+                request_type: 'correction',
+                status: 'open',
+                requested_by: 'base_user',
+                responded_by: null,
+                resolved_by: null,
+                resolved_at: null,
+                created_at: '2026-06-19T10:20:00.000Z',
+                updated_at: '2026-06-19T10:20:00.000Z',
+              },
             }),
             { status: 201 },
           );
@@ -1615,11 +1626,13 @@ describe('PharmacyCooperationWorkflowContent', () => {
       ) {
         return new Response(
           JSON.stringify({
-            id: 'correction_2',
-            share_case_id: 'share_case_active',
-            target_type: 'patient_profile',
-            field_path: 'notes',
-            status: 'open',
+            data: {
+              id: 'correction_2',
+              share_case_id: 'share_case_active',
+              target_type: 'patient_profile',
+              field_path: 'notes',
+              status: 'open',
+            },
           }),
           { status: 201 },
         );

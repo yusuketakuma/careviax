@@ -262,10 +262,11 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
     expect(patientShareCorrectionRequestPageSchema.safeParse(body).success).toBe(true);
     expect(body).toMatchObject({
       data: [{ id: 'correction_1' }],
-      hasMore: true,
-      nextCursor: 'correction_1',
+      meta: { has_more: true, next_cursor: 'correction_1' },
     });
     expect(body.data).toHaveLength(1);
+    expect(body).not.toHaveProperty('hasMore');
+    expect(body).not.toHaveProperty('nextCursor');
     expect(JSON.stringify(body)).not.toContain('correction_2');
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -400,7 +401,9 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
       }),
     );
     const body = await response.json();
-    expect(patientShareCorrectionRequestRowSchema.safeParse(body).success).toBe(true);
+    expect(body).toHaveProperty('data');
+    expect(body).not.toHaveProperty('id');
+    expect(patientShareCorrectionRequestRowSchema.safeParse(body.data).success).toBe(true);
     const bodyText = JSON.stringify(body);
     expect(bodyText).toContain('correction_1');
     expect(bodyText).not.toContain('山田花子');

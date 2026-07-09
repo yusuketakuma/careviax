@@ -143,8 +143,11 @@ const authenticatedGET = withAuthContext<{ id: string }>(
 
     if (!rows) return notFound('患者共有ケースが見つかりません');
     return success({
-      ...rows,
       data: rows.data.map(toPatientShareCorrectionRequestRow),
+      meta: {
+        has_more: rows.hasMore,
+        next_cursor: rows.nextCursor ?? null,
+      },
     });
   },
   {
@@ -300,7 +303,7 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
     });
 
     if ('response' in result) return result.response ?? validationError('入力値が不正です');
-    return success(toPatientShareCorrectionRequestRow(result.correctionRequest), 201);
+    return success({ data: toPatientShareCorrectionRequestRow(result.correctionRequest) }, 201);
   },
   {
     permission: 'canManagePatientSharing',
