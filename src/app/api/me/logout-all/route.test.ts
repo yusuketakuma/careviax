@@ -68,6 +68,9 @@ describe('/api/me/logout-all POST', () => {
     );
 
     expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({ data: { ok: true } });
+    expect(body).not.toHaveProperty('ok');
     expect(userUpdateMock).toHaveBeenCalledWith({
       where: { id: 'user_1' },
       select: {

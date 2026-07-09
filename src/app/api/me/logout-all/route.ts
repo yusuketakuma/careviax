@@ -59,5 +59,5 @@ export async function POST(request: NextRequest) {
     return externalError('EXTERNAL_GLOBAL_SIGNOUT_FAILED', '全端末ログアウトに失敗しました', 502);
   }
 
-  return success({ ok: true });
+  return success({ data: { ok: true } });
 }
