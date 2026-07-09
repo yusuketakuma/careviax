@@ -29659,3 +29659,99 @@ has_more, next_cursor } })`. The route test asserts the `data + meta`
   Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
   then continue the next API response envelope cleanup from
   `src/app/api/inquiry-records/[id]/route.ts` unless redirected.
+
+## 2026-07-09 - API-CONTRACT-001BJ inquiry record update envelope cleanup
+
+- current task:
+  Continue `API-CONTRACT-001` public response envelope burn-down without legacy
+  compatibility fields. Move `PATCH /api/inquiry-records/:id` success to a
+  `data` envelope.
+- files inspected:
+  `git status --short --branch --untracked-files=all`;
+  `ops/refactor/STATE.md`; `Plans.md`;
+  `tools/api-response-shape-allowlist.json`;
+  `src/app/api/inquiry-records/[id]/route.ts`;
+  `src/app/api/inquiry-records/[id]/route.test.ts`;
+  `src/app/api/__tests__/workflow-full-cycle.test.ts`;
+  `src/app/api/__tests__/protected-patch-delete-routes.test.ts`;
+  inquiry record usage search results; and
+  `gbrain search "API-CONTRACT inquiry-records id response envelope"`.
+- files changed:
+  `Plans.md`; `tools/api-response-shape-allowlist.json`;
+  `src/app/api/inquiry-records/[id]/route.ts`;
+  `src/app/api/inquiry-records/[id]/route.test.ts`;
+  `ops/refactor/STATE.md`.
+- bugs found:
+  `PATCH /api/inquiry-records/:id` returned the updated inquiry row directly
+  via `success(inquiryResult.inquiry)`, leaving raw inquiry fields such as
+  `id`, `result`, and `change_detail` at the public response root.
+- bugs fixed:
+  PATCH success now returns `success({ data: inquiryResult.inquiry })`. The
+  route test asserts the data envelope and rejects legacy root `id`, `result`,
+  and `change_detail`. No legacy root fallback remains. Response-shape debt
+  dropped from 127 to 126 allowlisted violations.
+- security risks found:
+  No canVisit permission, clinical finalization role gate, assignment access
+  filter, org scoping, optimistic concurrency guard, prescription-line
+  ownership check, audit log creation, workflow cache notification, error
+  sanitization, or no-store behavior changed.
+- security risks reduced:
+  Removed raw inquiry mutation fields from the public API root while preserving
+  existing authorization, audit, workflow notification, and PHI minimization
+  behavior.
+- performance issues found:
+  None.
+- performance issues improved:
+  None; this is response contract cleanup. Existing lookup, transaction,
+  line-update, cycle-transition, and task-resolution behavior are unchanged.
+- UI/UX note:
+  No visible UI/UX change. This was API/test contract work only, so image
+  generation was not applicable.
+- Oracle note:
+  Oracle consultation remains paused per current user instruction, so no
+  Oracle/GPT-5.5 Pro consult was run. The route is clinical workflow code, so
+  validation included route, protected-route, and workflow full-cycle tests.
+- validation commands:
+  `pnpm exec prettier --write Plans.md tools/api-response-shape-allowlist.json src/app/api/inquiry-records/[id]/route.ts src/app/api/inquiry-records/[id]/route.test.ts`;
+  `pnpm vitest run src/app/api/inquiry-records/[id]/route.test.ts`;
+  `pnpm vitest run src/app/api/__tests__/protected-patch-delete-routes.test.ts`;
+  `pnpm vitest run src/app/api/__tests__/workflow-full-cycle.test.ts`;
+  `pnpm api-response-shape:check`;
+  `pnpm plans:active:check`;
+  `pnpm exec eslint src/app/api/inquiry-records/[id]/route.ts src/app/api/inquiry-records/[id]/route.test.ts`;
+  `pnpm exec prettier --check Plans.md tools/api-response-shape-allowlist.json src/app/api/inquiry-records/[id]/route.ts src/app/api/inquiry-records/[id]/route.test.ts`;
+  `git diff --check -- Plans.md tools/api-response-shape-allowlist.json src/app/api/inquiry-records/[id]/route.ts src/app/api/inquiry-records/[id]/route.test.ts`;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+  `pnpm format:check`.
+- validation results:
+  Prettier passed. Inquiry record detail route tests passed 1 file / 24 tests.
+  Protected PATCH/DELETE route tests passed 1 file / 80 tests. Workflow
+  full-cycle tests passed 1 file / 2 tests. `api-response-shape:check` passed
+  with 126 allowlisted violations and 0 new violations.
+  `plans:active:check` passed. Scoped ESLint, scoped Prettier check, scoped
+  diff check, and typecheck passed. `pnpm format:check` still fails only on
+  unrelated pre-existing untracked Markdown files:
+  `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-doc-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-evidence-001.md`,
+  `projects/careviax/reviews/2026-07-08/ops-recovery-integrity-001.md`,
+  `projects/careviax/reviews/2026-07-08/patient-board-read-001.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003a-003d.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-003e.md`,
+  `projects/careviax/reviews/2026-07-08/query-shape-watchlist-guard.md`, and
+  `skills/_candidates.md`.
+- commit:
+  Inquiry record PATCH response envelope migration, route tests, allowlist
+  cleanup, and Plans sync committed as
+  `90108e7b921d2c4da2f76ad12edec8b97dad0823`
+  (`fix(api): envelope inquiry record update`). Push is pending this ledger
+  update.
+- remaining work:
+  `API-CONTRACT-001` remains Partial. Next allowlist head is
+  `src/app/api/interventions/route.ts` with one expected legacy response shape
+  violation, followed by `src/app/api/jobs/[jobType]/route.ts`. Existing
+  unrelated dirty/untracked memory/docs files remain unstaged.
+- next action:
+  Commit and push this ledger update with only `ops/refactor/STATE.md` staged,
+  then continue the next API response envelope cleanup from
+  `src/app/api/interventions/route.ts` unless redirected.
