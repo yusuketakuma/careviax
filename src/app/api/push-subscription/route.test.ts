@@ -1,24 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { requireAuthContextMock, pushSubscriptionUpsertMock, pushSubscriptionDeleteManyMock } =
-  vi.hoisted(() => ({
-    requireAuthContextMock: vi.fn(),
-    pushSubscriptionUpsertMock: vi.fn(),
-    pushSubscriptionDeleteManyMock: vi.fn(),
-  }));
+const {
+  requireAuthContextMock,
+  withOrgContextMock,
+  pushSubscriptionUpsertMock,
+  pushSubscriptionDeleteManyMock,
+} = vi.hoisted(() => ({
+  requireAuthContextMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  pushSubscriptionUpsertMock: vi.fn(),
+  pushSubscriptionDeleteManyMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    pushSubscription: {
-      upsert: pushSubscriptionUpsertMock,
-      deleteMany: pushSubscriptionDeleteManyMock,
-    },
-  },
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
 }));
 
 import { POST, DELETE } from './route';
@@ -51,6 +51,15 @@ describe('/api/push-subscription', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue(authCtx);
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, callback: (tx: unknown) => unknown) =>
+        callback({
+          pushSubscription: {
+            upsert: pushSubscriptionUpsertMock,
+            deleteMany: pushSubscriptionDeleteManyMock,
+          },
+        }),
+    );
   });
 
   describe('POST', () => {
@@ -63,6 +72,9 @@ describe('/api/push-subscription', () => {
       });
       const res = await POST(req);
       expect(res!.status).toBe(200);
+      expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+        requestContext: authCtx.ctx,
+      });
       expect(pushSubscriptionUpsertMock).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { endpoint: 'https://push.example.com/sub/abc' },
@@ -85,6 +97,8 @@ describe('/api/push-subscription', () => {
       });
       const res = await POST(req);
       expect(res!.status).toBe(400);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(pushSubscriptionUpsertMock).not.toHaveBeenCalled();
     });
 
     it('rejects non-object subscription payloads before upsert', async () => {
@@ -92,6 +106,7 @@ describe('/api/push-subscription', () => {
       const res = await POST(req);
 
       expect(res!.status).toBe(400);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
       expect(pushSubscriptionUpsertMock).not.toHaveBeenCalled();
     });
 
@@ -103,6 +118,7 @@ describe('/api/push-subscription', () => {
       await expect(res!.json()).resolves.toMatchObject({
         message: 'リクエストボディが不正です',
       });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
       expect(pushSubscriptionUpsertMock).not.toHaveBeenCalled();
     });
 
@@ -114,6 +130,7 @@ describe('/api/push-subscription', () => {
       const res = await POST(req);
 
       expect(res!.status).toBe(400);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
       expect(pushSubscriptionUpsertMock).not.toHaveBeenCalled();
     });
   });
@@ -127,6 +144,9 @@ describe('/api/push-subscription', () => {
       });
       const res = await DELETE(req);
       expect(res!.status).toBe(200);
+      expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+        requestContext: authCtx.ctx,
+      });
       expect(pushSubscriptionDeleteManyMock).toHaveBeenCalledWith({
         where: {
           endpoint: 'https://push.example.com/sub/abc',
@@ -140,6 +160,8 @@ describe('/api/push-subscription', () => {
       const req = createJsonRequest('DELETE', {});
       const res = await DELETE(req);
       expect(res!.status).toBe(400);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(pushSubscriptionDeleteManyMock).not.toHaveBeenCalled();
     });
 
     it('rejects non-object unsubscribe payloads before delete', async () => {
@@ -147,6 +169,7 @@ describe('/api/push-subscription', () => {
       const res = await DELETE(req);
 
       expect(res!.status).toBe(400);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
       expect(pushSubscriptionDeleteManyMock).not.toHaveBeenCalled();
     });
 
@@ -158,6 +181,7 @@ describe('/api/push-subscription', () => {
       await expect(res!.json()).resolves.toMatchObject({
         message: 'リクエストボディが不正です',
       });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
       expect(pushSubscriptionDeleteManyMock).not.toHaveBeenCalled();
     });
 
@@ -168,6 +192,7 @@ describe('/api/push-subscription', () => {
       const res = await DELETE(req);
 
       expect(res!.status).toBe(400);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
       expect(pushSubscriptionDeleteManyMock).not.toHaveBeenCalled();
     });
   });

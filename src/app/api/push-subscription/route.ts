@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { requireAuthContext } from '@/lib/auth/context';
-import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
 import { z } from 'zod';
 
 function isHttpsUrl(value: string) {
@@ -47,22 +47,27 @@ export async function POST(req: NextRequest) {
 
   const { endpoint, keys } = parsed.data;
 
-  await prisma.pushSubscription.upsert({
-    where: { endpoint },
-    create: {
-      org_id: ctx.orgId,
-      user_id: ctx.userId,
-      endpoint,
-      p256dh: keys.p256dh,
-      auth: keys.auth,
-    },
-    update: {
-      org_id: ctx.orgId,
-      user_id: ctx.userId,
-      p256dh: keys.p256dh,
-      auth: keys.auth,
-    },
-  });
+  await withOrgContext(
+    ctx.orgId,
+    (tx) =>
+      tx.pushSubscription.upsert({
+        where: { endpoint },
+        create: {
+          org_id: ctx.orgId,
+          user_id: ctx.userId,
+          endpoint,
+          p256dh: keys.p256dh,
+          auth: keys.auth,
+        },
+        update: {
+          org_id: ctx.orgId,
+          user_id: ctx.userId,
+          p256dh: keys.p256dh,
+          auth: keys.auth,
+        },
+      }),
+    { requestContext: ctx },
+  );
 
   return success({ ok: true });
 }
@@ -83,13 +88,18 @@ export async function DELETE(req: NextRequest) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  await prisma.pushSubscription.deleteMany({
-    where: {
-      endpoint: parsed.data.endpoint,
-      org_id: ctx.orgId,
-      user_id: ctx.userId,
-    },
-  });
+  await withOrgContext(
+    ctx.orgId,
+    (tx) =>
+      tx.pushSubscription.deleteMany({
+        where: {
+          endpoint: parsed.data.endpoint,
+          org_id: ctx.orgId,
+          user_id: ctx.userId,
+        },
+      }),
+    { requestContext: ctx },
+  );
 
   return success({ ok: true });
 }
