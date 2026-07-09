@@ -94,5 +94,16 @@ describe('/api/patients/[id]/archive PATCH', () => {
       },
       select: { id: true, archived_at: true, archived_by: true },
     });
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        id: 'patient_1',
+        archived_by: 'user_1',
+      },
+    });
+    expect(body.data.archived_at).toBe('2026-04-01T00:00:00.000Z');
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('archived_at');
+    expect(body).not.toHaveProperty('archived_by');
   });
 });

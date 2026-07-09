@@ -41,6 +41,66 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001CG` patient archive response envelope cleanup.
+  - current task:
+    `PATCH /api/patients/:id/archive` の archive success response を legacy root
+    `{ id, archived_at, archived_by }` から `{ data: { id, archived_at, archived_by } }`
+    envelope へ移行し、response-shape allowlist / Plans を同期する。
+  - files inspected:
+    `git status --short --branch --untracked-files=all`,
+    `src/app/api/patients/[id]/archive/route.ts`,
+    `src/app/api/patients/[id]/archive/route.test.ts`,
+    `tools/api-response-shape-allowlist.json`, `Plans.md`, `docs/plans-archive.md`, and
+    this ledger.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`, `tools/api-response-shape-allowlist.json`,
+    `src/app/api/patients/[id]/archive/route.ts`,
+    `src/app/api/patients/[id]/archive/route.test.ts`, and this ledger.
+  - bugs found:
+    The patient archive route returned archive fields at the public success response root,
+    keeping one API response-shape allowlist entry alive.
+  - bugs fixed:
+    PATCH archive success now returns `success({ data: updated })`. The route test asserts
+    `id`, `archived_at`, and `archived_by` are no longer root fields while preserving the
+    archived payload inside `data`. Response-shape debt dropped from 97 to 96.
+  - security risks found:
+    No admin permission check, org scope lookup, RLS update context, not-found conflict
+    behavior, or error response changed.
+  - security risks reduced:
+    Removed archive mutation fields from the response root.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract cleanup.
+  - UI/UX note:
+    No UI/UX change and no frontend consumer was found for this direct archive route, so
+    image generation was not applicable.
+  - Oracle note:
+    No Oracle consult was run for this slice per the allowlist-debt concentration directive
+    and the repeated envelope-only local pattern. Validation covered route tests, contract
+    ratchet, scoped lint/format, and full typecheck.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/archive/route.ts' 'src/app/api/patients/[id]/archive/route.test.ts'`;
+    `pnpm vitest run 'src/app/api/patients/[id]/archive/route.test.ts' --reporter=dot`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/patients/[id]/archive/route.ts' 'src/app/api/patients/[id]/archive/route.test.ts'`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/archive/route.ts' 'src/app/api/patients/[id]/archive/route.test.ts'`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/patients/[id]/archive/route.ts' 'src/app/api/patients/[id]/archive/route.test.ts'`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`.
+  - validation results:
+    Prettier passed. Patient archive route test passed 1 file / 2 tests.
+    `api-response-shape:check` passed with 96 allowlisted violations and 0 new violations.
+    `plans:active:check` passed. Scoped ESLint, scoped Prettier check, scoped diff check,
+    and full typecheck passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 96 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/patients/[id]/communications/route.ts`.
+  - next action:
+    Commit and push this patient archive envelope slice with explicit owned paths only,
+    then continue allowlist debt burn-down from the next allowlist head.
+
 - codex: `API-CONTRACT-001CF` patient share cases collection response envelope cleanup.
   - current task:
     `GET /api/patient-share-cases` の list success を `data + meta` envelope へ、
