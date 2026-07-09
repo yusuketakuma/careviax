@@ -104,7 +104,7 @@ const sliceRoutes = [
     get: visitsGet,
     serviceMock: getPatientVisitsDataMock,
     successData: { monthly_visit_count: 2 },
-    expectedBody: { monthly_visit_count: 2 },
+    expectedBody: { data: { monthly_visit_count: 2 } },
   },
   {
     name: 'communications',
@@ -496,7 +496,9 @@ describe('patient detail slice routes', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ monthly_visit_count: 2 });
+    await expect(response.json()).resolves.toMatchObject({
+      data: { monthly_visit_count: 2 },
+    });
   });
 
   it('returns patient communications data', async () => {
