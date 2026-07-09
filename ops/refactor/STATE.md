@@ -150,6 +150,82 @@
     focused import/write service around `ClinicalExternalReference` + `ClinicalFhirResourceCache`
     - `ClinicalProvenanceRecord`.
 
+- codex: `FHIR-READY-IMPORT-001` yrese webhook / FHIR cache idempotent import service.
+  - current task:
+    DB spine の次段として、yrese webhook payload と FHIR resource を受け取り、tenant scoped な
+    `ClinicalExternalSystem` / `YreseClinicalEvent` / `ClinicalExternalReference` /
+    `ClinicalFhirResourceCache` / `ClinicalSyncQueueItem` / `ClinicalProvenanceRecord` へ
+    idempotent に書き込むサービスを追加する。PH-OS 側 DB は raw FHIR resource や raw webhook
+    body を通常テーブルに保持せず、hash、version、profile URL、identifier hash、normalized summary、
+    provenance、queue metadata に限定する。
+  - files inspected:
+    `git status --short --untracked-files=all`, `ops/refactor/STATE.md`,
+    `prisma/schema/standard-clinical-integration.prisma`,
+    `src/lib/db/{client,json,rls}.ts`, `src/server/adapters/fhir/index.ts`,
+    `src/server/services/standard-clinical-integration-db-contract.test.ts`,
+    generated Prisma enum exports, official JP Core v1.2.0 index, and official FHIR R4 JSON
+    representation guidance.
+  - files changed:
+    `src/server/services/standard-clinical-integration-import.ts`,
+    `src/server/services/standard-clinical-integration-import.test.ts`, and
+    `prisma/schema/standard-clinical-integration.prisma`.
+  - bugs found:
+    The DB spine SQL migration already had the FHIR cache resource-version unique index, but
+    Prisma schema did not expose the matching compound unique selector for safe typed upsert.
+    No service existed to perform append-only yrese event receipt, external reference upsert,
+    FHIR cache version write, sync queue enqueue, and provenance creation as one org-scoped
+    transaction.
+  - bugs fixed:
+    Added the missing Prisma compound unique for
+    `ClinicalFhirResourceCache(org_id, external_system_id, resource_type, resource_id, version_id)`.
+    Added `importYreseClinicalWebhook()` with RLS org context, external system upsert, hash-based
+    yrese event idempotency, external reference upsert, current-version cache switching, queue
+    idempotency, and create-or-find provenance handling that avoids updating append-only ledgers.
+  - security risks found:
+    A naive importer would likely persist raw webhook payloads, raw FHIR resources, patient names,
+    medication free text, dosage free text, raw identifier values, or external base URLs in ordinary
+    DB tables and queue metadata. Duplicate webhook retries could also mutate append-only ledgers.
+  - security risks reduced:
+    Import service stores payload/content/base URL/metadata hashes and minimized summaries only.
+    Identifier values are hashed, FHIR medication summary keeps code system/code but not display/free
+    text, and webhook payload/body is recorded as `hash_only`. Duplicate yrese events and provenance rows are
+    resolved by lookup after P2002 without issuing UPDATE against append-only tables.
+  - performance issues found:
+    Without the compound unique selector, FHIR cache writes would need less-safe find-then-create
+    logic or raw SQL for version idempotency.
+  - performance issues improved:
+    FHIR resource version writes now use a typed compound upsert path, and queue writes use a
+    deterministic idempotency fingerprint so webhook retries do not create duplicate pending work.
+  - validation commands:
+    `pnpm exec prisma format --schema=prisma/schema`;
+    `pnpm db:generate`;
+    `pnpm vitest run src/server/services/standard-clinical-integration-import.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run src/server/services/standard-clinical-integration-db-contract.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm exec prettier --write src/server/services/standard-clinical-integration-import.ts src/server/services/standard-clinical-integration-import.test.ts prisma/schema/standard-clinical-integration.prisma`;
+    `pnpm exec eslint src/server/services/standard-clinical-integration-import.ts src/server/services/standard-clinical-integration-import.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`;
+    `pnpm db:raw-read-org-guard:check`;
+    `pnpm db:query-shape:check`;
+    `pnpm dto-direct-prisma-return:check`;
+    `pnpm exec prettier --check src/server/services/standard-clinical-integration-import.ts src/server/services/standard-clinical-integration-import.test.ts`;
+    `git diff --check`.
+  - validation results:
+    Prisma format/generate passed. New import service tests passed 4/4. Standard clinical
+    integration DB contract tests passed 5/5. ESLint, `typecheck`, `typecheck:no-unused`,
+    raw-read org guard, query-shape guard, DTO direct Prisma return guard, Prettier check,
+    and `git diff --check` passed. A plain `pnpm typecheck` run failed once with Node heap OOM
+    at the default limit; rerunning the same gate with `NODE_OPTIONS=--max-old-space-size=8192`
+    passed. The attempted Prettier write including the Prisma file exited 2 because no Prettier
+    parser is configured for `.prisma`; schema formatting was handled by `prisma format`.
+  - remaining work:
+    This service is not yet wired to an HTTP webhook route, signature verification, retry worker,
+    retention purge, UI timeline presenter, or live DB migration apply. No migration was applied,
+    no deploy was run, and no external yrese/FHIR endpoint was called.
+  - next action:
+    Commit this import service slice with explicit path staging, then implement the actual yrese
+    webhook route/signature boundary and retry worker around `ClinicalSyncQueueItem`.
+
 - codex: `API-CONTRACT-001DQ` pharmacy site insurance config response envelope cleanup.
   - current task:
     `PATCH /api/pharmacy-sites/:id/insurance-configs/:configId` の success DTO を明示化し、
