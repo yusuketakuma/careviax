@@ -41,13 +41,114 @@
 
 ## 直近の作業
 
+- codex: `API-CONTRACT-001DO` pharmacy partnership activation response envelope cleanup.
+  - current task:
+    `POST /api/pharmacy-partnerships/:id/activate` の success response を legacy
+    root `PharmacyPartnershipRowContract` から `{ data: partnership }` envelope へ移行し、
+    admin pharmacy cooperation setup reader、route/UI/protected POST matrix tests、
+    response-shape allowlist、Plans / archive を同期する。あわせて mutation route の
+    sensitive no-store と unexpected-error fallback を明示的に補強する。
+  - commit:
+    `7f289798f fix(api): envelope pharmacy partnership activation`
+  - files inspected:
+    `git status --short --untracked-files=all`,
+    `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/pharmacy-partnerships/[id]/activate/route.ts`,
+    `src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts`,
+    `src/app/api/__tests__/protected-post-routes.test.ts`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`,
+    `src/app/api/patient-shares/[id]/activate/route.ts`, `Plans.md`,
+    `docs/plans-archive.md`, `ops/refactor/STATE.md`, target GitHub context for Oracle,
+    and bounded subagent code-map / API-contract review outputs.
+  - files changed:
+    `Plans.md`, `docs/plans-archive.md`,
+    `tools/api-response-shape-allowlist.json`,
+    `src/app/api/pharmacy-partnerships/[id]/activate/route.ts`,
+    `src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts`,
+    `src/app/api/__tests__/protected-post-routes.test.ts`,
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`,
+    and
+    `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`.
+  - bugs found:
+    The pharmacy partnership activation route returned partnership row fields at the
+    public success response root, keeping one response-shape allowlist entry alive.
+    The admin setup activation reader consumed the legacy raw body directly. The
+    route also lacked explicit sensitive no-store coverage around all POST outcomes,
+    had no outer sanitized fallback for auth-plumbing or handler unexpected errors,
+    and was absent from the protected POST route matrix.
+  - bugs fixed:
+    Activation success now returns `success({ data: partnership })`; the UI reader
+    unwraps `payload.data`; route/UI tests reject malformed legacy shapes and assert
+    strict success/error envelopes. The POST export now wraps authenticated handling
+    with sensitive no-store and sanitized `internalError()` fallback while preserving
+    Next control-flow rethrows. The route is covered by the protected POST auth and
+    no-store matrix. The stale allowlist entry was removed, dropping
+    `API-CONTRACT-001` response-shape debt from 53 to 52.
+  - security risks found:
+    No permission/RLS/updateMany/audit/no-op/concurrency behavior change was needed.
+    The risk was response-contract drift plus inconsistent cache/error hardening on a
+    sensitive admin mutation route.
+  - security risks reduced:
+    Mutation responses now consistently carry sensitive no-store headers for success,
+    handled client errors, auth failures, invalid-body failures, and sanitized
+    unexpected failures. The unexpected-error fallback no longer exposes raw thrown
+    details, and the route is included in the protected POST matrix.
+  - performance issues found:
+    None.
+  - performance issues improved:
+    None; this is response contract and route-hardening cleanup.
+  - UI/UX note:
+    No visible UI/UX layout or interaction change. The admin setup surface reads the
+    same activation row from the standardized envelope, so image generation was not
+    applicable.
+  - Oracle note:
+    Oracle escalation was used because this slice touches PHI-adjacent pharmacy
+    partnership mutation behavior and auth/no-store/error handling. First attachment
+    upload timed out. The second `--browser-inline-files` consult
+    (`partnershi-activate-guard`) returned GO, recommended the no-store/fallback,
+    protected POST matrix, and stricter envelope tests, and advised not to alter
+    permission/RLS/updateMany/audit/no-op/concurrency behavior. Oracle could inspect
+    the GitHub repo URL but not the local unpushed commit, so attached local files
+    were the source of truth.
+  - validation commands:
+    `pnpm exec prettier --write Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-partnerships/[id]/activate/route.ts' 'src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`;
+    `pnpm vitest run 'src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run 'src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts' src/app/api/__tests__/protected-post-routes.test.ts --reporter=dot --testTimeout=30000`;
+    `pnpm vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`;
+    `pnpm api-response-shape:check`;
+    `pnpm plans:active:check`;
+    `pnpm exec eslint 'src/app/api/pharmacy-partnerships/[id]/activate/route.ts' 'src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' src/app/api/__tests__/protected-post-routes.test.ts`;
+    `pnpm exec prettier --check Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-partnerships/[id]/activate/route.ts' 'src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' src/app/api/__tests__/protected-post-routes.test.ts`;
+    `git diff --check -- Plans.md docs/plans-archive.md tools/api-response-shape-allowlist.json 'src/app/api/pharmacy-partnerships/[id]/activate/route.ts' 'src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' src/app/api/__tests__/protected-post-routes.test.ts`;
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`;
+    `npx -y @steipete/oracle --help`;
+    Oracle browser consult with `--browser-inline-files` and focused local file set.
+  - validation results:
+    Initial focused route/UI tests passed 2 files / 23 tests. Follow-up route plus
+    protected POST matrix tests passed 2 files / 157 tests. UI test passed 1 file /
+    16 tests. `api-response-shape:check` passed with 52 allowlisted violations and
+    0 new violations. `plans:active:check`, scoped ESLint, scoped Prettier check,
+    scoped diff check, and full typecheck passed. The protected POST matrix emitted
+    existing expected stderr for security-event/webhook cases but all targeted tests
+    passed.
+  - remaining work:
+    `API-CONTRACT-001` remains Partial with 52 allowlisted response-shape violations.
+    Next recommended response-shape slice is the current allowlist head:
+    `src/app/api/pharmacy-partnerships/route.ts`.
+  - next action:
+    Commit this ledger entry, then continue allowlist burn-down from
+    `src/app/api/pharmacy-partnerships/route.ts`.
+
 - codex: agent knowledge/config checkpoint publish.
   - current task:
     直前指示「全ての変更をコミットしてプッシュ」に従い、現 dirty tree の
     agent knowledge / harness continuity / Codex config / hook state を checkpoint
     commit し、push 前の証跡をこの台帳へ記録する。
   - commit:
-    `e43d89dc2 chore: checkpoint agent knowledge state`
+    `e43d89dc2 chore: checkpoint agent knowledge state`;
+    `f0e504213 docs(ops): record knowledge checkpoint publish`
   - files inspected:
     `git status -sb --untracked-files=all`, `git remote -v`, `git log --oneline -10`,
     `gh --version`, `gh auth status`, `git diff --stat`,
@@ -81,10 +182,10 @@
     for `yusuketakuma`; `origin` points to
     `https://github.com/yusuketakuma/careviax.git`.
   - remaining work:
-    Commit this ledger entry, push `main` to `origin/main`, and verify final
-    worktree/remote state.
+    None for this checkpoint publish. `main` was pushed to `origin/main` and
+    verified at `f0e504213` before resuming API-CONTRACT work.
   - next action:
-    Create the ledger-only commit, then push.
+    Continue the active `Plans.md` implementation loop.
 
 - codex: `API-CONTRACT-001CV` patient workflow preview response envelope cleanup.
   - current task:
