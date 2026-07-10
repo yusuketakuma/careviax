@@ -139,6 +139,13 @@ interface QrScanDraft {
   created_at: string;
 }
 
+interface QrDraftConfirmResult {
+  intake: { id: string };
+  cycle: { id: string };
+  medicationChanges: unknown;
+  profileSyncResult: unknown;
+}
+
 interface DraftLine {
   drug_name: string;
   drug_master_id: string;
@@ -491,7 +498,14 @@ export default function QrDraftReviewPage() {
       if (!res.ok) {
         throw await parsePrescriptionSubmitError(res, '確定に失敗しました');
       }
-      return res.json() as Promise<{ intake: { id: string }; cycle: { id: string } }>;
+      const payload = await readApiJson<{ data?: QrDraftConfirmResult }>(res, '確定に失敗しました');
+      if (
+        typeof payload.data?.intake?.id !== 'string' ||
+        typeof payload.data.cycle?.id !== 'string'
+      ) {
+        throw new Error('確定に失敗しました');
+      }
+      return payload.data;
     },
     onSuccess: () => {
       toast.success('処方受付を確定しました');

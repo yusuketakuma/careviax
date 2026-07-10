@@ -544,10 +544,12 @@ export const POST = withAuthContext(
 
     return success(
       {
-        intake: result.intake,
-        cycle: result.cycle,
-        medicationChanges,
-        profileSyncResult,
+        data: {
+          intake: result.intake,
+          cycle: result.cycle,
+          medicationChanges,
+          profileSyncResult,
+        },
       },
       201,
     );

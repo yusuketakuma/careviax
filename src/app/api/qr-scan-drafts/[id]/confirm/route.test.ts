@@ -521,6 +521,16 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    const responseBody = await response.json();
+    expect(Object.keys(responseBody)).toEqual(['data']);
+    expect(responseBody.data).toMatchObject({
+      intake: { id: 'intake_1' },
+      cycle: { id: 'cycle_1', patient_id: 'patient_1', case_id: 'case_1' },
+      medicationChanges: [],
+      profileSyncResult: null,
+    });
+    expect(responseBody).not.toHaveProperty('intake');
+    expect(responseBody).not.toHaveProperty('cycle');
     expect(createPrescriptionIntakeInTxMock).toHaveBeenCalledWith(
       expect.any(Object),
       expect.objectContaining({

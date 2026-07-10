@@ -465,7 +465,14 @@ describe('QrDraftReviewPage case lookup error handling', () => {
       isLoading: false,
     };
     const fetchMock = vi.fn<typeof fetch>(async () =>
-      jsonResponse({ intake: { id: 'intake_1' }, cycle: { id: 'cycle_1' } }),
+      jsonResponse({
+        data: {
+          intake: { id: 'intake_1' },
+          cycle: { id: 'cycle_1' },
+          medicationChanges: [],
+          profileSyncResult: null,
+        },
+      }),
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -489,8 +496,15 @@ describe('QrDraftReviewPage case lookup error handling', () => {
     if (!confirmMutation?.mutationFn) {
       throw new Error('confirm mutationFn was not registered');
     }
+    let confirmResult: unknown;
     await act(async () => {
-      await confirmMutation.mutationFn?.();
+      confirmResult = await confirmMutation.mutationFn?.();
+    });
+    expect(confirmResult).toEqual({
+      intake: { id: 'intake_1' },
+      cycle: { id: 'cycle_1' },
+      medicationChanges: [],
+      profileSyncResult: null,
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -513,5 +527,12 @@ describe('QrDraftReviewPage case lookup error handling', () => {
       }),
     );
     expect(body.lines[0]).not.toHaveProperty('drug_code');
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ intake: { id: 'legacy_intake' }, cycle: { id: 'legacy_cycle' } }),
+    );
+    await act(async () => {
+      await expect(confirmMutation.mutationFn?.()).rejects.toThrow('確定に失敗しました');
+    });
   });
 });
