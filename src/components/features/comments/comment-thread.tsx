@@ -16,7 +16,7 @@ import {
 } from '@/lib/comments/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import { MentionInput } from './mention-input';
 
 type Comment = {
@@ -39,11 +39,18 @@ type CommentThreadProps = {
   variant?: 'card' | 'bare';
 };
 
+const COMMENT_CREATE_FAILURE_MESSAGE =
+  'コメントを投稿できませんでした。内容と通信状態を確認して、もう一度送信してください。';
+const COMMENT_DELETE_FAILURE_MESSAGE =
+  'コメントを削除できませんでした。権限と対象を確認して、もう一度操作してください。';
+
 export function CommentThread({ entityType, entityId, variant = 'card' }: CommentThreadProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [content, setContent] = useState('');
   const [mentions, setMentions] = useState<string[]>([]);
+  const [createError, setCreateError] = useState(false);
+  const [deleteErrorCommentId, setDeleteErrorCommentId] = useState<string | null>(null);
 
   const queryKey = ['comments', orgId, entityType, entityId];
 
@@ -75,13 +82,19 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
       });
       return readApiJson(res, 'コメントの投稿に失敗しました');
     },
+    onMutate: () => {
+      setCreateError(false);
+    },
     onSuccess: () => {
       setContent('');
       setMentions([]);
+      setCreateError(false);
       void queryClient.invalidateQueries({ queryKey });
     },
     onError: (err: Error) => {
-      toast.error(messageFromError(err, 'コメントの投稿に失敗しました'));
+      setCreateError(true);
+      clientLog.warn('comment_thread.create_failed', err, { entityType: 'comment' });
+      toast.error(COMMENT_CREATE_FAILURE_MESSAGE);
     },
   });
 
@@ -93,11 +106,17 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
       });
       return readApiJson(res, 'コメントの削除に失敗しました');
     },
-    onSuccess: () => {
+    onMutate: (commentId) => {
+      setDeleteErrorCommentId((current) => (current === commentId ? null : current));
+    },
+    onSuccess: (_data, commentId) => {
+      setDeleteErrorCommentId((current) => (current === commentId ? null : current));
       void queryClient.invalidateQueries({ queryKey });
     },
-    onError: (err: Error) => {
-      toast.error(messageFromError(err, 'コメントの削除に失敗しました'));
+    onError: (err: Error, commentId) => {
+      setDeleteErrorCommentId(commentId);
+      clientLog.warn('comment_thread.delete_failed', err, { entityType: 'comment' });
+      toast.error(COMMENT_DELETE_FAILURE_MESSAGE);
     },
   });
 
@@ -170,6 +189,24 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
                 {comment.content}
               </p>
+              {deleteErrorCommentId === comment.id ? (
+                <div
+                  role="alert"
+                  className="mt-2 flex flex-wrap items-center gap-2 text-sm text-destructive"
+                >
+                  <span>{COMMENT_DELETE_FAILURE_MESSAGE}</span>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-sm text-destructive"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate(comment.id)}
+                  >
+                    削除を再試行
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </div>
         ))}
@@ -178,10 +215,31 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
       <form onSubmit={handleSubmit} className="space-y-2 border-t border-border pt-3">
         <MentionInput
           value={content}
-          onChange={setContent}
+          onChange={(nextContent) => {
+            setContent(nextContent);
+            setCreateError(false);
+          }}
           mentions={mentions}
-          onMentionsChange={setMentions}
+          onMentionsChange={(nextMentions) => {
+            setMentions(nextMentions);
+            setCreateError(false);
+          }}
         />
+        {createError ? (
+          <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+            <span>{COMMENT_CREATE_FAILURE_MESSAGE}</span>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-sm text-destructive"
+              disabled={!content.trim() || createMutation.isPending}
+              onClick={() => createMutation.mutate()}
+            >
+              再送信
+            </Button>
+          </div>
+        ) : null}
         <div className="flex justify-end">
           <Button type="submit" size="sm" disabled={!content.trim() || createMutation.isPending}>
             {createMutation.isPending ? '送信中...' : '送信'}

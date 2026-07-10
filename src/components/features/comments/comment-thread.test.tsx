@@ -11,6 +11,7 @@ const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
 const fetchMock = vi.hoisted(() => vi.fn());
 const refetchMock = vi.hoisted(() => vi.fn());
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
 const { buildOrgHeadersMock, buildOrgJsonHeadersMock } = vi.hoisted(() => ({
   buildOrgHeadersMock: vi.fn((orgId: string) => ({
     'x-org-id': `org-header:${orgId}`,
@@ -34,6 +35,10 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 
 vi.mock('@/lib/hooks/use-realtime-query', () => ({
   useRealtimeQuery: useRealtimeQueryMock,
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 vi.mock('sonner', async () => {
@@ -164,8 +169,10 @@ describe('CommentThread', () => {
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
-  it('preserves server comment-create errors and falls back for empty messages', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'コメント本文が長すぎます' }, 400));
+  it('keeps comment-create errors PHI-safe and retains the draft for retry', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ message: '患者A 090-1234-5678 本文 token-super-secret' }, 400),
+    );
 
     renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
 
@@ -175,18 +182,36 @@ describe('CommentThread', () => {
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('コメント本文が長すぎます');
+      expect(toast.error).toHaveBeenCalledWith(
+        'コメントを投稿できませんでした。内容と通信状態を確認して、もう一度送信してください。',
+      );
     });
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'comment_thread.create_failed',
+      expect.any(Error),
+      { entityType: 'comment' },
+    );
+    const createAlert = screen.getByRole('alert').textContent ?? '';
+    expect(createAlert).toContain('コメントを投稿できませんでした');
+    expect(createAlert).not.toContain('患者A');
+    expect(createAlert).not.toContain('090-1234-5678');
+    expect(createAlert).not.toContain('本文');
+    expect(createAlert).not.toContain('token-super-secret');
+    expect((screen.getByLabelText('コメント入力') as HTMLTextAreaElement).value).toBe(
+      '確認お願いします',
+    );
+    expect(screen.getByRole('button', { name: '再送信' })).toHaveProperty('disabled', false);
+    const toastPayload = JSON.stringify(vi.mocked(toast.error).mock.calls);
+    expect(toastPayload).not.toContain('患者A');
+    expect(toastPayload).not.toContain('090-1234-5678');
+    expect(toastPayload).not.toContain('本文');
+    expect(toastPayload).not.toContain('token-super-secret');
 
-    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '' }, 500));
-    fireEvent.click(screen.getByRole('button', { name: '送信' }));
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenLastCalledWith('コメントの投稿に失敗しました');
-    });
+    fireEvent.click(screen.getByRole('button', { name: '再送信' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
-  it('preserves server comment-delete errors and falls back for empty messages', async () => {
+  it('keeps comment-delete errors PHI-safe and retains the target for retry', async () => {
     useRealtimeQueryMock.mockReturnValue({
       data: {
         data: [
@@ -202,21 +227,39 @@ describe('CommentThread', () => {
       },
       isLoading: false,
     });
-    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '削除権限がありません' }, 403));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ message: '患者A 090-1234-5678 本文 token-super-secret' }, 403),
+    );
 
     renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
     fireEvent.click(screen.getByRole('button', { name: 'コメントを削除' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('削除権限がありません');
+      expect(toast.error).toHaveBeenCalledWith(
+        'コメントを削除できませんでした。権限と対象を確認して、もう一度操作してください。',
+      );
     });
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'comment_thread.delete_failed',
+      expect.any(Error),
+      { entityType: 'comment' },
+    );
+    const deleteAlert = screen.getByRole('alert').textContent ?? '';
+    expect(deleteAlert).toContain('コメントを削除できませんでした');
+    expect(deleteAlert).not.toContain('患者A');
+    expect(deleteAlert).not.toContain('090-1234-5678');
+    expect(deleteAlert).not.toContain('本文');
+    expect(deleteAlert).not.toContain('token-super-secret');
+    expect(screen.getByText('確認お願いします')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '削除を再試行' })).toHaveProperty('disabled', false);
+    const toastPayload = JSON.stringify(vi.mocked(toast.error).mock.calls);
+    expect(toastPayload).not.toContain('患者A');
+    expect(toastPayload).not.toContain('090-1234-5678');
+    expect(toastPayload).not.toContain('本文');
+    expect(toastPayload).not.toContain('token-super-secret');
 
-    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '' }, 500));
-    fireEvent.click(screen.getByRole('button', { name: 'コメントを削除' }));
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenLastCalledWith('コメントの削除に失敗しました');
-    });
+    fireEvent.click(screen.getByRole('button', { name: '削除を再試行' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
   it('fails closed with a retryable error instead of a false-empty "no comments" on fetch failure', () => {
@@ -279,7 +322,9 @@ describe('CommentThread', () => {
       renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
       fireEvent.click(screen.getByRole('button', { name: 'コメントを削除' }));
 
-      await Promise.resolve();
+      await waitFor(() => {
+        expect(screen.getByRole('alert').textContent).toContain('コメントを削除できませんでした');
+      });
       expect(fetchMock).not.toHaveBeenCalled();
     },
   );
