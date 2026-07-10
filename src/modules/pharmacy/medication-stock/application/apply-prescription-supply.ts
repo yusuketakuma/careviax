@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { allocateDisplayId } from '@/lib/db/display-id';
 import { normalizeMedicationCode } from '@/lib/pharmacy/drug-identity-resolution';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
+import { isMedicationStockItemWriteAllowed } from '../domain/medication-equivalence';
 import { resolveConfirmedPrescriptionReplenishmentHorizon } from './prescription-replenishment-horizon';
 import {
   decimalToNumber,
@@ -22,7 +23,8 @@ export type PrescriptionSupplyReviewReason =
   | 'unit_conversion_required'
   | 'quantity_missing'
   | 'quantity_non_positive'
-  | 'idempotency_fingerprint_conflict';
+  | 'idempotency_fingerprint_conflict'
+  | 'equivalence_review_pending';
 
 export type PrescriptionSupplySkipReason =
   | 'non_stock_relevant_line'
@@ -126,6 +128,7 @@ type StockItemRow = MedicationStockSnapshotItem & {
   drug_master_id: string | null;
   source_type: string;
   unit: string;
+  equivalence_review_status: string;
 };
 
 type DrugMasterIndexes = {
@@ -486,6 +489,7 @@ async function findExactStockItemCandidates(args: {
       unit: true,
       default_usage_amount_per_day: true,
       medication_category: true,
+      equivalence_review_status: true,
     },
   })) as StockItemRow[];
 }
@@ -708,6 +712,16 @@ async function applyPrescriptionSupplyLine(args: {
       event: existingEvent,
       requestFingerprintHash,
       now: args.now,
+      unitSupported,
+      quantityPresent,
+    });
+  }
+
+  if (!isMedicationStockItemWriteAllowed(stockItem.equivalence_review_status)) {
+    return createReviewTask({
+      ...args,
+      reasonCode: 'equivalence_review_pending',
+      candidateCount: 1,
       unitSupported,
       quantityPresent,
     });

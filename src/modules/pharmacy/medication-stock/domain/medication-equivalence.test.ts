@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assessMedicationEquivalence,
+  isMedicationStockItemWriteAllowed,
   normalizeMedicationCode,
   normalizeMedicationText,
   rankMedicationEquivalenceCandidates,
@@ -26,6 +27,15 @@ const reference: MedicationMatchInput = {
 };
 
 describe('medication equivalence domain', () => {
+  it('allows stock writes only after medication identity is resolved', () => {
+    expect(isMedicationStockItemWriteAllowed('not_required')).toBe(true);
+    expect(isMedicationStockItemWriteAllowed('reviewed')).toBe(true);
+    expect(isMedicationStockItemWriteAllowed('needs_review')).toBe(false);
+    expect(isMedicationStockItemWriteAllowed('uncertain')).toBe(false);
+    expect(isMedicationStockItemWriteAllowed('none')).toBe(false);
+    expect(isMedicationStockItemWriteAllowed(undefined)).toBe(false);
+  });
+
   it('normalizes medication codes and text keys', () => {
     expect(normalizeMedicationCode(' ｙｊ-0001 ')).toBe('YJ0001');
     expect(normalizeMedicationText('　アセトアミノフェン　錠　')).toBe('アセトアミノフェン 錠');

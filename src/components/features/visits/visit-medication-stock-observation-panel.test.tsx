@@ -63,7 +63,7 @@ const stockSummary: PatientMedicationStockSummaryResponse = {
         source_type: 'prescription',
         medication_category: 'topical',
         managing_party: 'family',
-        equivalence_review_status: 'none',
+        equivalence_review_status: 'not_required',
         equivalence_confidence: null,
         active: true,
         snapshot_status: 'available',
@@ -95,7 +95,7 @@ const stockSummary: PatientMedicationStockSummaryResponse = {
         source_type: 'manual',
         medication_category: 'other',
         managing_party: 'unknown',
-        equivalence_review_status: 'none',
+        equivalence_review_status: 'not_required',
         equivalence_confidence: null,
         active: true,
         snapshot_status: 'missing',
@@ -377,6 +377,64 @@ describe('VisitMedicationStockObservationPanel', () => {
         String(call[0]).includes('/medication-stock-observations'),
       ),
     ).toBe(false);
+  });
+
+  it('uses controlled review labels and blocks only unresolved medication identities', async () => {
+    const reviewSummary: PatientMedicationStockSummaryResponse = {
+      ...freshStockSummary(),
+      data: {
+        ...stockSummary.data,
+        summary: {
+          ...stockSummary.data.summary,
+          total_item_count: 3,
+          visible_item_count: 3,
+          active_item_count: 3,
+          equivalence_review_count: 2,
+        },
+        items: [
+          {
+            ...stockSummary.data.items[0],
+            id: 'stock_needs_review',
+            display_name: '名寄せ確認薬',
+            equivalence_review_status: 'needs_review',
+          },
+          {
+            ...stockSummary.data.items[1],
+            id: 'stock_uncertain',
+            display_name: '名寄せ継続薬',
+            equivalence_review_status: 'uncertain',
+          },
+          {
+            ...stockSummary.data.items[0],
+            id: 'stock_reviewed',
+            display_name: '名寄せ確認済み薬',
+            equivalence_review_status: 'reviewed',
+          },
+        ],
+      },
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(reviewSummary), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    render(<WritePanelHarness />, { wrapper: createQueryClientWrapper() });
+
+    expect(await screen.findByText('名寄せ確認薬')).toBeTruthy();
+    expect(screen.getByText('名寄せ確認が必要')).toBeTruthy();
+    expect(screen.getByText('名寄せ確認を継続')).toBeTruthy();
+    expect(screen.getByText('名寄せ確認済み')).toBeTruthy();
+    expect(screen.queryByText('needs_review')).toBeNull();
+    expect(screen.queryByText('uncertain')).toBeNull();
+    expect(screen.queryByText('reviewed')).toBeNull();
+
+    const observationSelectors = screen.getAllByRole('combobox', { name: '今回の観測' });
+    expect(observationSelectors).toHaveLength(3);
+    expect(observationSelectors[0].hasAttribute('disabled')).toBe(true);
+    expect(observationSelectors[1].hasAttribute('disabled')).toBe(true);
+    expect(observationSelectors[2].hasAttribute('disabled')).toBe(false);
   });
 
   it('preserves a draft but disables mutation fields when the network goes offline', async () => {

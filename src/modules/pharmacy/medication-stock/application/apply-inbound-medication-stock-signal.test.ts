@@ -118,6 +118,7 @@ function setupHappyPath(db: ReturnType<typeof createDb>) {
     unit: 'sheet',
     default_usage_amount_per_day: '1',
     medication_category: 'topical',
+    equivalence_review_status: 'not_required',
   });
   db.medicationStockEvent.findFirst.mockResolvedValue(null);
   db.inboundCommunicationSignal.updateMany.mockResolvedValue({ count: 1 });
@@ -334,6 +335,7 @@ describe('applyInboundSignalToMedicationStock', () => {
       unit: 'tablet',
       default_usage_amount_per_day: '1',
       medication_category: 'prn',
+      equivalence_review_status: 'not_required',
     });
     db.medicationStockEvent.findFirst.mockResolvedValue(null);
     db.inboundCommunicationSignal.updateMany.mockResolvedValue({ count: 1 });
@@ -433,6 +435,7 @@ describe('applyInboundSignalToMedicationStock', () => {
       unit: 'tablet',
       default_usage_amount_per_day: null,
       medication_category: 'prn',
+      equivalence_review_status: 'not_required',
     });
     db.medicationStockEvent.findFirst.mockResolvedValue(null);
     db.inboundCommunicationSignal.updateMany.mockResolvedValue({ count: 1 });
@@ -529,6 +532,7 @@ describe('applyInboundSignalToMedicationStock', () => {
       unit: 'sheet',
       default_usage_amount_per_day: '1',
       medication_category: 'topical',
+      equivalence_review_status: 'not_required',
     });
     db.medicationStockEvent.findFirst.mockResolvedValue(null);
     db.inboundCommunicationSignal.updateMany.mockResolvedValue({ count: 1 });
@@ -638,6 +642,50 @@ describe('applyInboundSignalToMedicationStock', () => {
     expect(db.medicationStockEvent.create).not.toHaveBeenCalled();
   });
 
+  it.each(['needs_review', 'uncertain', 'legacy_none'])(
+    'fails closed for %s stock items before linking an inbound signal',
+    async (equivalenceReviewStatus) => {
+      const db = createDb();
+      setupHappyPath(db);
+      db.patientMedicationStockItem.findFirst.mockResolvedValue({
+        id: 'stock_item_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        unit: 'sheet',
+        default_usage_amount_per_day: '1',
+        medication_category: 'topical',
+        equivalence_review_status: equivalenceReviewStatus,
+      });
+
+      const result = await applyInboundSignalToMedicationStock(
+        db as unknown as ApplyInboundMedicationStockSignalDb,
+        {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+          signalId: 'signal_1',
+          targetStockItemId: 'stock_item_1',
+          idempotencyKey: 'apply-1',
+          observation: {
+            kind: 'observed_absolute',
+            quantity: 4,
+            unit: 'sheet',
+          },
+        },
+      );
+
+      expect(result).toEqual({
+        kind: 'invalid_state',
+        message: '薬剤の名寄せ確認が完了するまで残数台帳へ反映できません',
+      });
+      expect(db.inboundCommunicationSignal.updateMany).not.toHaveBeenCalled();
+      expect(db.externalMedicationStockObservation.create).not.toHaveBeenCalled();
+      expect(db.medicationStockEvent.create).not.toHaveBeenCalled();
+      expect(db.medicationStockSnapshot.upsert).not.toHaveBeenCalled();
+      expect(db.task.updateMany).not.toHaveBeenCalled();
+    },
+  );
+
   it('detects idempotency conflicts without returning raw keys', async () => {
     const db = createDb();
     setupHappyPath(db);
@@ -678,6 +726,15 @@ describe('applyInboundSignalToMedicationStock', () => {
   it('replays a matching idempotent application without appending another event', async () => {
     const db = createDb();
     setupHappyPath(db);
+    db.patientMedicationStockItem.findFirst.mockResolvedValue({
+      id: 'stock_item_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      unit: 'sheet',
+      default_usage_amount_per_day: '1',
+      medication_category: 'topical',
+      equivalence_review_status: 'needs_review',
+    });
     const requestFingerprint = buildRequestFingerprint({
       signalId: 'signal_1',
       targetStockItemId: 'stock_item_1',

@@ -2290,7 +2290,7 @@ function buildGateOffMedicationStockSummary(): PatientMedicationStockSummaryResp
           source_type: 'prescription',
           medication_category: 'topical',
           managing_party: 'family',
-          equivalence_review_status: 'none',
+          equivalence_review_status: 'not_required',
           equivalence_confidence: null,
           active: true,
           snapshot_status: 'available',

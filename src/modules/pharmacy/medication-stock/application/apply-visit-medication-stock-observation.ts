@@ -5,6 +5,7 @@ import { Prisma, type MedicationStockUnit, type MemberRole } from '@prisma/clien
 import { canWriteVisitRecordForSchedule } from '@/lib/auth/visit-schedule-access';
 import { allocateDisplayId } from '@/lib/db/display-id';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
+import { isMedicationStockItemWriteAllowed } from '../domain/medication-equivalence';
 import type { DateKey } from '../domain/stockout-forecast';
 import { decimalToNumber, recalculateMedicationStockSnapshot } from './stock-snapshot';
 
@@ -139,6 +140,7 @@ type StockItemRow = {
   unit: MedicationStockUnit;
   default_usage_amount_per_day: Prisma.Decimal | number | string | null;
   medication_category: string;
+  equivalence_review_status: string;
 };
 
 type ExistingStockEventRow = {
@@ -621,6 +623,7 @@ export async function applyVisitMedicationStockObservations(
       unit: true,
       default_usage_amount_per_day: true,
       medication_category: true,
+      equivalence_review_status: true,
     },
   })) as StockItemRow[];
   const stockItemById = new Map(stockItems.map((item) => [item.id, item]));
@@ -723,6 +726,17 @@ export async function applyVisitMedicationStockObservations(
           },
       idempotent_replay: true,
     });
+  }
+
+  for (const observation of observationsToCreate) {
+    const stockItem = stockItemById.get(observation.stockItemId);
+    if (!stockItem) return { kind: 'not_found', message: '残数管理対象薬剤が見つかりません' };
+    if (!isMedicationStockItemWriteAllowed(stockItem.equivalence_review_status)) {
+      return {
+        kind: 'conflict',
+        message: '薬剤の名寄せ確認が完了するまで残数観測を登録できません',
+      };
+    }
   }
 
   const nextVisitDateKey =

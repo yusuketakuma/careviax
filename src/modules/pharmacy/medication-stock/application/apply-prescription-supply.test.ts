@@ -152,6 +152,7 @@ function setupSingleStockItem(
       unit: 'sheet',
       default_usage_amount_per_day: '1',
       medication_category: 'external',
+      equivalence_review_status: 'not_required',
       ...overrides,
     },
   ]);
@@ -408,7 +409,7 @@ describe('applyPrescriptionSupplyForIntake', () => {
   it('returns idempotent applied result without creating another event', async () => {
     const db = createDb();
     setupExactIdentity(db);
-    setupSingleStockItem(db);
+    setupSingleStockItem(db, { equivalence_review_status: 'needs_review' });
     db.medicationStockEvent.findFirst.mockResolvedValue({
       id: 'stock_event_1',
       stock_item_id: 'stock_item_1',
@@ -457,6 +458,7 @@ describe('applyPrescriptionSupplyForIntake', () => {
         unit: 'sheet',
         default_usage_amount_per_day: null,
         medication_category: 'external',
+        equivalence_review_status: 'not_required',
       },
       {
         id: 'stock_item_2',
@@ -467,6 +469,7 @@ describe('applyPrescriptionSupplyForIntake', () => {
         unit: 'sheet',
         default_usage_amount_per_day: null,
         medication_category: 'external',
+        equivalence_review_status: 'not_required',
       },
     ]);
     upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
@@ -488,6 +491,44 @@ describe('applyPrescriptionSupplyForIntake', () => {
     });
     expect(db.medicationStockEvent.create).not.toHaveBeenCalled();
   });
+
+  it.each(['needs_review', 'uncertain', 'legacy_none'])(
+    'creates a review task instead of applying supply to a %s stock item',
+    async (equivalenceReviewStatus) => {
+      const db = createDb();
+      setupExactIdentity(db);
+      setupSingleStockItem(db, { equivalence_review_status: equivalenceReviewStatus });
+      upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
+
+      const result = await applyPrescriptionSupplyForIntake(
+        db as unknown as ApplyPrescriptionSupplyDb,
+        {
+          orgId: 'org_1',
+          userId: 'user_1',
+          intakeId: 'intake_1',
+        },
+      );
+
+      expect(result.results[0]).toEqual({
+        kind: 'review_required',
+        prescription_line_id: 'line_1',
+        reason_code: 'equivalence_review_pending',
+        task_id: 'task_1',
+        candidate_count: 1,
+      });
+      expect(db.medicationStockEvent.create).not.toHaveBeenCalled();
+      expect(db.medicationStockSnapshot.upsert).not.toHaveBeenCalled();
+      expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            reason_code: 'equivalence_review_pending',
+            candidate_count: 1,
+          }),
+        }),
+      );
+    },
+  );
 
   it('does not auto-create stock items when no exact stock item exists', async () => {
     const db = createDb();

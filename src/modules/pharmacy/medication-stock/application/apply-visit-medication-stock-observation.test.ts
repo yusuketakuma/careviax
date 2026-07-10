@@ -145,6 +145,7 @@ function setupBaseDb(db: ReturnType<typeof createDb>) {
       unit: 'sheet',
       default_usage_amount_per_day: '1',
       medication_category: 'topical',
+      equivalence_review_status: 'not_required',
     },
   ]);
   db.medicationStockEvent.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
@@ -320,6 +321,117 @@ describe('applyVisitMedicationStockObservations', () => {
     expect(metadataText).not.toContain('quantity');
   });
 
+  it.each(['needs_review', 'uncertain', 'legacy_none'])(
+    'fails closed for a %s stock item before writing a visit observation',
+    async (equivalenceReviewStatus) => {
+      const db = createDb();
+      setupBaseDb(db);
+      db.patientMedicationStockItem.findMany.mockResolvedValue([
+        {
+          id: 'stock_item_1',
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          unit: 'sheet',
+          default_usage_amount_per_day: '1',
+          medication_category: 'topical',
+          equivalence_review_status: equivalenceReviewStatus,
+        },
+      ]);
+
+      const result = await applyVisitMedicationStockObservations(
+        db as unknown as ApplyVisitMedicationStockObservationsDb,
+        {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+          visitRecordId: 'visit_1',
+          idempotencyKey: 'visit-submit-1',
+          observations: [
+            {
+              clientObservationId: 'obs_1',
+              stockItemId: 'stock_item_1',
+              kind: 'observed_absolute',
+              quantity: 4,
+              unit: 'sheet',
+            },
+          ],
+        },
+      );
+
+      expect(result).toEqual({
+        kind: 'conflict',
+        message: '薬剤の名寄せ確認が完了するまで残数観測を登録できません',
+      });
+      expect(db.medicationStockEvent.create).not.toHaveBeenCalled();
+      expect(db.medicationStockObservationContext.create).not.toHaveBeenCalled();
+      expect(db.medicationStockSnapshot.upsert).not.toHaveBeenCalled();
+      expect(db.visitSchedule.findFirst).not.toHaveBeenCalled();
+      expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not partially write a mixed batch when any new observation has unresolved identity', async () => {
+    const db = createDb();
+    setupBaseDb(db);
+    db.patientMedicationStockItem.findMany.mockResolvedValue([
+      {
+        id: 'stock_item_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        unit: 'sheet',
+        default_usage_amount_per_day: '1',
+        medication_category: 'topical',
+        equivalence_review_status: 'not_required',
+      },
+      {
+        id: 'stock_item_2',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        unit: 'sheet',
+        default_usage_amount_per_day: '1',
+        medication_category: 'topical',
+        equivalence_review_status: 'needs_review',
+      },
+    ]);
+
+    const result = await applyVisitMedicationStockObservations(
+      db as unknown as ApplyVisitMedicationStockObservationsDb,
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        visitRecordId: 'visit_1',
+        idempotencyKey: 'visit-submit-1',
+        observations: [
+          {
+            clientObservationId: 'obs_allowed',
+            stockItemId: 'stock_item_1',
+            kind: 'observed_absolute',
+            quantity: 4,
+            unit: 'sheet',
+          },
+          {
+            clientObservationId: 'obs_unresolved',
+            stockItemId: 'stock_item_2',
+            kind: 'observed_absolute',
+            quantity: 4,
+            unit: 'sheet',
+          },
+        ],
+      },
+    );
+
+    expect(result).toEqual({
+      kind: 'conflict',
+      message: '薬剤の名寄せ確認が完了するまで残数観測を登録できません',
+    });
+    expect(db.medicationStockEvent.create).not.toHaveBeenCalled();
+    expect(db.medicationStockObservationContext.create).not.toHaveBeenCalled();
+    expect(db.medicationStockSnapshot.upsert).not.toHaveBeenCalled();
+    expect(db.visitSchedule.findFirst).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
   it('persists refill_request as a controlled visit observation kind instead of collapsing it', async () => {
     const db = createDb();
     setupBaseDb(db);
@@ -483,6 +595,17 @@ describe('applyVisitMedicationStockObservations', () => {
   it('returns an idempotent replay only when the event and context pair match', async () => {
     const db = createDb();
     setupBaseDb(db);
+    db.patientMedicationStockItem.findMany.mockResolvedValue([
+      {
+        id: 'stock_item_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        unit: 'sheet',
+        default_usage_amount_per_day: '1',
+        medication_category: 'topical',
+        equivalence_review_status: 'needs_review',
+      },
+    ]);
     const eventAt = new Date('2026-07-08T01:30:00.000Z');
     const idempotencyHash = buildIdempotencyKeyHash({
       orgId: 'org_1',

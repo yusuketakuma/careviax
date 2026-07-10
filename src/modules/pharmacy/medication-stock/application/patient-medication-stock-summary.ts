@@ -50,8 +50,8 @@ type StockItemRow = {
   source_type: string;
   medication_category: string;
   managing_party: string;
-  equivalence_review_status: string;
-  equivalence_confidence: string | null;
+  equivalence_review_status: PatientMedicationStockItemDto['equivalence_review_status'];
+  equivalence_confidence: PatientMedicationStockItemDto['equivalence_confidence'];
   active: boolean;
   updated_at: Date;
 };

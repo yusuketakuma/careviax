@@ -9,6 +9,7 @@ import {
   buildNullableCaseScope,
   buildPatientDetailWhere,
 } from '@/server/services/patient-detail-scope';
+import { isMedicationStockItemWriteAllowed } from '../domain/medication-equivalence';
 import { decimalToNumber, recalculateMedicationStockSnapshot } from './stock-snapshot';
 
 export type ApplyMedicationStockObservationInput =
@@ -122,6 +123,7 @@ type StockItemRow = {
   unit: string;
   default_usage_amount_per_day: Prisma.Decimal | number | string | null;
   medication_category: string;
+  equivalence_review_status: string;
 };
 
 const APPLY_STOCK_ROLES: ReadonlySet<MemberRole> = new Set(['owner', 'admin', 'pharmacist']);
@@ -535,6 +537,7 @@ export async function applyInboundSignalToMedicationStock(
       unit: true,
       default_usage_amount_per_day: true,
       medication_category: true,
+      equivalence_review_status: true,
     },
   })) as StockItemRow | null;
   if (!stockItem) return { kind: 'not_found', message: '残数管理対象薬剤が見つかりません' };
@@ -596,6 +599,13 @@ export async function applyInboundSignalToMedicationStock(
       requestFingerprintHash,
       now,
     });
+  }
+
+  if (!isMedicationStockItemWriteAllowed(stockItem.equivalence_review_status)) {
+    return {
+      kind: 'invalid_state',
+      message: '薬剤の名寄せ確認が完了するまで残数台帳へ反映できません',
+    };
   }
 
   const linkSignal = await db.inboundCommunicationSignal.updateMany({

@@ -1,5 +1,11 @@
 export type MatchConfidence = 'none' | 'low' | 'medium' | 'high' | 'exact';
 
+export type MedicationStockEquivalenceReviewStatus =
+  | 'not_required'
+  | 'needs_review'
+  | 'reviewed'
+  | 'uncertain';
+
 export type ClinicalMatchBasis =
   | 'same_drug_master_id'
   | 'same_yj_code'
@@ -54,6 +60,19 @@ const CONFIDENCE_SCORE: Record<MatchConfidence, number> = {
   high: 3,
   exact: 4,
 };
+
+/**
+ * A stock item can receive new ledger events only after its medication identity
+ * is either not subject to review or has been explicitly reviewed.
+ *
+ * Values outside the persisted enum intentionally fail closed so legacy or
+ * corrupted data cannot be treated as clinically resolved.
+ */
+export function isMedicationStockItemWriteAllowed(
+  status: string | null | undefined,
+): status is Extract<MedicationStockEquivalenceReviewStatus, 'not_required' | 'reviewed'> {
+  return status === 'not_required' || status === 'reviewed';
+}
 
 function pickHigherConfidence(current: MatchConfidence, next: MatchConfidence) {
   return CONFIDENCE_SCORE[next] > CONFIDENCE_SCORE[current] ? next : current;

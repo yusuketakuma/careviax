@@ -18,6 +18,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SkeletonRows } from '@/components/ui/loading';
+import { StateBadge } from '@/components/ui/state-badge';
 import {
   Select,
   SelectContent,
@@ -32,6 +33,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { buildPatientMedicationStockApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
+import { isMedicationStockItemWriteAllowed } from '@/modules/pharmacy/medication-stock/domain/medication-equivalence';
 import type {
   MedicationStockRiskLevelDto,
   PatientMedicationStockItemDto,
@@ -89,6 +91,21 @@ const UNOBSERVED_REASON_LABELS: Record<VisitMedicationStockUnobservedReasonCode,
   other_institution_unconfirmed: '他院薬の確認が取れなかった',
   unknown: '理由を特定できなかった',
 };
+
+function medicationStockEquivalenceReviewPresentation(status: string) {
+  switch (status) {
+    case 'not_required':
+      return null;
+    case 'needs_review':
+      return { label: '名寄せ確認が必要', role: 'confirm' as const };
+    case 'uncertain':
+      return { label: '名寄せ確認を継続', role: 'confirm' as const };
+    case 'reviewed':
+      return { label: '名寄せ確認済み', role: 'done' as const };
+    default:
+      return { label: '名寄せ状態を確認中', role: 'blocked' as const };
+  }
+}
 
 const RISK_META = {
   ok: {
@@ -306,6 +323,9 @@ function MedicationStockItemCard({
   const categoryLabel = CATEGORY_LABELS[item.medication_category] ?? item.medication_category;
   const sourceLabel = SOURCE_LABELS[item.source_type] ?? item.source_type;
   const managingPartyLabel = MANAGING_PARTY_LABELS[item.managing_party] ?? item.managing_party;
+  const equivalenceReview = medicationStockEquivalenceReviewPresentation(
+    item.equivalence_review_status,
+  );
   const editorId = `visit-medication-stock-observation-${item.id}`;
   const controlsDisabled = Boolean(disabledReason);
 
@@ -349,10 +369,10 @@ function MedicationStockItemCard({
             ) : null}
           </div>
         </div>
-        {item.equivalence_review_status !== 'none' ? (
-          <Badge variant="outline" className="text-xs">
-            名寄せ確認: {item.equivalence_review_status}
-          </Badge>
+        {equivalenceReview ? (
+          <StateBadge role={equivalenceReview.role} className="text-xs">
+            {equivalenceReview.label}
+          </StateBadge>
         ) : null}
       </div>
 
@@ -1010,7 +1030,7 @@ export function VisitMedicationStockObservationPanel({
                   : validationErrors[item.id];
                 const itemDisabledReason = !item.active
                   ? '停止中の残数管理対象には観測を登録できません。'
-                  : item.equivalence_review_status !== 'none'
+                  : !isMedicationStockItemWriteAllowed(item.equivalence_review_status)
                     ? '薬剤の名寄せ確認が完了するまで観測を登録できません。'
                     : panelDisabledReason;
                 return (

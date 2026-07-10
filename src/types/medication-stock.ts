@@ -5,6 +5,19 @@ export type MedicationStockRiskLevelDto =
   | 'urgent'
   | 'unknown';
 
+export type MedicationStockEquivalenceReviewStatusDto =
+  | 'not_required'
+  | 'needs_review'
+  | 'reviewed'
+  | 'uncertain';
+
+export type MedicationStockEquivalenceConfidenceDto =
+  | 'exact_code'
+  | 'ingredient_strength_form'
+  | 'ingredient_only'
+  | 'manual'
+  | 'uncertain';
+
 export type PatientMedicationStockSnapshotStatus = 'available' | 'missing' | 'unit_mismatch';
 
 export type PatientMedicationStockItemDto = {
@@ -22,8 +35,8 @@ export type PatientMedicationStockItemDto = {
   source_type: string;
   medication_category: string;
   managing_party: string;
-  equivalence_review_status: string;
-  equivalence_confidence: string | null;
+  equivalence_review_status: MedicationStockEquivalenceReviewStatusDto;
+  equivalence_confidence: MedicationStockEquivalenceConfidenceDto | null;
   active: boolean;
   snapshot_status: PatientMedicationStockSnapshotStatus;
   snapshot: {
