@@ -52,6 +52,68 @@
 
 ## 直近の作業
 
+- codex: service-wide active membership gate for notification recipients.
+  - commit:
+    `facbc1511 fix(notifications): validate member recipients`.
+  - current task:
+    P0/P1 `NOTIFY-RECIPIENT-MEMBER-001` として、`dispatchNotificationEvent` の explicit user、
+    enabled notification rule `user_ids`、role recipientsを同じtenant membership境界で解決し、
+    全callerへservice-wide invariantとして適用する。
+  - files inspected:
+    `Plans.md`; `docs/plans-archive.md`; `src/server/services/notifications.ts` and tests;
+    notification rule API/schema/UI; `User` / `Membership` Prisma schema; auth membership resolution;
+    global/multi-org User architecture docs; active account criteria in pilot audit/pharmacist lifecycle;
+    16 caller files across comments, dispense, partner visits, pharmacy messages, visit reschedule,
+    management plans, daily jobs, and job runner; representative caller tests; active dirty tree.
+  - files changed:
+    `Plans.md`; `docs/plans-archive.md`; `src/server/services/notifications.ts` and
+    `src/server/services/notifications.test.ts`; and this state file.
+  - bugs found / fixed:
+    `explicitUserIds` and enabled rule `user_ids` previously bypassed Membership validation, while role
+    recipients checked only active membership/user and external contact lookup incorrectly required legacy
+    `User.org_id = input.orgId`. Cross-org, orphan, inactive, invited, suspended, or retired IDs could reach
+    in-app/realtime/external recipient sets, while a valid global multi-org user could be dropped from SMS/LINE.
+    Dispatch now collects all enabled supported-channel direct IDs and roles, performs one same-org active
+    Membership query joined to `User.is_active + account_status=active`, and derives channel targets only from
+    that snapshot. Explicit/rule/role/multi-site duplicates collapse to one user. External User lookup uses the
+    already eligible IDs plus a current-org active Membership relation instead of legacy `User.org_id`.
+  - security/privacy risks reduced:
+    Invalid recipients are individually removed without blocking valid recipients or invoking an implicit admin
+    fallback. Invalid-only events return `[]` with no notification, realtime, Web Push, User contact lookup,
+    SMS, or LINE side effect. Eligibility lookup failure throws before the first notification/delivery side
+    effect so caller transactions remain fail-closed. Persisted PHI details and existing redacted realtime,
+    Web Push, SMS, and LINE bodies are unchanged. Route-local recipient checks remain as defense in depth.
+  - performance:
+    Recipient intent is deduped before one narrow `membership.findMany` per dispatch, replacing channel/role
+    lazy loads with a single snapshot. The query is bounded by one org, deduped direct IDs, the finite role
+    enum, and a two-branch OR with `user_id` / `role` select only. No hard `take` was added because silently
+    truncating valid org-wide role recipients would lose notifications. Notification create/upsert concurrency,
+    background delivery concurrency, and best-effort delivery timing are unchanged.
+  - plan review / subagent / Oracle:
+    Two independent read-only reviewers returned GO at confidence 0.97 and 9 of 10. Both required the one-query
+    service boundary, invalid-recipient drop without fallback, global User multi-org handling, and caller API
+    compatibility; one additionally identified `account_status=active` as the existing active-user criterion.
+    The independent verifier returned PASS at confidence 0.98 with no blocker. Oracle was not used per user
+    instruction.
+  - validation:
+    Notification service tests passed 1 file / 22 tests. Service plus representative comments, job runner,
+    management plans, visit reschedule, and partner visit submit/review callers passed 7 files / 129 tests.
+    Exact-path ESLint/Prettier, `pnpm plans:active:check`, `pnpm api-response-shape:check`
+    (43 allowlisted / 0 new), `pnpm route-auth-wrapper:check`, `pnpm db:raw-read-org-guard:check`
+    (117 allowlisted / 0 new), `pnpm db:query-shape:check` (0 / 0),
+    `pnpm dto-direct-prisma-return:check`, `pnpm client-phi-log:check`, and `git diff --check` passed.
+    `pnpm typecheck` completed Next type generation, and both it and the 8GB no-unused run stopped only at
+    unrelated user-owned dirty `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285`
+    TS2322 (`string | null` to `string | undefined`). Build was not run while that shared type gate remains red.
+  - UI/imagegen:
+    No component, layout, style, wording, or visible interaction changed. Image generation was not applicable.
+  - remaining / next action:
+    `NOTIFY-RECIPIENT-MEMBER-001` is Done/frozen and removed from the implementation queue. FAX/MCS/email
+    adapters, outbox/after-commit delivery, and removal of caller-local defense are not part of this task.
+    `SHARE-CONSENT-WRITE-001` remains behind the documented action/closeout human gate; the next safe planned
+    candidate is `STOCK-001-VISIT-UI` gate-off browser/mobile regression evidence. No push, deploy, migration,
+    production mutation, external send, or destructive operation ran.
+
 - codex: patient-share consent scope canonicalization and enabled-only disclosure.
   - commit:
     `1b23e7ae9 fix(sharing): normalize consent scope keys`.
