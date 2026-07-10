@@ -24,7 +24,7 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import type {
   VisitBrief,
   VisitBriefMedicationChange,
@@ -144,7 +144,10 @@ export function VisitBriefCard({
         summaryKind: variables.summaryKind,
         message: FEEDBACK_ERROR_MESSAGE,
       });
-      toast.error(messageFromError(error, 'フィードバック送信に失敗しました'));
+      clientLog.warn('visit_brief.feedback_submission_failed', error, {
+        entityType: 'visit_brief_feedback',
+      });
+      toast.error(FEEDBACK_ERROR_MESSAGE);
     },
   });
   const pendingFeedbackKind = feedbackMutation.isPending

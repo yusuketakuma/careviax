@@ -11,9 +11,14 @@ import { VisitBriefCard } from './visit-brief-card';
 setupDomTestEnv();
 
 const useOrgIdMock = vi.hoisted(() => vi.fn(() => 'org_1'));
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 vi.mock('sonner', () => ({
@@ -339,12 +344,15 @@ describe('VisitBriefCard', () => {
     expect(link.getAttribute('href')).toBe(href);
   });
 
-  it('keeps API messages from visit brief feedback failures', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ message: '訪問要約フィードバックの送信権限がありません' }), {
-        status: 403,
-      }),
-    );
+  it('keeps visit brief feedback failures PHI-safe while preserving recovery', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ message: '患者A 090-1234-5678 要約本文 token-super-secret' }),
+          { status: 403 },
+        ),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -353,11 +361,26 @@ describe('VisitBriefCard', () => {
       fireEvent.click(screen.getByRole('button', { name: '実用的' }));
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('訪問要約フィードバックの送信権限がありません');
+        expect(toast.error).toHaveBeenCalledWith(
+          '要約フィードバックを保存できませんでした。通信状態を確認し、もう一度評価を選択してください。',
+        );
       });
-      expect(screen.getByRole('alert').textContent).toContain(
-        '要約フィードバックを保存できませんでした',
+      expect(clientLogWarnMock).toHaveBeenCalledWith(
+        'visit_brief.feedback_submission_failed',
+        expect.any(Error),
+        { entityType: 'visit_brief_feedback' },
       );
+      const alertText = screen.getByRole('alert').textContent ?? '';
+      expect(alertText).toContain('要約フィードバックを保存できませんでした');
+      expect(alertText).not.toContain('患者A');
+      expect(alertText).not.toContain('090-1234-5678');
+      expect(alertText).not.toContain('要約本文');
+      expect(alertText).not.toContain('token-super-secret');
+      const toastPayload = JSON.stringify(vi.mocked(toast.error).mock.calls);
+      expect(toastPayload).not.toContain('患者A');
+      expect(toastPayload).not.toContain('090-1234-5678');
+      expect(toastPayload).not.toContain('要約本文');
+      expect(toastPayload).not.toContain('token-super-secret');
       expect((screen.getByRole('button', { name: '実用的' }) as HTMLButtonElement).disabled).toBe(
         false,
       );
