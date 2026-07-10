@@ -52,6 +52,67 @@
 
 ## 直近の作業
 
+- codex: dashboard stock snapshot unit mismatch fail-closed guard.
+  - commit:
+    `68784508c fix(STOCK-001-DASHBOARD-SNAPSHOT-UNIT-GUARD): fail closed on dashboard unit mismatch`.
+  - current task:
+    P1 `STOCK-001-DASHBOARD-SNAPSHOT-UNIT-GUARD`。dashboard stock-risk raw readerで legacy/corrupt
+    snapshot の unit が stock item と異なる場合、誤った単位で数量・日時・推定・riskを表示せず、
+    authorized item 自体は review-required として保持する。unit変換、自動修復、write、migration、
+    feature gate、production data は変更しない。
+  - capability / baseline:
+    Filesystem read/edit、`rg`/file listing、command/Git、Vitest、ESLint/Prettier、Next typegen/typecheck、
+    repo static guards、並列read/validationを利用可能と確認した。Playwright/browser/screenshot用のrepo
+    harnessは存在するが、この非visual server-reader sliceでは実行していない。local DB client/runtimeは
+    `docker`、`psql`、`pg_isready` が見つからず、SELECT/EXPLAINによる実DB構文確認は実施不能。
+    初期/変更後 `pnpm typecheck` はともに user-owned
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285` の既知 TS2322 のみで失敗した。
+  - files inspected:
+    `AGENTS.md`; `Plans.md`; this state; bundled Next.js route-handler/server-client/error guidance;
+    `dashboard-stock-risk-reader.ts` and test; dashboard cockpit stock DTO builder and stock-risk route test;
+    stock item/snapshot Prisma schema; patient summary/visit unit-mismatch precedent; active dirty tree and recent
+    commits。
+  - files changed:
+    `src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts` and test;
+    `src/server/services/dashboard-cockpit.ts`; `src/app/api/dashboard/cockpit/route.test.ts`; `Plans.md`; and this
+    state file。
+  - bugs found / fixed:
+    The raw dashboard join selected snapshot quantity, observation/calculation dates, usage estimate, stockout,
+    risk level and reason without comparing `snapshot.unit` with `item.unit`; the cockpit then formatted quantity
+    with the item unit. The query now computes an internal mismatch flag, SQL-CASE suppresses every snapshot-derived
+    field, excludes mismatches from urgent/shortage/usage counts and priority ordering, and retains the item as a
+    bounded review row. Reader-side sanitization repeats the fail-closed suppression before the cockpit builder.
+    The controlled DTO shows only `review_required`, `残数単位の整合性を確認`, and a pharmacist review action;
+    snapshot id/raw unit/value/date/risk/reason are not emitted. Correct rows and authorized item identity remain
+    visible, avoiding a whole-response false empty.
+  - security/privacy / medical safety:
+    Prevents a corrupt clinical-stock value or risk from being represented under another unit and removes raw
+    reason leakage from the mismatch path. Org/assignment scope, no-store response, permission, PHI disclosure,
+    audit behavior and neighboring records are unchanged. Synthetic tests contain no real patient data.
+  - performance:
+    Reuses the existing org-scoped indexed join and bounded `LIMIT`; adds only enum equality/CASE predicates and no
+    query, network call, mutation, dependency or unbounded loop. `db:query-shape:check` remains zero-debt.
+  - plan review / agents / Oracle:
+    Per latest user instruction, Codex alone performed impact mapping, implementation and verification. No subagent,
+    agmsg, Claude, external maker/checker or Oracle consultation was used.
+  - validation:
+    Focused Vitest passed 2 files / 48 tests. Exact ESLint, Prettier and `git diff --check` passed.
+    `pnpm plans:active:check`, `pnpm db:query-shape:check` (0 allowlisted / 0 new),
+    `pnpm db:raw-read-org-guard:check` (117 allowlisted / 0 new), and
+    `pnpm api-response-shape:check` (43 allowlisted / 0 new) passed. Full build was not run because the unchanged
+    inbound TS2322 keeps the prerequisite type gate red. No DB/migration command, production operation, external
+    send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen / gbrain:
+    `Plans.md` removes the completed task from the active queue, keeps its stable ID in completed evidence, and
+    updates the implementation queue count from 48 to 47. Image generation was omitted because this is a server-side
+    data-integrity guard with no visual structure/style/interaction change. Existing
+    `projects/careviax/decisions/2026-07-10/stock-snapshot-unit-fail-closed` remains the reusable decision; no
+    duplicate gbrain entry was created.
+  - remaining / next action:
+    `STOCK-001-DASHBOARD-SNAPSHOT-UNIT-GUARD` is complete. Next executable priority is a bounded
+    `API-CONTRACT-001` allowlist-debt slice; consent policy, migration, live DB/AWS and production gates remain
+    blocked. The user-owned inbound/config/harness dirty files remain untouched. No push was performed.
+
 - codex: fail-closed visit stock snapshot unit mismatch reader/UI.
   - commit:
     `cad4b8fc2 fix(stock): fail closed on snapshot unit mismatch`.
