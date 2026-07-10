@@ -54,6 +54,11 @@ function createMalformedPatchRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('cache-control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('pragma')).toBe('no-cache');
+}
+
 describe('/api/workflow-exceptions/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -91,6 +96,7 @@ describe('/api/workflow-exceptions/[id]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toEqual({
       data: {
         id: 'exception_1',
@@ -106,6 +112,7 @@ describe('/api/workflow-exceptions/[id]', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'ワークフロー例外IDが不正です',
@@ -124,6 +131,7 @@ describe('/api/workflow-exceptions/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toEqual({
       data: {
         id: 'exception_1',
@@ -143,6 +151,7 @@ describe('/api/workflow-exceptions/[id]', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'ワークフロー例外IDが不正です',

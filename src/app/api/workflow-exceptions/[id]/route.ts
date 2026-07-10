@@ -4,11 +4,14 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { resolveWorkflowExceptionSchema } from '@/lib/validations/medication';
 import { prisma } from '@/lib/db/client';
 import type { ExceptionStatus } from '@/types/domain-literals';
 
-export const GET = withAuthContext(
+type WorkflowExceptionRouteContext = { params: Promise<{ id: string }> };
+
+const authenticatedGET = withAuthContext(
   async (_req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -27,7 +30,11 @@ export const GET = withAuthContext(
   },
 );
 
-export const PATCH = withAuthContext(
+export async function GET(req: NextRequest, routeContext: WorkflowExceptionRouteContext) {
+  return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+}
+
+const authenticatedPATCH = withAuthContext(
   async (req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -114,3 +121,7 @@ export const PATCH = withAuthContext(
     message: 'ワークフロー例外の解決権限がありません',
   },
 );
+
+export async function PATCH(req: NextRequest, routeContext: WorkflowExceptionRouteContext) {
+  return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+}
