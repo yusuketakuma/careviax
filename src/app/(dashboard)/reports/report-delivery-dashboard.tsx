@@ -23,7 +23,7 @@ import { buildCommunicationRequestsHref } from '@/lib/communications/navigation'
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { cn } from '@/lib/utils';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
 type DeliveryAnalyticsResponse = {
@@ -78,6 +78,8 @@ type DeliveryAnalyticsResponse = {
 
 const REPORT_DELIVERY_REMINDER_DISABLED_REASON_ID = 'report-delivery-reminder-disabled-reason';
 const REPORT_DELIVERY_REMINDER_DISABLED_REASON = '送達分析を読み込んでいます。';
+const REPORT_DELIVERY_REMINDER_FAILURE_MESSAGE =
+  '送達フォローを更新できませんでした。送達状況を確認してから再試行してください。';
 const REPORT_REMINDER_SNOOZE_DAYS = 3;
 
 type ReminderMutationInput = {
@@ -152,7 +154,10 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
       ]);
     },
     onError: (error) => {
-      toast.error(messageFromError(error, 'リマインドタスクの起票に失敗しました'));
+      clientLog.warn('care_report.delivery_reminder_queue_failed', error, {
+        route: '/reports/analytics',
+      });
+      toast.error(REPORT_DELIVERY_REMINDER_FAILURE_MESSAGE);
     },
   });
 

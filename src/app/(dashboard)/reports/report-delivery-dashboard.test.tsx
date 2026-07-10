@@ -2,6 +2,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -15,6 +16,7 @@ const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -24,6 +26,10 @@ vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
   useMutation: useMutationMock,
   useQueryClient: useQueryClientMock,
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 vi.mock('sonner', async () => {
@@ -361,6 +367,31 @@ describe('ReportDeliveryDashboard', () => {
       headers: buildOrgJsonHeaders('org_1'),
       body: JSON.stringify({ overdue_days: 7 }),
     });
+  });
+
+  it('keeps delivery reminder failure toasts PHI-safe and directs status verification before retry', () => {
+    primeDashboard();
+    render(<ReportDeliveryDashboard />);
+
+    const mutationOptions = useMutationMock.mock.calls.at(-1)?.[0] as
+      | { onError?: (error: unknown) => void }
+      | undefined;
+    const sensitiveError = new Error('患者A 090-1234-5678 保険番号12345678 token-super-secret');
+    mutationOptions?.onError?.(sensitiveError);
+
+    expect(toast.error).toHaveBeenCalledWith(
+      '送達フォローを更新できませんでした。送達状況を確認してから再試行してください。',
+    );
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+      'care_report.delivery_reminder_queue_failed',
+      sensitiveError,
+      { route: '/reports/analytics' },
+    );
+    const toastPayload = JSON.stringify(vi.mocked(toast.error).mock.calls);
+    expect(toastPayload).not.toContain('患者A');
+    expect(toastPayload).not.toContain('090-1234-5678');
+    expect(toastPayload).not.toContain('保険番号12345678');
+    expect(toastPayload).not.toContain('token-super-secret');
   });
 
   it('passes a targeted snooze payload when an overdue row is deferred', () => {
