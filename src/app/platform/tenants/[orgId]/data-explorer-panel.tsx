@@ -30,7 +30,7 @@ type DataExplorerModel = {
   rowCount: number;
 };
 
-type DataExplorerModelsResponse = { models: DataExplorerModel[] };
+type DataExplorerModelsResponse = { data: DataExplorerModel[] };
 
 type DataExplorerColumn = { name: string; type: string; isRequired: boolean };
 
@@ -179,7 +179,7 @@ export function DataExplorerPanel({ orgId }: { orgId: string }) {
 
   // Default to the first model once the list loads, computed during render
   // rather than in an effect (avoids an extra effect-driven render pass).
-  const firstModelName = modelsQuery.data?.models[0]?.tableName ?? null;
+  const firstModelName = modelsQuery.data?.data[0]?.tableName ?? null;
   if (!selectedModel && firstModelName) {
     setSelectedModel(firstModelName);
   }
@@ -188,7 +188,7 @@ export function DataExplorerPanel({ orgId }: { orgId: string }) {
   // (読み取りも監査対象の越権アクセスであり、セッション無しでは API 側も403で拒否する)。
   if (!activeSession) return null;
 
-  const selectedModelSummary = modelsQuery.data?.models.find((m) => m.tableName === selectedModel);
+  const selectedModelSummary = modelsQuery.data?.data.find((m) => m.tableName === selectedModel);
 
   return (
     <Card>
@@ -233,7 +233,7 @@ export function DataExplorerPanel({ orgId }: { orgId: string }) {
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {(modelsQuery.data?.models ?? []).map((model) => (
+                {(modelsQuery.data?.data ?? []).map((model) => (
                   <SelectItem key={model.tableName} value={model.tableName}>
                     {model.tableName}（{model.coverageLabel}・{model.rowCount}件）
                   </SelectItem>

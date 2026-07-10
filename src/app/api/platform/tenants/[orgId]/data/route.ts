@@ -18,10 +18,7 @@ function parseIntParam(raw: string | null, fallback: number): number {
  * break_glass_read audit row scoped to the target tenant, and the underlying
  * query runs under RLS pinned to that tenant only.
  */
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ orgId: string }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ orgId: string }> }) {
   const guard = await requirePlatformOperator(req);
   if ('response' in guard) return guard.response;
   const { operator } = guard;
@@ -45,7 +42,7 @@ export async function GET(
         { targetType: 'data_explorer_models', targetId: orgId, metadata: { view: 'models' } },
         () => listDataExplorerModels(orgId),
       );
-      return withSensitiveNoStore(success({ models }));
+      return withSensitiveNoStore(success({ data: models }));
     }
 
     const limit = parseIntParam(url.searchParams.get('limit'), 25);
