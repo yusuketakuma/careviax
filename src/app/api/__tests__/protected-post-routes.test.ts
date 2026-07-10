@@ -177,6 +177,7 @@ const routes: RouteEntry[] = [
       visitRecordMedicationStockObservationsPost(req, {
         params: Promise.resolve({ id: 'visit_record_1' }),
       }),
+    invalidBodyStatus: 503,
   },
   {
     name: 'prescription-intakes POST',
