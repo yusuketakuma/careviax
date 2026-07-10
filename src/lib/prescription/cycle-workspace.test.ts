@@ -88,13 +88,20 @@ describe('PROCESS_STEPS_9', () => {
     expect(getProcessStepIndex('billing')).toBe(8);
   });
 
-  it('uses current audit and set-audit labels without legacy wording', () => {
+  it('keeps full and short audit labels distinct and meaningful', () => {
     expect(CYCLE_STATUS_LABELS.audit_pending).toBe('監査待ち');
     expect(CYCLE_STATUS_LABELS.audited).toBe('監査済');
     expect(CYCLE_STATUS_LABELS.setting).toBe('セット監査待ち');
     expect(CYCLE_STATUS_LABELS.set_audited).toBe('セット監査済み');
-    expect(CYCLE_STATUS_SHORT_LABELS.setting).toBe('監査待');
-    expect(CYCLE_STATUS_SHORT_LABELS.set_audited).toBe('監査済');
+    expect(CYCLE_STATUS_SHORT_LABELS.dispensed).toBe('調剤済');
+    expect(CYCLE_STATUS_SHORT_LABELS.audit_pending).toBe('調剤監査待');
+    expect(CYCLE_STATUS_SHORT_LABELS.audited).toBe('調剤監査済');
+    expect(CYCLE_STATUS_SHORT_LABELS.setting).toBe('セット監査待');
+    expect(CYCLE_STATUS_SHORT_LABELS.set_audited).toBe('セット監査済');
+    expect(new Set(Object.values(CYCLE_STATUS_SHORT_LABELS)).size).toBe(
+      Object.keys(CYCLE_STATUS_SHORT_LABELS).length,
+    );
+    expect(Object.values(CYCLE_STATUS_SHORT_LABELS)).not.toContain('済');
   });
 
   it('focuses inquiry-pending cycle action on reply-waiting communication requests', () => {

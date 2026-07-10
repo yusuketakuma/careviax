@@ -51,6 +51,19 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh P2 DV-06 cycle status label convergence (PARTIAL, 2026-07-11; focused shared-constant slice).
+  - result / scope:
+    The workflow dashboard and transition-history compatibility export now consume the canonical
+    `CYCLE_STATUS_LABELS`. Filter-sized labels are unique and meaningful: `dispensed` is no longer one-character
+    "済", and medication-audit versus set-audit values remain distinguishable. Event history labels in the patient
+    workspace are intentionally unchanged because they describe transitions (start/complete), not the current cycle
+    status. No API/DB/schema/query/auth/authz/PHI/audit/persistence behavior changed. `gpt-image-2` was omitted because
+    this is a semantic-label registry correction using existing UI components, not visual reconstruction.
+  - validation / limits:
+    Focused Vitest passed 4 files / 33 tests. Exact ESLint/Prettier, colors, client PHI-log, frontend-contract,
+    module-boundary, typecheck, and diff-check passed. The 124-file label inventory, new-definition ratchet, E2E,
+    runtime a11y/responsive evidence, full build, and standalone remain NOT_EXECUTED.
+
 - codex: UI/UX Refresh P2 DV-04 communication completion action semantics (PARTIAL, 2026-07-11; focused UI behavior slice).
   - result / scope:
     The `/communications/requests` "対応済みにする" mutation now uses the existing Primary action styling rather than

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { jsonResponse } from '@/test/fetch-test-utils';
-import { fetchCycleTransitionLogs } from './cycle-transition-query';
+import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
+import { fetchCycleTransitionLogs, WORKFLOW_STATUS_LABELS } from './cycle-transition-query';
 
 const buildOrgHeadersMock = vi.hoisted(() =>
   vi.fn((orgId: string) => ({
@@ -14,6 +15,12 @@ vi.mock('@/lib/api/org-headers', () => ({
 }));
 
 describe('fetchCycleTransitionLogs', () => {
+  it('reuses the canonical cycle status labels for workflow history', () => {
+    expect(WORKFLOW_STATUS_LABELS).toBe(CYCLE_STATUS_LABELS);
+    expect(WORKFLOW_STATUS_LABELS.audited).toBe('監査済');
+    expect(WORKFLOW_STATUS_LABELS.visit_completed).toBe('訪問完了');
+  });
+
   it('fetches cycle transition history with the existing URL and org headers', async () => {
     const logs = [
       {

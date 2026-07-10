@@ -41,6 +41,7 @@ import {
   type StatusRoleOrNeutral,
 } from '@/lib/constants/status-labels';
 import { formatCommunicationRequestTypeLabel } from '@/lib/communications/request-labels';
+import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 import type { HomeLinkContext, WorkflowFocus } from '@/lib/dashboard/home-link-builders';
 import type {
   InquiryEditState,
@@ -48,24 +49,6 @@ import type {
   WorkflowData,
 } from './workflow-dashboard.types';
 import { Skeleton } from '@/components/ui/loading';
-
-// 工程ラベルのみ保持。色は MEDICATION_CYCLE_STATUS_ROLE(6軸セマンティックの正本)から導出する。
-const CYCLE_STATUS_LABELS: Record<string, string> = {
-  intake_received: '応需受付',
-  structuring: '構造化中',
-  inquiry_pending: '疑義照会中',
-  inquiry_resolved: '照会解決済',
-  ready_to_dispense: '調剤待ち',
-  dispensing: '調剤中',
-  dispensed: '調剤完了',
-  audit_pending: '監査待ち',
-  audited: '監査済み',
-  setting: 'セット監査待ち',
-  set_audited: 'セット監査済み',
-  visit_ready: '訪問準備完了',
-  visit_completed: '訪問完了',
-  on_hold: '保留',
-};
 
 /** ロール → トークンのバッジ配色。neutral / 不明は中立(muted)。 */
 function roleBadgeClass(role: StatusRoleOrNeutral | undefined): string {

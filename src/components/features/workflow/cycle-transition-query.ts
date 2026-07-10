@@ -1,5 +1,6 @@
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 
 export type TransitionLog = {
   id: string;
@@ -10,24 +11,7 @@ export type TransitionLog = {
   created_at: string;
 };
 
-export const WORKFLOW_STATUS_LABELS: Record<string, string> = {
-  intake_received: '受付済',
-  structuring: '構造化中',
-  inquiry_pending: '疑義照会中',
-  inquiry_resolved: '疑義解決',
-  ready_to_dispense: '調剤準備完了',
-  dispensing: '調剤中',
-  dispensed: '調剤済',
-  audit_pending: '監査待ち',
-  audited: '監査済',
-  setting: 'セット監査待ち',
-  set_audited: 'セット監査済み',
-  visit_ready: '訪問準備完了',
-  visit_completed: '訪問完了',
-  reported: '報告済',
-  on_hold: '保留',
-  cancelled: 'キャンセル',
-};
+export const WORKFLOW_STATUS_LABELS = CYCLE_STATUS_LABELS;
 
 export const WORKFLOW_HISTORY_INVALIDATION_EVENTS = [
   'cycle_transition',

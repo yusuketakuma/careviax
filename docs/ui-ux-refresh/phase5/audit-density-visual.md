@@ -119,6 +119,7 @@
 - **Priority**: P2
 - **Verification**: ラベル一意性 unit test + 3 画面（prescriptions/workflow/patients/[id]）で同一状態の表記一致を目視/スナップショット確認。
 - **Evidence**: `src/lib/prescription/cycle-workspace.ts:194,198,205-221` / `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx:62,66` / `src/components/features/workflow/cycle-transition-query.ts:26` / `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx:43-49` / `src/modules/pharmacy/patient-workspace/workspace-read-model.ts:34-51` / `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx:199`
+- **Partial remediation (2026-07-11, `TBD` commit)**: `workflow-dashboard-view` のローカル状態ラベルを削除し、履歴クエリの `WORKFLOW_STATUS_LABELS` を `CYCLE_STATUS_LABELS` の互換aliasへ置換した。処方ワークスペースの短縮ラベルは「調剤済」「調剤監査待／済」「セット監査待／済」にして、一文字「済」と `audited`/`set_audited` の衝突を解消。状態名ではなく開始／完了イベントを表す患者ワークスペース履歴ラベルは別概念として変更していない。124ファイル横断の定数新設ratchet・他domainの表記揺れは未解決。
 
 ---
 
