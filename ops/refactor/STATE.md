@@ -52,6 +52,66 @@
 
 ## 直近の作業
 
+- codex: fail-closed visit stock snapshot unit mismatch reader/UI.
+  - commit:
+    `cad4b8fc2 fix(stock): fail closed on snapshot unit mismatch`.
+  - current task:
+    P1 `STOCK-001-VISIT-UI` の legacy/corrupt snapshot が item と異なるunitを持つ場合、患者summaryと
+    visit read-only panelが残数・日時・riskをitem unitで誤表示しないよう、per-itemでfail-closedにする。
+    dashboard raw reader、write path、feature gate、DB/schema/migration、環境別gate有効化は変更しない。
+  - files inspected:
+    `Plans.md`; `ops/refactor/STATE.md`; `docs/ui-ux-design-guidelines.md`; `patient-medication-stock-summary`
+    reader/test/types/API route; stock panel/component test; visit gate-off route-mocked browser fixture; snapshot
+    recalculation and visit writer unit invariants; dashboard stock risk raw reader/cockpit consumer; active dirty
+    tree。
+  - files changed:
+    `src/types/medication-stock.ts`; `src/modules/pharmacy/medication-stock/application/`
+    `patient-medication-stock-summary.ts` and its test; `src/components/features/visits/`
+    `visit-medication-stock-observation-panel.tsx` and its test; and
+    `tools/tests/ui-route-mocked-smoke.spec.ts`.
+  - bugs found / fixed:
+    The patient summary already selected `snapshot.unit`, but converted its quantity/date/risk fields to the DTO
+    without comparing it with `item.unit`; the panel then labeled those values with the item unit. Items now carry
+    `snapshot_status` (`available`, `missing`, `unit_mismatch`). A mismatch retains the authorized item but emits
+    `snapshot: null`, excludes snapshot-derived aggregate counts and last-observed timestamp, and exposes neither
+    raw unit, quantity, risk, nor risk reason. The UI marks it `不明`, presents a text explanation requiring
+    pharmacist confirmation, and defensively suppresses a hostile mismatch response even if it contains a snapshot.
+  - security/privacy risks reduced:
+    This prevents a legacy/corrupt quantity from being represented as a differently-unitized clinical stock value or
+    dangerous stock risk. Correct neighboring items remain visible; there is no whole-response error or false empty
+    state. No raw unit/value/reason is emitted for a mismatched snapshot, and synthetic fixtures contain no PHI.
+    No write, RLS, audit behavior, migration, production mutation, external send, deploy, secret, or destructive
+    operation changed.
+  - performance:
+    Exact enum/string comparison is constant-time after the existing bounded snapshot query. It adds no query,
+    join, network request, mutation, state synchronization, dependency, or payload of raw snapshot data.
+  - plan review / subagent / Oracle:
+    A read-only mapper returned conditional GO (0.98); the medical/data-integrity reviewer rated the latent issue
+    high severity and required a per-item fail-closed DTO status, no conversion, no whole-item omission, and explicit
+    pharmacist guidance. The verifier confirmed the visit summary/UI code and tests, then required documentation of
+    the separate dashboard raw-reader gap before PASS. Oracle was not used per the current user instruction.
+  - validation:
+    Focused summary/panel Vitest passed 2 files / 13 tests; expanded stock snapshot/summary/gate/page/form/panel/route
+    Vitest passed 7 files / 79 tests. Gate-off local Playwright passed Chromium + `mobile-chromium` 4/4, including
+    mismatch suppression, zero observation POSTs, disabled controls, 44px selector, and no panel/page overflow.
+    Exact-path ESLint, Prettier, and `git diff --check` passed. `pnpm typecheck` first completed `next typegen` but
+    exhausted the default 4GB Node heap; retry with `NODE_OPTIONS=--max-old-space-size=8192` completed typegen and
+    reported only the pre-existing user-owned `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285`
+    TS2322 (`string | null` to `string | undefined`). The new fixture TS2345 was fixed; no type was weakened. Build
+    was not run while that shared type gate remains red.
+  - gbrain:
+    `projects/careviax/decisions/2026-07-10/stock-snapshot-unit-fail-closed` records the decision and links it to
+    the existing dashboard stock-risk reader decision without PHI or secrets.
+  - UI/imagegen:
+    The UI SSOT was followed. Image generation was omitted because this is a bounded integrity warning and value
+    suppression inside an existing card, not visual reconstruction; no interaction was added and browser coverage
+    verifies desktop/mobile layout.
+  - remaining / next action:
+    `STOCK-001-VISIT-UI` remains Partial only for migration/real DB RLS/idempotency evidence and environment gate
+    activation, all human gates. `STOCK-001-DASHBOARD-SNAPSHOT-UNIT-GUARD` is a distinct P1 follow-up: the existing
+    dashboard raw reader/cockpit has not been changed and must not be claimed safe for legacy/corrupt unit mismatch.
+    No push was performed.
+
 - codex: explicit visit stock ledger difference display.
   - commit:
     `81f1ec532 fix(visits): clarify stock ledger differences`.
