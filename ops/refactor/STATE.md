@@ -51,6 +51,35 @@
 
 ## 直近の作業
 
+- codex: workflow exception resolution envelope convergence.
+  - commit:
+    `55170632e fix(API-CONTRACT-001EK): envelope workflow exception resolution`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001EK`。`PATCH /api/workflow-exceptions/:id` の200 successを exact
+    `{ data: exception }` に揃える。Nested DTO/root ID不在、resolution/cycle clear/log維持、debt減を
+    完了条件とした。
+  - files inspected / changed:
+    GET/PATCH route and full test; resolution schema; open-only and dispense-audit guards; transactional exception/cycle
+    updates and transition log; repository-wide endpoint consumers; allowlist; Plans/archive/state; active dirty tree.
+    Changed only PATCH success/test, allowlist and ledgers; no production consumer exists.
+  - implementation / behavior / rollback:
+    Provider nests the unchanged updated exception under `data`. Rollback is the scoped code and ledger commits; no
+    mutation ordering, persisted field, schema, migration, dependency or deploy configuration changed.
+  - security / medical / human review:
+    Permission/org validation, open-only guard, rerun guard, transactional update, remaining-open count, cycle flag clear
+    and transition log remain covered. Human review should confirm public response nesting only; no medical workflow rule
+    changed. Codex alone implemented and verified the slice; no subagent, agmsg, Claude, Oracle or external worker used.
+  - validation:
+    Baseline and final focused Vitest each passed 1 file / 6 tests. Exact ESLint, Prettier,
+    `api-response-shape:check` (26 allowlisted / 0 new), route-auth, frontend-contract, query-shape, client-PHI-log and
+    `git diff --check` passed. Typegen succeeded; full typecheck remains red only on the pre-existing user-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that gate is red. No DB/migration,
+    production operation, external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen / remaining:
+    `API-CONTRACT-001EK` is DONE; parent remains Partial at 26 violations. Browser/image generation were omitted because
+    there is no UI change. Next: implement the separately scoped sensitive no-store fix for both workflow-exception
+    handlers, then resume allowlist burn-down. Preserve unowned config, harness, inbound and medication-stock work.
+
 - codex: workflow exception detail envelope convergence.
   - commit:
     `a20b260da fix(API-CONTRACT-001EJ): envelope workflow exception detail`.
