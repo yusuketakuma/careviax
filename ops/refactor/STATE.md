@@ -51,6 +51,39 @@
 
 ## 直近の作業
 
+- codex: visit-record handoff confirmation envelope convergence.
+  - commit:
+    `bb82d154b fix(API-CONTRACT-001ER): envelope handoff confirmation`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001ER`。`PUT /api/visit-records/:id/handoff` のconfirmation successを
+    exact `{ data: handoff }`へ揃える。Nested DTO、direct/owner override、version/assignment、typed conflict、
+    sensitive no-store、GET contract不変、route/provider-consumer tests、debt 19→18を完了条件とした。
+  - files inspected / changed:
+    Handoff PUT/GET routeとtests、confirmation service、`HandoffConfirmPanel` / `HandoffWorkspace` とtests、
+    protected GET/POST matrices、allowlist、Plans/archive/state、active dirty treeを確認した。変更はPUT success、
+    nested route regression、allowlist、計画台帳だけで、GETは既に`data` envelopeのため変更していない。
+  - implementation / behavior / rollback:
+    Existing handoff DTOをそのまま`data`配下へ移動した。2つのproduction callerは既にenvelope fixture/mockを
+    使い、返却値を業務分岐に使わずmutation完了後のinvalidate/toastだけに依存する。Rollbackはscoped
+    code/ledger commitのrevertで、schema、migration、persisted data、dependency、deploy設定の復元は不要。
+  - security / medical / privacy / human review:
+    `canVisit`、assignment、primary/backup/owner direct permission、admin override reason、optimistic version guard、
+    task/audit連携、typed conflict、sensitive no-storeとsanitized error responseは不変。患者/訪問/医療DTO、
+    PHI field/logは変更していない。Human reviewはresponse nestingとconsumer非依存だけを確認すればよい。
+    Codex単独で実装・検証し、subagent、agmsg、Claude、Oracle、外部workerは使っていない。
+  - validation:
+    Baseline/final focused Vitestは各3 files / 81 tests pass。Exact ESLint、Prettier、
+    `api-response-shape:check`（18 allowlisted / 0 new）、route-auth、frontend-contract、query-shape、client-PHI-log、
+    diff checkがpass。Protected GET matrixは384/384、protected POST matrixは151/151 pass。Typegenは成功し、
+    full typecheckは今回外のuser-owned `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。
+    buildはtypecheck red中のため未実施。DB/migration、production操作、外部送信、deploy、push、destructive
+    actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001ER`はDONE、parentは18 violationsでPartial。JSON-only/API contractでUI変更がないため
+    browser/imagegenを省略。unowned config/harness/inboundと全untracked artifactを保持した。次は残allowlistを
+    再スキャンし、billing/consent/platform gateを避けた最上位の実行可能routeを選ぶ。第一候補はhandoff
+    extract POSTまたはsupervision mutation contract。
+
 - codex: protected GET cockpit details fixture isolation.
   - commit:
     `61e7e132b test(TEST-PROTECTED-GET-COCKPIT-DETAILS-001): isolate billing export fixture`.
