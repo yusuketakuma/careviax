@@ -20,6 +20,7 @@ export type DashboardMedicationStockLedgerRiskRow = {
   equivalence_review_status: string;
   equivalence_confidence: string | null;
   item_updated_at: Date;
+  snapshot_unit_mismatch: boolean;
   snapshot_id: string | null;
   current_quantity: Prisma.Decimal | number | string | null;
   last_observed_quantity: Prisma.Decimal | number | string | null;
@@ -100,6 +101,27 @@ function readCount(value: bigint | number | string | null | undefined): number {
 
 function uniq(values: string[] | undefined): string[] {
   return Array.from(new Set((values ?? []).filter(Boolean)));
+}
+
+function failClosedSnapshotUnitMismatch(
+  row: DashboardMedicationStockLedgerRiskRow,
+): DashboardMedicationStockLedgerRiskRow {
+  if (!row.snapshot_unit_mismatch) return row;
+
+  return {
+    ...row,
+    snapshot_id: null,
+    current_quantity: null,
+    last_observed_quantity: null,
+    last_observed_at: null,
+    estimated_daily_usage: null,
+    usage_confidence: null,
+    estimated_stockout_date: null,
+    days_until_stockout: null,
+    stock_risk_level: null,
+    risk_reason_code: null,
+    calculated_at: null,
+  };
 }
 
 function buildScopeSql(args: { patientIds?: string[]; caseIds?: string[] }) {
@@ -278,23 +300,46 @@ export async function readDashboardMedicationStockLedgerRisks(
       item."equivalence_review_status"::text AS equivalence_review_status,
       item."equivalence_confidence"::text AS equivalence_confidence,
       item."updated_at" AS item_updated_at,
-      snapshot."id" AS snapshot_id,
-      snapshot."current_quantity",
-      snapshot."last_observed_quantity",
-      snapshot."last_observed_at",
-      snapshot."estimated_daily_usage",
-      snapshot."usage_confidence"::text AS usage_confidence,
-      snapshot."estimated_stockout_date",
-      snapshot."days_until_stockout",
-      snapshot."stock_risk_level"::text AS stock_risk_level,
-      snapshot."risk_reason_code",
-      snapshot."calculated_at",
+      (
+        snapshot."id" IS NOT NULL
+        AND snapshot."unit" IS DISTINCT FROM item."unit"
+      ) AS snapshot_unit_mismatch,
+      CASE WHEN snapshot."unit" = item."unit" THEN snapshot."id" END AS snapshot_id,
+      CASE WHEN snapshot."unit" = item."unit" THEN snapshot."current_quantity" END
+        AS current_quantity,
+      CASE WHEN snapshot."unit" = item."unit" THEN snapshot."last_observed_quantity" END
+        AS last_observed_quantity,
+      CASE WHEN snapshot."unit" = item."unit" THEN snapshot."last_observed_at" END
+        AS last_observed_at,
+      CASE WHEN snapshot."unit" = item."unit" THEN snapshot."estimated_daily_usage" END
+        AS estimated_daily_usage,
+      CASE WHEN snapshot."unit" = item."unit" THEN snapshot."usage_confidence"::text END
+        AS usage_confidence,
+      CASE WHEN snapshot."unit" = item."unit" THEN snapshot."estimated_stockout_date" END
+        AS estimated_stockout_date,
+      CASE WHEN snapshot."unit" = item."unit" THEN snapshot."days_until_stockout" END
+        AS days_until_stockout,
+      CASE WHEN snapshot."unit" = item."unit" THEN snapshot."stock_risk_level"::text END
+        AS stock_risk_level,
+      CASE WHEN snapshot."unit" = item."unit" THEN snapshot."risk_reason_code" END
+        AS risk_reason_code,
+      CASE WHEN snapshot."unit" = item."unit" THEN snapshot."calculated_at" END
+        AS calculated_at,
       COUNT(*) OVER()::bigint AS total_count,
-      COUNT(*) FILTER (WHERE snapshot."stock_risk_level"::text = 'urgent') OVER()::bigint
+      COUNT(*) FILTER (
+        WHERE snapshot."unit" = item."unit"
+          AND snapshot."stock_risk_level"::text = 'urgent'
+      ) OVER()::bigint
         AS urgent_count,
-      COUNT(*) FILTER (WHERE snapshot."stock_risk_level"::text = 'shortage_expected') OVER()::bigint
+      COUNT(*) FILTER (
+        WHERE snapshot."unit" = item."unit"
+          AND snapshot."stock_risk_level"::text = 'shortage_expected'
+      ) OVER()::bigint
         AS shortage_expected_count,
-      COUNT(*) FILTER (WHERE snapshot."usage_confidence"::text = 'unknown') OVER()::bigint
+      COUNT(*) FILTER (
+        WHERE snapshot."unit" = item."unit"
+          AND snapshot."usage_confidence"::text = 'unknown'
+      ) OVER()::bigint
         AS usage_unknown_count,
       COUNT(*) FILTER (
         WHERE item."equivalence_review_status"::text IN ('needs_review', 'uncertain')
@@ -307,27 +352,46 @@ export async function readDashboardMedicationStockLedgerRisks(
       AND item."active" = TRUE
       ${scope.sql}
       AND (
-        snapshot."stock_risk_level"::text IN ('urgent', 'shortage_expected')
-        OR snapshot."usage_confidence"::text = 'unknown'
+        (
+          snapshot."unit" = item."unit"
+          AND (
+            snapshot."stock_risk_level"::text IN ('urgent', 'shortage_expected')
+            OR snapshot."usage_confidence"::text = 'unknown'
+          )
+        )
+        OR (
+          snapshot."id" IS NOT NULL
+          AND snapshot."unit" IS DISTINCT FROM item."unit"
+        )
         OR item."equivalence_review_status"::text IN ('needs_review', 'uncertain')
       )
     ORDER BY
       CASE
-        WHEN snapshot."stock_risk_level"::text = 'urgent' THEN 0
-        WHEN snapshot."stock_risk_level"::text = 'shortage_expected' THEN 1
-        WHEN snapshot."usage_confidence"::text = 'unknown' THEN 2
+        WHEN snapshot."unit" = item."unit"
+          AND snapshot."stock_risk_level"::text = 'urgent' THEN 0
+        WHEN snapshot."unit" = item."unit"
+          AND snapshot."stock_risk_level"::text = 'shortage_expected' THEN 1
+        WHEN snapshot."unit" = item."unit"
+          AND snapshot."usage_confidence"::text = 'unknown' THEN 2
+        WHEN snapshot."id" IS NOT NULL
+          AND snapshot."unit" IS DISTINCT FROM item."unit" THEN 3
         WHEN item."equivalence_review_status"::text IN ('needs_review', 'uncertain') THEN 3
         ELSE 4
       END ASC,
-      snapshot."estimated_stockout_date" ASC NULLS LAST,
-      COALESCE(snapshot."calculated_at", item."updated_at") DESC,
+      CASE WHEN snapshot."unit" = item."unit" THEN snapshot."estimated_stockout_date" END
+        ASC NULLS LAST,
+      COALESCE(
+        CASE WHEN snapshot."unit" = item."unit" THEN snapshot."calculated_at" END,
+        item."updated_at"
+      ) DESC,
       item."id" ASC
     LIMIT ${args.take}
   `);
 
-  const first = rows[0];
+  const sanitizedRows = rows.map(failClosedSnapshotUnitMismatch);
+  const first = sanitizedRows[0];
   return {
-    rows,
+    rows: sanitizedRows,
     totalCount: readCount(first?.total_count),
     urgentCount: readCount(first?.urgent_count),
     shortageExpectedCount: readCount(first?.shortage_expected_count),

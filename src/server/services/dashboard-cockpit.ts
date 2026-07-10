@@ -2155,6 +2155,7 @@ function medicationStockUnitLabel(unit: string | null | undefined) {
 }
 
 function formatMedicationStockLedgerQuantity(row: DashboardMedicationStockLedgerRiskRow) {
+  if (row.snapshot_unit_mismatch) return null;
   const quantity = decimalToNumber(row.current_quantity);
   if (quantity == null) return null;
   return `${formatQuantityNumber(quantity)}${medicationStockUnitLabel(row.unit)}`;
@@ -2167,6 +2168,7 @@ function formatDateOnly(date: Date | null | undefined) {
 function medicationStockLedgerRiskLevel(
   row: DashboardMedicationStockLedgerRiskRow,
 ): DashboardMedicationStockRiskItem['risk_level'] {
+  if (row.snapshot_unit_mismatch) return 'review_required';
   if (row.stock_risk_level === 'urgent') return 'urgent';
   if (row.stock_risk_level === 'shortage_expected') return 'shortage_expected';
   if (row.usage_confidence === 'unknown') return 'usage_unknown';
@@ -2263,6 +2265,7 @@ function buildMedicationStockLedgerRiskItem(args: {
   const categoryLabel = medicationStockCategoryLabel(row.medication_category);
   const updatedAt = row.calculated_at ?? row.item_updated_at;
   const sourceParts = [
+    row.snapshot_unit_mismatch ? '残数単位の整合性を確認' : null,
     quantityLabel ? `残数 ${quantityLabel}` : null,
     stockoutDate ? `推定切れ日 ${stockoutDate}` : null,
     row.usage_confidence === 'unknown' ? '使用頻度未確認' : null,
@@ -2285,7 +2288,11 @@ function buildMedicationStockLedgerRiskItem(args: {
     risk_level: riskLevel,
     signal_type: 'ledger_snapshot',
     review_status: row.equivalence_review_status,
-    action_status: row.snapshot_id ? 'snapshot_present' : 'snapshot_missing',
+    action_status: row.snapshot_unit_mismatch
+      ? 'snapshot_unit_mismatch'
+      : row.snapshot_id
+        ? 'snapshot_present'
+        : 'snapshot_missing',
     medication_name: row.display_name,
     quantity_label: quantityLabel,
     source_text: sourceParts.join(' / ') || null,
@@ -2295,7 +2302,7 @@ function buildMedicationStockLedgerRiskItem(args: {
     received_at: updatedAt.toISOString(),
     updated_at: updatedAt.toISOString(),
     action_href: buildPatientHref(row.patient_id, '#medication-stock-events'),
-    action_label: '残数台帳を確認',
+    action_label: row.snapshot_unit_mismatch ? '残数単位を確認' : '残数台帳を確認',
     badges: [
       { label: medicationStockRiskLabel(riskLevel), tone: medicationStockRiskBadgeTone(riskLevel) },
       { label: '残数台帳', tone: 'neutral' },

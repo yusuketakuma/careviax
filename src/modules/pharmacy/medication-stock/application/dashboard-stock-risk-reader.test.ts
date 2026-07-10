@@ -42,6 +42,7 @@ describe('readDashboardMedicationStockLedgerRisks', () => {
         equivalence_review_status: 'not_required',
         equivalence_confidence: null,
         item_updated_at: new Date(2026, 5, 12, 9, 0),
+        snapshot_unit_mismatch: false,
         snapshot_id: 'snapshot_1',
         current_quantity: '2',
         last_observed_quantity: '2',
@@ -73,6 +74,94 @@ describe('readDashboardMedicationStockLedgerRisks', () => {
     expect(result.shortageExpectedCount).toBe(1);
     expect(result.usageUnknownCount).toBe(0);
     expect(result.equivalenceReviewCount).toBe(1);
+  });
+
+  it('retains a mismatched stock item while suppressing every snapshot-derived value', async () => {
+    const queryRaw = vi.fn().mockResolvedValue([
+      {
+        stock_item_id: 'stock_item_mismatch',
+        stock_item_display_id: 'MS-MISMATCH',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        display_name: '単位確認薬',
+        ingredient_name: null,
+        strength: null,
+        dosage_form: null,
+        route: null,
+        unit: 'sheet',
+        medication_category: 'topical',
+        managing_party: 'family',
+        equivalence_review_status: 'not_required',
+        equivalence_confidence: null,
+        item_updated_at: new Date(2026, 5, 12, 9, 0),
+        snapshot_unit_mismatch: true,
+        snapshot_id: 'snapshot_mismatch_secret',
+        current_quantity: '777',
+        last_observed_quantity: '444',
+        last_observed_at: new Date(2026, 5, 12, 8, 0),
+        estimated_daily_usage: '333',
+        usage_confidence: 'high',
+        estimated_stockout_date: new Date(2026, 5, 13, 0, 0),
+        days_until_stockout: 1,
+        stock_risk_level: 'urgent',
+        risk_reason_code: 'raw-mismatch-reason',
+        calculated_at: new Date(2026, 5, 12, 9, 5),
+        total_count: BigInt(1),
+        urgent_count: BigInt(0),
+        shortage_expected_count: BigInt(0),
+        usage_unknown_count: BigInt(0),
+        equivalence_review_count: BigInt(0),
+      },
+    ]);
+
+    const result = await readDashboardMedicationStockLedgerRisks(
+      { $queryRaw: queryRaw } as DashboardMedicationStockLedgerRiskDb,
+      { orgId: 'org_1', patientIds: ['patient_1'], caseIds: ['case_1'], take: 10 },
+    );
+
+    expect(result).toMatchObject({
+      totalCount: 1,
+      urgentCount: 0,
+      shortageExpectedCount: 0,
+      usageUnknownCount: 0,
+      equivalenceReviewCount: 0,
+      rows: [
+        {
+          stock_item_id: 'stock_item_mismatch',
+          unit: 'sheet',
+          snapshot_unit_mismatch: true,
+          snapshot_id: null,
+          current_quantity: null,
+          last_observed_quantity: null,
+          last_observed_at: null,
+          estimated_daily_usage: null,
+          usage_confidence: null,
+          estimated_stockout_date: null,
+          days_until_stockout: null,
+          stock_risk_level: null,
+          risk_reason_code: null,
+          calculated_at: null,
+        },
+      ],
+    });
+    const serializedRows = JSON.stringify(result.rows, (_key, value) =>
+      typeof value === 'bigint' ? value.toString() : value,
+    );
+    expect(serializedRows).not.toContain('snapshot_mismatch_secret');
+    expect(serializedRows).not.toContain('raw-mismatch-reason');
+
+    const query = queryRaw.mock.calls[0][0] as { strings: string[] };
+    const sql = query.strings.join('?').replace(/\s+/g, ' ');
+    expect(sql).toContain('snapshot."unit" IS DISTINCT FROM item."unit"');
+    expect(sql).toContain(
+      'CASE WHEN snapshot."unit" = item."unit" THEN snapshot."current_quantity" END',
+    );
+    expect(sql).toContain(
+      'CASE WHEN snapshot."unit" = item."unit" THEN snapshot."risk_reason_code" END',
+    );
+    expect(sql).toContain(
+      'WHERE snapshot."unit" = item."unit" AND snapshot."stock_risk_level"::text = \'urgent\'',
+    );
   });
 });
 

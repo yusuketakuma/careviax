@@ -1857,6 +1857,88 @@ describe('/api/dashboard/cockpit', () => {
     expect(medicationStockQueryRawMock).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps a unit-mismatched stock item visible without exposing its snapshot values or risk', async () => {
+    medicationStockQueryRawMock.mockResolvedValueOnce([]);
+    medicationStockQueryRawMock.mockResolvedValueOnce([
+      {
+        stock_item_id: 'stock_item_mismatch',
+        stock_item_display_id: 'MS-MISMATCH',
+        patient_id: 'patient_ledger_1',
+        case_id: 'case_ledger_1',
+        display_name: '単位確認薬',
+        ingredient_name: null,
+        strength: null,
+        dosage_form: null,
+        route: null,
+        unit: 'sheet',
+        medication_category: 'topical',
+        managing_party: 'family',
+        equivalence_review_status: 'not_required',
+        equivalence_confidence: null,
+        item_updated_at: new Date(2026, 5, 12, 8, 20),
+        snapshot_unit_mismatch: true,
+        snapshot_id: 'snapshot_mismatch_secret',
+        current_quantity: '777',
+        last_observed_quantity: '444',
+        last_observed_at: new Date(2026, 5, 12, 8, 10),
+        estimated_daily_usage: '333',
+        usage_confidence: 'high',
+        estimated_stockout_date: new Date(Date.UTC(2026, 5, 13, 0, 0)),
+        days_until_stockout: 1,
+        stock_risk_level: 'urgent',
+        risk_reason_code: 'raw mismatch risk 090-1111-2222',
+        calculated_at: new Date(2026, 5, 12, 8, 30),
+        total_count: BigInt(1),
+        urgent_count: BigInt(0),
+        shortage_expected_count: BigInt(0),
+        usage_unknown_count: BigInt(0),
+        equivalence_review_count: BigInt(0),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_ledger_1', name: '台帳 一郎' }]);
+
+    const response = (await GETStockRisks(createRequest('', '/api/dashboard/cockpit/stock-risks'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json.data.stock_summary).toEqual({
+      urgent_shortage_count: 0,
+      shortage_expected_count: 0,
+      usage_unknown_count: 0,
+      equivalence_review_count: 0,
+      inbound_stock_signal_count: 0,
+      ledger_stock_risk_count: 1,
+      linked_to_stock_event_count: 0,
+    });
+    expect(json.data.stock_items_total_count).toBe(1);
+    expect(json.data.stock_items_visible_count).toBe(1);
+    expect(json.data.stock_items).toEqual([
+      expect.objectContaining({
+        id: 'medication_stock_snapshot:stock_item_mismatch',
+        source: 'stock_snapshot',
+        stock_item_id: 'stock_item_mismatch',
+        snapshot_id: null,
+        risk_level: 'review_required',
+        action_status: 'snapshot_unit_mismatch',
+        medication_name: '単位確認薬',
+        quantity_label: null,
+        source_text: '残数単位の整合性を確認',
+        action_label: '残数単位を確認',
+      }),
+    ]);
+
+    const responseBody = JSON.stringify(json.data);
+    expect(responseBody).not.toContain('777');
+    expect(responseBody).not.toContain('444');
+    expect(responseBody).not.toContain('333');
+    expect(responseBody).not.toContain('snapshot_mismatch_secret');
+    expect(responseBody).not.toContain('raw mismatch risk');
+    expect(responseBody).not.toContain('090-1111-2222');
+  });
+
   it('scopes medication stock risks by assigned patients and cases for non-admin members', async () => {
     authContextMock.role = 'pharmacist';
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
