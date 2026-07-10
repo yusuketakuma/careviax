@@ -52,6 +52,53 @@
 
 ## 直近の作業
 
+- codex: visit schedule reorder response-envelope convergence.
+  - commit:
+    `26f5faeb6 fix(API-CONTRACT-001DY): envelope schedule route reorder result`.
+  - current task:
+    P0 `API-CONTRACT-001DY`。`PATCH /api/visit-schedules/reorder` successを legacy root
+    `{ case_ids, schedule_ids, vehicle_assignment }` から exact nested `data` envelopeへ移し、
+    `api-response-shape` allowlist debtを40から39へ削減する。mutation、auth、transaction、vehicle/audit/
+    notification、status/error semanticsは変更しない。
+  - files inspected:
+    `Plans.md`; `docs/plans-archive.md`; this state; current Next.js route-handler guide;
+    schedule reorder route/test; visit-route client; route compare, conflict resolution, emergency route,
+    team board, weekly optimizer and day-route helper callers/tests; response-shape checker/allowlist;
+    active dirty tree and recent commits。
+  - files changed:
+    `src/app/api/visit-schedules/reorder/route.ts` and test;
+    `tools/api-response-shape-allowlist.json`; `Plans.md`; `docs/plans-archive.md`; and this state file。
+  - bugs found / fixed:
+    The successful mutation returned schedule/vehicle result fields at the response root, contrary to the current
+    public envelope contract. It now returns exact nested `data`; the route test pins the full body and rejects
+    root fields. All six production caller families were traced and ignore the body, using success only for toast,
+    invalidation or local completion state, so no legacy fallback or frontend split was introduced.
+  - frontend/backend, security and performance:
+    This is a response-only correction. Lifecycle permission, org/assignment checks, Serializable retry,
+    guarded `updateMany`, confirmed/status/stale/duplicate and vehicle capacity/duration/site/assignment checks,
+    workflow audit/notification, no-store, status and error bodies are unchanged. No query, transaction, render,
+    request, payload field, PHI disclosure, log, dependency or mutation behavior was added.
+  - plan review / agents / Oracle:
+    Codex alone mapped the route and every production caller before editing. No subagent, agmsg, Claude, external
+    maker/checker or Oracle consultation was used.
+  - validation:
+    Pre-change route baseline passed 1 file / 39 tests. Post-change focused Vitest passed 7 files / 108 tests
+    across the route and all caller families. Exact ESLint, Prettier and `git diff --check` passed.
+    `pnpm api-response-shape:check` passed at 39 allowlisted / 0 new; `route-auth-wrapper:check` and
+    `db:query-shape:check` passed. Typegen succeeded; full typecheck reported no schedule-reorder error and remains
+    red only on the pre-existing user-owned
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that
+    prerequisite gate is red. No DB/migration command, production operation, external send, deploy, push or
+    destructive action ran.
+  - Plans / UI / imagegen / ownership:
+    `API-CONTRACT-001DY` is recorded as a completed derived slice; parent `API-CONTRACT-001` remains Partial with
+    39 allowlisted violations. Image generation/browser screenshots were omitted because response nesting changes
+    no layout, interaction or displayed field. A concurrently-added stock-dashboard evidence hunk in `Plans.md`
+    is unowned by this slice and is preserved without staging it in this API commit.
+  - remaining / next action:
+    Continue `API-CONTRACT-001` with another bounded consumer-backed route. Preserve all unowned
+    inbound/config/harness/stock-dashboard dirty files. No push was performed.
+
 - codex: visit schedule proposal reorder response-envelope convergence.
   - commit:
     `206177578 fix(API-CONTRACT-001DX): envelope proposal route reorder result`.
