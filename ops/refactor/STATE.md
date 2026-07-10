@@ -52,6 +52,74 @@
 
 ## 直近の作業
 
+- codex: patient-share current-consent gate for visit-request create and accept.
+  - commit:
+    `b4127b4b8 fix(sharing): require active consent for visit requests`.
+  - current task:
+    P0 `SHARE-CONSENT-WRITE-001A` として、patient-sharing downstream mutation のうち
+    policy判断なしに閉じられる visit-request create / accept だけを current active consent
+    SSOTへ接続する。decline、法定記録closeout、submit/review/correction/report reuseは変更しない。
+  - files inspected:
+    `Plans.md`; `docs/plans-archive.md`; patient-share/consent/partnership Prisma schema;
+    `docs/compliance/patient-consent-workflow.md`; bundled Next.js route-handler guide;
+    patient-share active access/policy/transition services and tests; pharmacy visit request GET/POST,
+    decision, consent revoke, partner record/message list routes and tests; advisory-lock/RLS helpers;
+    notification transaction behavior; workflow UI consent scope payload; and the active dirty tree.
+  - files changed:
+    `Plans.md`; `docs/plans-archive.md`; `src/server/services/patient-share-access.ts` and new test;
+    `src/app/api/pharmacy-visit-requests/route.ts` and test;
+    `src/app/api/pharmacy-visit-requests/[id]/decision/route.ts` and test;
+    `src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.ts` and test;
+    `src/app/api/partner-visit-records/route.test.ts`; and this state file.
+  - bugs found / fixed:
+    Read eligibility converted real instants to UTC calendar dates, so UTC production could treat the first
+    nine JST hours as the prior consent day. The shared predicate now uses `japanDateKey`, inclusive date-only
+    sentinels, case active + revoked/ended null + starts/ends, partnership active + effective window, active
+    partner pharmacy, and a current unrevoked consent. Visit request desired/contract dates now use the same
+    JST business date instead of UTC date.
+  - security/privacy risks reduced:
+    Visit-request create previously wrote request reason, physician instruction, carry items, and home notes
+    after checking stored status only; accept could continue the workflow after consent expiry. Create now
+    resolves only the active predicate and hides initial eligibility misses as 404 before contract lookup,
+    create, or audit. Accept applies the predicate to its initial request lookup, rechecks after the lock, and
+    includes it in the final conditional `updateMany`; initial misses are 404 and post-read races are generic
+    409 with no audit. Both paths and consent revoke use the same tenant+share-case transaction advisory lock,
+    acquired before the active/revoke read, so revoke and new workflow mutations serialize on one key. Create
+    additionally uses Serializable isolation and maps P2034 to a sanitized no-store retry conflict. Decline is
+    unchanged and explicitly remains an unratified closeout policy, not a newly approved exception.
+  - scoped residual / stopping condition:
+    `PatientShareConsent.scope` still accepts arbitrary JSON and current UI sends false keys that response/audit
+    can mislabel as consented. No action scope was guessed, no multi-consent union or backfill was introduced,
+    and full `SHARE-CONSENT-WRITE-001` remains Partial. Strict enabled-only scope normalization is tracked as
+    `SHARE-CONSENT-SCOPE-NORMALIZE-001`; expiry/revoke closeout decisions are a human gate in
+    `SHARE-CONSENT-CLOSEOUT-POLICY-001`.
+  - performance:
+    Create replaces its broad eligibility lookup with one bounded predicate under one advisory lock. Accept
+    adds one bounded share-case re-read only for the accept branch; decline skips both lock and re-read. No
+    loop, N+1 query, unbounded result, network request, dependency, or frontend render work was added.
+  - plan review / subagent / Oracle:
+    Two independent read-only reviewers classified actions before editing. The first returned Conditional GO
+    for create+accept only. The privacy/security reviewer found missing JST/partnership/case terminal guards,
+    an insufficient create-only Serializable strategy, initial 409 disclosure, and the scope false-key blocker;
+    those implementable findings were addressed with the shared lock/predicate/404 boundary and the scope/closeout
+    items were split instead of guessed. A separate verifier reported provisional PASS with no blocking diff
+    finding after focused tests. Oracle was not used per current user instruction.
+  - validation:
+    Core helper/create/decision/revoke/read/summary/workflow suites passed 8 files / 99 tests; the message-thread
+    helper consumer passed 1 file / 9 tests. `pnpm plans:active:check`, `pnpm api-response-shape:check`
+    (43 allowlisted / 0 new), `pnpm route-auth-wrapper:check`, `pnpm db:raw-read-org-guard:check`,
+    `pnpm db:query-shape:check` (0 / 0), `pnpm dto-direct-prisma-return:check`,
+    `pnpm client-phi-log:check`, exact-path ESLint/Prettier, and `git diff --check` passed. `pnpm typecheck`
+    completed Next type generation and both it and the 8GB no-unused run stopped only at the unrelated user-owned
+    dirty `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285` TS2322.
+  - UI/imagegen:
+    No UI structure or visual behavior changed, so image generation was not applicable.
+  - remaining / next action:
+    Keep `SHARE-CONSENT-WRITE-001` Partial. The next plan-reviewed candidate is enabled-only consent scope
+    normalization; if its action registry requires product/privacy choices, stop at that human gate and proceed
+    to `NOTIFY-RECIPIENT-MEMBER-001`. Partner-record closeout actions remain untouched. No push, deploy,
+    migration, production mutation, external send, or destructive operation ran.
+
 - codex: pharmacy cooperation actor attribution and notification recipient boundary.
   - commit:
     `d9cb39ff7 fix(cooperation): bind decisions to authenticated actors`.
