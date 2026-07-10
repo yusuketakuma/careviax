@@ -51,6 +51,44 @@
 
 ## 直近の作業
 
+- codex: visit-record create/overwrite envelope convergence.
+  - commit:
+    `9e22513d8 fix(API-CONTRACT-001EV): envelope visit record creation`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001EV`。`POST /api/visit-records` の201 create / 200 conflict overwrite
+    successをexact `{ data: { record, suggestedSchedule, conflictResolved } }`へ揃える。Form/offline reader、
+    clinical transaction/auth/tenant/version/audit/no-store不変、tests、debt 15→14を完了条件とした。
+  - files inspected / changed:
+    Visit-record collection GET/POST route/full tests、save transaction、visit record formとtests、offline syncと
+    tests、detail GET/PATCH隣接consumer、protected GET/POST matrices、allowlist、Plans/archive/state、active dirty
+    treeを確認。変更はPOST success、create/overwrite/suggestion response assertions、form unwrap/fixtures、allowlist、
+    計画台帳だけ。Collection GET、detail route、offline sync productionは変更していない。
+  - implementation / behavior / rollback:
+    Existing `{ record, suggestedSchedule, conflictResolved }` DTOをそのまま`data`配下へ移動し、formは
+    `payload.data.record`を読む。Offline syncは成功statusだけでqueueを完了しbody非依存。Status 201/200、
+    DTO fields、error envelopeは不変。Rollbackはscoped code/ledger commitのrevertで、schema、migration、
+    persisted data、dependency、deploy設定の復元は不要。
+  - security / medical / privacy / human review:
+    `canVisit`、schedule/patient/assignment/org scope、clinical completion/readiness、carry-item、structured SOAP、
+    optimistic overwrite、transaction、derived lab/residual/billing evidence、audit/task/document/cycle、async handoff
+    extraction、PHI-safe logging、sensitive no-storeを変更していない。患者/医療DTO、算定判断、PHI field/logは
+    不変。Human reviewはresponse nesting、form unwrap、create/overwrite parityを確認すればよい。Codex単独で
+    実装・検証し、subagent、agmsg、Claude、Oracle、外部workerは使っていない。
+  - validation:
+    Baseline focusedは3 files / 166 tests pass。初回finalは旧root `suggestedSchedule` assertions 3件だけfailし、
+    assertionを削らず`data.suggestedSchedule`へ移行後、同166 testsがpass。Exact ESLint、Prettier、
+    `api-response-shape:check`（14 allowlisted / 0 new）、route-auth、frontend-contract、query-shape、client-PHI-log、
+    diff checkがpass。Protected GET matrixは384/384、protected POST matrixは151/151 pass。Typegenは成功し、
+    full typecheckは今回外のuser-owned `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。
+    buildはtypecheck red中のため未実施。DB/migration、production操作、外部送信、deploy、push、destructive
+    actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001EV`はDONE、parentは14 violationsでPartial。UI production変更はreader unwrapだけでvisual
+    reconstructionがないためbrowser/imagegenを省略し、form testsで回帰確認した。Full STATE Prettierの既存
+    concurrent ledger wrap debtは未所有差分として保持。unowned config/harness/inboundと全untracked artifactを
+    保持した。次はvisit-record detail GETをconsumer helperごとにenvelope移行し、detail allowlist countを2→1へ
+    減らす。
+
 - codex: handoff supervision confirmation envelope convergence.
   - commit:
     `f3f295dff fix(API-CONTRACT-001EU): envelope handoff supervision confirmation`.
