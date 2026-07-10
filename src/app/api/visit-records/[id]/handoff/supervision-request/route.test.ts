@@ -111,12 +111,14 @@ describe('/api/visit-records/[id]/handoff/supervision-request', () => {
 
     expect(res!.status).toBe(200);
     expectSensitiveNoStore(res!);
-    await expect(res!.json()).resolves.toMatchObject({
-      status: 'requested',
-      task_type: 'handoff_supervision_review',
-      assigned_to: 'supervisor_1',
-      visit_record_id: 'vr_1',
-      visit_record_version: 2,
+    await expect(res!.json()).resolves.toEqual({
+      data: {
+        status: 'requested',
+        task_type: 'handoff_supervision_review',
+        assigned_to: 'supervisor_1',
+        visit_record_id: 'vr_1',
+        visit_record_version: 2,
+      },
     });
     expect(requestHandoffConfirmationSupervisionMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',

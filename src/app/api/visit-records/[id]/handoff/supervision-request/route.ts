@@ -125,7 +125,7 @@ async function authenticatedPOST(
       requestNote: parsed.data.request_note,
       requestContext: ctx,
     });
-    return withSensitiveNoStore(success(request));
+    return withSensitiveNoStore(success({ data: request }));
   } catch (cause) {
     if (cause instanceof VisitHandoffMissingDataError) {
       return withSensitiveNoStore(
