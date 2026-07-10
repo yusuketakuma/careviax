@@ -51,6 +51,23 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh Phase 7 offline sync visual-status registry adapter (DONE, 2026-07-11; behavior-preserving implementation slice).
+  - result / scope:
+    Added `src/lib/constants/visual-status-registry.ts` with the five existing offline sync keys and moved
+    `SyncStateBadge` to read its default label and role from that registry. `status-labels.ts` retains compatibility
+    exports derived from the registry. This does not change queue/retry/idempotency, storage, HTTP/API, auth/authz,
+    PHI projection, visible labels, role mapping, or offline screen layout.
+  - advisory / safety:
+    The required Oracle browser consult was attempted with GitHub context and minimal non-PHI files, but returned no
+    advice because Chrome disconnected and the reattach encountered a Cloudflare challenge. No duplicate consult was
+    started. The implementation is limited to typed, existing UI metadata and is locally verified; it is not presented
+    as Oracle-reviewed. New domain states, persistence behavior, 401/403/409/429 handling, or lifecycle transitions
+    remain out of scope and gated separately.
+  - validation:
+    Focused Vitest passed 3 files / 15 tests. Exact ESLint and Prettier, `pnpm typecheck`, `pnpm colors:check`,
+    `pnpm frontend-contract:check`, `pnpm boundaries:check`, and `git diff --check` passed. Offline/PWA runtime, E2E,
+    build, standalone, and user/a11y scenario validation remain NOT_EXECUTED.
+
 - codex: UI/UX Refresh P3 NF-10 redirect-only loading boundary cleanup (DONE, 2026-07-11; low-risk implementation slice).
   - result / scope:
     Removed only `src/app/(dashboard)/admin/professionals/loading.tsx` and

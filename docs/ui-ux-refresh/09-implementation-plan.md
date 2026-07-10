@@ -58,6 +58,10 @@ type VisualStatusEntry<TKey extends string> = Readonly<{
 
 次は Slice 1 へ混ぜない: 新しい同期状態、401/403/429 behavior、OCC/409 behavior、offline queue schema、Dexie migration、record lifecycle/revision UI、break-glass、患者ヘッダーのPHI表示、AlertTier semantics、raw status mapping の一括削除。これらは別々のAPI/権限/医療安全gateを必要とする。
 
+### Slice 1 result (2026-07-11)
+
+`src/lib/constants/visual-status-registry.ts` に既存5状態のtyped registryを追加し、`SyncStateBadge`をregistry consumerへ移行した。`status-labels.ts`の既存label/role exportは互換re-exportとして保持している。queue/retry/persistence/API/auth/authorization/PHI/visible label/roleは不変。focused Vitest 3 files / 15 tests、ESLint、Prettier、typecheck、raw-state-color、frontend-contract、module-boundary、diff-checkが通過した。Oracle browser reviewはCloudflare/chrome disconnectで応答未取得のため、レビュー済みとは主張しない。
+
 ## 5. Screen rollout evidence
 
 各画面の `Audited / SSOT applied / Implemented / Unit tested / E2E tested / Accessibility checked / Responsive checked / Evidence` は [Phase 3 inventory](04-screen-and-state-inventory.md) を更新元として、Phase 8の実装時に route 単位で記録する。Phase 7 の共通基盤のみでは、全128 routeへのSSOT適用を主張しない。

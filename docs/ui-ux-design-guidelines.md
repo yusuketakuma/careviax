@@ -610,6 +610,7 @@ PWA + Dexie のオフライン訪問業務、および AWS 依存サービスの
 
 - **3層の表示**: (1) 一目で分かる位置・形・role token・icon、(2) 一読で分かる常時可視の短い日本語ラベル、(3) 理由・対象・日時・取得元・次の操作・監査を示す詳細、を組み合わせる。色、icon、hover tooltip、toast のいずれか単独で患者安全・保存・権限・critical 状態を表さない。
 - **中央registryを唯一の導出元にする**: 画面は semantic state key を渡し、registry が domain、visible copy、role、icon、token、placement、persistence、ARIA、許可操作、acknowledgement、dismissibility、audit requirement、allowed/invalid transitions、component、test を決める。画面ローカルの任意 hex / utility color / icon / severity / 成功文言による状態表現を禁止する。既存の `StatusRole` / `StateBadge` / `StatusDot` は role 層の実装正本であり、domain state 自体を置換するものではない。
+- **実行可能化の初期slice**: `src/lib/constants/visual-status-registry.ts` は既存のoffline sync 5状態だけを registry 化し、`SyncStateBadge` がそこからlabel/roleを導出する。queue、retry、persistence、API、権限の動作は変更しない。新domainを追加する前に、本節の実在性・遷移・test要件を満たすこと。
 - **実在性を先に証明する**: 新しい state key は API/model、TypeScript literal/discriminated union、registry、共通component、unit/E2E/a11y test を同じ slice で揃えるまで、利用者に実在する状態として表示しない。`local-only + server-saved`、`blocking + dismissible` のような矛盾した組み合わせを型と遷移規則で表現不能に寄せる。
 - **保存・同期・鮮度の分離**: `端末保存済（未送信）`、`送信待ち`、`同期中`、`サーバー保存済み`、`送信失敗`、`競合`、画面データの `stale` は異なる状態である。queue の最終同期時刻を画面データの鮮度保証として表示しない。失敗・競合・partial upload は画面内に持続し、toastだけで消さない。
 - **患者・臨床の固定表示**: 患者固有の主要画面は患者識別、業務文脈、critical safety tag、最終更新の入口を pinned zone に置く。氏名・カナ・薬剤名・用量・単位・患者識別子を復元不能な ellipsis や hover 専用情報にしない。処方差分は前後値・差分値・変更ラベルを示し、clinical alert と色・位置・操作制約を共有しない。

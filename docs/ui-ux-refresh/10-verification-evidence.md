@@ -7,6 +7,8 @@
 
 Phase 0〜6 は調査・設計文書であり、実画面の a11y、レスポンシブ、offline、同期、認証、upload、visual regression を実施済みとは扱わない。Phase 5/6 文書にある既存unit testや静的根拠は、現在の挙動の調査証拠であって、将来の実装後検証の代替ではない。
 
+2026-07-11 の Phase 7 registry adapter では、`visual-status-registry.test.ts`、`sync-state-badge.test.tsx`、`offline-sync-content.test.tsx` の3 files / 15 tests、ESLint、Prettier、typecheck、raw-state-color、frontend-contract、module-boundary、diff-checkが通過した。これは既存同期5状態の表示メタデータ不変性の証拠であり、offline/PWA実機、conflict、upload、a11y、E2E、build/standaloneの実行証拠ではない。
+
 ## 2. リポジトリで確認できた実行コマンド
 
 | 検証領域           | 実コマンド                                           | UI/UX Refreshでの状態                                     |

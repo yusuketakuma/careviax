@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react';
 import { StateBadge } from '@/components/ui/state-badge';
 import {
-  OFFLINE_SYNC_STATUS_LABELS,
-  OFFLINE_SYNC_STATUS_ROLE,
+  getOfflineSyncStatusEntry,
   type OfflineSyncStatus,
-} from '@/lib/constants/status-labels';
+} from '@/lib/constants/visual-status-registry';
 
 export type SyncStateBadgeProps = {
   /** オフライン同期の行内状態(SSOT 6.6 / 確定表「オフライン同期状態」)。 */
@@ -21,9 +20,11 @@ export type SyncStateBadgeProps = {
  * (色だけに依存しない)。送信失敗(blocked)は常時表示から外さない(false-success 防止 2.7)。
  */
 export function SyncStateBadge({ status, children, className }: SyncStateBadgeProps) {
+  const entry = getOfflineSyncStatusEntry(status);
+
   return (
-    <StateBadge role={OFFLINE_SYNC_STATUS_ROLE[status]} className={className}>
-      {children ?? OFFLINE_SYNC_STATUS_LABELS[status]}
+    <StateBadge role={entry.role} className={className}>
+      {children ?? entry.label}
     </StateBadge>
   );
 }

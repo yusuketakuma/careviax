@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { SyncStateBadge } from '@/components/ui/sync-state-badge';
 import { OFFLINE_SYNC_STATUS_ROLE } from '@/lib/constants/status-labels';
+import { getOfflineSyncStatusEntry } from '@/lib/constants/visual-status-registry';
 
 setupDomTestEnv();
 
@@ -42,5 +43,13 @@ describe('SyncStateBadge', () => {
 
     expect(screen.getByText('サーバー競合')).toBeTruthy();
     expect(container.querySelector('[data-role="confirm"]')).toBeTruthy();
+  });
+
+  it('derives its role and default label from the central registry', () => {
+    expect(getOfflineSyncStatusEntry('failed')).toMatchObject({
+      label: '送信失敗',
+      role: 'blocked',
+      component: 'SyncStateBadge',
+    });
   });
 });
