@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
@@ -56,6 +56,44 @@ describe('PatientEditContent patient overview fetch', () => {
     expect(screen.queryByText('読み込み中...', { selector: 'p' })).toBeNull();
     expect(screen.queryByText('patient form')).toBeNull();
     expect(patientFormMock).not.toHaveBeenCalled();
+  });
+
+  it('separates a failed overview read from a missing patient and offers retry', () => {
+    const refetch = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('患者名を含む生のサーバー詳細'),
+      refetch,
+    });
+
+    render(<PatientEditContent patientId="patient_1" />);
+
+    expect(screen.getByText('患者情報を表示できません')).toBeTruthy();
+    expect(
+      screen.getByText(/患者情報の取得に失敗しました。\s*通信状態を確認して再試行してください。/),
+    ).toBeTruthy();
+    expect(screen.queryByText('患者情報が見つかりません')).toBeNull();
+    expect(screen.queryByText('患者名を含む生のサーバー詳細')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows not-found only when the overview has no data and no read error', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<PatientEditContent patientId="patient_1" />);
+
+    expect(screen.getByText('患者情報が見つかりません')).toBeTruthy();
+    expect(screen.queryByText('患者情報を表示できません')).toBeNull();
   });
 
   it('routes patient overview reads through the shared patient API path helper', async () => {

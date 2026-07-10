@@ -5,6 +5,7 @@ import { FileQuestion } from 'lucide-react';
 import { PatientForm } from '@/components/features/patients/patient-form';
 import { Skeleton } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -225,18 +226,20 @@ export function PatientEditContent({ patientId }: { patientId: string }) {
     return <PatientEditLoadingState />;
   }
 
-  if (patientQuery.error instanceof Error || !patientQuery.data) {
+  if (patientQuery.error && !patientQuery.data) {
     return (
-      <EmptyState
-        icon={FileQuestion}
-        title="患者情報が見つかりません"
-        description={
-          patientQuery.error instanceof Error
-            ? patientQuery.error.message
-            : '患者情報を取得できませんでした。'
-        }
+      <ErrorState
+        variant="server"
+        title="患者情報を表示できません"
+        cause="患者情報の取得に失敗しました。"
+        nextAction="通信状態を確認して再試行してください。"
+        onRetry={() => void patientQuery.refetch()}
       />
     );
+  }
+
+  if (!patientQuery.data) {
+    return <EmptyState icon={FileQuestion} title="患者情報が見つかりません" />;
   }
 
   return (

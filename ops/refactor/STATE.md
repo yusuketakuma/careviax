@@ -51,6 +51,17 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh P1 NF-01 patient-edit false-not-found recovery (DONE, 2026-07-11; focused UI behavior slice).
+  - result / scope:
+    Patient edit now renders existing `ErrorState` with fixed cause/recovery copy and `refetch()` only when the overview
+    query errors with no data. True no-data/no-error remains not-found; cached data remains editable after background
+    error. Raw server error text is not displayed. No data model, fetch path/header, form values, PATCH, auth/authz,
+    audit, API, or offline behavior changed. Image generation was omitted because this reuses the existing ErrorState.
+  - validation / limits:
+    Focused edit suites passed 3 files / 12 tests. Exact ESLint/Prettier, typecheck, client PHI-log,
+    frontend-contract, and diff-check passed. Route-mocked E2E, runtime a11y/responsive evidence, full build, and
+    standalone remain NOT_EXECUTED.
+
 - codex: UI/UX Refresh Phase 7 offline sync visual-status registry adapter (DONE, 2026-07-11; behavior-preserving implementation slice).
   - result / scope:
     Added `src/lib/constants/visual-status-registry.ts` with the five existing offline sync keys and moved
