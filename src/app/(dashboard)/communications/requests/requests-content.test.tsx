@@ -264,6 +264,31 @@ describe('CommunicationRequestsContent', () => {
     expect(screen.queryByRole('button', { name: '対応済みにする' })).toBeNull();
   });
 
+  it('distinguishes an empty follow-up queue from loading or errors and offers a refresh action', () => {
+    const refetch = vi.fn();
+    useQueryMock.mockReturnValue({
+      data: { data: [] },
+      isLoading: false,
+      isError: false,
+      refetch,
+    });
+
+    render(<CommunicationRequestsContent />);
+
+    expect(
+      screen.getByRole('heading', { name: '返信待ちの依頼はありません', level: 3 }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('対応が必要な依頼はありません。表示条件で他の状態を確認できます。'),
+    ).toBeTruthy();
+    expect(screen.getByText('新しい依頼が届いた場合は、再読み込みしてください。')).toBeTruthy();
+    expect(screen.getByRole('status').getAttribute('aria-live')).toBe('polite');
+    expect(screen.queryByRole('listbox', { name: '返信待ちの依頼' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
   it('uses an announced skeleton while refreshing the reply follow-up list', () => {
     useQueryMock.mockReturnValue({
       data: { data: [] },

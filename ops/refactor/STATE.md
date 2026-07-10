@@ -51,6 +51,20 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh P3 NF-09 inline empty-state convergence (DONE, 2026-07-11; focused UI behavior slice).
+  - result / scope:
+    Added the `EmptyState` `size="inline"` presentation while preserving its default screen-level presentation, and
+    replaced the hand-built zero-result paragraph in `/communications/requests`. The zero-result state now explains that
+    no reply follow-up is required, points users to the existing display conditions, and provides a 44px shared refresh
+    action. The listbox is rendered only when it contains request options; initial loading, background refresh, and fetch
+    error retain their existing SkeletonRows/ErrorState paths. No query key/fetch/API/mutation/auth/authz/PHI/audit or
+    patient-data behavior changed. `gpt-image-2` was omitted because this only adds a compact layout size to the existing
+    SSOT component and does not reconstruct a visual design.
+  - validation / limits:
+    Focused Vitest passed 2 files / 19 tests. Exact ESLint/Prettier, client PHI-log, frontend-contract,
+    module-boundary, typecheck, and diff-check passed. E2E, runtime a11y/responsive evidence, full build, and
+    standalone remain NOT_EXECUTED pending the Phase 9 evidence run.
+
 - codex: UI/UX Refresh P1 NF-02 admin performance false-zero prevention (DONE, 2026-07-11; focused UI behavior slice).
   - result / scope:
     The actionable performance signal strip now renders `—` rather than a fabricated zero when workflow/schedule/

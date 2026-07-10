@@ -31,4 +31,19 @@ describe('EmptyState', () => {
     expect(link.getAttribute('href')).toBe('/patients');
     expect(link.className).toContain('min-h-[44px]');
   });
+
+  it('uses compact spacing for inline list empty states without changing its status semantics', () => {
+    render(
+      <EmptyState
+        size="inline"
+        title="返信待ちの依頼はありません"
+        description="対応が必要な依頼はありません。"
+      />,
+    );
+
+    const status = screen.getByRole('status');
+    expect(status.className).toContain('gap-2');
+    expect(status.className).toContain('p-4');
+    expect(status.getAttribute('aria-live')).toBe('polite');
+  });
 });

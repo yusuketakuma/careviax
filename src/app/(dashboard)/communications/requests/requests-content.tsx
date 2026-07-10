@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
+import { EmptyState } from '@/components/ui/empty-state';
 import { SkeletonRows } from '@/components/ui/loading';
 import { ActionRail } from '@/components/ui/action-rail';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
@@ -305,50 +306,51 @@ export function CommunicationRequestsContent({
           </div>
         ) : (
           <>
-            <div
-              className="space-y-2"
-              role="listbox"
-              aria-label="返信待ちの依頼"
-              data-testid="reply-followup-list"
-            >
+            <div className="space-y-2" data-testid="reply-followup-list">
               <h3 className="px-1 text-sm font-semibold text-foreground">返信待ち</h3>
               {isLoading ? (
                 <div role="status" aria-label="返信待ちの依頼を読み込み中" aria-live="polite">
                   <SkeletonRows rows={3} cols={1} status={false} />
                 </div>
               ) : focusedRequests.length === 0 ? (
-                <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-                  返信待ちの依頼はありません。
-                </p>
+                <EmptyState
+                  size="inline"
+                  title="返信待ちの依頼はありません"
+                  description="対応が必要な依頼はありません。表示条件で他の状態を確認できます。"
+                  guidance="新しい依頼が届いた場合は、再読み込みしてください。"
+                  action={{ label: '再読み込み', onClick: () => void refetch() }}
+                />
               ) : (
-                focusedRequests.map((item) => {
-                  const due = resolveFollowupDueDisplay(item);
-                  const isSelected = focusedSelected?.id === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      role="option"
-                      aria-selected={isSelected}
-                      onClick={() => selectFocusedRequest(item)}
-                      className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
-                        isSelected
-                          ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                          : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40'
-                      }`}
-                    >
-                      <p className="text-sm font-semibold text-foreground">
-                        {formatRecipientLabel(item)}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {formatCommunicationRequestTypeLabel(item.request_type)} / {item.subject}
-                      </p>
-                      <div className="mt-2">
-                        <StateBadge role={due.role}>{due.label}</StateBadge>
-                      </div>
-                    </button>
-                  );
-                })
+                <div role="listbox" aria-label="返信待ちの依頼">
+                  {focusedRequests.map((item) => {
+                    const due = resolveFollowupDueDisplay(item);
+                    const isSelected = focusedSelected?.id === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        onClick={() => selectFocusedRequest(item)}
+                        className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
+                          isSelected
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40'
+                        }`}
+                      >
+                        <p className="text-sm font-semibold text-foreground">
+                          {formatRecipientLabel(item)}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {formatCommunicationRequestTypeLabel(item.request_type)} / {item.subject}
+                        </p>
+                        <div className="mt-2">
+                          <StateBadge role={due.role}>{due.label}</StateBadge>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
 

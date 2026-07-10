@@ -13,6 +13,7 @@ interface EmptyStateProps {
   description?: string;
   guidance?: string;
   action?: StateAction;
+  size?: 'default' | 'inline';
   headingLevel?: Exclude<StateHeadingLevel, 1>;
   className?: string;
 }
@@ -23,13 +24,17 @@ export function EmptyState({
   description,
   guidance,
   action,
+  size = 'default',
   headingLevel = 3,
   className,
 }: EmptyStateProps) {
+  const isInline = size === 'inline';
+
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed border-border bg-card/70 p-8 text-center sm:p-10',
+        'flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-card/70 text-center',
+        isInline ? 'gap-2 p-4 sm:p-4' : 'gap-4 p-8 sm:p-10',
         className,
       )}
       role="status"
@@ -40,7 +45,9 @@ export function EmptyState({
           <Icon className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
         </div>
       )}
-      <div className="min-w-0 w-full max-w-2xl space-y-2 break-words">
+      <div
+        className={cn('min-w-0 w-full max-w-2xl break-words', isInline ? 'space-y-1' : 'space-y-2')}
+      >
         <StateHeading level={headingLevel} className="text-sm font-semibold text-foreground">
           {title}
         </StateHeading>
