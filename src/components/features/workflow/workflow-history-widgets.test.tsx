@@ -78,7 +78,7 @@ describe('workflow history widgets', () => {
 
     render(<StageTimeline cycleId="cycle_1" />);
 
-    expect(screen.getByText('調剤準備完了')).toBeTruthy();
+    expect(screen.getByText('調剤待ち')).toBeTruthy();
     expect(screen.getByText('調剤中')).toBeTruthy();
     expect(screen.getByText(/山田薬剤師/)).toBeTruthy();
     expect(screen.getByText('一包化を確認')).toBeTruthy();
