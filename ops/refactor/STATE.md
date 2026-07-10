@@ -51,6 +51,44 @@
 
 ## 直近の作業
 
+- codex: visit-record detail GET envelope convergence.
+  - commit:
+    `2fc4778e5 fix(API-CONTRACT-001EW): envelope visit record detail`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001EW`。`GET /api/visit-records/:id` のsuccessをexact
+    `{ data: VisitRecord }`へ揃える。Detail、brief/capture fallback、voice memo、offline evidence reader、
+    auth/assignment/tenant/redaction/no-store不変、tests、同route allowlist expectedCount 2→1、debt 14→13を
+    完了条件とした。PATCHは別sliceへ分離した。
+  - files inspected / changed:
+    Visit-record detail route/full tests、detail UI、brief/capture/voice fallbackとtests、offline evidence syncと
+    tests、collection/form隣接consumer、route catalog/rate-limit、protected GET/PATCH matrices、allowlist、
+    Plans/archive/state、active dirty treeを確認。変更はGET success、全body reader/fixtures、allowlist、計画台帳だけ。
+    PATCH success、collection route、schema/migrationは変更していない。
+  - implementation / behavior / rollback:
+    Existing public visit-record DTOをそのまま`data`配下へ移動し、5 consumer系統は明示的にunwrapする。
+    Fallbackでbodyを読まず存在確認だけを行う2経路は非依存を再確認した。Status 200、DTO fields、error
+    envelopeは不変。Rollbackはscoped code/ledger commitのrevertで、schema、migration、persisted data、
+    dependency、deploy設定の復元は不要。
+  - security / medical / privacy / human review:
+    `canVisit`、same-org/assignment/organization-wide pharmacist read、tenant-scoped query、internal
+    `patient_state_snapshot` / `visit_geo_log`除外、attachment normalization、audit-derived modifier、sensitive
+    no-storeを変更していない。患者/医療DTO、PHI field/log、算定判断は不変。Human reviewはresponse nesting、
+    5 readerのunwrap、PATCH分離を確認すればよい。Codex単独で実装・検証し、subagent、agmsg、Claude、
+    Oracle、外部workerは使っていない。
+  - validation:
+    Baseline focusedは6 files / 95 tests pass。初回finalは旧raw route assertion 1件とcaptureの旧変数参照1件を
+    検出し、assertionを弱めずexact envelope/readerへ修正後、6 files / 97 tests pass。Capture再確認9/9、
+    exact ESLint、Prettier、diff check、`api-response-shape:check`（13 allowlisted / 0 new）、route-auth、
+    frontend-contract、query-shape、client-PHI-logがpass。Protected GET matrixは384/384 pass。Typegenは成功し、
+    full typecheckは今回外のuser-owned `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。
+    buildはtypecheck red中のため未実施。DB/migration、production操作、外部送信、deploy、push、destructive
+    actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001EW`はDONE、parentは13 violationsでPartial。Production UIはdata readerだけでvisual
+    reconstructionがないためbrowser/imagegenを省略し、component testsで回帰確認した。unowned
+    config/harness/inboundと全untracked artifactを保持した。次は同route PATCH successを独立sliceでenvelope
+    移行し、detail allowlist entryを除去する。
+
 - codex: visit-record create/overwrite envelope convergence.
   - commit:
     `9e22513d8 fix(API-CONTRACT-001EV): envelope visit record creation`.
