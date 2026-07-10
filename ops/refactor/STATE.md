@@ -51,6 +51,36 @@
 
 ## 直近の作業
 
+- codex: Vitest server-only resolution and protected POST matrix recovery.
+  - commit:
+    `7d213af6a test(TEST-SERVER-ONLY-RESOLUTION-001): restore protected route matrix`.
+  - current task / purpose / acceptance:
+    HIGH / LOW `TEST-SERVER-ONLY-RESOLUTION-001`。Next `server-only` markerをimportするvisit stock gate追加後、
+    protected POST matrixがmodule resolutionで0 tests停止していた。Vitest限定shim/alias、config regression、
+    server-only unit suites、protected POST全件pass、production境界不変を完了条件とした。
+  - files inspected / changed:
+    Vitest config/coverage config test、5つのserver-only production importとunit mock、visit stock server gate/
+    POST route/tests、protected POST/GET matrices、package/lock dependency、active dirty treeを確認した。変更は
+    Vitest alias、test-only empty shim、config regression、default-off routeのmatrix expected statusだけ。
+  - implementation / behavior / rollback:
+    Bare `server-only` importをVitest内だけ`src/test/server-only-stub.ts`へ解決する。Next production buildは
+    real markerを引き続き解決し、package dependencyやruntime aliasは追加していない。Visit stock write gateは
+    body validation前に503 fail-closedする既存仕様のため、protected matrixのinvalid-body期待値を503へ同期。
+    Rollbackはscoped commitのrevert。
+  - security / privacy / performance / UI:
+    Server/client boundaryをproductionで緩和せず、auth/body matrixを再び実行可能にした。API/DB/auth/tenant/
+    PHI/medical/billing/UI挙動とbundleは変更なし。新規I/Oや依存もない。UI変更がないためbrowser/imagegen省略。
+    Codex単独で実装・検証し、subagent、agmsg、Claude、Oracle、外部workerは使っていない。
+  - validation:
+    Config + 5 server-only suitesは6 files / 49 tests pass、protected POST matrixは1 file / 151 tests pass。
+    Exact ESLint、Prettier、Plans active、diff checkがpass。Protected GET matrixは384件中383件passし、既存の
+    `dashboard/cockpit/details` authorized success fixtureだけ500となる別問題を検出した。Typegenは成功し、
+    full typecheckはuser-owned inbound TS2322だけが継続。buildはtypecheck red中のため未実施。
+  - Plans / shared tree / next:
+    TaskはDONE/frozenへ移動。unowned config/harness/inbound/reportと全untracked artifactを保持した。次は
+    `TEST-PROTECTED-GET-COCKPIT-DETAILS-001`としてGET matrixのPrisma mock/route contractを調査し、今回sliceと
+    分離して修復する。その後API allowlist残19件へ戻る。
+
 - codex: facility-batch prescription intake envelope convergence.
   - commit:
     `5a1c19134 fix(API-CONTRACT-001EQ): envelope facility batch creation`.
