@@ -306,7 +306,8 @@ describe('PerformancePage polling policy', () => {
         return Response.json(workflowPayload);
       }
       if (url.startsWith('/api/visit-schedules?')) {
-        expect(url).toContain('limit=200');
+        expect(url).toContain('limit=100');
+        expect(url).not.toContain('limit=200');
         return Response.json(schedulesPayload);
       }
       if (url.startsWith('/api/visit-schedule-proposals?')) {

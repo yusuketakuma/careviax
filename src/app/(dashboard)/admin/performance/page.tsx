@@ -264,7 +264,7 @@ export default function PerformancePage() {
       const params = new URLSearchParams({
         date_from: dateFrom,
         date_to: dateTo,
-        limit: '200',
+        limit: '100',
       });
       const res = await fetch(`/api/visit-schedules?${params}`, {
         headers: buildOrgHeaders(orgId),
