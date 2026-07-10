@@ -51,7 +51,11 @@
 
 ## 直近の作業
 
-- codex: API DTO response boundary recovery (IN_PROGRESS).
+- claude: API DTO response boundary recovery (DONE, 2026-07-11, commit `9ddb473a1`).
+  - result:
+    Claude 単独運用で引き取り完了。3 route を presenter 方式へ移行し、
+    `pnpm dto-direct-prisma-return:check` = 0 new violations、focused route tests 3 files / 52 tests PASS、
+    exact ESLint/Prettier PASS、full tsc PASS。`origin/main` へ push 済み。
   - task / acceptance:
     `API-DTO-001` / CI recovery. The current `main` fails `pnpm dto-direct-prisma-return:check` on three newly exposed
     response paths: patient PATCH, pharmacy drug-stock-template DELETE, and pharmacy drug-stock selected-item GET.
