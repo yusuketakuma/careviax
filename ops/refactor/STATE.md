@@ -39394,3 +39394,54 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
 - next action:
   Re-score the highest safe remaining `Plans.md` P1 slice after preserving concurrent dirty work;
   keep the full `STOCK-002` lifecycle in the explicit design-gate queue.
+
+## 2026-07-10 FE-PHI-SAFE-CLIENT-LOG-001-OFFLINE-SYNC — fixed error display boundary
+
+- current task:
+  Reduce the remaining client-side PHI display risk in the offline-sync operational screen without
+  changing shared API-error semantics or the retry/conflict workflow.
+- plan review:
+  Read-only mapper and privacy reviewers found five `messageFromError` paths in this single screen:
+  initial queue load, manual reload, retry-all, keep-server conflict resolution, and local-overwrite
+  conflict resolution. `messageFromError` returns a raw `Error.message`, which can originate from
+  IndexedDB, encrypted queue handling, or a sync/API conflict. Shared-helper and whole-toast changes
+  were explicitly rejected as overbroad; no Oracle was used per the current user instruction.
+- commit:
+  `b0e357cd3 fix(offline): keep sync errors PHI-safe`.
+- files inspected / changed:
+  Inspected `offline-sync-content.tsx`, its focused test, `client-log.ts`, logger/client-log tests,
+  offline sync writers, notification error contract, UI SSOT, and current dirty ownership. Changed
+  only `src/app/(dashboard)/offline-sync/offline-sync-content.tsx` and its test.
+- bugs found / fixed:
+  The five screen-level catch paths displayed raw `Error.message` in a toast and, for queue loading,
+  inline `syncQueueError`. They now show fixed operational text, retain the existing error/retry and
+  conflict-state behavior, and record only a coded `clientLog.warn` event plus static
+  `/offline-sync` route context.
+- security / privacy:
+  Tests inject a patient-name/phone/token-bearing rejection and prove it is absent from DOM and toast
+  calls for initial/manual queue refresh, retry-all, keep-server, and local-overwrite operations.
+  The raw error reaches `clientLog`, whose existing safe logger contract emits only coded context and
+  error type, never message or stack. No raw client `Sentry.captureException` production callsite was
+  introduced or found.
+- performance / UX:
+  No extra request, queue operation, retry, mutation, or render state was added. Existing false-empty
+  prevention, manual reload, conflict selection, and mutation refresh lifecycles remain intact.
+  Image generation was omitted because this is an error-output boundary correction inside an existing
+  screen, not a visual reconstruction; the UI SSOT was checked.
+- validation:
+  `pnpm vitest run 'src/app/(dashboard)/offline-sync/offline-sync-content.test.tsx'
+  src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 27 tests; exact
+  ESLint, Prettier, `git diff --check`, `pnpm client-phi-log:check`, and
+  `pnpm frontend-contract:check` passed. Independent implementation verifier returned PASS.
+  `pnpm api-response-shape:check` passed with 23 allowlisted / 0 new violations. At the time of this
+  slice, `pnpm plans:active:check` was red only because concurrent API-contract work changed the
+  allowlist debt from 24 to 23 before `Plans.md` caught up; no offline-sync contract check failed.
+- remaining work:
+  `FE-PHI-SAFE-CLIENT-LOG-001` remains Partial: notification/toast policies outside this screen and a
+  static prohibition/clarification for direct client `captureException` still need separately scoped
+  review. Do not alter shared `messageFromError` or blanket-replace controlled authorization feedback
+  without a route-contract decision.
+- next action:
+  Reconstruct the active board after concurrent API-contract edits and select the highest remaining
+  safe P1 slice; retain patient-board cursor and full stock equivalence decision lifecycle as explicit
+  design gates.
