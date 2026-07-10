@@ -232,7 +232,7 @@
 - `STOCK-VISIT-FORECAST-CONTEXT-001`: 訪問観測後 snapshot 再計算に JST civil date と次回訪問日を接続（commit `ddd3c5bf5`）。
 - `STOCK-PRESCRIPTION-HORIZON-001`: 補充 horizon の正本 source を `PrescriptionIntake.refill_next_dispense_date` / `split_next_dispense_date` 系の structured date に限定。
 - `STOCK-VISIT-UI-READONLY-001`: `VisitMedicationStockObservationPanel` read-only 版を訪問記録フォームへ追加済み（write は disabled、migration gate 前提を test で固定）。
-- `STOCK-001-DASHBOARD-SNAPSHOT-UNIT-GUARD`: dashboard raw SQLでsnapshot/item unitを照合し、不一致snapshotのID・数量・日時・推定・risk・reasonを非露出にしつつ、itemをreview_requiredとして保持。
+- `STOCK-001-DASHBOARD-SNAPSHOT-UNIT-GUARD`: dashboard raw SQLでsnapshot/item unitを照合し、不一致snapshotのID・数量・日時・推定・risk・reasonを非露出にしつつ、itemをreview_requiredとして保持。response上限外でもwindow aggregateの`unit_mismatch_count`で整合性確認件数を失わない。
 - `STOCK-VISIT-DOWNSTREAM-TASK-001`: shortage 時の OperationalTask fan-out（PHI-minimized metadata、replay 副作用なし）。
 - `STOCK-VISIT-DOWNSTREAM-RISK-001`: Case Risk Cockpit への `medication_stock_urgent_shortage` RiskFinding 変換。
 - `STOCK-VISIT-DOWNSTREAM-BRIEF-001`: VisitBrief への generic `medication_stock` unresolved item 集約。

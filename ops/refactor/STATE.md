@@ -9,11 +9,11 @@
 ## 体制（2026-07-10 最新ユーザー指示）
 
 - 現行は Codex 本体が計画、編集、validation、台帳更新、scoped commit の最終責任を持つ単一制御運用。
-- 2026-07-10 の最新ユーザー指示により、subagent を含む外部workerは使わず、Codex 本体だけで
-  調査、計画、編集、validation、台帳更新、scoped commitを継続する。
+- 2026-07-10 の最新ユーザー指示により、bounded な調査・計画レビュー・検証には read-only subagent を使う。
+  編集、統合、validation、台帳更新、scoped commit は Codex 本体だけが担う。
 - agmsg、codex2/codex3/codex4、Claude などの外部 maker/checker 運用は再開しない。
 - 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
-  直接の影響範囲確認、focused/full gate で代替する。
+  直接の影響範囲確認、read-only subagent の計画レビュー、focused/full gate で代替する。
 - 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
 
 ## 旧体制（2026-07-04/05 履歴）
@@ -44,13 +44,60 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: Codex 単独運用（2026-07-10〜）。
-  調査・編集・validation・commitの責任は Codex 本体が持ち、pushは明示指示時だけ行う。
+- Phase C（実装ループ）: Codex 本体 + bounded read-only subagent 運用（2026-07-10〜）。
+  編集・統合・validation・commitの最終責任は Codex 本体が持ち、pushは明示指示時だけ行う。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex: dashboard stock snapshot unit mismatch count follow-up.
+  - commit:
+    `0eb80f889 fix(stock): expose dashboard unit mismatch count`.
+  - current task:
+    P1 `STOCK-001-DASHBOARD-SNAPSHOT-UNIT-GUARD` の post-review follow-up。表示上限外の
+    snapshot/item unit mismatch が urgent / shortage / usage counts だけを見る運用で false all-clear に
+    ならないよう、専用 `unit_mismatch_count` を dashboard stock summary へ追加する。
+  - files inspected:
+    `Plans.md`; this state; dashboard stock raw reader/test; dashboard cockpit mapper/BFF/type/route test;
+    stock item/snapshot schema; static DB/API guards; active dirty tree; and the prior dashboard unit guard commit.
+  - files changed:
+    `src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts` and test;
+    `src/server/services/dashboard-cockpit.ts`; `src/types/dashboard-cockpit.ts`; and
+    `src/app/api/dashboard/cockpit/route.test.ts`.
+  - bugs found / fixed:
+    The prior row-level fail-closed guard had no dedicated aggregate for mismatches, so a mismatch beyond the
+    bounded response rows could be invisible in the summary. The ledger raw reader now uses an org/scope-bounded
+    window aggregate before `LIMIT`, exposes `unitMismatchCount`, and serializes it as
+    `stock_summary.unit_mismatch_count`, including zero for an empty assignment scope. Mismatch rows still do not
+    enter urgent/shortage/usage counts. The cockpit also clears snapshot ID/date semantics, uses the item update
+    time, and gives the safe `単位確認` badge.
+  - security / medical safety / performance:
+    The count prevents a false all-clear while preserving the pre-existing double fail-closed suppression of raw
+    snapshot quantity, unit, time, risk and reason. Org/assignment scope, no-store, authz and bounded fetch/response
+    limits remain unchanged. One window aggregate reuses the existing query; no write, migration, dependency,
+    network call or unbounded work was added.
+  - plan review / agents / Oracle:
+    Read-only `dashboard_unit_mapper` returned conditional GO; `dashboard_unit_safety` identified the missing
+    dedicated count as P1; the implemented follow-up was independently verified PASS by
+    `dashboard_unit_count_verifier`. Oracle was not used per the explicit user instruction.
+  - validation:
+    Focused Vitest passed 2 files / 48 tests; exact ESLint, Prettier and `git diff --check` passed.
+    `pnpm db:query-shape:check` passed (0 allowlisted / 0 new),
+    `pnpm db:raw-read-org-guard:check` passed (117 allowlisted / 0 new),
+    `pnpm api-response-shape:check` passed (40 allowlisted / 0 new), and `pnpm plans:active:check` passed.
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` completed typegen and remains red only on the
+    pre-existing user-owned `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285` TS2322.
+    Build was not run while that prerequisite type gate is red. No DB/migration command, production operation,
+    external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen:
+    `Plans.md` records that the completed dashboard guard retains an explicit `unit_mismatch_count` even outside the
+    response limit. Image generation was omitted because this is a server-side data-integrity/response-contract
+    correction with no new visual structure, layout or interaction.
+  - remaining / next action:
+    This dashboard safety slice is complete and committed. Preserve the concurrent unowned API-contract and inbound
+    dirty work; select the next highest-priority executable `Plans.md` item only after a fresh ownership check.
 
 - codex: visit schedule reorder response-envelope convergence.
   - commit:
