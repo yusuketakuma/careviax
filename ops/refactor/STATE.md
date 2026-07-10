@@ -40355,3 +40355,52 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 
   Keep the real RLS proof behind an approved disposable test database gate. Continue the P1 board with a
   new implementation review, preserving the active API-contract worker paths and the unrelated inbound
   typecheck blocker.
+
+## 2026-07-10 FE-PHI-SAFE-CLIENT-LOG-001-INTERPROFESSIONAL-SHARE — mutation failure boundary
+
+- current task / plan review:
+  Current P0/P1 reconstruction found that consent, tenant-support, DB-event, live AWS, and stock work are
+  blocked on explicit policy, migration, or environment gates. A separate P0 review confirmed a real
+  pharmacist-audit default inconsistency but stopped implementation: a persisted `false` cannot distinguish
+  an old role default from an administrator's deliberate audit opt-out. No default, recipient-query, or
+  authorization change was made without that human decision. Two read-only reviewers then approved this
+  isolated P1 report-share error boundary. Oracle was not used, per the current user instruction.
+- commit:
+  `e8e095b39 fix(reports): keep share mutation errors PHI-safe`.
+- files inspected / changed:
+  `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx` and its focused test;
+  inspected the report-share task/request payloads, reply-query lifecycle, toast contract, client logger,
+  existing report delivery/visit-brief recovery patterns, UI SSOT, Plan queue, permission matrix/defaults,
+  and current dirty ownership.
+- bugs found / fixed:
+  The next-task and reply-request mutations forwarded arbitrary `readApiJson` server messages into toasts.
+  A non-success response is now converted before its body is read into a fixed-message error that retains
+  only HTTP status. The two mutation boundaries log coded static events with static route/entity type and
+  numeric status, then display fixed recovery text. A task 409 remains unconfirmed and retryable with an
+  instruction to inspect the task list. A reply-request 409 refetches the existing request list and shows
+  the established "起票済み" state only when fresh data proves an active request; all other failures retain
+  the existing retry button.
+- security / medical safety:
+  Tests inject patient-like names, phone numbers, and token sentinels into 409/500 server messages and prove
+  they reach neither toast nor client log error state. No response body, report/patient/recipient ID, task
+  input, or request payload is added to logging. Conflict classification uses HTTP status only, never an
+  untrusted Japanese server message; a 409 is never treated as definite success without a fresh read.
+- performance / UI:
+  Successful task/request paths, payloads, audit, invalidation, and layout remain unchanged. Only a reply
+  409 makes one existing active query refetch; generic failure and normal operation add no request, poll,
+  dependency, or render loop. Image generation was omitted because this is a fixed error-output/recovery
+  contract within the existing layout, not a visual reconstruction; `docs/ui-ux-design-guidelines.md` was
+  reviewed.
+- validation:
+  `pnpm vitest run src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx
+  src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts --reporter=dot` passed 3 files / 47 tests.
+  Exact ESLint and Prettier, `git diff --check`, `pnpm client-phi-log:check`,
+  `pnpm frontend-contract:check`, and `pnpm colors:check` passed. Independent verifier returned PASS.
+  `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck` completed Next route type generation and stopped
+  only at pre-existing non-owned `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285:49`
+  (`string | null` to `string | undefined`); no changed-file type error was reported.
+- remaining / next action:
+  `FE-PHI-SAFE-CLIENT-LOG-001` remains Partial; continue only with independently reviewed user-facing error
+  contracts. `PERM-DOC-SYNC-001` requires a human choice between role-implied audit capability and explicit
+  per-membership opt-in/denial before changes to role defaults, recipient selection, or auth checks. Preserve
+  the active API-contract/platform dirty paths and the inbound typecheck blocker.
