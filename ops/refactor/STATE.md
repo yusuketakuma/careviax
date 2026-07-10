@@ -51,6 +51,42 @@
 
 ## 直近の作業
 
+- codex: DrugPriceVersion data explorer scope repair.
+  - commit:
+    `6fc927092 fix(DATA-EXPLORER-DRUG-PRICE-SCOPE-001): classify price versions global`.
+  - current task / purpose / acceptance:
+    P0 / HR `DATA-EXPLORER-DRUG-PRICE-SCOPE-001`。`DrugPriceVersion`の正準global scopeとdata explorer
+    registryを整合し、module import時fail-closedでadmin/platform explorer全体が起動不能になるtest基盤阻害を
+    解消する。Global read-only、hash非公開、org predicateなし、mutation SQL前拒否を完了条件とした。
+  - files inspected / changed:
+    DrugPriceVersion schema/migration/import、display-id registry/tests、coverage catalog/tests、data explorer service/
+    full tests、platform route/panel/caller、break-glass/operator、Plans/archive/state、active dirty treeを確認。変更は
+    global registry 1 entryとfocused regression test、計画台帳だけ。Schema/migration/import/price/billing codeは変更して
+    いない。
+  - implementation / behavior / rollback:
+    Schema comment、global display-id allocation、coverage catalogの既存正準に合わせて`DrugPriceVersion`をglobal
+    scopeへ分類した。Explorerは同modelをread-onlyで参照できるようになり、`source_file_hash`は既存hash deny pattern
+    で列/row/SQL projectionから除外される。Rollbackはscoped code/ledger commitのrevertで、DB/schema/migration/
+    persisted price dataの復元は不要。
+  - security / authorization / tenant / audit / privacy / medical / billing / human review:
+    Global modelに偽のorg predicateを付けず、全field `isEditable=false`、update/deleteは`withOrgContext`/SQL前に
+    `DATA_EXPLORER_READ_ONLY_MODEL_ERROR`で拒否する。Platform側のoperator/session/audit-first境界は不変。薬価値、
+    適用期間、調剤時snapshot、請求計算、PHI/PII field/logは変更していない。Human reviewは3つのscope正準、hash
+    omission、mutation拒否を確認すればよい。Codex単独で実装・検証し、subagent、agmsg、Claude、Oracle、
+    外部workerは使っていない。
+  - validation:
+    Baselineはservice suiteがimport errorで0 tests、panel/break-glass/operator 3 files / 35 tests pass。Finalは
+    data explorer/platform caller 5 files / 72 tests pass、catalog/display-idを含む3 files / 57 pass・6 skip。
+    Prisma validate、exact ESLint/Prettier/diff check、raw-read org guard、query-shape、api-response、route-auth、
+    client-PHI-logがpass。Typegenは成功し、full typecheckはuser-owned inbound TS2322 1件と作業中に増えた
+    user-owned MCS test `toHaveValue` typing 4件だけが継続。buildはtypecheck red中のため未実施。DB/migration、
+    production操作、外部送信、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    TaskはDONE、active queueから削除し、`PLATFORM-DATA-ROUTE-HARDENING-001`はREADYのまま保持した。Production
+    UI変更やvisual reconstructionがないためbrowser/imagegenを省略した。unowned config/harness/inbound/MCSと
+    全untracked artifactを保持した。次はplatform data rows envelopeを完了し、その後route query/error hardeningへ
+    進む。
+
 - codex: platform data explorer model catalog envelope convergence.
   - commit:
     `fe128b6f0 fix(API-CONTRACT-001FH): envelope platform data models`.
