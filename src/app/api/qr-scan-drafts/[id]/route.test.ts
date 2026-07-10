@@ -100,10 +100,13 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(body).toMatchObject({ id: 'draft_1', status: 'pending' });
-    expect(body).not.toHaveProperty('raw_qr_texts');
-    expect(body).not.toHaveProperty('qr_payload_hash');
-    expect(body.parsed_data).not.toHaveProperty('rawText');
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body.data).toMatchObject({ id: 'draft_1', status: 'pending' });
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('status');
+    expect(body.data).not.toHaveProperty('raw_qr_texts');
+    expect(body.data).not.toHaveProperty('qr_payload_hash');
+    expect(body.data.parsed_data).not.toHaveProperty('rawText');
     expect(JSON.stringify(body)).not.toContain('rawLine');
     expect(JSON.stringify(body)).not.toContain('JAHISTC08');
   });

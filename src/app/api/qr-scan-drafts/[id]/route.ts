@@ -76,7 +76,7 @@ const authenticatedGET = withAuthContext(
       return notFound('QRスキャン下書きが見つかりません');
     }
 
-    return success(toQrDraftResponse(draft));
+    return success({ data: toQrDraftResponse(draft) });
   },
   {
     permission: 'canVisit',

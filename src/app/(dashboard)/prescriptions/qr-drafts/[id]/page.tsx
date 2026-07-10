@@ -390,7 +390,11 @@ export default function QrDraftReviewPage() {
       const res = await fetch(`/api/qr-scan-drafts/${id}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<QrScanDraft>(res, '下書きの取得に失敗しました');
+      const payload = await readApiJson<{ data?: QrScanDraft }>(res, '下書きの取得に失敗しました');
+      if (!payload.data || typeof payload.data.id !== 'string') {
+        throw new Error('下書きの取得に失敗しました');
+      }
+      return payload.data;
     },
     enabled: !!orgId && !!id,
   });

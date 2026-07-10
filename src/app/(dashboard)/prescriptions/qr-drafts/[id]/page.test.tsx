@@ -274,6 +274,30 @@ describe('QrDraftReviewPage case lookup error handling', () => {
     );
   });
 
+  it('unwraps the QR draft detail data envelope', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async () => jsonResponse({ data: baseDraft })),
+    );
+
+    render(<QrDraftReviewPage />);
+
+    const draftQuery = getQueryConfig('qr-scan-draft');
+    await expect(draftQuery?.queryFn?.()).resolves.toEqual(baseDraft);
+  });
+
+  it('rejects a legacy root QR draft detail response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async () => jsonResponse(baseDraft)),
+    );
+
+    render(<QrDraftReviewPage />);
+
+    const draftQuery = getQueryConfig('qr-scan-draft');
+    await expect(draftQuery?.queryFn?.()).rejects.toThrow('下書きの取得に失敗しました');
+  });
+
   it('surfaces a retryable error instead of a false empty case selector', () => {
     render(<QrDraftReviewPage />);
 
