@@ -51,6 +51,37 @@
 
 ## 直近の作業
 
+- codex: QR scan draft detail envelope convergence.
+  - commit:
+    `d8026e75f fix(API-CONTRACT-001EG): envelope QR draft detail`.
+  - current task / purpose / acceptance:
+    P0 `API-CONTRACT-001EG`。`GET /api/qr-scan-drafts/:id` の200 successを exact `{ data: draft }` に揃え、
+    review画面readerを同契約へ移行する。Exact envelope/root ID不在、legacy/malformed success拒否、
+    QR raw情報非露出、DELETE非変更、debt減を完了条件とした。
+  - files inspected / changed:
+    Detail GET/DELETE route and tests; review page and tests; assignment/org access helpers; sanitizer; `readApiJson`;
+    allowlist; Plans/archive/state; active dirty tree. Changed only GET response/test, its reader/test, allowlist count and
+    planning ledgers; DELETE implementation/tests remained unchanged.
+  - implementation / behavior / rollback:
+    Provider nests the existing sanitized detail under `data`. The reader validates `payload.data.id` before returning
+    the draft; legacy root or missing-ID success raises the existing safe fallback. Rollback is the scoped code and
+    ledger commits; no write path, schema, migration, stored data, dependency or deploy change exists.
+  - security / privacy / performance:
+    Assignment and org filters, supplemental-record safe select, raw QR/hash/rawText/rawLine suppression and no-store
+    remain covered. No PHI field, query, network round-trip, rendering structure or log changed. Codex alone implemented
+    and verified the slice; no subagent, agmsg, Claude, Oracle or external worker was used.
+  - validation:
+    Baseline focused Vitest passed 2 files / 22 tests; final passed 2 files / 24 tests. Exact ESLint, Prettier,
+    `api-response-shape:check` (30 allowlisted / 0 new), route-auth, frontend-contract, query-shape, client-PHI-log and
+    `git diff --check` passed. Typegen succeeded; full typecheck remains red only on the pre-existing user-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that gate is red. No DB/migration,
+    production operation, external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen / remaining:
+    `API-CONTRACT-001EG` is DONE; parent remains Partial at 30 violations. Browser/image generation were omitted because
+    JSON nesting changes no visible UI structure or interaction. The same route retains one DELETE success debt; keep it
+    as a separate mutation slice after ownership/race/consumer review. Preserve unowned config, harness, inbound and
+    newly appeared medication-stock work.
+
 - codex: QR scan draft creation envelope convergence.
   - commit:
     `759cb3af1 fix(API-CONTRACT-001EF): envelope QR draft creation result`.
