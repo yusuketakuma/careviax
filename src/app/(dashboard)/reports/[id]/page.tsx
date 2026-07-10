@@ -12,6 +12,7 @@ import { getReportDetailShortcutLinks } from '@/components/features/workflow/pag
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { PatientHeader } from '@/components/features/patients/patient-header';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { requestNavigationConfirmation } from '@/components/providers/navigation-confirm-provider';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -94,6 +95,9 @@ type DeliveryRecord = {
   sent_at: string | null;
   created_at: string;
 };
+
+const REPORT_EDIT_DISCARD_MESSAGE = '未保存の報告書編集があります。破棄して表示に戻りますか？';
+const REPORT_EDIT_SAVING_DESCRIPTION_ID = 'report-edit-saving-description';
 
 type CareReport = {
   id: string;
@@ -550,6 +554,8 @@ export default function ReportDetailPage() {
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [dismissedSendDialogKey, setDismissedSendDialogKey] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
+  const [reportEditDirty, setReportEditDirty] = useState(false);
+  const [reportEditSaving, setReportEditSaving] = useState(false);
   const [sendForm, setSendForm] = useState<SendFormData>({
     channel: 'email',
     recipient_name: '',
@@ -853,6 +859,7 @@ export default function ReportDetailPage() {
   const canEditCurrentDraft =
     canEditReport && report.status === 'draft' && editableReportContent !== null;
   const isEditingReport = editMode && canEditCurrentDraft;
+  const reportEditReturnDisabled = isEditingReport && reportEditSaving;
   const reportContentObject = readReportContentObject(report.content);
   const contentPatient = isStringRecord(reportContentObject?.patient)
     ? reportContentObject.patient
@@ -1050,6 +1057,30 @@ export default function ReportDetailPage() {
     externalProfessionalSuggestionsQuery.isLoading ||
     externalProfessionalSuggestionsQuery.isFetching;
 
+  function closeReportEditMode() {
+    setReportEditDirty(false);
+    setReportEditSaving(false);
+    setEditMode(false);
+  }
+
+  function handleReportEditModeToggle() {
+    if (!isEditingReport) {
+      setReportEditDirty(false);
+      setReportEditSaving(false);
+      setEditMode(true);
+      return;
+    }
+    if (reportEditSaving) return;
+    if (!reportEditDirty) {
+      closeReportEditMode();
+      return;
+    }
+
+    void requestNavigationConfirmation(REPORT_EDIT_DISCARD_MESSAGE).then((confirmed) => {
+      if (confirmed) closeReportEditMode();
+    });
+  }
+
   const sendReportAction =
     hasContentView && canSendReportStatus && canSendReport ? (
       <div className="flex flex-wrap gap-2">
@@ -1107,11 +1138,24 @@ export default function ReportDetailPage() {
             <>
               {statusCfg && <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>}
               {hasContentView && canEditCurrentDraft && (
-                <Button variant="outline" size="sm" onClick={() => setEditMode((v) => !v)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={reportEditReturnDisabled}
+                  aria-describedby={
+                    reportEditReturnDisabled ? REPORT_EDIT_SAVING_DESCRIPTION_ID : undefined
+                  }
+                  onClick={handleReportEditModeToggle}
+                >
                   <Pencil className="mr-1.5 size-3.5" aria-hidden="true" />
                   {isEditingReport ? '表示に戻る' : '編集'}
                 </Button>
               )}
+              {reportEditReturnDisabled ? (
+                <span id={REPORT_EDIT_SAVING_DESCRIPTION_ID} className="sr-only">
+                  保存中のため、保存完了まで表示に戻れません。
+                </span>
+              ) : null}
               {isConfirmedReport && canOutputReport ? (
                 <a
                   href={buildCareReportApiPath(id, '/pdf')}
@@ -1503,7 +1547,9 @@ export default function ReportDetailPage() {
                         reportType={report.report_type}
                         updatedAt={report.updated_at}
                         content={editableReportContent}
-                        onSaved={() => setEditMode(false)}
+                        onDirtyChange={setReportEditDirty}
+                        onSavingChange={setReportEditSaving}
+                        onSaved={closeReportEditMode}
                       />
                     </CardContent>
                   </Card>

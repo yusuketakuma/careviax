@@ -13,6 +13,7 @@ setupDomTestEnv();
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const invalidateQueriesMock = vi.hoisted(() => vi.fn());
 const mutationOptionsMock = vi.hoisted(() => vi.fn());
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
 const buildOrgJsonHeadersMock = vi.hoisted(() =>
   vi.fn((orgId: string) => ({
     'Content-Type': 'application/json',
@@ -29,6 +30,10 @@ vi.mock('@/lib/api/org-headers', () => ({
   buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
 
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
+}));
+
 vi.mock('sonner', async () => {
   const { createSonnerToastMock } = await import('@/test/sonner-test-utils');
   return createSonnerToastMock().module;
@@ -36,12 +41,14 @@ vi.mock('sonner', async () => {
 
 vi.mock('@tanstack/react-query', () => ({
   useMutation: (options: {
+    onMutate?: () => void;
     mutationFn: () => Promise<unknown>;
     onSuccess?: () => void;
     onError?: (error: unknown) => void;
   }) => ({
     mutate: () => {
       mutationOptionsMock(options);
+      options.onMutate?.();
       void options.mutationFn().then(() => options.onSuccess?.(), options.onError);
     },
     isPending: false,
@@ -125,6 +132,9 @@ describe('ReportEditForm', () => {
         reportType="physician_report"
         updatedAt="2026-04-21T00:00:00.000Z"
         content={physicianContent}
+        onSaved={() => undefined}
+        onDirtyChange={() => undefined}
+        onSavingChange={() => undefined}
       />,
     );
 
@@ -145,6 +155,9 @@ describe('ReportEditForm', () => {
         reportType="care_manager_report"
         updatedAt="2026-04-21T00:00:00.000Z"
         content={careManagerContent}
+        onSaved={() => undefined}
+        onDirtyChange={() => undefined}
+        onSavingChange={() => undefined}
       />,
     );
 
@@ -167,6 +180,9 @@ describe('ReportEditForm', () => {
         reportType="physician_report"
         updatedAt="2026-04-21T00:00:00.000Z"
         content={physicianContent}
+        onSaved={() => undefined}
+        onDirtyChange={() => undefined}
+        onSavingChange={() => undefined}
       />,
     );
 
@@ -194,7 +210,7 @@ describe('ReportEditForm', () => {
     });
   });
 
-  it('keeps server save messages in mutation toasts and falls back for non-Error failures', async () => {
+  it('uses the fixed save failure toast for server and non-Error failures', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     const fetchMock = vi.fn(
       async () => new Response(JSON.stringify({ message: '版が競合しました' }), { status: 409 }),
@@ -207,14 +223,22 @@ describe('ReportEditForm', () => {
         reportType="physician_report"
         updatedAt="2026-04-21T00:00:00.000Z"
         content={physicianContent}
+        onSaved={() => undefined}
+        onDirtyChange={() => undefined}
+        onSavingChange={() => undefined}
       />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: '保存する' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('版が競合しました');
+      expect(toast.error).toHaveBeenCalledWith('報告書の保存に失敗しました');
     });
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'care_report.edit_save_failed',
+      expect.any(Error),
+      { route: '/reports/:id' },
+    );
 
     const mutationOptions = mutationOptionsMock.mock.calls.at(-1)?.[0] as
       | { onError?: (error: unknown) => void }
@@ -222,5 +246,205 @@ describe('ReportEditForm', () => {
     mutationOptions?.onError?.('network-failure');
 
     expect(toast.error).toHaveBeenCalledWith('報告書の保存に失敗しました');
+  });
+
+  it('guards only semantic report edits and clears the guard when a field returns to baseline', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    const onDirtyChange = vi.fn();
+
+    render(
+      <ReportEditForm
+        reportId="report_1"
+        reportType="physician_report"
+        updatedAt="2026-04-21T00:00:00.000Z"
+        content={physicianContent}
+        onSaved={() => undefined}
+        onDirtyChange={onDirtyChange}
+        onSavingChange={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '服薬状況' }));
+    const complianceSummary = screen.getByLabelText('服薬状況');
+    fireEvent.change(complianceSummary, { target: { value: '患者の服薬状況を補足' } });
+
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    const dirtyBeforeUnload = new Event('beforeunload', { cancelable: true }) as BeforeUnloadEvent;
+    Object.defineProperty(dirtyBeforeUnload, 'returnValue', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+    window.dispatchEvent(dirtyBeforeUnload);
+    expect(dirtyBeforeUnload.defaultPrevented).toBe(true);
+
+    fireEvent.change(complianceSummary, { target: { value: '' } });
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+    const restoredBeforeUnload = new Event('beforeunload', {
+      cancelable: true,
+    }) as BeforeUnloadEvent;
+    Object.defineProperty(restoredBeforeUnload, 'returnValue', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+    window.dispatchEvent(restoredBeforeUnload);
+    expect(restoredBeforeUnload.defaultPrevented).toBe(false);
+  });
+
+  it('keeps the leave guard enabled while save is pending and clears it only after success', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    const onDirtyChange = vi.fn();
+    const onSavingChange = vi.fn();
+    const onSaved = vi.fn();
+    let resolveFetch: (response: Response) => void;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <ReportEditForm
+        reportId="report_1"
+        reportType="physician_report"
+        updatedAt="2026-04-21T00:00:00.000Z"
+        content={physicianContent}
+        onSaved={onSaved}
+        onDirtyChange={onDirtyChange}
+        onSavingChange={onSavingChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '服薬状況' }));
+    fireEvent.change(screen.getByLabelText('服薬状況'), {
+      target: { value: '保存前の補足' },
+    });
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+    await waitFor(() => expect(onSavingChange).toHaveBeenLastCalledWith(true));
+
+    const pendingBeforeUnload = new Event('beforeunload', {
+      cancelable: true,
+    }) as BeforeUnloadEvent;
+    Object.defineProperty(pendingBeforeUnload, 'returnValue', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+    window.dispatchEvent(pendingBeforeUnload);
+    expect(pendingBeforeUnload.defaultPrevented).toBe(true);
+
+    resolveFetch!(new Response(JSON.stringify({ data: { id: 'report_1' } }), { status: 200 }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(onSavingChange).toHaveBeenLastCalledWith(false);
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+
+    const savedBeforeUnload = new Event('beforeunload', { cancelable: true }) as BeforeUnloadEvent;
+    Object.defineProperty(savedBeforeUnload, 'returnValue', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+    window.dispatchEvent(savedBeforeUnload);
+    expect(savedBeforeUnload.defaultPrevented).toBe(false);
+  });
+
+  it('retains unsaved report edits and the leave guard after a save conflict', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    const onDirtyChange = vi.fn();
+    const onSavingChange = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: '山田花子 080-1234-5678 token-super-secret' }), {
+            status: 409,
+          }),
+      ),
+    );
+
+    render(
+      <ReportEditForm
+        reportId="report_1"
+        reportType="physician_report"
+        updatedAt="2026-04-21T00:00:00.000Z"
+        content={physicianContent}
+        onSaved={() => undefined}
+        onDirtyChange={onDirtyChange}
+        onSavingChange={onSavingChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '服薬状況' }));
+    fireEvent.change(screen.getByLabelText('服薬状況'), {
+      target: { value: '競合後も保持する編集' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('報告書の保存に失敗しました'));
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+      'care_report.edit_save_failed',
+      expect.any(Error),
+      { route: '/reports/:id' },
+    );
+    const toastPayload = JSON.stringify(vi.mocked(toast.error).mock.calls);
+    expect(toastPayload).not.toContain('山田花子');
+    expect(toastPayload).not.toContain('080-1234-5678');
+    expect(toastPayload).not.toContain('token-super-secret');
+    expect(onSavingChange).toHaveBeenLastCalledWith(false);
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    expect((screen.getByLabelText('服薬状況') as HTMLTextAreaElement).value).toBe(
+      '競合後も保持する編集',
+    );
+
+    const failedBeforeUnload = new Event('beforeunload', { cancelable: true }) as BeforeUnloadEvent;
+    Object.defineProperty(failedBeforeUnload, 'returnValue', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+    window.dispatchEvent(failedBeforeUnload);
+    expect(failedBeforeUnload.defaultPrevented).toBe(true);
+  });
+
+  it('preserves stored adverse-event labels when saving an unrelated physician field', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    const fetchMock = stubJsonFetch({ data: { id: 'report_1' } });
+    const contentWithStoredEvents: PhysicianReportContent = {
+      ...physicianContent,
+      adverse_events: {
+        has_events: true,
+        details: '',
+        events: ['ふらつき'],
+      },
+    };
+
+    render(
+      <ReportEditForm
+        reportId="report_1"
+        reportType="physician_report"
+        updatedAt="2026-04-21T00:00:00.000Z"
+        content={contentWithStoredEvents}
+        onSaved={() => undefined}
+        onDirtyChange={() => undefined}
+        onSavingChange={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '薬学的評価' }));
+    fireEvent.change(screen.getByLabelText('薬学的評価'), { target: { value: '評価を更新' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.content.adverse_events).toMatchObject({
+      details: 'ふらつき',
+      events: ['ふらつき'],
+    });
   });
 });

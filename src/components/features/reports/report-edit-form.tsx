@@ -14,8 +14,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
 import { deriveReportComplianceChecks } from './compliance-checklist';
 
@@ -144,20 +145,17 @@ type PhysicianFields = {
   physician_communication: string;
 };
 
-function PhysicianEditForm({
-  initial,
-  onChange,
-}: {
-  initial: PhysicianReportContent;
-  onChange: (fields: PhysicianFields) => void;
-}) {
-  const [fields, setFields] = useState<PhysicianFields>({
+function buildPhysicianFields(initial: PhysicianReportContent): PhysicianFields {
+  const adverseEventDetails = initial.adverse_events.details;
+  return {
     compliance_summary: initial.medication_management.compliance_summary ?? '',
     adherence_score: initial.medication_management.adherence_score ?? 0,
     self_management: initial.medication_management.self_management ?? '',
     adverse_has_events: initial.adverse_events.has_events ?? false,
     adverse_event_details:
-      initial.adverse_events.details ?? initial.adverse_events.events.join('\n'),
+      typeof adverseEventDetails === 'string' && adverseEventDetails.trim().length > 0
+        ? adverseEventDetails
+        : initial.adverse_events.events.join('\n'),
     functional_sleep: initial.functional_assessment.sleep ?? '',
     functional_cognition: initial.functional_assessment.cognition ?? '',
     functional_diet_oral: initial.functional_assessment.diet_oral ?? '',
@@ -168,7 +166,17 @@ function PhysicianEditForm({
     plan: initial.plan ?? '',
     prescription_proposals: initial.prescription_proposals ?? '',
     physician_communication: initial.physician_communication ?? '',
-  });
+  };
+}
+
+function PhysicianEditForm({
+  initial,
+  onChange,
+}: {
+  initial: PhysicianReportContent;
+  onChange: (fields: PhysicianFields) => void;
+}) {
+  const [fields, setFields] = useState<PhysicianFields>(() => buildPhysicianFields(initial));
 
   function handleChange(key: string, value: string | number | boolean) {
     const next = { ...fields, [key]: value };
@@ -295,14 +303,8 @@ type CareManagerFields = {
   followup_items_raw: string;
 };
 
-function CareManagerEditForm({
-  initial,
-  onChange,
-}: {
-  initial: CareManagerReportContent;
-  onChange: (fields: CareManagerFields) => void;
-}) {
-  const [fields, setFields] = useState<CareManagerFields>({
+function buildCareManagerFields(initial: CareManagerReportContent): CareManagerFields {
+  return {
     medication_compliance_summary: initial.medication_management_summary.compliance_summary ?? '',
     total_drugs: initial.medication_management_summary.total_drugs ?? 0,
     self_management: initial.medication_management_summary.self_management ?? '',
@@ -318,7 +320,17 @@ function CareManagerEditForm({
     care_service_other: initial.care_service_coordination.other_items ?? '',
     next_visit_date: initial.next_visit_plan.date ?? '',
     followup_items_raw: initial.next_visit_plan.followup_items.join('\n'),
-  });
+  };
+}
+
+function CareManagerEditForm({
+  initial,
+  onChange,
+}: {
+  initial: CareManagerReportContent;
+  onChange: (fields: CareManagerFields) => void;
+}) {
+  const [fields, setFields] = useState<CareManagerFields>(() => buildCareManagerFields(initial));
 
   function handleChange(key: string, value: string | number | boolean) {
     const next = { ...fields, [key]: value };
@@ -439,8 +451,25 @@ type Props = {
   reportType: string;
   updatedAt: string;
   content: PhysicianReportContent | CareManagerReportContent;
-  onSaved?: () => void;
+  onSaved: () => void;
+  onDirtyChange: (isDirty: boolean) => void;
+  onSavingChange: (isSaving: boolean) => void;
 };
+
+type PendingReportEditFields = Partial<PhysicianFields & CareManagerFields>;
+
+function hasChangedFromReportEditBaseline(
+  fields: PendingReportEditFields,
+  baseline: PhysicianFields | CareManagerFields,
+) {
+  const pending = fields as Partial<Record<string, string | number | boolean>>;
+  const initial = baseline as Record<string, string | number | boolean>;
+
+  return Object.entries(initial).some(([key, initialValue]) => {
+    const currentValue = pending[key];
+    return currentValue !== undefined && currentValue !== initialValue;
+  });
+}
 
 function ComplianceEditGuide({
   reportType,
@@ -483,15 +512,28 @@ function ComplianceEditGuide({
   );
 }
 
-export function ReportEditForm({ reportId, reportType, updatedAt, content, onSaved }: Props) {
+export function ReportEditForm({
+  reportId,
+  reportType,
+  updatedAt,
+  content,
+  onSaved,
+  onDirtyChange,
+  onSavingChange,
+}: Props) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
 
   // Accumulated edits from child form. Only one of the two field shapes is ever
   // populated (selected by reportType); the partial intersection lets either set
   // assign without laundering through `Record<string, unknown>`.
-  const [pendingFields, setPendingFields] = useState<Partial<PhysicianFields & CareManagerFields>>(
-    {},
+  const [pendingFields, setPendingFields] = useState<PendingReportEditFields>({});
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editBaseline] = useState<PhysicianFields | CareManagerFields>(() =>
+    reportType === 'physician_report'
+      ? buildPhysicianFields(content as PhysicianReportContent)
+      : buildCareManagerFields(content as CareManagerReportContent),
   );
 
   function buildUpdatedContent(): PhysicianReportContent | CareManagerReportContent {
@@ -582,6 +624,10 @@ export function ReportEditForm({ reportId, reportType, updatedAt, content, onSav
   }
 
   const saveMutation = useMutation({
+    onMutate: () => {
+      setIsSaving(true);
+      onSavingChange(true);
+    },
     mutationFn: async () => {
       const updatedContent = buildUpdatedContent();
       const res = await fetch(buildCareReportApiPath(reportId), {
@@ -595,13 +641,32 @@ export function ReportEditForm({ reportId, reportType, updatedAt, content, onSav
       return readApiJson<unknown>(res, '保存に失敗しました');
     },
     onSuccess: () => {
+      setIsSaving(false);
+      onSavingChange(false);
+      setIsDirty(false);
+      onDirtyChange(false);
       toast.success('報告書を保存しました');
       queryClient.invalidateQueries({ queryKey: ['care-report', reportId] });
       queryClient.invalidateQueries({ queryKey: ['care-reports'] });
-      onSaved?.();
+      onSaved();
     },
-    onError: (err: Error) => toast.error(messageFromError(err, '報告書の保存に失敗しました')),
+    onError: (err: Error) => {
+      setIsSaving(false);
+      onSavingChange(false);
+      clientLog.warn('care_report.edit_save_failed', err, { route: '/reports/:id' });
+      toast.error('報告書の保存に失敗しました');
+    },
   });
+
+  useUnsavedChangesGuard({ enabled: isDirty || isSaving });
+
+  function handleFieldsChange(fields: PhysicianFields | CareManagerFields) {
+    const nextFields = fields as PendingReportEditFields;
+    const nextIsDirty = hasChangedFromReportEditBaseline(nextFields, editBaseline);
+    setPendingFields(nextFields);
+    setIsDirty(nextIsDirty);
+    onDirtyChange(nextIsDirty);
+  }
 
   return (
     <div className="space-y-4">
@@ -613,18 +678,18 @@ export function ReportEditForm({ reportId, reportType, updatedAt, content, onSav
       {reportType === 'physician_report' ? (
         <PhysicianEditForm
           initial={content as PhysicianReportContent}
-          onChange={(f) => setPendingFields(f)}
+          onChange={handleFieldsChange}
         />
       ) : (
         <CareManagerEditForm
           initial={content as CareManagerReportContent}
-          onChange={(f) => setPendingFields(f)}
+          onChange={handleFieldsChange}
         />
       )}
 
       <Button
         onClick={() => saveMutation.mutate()}
-        disabled={saveMutation.isPending}
+        disabled={saveMutation.isPending || isSaving}
         className="w-full"
       >
         <Save className="mr-1.5 size-4" aria-hidden="true" />

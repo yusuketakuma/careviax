@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -24,6 +24,7 @@ const buildOrgJsonHeadersMock = vi.hoisted(() =>
     ...extra,
   })),
 );
+const requestNavigationConfirmationMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -50,6 +51,10 @@ vi.mock('sonner', () => ({
     success: vi.fn(),
     error: vi.fn(),
   },
+}));
+
+vi.mock('@/components/providers/navigation-confirm-provider', () => ({
+  requestNavigationConfirmation: requestNavigationConfirmationMock,
 }));
 
 vi.mock('@/components/layout/page-scaffold', () => ({
@@ -108,8 +113,28 @@ vi.mock('@/components/features/reports/care-manager-report-view', () => ({
 }));
 
 vi.mock('@/components/features/reports/report-edit-form', () => ({
-  ReportEditForm: ({ updatedAt }: { updatedAt: string }) => (
-    <form data-testid="report-edit-form" data-updated-at={updatedAt} />
+  ReportEditForm: ({
+    updatedAt,
+    onDirtyChange,
+    onSavingChange,
+    onSaved,
+  }: {
+    updatedAt: string;
+    onDirtyChange: (isDirty: boolean) => void;
+    onSavingChange: (isSaving: boolean) => void;
+    onSaved: () => void;
+  }) => (
+    <form data-testid="report-edit-form" data-updated-at={updatedAt}>
+      <button type="button" onClick={() => onDirtyChange(true)}>
+        編集済みにする
+      </button>
+      <button type="button" onClick={() => onSavingChange(true)}>
+        保存中にする
+      </button>
+      <button type="button" onClick={onSaved}>
+        保存成功にする
+      </button>
+    </form>
   ),
 }));
 
@@ -763,6 +788,47 @@ describe('ReportDetailPage send safety dialog', () => {
     expect(screen.getByTestId('report-edit-form').getAttribute('data-updated-at')).toBe(
       '2026-05-12T00:00:00.000Z',
     );
+  });
+
+  it('keeps unsaved report edits open until discard is confirmed and blocks local exit while saving', async () => {
+    requestNavigationConfirmationMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: { data: { ...mockReport(), status: 'draft' } },
+        isLoading: false,
+      };
+    });
+    render(<ReportDetailPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '編集' }));
+    fireEvent.click(screen.getByRole('button', { name: '編集済みにする' }));
+    fireEvent.click(screen.getByRole('button', { name: '表示に戻る' }));
+
+    await waitFor(() => {
+      expect(requestNavigationConfirmationMock).toHaveBeenCalledWith(
+        '未保存の報告書編集があります。破棄して表示に戻りますか？',
+      );
+    });
+    expect(screen.getByTestId('report-edit-form')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '表示に戻る' }));
+    await waitFor(() => expect(screen.queryByTestId('report-edit-form')).toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: '編集' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存中にする' }));
+
+    const returnButton = screen.getByRole('button', { name: '表示に戻る' });
+    expect(returnButton.hasAttribute('disabled')).toBe(true);
+    expect(returnButton.getAttribute('aria-describedby')).toBe('report-edit-saving-description');
+    expect(screen.getByText('保存中のため、保存完了まで表示に戻れません。')).toBeTruthy();
   });
 
   it('confirms drafts with the current report version token', async () => {

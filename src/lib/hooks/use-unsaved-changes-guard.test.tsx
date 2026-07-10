@@ -23,7 +23,7 @@ function Harness({ enabled }: { enabled: boolean }) {
   return (
     <div>
       <button onClick={() => allowNavigation()}>allow</button>
-      <a href="http://localhost/next">next</a>
+      <a href="/next">next</a>
     </div>
   );
 }
@@ -43,9 +43,28 @@ describe('useUnsavedChangesGuard', () => {
 
     await waitFor(() => {
       expect(requestNavigationConfirmationMock).toHaveBeenCalledWith(
-        '未保存の変更があります。このまま離れますか？'
+        '未保存の変更があります。このまま離れますか？',
       );
     });
+  });
+
+  it('intercepts an in-app link and stays on the page when discard is declined', async () => {
+    requestNavigationConfirmationMock.mockResolvedValue(false);
+    window.history.pushState({}, '', '/current');
+
+    render(<Harness enabled />);
+
+    const nextLink = screen.getByRole('link', { name: 'next' });
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    nextLink.dispatchEvent(click);
+
+    expect(click.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect(requestNavigationConfirmationMock).toHaveBeenCalledWith(
+        '未保存の変更があります。このまま離れますか？',
+      );
+    });
+    expect(window.location.pathname).toBe('/current');
   });
 
   it('does not confirm after allowNavigation is called', async () => {
