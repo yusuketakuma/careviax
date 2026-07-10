@@ -1344,7 +1344,7 @@ async function authenticatedPOST(req: NextRequest) {
     }
 
     if (isIdempotentSetAuditReplay(auditResult)) {
-      return success(auditResult);
+      return success({ data: auditResult });
     }
 
     await notifyWorkflowMutation({

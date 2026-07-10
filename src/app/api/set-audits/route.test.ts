@@ -1811,11 +1811,18 @@ describe('/api/set-audits POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      id: 'audit_existing',
-      result: 'approved',
-      idempotent: true,
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body).toMatchObject({
+      data: {
+        id: 'audit_existing',
+        result: 'approved',
+        idempotent: true,
+      },
     });
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('result');
+    expect(body).not.toHaveProperty('idempotent');
     expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
     expect(fileAssetFindManyMock).not.toHaveBeenCalled();
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
