@@ -51,6 +51,43 @@
 
 ## 直近の作業
 
+- codex: handoff supervision confirmation envelope convergence.
+  - commit:
+    `f3f295dff fix(API-CONTRACT-001EU): envelope handoff supervision confirmation`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001EU`。`POST /api/visit-records/:id/handoff/supervision-confirm` の
+    successをexact `{ data: handoff }`へ揃える。Consumer、assigned supervisor/task metadata/tenant/version、
+    final confirm/task completion/audit、PHI-safe errors/no-store不変、tests、debt 16→15を完了条件とした。
+  - files inspected / changed:
+    Supervision confirm/request routesとtests、handoff confirm service、`HandoffConfirmPanel` / `HandoffWorkspace`、
+    route catalog/rate-limit、protected GET/POST matrices、allowlist、Plans/archive/state、active dirty treeを確認。
+    変更はconfirm success、exact nested route regression、allowlist、計画台帳だけでproduction frontendは
+    変更していない。
+  - implementation / behavior / rollback:
+    Existing handoff DTOをそのまま`data`配下へ移動した。Consumerは既にenvelope fixtureを使い、返却値を
+    業務分岐に使わずinvalidate/toastだけに依存する。Status 200、DTO fields、error envelopeは不変。
+    Rollbackはscoped code/ledger commitのrevertで、schema、migration、persisted data、dependency、deploy設定の
+    復元は不要。
+  - security / medical / privacy / human review:
+    `canVisit`、active same-org supervisor membership、open assigned task、visit/supervisor/trainee/version metadata
+    binding、self-confirm拒否、optimistic version、final confirmation/task completion/audit transaction、typed
+    PHI-safe errors、sensitive no-storeを変更していない。患者/医療DTO、PHI field/logは不変。Human reviewは
+    response nestingとconsumer非依存を確認すればよい。Codex単独で実装・検証し、subagent、agmsg、Claude、
+    Oracle、外部workerは使っていない。
+  - validation:
+    Baseline/final focused Vitestは各3 files / 53 tests pass。Workspaceの既存React `act(...)` warningsは両方で
+    同一かつtest failureなし。Exact ESLint、Prettier、`api-response-shape:check`（15 allowlisted / 0 new）、
+    route-auth、frontend-contract、query-shape、client-PHI-log、diff checkがpass。Protected GET matrixは384/384、
+    protected POST matrixは151/151 pass。Typegenは成功し、full typecheckは今回外のuser-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。buildはtypecheck red中のため未実施。
+    DB/migration、production操作、外部送信、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001EU`はDONE、parentは15 violationsでPartial。UI production変更やvisual reconstructionが
+    ないためbrowser/imagegenを省略し、consumer DOM testsで回帰確認した。Full STATE Prettierは既存
+    `ecb8405c1` / `3131126cc` hunksだけがredのため未所有差分を保持。unowned config/harness/inbound/
+    report-deliveryと全untracked artifactを保持した。次は残allowlistを再分類し、visit-record detail/collection
+    contractを優先する。
+
 - codex: handoff supervision request envelope convergence.
   - commit:
     `e652a8e1e fix(API-CONTRACT-001ET): envelope handoff supervision request`.
