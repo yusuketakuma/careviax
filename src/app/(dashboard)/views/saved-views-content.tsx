@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Skeleton } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
+import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -133,6 +134,7 @@ function CurrentFilterCard({ orgId }: { orgId: string }) {
   });
 
   const isLoading = !orgId || preferencesQuery.isLoading;
+  const hasPreferencesData = preferencesQuery.data !== undefined;
 
   return (
     <section
@@ -165,12 +167,24 @@ function CurrentFilterCard({ orgId }: { orgId: string }) {
             <Skeleton key={index} className="h-9 w-36 rounded-full" />
           ))}
         </div>
+      ) : preferencesQuery.isError && !hasPreferencesData ? (
+        <SegmentError
+          title="今の絞り込み条件を表示できません"
+          cause="保存済みの絞り込み条件を取得できませんでした。"
+          nextAction="初期条件と取り違えないよう、再読み込みしてください。"
+          onRetry={() => void preferencesQuery.refetch()}
+          headingLevel={3}
+          className="mt-4"
+        />
       ) : (
         <>
-          {preferencesQuery.isError ? (
-            <p className="mt-2 text-xs text-muted-foreground">
-              保存済み条件を取得できなかったため、初期条件を表示しています。
-            </p>
+          {preferencesQuery.isError && hasPreferencesData ? (
+            <SegmentStaleBanner
+              title="前回取得した絞り込み条件を表示中"
+              description="最新の保存済み条件を取得できませんでした。表示中の条件が古い可能性があります。"
+              onRetry={() => void preferencesQuery.refetch()}
+              className="mt-4"
+            />
           ) : null}
           <ul className="mt-4 flex flex-wrap gap-3" aria-label="絞り込み条件">
             {conditions.map((condition) => (
@@ -223,9 +237,11 @@ async function fetchSavedViews(orgId: string): Promise<SavedViewRecord[]> {
 function NamedSavedViewsCard({
   orgId,
   currentConditions,
+  canCreateFromCurrentConditions,
 }: {
   orgId: string;
   currentConditions: SavedViewCondition[];
+  canCreateFromCurrentConditions: boolean;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -370,18 +386,38 @@ function NamedSavedViewsCard({
           maxLength={100}
           aria-label="保存ビュー名"
           className="min-h-11 w-full max-w-xs"
+          disabled={!canCreateFromCurrentConditions}
           data-testid="named-view-name-input"
         />
         <Button
           type="submit"
           variant="outline"
           className="min-h-11"
-          disabled={createMutation.isPending || newName.trim().length === 0}
+          disabled={
+            !canCreateFromCurrentConditions ||
+            createMutation.isPending ||
+            newName.trim().length === 0
+          }
           data-testid="named-view-create"
         >
           {createMutation.isPending ? '保存中…' : '今の条件を名前を付けて保存'}
         </Button>
       </form>
+
+      {!canCreateFromCurrentConditions ? (
+        <p className="mt-2 text-sm text-muted-foreground" role="status" aria-live="polite">
+          今の絞り込み条件を取得できないため、名前を付けて保存する前に再読み込みしてください。
+        </p>
+      ) : null}
+
+      {viewsQuery.isError && viewsQuery.data !== undefined ? (
+        <SegmentStaleBanner
+          title="前回取得した保存ビューを表示中"
+          description="最新の保存ビューを取得できませんでした。表示中の一覧が古い可能性があります。"
+          onRetry={() => void viewsQuery.refetch()}
+          className="mt-5"
+        />
+      ) : null}
 
       {isLoading ? (
         <div className="mt-5 flex flex-wrap gap-3" role="status" aria-label="保存ビュー読み込み中">
@@ -389,8 +425,15 @@ function NamedSavedViewsCard({
             <Skeleton key={index} className="h-10 w-44 rounded-lg" />
           ))}
         </div>
-      ) : viewsQuery.isError ? (
-        <p className="mt-5 text-sm text-muted-foreground">保存ビューを取得できませんでした。</p>
+      ) : viewsQuery.isError && viewsQuery.data === undefined ? (
+        <SegmentError
+          title="保存ビューを表示できません"
+          cause="保存ビューの一覧を取得できませんでした。"
+          nextAction="空の一覧と取り違えないよう、再読み込みしてください。"
+          onRetry={() => void viewsQuery.refetch()}
+          headingLevel={3}
+          className="mt-5"
+        />
       ) : views.length === 0 ? (
         <div className="mt-5">
           <EmptyState
@@ -557,6 +600,8 @@ export function SavedViewsContent() {
   });
   const currentConditions: SavedViewCondition[] =
     parseSavedView(preferencesQuery.data?.saved_view)?.conditions ?? DEFAULT_SAVED_VIEW_CONDITIONS;
+  const canCreateFromCurrentConditions =
+    !preferencesQuery.isError || preferencesQuery.data !== undefined;
 
   return (
     <div className="max-w-5xl space-y-6" data-testid="saved-views-page">
@@ -578,7 +623,11 @@ export function SavedViewsContent() {
 
       <CurrentFilterCard orgId={orgId} />
 
-      <NamedSavedViewsCard orgId={orgId} currentConditions={currentConditions} />
+      <NamedSavedViewsCard
+        orgId={orgId}
+        currentConditions={currentConditions}
+        canCreateFromCurrentConditions={canCreateFromCurrentConditions}
+      />
     </div>
   );
 }

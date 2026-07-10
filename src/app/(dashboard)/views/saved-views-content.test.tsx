@@ -121,6 +121,33 @@ describe('SavedViewsContent', () => {
     expect(screen.queryByTestId('current-filter-saved-badge')).toBeNull();
   });
 
+  it('distinguishes initial read failures from default conditions and empty saved views', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).startsWith('/api/saved-views')) {
+        return jsonResponse({ message: '保存ビューの取得に失敗しました' }, 500);
+      }
+      return jsonResponse({ message: '保存済み条件の取得に失敗しました' }, 500);
+    });
+    renderPage();
+
+    expect(
+      await screen.findByRole('heading', { name: '今の絞り込み条件を表示できません', level: 3 }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: '保存ビューを表示できません', level: 3 }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('current-filter-chip')).toBeNull();
+    expect(screen.queryByTestId('named-view-list')).toBeNull();
+    expect(screen.getByTestId('named-view-name-input').getAttribute('disabled')).not.toBeNull();
+    expect(screen.getByTestId('named-view-create').getAttribute('disabled')).not.toBeNull();
+
+    const requestsBeforeRetry = fetchMock.mock.calls.length;
+    fireEvent.click(screen.getAllByRole('button', { name: '再読み込み' })[0]!);
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.length).toBeGreaterThan(requestsBeforeRetry);
+    });
+  });
+
   it('delegates preference and named-view reads to shared org headers and paths', async () => {
     renderPage();
 

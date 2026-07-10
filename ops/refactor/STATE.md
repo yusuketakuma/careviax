@@ -51,6 +51,20 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh P2 NF-06 saved-views retrieval recovery (DONE, 2026-07-11; focused UI behavior slice).
+  - result / scope:
+    `/views` now distinguishes an initial preferences/saved-views read failure from default conditions or a legitimate
+    empty list. Initial failures use existing `SegmentError` with fixed recovery copy and query `refetch()`; cached data
+    with a failed background refresh remains visible but is marked through `SegmentStaleBanner`. Creating a named view is
+    disabled until current conditions have been read, preventing a default fallback from being saved as the user's view.
+    Fetch paths/headers/query keys, saved-view serialization, mutations, URLs, auth/authz, PHI/audit behavior, and
+    existing mutation toasts are unchanged. `gpt-image-2` was omitted because the slice reuses existing error/stale
+    state components and creates no visual reconstruction.
+  - validation / limits:
+    Focused Vitest passed 1 file / 17 tests. Exact ESLint/Prettier, client PHI-log, frontend-contract,
+    module-boundary, typecheck, and diff-check passed. E2E, runtime a11y/responsive evidence, full build, and
+    standalone remain NOT_EXECUTED pending the Phase 9 evidence run.
+
 - codex: UI/UX Refresh P3 NF-09 inline empty-state convergence (DONE, 2026-07-11; focused UI behavior slice).
   - result / scope:
     Added the `EmptyState` `size="inline"` presentation while preserving its default screen-level presentation, and
