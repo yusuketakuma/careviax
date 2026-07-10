@@ -1867,7 +1867,7 @@ async function authenticatedPOST(req: NextRequest) {
       suggestedSchedule: result.suggestedSchedule,
       conflictResolved: result.conflictResolved,
     };
-    return success(responsePayload, result.conflictResolved ? 200 : 201);
+    return success({ data: responsePayload }, result.conflictResolved ? 200 : 201);
   });
 }
 

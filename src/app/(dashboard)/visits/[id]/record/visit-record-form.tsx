@@ -1535,7 +1535,11 @@ export function VisitRecordForm({
         throw new Error(err.message ?? '訪問記録の保存に失敗しました');
       }
 
-      const { record } = (await res.json()) as { record: SavedVisitRecord };
+      const createPayload = await readApiJson<{ data: { record: SavedVisitRecord } }>(
+        res,
+        '訪問記録の保存に失敗しました',
+      );
+      const { record } = createPayload.data;
       const labPatientId = schedule?.patient_id ?? values.patient_id;
 
       // ⑤ 反映導線: 確認した患者情報を正本(患者詳細)へ反映する(任意・オンライン時のみ・非ブロッキング)。

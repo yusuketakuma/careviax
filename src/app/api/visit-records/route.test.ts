@@ -1350,6 +1350,14 @@ describe('/api/visit-records POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body).toMatchObject({
+      data: {
+        record: { id: 'record_1', version: 1 },
+        conflictResolved: false,
+      },
+    });
     expect(visitRecordCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -1701,9 +1709,13 @@ describe('/api/visit-records POST', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      record: { id: 'record_existing', version: 4 },
-      conflictResolved: true,
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body).toMatchObject({
+      data: {
+        record: { id: 'record_existing', version: 4 },
+        conflictResolved: true,
+      },
     });
     expect(visitRecordUpdateManyMock).toHaveBeenCalledWith({
       where: {
@@ -2293,10 +2305,12 @@ describe('/api/visit-records POST', () => {
         .legacy_debug,
     ).toBeUndefined();
     await expect(response.json()).resolves.toMatchObject({
-      suggestedSchedule: {
-        suggested_date: '2026-04-01',
-        auto_generated: true,
-        interval_days: 6,
+      data: {
+        suggestedSchedule: {
+          suggested_date: '2026-04-01',
+          auto_generated: true,
+          interval_days: 6,
+        },
       },
     });
   });
@@ -2343,10 +2357,12 @@ describe('/api/visit-records POST', () => {
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
-      suggestedSchedule: {
-        suggested_date: '2026-07-15',
-        auto_generated: true,
-        interval_days: 7,
+      data: {
+        suggestedSchedule: {
+          suggested_date: '2026-07-15',
+          auto_generated: true,
+          interval_days: 7,
+        },
       },
     });
   });
@@ -2385,10 +2401,12 @@ describe('/api/visit-records POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
-      suggestedSchedule: {
-        suggested_date: '2026-03-27',
-        auto_generated: true,
-        interval_days: 1,
+      data: {
+        suggestedSchedule: {
+          suggested_date: '2026-03-27',
+          auto_generated: true,
+          interval_days: 1,
+        },
       },
     });
   });

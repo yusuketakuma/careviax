@@ -540,10 +540,12 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
           visitRecordPostBodies.push(JSON.parse(String(init?.body ?? '{}')));
           return new Response(
             JSON.stringify({
-              record: {
-                id: 'record_1',
-                version: 1,
-                patient_id: 'patient_1',
+              data: {
+                record: {
+                  id: 'record_1',
+                  version: 1,
+                  patient_id: 'patient_1',
+                },
               },
             }),
             { status: 201 },
@@ -2082,7 +2084,9 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
           visitRecordPostBodies.push(JSON.parse(String(init?.body ?? '{}')));
           return new Response(
             JSON.stringify({
-              record: { id: 'record_1', version: 1, patient_id: schedulePatientId },
+              data: {
+                record: { id: 'record_1', version: 1, patient_id: schedulePatientId },
+              },
             }),
             { status: 201 },
           );
