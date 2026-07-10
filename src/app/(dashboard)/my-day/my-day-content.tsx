@@ -629,8 +629,10 @@ export function MyDayContent({
                         href={`/visits/${visit.id}/record`}
                         className="flex min-h-[44px] items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
                       >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{visit.case_.patient.name}</p>
+                        <div className="min-w-0 flex-1">
+                          <p className="whitespace-normal break-words text-sm leading-5 font-medium">
+                            {visit.case_.patient.name}
+                          </p>
                           <p className="truncate text-xs text-muted-foreground">
                             {windowLabel} /{' '}
                             {VISIT_TYPE_LABELS[visit.visit_type] ?? visit.visit_type}
@@ -666,7 +668,9 @@ export function MyDayContent({
                           href={`/visits/${visit.id}/record`}
                           className="flex min-h-11 items-center justify-between rounded-md px-2 text-sm transition-colors hover:bg-muted/50"
                         >
-                          <span className="min-w-0 truncate">{visit.case_.patient.name}</span>
+                          <span className="min-w-0 flex-1 whitespace-normal break-words leading-5">
+                            {visit.case_.patient.name}
+                          </span>
                           <span className="ml-2 flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                             {timeLabel(visit.time_window_start, visit.time_window_end)}
                             <StateBadge role="done" showIcon={false} className="text-xs">

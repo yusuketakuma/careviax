@@ -341,6 +341,73 @@ describe('MyDayContent', () => {
     expect(screen.getByText('山田花子').closest('details')).toBeNull();
   });
 
+  it('keeps long patient names readable in active and completed visit rows', () => {
+    const longActiveName = '佐藤山田鈴木高橋渡辺伊藤田中山本中村小林加藤吉田太郎';
+    const longCompletedName = '高橋渡辺伊藤田中山本中村小林加藤吉田佐藤山田鈴木花子';
+
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'my-day-visits') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'visit_active_long_name',
+                case_: { patient: { name: longActiveName } },
+                visit_type: 'regular',
+                time_window_start: '2026-04-10T09:00:00.000Z',
+                time_window_end: '2026-04-10T10:00:00.000Z',
+                schedule_status: 'planned',
+                preparation: null,
+              },
+              {
+                id: 'visit_completed_long_name',
+                case_: { patient: { name: longCompletedName } },
+                visit_type: 'regular',
+                time_window_start: '2026-04-10T08:00:00.000Z',
+                time_window_end: '2026-04-10T08:30:00.000Z',
+                schedule_status: 'completed',
+                preparation: { prepared_at: '2026-04-10T07:00:00.000Z' },
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+        };
+      }
+      if (queryKey[0] === 'my-day-tasks') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'dashboard') {
+        return { data: emptyCockpit, isLoading: false, isError: false };
+      }
+      if (queryKey[0] === 'my-day-status-changes') {
+        return { data: [], isLoading: false, isError: false };
+      }
+      throw new Error(`Unexpected query key: ${String(queryKey[0])}`);
+    });
+
+    render(<MyDayContent />);
+
+    const activeName = screen.getByText(longActiveName);
+    const completedName = screen.getByText(longCompletedName);
+
+    for (const patientName of [activeName, completedName]) {
+      expect(patientName.className).toContain('whitespace-normal');
+      expect(patientName.className).toContain('break-words');
+      expect(patientName.className).not.toContain('truncate');
+    }
+    expect(activeName.parentElement?.className).toContain('flex-1');
+    expect(completedName.className).toContain('flex-1');
+    expect(activeName.closest('a')?.getAttribute('href')).toBe(
+      '/visits/visit_active_long_name/record',
+    );
+    expect(completedName.closest('a')?.getAttribute('href')).toBe(
+      '/visits/visit_completed_long_name/record',
+    );
+    expect(completedName.closest('details')).toBeTruthy();
+    expect(activeName.closest('details')).toBeNull();
+  });
+
   it('pins the JST business date even when the runtime timezone is behind Japan (SSOT 2.8)', () => {
     // date-fns format はランタイムローカル TZ で解釈するため、UTC instant を渡すと
     // Asia/Tokyo より遅れた TZ では前日化する。文字列成分からの構築で TZ 非依存にしたことを固定する。

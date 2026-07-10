@@ -43520,3 +43520,35 @@ leading-5`, preserving route-order prefixes, status badges, chevrons, links, and
 - remaining / next action:
   Commit the focused implementation. DV-07 remains Partial for my-day; separately assess the active and
   completed visit rows before claiming P1 identity coverage.
+
+## 2026-07-11 UI-UX-DV07-MY-DAY — preserve active and completed visit identities
+
+- current task:
+  Address the remaining DV-07 patient-context selection points in My Day, where active and completed visit
+  rows hid long patient-name suffixes with `truncate`.
+- files inspected / changed:
+  Inspected both visit row renderers, their status/time affordances, the shared My Day query contract,
+  focused component tests, the UI SSOT/audit, local browser-mock safety boundaries, and dirty ownership.
+  Changed `my-day-content.tsx`, its test, and the DV-07/progress evidence.
+- bugs found / fixed:
+  The active-visit name is now a flexible, wrapping identity block; the completed-visit name uses the same
+  contract. Time, visit type, status/preparation badges, 44px row minimums, completed-row disclosure,
+  and visit-record hrefs remain unchanged.
+- security / medical safety:
+  Long names remain visible at both active and completed patient-context switches, reducing same-prefix
+  patient-selection risk. No request shape, authorization, data, persistence, mutation, or dependencies
+  changed. `gpt-image-2` was omitted because this corrects an existing identity typography contract rather
+  than reconstructing a screen. Browser evidence used only synthetic patient names, mocked GET responses,
+  a local E2E session resolved by `SELECT`, and no write request.
+- validation:
+  `pnpm vitest run 'src/app/(dashboard)/my-day/my-day-content.test.tsx' --reporter=dot` passed 1 file /
+  21 tests, including long active/completed names, non-truncate class contracts, disclosure placement, and
+  visit-record hrefs. Exact ESLint, Prettier, `pnpm colors:check`, `pnpm client-phi-log:check`,
+  `pnpm frontend-contract:check`, `pnpm boundaries:check`, `pnpm typecheck`, `pnpm lint`, and
+  `git diff --check` passed. At 390px local Playwright mock, both names were three visible lines with
+  `white-space: normal`, `overflow-wrap: break-word`, `text-overflow: clip`, preserved hrefs, zero
+  page/console errors, zero write requests, and no horizontal overflow. Build, a11y, 200% zoom, offline,
+  and clinical review remain pending.
+- remaining / next action:
+  Commit the focused implementation. DV-07 implementation paths are complete; its remaining verification
+  includes the facility switcher's DB-fixture-backed 390px/swipe scenario and broad a11y/clinical gates.
