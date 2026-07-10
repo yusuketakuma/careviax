@@ -51,6 +51,37 @@
 
 ## 直近の作業
 
+- codex: residual medication creation envelope convergence.
+  - commit:
+    `65fb20dfa fix(API-CONTRACT-001EL): envelope residual medication creation`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001EL`。`POST /api/residual-medications` の201 successを exact
+    `{ data: created[] }` に揃える。Nested array、offline consumer不変、validation/allocation/clinical derivation維持、
+    debt減を完了条件とした。
+  - files inspected / changed:
+    Residual medication GET/POST and full tests; visit assignment/org filter; DrugMaster validation; display-ID range;
+    offline sync engine success/conflict handling; direct frontend references; allowlist; Plans/archive/state; active
+    dirty tree. Changed only POST success/test, allowlist and planning ledgers; GET and consumer stayed unchanged.
+  - implementation / behavior / rollback:
+    Provider nests the unchanged created-record array under `data`. Offline sync deletes a due queue item on any OK
+    response without reading the body, so no consumer migration is required. Rollback is the scoped code and ledger
+    commits; no write ordering, stored field, schema, migration, dependency or deploy configuration changed.
+  - security / medical / privacy / human review:
+    Assignment/org boundary, visit existence, DrugMaster identity, batch display IDs, residual/excess derivation,
+    transaction, no-store and sanitized logging remain covered. Human review should confirm response nesting only; no
+    medication value/rule changed. Codex alone implemented and verified the slice; no subagent/Oracle/external worker.
+  - validation:
+    Baseline and final focused Vitest each passed 1 file / 23 tests. Exact ESLint, Prettier,
+    `api-response-shape:check` (25 allowlisted / 0 new), route-auth, frontend-contract, query-shape, client-PHI-log and
+    `git diff --check` passed. Typegen succeeded; full typecheck remains red only on the pre-existing user-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that gate is red. No DB/migration,
+    production operation, external send, deploy, push or destructive action ran.
+  - shared-tree / Plans / UI / remaining:
+    `API-CONTRACT-001EL` is DONE; parent remains Partial at 25 violations. Browser/image generation were omitted because
+    there is no UI change. Preserve unowned config/harness/inbound edits and newly appeared untracked `.agents/skills`,
+    `atoms*`, `missions`, `profiles`, `projects`, `sources`, and `summaries*` artifacts. The prior no-store docs commit
+    also preserved a concurrently prepared stock STATE block for already-landed `c2b91232b`; no history was rewritten.
+
 - codex: workflow exception sensitive no-store hardening.
   - commit:
     `29de03733 fix(API-WORKFLOW-EXCEPTION-NOSTORE-001): prevent clinical response caching`.
