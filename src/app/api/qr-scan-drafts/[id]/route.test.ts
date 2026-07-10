@@ -238,9 +238,12 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(body).toMatchObject({ id: 'draft_1', status: 'discarded' });
-    expect(body).not.toHaveProperty('raw_qr_texts');
-    expect(body).not.toHaveProperty('qr_payload_hash');
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body.data).toMatchObject({ id: 'draft_1', status: 'discarded' });
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('status');
+    expect(body.data).not.toHaveProperty('raw_qr_texts');
+    expect(body.data).not.toHaveProperty('qr_payload_hash');
   });
 
   it('returns 404 when draft does not exist', async () => {

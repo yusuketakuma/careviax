@@ -167,7 +167,7 @@ const authenticatedDELETE = withAuthContext(
       return conflict('このQRスキャン下書きはすでに処理済みです');
     }
 
-    return success(toQrDraftResponse(draft));
+    return success({ data: toQrDraftResponse(draft) });
   },
   {
     permission: 'canVisit',
