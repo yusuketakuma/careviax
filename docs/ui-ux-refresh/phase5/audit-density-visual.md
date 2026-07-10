@@ -138,6 +138,7 @@
 - **Priority**: P1
 - **Verification**: 長名（10 文字姓名 + 長カナ）の fixture で mobile390/ワークベンチ左ペインのスクリーンショット確認 + patient-pinned-header の unit test に長名ケース追加。
 - **Evidence**: `src/components/ui/patient-pinned-header.tsx:114-115` / `src/components/features/dispense-workbench/patient-list-panel.tsx:172-183` / `src/app/(dashboard)/patients/patients-board.tsx:624` / `src/app/(dashboard)/my-day/my-day-content.tsx:633,669` / `src/components/features/visits/facility-visit-record-switcher.tsx:268,281`
+- **Partial remediation (2026-07-11, `TBD` commit)**: 共通 `PatientPinnedHeader` の氏名とカナを `truncate` から折返しへ変更し、モバイルでは患者識別クラスタを全幅に確保した。規範SSOTにも患者識別子をellipsisのみで隠さないルールを追加。長名・長カナのcomponent testでクラス契約とDOM内の全文を確認した。調剤ワークベンチ患者キュー、患者ボード、my-day、施設連続記録の識別子は別画面のlayout/実機狭幅検証を要するため未解決。
 
 ---
 

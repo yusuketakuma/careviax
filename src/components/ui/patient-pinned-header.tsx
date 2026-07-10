@@ -109,10 +109,14 @@ export function PatientPinnedHeader({
         className,
       )}
     >
-      <div className="min-w-0">
-        <div className="flex items-baseline gap-2">
-          <span className="truncate font-heading text-base font-semibold">{name}</span>
-          {kana ? <span className="truncate text-xs text-muted-foreground">{kana}</span> : null}
+      <div className="min-w-0 max-w-full basis-full sm:flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0">
+          <span className="max-w-full break-words font-heading text-base font-semibold">
+            {name}
+          </span>
+          {kana ? (
+            <span className="max-w-full break-all text-xs text-muted-foreground">{kana}</span>
+          ) : null}
         </div>
         {birth || resolvedAge != null || facility ? (
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">

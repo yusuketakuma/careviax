@@ -51,6 +51,20 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh P1 DV-07 patient pinned-header identifier visibility (PARTIAL, 2026-07-11; focused safety-display slice).
+  - result / scope:
+    `PatientPinnedHeader` no longer truncates the patient name or kana; the identity cluster has a full-width mobile
+    basis and wraps long values before facility metadata or safety tags. The normative UI SSOT now prohibits an
+    ellipsis-only treatment for name, kana, and birth-date identifiers. No patient data source, selection/switching,
+    query/cache, form/draft, API, auth/authz, PHI/audit, or safety-tag behavior changed. This covers the common pinned
+    header only; workbench queues, boards, my-day, and facility sequence identifiers remain separately unresolved.
+    `gpt-image-2` was omitted because this is a focused wrapping correction inside the existing patient-identification
+    component, not a reconstructed screen or new visual pattern.
+  - validation / limits:
+    Focused Vitest passed 1 file / 8 tests. Exact ESLint/Prettier, colors, client PHI-log, frontend-contract,
+    module-boundary, typecheck, and diff-check passed. Mobile390/browser screenshot, keyboard/zoom/a11y evidence,
+    clinical-safety review, full build, and standalone remain NOT_EXECUTED.
+
 - codex: UI/UX Refresh P2 DV-06 cycle status label convergence (PARTIAL, 2026-07-11; focused shared-constant slice).
   - result / scope:
     The workflow dashboard and transition-history compatibility export now consume the canonical

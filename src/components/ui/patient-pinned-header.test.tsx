@@ -28,6 +28,30 @@ describe('PatientPinnedHeader', () => {
     expect(screen.getByText('さくら苑')).toBeTruthy();
   });
 
+  it('does not truncate long patient identifiers and places them before secondary header content on mobile', () => {
+    const longName = '山田太郎山田太郎山田太郎山田太郎山田太郎';
+    const longKana = 'ヤマダタロウヤマダタロウヤマダタロウヤマダタロウ';
+    const { container } = render(
+      <PatientPinnedHeader
+        name={longName}
+        kana={longKana}
+        facility="さくら苑"
+        safetyTags={[{ label: 'ペニシリンアレルギー', role: 'blocked' }]}
+        now={NOW}
+      />,
+    );
+
+    const name = screen.getByText(longName);
+    const kana = screen.getByText(longKana);
+    expect(name.className).toContain('break-words');
+    expect(name.className).not.toContain('truncate');
+    expect(kana.className).toContain('break-all');
+    expect(kana.className).not.toContain('truncate');
+    expect(name.parentElement?.parentElement?.className).toContain('basis-full');
+    expect(container.querySelector('[data-sticky]')?.textContent).toContain(longName);
+    expect(container.querySelector('[data-sticky]')?.textContent).toContain(longKana);
+  });
+
   it('prefers an explicit age over computing from birthDate', () => {
     render(<PatientPinnedHeader name="A" age={80} birthDate="1950-06-26" now={NOW} />);
     expect(screen.getByText('80歳')).toBeTruthy();
