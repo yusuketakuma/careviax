@@ -9,11 +9,10 @@
 ## 体制（2026-07-10 最新ユーザー指示）
 
 - 現行は Codex 本体が計画、編集、validation、台帳更新、scoped commit の最終責任を持つ単一制御運用。
-- 2026-07-10 の最新ユーザー指示により、bounded な調査・計画レビュー・検証には read-only subagent を使う。
-  編集、統合、validation、台帳更新、scoped commit は Codex 本体だけが担う。
-- agmsg、codex2/codex3/codex4、Claude などの外部 maker/checker 運用は再開しない。
+- 2026-07-10 の最新ユーザー指示により、subagent、agmsg、codex2/codex3/codex4、
+  Claude などの外部 maker/checker を使わず、Codex 単独で進める。
 - 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
-  直接の影響範囲確認、read-only subagent の計画レビュー、focused/full gate で代替する。
+  直接の影響範囲確認、focused/full gate で代替する。
 - 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
 
 ## 旧体制（2026-07-04/05 履歴）
@@ -44,13 +43,45 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: Codex 本体 + bounded read-only subagent 運用（2026-07-10〜）。
-  編集・統合・validation・commitの最終責任は Codex 本体が持ち、pushは明示指示時だけ行う。
+- Phase C（実装ループ）: Codex 単独運用（2026-07-10〜）。調査・編集・統合・
+  validation・commitは Codex 本体が担い、pushは明示指示時だけ行う。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex: visit schedule creation envelope convergence.
+  - commit:
+    `b0e5ec01d fix(API-CONTRACT-001EE): envelope schedule creation result`.
+  - current task / purpose / acceptance:
+    P0 `API-CONTRACT-001EE`。`POST /api/visit-schedules` の201 successを raw scheduleから exact
+    `{ data: schedule }` へ移行し、次回訪問作成readerを同契約へ揃える。provider/consumer test、
+    response-shape debt減、legacy root拒否、既存create workflow維持を完了条件とした。
+  - files inspected / changed:
+    Next.js route handler guide; collection route/test; `visit-record-detail.tsx` and test; shared
+    `readApiJson`; allowlist; `Plans.md`; archive; this state; active dirty tree. Changed only the route/test,
+    detail reader/test, allowlist, plan/archive and this state.
+  - implementation / behavior / rollback:
+    Provider now wraps the created schedule in `data`. The sole production reader unwraps and validates a non-empty
+    string `data.id` before navigation; legacy root/malformed success fails with the existing safe fallback message.
+    Validation, workflow gate, create/audit/notification, 201 status and no-store behavior are unchanged. Rollback is
+    the scoped code commit plus this ledger commit; no schema, migration, dependency or deploy change exists.
+  - security / privacy / performance:
+    No permission, assignment/org boundary, PHI field, log, audit payload, query, rendering or network round-trip was
+    added. The reader now fails closed on malformed success. Codex alone implemented and verified the slice; no
+    subagent, agmsg, Claude, Oracle or external worker was used.
+  - validation:
+    Baseline focused Vitest passed 2 files / 57 tests. The first edited run exposed a local duplicate `payload`
+    identifier; it was renamed without behavior change. Final focused Vitest passed 2 files / 59 tests; exact ESLint,
+    Prettier, `api-response-shape:check` (32 allowlisted / 0 new), route-auth, frontend-contract, query-shape,
+    client-PHI-log and `git diff --check` passed. Typegen succeeded; full typecheck remains red only on the
+    pre-existing user-owned `communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that
+    gate is red. No DB/migration, production operation, external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen / remaining:
+    `API-CONTRACT-001EE` is DONE; parent remains Partial at 32 violations. Browser/image generation were omitted
+    because this JSON contract slice changes no visual structure or interaction. Preserve unowned config, harness and
+    inbound changes; select the next safe non-consent/non-platform allowlist entry and continue the burn-down.
 
 - codex: OfflineSyncBridge PHI-safe retry logging.
   - commit:
