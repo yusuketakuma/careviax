@@ -51,6 +51,2545 @@
 
 ## 直近の作業
 
+- codex: main worktree integration and push.
+  - task / result / commits:
+    `GIT-MAIN-INTEGRATE-001` DONE. Live inventory found exactly one worktree, one local branch (`main`), and no
+    merge/rebase/cherry-pick in progress. After `git fetch origin --prune`, local `main` was 137 commits ahead and zero
+    behind `origin/main`; no branch merge was required. All 338 non-ledger paths were explicitly staged and committed as
+    `86f626aa0`. A final Clerk Support slice materialized before ledger finalization, was preserved and validated, and was
+    committed as `bb7bb9ffb`; the existing Plans/archive/state changes are included in the final ledger commit/push group.
+  - files inspected / changed:
+    Inspected worktree/branch/remote refs, all tracked/untracked paths, staged diff, credential patterns, package gates,
+    and the single-ledger integration state. Integrated the initial 311 tracked changes plus 30 untracked paths, followed
+    by four final Clerk Support/schema-ratchet modifications, without dropping the three ledger files or user work.
+  - validation / results:
+    `git diff --check`, `pnpm format:check`, untracked-file Prettier, client JSON schema ratchet (109 schema-backed / 268
+    allowlisted / 110 files / 0 new debt), response-shape 0/0, frontend-contract, PHI-log, route-auth, plans-active, RLS
+    24/24, and DB query-shape 0/0 passed. `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed. Full Vitest
+    passed 1,475 files / 15,251 tests with 3 files / 13 tests skipped. `pnpm lint` passed with zero errors and two existing
+    unused-parameter warnings in `src/lib/platform/break-glass.test.ts`. The final Clerk slice then passed focused 4 files /
+    25 tests, exact lint/format, contract ratchets, and another full typecheck.
+  - validation limits / safety:
+    `pnpm typecheck:no-unused` did not emit code diagnostics but could not finish within available memory: 4 GB produced
+    an explicit V8 OOM and larger 6/8/12 GB attempts were OS-killed. Full build was not rerun after its prior exit 137, so
+    neither gate is claimed green. Credential-pattern review found no actual secret, private key, or `.env` payload.
+    Staging used explicit path lists, never `git add -A`. No force push, reset, clean, stash, deploy, migration, data
+    mutation, secret rotation, or destructive operation was run. The user explicitly authorized the normal `main` push;
+    user-facing completion requires final `origin/main...main = 0 0` and a clean worktree.
+  - remaining / next:
+    Integration work has no remaining code path. Product backlog remains active from exact 268 client-schema debt. The
+    no-unused/build resource gaps remain disclosed and require a larger runner if those full gates must be proven before
+    deployment.
+
+- codex: clerk support response strictness.
+  - task / result / commit:
+    `API-CONTRACT-001FZCLERKSTRICT` DONE in `bb7bb9ffb`. Client-schema debt is 269 -> 268 and files 111 -> 110.
+  - files inspected / changed:
+    Clerk Support consumer/test, BFF provider/test, DTO types, shared client/response schemas/tests, AST allowlist,
+    Plans/archive/state. Consumer/test, DTO schema, one allowlist entry, and ledgers changed; provider stayed intact.
+  - implementation / behavior / rollback:
+    Added exact validation for generated time, six nonnegative KPI counts, PHI-bearing task fields, and consult items.
+    Mixed-root 2xx now uses fixed recovery copy without exposing response details. Task/KPI/consult provider DTO,
+    disclosure, auth/tenant/no-store/DB/UI are unchanged. Rollback is the four-file implementation commit plus ledger
+    reverse patch; no patient, task, consultation, or audit data restore is needed.
+  - validation / safety:
+    Consumer/provider/shared passed 4 files / 25 tests. Live ratchet passed at 109 schema-backed / 268 allowlisted /
+    110 files / 0 new debt. Frontend, PHI-log, response-shape 0/0, plans-active, full typecheck, exact ESLint/Prettier/diff
+    passed. Browser/imagegen omitted for this nonvisual parser slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial. Continue one bounded provider/consumer family from exact 268-call debt.
+    Full build/no-unused resource gaps remain disclosed; no deploy/migration/external write.
+
+- codex: facility standards response strictness.
+  - task / result / commit:
+    `API-CONTRACT-001FZFACSTANDARDSTRICT` DONE. No commit. Client-schema debt is 270 -> 269 and files 112 -> 111.
+  - files inspected / changed:
+    Facility Standards consumer/test, provider/full test, counted-list contract, shared client tests, AST allowlist,
+    Plans/archive/state. Consumer/test, one allowlist entry, and ledgers changed; provider stayed intact.
+  - implementation / behavior / rollback:
+    Added exact validation for all standard/site/date/boolean requirement/claim fields and total/visible/hidden/truncated/
+    limit meta, and synchronized the stale consumer fixture. Mixed-root 2xx and non-boolean requirement objects now fail
+    closed before claim display. Claim/status calculation and billing meaning are unchanged. Rollback is consumer/test/
+    allowlist/ledger reverse patch; no facility, billing, patient, or audit data restore is needed.
+  - validation / safety / human review:
+    Consumer/provider/shared passed 4 files / 26 tests. Live ratchet passed at 108 schema-backed / 269 allowlisted /
+    111 files / 0 new debt and byte-matched regenerated baseline. Frontend, PHI-log, response-shape 0/0, route-auth,
+    plans-active, full typecheck, exact ESLint/Prettier/diff passed. Auth/tenant/DB and visual UI are unchanged.
+    Browser/imagegen omitted. Before rollout, review whether legacy `requirements_status` JSON contains non-boolean values;
+    those rows now yield an error instead of a potentially unsafe claimable display.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial. Continue one bounded provider/consumer family from exact 269-call debt.
+    Full build remains unverified after the prior exit 137. No deploy/migration/external write.
+
+- codex: dispense reject stats response strictness.
+  - task / result / commit:
+    `API-CONTRACT-001FZREJECTSTATSSTRICT` DONE. No commit. Client-schema debt is 271 -> 270 and files 113 -> 112.
+  - files inspected / changed:
+    Dispense Reject Stats consumer/test, provider/full test, shared client/response schemas/tests, AST allowlist,
+    Plans/archive/state. Consumer/test, one allowlist entry, and ledgers changed; provider stayed intact.
+  - implementation / behavior / rollback:
+    Added exact validation for total, 0..365 period, and breakdown code/label/count/percentage. Empty/mixed-root 2xx now
+    enters ErrorState without response details; a valid zero aggregate renders the truthful no-rejection state. Rollback
+    is consumer/test/allowlist/ledger reverse patch; no dispense, audit, prescription, patient, or task data restore.
+  - validation / attempts / safety:
+    Consumer/provider/shared passed 4 files / 31 tests. Live ratchet passed at 107 schema-backed / 270 allowlisted /
+    112 files / 0 new debt and byte-matched regenerated baseline. Frontend, PHI-log, response-shape 0/0, route-auth,
+    plans-active, full typecheck, exact ESLint/diff passed. The first exact Prettier check found only the new test layout;
+    exact-file formatting and recheck passed. Reason/percentage calculation, query/retry, auth/tenant/DB, and visual
+    structure are unchanged. Browser/imagegen omitted for this nonvisual parser slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial. Continue one bounded provider/consumer family from exact 270-call debt.
+    Full build remains unverified after the prior exit 137. No deploy/migration/external write.
+
+- codex: admin capacity response strictness.
+  - task / result / commit:
+    `API-CONTRACT-001FZCAPACITYSTRICT` DONE. No commit. Client-schema debt is 272 -> 271 and files 114 -> 113.
+  - files inspected / changed:
+    Admin Capacity consumer/test, provider/full test, analytics key contract, shared client/response schemas/tests,
+    AST allowlist, Plans/archive/state. Consumer/test, one allowlist entry, and ledgers changed; provider stayed intact.
+  - implementation / behavior / rollback:
+    Added exact nested validation for generated time, KPI completed/total values, six process keys, staff load, and
+    attention items. Mixed-root 2xx now enters the existing error state without exposing response details. Normal, empty,
+    loading, and threshold UI remain unchanged. Rollback is consumer/test/allowlist/ledger reverse patch; no capacity,
+    schedule, prescription, staff, or audit data restore is needed.
+  - validation / safety:
+    Consumer/provider/shared passed 4 files / 32 tests. Live ratchet passed at 106 schema-backed / 271 allowlisted /
+    113 files / 0 new debt and byte-matched regenerated baseline. Frontend, PHI-log, response-shape 0/0, route-auth,
+    plans-active, full typecheck, exact ESLint/Prettier/diff passed. Capacity computation/thresholds, auth/tenant/no-store/
+    DB, and visual UI are unchanged. Browser/imagegen omitted for this nonvisual parser slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial. Continue one bounded provider/consumer family from exact 271-call debt.
+    Full build remains unverified after the prior exit 137. No commit/push/deploy/migration/external write.
+
+- codex: admin metrics response strictness.
+  - task / result / commit:
+    `API-CONTRACT-001FZMETRICSSTRICT` DONE. No commit. Client-schema debt is 273 -> 272 and files 115 -> 114.
+  - files inspected / changed:
+    Admin Metrics consumer/test, provider/full test, shared client/response schemas/tests, AST allowlist,
+    Plans/archive/state. Consumer/test, one allowlist entry, and ledgers changed; provider/shared behavior stayed intact.
+  - implementation / behavior / rollback:
+    Added an exact schema for all eight live provider fields, including the three metadata fields not rendered by cards,
+    and synchronized fixtures. Missing/invalid/mixed-root 2xx now enters the existing blocking error state without raw
+    response details. Normal and stale-data card behavior is unchanged. Rollback is consumer/test/allowlist/ledger
+    reverse patch; no metric, prescription, visit, pharmacist, or audit data restore is needed.
+  - validation / safety:
+    Consumer/provider/shared passed 4 files / 26 tests. Live ratchet passed at 105 schema-backed / 272 allowlisted /
+    114 files / 0 new debt and byte-matched regenerated baseline. Frontend, PHI-log, response-shape 0/0, route-auth,
+    plans-active, full typecheck, exact ESLint/Prettier/diff passed. Metric calculations/thresholds, query stale-data,
+    auth/tenant/DB, and visual UI are unchanged. Browser/imagegen omitted for this nonvisual parser slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial. Continue one bounded provider/consumer family from exact 272-call debt.
+    Full build remains unverified after the prior exit 137. No commit/push/deploy/migration/external write.
+
+- codex: dashboard cockpit response strictness.
+  - task / result / commit:
+    `API-CONTRACT-001FZDASHSTRICT` DONE. No commit. Client-schema debt is 275 -> 273.
+  - files inspected / changed:
+    Dashboard Cockpit consumer/test, full/segment provider/service/full route test, shared client/schema tests, AST
+    allowlist, Plans/archive/state. Consumer/test, one allowlist entry, and ledgers changed; provider/shared behavior is
+    unchanged.
+  - implementation / behavior / rollback:
+    Full and five segment readers now share exact `{ data, meta? }` envelope validation before returning their existing
+    typed DTO. Mixed-root 2xx rejects with fixed fallback copy and does not expose response details. Rollback is consumer/
+    test/allowlist/ledger reverse patch; no dashboard, patient, task, communication, or audit data restore is needed.
+  - validation / safety:
+    Consumer/provider/shared passed 4 files / 79 tests. Live ratchet passed at 104 schema-backed / 273 allowlisted
+    schema-less / 115 files / 0 new debt and byte-matched regenerated baseline. Frontend, PHI-log, response-shape 0/0,
+    route-auth, plans-active, full/no-unused typecheck, exact ESLint/Prettier/diff passed. Dashboard DTO/payload, query
+    keys/realtime invalidation, auth/tenant/no-store/measured response/DB/UI are unchanged. Browser/imagegen omitted for
+    this nonvisual parser slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial with 273 explicitly allowlisted typed/dynamic readers. Continue one bounded
+    provider/consumer family and preserve the ratchet. Full build remains unverified after the prior exit 137. No commit/
+    push/deploy/migration/external write.
+
+- codex: patient MCS mutation response strictness.
+  - task / result / commit:
+    `API-CONTRACT-001FZMCSMUTSTRICT` DONE. No commit. Client-schema dynamic debt is 1 -> 0 for this consumer.
+  - files inspected / changed:
+    MCS consumer/test, sync/check-log/profile providers/full tests, patient MCS DTO, shared client/schema tests, AST
+    allowlist, Plans/archive/state. Consumer/test, one allowlist entry, and ledgers changed; providers/shared behavior is
+    unchanged.
+  - implementation / behavior / rollback:
+    Sync now validates a strict data envelope before the existing DTO transform; check-log/profile validate shared strict
+    acknowledgements. Mixed-root 2xx rejects with the existing fixed recovery copy and does not expose response details.
+    Non-2xx still uses status only without reading raw server messages. Rollback is consumer/test/allowlist/ledger reverse
+    patch; no patient, MCS, communication, task, or audit data restore is needed.
+  - validation / safety:
+    Consumer/providers/shared passed 7 files / 69 tests. RLS passed 4 with 1 environment-dependent skip. Live ratchet
+    passed at 103 schema-backed / 275 allowlisted schema-less / 116 files / 0 new debt and byte-matched regenerated
+    baseline. Frontend, PHI-log, response-shape 0/0, route-auth, plans-active, full/no-unused typecheck, exact ESLint/
+    Prettier/diff passed. Mutation payload, auth/assignment/tenant/audit/no-store/DB/UI are unchanged. Browser/imagegen
+    omitted for this nonvisual parser slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial with 275 explicitly allowlisted typed/dynamic readers. Continue one bounded
+    provider/consumer family and preserve the ratchet. Full build remains unverified after the prior exit 137. No commit/
+    push/deploy/migration/external write.
+
+- codex: schedule proposal single-action acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZPROPSINGLEACK` DONE. No commit. Client-schema debt is 277 -> 276.
+  - files inspected / changed:
+    Schedule Proposals consumer/test, proposal detail provider/full test, shared client helper/test, AST allowlist,
+    Plans/archive/state. Consumer/test, one allowlist count, and ledgers changed; provider/shared behavior stayed intact.
+  - implementation / behavior / rollback:
+    Replaced the unused typed payload reader with shared strict acknowledgement validation and removed its dead response
+    alias. Mixed-root 2xx now uses the existing PHI-safe reached-server error and keeps the confirmation dialog open;
+    success toast and query invalidation do not run. Rollback is the consumer/test/allowlist/ledger reverse patch; no
+    schedule, proposal, patient, or audit data restore is needed.
+  - validation / safety:
+    Consumer/provider/shared passed 3 files / 128 tests. Live ratchet passed at 103 schema-backed / 276 allowlisted
+    schema-less / 117 files / 0 new debt and byte-matched regenerated baseline. Frontend, PHI-log, response-shape 0/0,
+    route-auth, plans-active, full typecheck, exact ESLint/Prettier/diff passed. Request/payload/status, auth/tenant/audit/
+    DB, and UI are unchanged. Browser/imagegen omitted for this nonvisual parser slice.
+  - remaining / next:
+    Incremental rescan then detected a compatible pre-existing Patient MCS reader change removing one dynamic call; its
+    related 4 files / 44 tests passed and the live baseline is now 103 schema-backed / 275 allowlisted / 116 files. This
+    extra removal is not attributed to this task. Parent `API-CONTRACT-001` remains Partial; continue a bounded family and
+    do not bulk rewrite. Full build remains unverified after the prior exit 137. No commit/push/deploy/migration/external
+    write.
+
+- codex: client JSON runtime-schema debt ratchet.
+  - task / result / commit:
+    `API-CONTRACT-001FZCLIENTRATCHET` DONE. No commit. New, increased, category-drifted, and stale debt now fails CI.
+  - files inspected / changed:
+    New AST checker/test/baseline, package script, CI workflow, tools README, Plans/archive/state. No product runtime file.
+  - implementation / behavior / rollback:
+    Resolve direct, aliased, and namespace `readApiJson` imports; classify inline schema vs string/missing/object/dynamic
+    options; compare exact path/category counts. `--print-baseline` is deterministic. Rollback is checker/test/baseline/
+    package/CI/docs/ledger reverse patch; no application data restore is needed.
+  - validation / safety:
+    Checker fixture 1 file / 7 tests passed. Live check passed at 102 schema-backed and 277 allowlisted schema-less calls
+    across 117 files with 0 new debt; generated baseline byte-matched the checked-in JSON. Frontend, PHI-log,
+    response-shape 0/0, route-auth, plans-active, full typecheck, exact ESLint/Prettier/diff passed. No runtime behavior,
+    auth/tenant/privacy/billing/DB/UI changed. Browser/imagegen omitted for CI-only work.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial; the 277-call baseline is explicit work debt, not completion. Burn down
+    bounded provider/consumer families and let stale baseline failures force removal. Full build remains unverified after
+    the prior exit 137. No commit/push/deploy/migration/external write.
+
+- codex: visit context response strictness.
+  - task / result / commit:
+    `API-CONTRACT-001FZVISITCTXSTRICT` DONE. No commit. Production no-options `readApiJson` is 4 -> 0.
+  - files inspected / changed:
+    Visit Brief and Evidence Capture consumers/tests, schedule/record detail providers/full tests, shared response schema/
+    tests, Plans/archive/state. Two consumers/tests, one shared schema export, and ledgers changed; providers unchanged.
+  - implementation / behavior / rollback:
+    Added a shared unknown-data envelope schema and applied it to both schedule->record patient-context chains. Mixed-root
+    schedule responses now fall back to the record path; record responses must also be strict. Rollback is the shared
+    schema/consumers/tests/ledger reverse patch; no patient, visit, evidence, or audit data restore is needed.
+  - validation / safety:
+    Consumers/providers/shared passed 6 files / 149 tests. Frontend, PHI-log, response-shape 0/0, route-auth, plans-active,
+    full typecheck, and exact ESLint/Prettier/diff passed. Patient/visit resolution, auth/tenant/audit/DB, and UI are
+    unchanged. Browser/imagegen were omitted for this nonvisual parser slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial. The AST debt baseline was subsequently completed by
+    `API-CONTRACT-001FZCLIENTRATCHET`. Full build remains unverified after the prior exit 137. No commit/push/deploy/
+    migration/external write.
+
+- codex: schedule proposal bulk acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZPROPBULKACK` DONE. No commit. Bulk approve/reject uses strict acknowledgement validation.
+  - files inspected / changed:
+    Schedule Proposals consumer/test, proposal detail provider/full test, shared helper/test, Plans/archive/state.
+    Consumer/test and ledgers changed; provider remained unchanged.
+  - implementation / behavior / rollback:
+    Mixed-root 2xx is now a reached-server failure, retains the failed proposal selection, triggers refresh, and uses the
+    existing PHI-safe generic reason. Rollback is consumer/test/ledger reverse patch; no proposal data restore is needed.
+  - validation / attempts / safety:
+    Initial test wiring changed the mixed-root fixture and fallback assertion in different cases; two focused runs exposed
+    the mismatch. The fixture/assertion were aligned and the split-text matcher made DOM intent explicit. Final consumer/
+    provider/shared passed 3 files / 127 tests. Frontend, PHI-log, response-shape 0/0, route-auth, plans-active, full
+    typecheck, and exact ESLint/Prettier/diff passed. Partial-success, selection/retry, action payload/status, auth/tenant/
+    audit/DB, and UI are unchanged. Browser/imagegen were omitted for this nonvisual parser slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial. The AST scan still shows 260 string-fallback-only typed readers, 14
+    object-without-schema, 4 no-options, and 6 dynamic; export-only non-2xx error readers are legitimate exceptions.
+    Full build remains unverified after the prior exit 137. No commit/push/deploy/migration/external write.
+
+- codex: billing rule delete acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZBILLDELACK` DONE. No commit. Billing-rule DELETE has a strict acknowledgement reader.
+  - files inspected / changed:
+    Billing Rules consumer/test, detail provider/full test, shared helper/test, Plans/archive/state. Consumer/test and
+    ledgers changed; provider remained unchanged.
+  - implementation / behavior / rollback:
+    Validate the DELETE response before success side effects and add a mixed-root 200 rejection. Rollback is the
+    consumer/test/ledger reverse patch; no billing rule or audit data restore is needed.
+  - validation / safety:
+    Consumer/provider/shared passed 3 files / 53 tests. Frontend, PHI-log, response-shape 0/0, route-auth, plans-active,
+    full typecheck, and exact ESLint/Prettier/diff passed. Rule calculation/conditions/amount, SSOT protection, OCC,
+    auth/tenant/audit/DB, and UI are unchanged. Browser/imagegen were omitted for this nonvisual response-parser slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial. The AST scan found 382 production `readApiJson` calls: 98 schema-backed,
+    260 string-fallback-only, 14 object-without-schema, 4 no-options, and 6 dynamic. These require evidence-driven bounded
+    slices, not a bulk rewrite. Full build remains unverified after the prior exit 137. No commit/push/deploy/migration.
+
+- codex: workflow inquiry/proposal acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZWORKFLOWACK` DONE. No commit. Three workflow mutation readers are strict acknowledgements.
+  - files inspected / changed:
+    Workflow dashboard consumer/test, inquiry collection/detail providers/full tests, visit proposal provider/full test,
+    shared helper/test, Plans/archive/state. Consumer/test and ledgers changed; providers remained unchanged.
+  - implementation / behavior / rollback:
+    Validate inquiry create/update and refill proposal create responses before success side effects. Added one legacy-root
+    2xx rejection per mutation. Rollback is consumer/test/ledger reverse patch; no inquiry/proposal data restore needed.
+  - validation / safety:
+    Consumer/providers/shared passed 5 files / 154 tests. Frontend, PHI-log, response-shape 0/0, route-auth, plans-active,
+    full typecheck, and exact ESLint/Prettier/diff passed. Inquiry clinical payload/status, proposal generation,
+    auth/tenant/audit/DB, and UI are unchanged. Browser/imagegen were omitted for this nonvisual parser slice.
+  - remaining / next:
+    Production `readApiJson<unknown>` is zero in the focused scan. Parent `API-CONTRACT-001` remains Partial for shared
+    error/request-id/no-store work and other typed/raw frontend readers. Full build remains unverified after the prior
+    exit 137. No commit/push/deploy/migration/external write.
+
+- codex: patient MCS overview response strictness.
+  - task / result / commit:
+    `API-CONTRACT-001FZMCSSTRICT` DONE. No commit. The MCS overview reader has no schema-less response path.
+  - files inspected / changed:
+    Patient MCS query/test, MCS DTO/tests, patient MCS provider/full tests, shared schemas/client helper tests,
+    Plans/archive/state. Query/test and ledgers changed; DTO/provider behavior remained unchanged.
+  - implementation / behavior / rollback:
+    Added an exact data-envelope schema that delegates PHI-bearing DTO validation to the existing MCS parser. Mixed-root
+    2xx now becomes the existing typed failed query error before view state changes. Rollback is query/test/ledger reverse
+    patch; no MCS, patient, or audit data restore is needed.
+  - validation / safety:
+    Query/DTO/provider/shared passed 5 files / 45 tests. Frontend, PHI-log, response-shape 0/0, route-auth, plans-active,
+    full typecheck, and exact ESLint/Prettier/diff passed. MCS PHI projection, forbidden classification, auth/tenant/
+    audit/no-store/DB, and UI are unchanged. Browser/imagegen were omitted because this is a nonvisual reader slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial. Three production schema-less workflow mutations remain in the focused
+    reader scan. Full build remains unverified after the prior exit 137. No commit/push/deploy/migration/external write.
+
+- codex: workflow emergency communication create response strictness.
+  - task / result / commit:
+    `API-CONTRACT-001FZEMERGENCYSTRICT` DONE. No commit. The emergency draft create reader is schema-backed.
+  - files inspected / changed:
+    Workflow dashboard consumer/test, communication-request collection provider/full test, shared communication schema,
+    shared client helper, Plans/archive/state. Consumer/test and ledgers changed; provider/shared schema were preserved.
+  - implementation / behavior / rollback:
+    Reused the strict communication-request response schema and added a legacy mixed-root 200 rejection before success
+    side effects. Rollback is the workflow consumer/test/ledger reverse patch; no communication or patient data restore.
+  - validation / safety:
+    Consumer/provider/shared passed 3 files / 65 tests; exact ESLint/Prettier/diff passed. The immediately preceding
+    frontend, PHI-log, response-shape 0/0, route-auth, plans-active, and full typecheck included this live diff and passed.
+    Draft payload/content, patient scope, auth/tenant/audit/DB, and UI are unchanged. Browser/imagegen were omitted.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial. Three schema-less workflow mutations and patient MCS remain in the focused
+    raw-reader scan. Full build remains unverified after the prior exit 137. No commit/push/deploy/migration/external write.
+
+- codex: workflow phase response strictness.
+  - task / result / commit:
+    `API-CONTRACT-001FZPHASESTRICT` DONE. No commit. The phase reader has no schema-less response path.
+  - files inspected / changed:
+    Workflow phase hook/test, dashboard workflow provider/full tests, shared response schemas/client helper tests,
+    Plans/archive/state. Hook/test and ledgers changed; provider behavior remained unchanged.
+  - implementation / behavior / rollback:
+    Added an exact data-envelope schema that delegates detailed DTO validation to the existing normalizer. Legacy and
+    mixed-root 2xx payloads now fail before phase navigation state updates. Rollback is the hook/test/ledger reverse
+    patch; no workflow, patient, or schedule data restore is needed.
+  - validation / safety:
+    Hook/provider/shared passed 4 files / 46 tests. Frontend, PHI-log, response-shape 0/0, route-auth, plans-active,
+    full typecheck, and exact ESLint/Prettier/diff passed. Workflow counts/navigation, auth/tenant/DB, and UI are
+    unchanged. Browser/imagegen were omitted because this is a nonvisual reader slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial. Four production schema-less readers remain: three workflow mutations and
+    patient MCS. Full build remains unverified after the prior exit 137 and was not rerun without a changed hypothesis.
+    No commit/push/deploy/migration/external write.
+
+- codex: task create acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZTASKACK` DONE. No commit. Two `/api/tasks` consumers now have strict acknowledgement readers.
+  - files inspected / changed:
+    Tasks work-request consumer/test, patient-share next-check consumer/test, tasks provider/full tests, shared helper/test,
+    Plans/archive/state. The two consumers/tests and ledgers changed; the provider remained unchanged.
+  - implementation / behavior / rollback:
+    Validate task create responses before the work-request success flow or patient-share created-response state. Added
+    one legacy-root 201 rejection to each consumer. Rollback is the consumers/tests/ledger reverse patch; no task,
+    patient, assignment, or audit data restore is needed.
+  - validation / safety:
+    Consumers/provider/shared passed 4 files / 92 tests. Frontend, PHI-log, response-shape 0/0, route-auth, plans-active,
+    full typecheck, and exact ESLint/Prettier/diff passed. Task payload/dedupe, assignment/patient scope, auth/tenant/
+    audit/DB, and UI are unchanged. Browser/imagegen were omitted because this is a nonvisual parser slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial. Five production schema-less readers remain: three workflow mutations,
+    one workflow phase reader, and patient MCS. `API-CONTRACT-001FZPHASESTRICT` remains the current active slice. Full
+    build remains unverified after the prior exit 137. No commit/push/deploy/migration/external write.
+
+- codex: QR scan draft create response validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZQRACK` DONE. No commit. QR draft creation now has a strict data-bearing reader.
+  - files inspected / changed:
+    QR scan page/contract test, draft payload/schema tests, QR draft provider/full tests, shared response schemas/client
+    helper tests, Plans/archive/state. Page/payload/tests and ledgers changed; provider create behavior remained unchanged.
+  - implementation / behavior / rollback:
+    Parse the create response with an exact data envelope schema and only set the session after a nonblank validated id.
+    Legacy-root, missing/blank session, null data, and extra-root 2xx payloads now fail closed. Rollback is the
+    page/payload/tests/ledger reverse patch; no QR draft, patient, prescription, or audit data restore is needed.
+  - validation / safety:
+    Page/payload/provider/shared passed 5 files / 65 tests; exact ESLint/Prettier/diff passed. The immediately preceding
+    frontend, PHI-log, response-shape 0/0, route-auth, plans-active, and full typecheck gates included this live diff and
+    passed. Create payload, patient/site matching, auth/tenant/audit/DB, and UI structure are unchanged. Browser/imagegen
+    were omitted because this is a nonvisual response-parser slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared error/request-id/no-store work and remaining raw readers. Seven
+    production schema-less readers remain after the communication slice; patient MCS remains data-bearing. Full build
+    remains unverified after the prior exit 137 and was not rerun without a changed hypothesis. No commit/push/deploy/
+    migration/external write.
+
+- codex: communication request resolve-followup acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZCOMMACK` DONE. No commit. The resolve-followup mutation has zero schema-less readers.
+  - files inspected / changed:
+    Communication Requests consumer/test, resolve-followup provider/test, shared acknowledgement helper/test,
+    Plans/archive/state. The consumer/test and ledgers changed; the provider remained unchanged.
+  - implementation / behavior / rollback:
+    Replaced the unused-payload reader with strict acknowledgement validation and added a legacy-root 200 rejection.
+    Rollback is the consumer/test/ledger reverse patch; no communication, patient, task, or audit data restore is needed.
+  - validation / safety:
+    Shared/consumer/provider passed 3 files / 37 tests. Frontend, PHI-log, response-shape 0/0, route-auth, plans-active,
+    full typecheck, and exact ESLint/Prettier/diff passed. The first typecheck exposed test-only `never[]` inference;
+    annotating the fixture with the mutation input type fixed it without weakening production types. Response/follow-up
+    payload, OCC, auth/tenant/audit/DB, and UI are unchanged. Browser/imagegen were omitted for this nonvisual parser slice.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial. Seven production schema-less `readApiJson<unknown>` readers remain in the
+    latest scan, plus typed data-bearing readers outside that grep. `API-CONTRACT-001FZQRACK` remains the current active
+    slice. Full build remains unverified after the prior exit 137; it was not rerun without a changed hypothesis.
+    No commit/push/deploy/migration/external write.
+
+- codex: schedule day helper acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZSCHEDDAYACK` DONE. No commit. Four Schedule Day helpers have zero schema-less mutation readers.
+  - files inspected / changed:
+    Facility batch, facility visit-day, proposal action, reschedule helpers/tests and their four providers/full tests,
+    shared acknowledgement helper/tests, Plans/archive/state. Eight helper/test files plus the ledgers changed.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to all four helpers, added one legacy-root rejection per path, and made
+    their verified-unused return values explicitly void. Rollback is the helpers/tests/ledger reverse patch; no schedule,
+    proposal, facility, or patient data restore is needed.
+  - validation / safety:
+    Helpers/providers/shared passed 9 files / 196 tests. Frontend, PHI-log, response-shape 0/0, route-auth, full
+    typecheck, and exact ESLint/Prettier/diff passed. Payloads, contact idempotency, optimistic route order, auth/tenant,
+    audit, DB writes, and UI are unchanged. Browser/imagegen were omitted because only response validation/tests changed.
+    No DB mutation command or external write was run.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: visit route reorder acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZROUTEACK` DONE. No commit. Visit route client has zero schema-less reorder readers.
+  - files inspected / changed:
+    Route client/new tests, schedule-day apply helper test, schedule/mixed/proposal reorder providers/tests,
+    shared acknowledgement helper/tests, Plans/archive/state. Client/new test/helper test plus ledgers changed.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to schedule, mixed, and proposal reorder. Added a three-case legacy root
+    200 regression. Return values are unused; the schedule-day helper mock was synchronized from `{ ok }` to void.
+    Rollback is the client/tests/ledger reverse patch; no route, schedule, or proposal data restore is needed.
+  - validation / attempts / safety:
+    Initial full typecheck found three helper-test assignments returning `{ ok }` where the new acknowledgement contract
+    returns void. After synchronizing those mocks, shared/client/helper/providers passed 6 files / 93 tests and full
+    typecheck passed. Frontend, PHI-log, response-shape 0/0, route-auth, and exact ESLint/Prettier/diff passed. Route
+    payload/confirmation context, planner/optimizer, auth/tenant/audit, and UI are unchanged. Browser/imagegen omitted.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: schedule team status acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZSCHEDTEAMACK` DONE. No commit. Schedule Team Board has zero schema-less task/schedule status readers.
+  - files inspected / changed:
+    Schedule Team Board/full tests, task/schedule detail providers/tests, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to operational-task and visit-schedule status PATCH, and added one legacy
+    root 200 regression covering both paths. Data-bearing reorder/vehicle assignment remains unchanged. Rollback is the
+    consumer/test and ledger reverse patch; no Task or VisitSchedule data restore is needed because providers were unchanged.
+  - validation / safety:
+    Shared helper, consumer, and providers passed 4 files / 147 tests. Frontend, PHI-log, response-shape 0/0, route-auth,
+    full typecheck, and exact ESLint/Prettier/diff passed. Planner/reorder/vehicle assignment, optimistic status,
+    auth/tenant/audit, and UI are unchanged. Browser/imagegen were omitted because only response validation/tests changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: medication intervention outcome acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZINTERVACK` DONE. No commit. Medication Intervention has zero schema-less outcome PATCH readers.
+  - files inspected / changed:
+    Intervention consumer/full tests, collection/detail providers/tests, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation only to outcome PATCH and added a legacy root 200 regression proving the
+    editor and outcome draft remain intact. Data-bearing create/list readers remain unchanged. Rollback is the
+    consumer/test and ledger reverse patch; no Intervention data restore is needed because the provider was unchanged.
+  - validation / safety:
+    Shared helper, consumer, and providers passed 4 files / 42 tests. Frontend, PHI-log, response-shape 0/0, route-auth,
+    full typecheck, and exact ESLint/Prettier/diff passed. Clinical type/description/outcome semantics, patient/issue
+    scope, auth/tenant, DB writes, and UI are unchanged. Browser/imagegen were omitted because only response validation
+    and tests changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: facility packet mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZPACKETACK` DONE. No commit. Facility Packet has zero schema-less save readers.
+  - files inspected / changed:
+    Facility Packet consumer/full tests, batch/preparation providers/tests, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to packet save and added a legacy root 201 regression proving editing and
+    draft preservation plus success suppression. Rollback is the consumer/test and ledger reverse patch; no facility
+    batch, schedule, or patient data restore is needed because the provider/write path was not changed.
+  - validation / attempts / safety:
+    Shared helper, consumer, and providers passed 4 files / 83 tests. Frontend, PHI-log, response-shape 0/0, route-auth,
+    and full typecheck passed. The first exact Prettier check found only new test formatting; scoped formatting followed
+    by exact ESLint/Prettier/diff passed. Packet memo/order optimistic checks, visit preparation, patient/PHI payload,
+    auth/tenant/audit, and UI are unchanged. Browser/imagegen were omitted because only response validation/tests changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: patient visit constraints acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZCONSTRAINTACK` DONE. No commit. Visit Constraints has zero schema-less save readers.
+  - files inspected / changed:
+    Visit Constraints consumer/full tests, provider/full tests, validation/write guards, shared acknowledgement
+    helper/tests, Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to save, synchronized the generic success fixture to live `{ data }`, and
+    added a legacy root 200 regression. Rollback is the consumer/test and ledger reverse patch; no patient data restore
+    is needed.
+  - validation / safety:
+    Shared helper, consumer, and provider passed 3 files / 39 tests. Frontend, PHI-log, response-shape 0/0, route-auth,
+    full typecheck, and exact ESLint/Prettier/diff passed. Visit time/contact/location payloads, writable-patient guard,
+    assignment/auth/tenant, DB writes, and UI are unchanged. Browser/imagegen were omitted because only response
+    validation and tests changed. No DB mutation command or external write was run.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: data explorer row mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZDATAACK` DONE. No commit. Admin Data Explorer has zero schema-less row PATCH readers.
+  - files inspected / changed:
+    Data Explorer consumer/full tests, models/list/detail providers/tests, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to row PATCH and added a legacy root 200 regression that preserves the
+    editor draft and suppresses success. Rollback is the consumer/test and ledger reverse patch; no DB restore is needed.
+  - validation / safety:
+    Shared helper, consumer, and providers passed 5 files / 44 tests. Frontend, PHI-log, response-shape 0/0, route-auth,
+    full typecheck, and exact ESLint/Prettier/diff passed. Table/row selection, patch allowlist, DB query/write service,
+    audit, admin auth/tenant, and UI are unchanged. Browser/imagegen were omitted because only response validation and
+    tests changed. No DB mutation command or external write was run.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: admin job rerun acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZJOBACK` DONE. No commit. Admin Jobs has zero schema-less rerun mutation readers.
+  - files inspected / changed:
+    Jobs dashboard consumer/full tests, dynamic job provider/full tests, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to rerun and added a legacy root 200 regression. The mutation still
+    returns the local job type after validation. Rollback is the consumer/test and ledger reverse patch; no job or DB
+    restore is needed.
+  - validation / safety:
+    Shared helper, consumer, and dynamic provider passed 3 files / 57 tests. Frontend, PHI-log, response-shape 0/0,
+    route-auth, full typecheck, and exact ESLint/Prettier/diff passed. Endpoint/body/job handlers, admin/API-key auth,
+    job execution/output/logging, and UI are unchanged. Browser/imagegen were omitted because only response validation
+    and tests changed. No job was executed against a live or external service.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: site switch mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZSITESELECTACK` DONE. No commit. Select Site has zero schema-less switch mutation readers.
+  - files inspected / changed:
+    Select Site consumer/full tests, current-site and membership-site providers/tests, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to site switch, synchronized the success fixture to live
+    `{ data: { site_id } }`, and added a legacy root 200 regression proving no success toast or dashboard navigation.
+    Rollback is the consumer/test and ledger reverse patch; no membership or current-site restore is needed.
+  - validation / safety:
+    Shared helper, consumer, and providers passed 4 files / 28 tests. Frontend, PHI-log, response-shape 0/0, route-auth,
+    full typecheck, and exact ESLint/Prettier/diff passed. Membership/site selection, session/current-site state, audit,
+    auth/tenant, and UI are unchanged. Browser/imagegen were omitted because only response validation and tests changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: drug alert rule mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZALERTACK` DONE. No commit. Drug Alert Rules has zero schema-less save mutation readers.
+  - files inspected / changed:
+    Alert Rules consumer/full tests, collection/detail providers/tests, shared acknowledgement helper/tests,
+    current Next.js Client Component guide, Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to the create/update save reader and added a legacy root 201 regression
+    that preserves the form and suppresses success. Rollback is the consumer/test and ledger reverse patch; no alert-rule
+    data restore is needed.
+  - validation / safety:
+    Shared helper, consumer, and providers passed 4 files / 48 tests. Frontend, PHI-log, response-shape 0/0, route-auth,
+    full typecheck, and exact ESLint/Prettier/diff passed. Rule/condition/severity, CDS evaluation, write validation,
+    admin auth/tenant, audit, DB/schema, and UI are unchanged. Browser/imagegen were omitted because only response
+    validation and tests changed. The repository-required Next.js client/server guide was read before editing.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: document template mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZTPLACK` DONE. No commit. Document Templates has zero schema-less save/delete mutation readers.
+  - files inspected / changed:
+    Template consumer/full tests, collection/detail providers/tests, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to create/update save and delete, removed the unused save response payload,
+    synchronized the default create fixture to live `{ data }`, and added legacy 2xx regressions for both paths. Rollback
+    is the consumer/test and ledger reverse patch; no DocumentTemplate data restore is needed.
+  - validation / safety:
+    Shared helper, consumer, and providers passed 4 files / 57 tests. Frontend, PHI-log, response-shape 0/0, route-auth,
+    full typecheck, and exact ESLint/Prettier/diff passed. Template content/version/effective/default DTOs, document
+    generation/delivery, write validation, admin auth/tenant, audit, and UI are unchanged. Browser/imagegen were omitted
+    because only response validation and tests changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: contact profile mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZCONTACTACK` DONE. No commit. Admin Contact Profiles has zero schema-less save mutation readers.
+  - files inspected / changed:
+    Contact Profiles consumer/full tests, provider/full tests, shared acknowledgement helper/tests, Plans/archive/state.
+    Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to the kind-common save reader and added a legacy root 200 regression.
+    Rollback is the consumer/test and ledger reverse patch; no contact-profile data restore is needed.
+  - validation / safety:
+    Shared helper, consumer, and provider passed 3 files / 30 tests. Frontend, PHI-log, response-shape 0/0, route-auth,
+    full typecheck, and exact ESLint/Prettier/diff passed. Contact/PII payload, write validation, admin auth/tenant,
+    audit, DB/schema, and UI are unchanged. Browser/imagegen were omitted because only response validation and tests
+    changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: document delivery rule mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZDRULEACK` DONE. No commit. Document Delivery Rules has zero schema-less save/delete mutation readers.
+  - files inspected / changed:
+    Delivery-rule consumer/full tests, collection/detail providers/tests, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to create/update save and delete, synchronized the default create fixture to
+    the live `{ data }` envelope, and added legacy 2xx regressions for both paths. Rollback is the consumer/test and ledger
+    reverse patch; no DocumentDeliveryRule data restore is needed.
+  - validation / safety:
+    Shared helper, consumer, and providers passed 4 files / 51 tests. Frontend, PHI-log, response-shape 0/0, route-auth,
+    full typecheck, and exact ESLint/Prettier/diff passed. Rule/recipient/channel DTOs, document generation/delivery,
+    write validation, admin auth/tenant, audit, and UI are unchanged. Browser/imagegen were omitted because only response
+    validation and tests changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: packaging method mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZPACKACK` DONE. No commit. Packaging Methods has zero schema-less save mutation readers.
+  - files inspected / changed:
+    Packaging Methods consumer/full tests, collection/detail providers/tests, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to the create/update save reader and added a legacy root 201 regression.
+    Rollback is the consumer/test and ledger reverse patch; no PackagingMethod data restore is needed.
+  - validation / attempts / safety:
+    Shared helper, consumer, and providers passed 4 files / 35 tests. Frontend, PHI-log, response-shape 0/0, route-auth,
+    and full typecheck passed. The first exact Prettier check found the new test formatting; scoped formatting followed by
+    exact ESLint/Prettier/diff passed. Packaging method DTOs, set workflow, write validation, admin auth/tenant, audit,
+    and UI are unchanged. Browser/imagegen were omitted because only response validation and tests changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: pharmacist credential mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZCREDACK` DONE. No commit. Admin pharmacist credentials has zero schema-less save/delete readers.
+  - files inspected / changed:
+    Credential consumer/full tests, collection/detail providers/tests, shared acknowledgement helper,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to create/update and delete and added legacy false-success regressions for
+    both paths. Rollback is the consumer/test and ledger reverse patch; no credential data restore is needed.
+  - safety / validation:
+    Consumer/providers passed 3 files / 42 tests. Frontend, PHI-log, response-shape 0/0, and route-auth gates passed; full
+    typecheck and exact ESLint/Prettier/diff passed. Credential number/dates/workload payload, validation, admin
+    auth/tenant/audit, DB/schema, and UI are unchanged. Browser/imagegen were omitted because only response validation
+    changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write. Human review is limited to response
+    compatibility; credential semantics were not changed.
+
+- codex: vehicle master mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZVEHACK` DONE. No commit. Admin Vehicles has zero schema-less save/status mutation readers.
+  - files inspected / changed:
+    Vehicles consumer/full tests, collection/detail providers/tests, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to create/update save and availability status update. Added legacy 2xx
+    regressions proving save preserves its draft and both paths suppress success. Rollback is the consumer/test and ledger
+    reverse patch; no VisitVehicleResource data restore is needed.
+  - validation / safety:
+    Shared helper, consumer, and providers passed 4 files / 50 tests. Frontend, PHI-log, response-shape 0/0, route-auth,
+    full typecheck, and exact ESLint/Prettier/diff passed. Vehicle DTOs, state transitions/assignment conflicts, write
+    validation, admin auth/tenant, audit, and UI are unchanged. Browser/imagegen were omitted because only response
+    validation and tests changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: pharmacy site mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZSITEACK` DONE. No commit. Admin Pharmacy Sites has zero schema-less acknowledgement-only mutation readers.
+  - files inspected / changed:
+    Pharmacy Sites consumer/full tests, site and insurance-config providers/tests, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to site update and insurance-config create/update/delete, and synchronized
+    mutation fixtures to live `{ data }` envelopes. Added legacy 2xx regressions for site save, config save, and config
+    delete. Rollback is the consumer/test and ledger reverse patch; no site or insurance-config data restore is needed.
+  - validation / safety:
+    Shared helper, consumer, and providers passed 5 files / 68 tests. Frontend, PHI-log, response-shape 0/0, route-auth,
+    full typecheck, and exact ESLint/Prettier/diff passed. Site/config DTOs, revision/effective-period logic, write
+    validation, admin auth/tenant, audit, and UI are unchanged. Browser/imagegen were omitted because only response
+    validation and test fixtures changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: shift administration mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZSHIFTACK` DONE. No commit. Admin Shifts has zero schema-less acknowledgement-only mutation paths.
+  - files inspected / changed:
+    Shifts consumer/full tests, pharmacist-shift, business-holiday, pharmacist, and shift-template providers/tests,
+    shared acknowledgement helper, Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to nine paths: changed shifts, holiday create/update/delete, pharmacist
+    create/update/action, and template save/delete. Four former error-only readers now validate success too. Preserved
+    local target returns for delete/action handlers. Rollback is the consumer/test and ledger reverse patch; no master or
+    shift data restore is needed.
+  - safety / validation:
+    Consumer passed 1 file / 19 tests; seven provider suites passed 7 files / 79 tests. Frontend, PHI-log, response-shape
+    0/0, and route-auth gates passed; full typecheck and exact ESLint/Prettier/diff passed. Shift/holiday/member/template
+    writes, auth/tenant, audit, and UI are unchanged. Data-bearing previous-month copy and template-apply readers remain
+    unchanged. Browser/imagegen were omitted because only response validation changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write. Human review is limited to response
+    compatibility; scheduling and account lifecycle semantics were not changed.
+
+- codex: institution master mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZINSTACK` DONE. No commit. Admin institutions has zero schema-less save/delete readers.
+  - files inspected / changed:
+    Institutions consumer/full tests, collection/detail providers/tests, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to create/update and delete, synced legacy message fixtures to live
+    `{ data }`, and added false-success regressions for both paths. Rollback is the consumer/test and ledger reverse patch;
+    no institution data restore is needed.
+  - validation / attempts:
+    Shared/consumer/providers passed 4 files / 60 tests. The first exact format check found only the new test formatting;
+    targeted Prettier fixed it, then exact format/lint/diff, frontend, PHI-log, response-shape 0/0, route-auth, and full
+    typecheck passed. Institution/prescription aggregate DTOs, write validation, admin auth/tenant/audit, and UI are
+    unchanged. Browser/imagegen were omitted because only response validation/test fixtures changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write. Human review is limited to response
+    compatibility; institution and prescription semantics were not changed.
+
+- codex: external self-report mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZEXTACK` DONE. No commit. External viewer has zero schema-less self-report/task mutations.
+  - files inspected / changed:
+    External viewer/full tests, self-report detail and tasks providers/tests, shared acknowledgement helper,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to status update and follow-up task creation. Added a regression proving
+    legacy root 2xx rejects before status transition follow-up or task-success processing. Rollback is the consumer/test
+    and ledger reverse patch; no PatientSelfReport or Task restore is needed.
+  - safety / validation:
+    Consumer/providers passed 3 files / 77 tests. Frontend, PHI-log, response-shape 0/0, and route-auth gates passed; full
+    typecheck and exact ESLint/Prettier/diff passed. Patient scope/version, dedupe key/task payload, auth/tenant, audit,
+    PHI handling, and UI are unchanged. Browser/imagegen were omitted because only response validation changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write. Human review is limited to response
+    compatibility; patient/self-report/task semantics were not changed.
+
+- codex: saved views mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZVIEWACK` DONE. No commit. Saved Views has zero schema-less create/rename/share/delete readers.
+  - files inspected / changed:
+    Saved Views consumer/full tests, collection/detail provider/test, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to all four named-view mutations and added a legacy create 2xx regression
+    that preserves the draft and suppresses success. Shared helper tests cover empty and non-JSON 2xx. Rollback is the
+    consumer/test and ledger reverse patch; no SavedView data restore is needed.
+  - safety / validation:
+    Shared/consumer/provider passed 3 files / 39 tests. Frontend, PHI-log, response-shape 0/0, and route-auth gates passed;
+    full typecheck and exact ESLint/Prettier/diff passed. Filter/scope/share/write, auth/tenant, audit, and UI are unchanged.
+    Browser/imagegen were omitted because only response validation changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write. Rollback is fully local.
+
+- codex: notification mark-read acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZNOTIFYACK` DONE. No commit. Notifications inbox has zero schema-less mark-read mutation readers.
+  - files inspected / changed:
+    Notifications consumer/full test, collection GET/PATCH provider/test, shared acknowledgement helper/tests,
+    Plans/archive/state. Two consumer/test files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to mark-read. Standard `{ data, meta? }` remains successful; one regression
+    proves legacy root, empty, and non-JSON 2xx all reject instead of invalidating the inbox as a successful write.
+    Rollback is the two consumer/test files and ledger reverse patch; no notification data restore is needed.
+  - validation / safety:
+    Shared helper, consumer, and provider passed 3 files / 36 tests. Frontend, PHI-log, response-shape 0/0, and route-auth
+    gates passed; full typecheck and exact ESLint/Prettier/diff passed. Notification DTOs, current-user/org scoped write,
+    no-store response, auth/tenant, realtime merge, and rendered UI are unchanged. Browser/imagegen were omitted because
+    no visual behavior changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: patient lab mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZLABACK` DONE. No commit. Patient Labs has zero schema-less create/update readers.
+  - files inspected / changed:
+    Patient Labs card/full tests, lab collection/detail providers/tests, shared acknowledgement helper,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to lab create and update. Added regressions proving legacy root 2xx cannot
+    clear forms, emit success, or invalidate patient caches. Rollback is the card/test and ledger reverse patch; no lab
+    data restore is needed.
+  - safety / validation:
+    Consumer/provider passed 3 files / 44 tests. Frontend, PHI-log, response-shape 0/0, and route-auth gates passed; full
+    typecheck and exact ESLint/Prettier/diff passed. Lab values/units, patient scope, auth/tenant, audit, DB/schema, medical
+    meaning, and UI are unchanged. Browser/imagegen were omitted because only response validation changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write. Human review is limited to response
+    compatibility; clinical data handling was not changed.
+
+- codex: visit brief feedback acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZBRIEFACK` DONE. No commit. Visit brief card and review have zero schema-less feedback mutation
+    readers.
+  - files inspected / changed:
+    Both visit brief consumers/full tests, shared acknowledgement helper/tests, feedback provider/tests, Plans/archive/
+    state. Four consumer/test files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to both feedback mutations. Standard `{ data, meta? }` remains successful;
+    legacy root, empty, or non-JSON 2xx follows the existing retryable error path. Added one legacy false-success
+    regression per UI. Rollback is the four consumer/test files and ledger reverse patch; no feedback audit restore is
+    needed.
+  - validation / safety:
+    Shared helper, both consumers, and provider passed 4 files / 45 tests. Frontend, PHI-log, response-shape 0/0, and
+    route-auth gates passed; full typecheck and exact ESLint/Prettier/diff passed. Provider status/body, request payload,
+    patient assignment, auth/tenant, audit contents, PHI handling, medical meaning, and rendered UI are unchanged.
+    Browser/imagegen were omitted because only response validation changed. Oracle was not used per the current explicit
+    single-Codex instruction.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write.
+
+- codex: care report mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZREPORTACK` DONE. No commit. Report edit/detail now have zero schema-less save, confirm, or delivery
+    readers.
+  - files inspected / changed:
+    Report detail/edit consumers and full tests, care-report detail/send providers/tests, shared acknowledgement helper,
+    Plans/archive/state. Four consumer/test files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to content save, pharmacist confirmation, single delivery, and bulk delivery.
+    Added regressions proving legacy root 2xx cannot clear a draft or produce confirmation/delivery success. Rollback is
+    the four consumer/test files and ledger reverse patch; no report or delivery-record restore is needed.
+  - safety / validation:
+    Report content, billing/medical meaning, recipient checks, idempotency claims, auth/tenant, audit, PHI handling, and UI
+    are unchanged. Consumer suites passed 2 files / 50 tests; detail/send provider suites passed 2 files / 92 tests.
+    Frontend, PHI-log, response-shape 0/0, and route-auth gates passed; full typecheck and exact ESLint/Prettier/diff
+    passed. Browser/imagegen were omitted because only response validation changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write. Human review is limited to report API
+    response compatibility; clinical, billing, delivery, and authorization semantics were not changed.
+
+- codex: scheduling master mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZSCHEDACK` DONE. No commit. Business holidays and service areas now have zero schema-less save/delete
+    readers.
+  - files inspected / changed:
+    Both consumers/full tests, four collection/detail providers/tests, shared acknowledgement helper, Plans/archive/state.
+    Four consumer/test files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to four mutation functions and replaced stale root-message/empty success
+    fixtures with live `{ data }` envelopes. Added one legacy false-success regression per UI. Rollback is the four
+    consumer/test files and ledger reverse patch; no holiday or service-area data restore is needed.
+  - validation / attempts:
+    Initial consumer run passed business holidays but failed 1/18 service-area tests because that suite retained an older
+    success-toast mock between tests. Explicit test isolation fixed the assertion without weakening it; rerun passed both
+    files / 35 tests. Four provider suites passed 4 files / 35 tests. Frontend, PHI-log, response-shape 0/0, and route-auth
+    gates passed; full typecheck and exact ESLint/Prettier/diff passed. Browser/imagegen were omitted because only response
+    validation/test fixtures changed.
+  - safety / remaining / next:
+    Master DTOs, write validation, auth/tenant, and rendered UI are unchanged. Parent `API-CONTRACT-001` remains Partial
+    for shared ApiError nesting, route-local request IDs, no-store ratchet, and other schema-less/raw frontend readers.
+    Full build remains unverified after the prior exit 137 and was not rerun without a changed hypothesis. No
+    commit/push/deploy/migration/external write. Human review is limited to response compatibility.
+
+- codex: full-suite regression repair and deterministic worker cap.
+  - task / result / commit:
+    `TEST-FULL-SUITE-STABILITY-001` DONE. No commit. The standard `pnpm test` command now completes the full matrix
+    without the server-contract failures or DOM-suite load flakes exposed during `API-CONTRACT-001FZCURSOR` validation.
+  - files inspected / changed:
+    Rate-limit route catalog/tests, PDF bulk-export audit/test, patient detail timeline registry/tests, facilities route
+    test, RLS context/test, movement timeline route/test, Vitest config, package/CI test commands, and current Plans/state.
+    Changed `vitest.config.ts`, `src/lib/api/rate-limit.ts`, and five focused test files.
+  - bugs found / fixed:
+    Added seven live API route templates that were falling into the generic unknown-path rate-limit bucket. Restored the
+    patient timeline stock-snapshot test delegate and deterministic first-visit ordering expectation. Updated stale
+    facilities and movement timeline assertions to the current exact `data` / `meta` envelopes. The PDF test now proves
+    the download notification retains its file ID while the minimized audit payload omits it. The RLS test now proves an
+    unverified org ID is not attached to the request-context-missing security event.
+  - performance / test reliability:
+    Ten concurrent Vitest forks starved DOM-heavy suites, causing six failures that all passed in isolation (244/244).
+    Capping the shared runner at four workers kept the existing 5-second test contracts responsive; the unchanged
+    `pnpm test` command then passed in 208 seconds instead of failing after 278 seconds. No application runtime worker,
+    request, DB, polling, or render behavior changed.
+  - validation:
+    Regression-focused runs passed 5 files / 152 tests and 4 files / 85 tests. The four load-flaky suites passed
+    individually (244 tests). Final `pnpm test` passed 1,473 files / 15,188 tests with 3 files / 13 tests intentionally
+    skipped. Full typecheck and cursor-focused no-unused typecheck passed. Exact ESLint/Prettier/diff, response-shape
+    0/0, query-shape 0/0, raw-read, frontend, plan, route-auth, PHI-log, and module-boundary gates passed.
+  - safety / remaining / next:
+    No patient payload, medical calculation, provider wire, auth/authz, RLS policy, audit write, DB/schema, migration,
+    UI, deployment, or external write changed. Image generation/browser QA were omitted because this is test/runtime
+    contract maintenance with no visual change. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed build hypothesis. No commit/push/deploy/migration. Continue the active `API-CONTRACT-001` residuals.
+
+- codex: admin user mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZUSERACK` DONE. No commit. Admin users has zero schema-less readers across invite, profile update,
+    and account actions.
+  - files inspected / changed:
+    Users consumer/full tests, pharmacists collection/detail providers/tests, shared acknowledgement helper,
+    Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to three mutation functions covering invite, profile update, suspend,
+    retire, reactivate, and resend-invite operations. Added a legacy invite 2xx false-success regression. Rollback is the
+    two consumer files and ledger reverse patch; no account or invitation restore is needed.
+  - safety / validation:
+    Request bodies, auth/authz, tenant boundary, audit, account lifecycle, and rendered UI are unchanged. Consumer passed
+    1 file / 16 tests; two pharmacists provider suites passed 2 files / 35 tests. Frontend, PHI-log, response-shape 0/0,
+    and route-auth gates passed; full typecheck and exact ESLint/Prettier/diff passed. Browser/imagegen were omitted because
+    only response validation changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write. Human review is limited to response
+    compatibility; authentication, authorization, and user lifecycle semantics were not changed.
+
+- codex: admin facility mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZFACACK` DONE. No commit. Admin facilities has zero schema-less mutation readers across facility
+    and unit save/delete actions.
+  - files inspected / changed:
+    Facilities consumer/full tests, facility collection/detail and unit collection/detail providers/tests, shared
+    acknowledgement helper, Plans/archive/state. Two consumer files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Applied strict acknowledgement validation to four mutation functions covering six create/update/delete operations.
+    Updated stale `{ ok: true }` delete fixtures to the live `{ data: { id } }` provider contract and added a legacy 2xx
+    false-success regression. Rollback is the two consumer files and ledger reverse patch; no facility data restore is
+    needed.
+  - safety / validation:
+    Facility/unit DTOs, request bodies, writes, optimistic version, permissions, tenant boundary, audit, and rendered UI
+    are unchanged. Consumer passed 1 file / 17 tests; four provider suites passed 4 files / 33 tests. Frontend, PHI-log,
+    response-shape 0/0, and route-auth gates passed; full typecheck and exact ESLint/Prettier/diff passed. Browser/imagegen
+    were omitted because only response validation and test fixtures changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write. Human review is limited to the facility
+    acknowledgement compatibility boundary; write behavior was not changed.
+
+- codex: shared handoff mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZACK` DONE. No commit. Handoff workspace/panel now have zero schema-less
+    `readApiJson<unknown>` mutation readers.
+  - files inspected / changed:
+    Shared response schema/client/tests, handoff workspace/panel and tests, six mutation provider suites/routes,
+    Plans/archive/state. Seven code/test files plus the ledgers changed in this slice.
+  - implementation / behavior / rollback:
+    Added strict `readApiAcknowledgement` and applied it to create, message, read, resolve, consult, receipt, confirm, and
+    supervision-request mutations. Standard `{ data, meta? }` remains successful; empty, non-JSON, or legacy root 2xx now
+    follows each existing error path. Both handoff UIs have representative false-success regressions. Rollback is the
+    scoped helper/schema, eight readers, two UI regressions, and ledger reverse patch; no handoff data restore is needed.
+  - safety / validation:
+    Handoff DTOs, request bodies, writes, optimistic version claims, permissions, tenant boundary, audit, medical meaning,
+    and rendered UI are unchanged. Shared/consumer tests passed 3 files / 60 tests; all six provider suites passed 6 files
+    / 84 tests. Frontend, PHI-log, response-shape 0/0, and route-auth gates passed; full typecheck and exact
+    ESLint/Prettier/diff passed. Browser/imagegen were omitted because only response validation changed, with no visual or
+    interaction layout change.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other schema-less/raw frontend readers. Full build remains unverified after the prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write. Human review should confirm only the
+    eight handoff acknowledgement compatibility boundaries; domain behavior was not changed.
+
+- codex: pharmacy workflow mutation acknowledgement validation.
+  - task / result / commit:
+    `API-CONTRACT-001FZMUTACK` DONE. No commit. The pharmacy cooperation workflow now has zero schema-less
+    `readApiJson<unknown>` mutation readers.
+  - files inspected / changed:
+    Workflow component/full tests, activate/patient-link/consent-revoke/partner-record submit/review providers and route
+    tests, shared strict data/meta schema, all five success branches, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Added one strict acknowledgement schema and applied it with fixed fallback messages to all five mutations. Arbitrary
+    or legacy successful JSON now follows each existing retryable error path instead of emitting a success toast. Added a
+    representative legacy activation 2xx regression. Rollback is the workflow schema/readers/test and ledger reverse
+    patch; no share case, consent, visit record, audit, or DB restore is needed.
+  - safety / validation:
+    Provider DTOs, request bodies, patient identity/consent policy, writes, auth/tenant, audit, notification, medical
+    meaning, DB/schema, and rendered UI are unchanged. Workflow passed 1 file / 33 tests; the five provider suites passed
+    5 files / 39 tests. Schema-less reader scan is empty; frontend/privacy/response-shape gates, full typecheck, exact
+    ESLint/Prettier/diff passed. Browser/imagegen were omitted because no visual behavior changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    other direct raw JSON readers. Full build remains unverified after prior exit 137 and was not rerun without a changed
+    hypothesis. No commit/push/deploy/migration/external write. Human review should confirm only that these five
+    acknowledgement bodies remain standard `{ data, meta? }`; domain behavior was not changed.
+
+- codex: strict shared data/meta consumer envelope.
+  - task / result / commit:
+    `API-CONTRACT-001FZDATASTRICT` DONE. No commit. Shared data consumers no longer silently strip unknown legacy root
+    keys before treating a 2xx response as success.
+  - files inspected / changed:
+    Shared response schema/tests, every production `apiDataSchema` callsite, pharmacy workflow, patient documents,
+    partner billing, pharmacy cooperation setup, referrals, corresponding tests, live template provider/tests,
+    Plans/archive/state.
+  - implementation / behavior / rollback:
+    `apiDataSchema` now accepts only standard root `data` and optional object `meta`; any other root key fails closed.
+    The admin setup template fixture was updated from stale root `hasMore` to the current provider's counted `meta`.
+    Rollback is the shared schema/test, one fixture, and ledger reverse patch; no provider, referral, contract, document,
+    patient, or DB restore is needed.
+  - validation / attempts:
+    Attempt 1 failed 25/105 tests and proved that valid consumers require optional standard `meta`; the schema was revised
+    without allowing arbitrary root keys. Attempt 2 failed 14/105, all from one stale templates fixture. After syncing it
+    to the live route contract, attempt 3 passed 6 files / 105 tests. Frontend/privacy/response-shape gates, full typecheck,
+    exact ESLint/Prettier/diff passed. Browser/imagegen were omitted because parsing became fail-closed while rendered UI
+    and layout stayed unchanged.
+  - safety / remaining / next:
+    Provider wire/request, writes, audit, billing/medical meaning, auth/tenant/PHI, and UI behavior are unchanged. Parent
+    `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and remaining
+    direct raw JSON readers. Full build remains unverified after prior exit 137 and was not rerun without a changed
+    hypothesis. No commit/push/deploy/migration/external write; rollback is fully local.
+
+- codex: frontend cursor normalizer convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZCURSOR` DONE. No commit. Legacy root cursor parser/helper symbols now have zero repository
+    references, and current data/meta pagination has one shared all-pages client entrypoint.
+  - files inspected / changed:
+    Shared response schemas/tests, cursor client/tests, tasks, communications, patient visit history, conferences,
+    schedules, my-day consumers/tests, current provider envelopes, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Removed the production-unused legacy root schema/parser and metadata-preserving all-pages helper. Renamed the current
+    data/meta helper to `fetchAllCursorPages` and made it reuse `apiCursorPageSchema`. Six production consumer families and
+    their mocks now use the single current helper. Rollback is the scoped schema/client, consumer imports/calls/tests, and
+    ledger reverse patch; no provider, patient, task, schedule, or DB restore is needed.
+  - validation / attempts:
+    The first 8-file run passed 94/96; two schedule helper tests proved that valid provider-specific `meta.limit` was being
+    rejected by an overly strict generic parser. The shared schema now has an explicit generic-only additional-meta option:
+    root keys stay strict and individual consumer schemas remain strict. The rerun passed 8 files / 97 tests. Legacy
+    symbols scan is empty; frontend/query/auth/privacy/response-shape gates, full typecheck, exact ESLint/Prettier/diff
+    passed. Browser/imagegen were omitted because only parser wiring and internal normalization changed, not rendered UI.
+  - safety / remaining / next:
+    Provider wire/query, item validation, page cap/cursor traversal, UI behavior, auth/tenant/PHI, DB/schema are unchanged.
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    remaining raw JSON/data-meta readers. Full build remains unverified after prior exit 137 and was not rerun without a
+    changed hypothesis. No commit/push/deploy/migration/external write. Rollback is fully local and no human product
+    decision is required.
+
+- codex: webhook compatibility error alias removal.
+  - task / result / commit:
+    `API-CONTRACT-001FZERRCOMPAT` DONE. No commit. The repository has zero production references to the legacy
+    compatibility error helpers.
+  - files inspected / changed:
+    Shared response helper/tests, admin webhooks GET/POST/full tests, all compatibility helper callsites, production HTTP
+    consumers, URL destination and secret-encryption paths, protected POST matrix, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Five webhook POST failure branches now use the shared `{ code, message, details? }` error body. Schema fields remain
+    under `details`; duplicate root `error` and `fieldErrors` aliases were removed. The now-unreferenced compatibility
+    helpers were deleted, and a missing destination-policy rejection test was added. Strict success typing also required
+    the existing GET aggregate fields to move under `meta`; the registration DTO and count meanings are unchanged, and
+    the GET is now explicitly sensitive no-store. Rollback is the scoped response helper/test, webhook route/test, and
+    ledger reverse patch; no webhook registration or secret restore is needed.
+  - safety / validation:
+    URL credential/public-destination checks, secret generation/encryption, DB transaction, audit, ADMIN auth, tenant RLS,
+    POST success payload, and GET registration/count semantics are unchanged; only GET metadata nesting/no-store headers
+    changed. Repo scan found no production HTTP consumer. Focused helper/route tests
+    passed 2 files / 27 tests; protected POST passed 151/151; checker passed 11/11; response-shape passed 0 allowlisted /
+    0 new; auth/privacy gates, full typecheck, exact ESLint/Prettier/diff passed. Browser/imagegen were omitted because no
+    UI consumer or visual behavior changed.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for shared ApiError nesting, route-local request IDs, no-store ratchet, and
+    frontend data/meta normalization. Full build remains unverified after prior exit 137 and was not rerun without a
+    changed hypothesis. No commit/push/deploy/migration/external write. Human review is limited to the admin webhook error
+    response and GET metadata compatibility boundaries.
+
+- codex: API success strict type-probe restoration.
+  - task / result / commit:
+    `API-CONTRACT-001FZTYPE` DONE. No commit. Exact-root debt remains zero and the zero-debt contract is now enforced by
+    the shared success helper type as well as the static checker.
+  - files inspected / changed:
+    Shared response helper/tests, response-shape checker/tests, remaining variable/spread success callsites,
+    flush-metrics shared job, admin/job routes/tests, dispense-workbench patient provider/consumer, protected route
+    matrices, Plans/archive/state.
+  - implementation / behavior / rollback:
+    `success` and `successWithMeasuredJsonPayload` now accept `ApiSuccess<T>{ data, meta? }`; compile-time negative probes
+    reject root metadata and missing `data`. The flush job now wraps its unchanged payload in `{ data }`, and both route
+    tests assert the new exact envelope. A final rescan then caught a concurrent dispense-workbench patient route inference
+    edit; it was expanded to a static `{ data, meta }` literal without changing the response body. Rollback is the scoped
+    response helper/test, flush helper/route tests, dispense route, and ledger reverse patch; no metric, patient, DB, or
+    schema restoration is needed.
+  - safety / validation:
+    Flush side effects, ADMIN/API-key auth, CloudWatch dispatch, error/log handling, EventBridge schedule/IaC, DB/schema,
+    PHI, patient-list DTOs, and rendered UI are unchanged. Focused helper/admin/job tests passed 3 files / 14 tests;
+    dispense provider/service/consumer passed 3 files / 53 tests; protected GET/POST/PATCH-DELETE passed 3 files / 615
+    tests and GET rerun passed 384/384; checker coverage passed 11/11; response-shape passed 0 allowlisted / 0 new; full
+    typecheck and exact ESLint/Prettier/diff checks passed. Browser/imagegen were omitted because this is a helper/internal
+    job wire-contract and response-preserving static-envelope change with no visual surface.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial for helper-derived legacy error bodies, route-local request IDs, no-store
+    ratchet, and frontend data/meta normalization. Full build remains unverified after prior exit 137 and was not rerun
+    without a changed hypothesis. No commit/push/deploy/migration/external write. Human review is limited to the two
+    flush-metrics response consumers and shared success-helper compatibility.
+
+- codex: visit-schedule-proposal envelope zero-debt convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZVS` DONE. No commit. Exact-root debt decreased 3→0 and paths 1→0.
+  - files inspected / changed:
+    Visit-schedule-proposals palette GET/generation POST/full tests, shared strict response schema, global palette,
+    weekly optimizer, proposal dashboard, day planner, route-mocked fixtures, one stale calendar pagination fixture,
+    allowlist/checker tests, protected GET/POST matrices, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Palette truncation now returns exact `{ data, meta: { has_more } }`; existing-batch replay and the shared
+    normal/race generation return now use `{ data, meta: { alerts, diagnostics?, replayed } }`. The shared strict
+    schema validates root/meta, proposal IDs, billing alerts, and diagnostics before adapting to existing client view
+    models. Global palette rejects legacy root `hasMore`; generation consumers reject legacy root metadata. Rollback is
+    the scoped route/schema/consumers/tests/fixtures/allowlist/ledger reverse patch and needs no proposal restore.
+  - safety / validation:
+    Proposal/PHI DTOs, access, planner, billing constraints, idempotency fingerprints/batches, Serializable transaction,
+    audit, workflow notification, GET full, PUT, DB/schema, and rendered UI are unchanged. Focused provider/consumer
+    coverage passed 7 files / 198 tests; protected GET+POST passed 2 files / 535 tests (384 GET + 151 POST); schedule
+    integration passed 31 files / 541 tests. Its first run exposed one pre-existing legacy root pagination fixture in
+    `calendar-view.helpers.test.ts`; after syncing it to the live visit-schedules `meta` contract, the focused 5/5 and
+    full 541/541 reruns passed. Checker coverage passed 11/11. Full typecheck, exact ESLint/Prettier, response-shape
+    (0 allowlisted / 0 new), query/frontend/auth/privacy/raw-read guards, and diff check passed. Browser/imagegen were
+    omitted because this is a wire-contract/parser/fixture-only slice with no page structure or visual change.
+  - remaining / next:
+    Exact-root debt is zero, but parent `API-CONTRACT-001` remains Partial pending strict type-probe reintroduction,
+    helper-derived legacy errors, route-local request IDs, no-store ratchet, and broader frontend data/meta normalization.
+    Full build remains unverified after prior exit 137 and was not rerun without a changed hypothesis. No commit/push/
+    deploy/migration/external write. Human review is limited to visit-schedule proposal API compatibility.
+
+- codex: care-report list and palette envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZREP` DONE. No commit. Exact-root debt decreased 7→3 and paths 2→1.
+  - files inspected / changed:
+    Care-reports GET/full tests, shared strict list schema, Print Hub, Visit detail, Search readers/tests, allowlist,
+    protected GET matrix, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Empty/non-empty palette and regular list branches now return exact
+    `{ data, meta: { has_more, next_cursor, delivery_summary?, search? } }`. Print Hub and Visit detail reject legacy
+    root metadata, and Search reports malformed/legacy report 2xx as a failed category instead of a false empty result.
+    Rollback is the scoped route/schema/consumers/tests/allowlist/ledger reverse patch and needs no report restore.
+  - safety / validation:
+    Report/PHI DTOs, access/assignment, delivery summary semantics, keyword scan, query bounds, POST, DB/schema,
+    no-store, and rendered UI are unchanged. Focused provider/consumer coverage passed 4 files / 145 tests; protected
+    GET passed 384/384. Exact ESLint/Prettier, response-shape (current 3 / 0 new), query/frontend/auth/privacy gates,
+    full typecheck, and diff check passed. Browser/imagegen omitted because this is a wire-contract/parser-only change
+    with no page structure, grouping, spacing, heading, or visual reconstruction change.
+  - remaining / next:
+    Parent remains Partial with 3 exact-root violations on one visit-schedule-proposals route. Full build remains
+    unverified after prior exit 137. No commit/push/deploy/migration/external write. Human review is limited to the
+    care-report API compatibility boundary.
+
+- codex: e-prescription success envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZRX` DONE. No commit. Exact-root debt decreased 11→7 and paths 3→2.
+  - files inspected / changed:
+    E-prescription POST/full tests, adapter/error mapping, patient/case/access and intake service paths, allowlist,
+    protected POST matrix, Plans/archive/state.
+  - implementation / behavior / rollback:
+    New intake, request-id replay, upstream canonical-id replay, and unique-conflict replay now return exact
+    `{ data, meta: { e_prescription_id, idempotent } }`. Repo-wide scan found no production HTTP consumer. A canonical
+    upstream-id replay test was added. Rollback is the scoped route/tests/allowlist/ledger reverse patch and needs no
+    intake or patient restore.
+  - safety / validation:
+    Patient identity/case matching, writable/assignment checks, adapter configuration, accepted statuses, cycle lookup,
+    intake transaction, error mapping, audit/hooks, auth/tenant, DB/schema, no-store, and runtime side effects are
+    unchanged. Focused route passed 1 file / 25 tests; protected POST passed 151/151. Exact ESLint/Prettier,
+    response-shape (current 7 / 0 new), query/frontend/auth/privacy gates, full typecheck, and diff check passed.
+    Browser/imagegen omitted because this is a response-only server contract change with no production UI consumer.
+  - remaining / next:
+    Parent remains Partial with 7 exact-root violations. Full build remains unverified after prior exit 137. No commit/
+    push/deploy/migration/external write. Human review is limited to the electronic-prescription API compatibility boundary.
+
+- codex: prescription-intake list envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZINT` DONE. No commit. Exact-root debt decreased 13→11 and paths 4→3.
+  - files inspected / changed:
+    Prescription-intakes search/normal GET/full tests, shared strict list schema, PrescriptionsWorkspace and Search
+    readers/tests, filter/facet/query-count paths, allowlist, protected GET matrix, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Both GET branches now return exact `{ data, meta: { has_more, next_cursor, total_count?, facets? } }`; the shared
+    schema maps that wire contract to the existing camelCase page model. Workspace rejects legacy root pagination, and
+    Search reports malformed/legacy prescription 2xx as a failed category instead of a false empty result. Rollback is
+    the scoped route/schema/consumers/tests/allowlist/ledger reverse patch and needs no intake restore.
+  - safety / validation:
+    Intake/medical/PHI DTOs, assignment scope, filters/facets, bounded cursor query, query-count header, POST workflows,
+    auth/tenant, DB/schema, no-store, and rendered UI are unchanged. Provider/Workspace/Search passed 3 files / 118
+    tests; protected GET passed 384/384. Exact ESLint/Prettier, response-shape (current 11 / 0 new), query/frontend/auth/
+    privacy gates, full typecheck, and diff check passed. Browser/imagegen omitted because no visual structure or
+    interaction changed.
+  - remaining / next:
+    Parent remains Partial with 11 exact-root violations. Full build remains unverified after prior exit 137. No commit/
+    push/deploy/migration/external write. Human review is limited to the prescription/medical API compatibility boundary.
+
+- codex: external-access grant-list cursor envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZEA` DONE. No commit. Exact-root debt decreased 14→13 and paths 5→4.
+  - files inspected / changed:
+    External-access GET/POST route and full tests, ExternalViewer grant reader/full tests, patient-share grant creator,
+    token/OTP/scope/audit paths, allowlist, protected route matrices, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Management GET now returns exact `{ data, meta: { has_more, next_cursor } }`; the dashboard reader uses the
+    shared strict cursor schema and rejects legacy root pagination. Rollback is the scoped route/consumer/tests/
+    allowlist/ledger reverse patch and needs no grant or token restore.
+  - safety / validation:
+    Token/OTP creation, scope, expiry, grant visibility, audit, notification, PHI fields, auth/tenant, DB/schema,
+    no-store, and rendered UI are unchanged. Focused baseline/final passed 2 files / 49 tests. Protected GET/POST/
+    PATCH-DELETE matrices passed 615/615. Exact ESLint/Prettier, response-shape (current 13 / 0 new), query/frontend/
+    auth/privacy gates, full typecheck, and diff check passed. Browser/imagegen omitted because no visual structure or
+    interaction changed.
+  - remaining / next:
+    Parent remains Partial with 13 exact-root violations. Full build remains unverified after prior exit 137. No commit/
+    push/deploy/migration/external write. Human review is limited to the external-sharing/PHI API compatibility boundary.
+
+- codex: pharmacy drug-stock detail/list/save envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZST` DONE. No commit. Exact-root debt decreased 17→14 and paths 6→5.
+  - files inspected / changed:
+    Drug-stock GET/POST/full tests, DrugMaster detail/list/save strict readers/full tests, stock/audit/query paths,
+    allowlist, protected GET/POST matrices, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Detail/list GET and POST now return exact `{ data, meta }`; site and list count/filter metadata live under `meta`.
+    All three readers preserve the existing internal shape and reject legacy root metadata. Rollback is the scoped
+    route/content/tests/allowlist/ledger reverse patch and needs no stock restore.
+  - safety / validation:
+    Stock fields, formulary/audit transaction, preferred-generic validation, count/filter semantics, org/site scope,
+    auth/tenant, DB/schema, no-store, and rendered UI are unchanged. Focused final passed 2 files / 118 tests.
+    Protected GET passed 384/384 and protected POST passed 151/151. Exact ESLint/Prettier, response-shape (current 14 /
+    0 new), query/frontend/auth/privacy gates, full typecheck, and diff check passed. Browser/imagegen omitted because no
+    visual structure or interaction changed.
+  - remaining / next:
+    Parent remains Partial with 14 exact-root violations. Full build remains unverified after prior exit 137. No commit/
+    push/deploy/migration/external write. Human review is limited to the formulary/medical API compatibility boundary.
+
+- codex: pharmacy drug-stock request envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZREQ` DONE. No commit. Exact-root debt decreased 19→17 and paths 7→6.
+  - files inspected / changed:
+    Stock-request GET/POST/full tests, DrugMaster request list/create strict readers/full tests, request/audit paths,
+    allowlist, protected GET/POST matrices, Plans/archive/state.
+  - implementation / behavior / rollback:
+    GET summary and POST site/drug metadata now live under exact `meta`; both readers reject legacy root 2xx before
+    rendering or success handling. Rollback is the scoped route/content/tests/allowlist/ledger reverse patch and needs
+    no request or stock restore.
+  - safety / validation:
+    Request status/payload/reason, formulary audit, stock mutation isolation, site/drug DTOs, query/order/limit,
+    auth/tenant, DB/schema, no-store, and rendered UI are unchanged. Focused final passed 2 files / 116 tests; an
+    intermediate run exposed two test-boundary assumptions (auth security-event transaction and unseeded detail row),
+    which were corrected without weakening provider/consumer assertions. Protected GET passed 384/384 and protected
+    POST passed 151/151. Exact ESLint/Prettier, response-shape (current 17 / 0 new), query/frontend/auth/privacy gates,
+    full typecheck, and diff check passed. Browser/imagegen omitted because no visual structure or interaction changed.
+  - remaining / next:
+    Parent remains Partial with 17 exact-root violations. Full build remains unverified after prior exit 137. No commit/
+    push/deploy/migration/external write. Human review is limited to the formulary/medical API compatibility boundary.
+
+- codex: pharmacy drug-stock history envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZSH` DONE. No commit. Exact-root debt decreased 21→19 and paths 8→7.
+  - files inspected / changed:
+    Stock-history GET/full tests, DrugMaster history strict reader/full tests, audit filtering, stock/site lookup,
+    allowlist, protected GET matrix, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Stock-missing and normal history responses now return exact `{ data, meta: { site, stock } }`; the reader rejects
+    legacy root metadata. Rollback is the scoped route/content/tests/allowlist/ledger reverse patch and needs no data restore.
+  - safety / validation:
+    Audit event/changes, stock/site identity, org filter, query/limit, auth/tenant, DB/schema, no-store, and rendered UI
+    are unchanged. Focused baseline passed 2 files / 105 tests; final passed 2 files / 106 tests. Protected GET passed
+    384/384. Exact ESLint/Prettier, response-shape (current 19 / 0 new), query/frontend/auth/privacy gates, full typecheck,
+    and diff check passed. Browser/imagegen omitted because no visual structure or interaction changed.
+  - remaining / next:
+    Parent remains Partial with 19 exact-root violations. Full build remains unverified after prior exit 137. No commit/
+    push/deploy/migration/external write. Human review is limited to the audit/medical API compatibility boundary.
+
+- codex: medication-issue cursor envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZMI` DONE. No commit. Exact-root debt decreased 23→21 and paths 9→8.
+  - files inspected / changed:
+    Medication-issues GET/full tests, shared strict item/cursor schema, SafetyCheck and Medications readers/full tests,
+    assignment/access helpers, mutation routes, allowlist, protected GET matrix, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Assignment-denied and normal pages now return exact `data/meta.has_more/next_cursor`; both readers reject legacy root
+    2xx. Rollback is the scoped route/schema/consumers/tests/allowlist/ledger reverse patch and needs no issue restore.
+  - safety / validation:
+    Issue/status/priority/medical DTOs, patient/case assignment, create/update, auth/tenant, query/order/limit, DB/schema,
+    no-store, and rendered UI are unchanged. Focused baseline passed 3 files / 81 tests; final passed 3 files / 83 tests.
+    An intermediate run exposed 7 test-harness failures caused by a new branching fetch mock lacking global registration
+    and its response import; the helper was corrected without weakening assertions, then the suite passed. Protected GET
+    passed 384/384. Exact ESLint/Prettier, response-shape (current 21 / 0 new), query/frontend/auth/privacy gates, full
+    typecheck, and diff check passed. Browser/imagegen omitted because no visual structure or interaction changed.
+  - remaining / next:
+    Parent remains Partial with 21 exact-root violations. Full build remains unverified after prior exit 137. No commit/
+    push/deploy/migration/external write. Human review is limited to the medical API compatibility boundary; clinical
+    semantics were not changed.
+
+- codex: patient care-team response envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZCT` DONE. No commit. Exact-root debt decreased 25→23 and paths 10→9. Existing provider/consumer
+    changes in the shared workspace were preserved, completed, validated, and ledgered.
+  - files inspected / changed:
+    Patient care-team GET/PUT/full tests, PatientCareTeamPanel strict option/save readers/full tests, report-share and
+    patient-share data-only consumers/tests, reliability/contact projections, allowlist, protected route matrices,
+    Plans/archive/state.
+  - implementation / behavior / rollback:
+    Case selection, warnings, and reliability metadata now live under exact `meta`; the save reader rejects legacy root
+    2xx. A remaining external-professional `visible_count` access in the same panel was corrected to `meta.visible_count`.
+    Rollback is the scoped route/panel/tests/allowlist/ledger reverse patch and requires no care-team or patient restore.
+  - safety / validation:
+    Contact PHI, assignment/case scope, reliability rules, replacement transaction/audit, auth/tenant, DB/schema,
+    no-store, and rendered UI are unchanged. Provider/panel/two read consumers passed 4 files / 77 tests; protected GET
+    passed 384/384 and PUT/PATCH/DELETE passed 80/80. Exact ESLint/Prettier, response-shape (combined current 23 / 0
+    new), query/frontend/auth/privacy gates, full typecheck, and diff check passed. Browser/imagegen omitted because no
+    visual structure, spacing, state, or interaction changed.
+  - remaining / next:
+    Parent remains Partial with 23 exact-root violations. Full build remains unverified after prior exit 137. No commit/
+    push/deploy/migration/external write. Human review is limited to API compatibility; care-team/reliability meaning did
+    not change.
+
+- codex: patient movement timeline exact envelope.
+  - task / result / commit:
+    `API-CONTRACT-001FZTL` DONE. No commit. Exact-root debt decreased 26→25 and paths 11→10.
+  - files inspected / changed:
+    Movement timeline handler/full tests, response/event types and runtime schema, CardWorkspace reader/full tests,
+    movement presenter/consumer paths, payload measurement, protected GET matrix, allowlist, bundled Next.js route/client
+    guides, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Wire payload now uses exact `{ data: { movement_events, partial_failures? }, meta }`; the strict reader converts it to
+    the existing internal snapshot and rejects legacy root 2xx. Rollback is the scoped handler/types/workspace/tests/
+    allowlist/ledger reverse patch and requires no timeline or patient data restore.
+  - safety / validation:
+    Cursor/filter semantics, event/PHI DTO, raw suppression, read audit, auth/tenant, bounded query, content length,
+    no-store, DB/schema, and rendered UI are unchanged. Focused baseline passed 2 files / 105 tests; final passed 2 files /
+    106 tests. Protected GET passed 384/384. Exact ESLint/Prettier, response/query/frontend/auth/privacy gates, full
+    typecheck, and diff check passed. Browser/imagegen omitted because the existing UI hierarchy and interaction are
+    unchanged.
+  - remaining / next:
+    This slice left 25 violations before FZCT reduced the combined debt to 23. Full build remains unverified after prior
+    exit 137. No commit/push/deploy/migration/external write. Human review is limited to the PHI API compatibility boundary.
+
+- codex: patient create/update response envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZPAT` DONE. No commit. Exact-root debt decreased 28→26 and paths 13→11. Existing provider/consumer
+    changes in the shared workspace were preserved, inspected, validated, and ledgered separately from FZINV.
+  - files inspected / changed:
+    Patient create POST and detail PATCH/full tests, PatientForm create/update strict readers/full tests, duplicate warning
+    and candidate projections, response allowlist, protected mutation matrices, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Create/update now return exact `{ data, meta }`; PatientForm rejects legacy root 2xx before success toast/navigation.
+    Rollback is the scoped routes/form/tests/allowlist/ledger reverse patch and requires no patient data restoration.
+  - safety / validation:
+    Patient fields, duplicate detection/acknowledgement, PHI projection, transaction/audit, auth/tenant, DB/schema,
+    navigation, and rendered UI are unchanged. Provider/consumer suites passed 3 files / 115 tests; protected POST passed
+    151/151 and PUT/PATCH/DELETE passed 80/80. Exact ESLint/Prettier, response-shape (combined current 26 / 0 new),
+    query-shape, frontend-contract, route-auth-wrapper, client-PHI-log, full typecheck, and diff check passed.
+    Browser/imagegen omitted because no rendered structure, state, spacing, or interaction changed.
+  - remaining / next:
+    Parent remains Partial with 26 exact-root violations. Full build remains unverified after prior exit 137. No commit/
+    push/deploy/migration/external write. Human review should confirm only the documented response-envelope compatibility;
+    no clinical, identity-match, or duplicate-policy meaning was changed.
+
+- codex: pharmacy invoice list cursor envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZINV` DONE. No commit. Exact-root debt decreased 29→28 and paths 14→13.
+  - files inspected / changed:
+    Pharmacy invoice GET/full tests, partner billing strict reader/full tests, shared cursor schema, invoice service/query and
+    mutation/PDF boundaries, response allowlist, protected GET matrix, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Invoice list cursor fields now live under exact `meta.has_more/next_cursor`; the billing reader rejects legacy root
+    cursor 2xx. Rollback is the scoped route/content/tests/allowlist/ledger reverse patch and needs no invoice restore.
+  - safety / validation:
+    Amount/tax calculations, invoice status, creation/transition/PDF paths, auth/tenant, query/order/limit, DB/schema, and
+    rendered billing UI are unchanged. Focused baseline passed 2 files / 26 tests; final passed 2 files / 27 tests.
+    Protected GET passed 384/384. Exact ESLint/Prettier, response/query/frontend/auth/privacy gates, full typecheck, and
+    diff check passed. Browser/imagegen omitted because the wire metadata location changed without a visual change.
+  - remaining / next:
+    This slice left 28 violations before FZPAT reduced the combined debt to 26. Full build remains unverified after prior
+    exit 137. No commit/push/deploy/migration/external write. Human review is limited to API compatibility; billing values
+    and lifecycle semantics were not changed.
+
+- codex: facility lists and contacts envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZFAC` DONE. No commit. Exact-root debt decreased 35→29 and paths 17→14. Existing provider/consumer
+    changes in the shared workspace were preserved, inspected, validated, and ledgered.
+  - files inspected / changed:
+    Admin facility GET, admin/public facility contacts GET/PUT and full tests, FacilitiesContent and full tests, facility
+    DTO/path/validation helpers, response allowlist, protected GET matrix, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Admin facility list branches and both contact providers now return exact `{ data, meta }`. FacilitiesContent requires
+    the exact list schema and rejects legacy root metadata; contact tests lock the current version envelope. Rollback is
+    the scoped routes/content/tests/allowlist/ledger reverse patch and requires no facility/contact data restoration.
+  - safety / validation:
+    Auth, tenant scope, facility/contact PHI fields, archive behavior, expected-version conflict, replacement transaction,
+    count/filter semantics, no-store, DB/schema, and rendered layout are unchanged. Provider/consumer suites passed
+    4 files / 44 tests; protected GET passed 384/384. Exact ESLint/Prettier, response-shape (combined current 29 / 0 new),
+    query-shape, frontend-contract, route-auth-wrapper, client-PHI-log, full typecheck, and diff check passed.
+    Browser/imagegen omitted because no rendered structure, spacing, state, or interaction changed.
+  - remaining / next:
+    Parent remains Partial with 29 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after prior exit 137 and must not be repeated without a changed hypothesis. No commit/push/deploy/
+    migration/external write.
+
+- codex: patient medication-stock exact-root static proof.
+  - task / result / commit:
+    `API-CONTRACT-001FZMS` DONE. No commit. Exact-root debt decreased 36→35 and paths 18→17.
+  - files inspected / changed:
+    Patient medication-stock GET/full tests, summary service/full tests, shared response type, visit observation and
+    inbound consumers/full tests, response allowlist, protected GET matrix, Plans/archive/state, and gbrain context.
+  - implementation / behavior / rollback:
+    The already exact typed service result is passed to the measured JSON helper as a literal `{ data, meta }`, allowing
+    static exact-root proof. A representative response locks exact root keys. Rollback is the scoped route/test/
+    allowlist/ledger reverse patch and requires no stock, medication, snapshot, event, or patient data restoration.
+  - safety / validation:
+    Stock quantities, medication DTOs, risk/equivalence summaries, limits, RLS/assignment, PHI read audit, queries,
+    content length, no-store, DB/schema, and both rendered consumers are unchanged. Route/service/consumer suites passed
+    4 files / 33 tests; protected GET passed 384/384. Exact ESLint/Prettier, response-shape, query-shape,
+    frontend-contract, route-auth-wrapper, client-PHI-log, full typecheck, and diff check passed. Browser/imagegen omitted
+    because there is no rendered or interaction change.
+  - remaining / next:
+    This slice left 35 exact-root violations before FZFAC reduced the combined current debt to 29. Full build remains
+    unverified after prior exit 137. No commit/push/deploy/migration/external write.
+
+- codex: admin external-professional list envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZEP` DONE. No commit. Exact-root debt decreased 39→36 and paths 20→18. Existing provider/consumer
+    changes in the shared workspace were preserved, completed, validated, and ledgered.
+  - files inspected / changed:
+    Admin external-professional master GET and linked-patient GET with full tests, ExternalProfessionalsContent and full
+    tests, path builders, assignment/archive projections, response allowlist, protected GET matrix, Plans/archive/state.
+  - implementation / behavior / rollback:
+    Both master-list branches and linked-patient list now return exact `{ data, meta }`. Strict readers reject legacy root
+    metadata and unknown filter enum values; the non-display badge reads `meta.truncated`. Rollback is the scoped routes/content/tests/allowlist/ledger
+    reverse patch and requires no professional, care-team link, or patient data restoration.
+  - safety / validation:
+    Auth, tenant/assignment scope, archive projection, contact/patient DTOs, count/filter meaning, no-store, DB/schema,
+    and rendered layout are unchanged. Provider/consumer suites passed 3 files / 40 tests; protected GET passed 384/384.
+    Exact ESLint/Prettier, response-shape (combined current 36 / 0 new), query-shape, frontend-contract,
+    route-auth-wrapper, client-PHI-log, full typecheck, and diff check passed. Browser/imagegen omitted because no rendered
+    structure, spacing, state, or interaction changed.
+  - remaining / next:
+    Parent remains Partial with 36 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after prior exit 137 and must not be repeated without a changed hypothesis. No commit/push/deploy/
+    migration/external write.
+
+- codex: patient board exact-root static proof.
+  - task / result / commit:
+    `API-CONTRACT-001FZPB` DONE. No commit. Exact-root debt decreased 40→39 and paths 21→20.
+  - files inspected / changed:
+    Patient board GET, full provider and PatientsBoard consumer tests, PatientBoardPageResponse, response allowlist,
+    protected GET matrix, Plans/archive/state, and relevant gbrain response-envelope context.
+  - implementation / behavior / rollback:
+    The already exact typed response is passed to the measured JSON helper as a literal `{ data, meta }`, allowing the
+    static checker to prove the root contract. A representative response locks exact root keys. Rollback is the scoped
+    route/test/allowlist/ledger reverse patch and requires no patient or board data restoration.
+  - safety / validation:
+    Serialized data/meta values, content length, cursor/count/filter/facet semantics, PHI fields, auth, tenant assignment,
+    queries, payload measurement, no-store, DB/schema, and rendered UI are unchanged. Provider/consumer suites passed
+    2 files / 58 tests; protected GET passed 384/384. Exact ESLint/Prettier, response-shape, query-shape,
+    frontend-contract, route-auth-wrapper, client-PHI-log, full typecheck, and diff check passed. Browser/imagegen omitted
+    because there is no rendered or interaction change.
+  - remaining / next:
+    This slice left 39 exact-root violations before the parallel FZEP slice reduced the combined current debt to 36.
+    Full build remains unverified after prior exit 137. No commit/push/deploy/migration/external write.
+
+- codex: patient contacts response metadata reconciliation.
+  - task / result / commit:
+    `API-CONTRACT-001FZCONT` DONE. No commit. Exact-root debt decreased 42→40 and paths 22→21. The provider/panel change
+    appeared in the shared workspace during the audit slice and was preserved, inspected, validated, and ledgered.
+  - files inspected / changed:
+    Patient contacts GET/PUT/full tests, PatientContactsPanel save reader/full tests, report-share and patient-share read
+    consumers/tests, masking/readiness/duplicate warning paths, protected GET matrix, allowlist, Plans/archive/state.
+  - implementation / behavior / rollback:
+    GET/PUT return exact `{ data, meta }`; PUT meta contains warnings, readiness, duplicate findings, and version claim.
+    Save reader requires the current exact schema and rejects legacy root 2xx. Data-only GET consumers remain compatible.
+    Rollback is the scoped provider/panel/test/allowlist/ledger reverse patch and needs no contact/patient data restore.
+  - safety / validation:
+    Contact masking, address/email/phone omission assertions, duplicate warning minimization, expected patient version,
+    replacement transaction, audit, auth, org/archive/conflict/no-store, DB/schema, and rendered UI are unchanged. Route,
+    panel, and two read consumers passed 4 files / 70 tests; protected GET passed 384/384. Exact ESLint/Prettier,
+    response-shape (combined current 40 / 0 new), query-shape, frontend-contract, route-auth-wrapper, client-PHI-log,
+    and full typecheck passed. Browser/imagegen omitted because no rendered structure, state, spacing, or interaction changed.
+  - remaining / next:
+    Parent remains Partial with 40 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after prior exit 137. No commit/push/deploy/migration/external write.
+
+- codex: audit log summary and pagination metadata envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZAUD` DONE. No commit. Exact-root debt decreased 43→42 and paths 23→22.
+  - files inspected / changed:
+    Audit log GET/full tests, redaction/review enrichment, shared audit response types/schema, Admin Audit Logs and My Day
+    consumers/tests, export/review surfaces, protected GET matrix, allowlist, Plans/archive/state, bundled Next.js guides.
+  - implementation / behavior / rollback:
+    GET returns exact `{ data, meta: { summary, pagination } }`. A shared generic envelope schema validates Admin rows and
+    the narrower My Day status-change DTO; legacy root summary 2xx is rejected. Rollback is the scoped route/types/
+    consumers/tests/allowlist/ledger reverse patch and requires no audit-log or review data restore.
+  - safety / validation:
+    Redaction/minimization, risk/review counts, filter semantics, viewed-audit write, review/export flows, auth, tenant,
+    no-store, PHI fields, DB/schema, and rendered UI are unchanged. Baseline passed 3 files / 69 tests; final passed
+    3 files / 70 tests including legacy-root rejection. Protected GET passed 384/384. Exact ESLint/Prettier, response-
+    shape (combined current 40 / 0 new), query-shape, frontend-contract, route-auth-wrapper, client-PHI-log, and full
+    typecheck passed. Browser/imagegen omitted because no rendered structure or interaction changed.
+  - remaining / next:
+    Parent remains Partial with 40 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after prior exit 137. No commit/push/deploy/migration/external write.
+
+- codex: patient packaging save envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZPACK` DONE. No commit. Exact-root debt decreased 44→43 and paths 24→23. The provider/consumer
+    implementation appeared in the shared workspace while this slice was active and was preserved and validated.
+  - files inspected / changed:
+    Patient packaging GET/PUT and full tests, PatientPackagingCard read/save readers/full tests, packaging instruction
+    builder, writable-patient guard, response allowlist, Plans/archive/state, and bundled Next.js client/fetch guides.
+  - implementation / behavior / rollback:
+    PUT now returns the same exact data object as GET: `{ data: { packaging_profile, effective_summary } }`. A shared
+    strict Zod schema validates both reads and saves and rejects legacy root-summary 2xx. Rollback is the scoped route/
+    card/test/allowlist/ledger reverse patch and requires no packaging-profile or patient data restoration.
+  - safety / validation:
+    Packaging method/color/notes/special/cognitive fields, instruction derivation, writable-patient guard, org-scoped
+    upsert, invalid/archive rejection, no-store, DB/schema, UI invalidation/rendering, and medical meaning are unchanged.
+    Baseline and final provider/consumer suites both passed 2 files / 17 tests; final includes exact save and legacy-root
+    rejection. Exact ESLint/Prettier, response-shape (43 / 0 new), query-shape, frontend-contract, route-auth-wrapper,
+    client-PHI-log, and full typecheck passed. Browser/imagegen omitted because no rendered structure, state, spacing, or
+    interaction changed.
+  - remaining / next:
+    Parent remains Partial with 43 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after prior exit 137 and must not be repeated without a changed hypothesis. No commit/push/deploy/
+    migration/external write.
+
+- codex: patient conditions version metadata reconciliation.
+  - task / result / commit:
+    `API-CONTRACT-001FZCOND` DONE. No commit. Exact-root debt decreased 46→44 and paths 25→24. The provider/test change
+    already existed in the shared workspace and was preserved, inspected, validated, and ledgered.
+  - files inspected / changed:
+    Patient conditions GET/PUT and full tests, patient card/workbench references, protected-route catalog, response
+    allowlist, Plans/archive/state. Repo-wide route/path scan found no production HTTP consumer; patient card uses a
+    separate patient aggregate DTO. No further production rewrite was needed.
+  - implementation / behavior / rollback:
+    GET/PUT return exact `{ data, meta: { expected_updated_at, version_basis } }`. Rollback is the scoped route/test/
+    allowlist/ledger reverse patch and requires no condition or patient data restoration.
+  - safety / validation:
+    Condition DTO, expected patient version, normalization, replacement transaction, stale conflict, audit, auth, org/
+    archive scope, no-store, DB/schema, and medical meaning are unchanged. Full route suite passed 16/16. Exact ESLint/
+    Prettier, response-shape (44 / 0 new), query-shape, frontend-contract, route-auth-wrapper, client-PHI-log, and full
+    typecheck passed. Browser/imagegen omitted because there is no production HTTP consumer or rendered change.
+  - remaining / next:
+    Parent remains Partial with 44 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after prior exit 137 and must not be repeated without a changed hypothesis. No commit/push/deploy/
+    migration/external write.
+
+- codex: patient self-report cursor metadata reconciliation.
+  - task / result / commit:
+    `API-CONTRACT-001FZSR` DONE. No commit. Exact-root debt decreased 48→46 and paths 26→25. The provider/consumer change
+    already existed in the shared workspace and was preserved, inspected, validated, and ledgered.
+  - files inspected / changed:
+    Patient self-report GET/POST and full tests, External Viewer self-report reader/full tests, shared cursor schema,
+    patient assignment scope, protected GET matrix, response allowlist, Plans/archive/state, and bundled Next.js client/
+    fetch guides. No further production rewrite was needed after inspection.
+  - implementation / behavior / rollback:
+    Accessible and no-access GET branches return exact `{ data, meta: { has_more, next_cursor } }`; the External Viewer
+    uses the shared strict cursor schema and rejects legacy root 2xx. Rollback is the scoped route/viewer/test/allowlist/
+    ledger reverse patch and requires no self-report or patient data restoration.
+  - safety / validation:
+    Auth, org/patient assignment, accessible-patient empty handling, bounded order/limit, self-report DTO/PHI fields,
+    no-store, POST, status mutation/version, DB/schema, and rendered UI are unchanged. Provider/consumer suites passed
+    2 files / 28 tests; protected GET passed 384/384. Exact ESLint/Prettier, response-shape (46 / 0 new), query-shape,
+    frontend-contract, route-auth-wrapper, client-PHI-log, and full typecheck passed. Browser/imagegen omitted because no
+    rendered structure, state, spacing, or interaction changed.
+  - remaining / next:
+    Parent remains Partial with 46 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after prior exit 137 and must not be repeated without a changed hypothesis. No commit/push/deploy/
+    migration/external write.
+
+- codex: QR draft list cursor metadata envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZQRL` DONE. No commit. This slice decreased exact-root debt 49→48 and paths 27→26; the separately
+    observed patient-self-report cursor slice produced the current 46 / 25 paths and remains under verification.
+  - files inspected / changed:
+    QR draft GET/POST provider and full tests, all/unmatched list page/readers/tests, QR response sanitizer, patient access,
+    protected GET matrix, response allowlist, Plans/archive/state, and bundled Next.js client/fetch guides. Changed only
+    list metadata nesting, strict reader/fixtures/legacy rejection, allowlist, and ledgers.
+  - implementation / behavior / rollback:
+    GET list now returns exact `{ data, meta: { has_more, next_cursor, unmatched_count? } }`; next cursor is explicit null
+    at the end. Both list readers require the current envelope and reject legacy root cursor/count 2xx. Rollback is the
+    scoped route/page/test/allowlist/ledger reverse patch and requires no QR draft or prescription data restoration.
+  - safety / validation:
+    `raw_qr_texts`, QR hash, and nested raw parsed text omission assertions remain green. Auth, org/patient assignment,
+    unmatched filtering/count basis, cursor order/limit, DTO fields, no-store, POST/confirm/detail, SSE, DB/schema,
+    PHI display, and rendered UI are unchanged. Baseline passed 2 files / 26 tests; final passed 2 files / 27 tests,
+    including exact current roots and legacy-root rejection. Protected GET passed 384/384. Exact ESLint/Prettier,
+    response-shape (current combined 46 / 0 new), query-shape, frontend-contract, route-auth-wrapper, client-PHI-log,
+    and full typecheck passed. Browser/imagegen omitted because no rendered structure, state, spacing, or interaction changed.
+  - remaining / next:
+    Validate the patient-self-report cursor workspace slice as `API-CONTRACT-001FZSR`; parent currently has 46 exact-root
+    violations. Full build remains unverified after prior exit 137. No commit/push/deploy/migration/external write.
+
+- codex: staff workload date metadata envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZP` DONE. No commit. Exact-root debt decreased 51→49 and paths 28→27.
+  - files inspected / changed:
+    Staff workload GET/full tests, Tasks workload reader/full tests, staff membership/task/visit/dispense query path,
+    protected GET matrix, response allowlist, Plans/archive/state, and bundled Next.js `use client` / data-fetching guides.
+    Changed only the two success envelopes, strict consumer schema/fixture/legacy rejection, allowlist, and ledgers.
+  - implementation / behavior / rollback:
+    Empty and populated responses now return exact `{ data, meta: { date } }`. The Tasks reader validates the current
+    workload DTO and exact envelope and rejects legacy root-date 2xx. Rollback is the scoped route/consumer/test/allowlist/
+    ledger reverse patch and requires no task, visit, membership, or dispense data restoration.
+  - safety / validation:
+    Auth, org scope, active membership filter, bounded task preview, visit/dispense reads, JST date resolution, workload
+    score/order, staff/patient DTO fields, no-store, PHI display, DB/schema, network count, and rendered UI are unchanged.
+    Baseline and final provider/consumer suites both passed 2 files / 30 tests; final includes populated/empty exact roots
+    and legacy-root rejection. Protected GET passed 384/384. Exact ESLint/Prettier, response-shape (49 / 0 new), query-
+    shape, frontend-contract, route-auth-wrapper, client-PHI-log, and full typecheck passed. Browser/imagegen omitted
+    because no rendered structure, spacing, state, or interaction changed.
+  - remaining / next:
+    Parent remains Partial with 49 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after prior exit 137 and must not be repeated without a changed hypothesis. No commit/push/deploy/
+    migration/external write.
+
+- codex: conference-note sync metadata envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZN` DONE. No commit. This slice decreased exact-root debt 56→54 and paths 31→29; the separately
+    validated `API-CONTRACT-001FZRC` response-version slice produced the combined current 51 / 28 paths.
+  - files inspected / changed:
+    Conference note POST/PATCH providers and full tests, `ConferenceDataSyncService` / `ConferenceSyncResult`, conference
+    create consumer/tests, patient-card create caller, protected POST/PATCH matrices, response allowlist, Plans/archive/
+    state. Changed only response metadata nesting, the strict create response reader, fixtures, allowlist, and ledgers.
+  - implementation / behavior / rollback:
+    POST/PATCH now return exact `{ data, meta: { sync } }`. The conference create reader requires the current exact root,
+    validates the bounded sync summary, reads `payload.meta.sync`, and rejects legacy root 2xx. Rollback is the scoped
+    provider/consumer/test/allowlist/ledger reverse patch and needs no note, report, billing, task, or proposal data restore.
+  - safety / validation:
+    Conference note writes, transaction boundaries, `ConferenceDataSyncService`, report drafts, billing candidates, visit
+    proposals, task/medication-issue derivation, metadata persistence, audit, auth, org/case/patient scope, no-store,
+    DB/schema, and rendered UI are unchanged. Baseline passed 3 files / 76 tests. The first final run correctly exposed two
+    stale root-sync assertions; after updating them, the same 3 files passed 77/77 including current-envelope and legacy-
+    root rejection. Protected POST passed 151/151; PATCH/DELETE passed 80/80. Exact ESLint/Prettier, response-shape
+    (combined current 51 / 0 new), query-shape, frontend-contract, route-auth-wrapper, client-PHI-log, and full typecheck
+    passed. Browser/imagegen omitted because response parsing changed without rendered structure or interaction changes.
+  - remaining / next:
+    Parent remains Partial with 51 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after prior exit 137 and must not be repeated without a changed hypothesis. No commit/push/deploy/
+    migration/external write.
+
+- codex: communication response version metadata envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZRC` DONE. No commit. This slice independently decreased exact-root debt 54→51 and paths 29→28;
+    conference-note `API-CONTRACT-001FZN` accounts for the independently completed 56→54 change.
+  - files inspected / changed:
+    Communication response GET/POST route and full tests, communication request/detail/resolve APIs, dashboard request/
+    report-share/patient-share consumers, shared path helpers, protected GET/POST matrices, response allowlist, Plans/
+    archive/state. No production HTTP consumer of the dedicated `/responses` route was found. Changed the three success
+    envelopes, six response assertions, exact-root checks, allowlist, and ledgers only.
+  - implementation / behavior / rollback:
+    GET list, stale-version idempotent replay, and normal create/replay now return exact
+    `{ data, meta: { request_updated_at } }`. Response rows, status codes, version values, and error envelopes are unchanged.
+    Rollback is the scoped provider/test/allowlist/ledger reverse patch and needs no response or request data restoration.
+  - safety / validation:
+    `canReport`, org/patient/case access, care-report role guard, archived/writable-patient guard, optimistic version claims,
+    keyed intent idempotency, concurrent insert recovery, response content digest/length audit, no-store, PHI fields,
+    writes, DB/schema, medical and billing behavior are unchanged. Network/query count and payload values are unchanged;
+    only metadata nesting moves. Focused route passed 24/24; protected GET passed 384/384 and POST 151/151. Exact ESLint,
+    Prettier, diff check, response-shape (combined current 51 / 0 new), query-shape, frontend-contract,
+    route-auth-wrapper, client-PHI-log, and full typecheck passed. Browser/imagegen omitted because there is no production
+    consumer or rendered change.
+  - remaining / next:
+    Parent remains Partial with 51 exact-root violations. Full build remains unverified after prior exit 137 and must not
+    be repeated without a changed hypothesis. No commit/push/deploy/external write.
+
+- codex: communication request reused-draft metadata reconciliation.
+  - task / result / commit:
+    `API-CONTRACT-001FZMC` DONE. No commit. Exact-root debt decreased 57→56 and paths 32→31. The route/test/allowlist
+    provider change already existed in the shared workspace; this pass completed the missing fail-closed consumer boundary.
+  - files inspected / changed:
+    Communication request POST/full tests, reports share, patient external-share, workflow dashboard consumers/tests,
+    shared client JSON/schema conventions, protected POST matrix, response allowlist, Plans/archive/state. Changed reused
+    metadata nesting, shared response schema, all three POST consumer readers/tests, allowlist, and ledgers.
+  - implementation / behavior / rollback:
+    The reused-draft branch now returns exact `{ data, meta: { reused_existing_draft: true } }`. A shared strict Zod
+    schema requires exact root keys, non-empty `data.id/status`, and an optional exact reuse meta object. Reports share,
+    patient external-share, and workflow emergency-draft mutations now reject empty or legacy-root 2xx payloads instead
+    of showing success or recording a created request. Rollback is the scoped provider/reader/schema/test/allowlist/ledger
+    diff and needs no data restoration.
+  - safety / validation:
+    Auth, org/patient/case scope, recipient/content/context snapshot, duplicate lookup, audit, no-store, PHI fields,
+    writes, DB schema, and new-draft behavior are unchanged. The strict reader prevents operational false-success state;
+    request count/network/query behavior is unchanged. Route plus three consumer suites passed 4 files / 95 tests;
+    protected POST passed 151/151. Response-shape checker passed at 56 / 0 new; query-shape, frontend-contract,
+    route-auth-wrapper, client-PHI-log, plans-active, exact lint/format/diff check, and full typecheck passed. The first
+    no-unused run hit Node's 4GB heap limit (exit 134); the unchanged gate passed with
+    `NODE_OPTIONS=--max-old-space-size=8192`. Browser/imagegen omitted because no rendered structure or visual behavior
+    changed.
+  - remaining / next:
+    Parent remains Partial with 56 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after exit 137 and must not be repeated without a changed hypothesis. The route still contains two
+    pre-existing NUL separator bytes from the committed baseline; this slice did not introduce or rewrite them, so source
+    hygiene remains separate. No commit/push/deploy/external write.
+
+- codex: formulary template mutation metadata envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZL` DONE. No commit. This slice decreased exact-root debt 59→57 and paths 34→32; a concurrent
+    communication-request metadata slice independently produced the combined current 56 / 31 paths.
+  - files inspected / changed:
+    Template list/create/delete/apply providers/tests, admin create/delete consumers/tests, audit/transaction path,
+    protected POST and PATCH/DELETE matrices, response allowlist, Plans/archive/state. Changed POST/DELETE metadata
+    nesting, strict consumer schemas/fixtures, allowlist, and ledgers.
+  - implementation / behavior / rollback:
+    POST now returns `{ data, meta: { site } }`; DELETE returns `{ data, meta: { deleted: true } }`. Admin create/delete
+    readers require exact current envelopes and reject legacy root metadata. Rollback is the scoped provider/reader/test/
+    allowlist/ledger diff and requires no template data restoration.
+  - safety / validation:
+    Admin permission, org/site/template filters, source stock selection, transaction boundaries, create/delete audit,
+    conflict/not-found behavior, template apply/GET, no-store, medical fields, DB schema, and rendered UI are unchanged.
+    Baseline passed 3 files / 113 tests after `TEST-TEMPLATE-AUTH-TX-001`; final passed the same 3 files / 113 tests,
+    including current create/delete and legacy-delete rejection. Protected POST passed 151/151; protected PATCH/DELETE
+    passed 80/80; shape checker passed with combined current 56 / 0 new; query-shape, frontend-contract,
+    route-auth-wrapper, client-PHI-log, exact lint/format, and full typecheck passed. Browser/imagegen omitted because no
+    rendered structure changed.
+  - remaining / next:
+    Parent remains Partial with 56 exact-root violations. Reconcile the concurrent communication-request slice, then
+    continue another bounded family. Full build remains unverified after exit 137 and must not be repeated without a
+    changed hypothesis. No push/deploy/external write.
+
+- codex: formulary template forbidden-path test boundary repair.
+  - task / result / commit:
+    `TEST-TEMPLATE-AUTH-TX-001` DONE. No commit. Production behavior and response-shape debt are unchanged.
+  - evidence / implementation / rollback:
+    The template route baseline failed 1/13 because the 403 test asserted global `$transaction` zero, while auth-context
+    actor-site resolution legitimately uses a transaction before `canAdmin` rejects the clerk. The test now proves the
+    domain boundary directly: pharmacy-site/stock/template-create/audit operations remain untouched. Rollback is the
+    assertion-only test and ledger diff.
+  - validation / remaining:
+    The isolated forbidden test passed 1/1 and the full route suite passed 13/13; exact lint/format passed. Full typecheck
+    is deferred only to the immediately following template-envelope slice's serialized full gate. Continue that bounded
+    family; no production, UI, DB, auth, privacy, billing, deploy, or external behavior changed.
+
+- codex: drug master cursor/count provider-consumer envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZK` DONE. No commit. Exact-root debt decreased 60→59 and path count 35→34; the concurrent visit
+    records slice independently accounted for 61→60.
+  - files inspected / changed:
+    Drug master GET route/full tests, admin infinite reader/tests, lightweight suggestion and palette schemas/tests,
+    search/prescription data-only consumers, browser fixture, protected GET matrix, response allowlist, Plans/archive/state.
+    Changed cursor/count nesting, strict envelope readers/fixtures, allowlist, and ledgers.
+  - implementation / behavior / rollback:
+    GET now returns exact `{ data, meta: { has_more, next_cursor, total_count? } }`; lightweight `includeTotal=false` omits
+    `total_count`. Admin maps the strict wire schema back to its existing internal page shape. Suggestion and palette
+    readers reject legacy root pagination. Rollback is the scoped provider/reader/schema/test/fixture/allowlist/ledger
+    diff and requires no DB or imported-master restoration.
+  - safety / validation:
+    Global drug data, formulary stock projection, org/site filter, search/cache key, query count/order, includeTotal
+    semantics, import/write paths, no-store, medical fields, and rendered layout are unchanged. Baseline passed 7 files /
+    179 tests. The first final run exposed two stale consumer test fixtures (palette at-limit and stale-search responses),
+    not production defects; after syncing those fixtures, the final 7 files / 181 tests passed. Protected GET matrix
+    passed 384/384; response-shape checker passed with combined current debt 59 / 0 new; query-shape, frontend-contract,
+    route-auth-wrapper, client-PHI-log, exact lint/format, and full typecheck passed. Browser/imagegen omitted because no
+    rendered structure changed; the route-mocked fixture was synchronized statically.
+  - remaining / next:
+    Parent remains Partial with 59 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after exit 137 and must not be repeated without a changed hypothesis. No push/deploy/external write.
+
+- codex: visit records cursor provider/consumer envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZKV` DONE. No commit. Exact-root debt decreased 61→60 and path count 36→35. The suffix avoids a
+    live ID collision with the active drug-master `API-CONTRACT-001FZK` slice.
+  - files inspected / changed:
+    Inspected visit-record GET/POST route/full tests, patient window helper/tests, patient history, evidence gallery,
+    patient print, visit form, protected GET matrix, browser route mocks, response allowlist, and ledgers. Changed GET
+    cursor nesting, patient helper/fixtures, one evidence fixture, allowlist, and ledgers.
+  - implementation / behavior / rollback:
+    GET now returns exact `{ data, meta: { has_more, next_cursor } }`; the multi-page patient reader uses the strict current
+    meta cursor helper, which rejects legacy root cursor fields. Data-only evidence/history/print readers remain valid and
+    the relevant evidence fixture was synchronized. Rollback is the scoped provider/helper/test/allowlist/ledger diff and
+    needs no data or schema restoration.
+  - security / privacy / medical / performance:
+    Auth, tenant/assignment filters, stable keyset ordering, bounded rows, patient-history SQL, attachment allowlist,
+    no-store, PHI DTOs, POST/create conflict behavior, DB/schema, and medical meaning are unchanged. Network/page count is
+    unchanged; no performance regression was introduced.
+  - validation / UI / remaining:
+    Focused provider/helper/evidence/history/print passed 6 files / 119 tests; protected GET passed 384/384. Exact ESLint/
+    Prettier, diff check, response-shape (60 allowlisted / 0 new), query-shape, route-auth-wrapper, frontend-contract,
+    client-PHI-log, and full typecheck passed. No rendered hierarchy changed, so browser/imagegen was omitted; browser
+    route mocks only intercept POST and required no GET rewrite. Parent remains Partial with 60 violations. No
+    push/deploy/external write.
+
+- codex: tasks cursor provider/consumer envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZJ` DONE. No commit. Exact-root debt decreased 62→61 and path count 37→36.
+  - files inspected / changed:
+    Tasks GET/POST route/full tests, shared legacy/current cursor readers/tests, Tasks/My Day/Handoff consumers/tests,
+    relevant route-mocked browser fixtures, protected GET matrix, response allowlist, Plans/archive/state. Changed GET
+    cursor nesting, two consumer helper callsites, current provider fixtures, one strict legacy-rejection test, allowlist,
+    and ledgers.
+  - implementation / behavior / rollback:
+    GET now returns exact `{ data, meta: { has_more, next_cursor } }`. Tasks and My Day use the strict current meta cursor
+    reader; legacy root cursor fields now fail closed. Handoff continues to consume only `data`, with its fixture synced to
+    the provider. Rollback is the scoped provider/consumer/test/fixture/allowlist/ledger diff and needs no data restoration.
+  - safety / validation:
+    Task row projection, org/assignment/role/status filters, pagination order/cursor values, inline completion policy,
+    POST create/idempotency, no-store, PHI minimization, DB, and rendered layout are unchanged. Baseline passed 5 files /
+    134 tests; final passed 5 files / 135 tests including the new legacy-root rejection. Handoff's pre-existing React `act`
+    warnings were present in both runs and did not increase. Protected GET matrix passed 384/384; response-shape checker
+    passed with 61 allowlisted / 0 new; query-shape, frontend-contract, route-auth-wrapper, client-PHI-log, exact
+    lint/format, and full typecheck passed. Browser/imagegen omitted because no rendered hierarchy or visual behavior
+    changed; route-mocked fixtures were statically synchronized.
+  - remaining / next:
+    Parent remains Partial with 61 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after exit 137 and must not be repeated without a changed hypothesis. No push/deploy/external write.
+
+- codex: qualification and visit-handoff consumer fail-closed verification.
+  - task / result / commit:
+    `API-CONTRACT-001FZQ-VERIFY` and `API-CONTRACT-001FZH-VERIFY` DONE. No commit. Exact-root debt is
+    unchanged at 62; these verifier fixes close consumer regressions after provider migrations.
+  - files inspected / changed:
+    Inspected qualification route/adapter/patient form and visit-handoff route/policy/workspace/browser fixtures. Changed
+    `patient-form.tsx` / test and `handoff-workspace.tsx` / test, plus Plans/archive/state corrections.
+  - bugs fixed / implementation / rollback:
+    Qualification had swallowed any malformed 2xx as `{}` and mislabeled it as no result; it now accepts only the exact
+    provider `{ data, meta.capabilities }` schema. Handoff FZH had incorrectly recorded no production consumer while the
+    workspace still read root version/policy, which would disable confirmation and send an undefined optimistic-lock
+    version. The workspace now validates exact `{ data, meta }`, reads nested metadata, rejects legacy roots, and never
+    passes `data:null` to the confirmation panel. Rollback is the four consumer/test files and these ledger corrections;
+    no DB or persisted-data restoration is needed.
+  - security / privacy / medical / performance:
+    Both consumers now fail closed on contract drift. Handoff authorization policy and optimistic concurrency values are
+    preserved rather than defaulting from missing root fields. No PHI/PII field, provider request, webhook event, auth,
+    assignment, DB, schema, medical decision, or network call count changed. No performance issue was introduced.
+  - validation / UI / remaining:
+    Patient form passed 27/27 tests. Handoff route/workspace passed 71/71 tests; the workspace suite still emits its known
+    pre-existing React `act(...)` warnings. Exact ESLint/Prettier, `git diff --check`, frontend-contract,
+    client-PHI-log, api-response-shape (62 allowlisted / 0 new), and full typecheck passed. No visual structure changed,
+    so browser/imagegen was omitted. Parent remains Partial with 62 violations. No push/deploy/external write.
+
+- codex: facility patient selector metadata envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZI` DONE. No commit. Exact-root debt decreased 63→62 and path count 38→37.
+  - files inspected / changed:
+    Facility patient GET route/full tests, repository-wide consumers, protected GET matrix, response allowlist,
+    Plans/archive/state. Changed only the metadata key, two response assertions, allowlist, and ledgers; no production
+    consumer was found.
+  - implementation / behavior / rollback:
+    GET now returns exact `{ data, meta }`; patient rows and limit/count/filter values are unchanged. Rollback is the
+    scoped route/test/allowlist/ledger diff and requires no data/schema restoration.
+  - safety / validation:
+    Tenant/facility predicates, permission, case assignment scope, active/archived filter, patient/contact fields,
+    pagination/count semantics, no-store, DB, migration, and medical meaning are unchanged. Baseline passed 5/5. The first
+    focused run after editing exposed one overlooked `body.metadata` assertion; updating that contract assertion was the
+    only follow-up, and the final suite passed 5/5. Protected GET matrix passed 384/384; response-shape checker passed with
+    62 allowlisted / 0 new; query-shape, route-auth-wrapper, client-PHI-log, exact lint/format, and full typecheck passed.
+    Browser/imagegen omitted because no production consumer or rendered behavior changed.
+  - remaining / next:
+    Parent remains Partial with 62 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after exit 137 and must not be repeated without a changed hypothesis. No push/deploy/external write.
+
+- codex: visit handoff read metadata envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZH` DONE. No commit. Exact-root debt decreased 64→63 and path count 39→38.
+  - files inspected / changed:
+    Visit handoff GET/PUT route and full tests, handoff confirmation/supervision UI callers, protected GET matrix,
+    response allowlist, Plans/archive/state. The provider slice changed the GET metadata nesting, four response assertions,
+    allowlist, and ledgers. Its production-consumer search missed `handoff-workspace`; corrected by
+    `API-CONTRACT-001FZH-VERIFY` above.
+  - implementation / behavior / rollback:
+    GET now returns exact `{ data, meta }`; extraction state, visit record version/timestamp, and confirmation policy live
+    under `meta`. Handoff content and policy values are unchanged. Rollback is the scoped route/test/allowlist/ledger diff
+    and requires no data/schema restoration.
+  - safety / validation:
+    Auth, schedule/case assignment access, direct confirmation, owner/admin override, trainee supervision, PHI-redacted
+    extraction errors, no-store, PUT behavior, DB, migration, and medical meaning are unchanged. Baseline and final route
+    suites passed 36/36; protected GET matrix passed 384/384; response-shape checker passed with 63 allowlisted / 0 new;
+    query-shape, route-auth-wrapper, client-PHI-log, exact lint/format, and full typecheck passed. Consumer/runtime-schema
+    validation and the non-visual correction are recorded in `API-CONTRACT-001FZH-VERIFY` above.
+  - remaining / next:
+    Parent remains Partial with 63 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after exit 137 and must not be repeated without a changed hypothesis. No push/deploy/external write.
+
+- codex: qualification-check capabilities envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FZQ` DONE. No commit. Exact-root debt decreased 65→64 and path count 40→39. The suffix avoids a
+    live ledger collision with the already-present admin-webhooks `API-CONTRACT-001FZ` slice.
+  - files inspected / changed:
+    Qualification-check POST route/full tests, external adapter contract/tests, patient form consumer/targeted tests,
+    protected POST matrix, response allowlist, Plans/archive/state. Changed only capability metadata nesting, one response
+    assertion, allowlist, and ledgers; the consumer reads only `data`.
+  - implementation / behavior / rollback:
+    POST now returns exact `{ data, meta: { capabilities } }`. Qualification result fields and UI behavior are unchanged.
+    Rollback is the scoped route/test/allowlist/ledger diff and requires no data/schema restoration.
+  - safety / validation:
+    Auth, patient/tenant access, identity match, payer/coverage values, provider adapter, webhook event, PHI/PII omission,
+    no-store, DB, migration, and medical meaning are unchanged. Baseline and final route suites passed 13/13; patient-form
+    targeted tests passed 3/3. The first combined `-t` command correctly ran only the consumer file because the route suite
+    uses a hyphenated describe name; the full route suite was then run separately and passed. Protected POST matrix passed
+    151/151; response-shape checker passed with the combined current debt 64/0-new after admin-webhooks; route-auth-wrapper,
+    client-PHI-log, exact lint/format, and full typecheck passed. Browser/imagegen omitted because rendered behavior is
+    unchanged.
+  - remaining / next:
+    Parent remains Partial with 64 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after exit 137 and must not be repeated without a changed hypothesis. No push/deploy/external write.
+
+- codex: admin webhooks aggregate envelope reconciliation.
+  - task / result / commit:
+    `API-CONTRACT-001FZ` DONE. No commit. Exact-root debt decreased 66→65 and path count 41→40. The implementation diff
+    already existed in the shared workspace and was preserved, inspected, validated, and reconciled rather than rewritten.
+  - files inspected / changed:
+    Admin webhooks GET route/full tests, repository-wide consumers, public webhook serializer, protected GET matrix,
+    response allowlist, Plans/archive/state. The route/test/allowlist implementation was pre-existing; this reconciliation
+    adds verification and ledger evidence only.
+  - implementation / behavior / rollback:
+    GET now has exact root keys `{ data, meta }`; total/visible/hidden/truncated/count-basis/filter/limit/has-more metadata
+    lives under `meta`. No production consumer was found. Rollback is the existing scoped route/test/allowlist/ledger diff
+    and requires no data/schema restoration.
+  - safety / validation:
+    Admin auth, tenant filter, public serializer, bounded counts, webhook secret omission, writes, DB, and deploy behavior
+    are unchanged. Focused tests passed 15/15; protected GET matrix passed 384/384; exact lint/format, full typecheck, and
+    current response-shape ratchet (64 allowlisted / 0 new after both slices) passed. Browser/imagegen omitted because no UI
+    consumer or visual behavior changed.
+  - remaining / next:
+    Followed by `API-CONTRACT-001FZQ`; parent current debt is 64/39 paths. No push/deploy/external write.
+
+- codex: set plan replay metadata envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FY` DONE. No commit. Exact-root debt decreased 67→66 and path count 42→41.
+  - files inspected / changed:
+    Set plans GET/POST route/full tests, repository-wide POST/GET callsites, dispense/print consumers, transition and
+    notification services, route catalog/rate limit, protected POST matrix, response allowlist, Plans/archive/state.
+    Changed only POST replay metadata nesting, three assertions, allowlist, and ledgers; no production POST consumer was
+    found.
+  - implementation / behavior / rollback:
+    POST now returns exact `{ data, meta: { replayed } }` while retaining 201 for new plans and 200 for existing/race
+    replays. Rollback is the scoped route/test/allowlist/ledger diff and requires no data/schema restoration.
+  - safety / validation:
+    Auth, tenant RLS context, idempotent duplicate lookup, unique-race convergence, medication-cycle transition/version,
+    transaction rollback, notification suppression, no-store, PHI, DB, migration, and medical meaning are unchanged.
+    Baseline and final focused suites passed 23/23; protected POST matrix passed 151/151; response-shape checker passed with
+    66 allowlisted / 0 new; query-shape, route-auth-wrapper, client-PHI-log, exact lint/format, and full typecheck passed.
+    Browser/imagegen omitted because no production POST consumer or visual behavior changed.
+  - remaining / next:
+    Parent remains Partial with 66 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after exit 137 and must not be repeated without a changed hypothesis. No push/deploy/external write.
+
+- codex: tracing reports cursor envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FX` DONE. No commit. Exact-root debt decreased 68→67 and path count 43→42.
+  - files inspected / changed:
+    Tracing reports GET/POST route/full tests, repository-wide HTTP callsites, PDF path helpers, route catalog/rate limit,
+    protected GET matrix, response allowlist, Plans/archive/state. Changed only GET cursor nesting, one assertion,
+    allowlist, and ledgers; no production list consumer was found.
+  - implementation / behavior / rollback:
+    GET now returns exact `{ data, meta: { has_more, next_cursor } }`. Report rows, patient name enrichment, order, filters,
+    and pagination values are unchanged. Rollback is the scoped route/test/allowlist/ledger diff and requires no data/schema
+    restoration.
+  - safety / validation:
+    Auth, assignment and tenant predicates, RLS request context, patient lookup, PHI-safe error metadata, sensitive
+    no-store, POST/PDF/detail behavior, DB, migration, and medical content are unchanged. Baseline and final focused suites
+    passed 17/17; protected GET matrix passed 384/384; response-shape checker passed with 67 allowlisted / 0 new;
+    query-shape, route-auth-wrapper, client-PHI-log, exact lint/format, and full typecheck passed. Browser/imagegen omitted
+    because no production UI consumer or visual behavior changed.
+  - remaining / next:
+    Parent remains Partial with 67 exact-root violations. Continue another bounded provider/consumer family. Full build
+    remains unverified after exit 137 and must not be repeated without a changed hypothesis. No push/deploy/external write.
+
+- codex: global search test async boundary cleanup.
+  - task / result / commit:
+    `TEST-GLOBAL-SEARCH-ACT-001` DONE. No commit. Production behavior is unchanged.
+  - files inspected / changed:
+    Global search hook/full tests and timer lifecycle. Changed only
+    `src/components/features/search/use-global-search.test.ts` plus Plans/archive/state.
+  - implementation / behavior / rollback:
+    The stale-query rerender and its microtask now run inside async `act`. More importantly, test cleanup discards pending
+    debounce timers with `clearAllTimers` instead of executing an intentionally uncompleted next search outside React's
+    update boundary. Rollback is the two test-harness line changes plus ledgers.
+  - validation / attempts:
+    A sync `act` wrapper and then an async rerender-only wrapper both left the warning, proving rerender was not the sole
+    source. Inspection identified `afterEach` `runOnlyPendingTimers` as the boundary escape. After switching cleanup to
+    discard timers, the full hook suite passed 14/14 with no warning; exact lint/format and full typecheck passed. No test,
+    assertion, production hook, network contract, UI, auth, PHI, DB, or migration behavior changed.
+  - remaining / next:
+    Resume `API-CONTRACT-001` at 68 exact-root violations / 43 paths. Full build remains unverified after exit 137 and must
+    not be repeated without a changed hypothesis. No push/deploy/external write.
+
+- codex: pharmacy cooperation envelope completion audit and browser proof.
+  - task / result / commit:
+    `API-CONTRACT-001FT-VERIFY` DONE. No commit. Exact-root debt is unchanged; this closes consumer/test evidence gaps in
+    the already-counted FT/FJ/FK and FU contracts.
+  - files inspected / changed:
+    Inspected pharmacy visit request/decision and partner-record providers/tests, shared response schemas, workflow and
+    billing consumers/tests, pharmacy contracts, visit billing candidates, report draft contracts, route-mocked browser
+    fixtures, Next route docs, active allowlist, Plans/archive/state, and dirty ownership. Changed the workflow decision
+    reader/test, billing contract fixture, route-mocked browser fixtures, and ledgers only.
+  - bugs found / fixed:
+    The visit-request decision schema had been attached to the unrelated share-case activation mutation while the real
+    decision mutation still accepted arbitrary successful JSON. The schema is now attached to the correct mutation and a
+    regression test proves a legacy root decision response does not emit success. Route-mocked GET/POST/decision,
+    partner-record, report-draft, contract, and billing-candidate fixtures now match current data/meta providers. Missing
+    safe `updated_at` fields in visit/partner fixtures no longer trigger legitimate fail-closed readers.
+  - safety / behavior / performance:
+    Auth, tenant/RLS, active consent, actor attribution, request bodies, optimistic versions, audit, no-store, PHI-safe
+    DTOs, medical/billing meaning, DB, migration, and rendered layout are unchanged. Rejected malformed 2xx responses keep
+    workflow state retryable instead of showing false success. Fixture/schema checks are bounded and add no runtime I/O or
+    render loop. Image generation was omitted because no visual reconstruction or hierarchy changed.
+  - validation:
+    Workflow providers/schema/consumer passed 4 files / 70 tests; billing/setup consumers passed 2 files / 29 tests.
+    Exact ESLint, Prettier, `git diff --check`, `pnpm typecheck`, `frontend-contract:check`, and `client-phi-log:check`
+    passed. The current response-shape ratchet passed with 68 allowlisted / 0 new after subsequent FV/FW slices. The first
+    browser attempt correctly stopped on missing `PLAYWRIGHT=1`; later runs exposed stale required fields/envelopes one at
+    a time. After each evidence-backed fixture correction, the final route-mocked Chromium workflow passed 1/1, including
+    share consent/link/visit/record/report, billing filter/invoice, axe critical/serious zero, horizontal overflow <=1px,
+    and PHI sentinel non-display. Full production build was not repeated after the unchanged prior exit 137.
+  - rollback / human review / next:
+    Rollback is the scoped workflow component/test, billing fixture, browser fixture, and ledger diff; no data/schema
+    restoration is needed. Restoring the schema misconnection would reopen arbitrary-2xx false success. Human review should
+    confirm the decision-reader binding and that browser fixtures mirror provider DTOs. Parent `API-CONTRACT-001` remains
+    Partial with 68 exact-root violations; continue bounded provider/consumer slices. No push/deploy/external write.
+
+- codex: contact profile bounded search envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FW` DONE. No commit. Exact-root debt decreased 69→68 and path count 44→43.
+  - files inspected / changed:
+    Contact profiles bounded/full GET and tests, contact-profile service projection, both search consumers, global-search
+    category schema/tests, protected GET matrix, response allowlist, Plans/archive/state. Changed only bounded-search
+    pagination nesting, strict category schema/fixtures, allowlist, and ledgers; the full-list branch stayed untouched.
+  - implementation / behavior / rollback:
+    The bounded branch now returns exact `{ data, meta: { limit, has_more } }`. Global search requires that strict root/meta
+    contract before normalizing the same data rows; the separate search page continues to read only `data`. Rollback is the
+    scoped route/schema/test/allowlist/ledger diff and requires no data/schema restoration.
+  - safety / validation:
+    Auth, tenant-scoped service call, result cap, minimal contact projection, phone/email/fax omission, no-store, PII/PHI,
+    writes, audit, DB, and migration behavior are unchanged. Baseline passed route 7/7 and category/hook 25/25; final passed
+    route/category/hook 3 files / 33 tests. The hook suite retained one pre-existing React `act` warning with the same
+    baseline/final test; it is not caused by this wire change and remains a separate test-quality candidate. An initial full
+    typecheck exposed two test-only spread-on-unknown errors introduced in the at-limit fixture builder; both were typed as
+    records, the focused category suite passed 12/12, and full typecheck then passed. Protected GET matrix passed 384/384;
+    response-shape checker passed with 68 allowlisted / 0 new; frontend-contract, route-auth-wrapper, client-PHI-log, exact
+    lint/format passed. Browser/imagegen omitted because rendered search results and layout are unchanged.
+  - remaining / next:
+    Parent remains Partial with 68 exact-root violations. Continue another bounded provider/consumer family and separately
+    consider the baseline `act` warning as test debt. Full build remains unverified after exit 137 and must not be repeated
+    without a changed hypothesis. No push/deploy/external write.
+
+- codex: pharmacy resource-map summary envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FV` DONE. No commit. Exact-root debt decreased 70→69 and path count 45→44.
+  - files inspected / changed:
+    Pharmacy-sites normal/resource-map GET route/full tests, analytics resource-map reader/full tests, all production route
+    consumers, protected GET matrix, response allowlist, Plans/archive/state. Changed only the resource-map summary nesting,
+    its runtime reader/type/fixtures/assertions, allowlist, and ledgers; the data-only branch stayed untouched.
+  - implementation / behavior / rollback:
+    Resource-map GET now returns exact `{ data, meta: { summary } }`. Analytics validates a strict root/meta schema before
+    rendering and rejects the legacy root summary as its existing retryable segment error instead of risking a render
+    exception. Displayed aggregate values, filters, and component layout are unchanged. Rollback is the scoped route/
+    consumer/test/allowlist/ledger diff and requires no data/schema restoration.
+  - safety / validation:
+    Auth, tenant filter, Japan date boundary, shift/holiday queries, resource capability calculation, no-store, PHI-safe
+    errors, billing analytics, DB, and migration behavior are unchanged. Baseline passed route 5/5 and analytics 9/9;
+    final passed 2 files / 15 tests including legacy-root fail-closed. Protected GET matrix passed 384/384;
+    response-shape checker passed with 69 allowlisted / 0 new; query-shape, frontend-contract, route-auth-wrapper,
+    client-PHI-log, exact lint/format, and full typecheck passed. Browser/imagegen omitted because visual hierarchy and
+    rendered values are unchanged.
+  - remaining / next:
+    Parent remains Partial with 69 exact-root violations. Continue another bounded provider/consumer family; full build
+    remains unverified after exit 137 and must not be repeated without a changed hypothesis. No push/deploy/external write.
+
+- codex: pharmacy contracts cursor envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FU` DONE. No commit. Exact-root debt decreased 71→70 and path count 46→45.
+  - files inspected / changed:
+    Pharmacy contracts GET/POST route/full tests, admin pharmacy-cooperation setup reader/full tests, shared current cursor
+    schema, route catalog/rate limit/protected GET matrix, response allowlist, Plans/archive/state. Changed only GET cursor
+    nesting, reader selection, response fixtures/assertion, allowlist, and ledgers.
+  - implementation / behavior / rollback:
+    GET now returns exact `{ data, meta: { has_more, next_cursor } }`; the setup reader uses strict
+    `apiCursorPageSchema` and transforms to the unchanged internal page shape. The legacy cursor schema has no production
+    component consumers left and remains only inside the separately scoped legacy all-pages normalizer. Rollback is the
+    scoped provider/consumer/test/allowlist/ledger diff and requires no data/schema restoration.
+  - safety / validation:
+    Contract/fee/approval DTOs, auth, tenant RLS context, bounded pagination, writes, audit, billing semantics, no-store,
+    PHI, DB, and migration behavior are unchanged. Baseline passed route 11/11 and setup 17/17; final route/setup/schema
+    passed 3 files / 35 tests. Protected GET matrix passed 384/384; response-shape checker passed with 70 allowlisted / 0
+    new; query-shape, frontend-contract, route-auth-wrapper, client-PHI-log, exact lint/format, and full typecheck passed.
+    Browser/imagegen omitted because the reader transform preserves existing UI state and layout.
+  - remaining / next:
+    Parent remains Partial with 70 exact-root violations. Rescan the remaining allowlist for another bounded family; full
+    build remains unverified after exit 137 and must not be repeated without a changed hypothesis. No push/deploy/external
+    write.
+
+- codex: pharmacy cooperation workflow cursor envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FT` DONE. No commit. Exact-root debt decreased 73→71 and path count 48→46.
+  - files inspected / changed:
+    Pharmacy visit request and partner visit record GET providers/full tests, shared response schemas/tests, workflow
+    consumer/full tests, route catalog/rate limit/protected GET matrix, response allowlist, Plans/archive/state. Existing
+    uncommitted visit-request create/decision envelope work was preserved; this slice changed only the two GET cursor
+    envelopes, their readers/fixtures/assertions, one shared schema, allowlist, and ledgers.
+  - implementation / behavior / rollback:
+    Both GETs now return exact `{ data, meta: { has_more, next_cursor } }`. New strict `apiCursorPageSchema` validates that
+    wire contract, rejects legacy root cursor fields and inconsistent missing cursors, then transforms to the unchanged
+    internal `CursorPaginatedPage` shape. Rollback is the scoped provider/consumer/schema/test/allowlist/ledger diff and
+    requires no data/schema restoration.
+  - safety / validation:
+    Auth, tenant RLS context, active share-case/consent predicates, actor attribution, bounded pagination, safe DTO fields,
+    no-store, PHI, billing, medical meaning, DB, and migration behavior are unchanged. Baseline passed 4 files / 67 tests;
+    final passed 4 files / 69 tests. The first final run exposed only a new assertion fixture-ID typo, which was corrected
+    to the live fixture ID before the green rerun. Protected GET matrix passed 384/384; response-shape checker passed with
+    71 allowlisted / 0 new; query-shape, frontend-contract, route-auth-wrapper, client-PHI-log, exact lint/format, and full
+    typecheck passed. Browser/imagegen omitted because the transform preserves existing UI state and layout.
+  - remaining / next:
+    Parent remains Partial with 71 exact-root violations. The adjacent pharmacy-contracts GET still uses the old shared
+    cursor reader and is the next bounded consumer migration candidate. Full build remains unverified after exit 137 and
+    must not be repeated without a changed hypothesis. No push/deploy/external write.
+
+- codex: management plans pagination envelope convergence.
+  - task / result / commit:
+    `API-CONTRACT-001FS` DONE. No commit. Exact-root debt decreased 74→73 and path count 49→48.
+  - files inspected / changed:
+    Management plans GET route/full tests, the only production list consumer and its header-contract test, protected GET
+    matrix, route catalog/rate limit references, response allowlist, Plans/archive/state. Changed org-wide pagination
+    nesting, response assertions, allowlist, and ledgers only.
+  - implementation / behavior / rollback:
+    Org-wide GET now returns exact `{ data, meta: { has_more } }` instead of root `hasMore`. Case-scoped GET remains exact
+    `{ data }`; the only production list consumer always sends `case_id` and reads only `data`. Rollback is the scoped
+    route/test/allowlist/ledger diff and requires no data/schema restoration.
+  - safety / validation:
+    Auth, tenant RLS context, assignment filtering, bounded org-wide query, sort/select, no-store, PHI, UI, billing, DB,
+    and migration behavior are unchanged. Route tests passed 18/18; consumer targeted test passed 1/1 (93 skipped);
+    protected GET matrix 384/384; strengthened response-shape checker 73 allowlisted / 0 new; query-shape,
+    frontend-contract, route-auth-wrapper, exact lint/format, and full typecheck passed. An initial nonexistent
+    `route-auth:check` command was corrected once to the manifest-backed `route-auth-wrapper:check`; no validation was
+    claimed from the failed command. Browser/imagegen omitted because visual behavior is unchanged.
+  - remaining / next:
+    Parent remains Partial with 73 exact-root violations. Continue isolated provider/consumer families; full build remains
+    unverified after exit 137 and must not be repeated without a changed hypothesis. No push/deploy/external write.
+
+- codex: inquiry records exact-envelope static proof.
+  - task / result / commit:
+    `API-CONTRACT-001FR` DONE. No commit. Exact-root debt decreased 75→74 and path count 50→49.
+  - files inspected / changed:
+    Inquiry records GET route/full tests, route callsites, protected GET matrix, query-shape guard, response allowlist,
+    Plans/archive/state. Changed one response expression plus allowlist/ledgers; response bytes and production consumers are
+    unchanged.
+  - implementation / behavior / rollback:
+    Replaced the conditional top-level spread with explicit branches: no limit returns `{ data }`, explicit limit returns
+    `{ data, meta: { limit, has_more } }`. This makes exactness statically provable without changing either contract.
+    Rollback is the one-expression/allowlist/ledger diff and requires no schema or persisted-data restoration.
+  - safety / validation:
+    Auth, tenant RLS context, patient/author/type/date filters, ordering, bounded pagination, no-store, PHI, UI, billing, DB,
+    and migration behavior are unchanged. Focused tests passed 19/19; protected GET matrix 384/384; strengthened
+    response-shape checker 74 allowlisted / 0 new; query-shape, exact lint/format, and full typecheck passed. Expected
+    security-event fallback stderr in the protected matrix did not fail assertions. Browser/imagegen omitted because
+    runtime/UI behavior is unchanged.
+  - remaining / next:
+    Parent remains Partial with 74 exact-root violations. Continue small provider/consumer families; full build remains
+    unverified after exit 137 and must not be repeated without a changed hypothesis. No push/deploy/external write.
+
+- codex: pharmacist shifts exact-envelope static proof.
+  - task / result / commit:
+    `API-CONTRACT-001FQ` DONE. No commit. Exact-root debt decreased 76→75 and path count 51→50.
+  - files inspected / changed:
+    Pharmacist shifts GET route/full tests, page builder, protected GET matrix, query-shape guard, response allowlist,
+    Plans/archive/state. Changed one response expression plus allowlist/ledgers; response bytes and production consumers are
+    unchanged.
+  - implementation / behavior / rollback:
+    Replaced the top-level conditional spread with explicit branches: no limit returns `{ data }`, explicit limit returns
+    `{ data, meta: { limit, has_more } }`. This makes exactness statically provable without changing either contract.
+    Rollback is the one-expression/allowlist/ledger diff.
+  - safety / validation:
+    Auth, tenant RLS context, date/user/site filters, order, bounded take, cursor page, no-store, PHI, UI, billing, DB, and
+    migration behavior are unchanged. Focused tests passed 18/18; protected GET matrix 384/384; strengthened response-shape
+    checker 75 allowlisted / 0 new; query-shape, exact lint/format, and full typecheck passed. Expected security-event fallback
+    stderr in the protected matrix did not fail assertions. Browser/imagegen omitted because runtime/UI behavior is unchanged.
+  - remaining / next:
+    Parent remains Partial with 75 exact-root violations. Continue small route-family slices; full build remains unverified
+    after exit 137. No push/deploy/external write.
+
+- codex: case transition exact success envelope.
+  - task / result / commit:
+    `API-CONTRACT-001FP` DONE. No commit. Exact-root debt decreased 77→76 and path count 52→51.
+  - files inspected / changed:
+    Case transition route/full tests, route catalog/rate limit, repository consumer references, protected PATCH/DELETE
+    matrix, response allowlist, Plans/archive/state. Changed only success nesting, response assertions, allowlist, ledgers.
+  - implementation / behavior / rollback:
+    Successful transitions now return exact `{ data: careCase, meta: { warnings } }`; undelivered first-visit document
+    warnings remain available under standard metadata. No production HTTP consumer was found. Rollback is the scoped
+    route/test/allowlist/ledger diff and requires no data/schema restoration.
+  - security / workflow safety:
+    `canVisit`, assignment where-clause, status preflight, allowed-transition validation, optimistic `updateMany`, conflict
+    responses, RLS transaction, first-visit document lookup, and deduplicated operational task creation are unchanged. No
+    PHI/log/UI/billing/DB/migration behavior changed; browser/imagegen omitted because no production UI changed.
+  - validation:
+    Focused route tests passed 8/8; protected PATCH/DELETE matrix passed 80/80. Exact ESLint/Prettier, strengthened
+    response-shape checker (76 allowlisted / 0 new), route-auth guard, and full `pnpm typecheck` passed. Matrix stderr
+    contains expected mocked security-event fallback records while all assertions pass. Full build not repeated after exit 137.
+  - remaining / next:
+    Parent remains Partial with 76 exact-root violations. Continue one provider/consumer family at a time; no commit/push/
+    deploy/external write.
+
+- codex: referral intake exact success envelope.
+  - task / result / commit:
+    `API-CONTRACT-001FO` DONE. No commit created because the current Goal requires explicit permission. Exact-root debt
+    decreased 78→77 and path count 53→52.
+  - files inspected / changed:
+    Referral POST route/full tests, atomic referral intake service result contract, single referral form consumer/full tests,
+    shared response schema, patient navigation helper, protected POST matrix, response allowlist, Plans/archive/state.
+    Changed provider outer envelope, consumer runtime reader, success fixtures/assertions, allowlist, and ledgers only.
+  - implementation / behavior / rollback:
+    The 201 body is now exact `{ data: { patient, case, warnings }, meta }`; metadata remains PHI-minimized and patient/case
+    IDs stay inside data. The form validates the data envelope with `apiDataSchema` and navigates only when a nonblank
+    `data.patient.id` exists. Malformed 2xx remains fail-closed. Rollback is the scoped provider/consumer/test/allowlist/ledger
+    diff; no persisted data or schema restoration is needed.
+  - security / authorization / tenant / audit / privacy / medical / billing / UI:
+    `canVisit`, org/user context, atomic patient+case creation, duplicate acknowledgement and count-only 409, transaction
+    error sanitization, PHI-minimal success DTO, and sensitive no-store are unchanged. No raw referral/patient data is added
+    to logs or UI. No visual hierarchy changed, so browser/imagegen was omitted.
+  - validation:
+    Route/form suites passed 2 files / 35 tests. Protected POST auth/body matrix passed 151/151. Exact ESLint/Prettier,
+    strengthened response-shape checker (77 allowlisted / 0 new), frontend contract, route-auth, client-PHI-log, and full
+    `pnpm typecheck` passed. The first protected-POST command used a stale path and found no tests; it was corrected to the
+    canonical `src/app/api/__tests__/protected-post-routes.test.ts`. Full build was not repeated after prior exit 137.
+  - remaining / next:
+    Parent `API-CONTRACT-001` stays Partial with 77 exact-root violations plus error/request_id/no-store/data-meta work.
+    Continue with another isolated provider/consumer family; do not batch unrelated patient/stock/billing contracts.
+
+- codex: exact API success response-shape ratchet.
+  - task / result:
+    `API-CONTRACT-001FN` DONE. The static checker now covers direct and measured success helpers, requires statically
+    provable object envelopes, allows only top-level `data` and optional `meta`, and rejects variable payloads, top-level
+    spreads, missing data, and legacy root fields.
+  - files changed / evidence:
+    `tools/scripts/check-api-response-shape.mjs`, its fixture test, the response-shape allowlist, Plans/archive/state.
+    The strengthened live scan measures 53 paths / 78 violations. Each path has an exact expectedCount owned by
+    `API-CONTRACT-001`; any new occurrence or stale count fails the gate.
+  - validation:
+    Checker fixture suite passed 11/11. Exact ESLint and Prettier passed. Live `pnpm api-response-shape:check` passed with
+    78 allowlisted / 0 new. Production runtime code is unchanged; full typecheck was green immediately after the strict
+    probe rollback. `plans:active:check` is rerun after ledger debt synchronization.
+  - security / behavior / rollback:
+    No API body, provider/consumer, auth, tenant, audit, PHI, medical, billing, DB, migration, dependency, deployment, or
+    external state changed. Rollback is checker/test/allowlist/ledger reversal, but would restore a known false-zero blind
+    spot. Human review should confirm exact-key semantics and the 53-path ratchet inventory.
+  - remaining / next:
+    Parent `API-CONTRACT-001` remains Partial with 78 exact-root violations. Migrate one provider/consumer route family per
+    slice, decrement exact expectedCount, and keep the strengthened checker at zero new violations. Do not perform a broad
+    all-route response rewrite. Full build remains unverified after prior exit 137; no commit/push/deploy performed.
+
+- codex: API success exact-root strict type probe and debt reopening.
+  - result / status:
+    `API-CONTRACT-001FM` is PARTIAL, not DONE. A temporary strict `ApiSuccess{data,meta?}` helper signature exposed hidden
+    response-contract debt that the current shallow checker reports as zero. The strict code/test probe was fully reversed;
+    `src/lib/api/response.ts` and its helper test have no remaining diff from this probe.
+  - evidence:
+    Full typecheck under the strict signature reported 60+ direct success callsites with root keys beside `data`, plus five
+    missing-data boundaries: patients POST, patients PATCH, referrals POST, patient movement timeline measured response,
+    and the shared flush-metrics job success payload. The current checker only recognizes direct `success({...data...})`,
+    does not enforce exact top-level keys, and does not cover measured/variable payloads, so its 0 allowlisted result is not
+    proof of exact `data/meta` convergence.
+  - safety / rollback:
+    No public response, consumer, runtime helper, DB, auth, tenant, audit, PHI, medical, billing, migration, dependency, or
+    deploy behavior was left changed. This avoided an unreviewable cross-domain contract rewrite. The only durable changes
+    are Plans/archive/state reconciliation and the separate already-validated preceding slices.
+  - validation / next:
+    After the strict probe was reversed, full `pnpm typecheck` returned green. Record `API-CONTRACT-001FM` as a measurable
+    residual: first extend checker fixtures to measured/exact-root cases, then migrate provider+consumer route families in
+    isolated slices, and only then restore strict helper typing. Do not claim exact API success convergence from the shallow
+    allowlist zero. Full build remains unverified after the earlier exit 137.
+
+- codex: report edit test act-boundary cleanup.
+  - commit / scope:
+    No commit. `TEST-REPORT-EDIT-ACT-001` is a test-only two-hunk owned diff: add the Testing Library `act` import and
+    wrap the direct mutation `onError` invocation. Production code and behavior are unchanged.
+  - evidence / validation:
+    The warning reproduced in the previous reconciliation run and came from the direct callback, not the user event path.
+    Final `report-edit-form.test.tsx` + `use-unsaved-changes-guard.test.tsx` passed 2 files / 11 tests with no stderr/React
+    act warning. Exact ESLint/Prettier and full `pnpm typecheck` passed.
+  - risk / rollback / next:
+    No auth, tenant, audit, PHI, medical, billing, API, UI, DB, migration, dependency, or runtime change. Rollback is the
+    import/wrapper test diff only. Continue P0/P1 implementation selection; full build remains unverified after exit 137.
+
+- codex: stale report edit leave-guard Plan reconciliation.
+  - commit / status:
+    No new commit or production code change. Live implementation is commit `060390547`; stale active queue row is
+    reclassified DONE and removed from the frontend implementation queue.
+  - evidence / acceptance:
+    `ReportEditForm` imports `useUnsavedChangesGuard`, computes dirty state against the initial report baseline, keeps the
+    guard enabled during dirty and saving states, clears dirty/saving only after success, and retains draft/guard after
+    conflict/error. Component tests cover dirty/restored beforeunload, pending save, success clear, and conflict retention;
+    hook tests cover history navigation and explicit release.
+  - validation / limitations:
+    `report-edit-form.test.tsx` + `use-unsaved-changes-guard.test.tsx` passed 2 files / 11 tests; full typecheck was already
+    green in the immediately preceding slice. One pre-existing React `act(...)` warning remains in the separate fixed save
+    failure toast test; it does not invalidate the leave-guard assertions but remains test-hygiene evidence. Full build
+    remains unverified after the prior exit 137. No browser/imagegen was needed for a code-to-ledger reconciliation with no
+    visual or production behavior change.
+  - rollback / next:
+    Rollback is the Plans/archive/state ledger diff only. Frontend queue count changes 12→11; no implementation is reverted.
+    Continue live-code reconciliation before selecting the next P0/P1 implementation, and do not recreate this guard.
+
+- codex: shared nested API error reader normalization.
+  - commit:
+    Not created. Latest Goal requires explicit commit permission; this slice remains in the owned uncommitted diff.
+  - current task / purpose / acceptance:
+    HIGH / MEDIUM `API-CONTRACT-001FL`。Shared `readApiJson`が標準nested
+    `{ error: { code, message, ... } }`を読めずlegacy root `message` / string `error`だけを扱うprovider移行blockerを
+    解消する。Nested message優先、malformed/blank fallback、legacy transition reader維持を完了条件とした。
+  - files inspected / changed:
+    `client-json.ts`とtests、response schemas/tests、`response.ts`、response-shape checker/tests、571 success / 2,843
+    error helper callsiteの規模、Plans/archive/state、active dirty treeを確認。変更はshared client reader、focused tests、
+    ledgerだけ。Provider helper/routes、HTTP status、UI、API payload writerは変更していない。
+  - implementation / behavior / rollback:
+    Object-valued `error`がある場合はnested `message`だけをtrimして読み、missing/non-string/blankならcaller固定
+    fallbackへ閉じる。Valid nested messageはlegacy root fieldsより優先し、string-valued legacy `message/error`は
+    provider移行中だけ従来どおり読む。Rollbackはhelper/test/ledger差分の逆適用で、DB/schema/data復元は不要。
+  - security / authorization / tenant / audit / privacy / medical / billing / UI / human review:
+    Response bodyの新規logging/persistenceはなく、nested code/details/field errors/request_idも表示・ログへ流さない。
+    Authorization、tenant、audit、PHI/medical/billing意味論、network、visual hierarchyは不変。Browser/imagegenは
+    UI変更がないため省略した。Human reviewはnested precedenceとmalformed fallbackを確認すればよい。
+  - validation:
+    `client-json.test.ts` + `response-schemas.test.ts`は2 files / 16 tests pass。Exact ESLint/Prettier、
+    `frontend-contract:check`、`api-response-shape:check`（0/0）、`client-phi-log:check`、full `pnpm typecheck` pass。
+    Full buildは直前のunchanged buildがexit 137で未検証のため同条件再実行なし。
+  - remaining / next action:
+    `API-CONTRACT-001FL`はDONE。Parent `API-CONTRACT-001`はhelper legacy error、request_id、no-store ratchet、
+    frontend data/meta normalizerが残るためPartial。次はhelper migrationのblast radiusを縮めるbehavior-preserving
+    type/guard slice、または別P0/P1 ready taskを比較する。No commit/push/deploy/external write。
+
+- codex: MCS test matcher typecheck repair and serialized build gate.
+  - commit:
+    Not created. Latest Goal requires explicit commit permission; this repair remains in the existing user-owned MCS
+    dirty diff.
+  - current task / purpose / acceptance:
+    HIGH / LOW `FE-MCS-TEST-TYPECHECK-001`。Draft保持とmutation success後clearを検証する4 assertionsがrepoに
+    登録されていない`toHaveValue`型拡張を使い、全体typecheckを阻害していた。Plain DOM value assertionで同じ
+    semanticsを固定し、focused testとfull typecheck greenを完了条件とした。
+  - files inspected / changed:
+    Existing user-owned `mcs-content.test.tsx` dirty hunk、production Textarea/Input、repo-wide matcher usage、test setup、
+    live typecheck outputを確認。変更はassertion 4件だけでproduction code、mutation、UI、API、state、clinical
+    behaviorは変更していない。
+  - implementation / behavior / rollback:
+    Testing Libraryが返すelementを実DOM型へnarrowし、`.value`をVitest core `toBe`で比較する。入力中draft保持と
+    success callback後clearの検査内容は同一。Rollbackは4 assertionsを戻すだけで、persisted dataやdependencyの
+    復元は不要。
+  - security / authorization / tenant / audit / privacy / medical / billing / UI / human review:
+    Test-onlyで、authorization、tenant、audit、PHI/medical data、network、billing、visual hierarchyは不変。
+    Browser/imagegenはproduction UI変更がないため省略した。Human reviewはDOM element型とassertion semanticsの
+    同値性だけを確認すればよい。
+  - validation:
+    `mcs-content.test.tsx`は15/15 pass、exact ESLint pass、full `pnpm typecheck`はNext typegen、main tsc、service
+    worker tscを含めgreen。File-wide Prettier checkは今回以前のuser-owned MCS hunksに既存style差分がありredだが、
+    今回4 assertionsにはformatter差分なし。無関係な全file formatは実施していない。Serialized `pnpm build`は
+    Next 16.2.9 webpack compileを約6分進め、compile error本文なしでexit 137/SIGKILLとなった。OOMまたはtool
+    runtime capを断定できないためbuildは未検証扱い。同条件の再実行は行わない。
+  - remaining / next action:
+    `FE-MCS-TEST-TYPECHECK-001`はDONE、全体typecheck blockerは0。Build gateの残る不確実性を保持しつつ、
+    `API-CONTRACT-001`のallowlist外acceptanceとP0/P1 queueをread-only再スキャンして次の安全なsliceを選ぶ。
+    Existing dirty workは保持し、commit/push/deployは行わない。
+
+- codex: inbound stock apply Select type/control repair.
+  - commit:
+    Not created. Latest Goal requires explicit commit permission; this repair remains in the existing user-owned
+    inbound dirty diff.
+  - current task / purpose / acceptance:
+    HIGH / LOW `FE-INBOUND-TYPECHECK-001`。MedicationStock apply target Selectのnullable callbackをstring stateへ
+    直接代入したTS2322を解消し、focused test、lint、format、full typecheckで当該errorが消えることを条件とした。
+  - files inspected / changed:
+    Existing user-owned `inbound-content.tsx` dirty hunk、focused test、Select wrapper/type、global matcher usage、live
+    typecheck outputを確認。変更は該当Selectのvalue/callback 2式だけで、既存UI再構成、test、API、state shape、
+    clinical flowは変更していない。
+  - implementation / behavior / rollback:
+    Empty selectionを`undefined`ではなくcontrolled `null`として渡し、callbackの`null`は既存empty-string stateへ
+    正規化する。Initial empty、selection、clear semanticsは維持し、uncontrolled→controlled warningも解消した。
+    Rollbackはこの2式を戻すだけで、persisted dataやdependencyの復元は不要。
+  - security / authorization / tenant / audit / privacy / medical / billing / UI / human review:
+    Authorization、tenant、audit、PHI/medical data、stock mutation payload、validation、network、billingは不変。
+    Visual layout/hierarchy変更がないためbrowser/imagegenは省略した。Human reviewはcontrolled nullとempty-string
+    normalizationが既存placeholder/state契約に一致することだけを確認すればよい。
+  - validation:
+    `inbound-content.test.tsx`は13/13 passし、final runにReact controlled-state warningなし。Exact ESLintとPrettier
+    pass。Typegen成功後、full typecheckからinbound TS2322は消え、残りはuser-owned MCS testのunsupported
+    `toHaveValue` typing 4件だけ。Buildはtypecheck red中のため未実施。
+  - remaining / next action:
+    `FE-INBOUND-TYPECHECK-001`はDONE。次はMCS focused testのruntime semanticsを変えずplain DOM value assertionへ
+    揃え、残4 type errorsを解消する。既存dirty workは保持し、commit/push/deployは行わない。
+
+- codex: pharmacy visit request create envelope convergence.
+  - commit:
+    Not created. Latest Goal requires explicit commit permission; this slice remains in the owned uncommitted diff.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001FK`。`POST /api/pharmacy-visit-requests` のsafe 201 successをexact
+    `{ data: safeVisitRequest }`へ揃える。Create consumerのruntime schema、active share-case/consent境界、
+    Serializable transaction、actor attribution、safe flags、audit minimization、no-store不変、allowlist除去、
+    debt 1→0を完了条件とした。
+  - files inspected / changed:
+    Collection route/full tests、decision route/tests、workflow component/tests、client JSON/envelope schemas、patient-share
+    access service/tests、protected GET/POST matrices、allowlist、Plans/archive/state、active dirty treeを確認。変更はcreate
+    success、route fixture/assertion、workflow response schema/fixture、allowlist、計画台帳だけ。Consent/service/DB/schema/
+    migrationは変更していない。
+  - implementation / behavior / rollback:
+    Existing PHI-minimized safe visit request DTOをouter `data`へ移し、workflow create mutationはfull safe DTO data
+    envelopeを`apiDataSchema`で検証する。Route testはouter data、derived safe flags、raw clinical fields/root idの
+    absenceを固定した。Mutation success bodyは業務分岐に使わずinvalidate/toastのみ。Rollbackはroute/test/workflow/
+    allowlist/ledgerのowned diffを逆適用するだけで、DB/schema/migration/persisted dataの復元は不要。
+  - security / authorization / tenant / audit / privacy / medical / billing / human review:
+    `canManagePatientSharing`、same-org partnership/share-case、active consent predicate、share-case consent advisory lock、
+    Serializable transaction、authenticated `ctx.userId` attribution、PHI-minimized audit/safe DTO、sensitive no-storeを
+    変更していない。医療/請求意味論、PHI/PII field/logは不変。Human reviewはouter nesting、full DTO runtime schema、
+    safe flags、create/decision分離を確認すればよい。Codex単独で実装・検証し、subagent、agmsg、Claude、Oracle、
+    外部workerは使っていない。
+  - validation:
+    Final route/workflow/accessは3 files / 52 tests pass。Protected GET matrix 384/384、POST matrix 151/151、exact
+    ESLint、Prettier、diff check、api-response（0 allowlisted / 0 new）、route-auth、frontend-contract、query-shape、
+    client-PHI-logがpass。Typegenは成功し、full typecheckはuser-owned inbound TS2322 1件とuser-owned MCS
+    `toHaveValue` typing 4件だけが継続し、changed-file errorはない。Buildはtypecheck red中のため未実施。
+    DB/migration、production操作、external write、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001FK`はDONE、public response allowlist debtは240→0へ収束。親`API-CONTRACT-001`はhelper由来
+    error、request_id、no-store ratchet、frontend reader正規化が残るためPartialのまま。Production UIはruntime
+    response contractだけでvisual reconstructionがないためbrowser/imagegenを省略した。Unowned config/harness/
+    inbound/MCSと全untracked artifactを保持した。次はzero-debt guardを再確認し、親タスクの残acceptanceと
+    typecheck blockerを含むP0/P1 queueを再構築する。
+
+- codex: pharmacy visit request decision envelope convergence.
+  - commit:
+    Not created. Latest Goal requires explicit commit permission; this slice remains in the owned uncommitted diff.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001FJ`。`POST /api/pharmacy-visit-requests/:id/decision` のsafe successをexact
+    `{ data: safeVisitRequest }`へ揃える。Authenticated actor、accept consent lock/race、decline deferred policy、
+    optimistic version、audit minimization、no-store不変、workflow runtime contract、allowlist除去、debt 2→1を
+    完了条件とした。
+  - files inspected / changed:
+    Decision route/full tests、collection route/tests、workflow component/tests、client JSON/envelope schemas、patient-share
+    access/transition service/tests、protected POST matrix、allowlist、Plans/archive/state、active dirty treeを確認。変更は
+    decision success、route assertion、workflow response schema/fixture、allowlist、計画台帳だけ。Consent/service/DB/
+    schema/migrationは変更していない。
+  - implementation / behavior / rollback:
+    Existing PHI-minimized safe visit request DTOをouter `data`へ移し、workflow mutationはid/status data envelopeを
+    `apiDataSchema`で検証する。Mutation success bodyは業務分岐に使わずinvalidate/toastのみ。Status、safe flags、
+    error contractは不変。Rollbackはroute/test/workflow/allowlist/ledgerのowned diffを逆適用するだけで、DB/schema/
+    migration/persisted dataの復元は不要。
+  - security / authorization / tenant / audit / privacy / medical / billing / human review:
+    `canManagePatientSharing`、caller `pharmacist_id`拒否、`ctx.userId` attribution、org/partnership/share-case predicates、
+    accept時consent advisory lock+再読+guarded update、decline closeout policy分離、audit raw decline reason非保存、
+    sensitive no-storeを変更していない。医療/請求意味論、PHI/PII field/logは不変。Human reviewはouter nesting、
+    runtime schema、actor/accept/decline分離を確認すればよい。Codex単独で実装・検証し、subagent、agmsg、Claude、
+    Oracle、外部workerは使っていない。
+  - validation:
+    Baseline/final route/workflow/access/transitionは各4 files / 63 tests pass。Protected POST matrix 151/151、exact
+    ESLint、Prettier、diff check、api-response（1 allowlisted / 0 new）、route-auth、frontend-contract、query-shape、
+    client-PHI-logがpass。Typegenは成功し、full typecheckはuser-owned inbound TS2322 1件とuser-owned MCS
+    `toHaveValue` typing 4件だけが継続。Buildはtypecheck red中のため未実施。DB/migration、production操作、
+    external write、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001FJ`はDONE、parentは1 violationでPartial。Production UIはruntime response contractだけでvisual
+    reconstructionがないためbrowser/imagegenを省略した。Unowned config/harness/inbound/MCSと全untracked artifactを
+    保持した。次はcollection POST create successをexact data envelopeへ移行し、allowlistを0へ収束する。
+
+- codex: platform data explorer query and error hardening.
+  - commit:
+    Not created. Latest Goal requires explicit commit permission; this slice remains an owned uncommitted diff.
+  - current task / purpose / acceptance:
+    P0 / HR `PLATFORM-DATA-ROUTE-HARDENING-001`。Platform data explorer queryのsilent fallback/clamp、duplicate/
+    oversized input、audit metadataとservice値の不一致、unexpected errorのno-store sanitized 500欠落を解消する。
+    Invalid input reader 0、canonical args一致、unknown table限定400、raw非露出500を完了条件とした。
+  - files inspected / changed:
+    Platform data route/full tests、admin data route validation precedent、shared API validation、data explorer max offset/
+    service/full tests、operator/break-glass、Plans/archive/state、active dirty treeを確認。変更はplatform route、専用route
+    tests、計画台帳だけ。Panel/service/DB/schema/migrationは変更していない。
+  - implementation / behavior / rollback:
+    `model/limit/offset/search`のduplicateを明示400にし、model/searchはtrim + 100文字、limit 1..100、offset
+    0..999900をstrict parseする。Blankは既存default、valid値はcanonical化してaudit metadataとserviceへ同値で渡す。
+    Unknown tableだけを400へmapし、その他のthrowはfixed `INTERNAL_ERROR` sensitive no-store 500へ変換する。Rollbackは
+    route/test/ledgerのowned diffを逆適用するだけで、DB/schema/migration/persisted dataの復元は不要。
+  - security / authorization / tenant / audit / privacy / medical / billing / human review:
+    `requirePlatformOperator`、operatorId+orgId session lookup、active-session fail-closed、`readViaBreakGlass` audit-first/
+    RLS、model allowlist/redaction、no-storeを維持した。不正queryはaudit/read前に拒否し、raw error/PHI/PIIをresponse/
+    logへ追加していない。医療/薬価/請求意味論は不変。Human reviewはvalidation bounds、session後validation順、
+    canonical metadata、unknown/unexpected error分岐を確認すればよい。Codex単独で実装・検証し、subagent、agmsg、
+    Claude、Oracle、外部workerは使っていない。
+  - validation:
+    Baselineは5 files / 74 tests pass。Final route 18 tests、route/panel/service/break-glass/operator 5 files / 87 tests
+    pass。Exact ESLint、Prettier、diff check、api-response（2 allowlisted / 0 new）、route-auth、frontend-contract、
+    raw-read org guard、query-shape、client-PHI-log、plans active boardがpass。Typegenは成功し、full typecheckは
+    user-owned inbound TS2322 1件とuser-owned MCS `toHaveValue` typing 4件だけが継続。Buildはtypecheck red中のため
+    未実施。DB/migration、production操作、external write、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    TaskはDONE、active queueから削除。Production UI/visual reconstructionがないためbrowser/imagegenを省略した。
+    Unowned config/harness/inbound/MCSと全untracked artifactを保持した。次はpharmacy-visit-requests decision/collection
+    の残2 response envelopeをactor/consent境界ごとに移行する。
+
 - codex: platform data explorer rows envelope convergence.
   - commit:
     `41f8c0717 fix(API-CONTRACT-001FI): envelope platform data rows`.
@@ -40357,8 +42896,8 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 
   SSOT was reviewed.
 - validation:
   `pnpm vitest run 'src/app/(dashboard)/qr-scan/page.contract.test.ts'
-  'src/app/(dashboard)/qr-scan/qr-scan-draft-payload.test.ts' src/lib/utils/client-log.test.ts
-  src/lib/utils/logger.test.ts` passed 4 files / 41 tests. Exact ESLint, Prettier, `git diff --check`,
+'src/app/(dashboard)/qr-scan/qr-scan-draft-payload.test.ts' src/lib/utils/client-log.test.ts
+src/lib/utils/logger.test.ts` passed 4 files / 41 tests. Exact ESLint, Prettier, `git diff --check`,
   `pnpm client-phi-log:check`, and `pnpm frontend-contract:check` passed. Independent verifier returned
   PASS. `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck` completed Next route type generation
   and then stopped only at pre-existing non-owned
@@ -40406,8 +42945,8 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 
   review.
 - validation:
   `pnpm vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx'
-  'src/app/(dashboard)/reports/analytics/page.test.tsx' src/lib/utils/client-log.test.ts
-  src/lib/utils/logger.test.ts` passed 4 files / 31 tests. Exact ESLint, Prettier, `git diff --check`,
+'src/app/(dashboard)/reports/analytics/page.test.tsx' src/lib/utils/client-log.test.ts
+src/lib/utils/logger.test.ts` passed 4 files / 31 tests. Exact ESLint, Prettier, `git diff --check`,
   `pnpm client-phi-log:check`, and `pnpm frontend-contract:check` passed. Independent verifier returned
   PASS. `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck` completed Next route type generation
   and then stopped only at pre-existing non-owned
@@ -40450,9 +42989,9 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 
   retained and the slice only seals an output boundary after UI SSOT review.
 - validation:
   `pnpm vitest run src/components/visit-brief/visit-brief-card.test.tsx
-  src/components/visit-brief/visit-brief-card.ui-contract.test.ts
-  src/components/visit-brief/patient-visit-brief-section.test.tsx src/lib/utils/client-log.test.ts
-  src/lib/utils/logger.test.ts` passed 5 files / 42 tests. Exact ESLint, Prettier, `git diff --check`,
+src/components/visit-brief/visit-brief-card.ui-contract.test.ts
+src/components/visit-brief/patient-visit-brief-section.test.tsx src/lib/utils/client-log.test.ts
+src/lib/utils/logger.test.ts` passed 5 files / 42 tests. Exact ESLint, Prettier, `git diff --check`,
   `pnpm client-phi-log:check`, `pnpm frontend-contract:check`, and `pnpm colors:check` passed.
   Independent verifier returned PASS. `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck`
   completed Next route type generation and then stopped only at pre-existing non-owned
@@ -40498,9 +43037,9 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 
   hierarchy; `docs/ui-ux-design-guidelines.md` was reviewed.
 - validation:
   `pnpm vitest run src/components/features/comments/comment-thread.test.tsx
-  src/components/features/comments/mention-input.test.tsx
-  src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx
-  src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 5 files / 42 tests with no React
+src/components/features/comments/mention-input.test.tsx
+src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx
+src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 5 files / 42 tests with no React
   `act` warnings after the dot-ID failure test awaited the persistent alert. Exact ESLint, Prettier,
   `git diff --check`, `pnpm client-phi-log:check`, `pnpm frontend-contract:check`, and
   `pnpm colors:check` passed. Independent verifier returned PASS. The last serialized
@@ -40555,7 +43094,7 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 
   change.
 - validation:
   `pnpm vitest run src/lib/auth/security-events.test.ts src/lib/auth/context.test.ts
-  src/lib/auth/__tests__/context.test.ts src/lib/db/rls.test.ts --reporter=dot` passed 4 files / 43 tests
+src/lib/auth/__tests__/context.test.ts src/lib/db/rls.test.ts --reporter=dot` passed 4 files / 43 tests
   with 1 safely skipped env-gated RLS proof. Exact ESLint and Prettier, `git diff --check`,
   `pnpm client-phi-log:check`, `pnpm frontend-contract:check`, and `pnpm rls-policy-contract:check`
   passed (RLS policy contract: 24 tests). `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck`
@@ -40605,7 +43144,7 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 
   reviewed.
 - validation:
   `pnpm vitest run src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx
-  src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts --reporter=dot` passed 3 files / 47 tests.
+src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts --reporter=dot` passed 3 files / 47 tests.
   Exact ESLint and Prettier, `git diff --check`, `pnpm client-phi-log:check`,
   `pnpm frontend-contract:check`, and `pnpm colors:check` passed. Independent verifier returned PASS.
   `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck` completed Next route type generation and stopped
