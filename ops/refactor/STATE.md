@@ -51,6 +51,46 @@
 
 ## 直近の作業
 
+- codex: platform data explorer model catalog envelope convergence.
+  - commit:
+    `fe128b6f0 fix(API-CONTRACT-001FH): envelope platform data models`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001FH`。Platform tenant data explorer GETのmodel未指定branchをexact
+    `{ data: models }`へ揃える。Rows branch分離、operator/session/org/read-audit/no-store不変、panel同期、専用route
+    regression、allowlist expectedCount 2→1、debt 4→3を完了条件とした。
+  - files inspected / changed:
+    Platform data route/panel/tests、admin data explorer routes/tests、data explorer service/tests/catalog/schema、
+    operator/break-glass service/tests、allowlist、Plans/archive/state、active dirty treeを確認。変更はmodel success、
+    selector reader/fixture、新規route test、allowlist、計画台帳だけ。Rows success、service、DB/schema/migrationは
+    変更していない。
+  - implementation / behavior / rollback:
+    Existing model summary arrayを`data`へ移し、selectorのfirst/current/options参照を同時にunwrapした。Status、model
+    fields/count/order、enabled条件、row fetch、error contractは不変。Rollbackはscoped code/ledger commitのrevertで、
+    schema、migration、persisted data、dependency、deploy設定の復元は不要。
+  - bugs / security findings / task registration:
+    Baseline service suiteはimport時に`DrugPriceVersion has no org_id and is not explicitly marked global`でfail-closed。
+    Schemaのglobal master明記、display-id global registry、coverage catalog inclusionと`GLOBAL_DATA_EXPLORER_MODELS`
+    未登録の不整合を`DATA-EXPLORER-DRUG-PRICE-SCOPE-001` READYとして登録した。またplatform routeの未正規化audit
+    metadata、duplicate/oversized query未拒否、unexpected errorのsanitized no-store不足を
+    `PLATFORM-DATA-ROUTE-HARDENING-001` READYとして登録した。いずれも契約sliceには混ぜていない。
+  - security / authorization / tenant / audit / privacy / human review:
+    `requirePlatformOperator`、operatorId+orgId session lookup、active-session fail-closed 403、`readViaBreakGlass`の
+    audit-first/RLS context、model catalog allowlist/count、sensitive no-storeを変更していない。PHI/PII field/logは
+    追加していない。Human reviewはmodel response nesting、selector unwrap、rows branch分離を確認すればよい。
+    Codex単独で実装・検証し、subagent、agmsg、Claude、Oracle、外部workerは使っていない。
+  - validation:
+    Initial baselineはpanel/break-glass/operator 3 files / 35 tests pass、service suite 1 fileは上記既存import failure。
+    Final route/panel/break-glass/operatorは4 files / 39 tests pass。Exact ESLint、Prettier、diff check、
+    `api-response-shape:check`（3 allowlisted / 0 new）、route-auth、frontend-contract、query-shape、client-PHI-logが
+    pass。Typegenは成功し、full typecheckは今回外のuser-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。buildはtypecheck red中のため未実施。
+    DB/migration、production操作、外部送信、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001FH`はDONE、parentは3 violationsでPartial。Production UIはreader contractだけでvisual
+    reconstructionがないためbrowser/imagegenを省略し、component testで回帰確認した。unowned config/harness/
+    inbound/MCSと全untracked artifactを保持した。次はtest基盤を阻害するDrugPriceVersion global read-only分類を
+    根拠付きで修正し、その後data rows envelopeへ戻る。
+
 - codex: platform tenant audit list envelope convergence.
   - commit:
     `e0e3a8731 fix(API-CONTRACT-001FG): envelope platform tenant audit list`.
