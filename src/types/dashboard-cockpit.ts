@@ -270,6 +270,7 @@ export type DashboardCockpitMedicationStockResponse = DashboardCockpitScopeMetad
     urgent_shortage_count: number;
     shortage_expected_count: number;
     usage_unknown_count: number;
+    unit_mismatch_count: number;
     equivalence_review_count: number;
     inbound_stock_signal_count: number;
     ledger_stock_risk_count: number;

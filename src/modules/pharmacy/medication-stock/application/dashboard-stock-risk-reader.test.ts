@@ -17,6 +17,7 @@ describe('readDashboardMedicationStockLedgerRisks', () => {
     expect(result).toEqual({
       rows: [],
       totalCount: 0,
+      unitMismatchCount: 0,
       urgentCount: 0,
       shortageExpectedCount: 0,
       usageUnknownCount: 0,
@@ -24,7 +25,7 @@ describe('readDashboardMedicationStockLedgerRisks', () => {
     });
   });
 
-  it('returns bounded ledger risk rows and parses window-count metadata', async () => {
+  it('preserves a unit-mismatch count beyond the returned ledger row limit', async () => {
     const queryRaw = vi.fn().mockResolvedValue([
       {
         stock_item_id: 'stock_item_1',
@@ -55,6 +56,7 @@ describe('readDashboardMedicationStockLedgerRisks', () => {
         risk_reason_code: null,
         calculated_at: new Date(2026, 5, 12, 9, 5),
         total_count: BigInt(3),
+        unit_mismatch_count: BigInt(1),
         urgent_count: BigInt(1),
         shortage_expected_count: BigInt(1),
         usage_unknown_count: BigInt(0),
@@ -64,16 +66,19 @@ describe('readDashboardMedicationStockLedgerRisks', () => {
 
     const result = await readDashboardMedicationStockLedgerRisks(
       { $queryRaw: queryRaw } as DashboardMedicationStockLedgerRiskDb,
-      { orgId: 'org_1', patientIds: ['patient_1'], caseIds: ['case_1'], take: 10 },
+      { orgId: 'org_1', patientIds: ['patient_1'], caseIds: ['case_1'], take: 1 },
     );
 
     expect(queryRaw).toHaveBeenCalledTimes(1);
     expect(result.rows).toHaveLength(1);
     expect(result.totalCount).toBe(3);
+    expect(result.unitMismatchCount).toBe(1);
     expect(result.urgentCount).toBe(1);
     expect(result.shortageExpectedCount).toBe(1);
     expect(result.usageUnknownCount).toBe(0);
     expect(result.equivalenceReviewCount).toBe(1);
+    const query = queryRaw.mock.calls[0][0] as { values: unknown[] };
+    expect(query.values).toContain(1);
   });
 
   it('retains a mismatched stock item while suppressing every snapshot-derived value', async () => {
@@ -107,6 +112,7 @@ describe('readDashboardMedicationStockLedgerRisks', () => {
         risk_reason_code: 'raw-mismatch-reason',
         calculated_at: new Date(2026, 5, 12, 9, 5),
         total_count: BigInt(1),
+        unit_mismatch_count: BigInt(1),
         urgent_count: BigInt(0),
         shortage_expected_count: BigInt(0),
         usage_unknown_count: BigInt(0),
@@ -121,6 +127,7 @@ describe('readDashboardMedicationStockLedgerRisks', () => {
 
     expect(result).toMatchObject({
       totalCount: 1,
+      unitMismatchCount: 1,
       urgentCount: 0,
       shortageExpectedCount: 0,
       usageUnknownCount: 0,
@@ -160,7 +167,16 @@ describe('readDashboardMedicationStockLedgerRisks', () => {
       'CASE WHEN snapshot."unit" = item."unit" THEN snapshot."risk_reason_code" END',
     );
     expect(sql).toContain(
+      'WHERE snapshot."id" IS NOT NULL AND snapshot."unit" IS DISTINCT FROM item."unit"',
+    );
+    expect(sql).toContain(
       'WHERE snapshot."unit" = item."unit" AND snapshot."stock_risk_level"::text = \'urgent\'',
+    );
+    expect(sql).toContain(
+      'CASE WHEN snapshot."unit" = item."unit" THEN snapshot."estimated_stockout_date" END',
+    );
+    expect(sql).toContain(
+      'CASE WHEN snapshot."unit" = item."unit" THEN snapshot."calculated_at" END',
     );
   });
 });

@@ -1590,6 +1590,7 @@ describe('/api/dashboard/cockpit', () => {
       urgent_shortage_count: 2,
       shortage_expected_count: 1,
       usage_unknown_count: 1,
+      unit_mismatch_count: 0,
       equivalence_review_count: 1,
       inbound_stock_signal_count: 6,
       ledger_stock_risk_count: 0,
@@ -1807,6 +1808,7 @@ describe('/api/dashboard/cockpit', () => {
       urgent_shortage_count: 1,
       shortage_expected_count: 1,
       usage_unknown_count: 1,
+      unit_mismatch_count: 0,
       equivalence_review_count: 1,
       inbound_stock_signal_count: 0,
       ledger_stock_risk_count: 4,
@@ -1889,6 +1891,7 @@ describe('/api/dashboard/cockpit', () => {
         risk_reason_code: 'raw mismatch risk 090-1111-2222',
         calculated_at: new Date(2026, 5, 12, 8, 30),
         total_count: BigInt(1),
+        unit_mismatch_count: BigInt(1),
         urgent_count: BigInt(0),
         shortage_expected_count: BigInt(0),
         usage_unknown_count: BigInt(0),
@@ -1908,6 +1911,7 @@ describe('/api/dashboard/cockpit', () => {
       urgent_shortage_count: 0,
       shortage_expected_count: 0,
       usage_unknown_count: 0,
+      unit_mismatch_count: 1,
       equivalence_review_count: 0,
       inbound_stock_signal_count: 0,
       ledger_stock_risk_count: 1,
@@ -1927,6 +1931,9 @@ describe('/api/dashboard/cockpit', () => {
         quantity_label: null,
         source_text: '残数単位の整合性を確認',
         action_label: '残数単位を確認',
+        received_at: new Date(2026, 5, 12, 8, 20).toISOString(),
+        updated_at: new Date(2026, 5, 12, 8, 20).toISOString(),
+        badges: expect.arrayContaining([{ label: '単位確認', tone: 'warning' }]),
       }),
     ]);
 
@@ -1937,6 +1944,7 @@ describe('/api/dashboard/cockpit', () => {
     expect(responseBody).not.toContain('snapshot_mismatch_secret');
     expect(responseBody).not.toContain('raw mismatch risk');
     expect(responseBody).not.toContain('090-1111-2222');
+    expect(responseBody).not.toContain(new Date(2026, 5, 12, 8, 30).toISOString());
   });
 
   it('scopes medication stock risks by assigned patients and cases for non-admin members', async () => {
@@ -1994,6 +2002,7 @@ describe('/api/dashboard/cockpit', () => {
       urgent_shortage_count: 0,
       shortage_expected_count: 0,
       usage_unknown_count: 0,
+      unit_mismatch_count: 0,
       equivalence_review_count: 0,
       inbound_stock_signal_count: 0,
       ledger_stock_risk_count: 0,

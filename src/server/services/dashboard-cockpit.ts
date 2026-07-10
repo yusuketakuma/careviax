@@ -2261,9 +2261,14 @@ function buildMedicationStockLedgerRiskItem(args: {
   const row = args.row;
   const riskLevel = medicationStockLedgerRiskLevel(row);
   const quantityLabel = formatMedicationStockLedgerQuantity(row);
-  const stockoutDate = formatDateOnly(row.estimated_stockout_date);
+  const snapshotId = row.snapshot_unit_mismatch ? null : row.snapshot_id;
+  const stockoutDate = row.snapshot_unit_mismatch
+    ? null
+    : formatDateOnly(row.estimated_stockout_date);
   const categoryLabel = medicationStockCategoryLabel(row.medication_category);
-  const updatedAt = row.calculated_at ?? row.item_updated_at;
+  const updatedAt = row.snapshot_unit_mismatch
+    ? row.item_updated_at
+    : (row.calculated_at ?? row.item_updated_at);
   const sourceParts = [
     row.snapshot_unit_mismatch ? '残数単位の整合性を確認' : null,
     quantityLabel ? `残数 ${quantityLabel}` : null,
@@ -2276,12 +2281,12 @@ function buildMedicationStockLedgerRiskItem(args: {
   ].filter((part): part is string => Boolean(part));
 
   return {
-    id: `medication_stock_snapshot:${row.snapshot_id ?? row.stock_item_id}`,
+    id: `medication_stock_snapshot:${snapshotId ?? row.stock_item_id}`,
     source: 'stock_snapshot',
     signal_id: null,
     inbound_event_id: null,
     stock_item_id: row.stock_item_id,
-    snapshot_id: row.snapshot_id,
+    snapshot_id: snapshotId,
     patient_id: row.patient_id,
     patient_name: args.patientName,
     case_id: row.case_id,
@@ -2290,7 +2295,7 @@ function buildMedicationStockLedgerRiskItem(args: {
     review_status: row.equivalence_review_status,
     action_status: row.snapshot_unit_mismatch
       ? 'snapshot_unit_mismatch'
-      : row.snapshot_id
+      : snapshotId
         ? 'snapshot_present'
         : 'snapshot_missing',
     medication_name: row.display_name,
@@ -2306,6 +2311,7 @@ function buildMedicationStockLedgerRiskItem(args: {
     badges: [
       { label: medicationStockRiskLabel(riskLevel), tone: medicationStockRiskBadgeTone(riskLevel) },
       { label: '残数台帳', tone: 'neutral' },
+      ...(row.snapshot_unit_mismatch ? [{ label: '単位確認', tone: 'warning' as const }] : []),
       ...(categoryLabel ? [{ label: categoryLabel, tone: 'info' as const }] : []),
       ...(quantityLabel ? [{ label: quantityLabel, tone: 'info' as const }] : []),
     ],
@@ -2804,6 +2810,7 @@ async function readDashboardMedicationStockRisks(args: {
           shortage_expected_count:
             signalResult.shortageExpectedCount + ledgerResult.shortageExpectedCount,
           usage_unknown_count: signalResult.usageUnknownCount + ledgerResult.usageUnknownCount,
+          unit_mismatch_count: ledgerResult.unitMismatchCount,
           equivalence_review_count:
             signalResult.equivalenceReviewCount + ledgerResult.equivalenceReviewCount,
           inbound_stock_signal_count: signalResult.totalCount,

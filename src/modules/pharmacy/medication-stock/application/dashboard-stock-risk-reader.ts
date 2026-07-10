@@ -33,6 +33,7 @@ export type DashboardMedicationStockLedgerRiskRow = {
   risk_reason_code: string | null;
   calculated_at: Date | null;
   total_count: bigint | number | string | null;
+  unit_mismatch_count: bigint | number | string | null;
   urgent_count: bigint | number | string | null;
   shortage_expected_count: bigint | number | string | null;
   usage_unknown_count: bigint | number | string | null;
@@ -42,6 +43,7 @@ export type DashboardMedicationStockLedgerRiskRow = {
 export type DashboardMedicationStockLedgerRiskResult = {
   rows: DashboardMedicationStockLedgerRiskRow[];
   totalCount: number;
+  unitMismatchCount: number;
   urgentCount: number;
   shortageExpectedCount: number;
   usageUnknownCount: number;
@@ -276,6 +278,7 @@ export async function readDashboardMedicationStockLedgerRisks(
     return {
       rows: [],
       totalCount: 0,
+      unitMismatchCount: 0,
       urgentCount: 0,
       shortageExpectedCount: 0,
       usageUnknownCount: 0,
@@ -326,6 +329,10 @@ export async function readDashboardMedicationStockLedgerRisks(
       CASE WHEN snapshot."unit" = item."unit" THEN snapshot."calculated_at" END
         AS calculated_at,
       COUNT(*) OVER()::bigint AS total_count,
+      COUNT(*) FILTER (
+        WHERE snapshot."id" IS NOT NULL
+          AND snapshot."unit" IS DISTINCT FROM item."unit"
+      ) OVER()::bigint AS unit_mismatch_count,
       COUNT(*) FILTER (
         WHERE snapshot."unit" = item."unit"
           AND snapshot."stock_risk_level"::text = 'urgent'
@@ -393,6 +400,7 @@ export async function readDashboardMedicationStockLedgerRisks(
   return {
     rows: sanitizedRows,
     totalCount: readCount(first?.total_count),
+    unitMismatchCount: readCount(first?.unit_mismatch_count),
     urgentCount: readCount(first?.urgent_count),
     shortageExpectedCount: readCount(first?.shortage_expected_count),
     usageUnknownCount: readCount(first?.usage_unknown_count),
