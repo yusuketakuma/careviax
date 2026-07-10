@@ -51,6 +51,44 @@
 
 ## 直近の作業
 
+- codex: visit-record PATCH envelope convergence.
+  - commit:
+    `08f1cce91 fix(API-CONTRACT-001EX): envelope visit record updates`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001EX`。`PATCH /api/visit-records/:id` のsuccessをexact
+    `{ data: VisitRecord }`へ揃える。Form attachment、capture end、voice/offline consumer、
+    auth/assignment/tenant/OCC/clinical validation/no-store不変、tests、detail allowlist entry除去、debt 13→12を
+    完了条件とした。
+  - files inspected / changed:
+    Visit-record detail PATCH route/full tests、form attachment/capture/voice/offline consumersとtests、GET/POST
+    隣接契約、sync-engine、route catalog/rate-limit、protected PATCH/DELETE matrix、allowlist、Plans/archive/state、
+    active dirty treeを確認。変更はPATCH success、body依存reader/fixtures、新規form regression、allowlist、
+    計画台帳だけ。GET/POST、schema/migrationは変更していない。
+  - implementation / behavior / rollback:
+    Existing updated visit-record DTOをそのまま`data`配下へ移動した。Formは添付紐づけ後の
+    `payload.data`を次画面遷移へ渡し、captureは`data.visit_ended_at`を読む。Voice/offlineはstatusだけに依存し、
+    fixtureを新契約へ揃えた。Status 200、DTO fields、error envelopeは不変。Rollbackはscoped code/ledger
+    commitのrevertで、schema、migration、persisted data、dependency、deploy設定の復元は不要。
+  - security / medical / privacy / human review:
+    `canVisit`、schedule assignment/role finalization、org-scoped OCC、timestamp/DrugMaster/home-visit readiness/
+    previous-source/attachment validation、residual medication/lab同期、PHI-safe error、sensitive no-storeを変更して
+    いない。患者/医療DTO、PHI field/log、算定判断は不変。Human reviewはresponse nesting、form/capture unwrap、
+    status-only consumersを確認すればよい。Codex単独で実装・検証し、subagent、agmsg、Claude、Oracle、
+    外部workerは使っていない。
+  - validation:
+    Baseline focusedは5 files / 117 tests pass。初回finalはexact root testが既存DTO追加fieldまで禁止した1件のみ
+    failし、root keyは`data`だけを厳密固定しつつDTO field保持を部分照合する契約へ訂正後、5 files / 118 tests
+    pass。Exact ESLint、Prettier、diff check、`api-response-shape:check`（12 allowlisted / 0 new）、route-auth、
+    frontend-contract、query-shape、client-PHI-logがpass。Protected PATCH/DELETE matrixは80/80 pass。Typegenは
+    成功し、full typecheckは今回外のuser-owned `communications/inbound/inbound-content.tsx:2285` TS2322だけが
+    継続。buildはtypecheck red中のため未実施。DB/migration、production操作、外部送信、deploy、push、
+    destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001EX`はDONE、parentは12 violationsでPartial。Production UIはdata readerだけでvisual
+    reconstructionがないためbrowser/imagegenを省略し、component testsで回帰確認した。unowned
+    config/harness/inboundと全untracked artifactを保持した。次は残12 allowlistを再分類し、billing/platform/
+    consent境界のうち仕様変更なしでenvelopeだけを安全に移行できる最小sliceを選ぶ。
+
 - codex: visit-record detail GET envelope convergence.
   - commit:
     `2fc4778e5 fix(API-CONTRACT-001EW): envelope visit record detail`.
