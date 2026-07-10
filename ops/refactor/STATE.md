@@ -51,6 +51,18 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh P3 NF-10 redirect-only loading boundary cleanup (DONE, 2026-07-11; low-risk implementation slice).
+  - result / scope:
+    Removed only `src/app/(dashboard)/admin/professionals/loading.tsx` and
+    `src/app/(dashboard)/patients/[id]/management-plan/loading.tsx`. Their sibling pages immediately redirect, so the
+    removed skeletons could only misrepresent the destination and violated the UI SSOT redirect-route rule. Redirect
+    code, patient href construction, target routes, API, auth/authz, patient data, queue/sync, and layout components are
+    unchanged. `gpt-image-2` was omitted because this removes dead loading boundaries and creates no visual reconstruction.
+  - validation / limits:
+    `pnpm vitest run 'src/app/(dashboard)/patients/[id]/management-plan/page.test.ts' --reporter=dot` passed 1/1;
+    `pnpm typecheck`, `pnpm format:check`, and targeted `git diff --check` passed. Redirect E2E smoke and full build are
+    NOT_EXECUTED and remain Phase 9 evidence; no claim is made about runtime transition timing beyond the route contract.
+
 - codex: UI/UX Refresh verification and remaining-risk evidence plan (IN_PROGRESS, 2026-07-11; documentation-only).
   - result / scope:
     Added `docs/ui-ux-refresh/10-verification-evidence.md` and `11-remaining-risks.md`. The verification ledger uses
