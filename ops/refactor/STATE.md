@@ -51,6 +51,39 @@
 
 ## 直近の作業
 
+- codex: break-glass revoke envelope convergence.
+  - commit:
+    `c0730c41b fix(API-CONTRACT-001FC): envelope break-glass revocation`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001FC`。`DELETE /api/platform/break-glass/:id` のrevoke successをexact
+    `{ data: { session } }`へ揃える。Platform guard/ownership/revoke audit/no-store不変、route regression追加、
+    allowlist entry除去、debt 9→8を完了条件とした。
+  - files inspected / changed:
+    Revoke route、break-glass service/tests、platform operator/MFA tests、panel consumer/tests、collection隣接route、
+    rate-limit、allowlist、Plans/archive/state、active dirty treeを確認。変更はDELETE success、新規専用route test、
+    allowlist、計画台帳だけ。Consumerはsuccess body非依存。Service、DB/schema/migrationは変更していない。
+  - implementation / behavior / rollback:
+    Existing serialized revoked sessionをそのまま`data.session`へ移動した。新規testはguard 403でrevoke 0、
+    missing 404、operator/id binding、exact success/no-storeを固定する。Status、session fields、error contractは不変。
+    Rollbackはscoped code/ledger commitのrevertで、schema、migration、persisted data、dependency、deploy設定の
+    復元は不要。
+  - security / authorization / tenant / audit / privacy / human review:
+    `requirePlatformOperator`、own-session/platform-owner revoke、active/expiry predicates、target tenant、revoked_at、
+    audit write、sensitive no-storeを変更していない。PHI/PII field/logは追加していない。Human reviewはresponse
+    nesting、guard deny、operator/id binding、audit service不変を確認すればよい。Codex単独で実装・検証し、
+    subagent、agmsg、Claude、Oracle、外部workerは使っていない。
+  - validation:
+    Baseline service/panelは2 files / 26 tests pass。Final route/operator/MFA/service/panelは5 files / 45 tests pass。
+    Exact ESLint、Prettier、diff check、`api-response-shape:check`（8 allowlisted / 0 new）、route-auth、
+    frontend-contract、query-shape、client-PHI-logがpass。このcustom platform routeはprotected matrix対象外のため、
+    専用route deny testとoperator/MFA/service suiteで代替。Typegenは成功し、full typecheckは今回外のuser-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。buildはtypecheck red中のため未実施。
+    DB/migration、production操作、外部送信、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001FC`はDONE、parentは8 violationsでPartial。Production UI変更やvisual reconstructionが
+    ないためbrowser/imagegenを省略した。unowned config/harness/inbound/report-shareと全untracked artifactを
+    保持した。次はplatform break-glass collection GET/POSTを別sliceでconsumer contractごとに移行する。
+
 - codex: visit billing candidate POST envelope convergence.
   - commit:
     `8b694a4f5 fix(API-CONTRACT-001FB): envelope billing candidate generation`.
