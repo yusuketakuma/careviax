@@ -210,10 +210,12 @@ describe('/api/partner-visit-records', () => {
       expect.objectContaining({
         org_id: 'org_1',
         status: 'active',
-        partnership: {
+        revoked_at: null,
+        ended_at: null,
+        partnership: expect.objectContaining({
           status: 'active',
           partner_pharmacy: { status: 'active' },
-        },
+        }),
       }),
     );
     expect(JSON.stringify(where.share_case.is)).toContain('"revoked_at":null');

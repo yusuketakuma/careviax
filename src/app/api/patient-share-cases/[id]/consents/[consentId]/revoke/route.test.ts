@@ -5,6 +5,7 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 const {
   authPlumbingFailureRef,
   withOrgContextMock,
+  acquireAdvisoryTxLockMock,
   patientShareConsentFindFirstMock,
   patientShareConsentUpdateManyMock,
   patientShareConsentFindUniqueOrThrowMock,
@@ -13,6 +14,7 @@ const {
 } = vi.hoisted(() => ({
   authPlumbingFailureRef: { current: null as Error | null },
   withOrgContextMock: vi.fn(),
+  acquireAdvisoryTxLockMock: vi.fn(),
   patientShareConsentFindFirstMock: vi.fn(),
   patientShareConsentUpdateManyMock: vi.fn(),
   patientShareConsentFindUniqueOrThrowMock: vi.fn(),
@@ -44,6 +46,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: acquireAdvisoryTxLockMock,
+}));
+
 vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
 }));
@@ -69,6 +75,7 @@ describe('/api/patient-share-cases/[id]/consents/[consentId]/revoke POST', () =>
   beforeEach(() => {
     vi.clearAllMocks();
     authPlumbingFailureRef.current = null;
+    acquireAdvisoryTxLockMock.mockResolvedValue(undefined);
     patientShareConsentFindFirstMock.mockResolvedValue({
       id: 'share_consent_1',
       share_case_id: 'share_case_1',
@@ -109,6 +116,14 @@ describe('/api/patient-share-cases/[id]/consents/[consentId]/revoke POST', () =>
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'patient_share_case_consent',
+      'org_1:share_case_1',
+    );
+    expect(acquireAdvisoryTxLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      patientShareConsentFindFirstMock.mock.invocationCallOrder[0],
+    );
     expect(patientShareConsentUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'share_consent_1',

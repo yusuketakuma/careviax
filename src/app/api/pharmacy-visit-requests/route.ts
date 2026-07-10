@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
@@ -8,11 +8,17 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { withOrgContext } from '@/lib/db/rls';
 import { formatUtcDateKey } from '@/lib/date-key';
-import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { visitTypeValues } from '@/lib/validations/visit-schedule';
-import { buildActivePatientShareCaseReadWhere } from '@/server/services/patient-share-access';
+import {
+  buildActivePatientShareCaseMutationWhere,
+  buildActivePatientShareCaseReadWhere,
+  buildPatientShareCaseConsentLockKey,
+  PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+} from '@/server/services/patient-share-access';
 
 const visitRequestStatusSchema = z.enum([
   'draft',
@@ -124,7 +130,7 @@ function toSafeVisitRequest<T extends object>(row: T) {
 }
 
 function dateOnlyFromDate(value: Date) {
-  return utcDateFromLocalKey(formatUtcDateKey(value));
+  return utcDateFromLocalKey(japanDateKey(value));
 }
 
 function inDateWindow(args: { asOf: Date; from: Date | null; to: Date | null }) {
@@ -132,6 +138,10 @@ function inDateWindow(args: { asOf: Date; from: Date | null; to: Date | null }) 
   if (args.from && asOfTime < dateOnlyFromDate(args.from).getTime()) return false;
   if (args.to && asOfTime > dateOnlyFromDate(args.to).getTime()) return false;
   return true;
+}
+
+function isSerializableTransactionConflict(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
 }
 
 async function resolveContractEstimate(args: {
@@ -353,9 +363,26 @@ const authenticatedPOST = withAuthContext(
 
     const now = new Date();
     const estimateAsOf = parsed.data.desired_start_at ?? now;
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
+    const runSerializable = <T>(work: (tx: Prisma.TransactionClient) => Promise<T>) =>
+      withOrgContext(ctx.orgId, work, {
+        requestContext: ctx,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    const result = await runSerializable(async (tx) => {
+      await acquireAdvisoryTxLock(
+        tx,
+        PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+        buildPatientShareCaseConsentLockKey({
+          orgId: ctx.orgId,
+          shareCaseId: parsed.data.share_case_id,
+        }),
+      );
+
       const shareCase = await tx.patientShareCase.findFirst({
-        where: { id: parsed.data.share_case_id, org_id: ctx.orgId },
+        where: {
+          id: parsed.data.share_case_id,
+          ...buildActivePatientShareCaseMutationWhere({ orgId: ctx.orgId, asOf: now }),
+        },
         select: {
           id: true,
           status: true,
@@ -377,15 +404,6 @@ const authenticatedPOST = withAuthContext(
       });
 
       if (!shareCase) return { response: notFound('患者共有ケースが見つかりません') };
-      if (shareCase.status !== 'active') {
-        return { response: conflict('共有中の患者共有ケースにのみ訪問依頼を作成できます') };
-      }
-      if (shareCase.partnership.status !== 'active') {
-        return { response: conflict('有効な薬局間連携でのみ訪問依頼を作成できます') };
-      }
-      if (shareCase.partnership.partner_pharmacy.status !== 'active') {
-        return { response: conflict('有効な協力薬局にのみ訪問依頼を作成できます') };
-      }
       if (
         !inDateWindow({
           asOf: estimateAsOf,
@@ -481,6 +499,11 @@ export const POST: typeof authenticatedPOST = async (req, routeContext) => {
     return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
   } catch (err) {
     unstable_rethrow(err);
+    if (isSerializableTransactionConflict(err)) {
+      return withSensitiveNoStore(
+        conflict('患者共有ケースが更新されています。再読み込みして再試行してください'),
+      );
+    }
     return withSensitiveNoStore(internalError());
   }
 };

@@ -6,7 +6,13 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { withOrgContext } from '@/lib/db/rls';
+import {
+  buildActivePatientShareCaseMutationWhere,
+  buildPatientShareCaseConsentLockKey,
+  PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+} from '@/server/services/patient-share-access';
 import { resolvePharmacyVisitRequestTransition } from '@/server/services/pharmacy-partnerships';
 
 const visitRequestDecisionSchema = z.enum(['accept', 'decline']);
@@ -87,8 +93,16 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
 
     const now = new Date();
     const result = await withOrgContext(ctx.orgId, async (tx) => {
+      const activeShareCaseWhere =
+        parsed.data.decision === 'accept'
+          ? buildActivePatientShareCaseMutationWhere({ orgId: ctx.orgId, asOf: now })
+          : null;
       const visitRequest = await tx.pharmacyVisitRequest.findFirst({
-        where: { id, org_id: ctx.orgId },
+        where: {
+          id,
+          org_id: ctx.orgId,
+          ...(activeShareCaseWhere ? { share_case: { is: activeShareCaseWhere } } : {}),
+        },
         select: {
           id: true,
           status: true,
@@ -129,13 +143,33 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
         return { response: conflict('有効な薬局間連携と協力薬局に紐づく訪問依頼のみ更新できます') };
       }
 
+      if (activeShareCaseWhere) {
+        await acquireAdvisoryTxLock(
+          tx,
+          PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+          buildPatientShareCaseConsentLockKey({
+            orgId: ctx.orgId,
+            shareCaseId: visitRequest.share_case_id,
+          }),
+        );
+        const activeShareCase = await tx.patientShareCase.findFirst({
+          where: { id: visitRequest.share_case_id, ...activeShareCaseWhere },
+          select: { id: true },
+        });
+        if (!activeShareCase) {
+          return {
+            response: conflict('患者共有ケースが更新されています。再読み込みしてください'),
+          };
+        }
+      }
+
       const updatedCount = await tx.pharmacyVisitRequest.updateMany({
         where: {
           id,
           org_id: ctx.orgId,
           status: transition.currentStatus,
           updated_at: expectedUpdatedAt,
-          share_case: { status: 'active' },
+          share_case: activeShareCaseWhere ? { is: activeShareCaseWhere } : { status: 'active' },
           partnership: {
             status: 'active',
             partner_pharmacy: { status: 'active' },

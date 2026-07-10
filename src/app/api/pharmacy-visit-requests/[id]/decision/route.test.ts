@@ -3,6 +3,8 @@ import { NextRequest } from 'next/server';
 
 const {
   withOrgContextMock,
+  acquireAdvisoryTxLockMock,
+  patientShareCaseFindFirstMock,
   pharmacyVisitRequestFindFirstMock,
   pharmacyVisitRequestUpdateManyMock,
   pharmacyVisitRequestFindUniqueOrThrowMock,
@@ -10,6 +12,8 @@ const {
   authContextFailureMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
+  acquireAdvisoryTxLockMock: vi.fn(),
+  patientShareCaseFindFirstMock: vi.fn(),
   pharmacyVisitRequestFindFirstMock: vi.fn(),
   pharmacyVisitRequestUpdateManyMock: vi.fn(),
   pharmacyVisitRequestFindUniqueOrThrowMock: vi.fn(),
@@ -40,6 +44,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: acquireAdvisoryTxLockMock,
+}));
+
 vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
 }));
@@ -62,12 +70,41 @@ function createRequest(body: unknown) {
   });
 }
 
+function activeShareCaseMutationWhere(asOf = new Date('2026-06-19T00:00:00.000Z')) {
+  return {
+    org_id: 'org_1',
+    status: 'active',
+    revoked_at: null,
+    ended_at: null,
+    partnership: {
+      status: 'active',
+      partner_pharmacy: { status: 'active' },
+      OR: [{ effective_from: null }, { effective_from: { lte: asOf } }],
+      AND: [{ OR: [{ effective_to: null }, { effective_to: { gte: asOf } }] }],
+    },
+    OR: [{ starts_at: null }, { starts_at: { lte: asOf } }],
+    AND: [
+      { OR: [{ ends_at: null }, { ends_at: { gte: asOf } }] },
+      {
+        consents: {
+          some: {
+            revoked_at: null,
+            consent_date: { lte: asOf },
+            OR: [{ valid_until: null }, { valid_until: { gte: asOf } }],
+          },
+        },
+      },
+    ],
+  };
+}
+
 describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-19T00:00:00.000Z'));
     vi.clearAllMocks();
     authContextFailureMock.mockReset();
+    acquireAdvisoryTxLockMock.mockResolvedValue(undefined);
     pharmacyVisitRequestFindFirstMock.mockResolvedValue({
       id: 'visit_request_1',
       status: 'requested',
@@ -82,6 +119,7 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
       },
     });
     pharmacyVisitRequestUpdateManyMock.mockResolvedValue({ count: 1 });
+    patientShareCaseFindFirstMock.mockResolvedValue({ id: 'share_case_1' });
     pharmacyVisitRequestFindUniqueOrThrowMock.mockResolvedValue({
       id: 'visit_request_1',
       status: 'accepted',
@@ -91,6 +129,9 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        patientShareCase: {
+          findFirst: patientShareCaseFindFirstMock,
+        },
         pharmacyVisitRequest: {
           findFirst: pharmacyVisitRequestFindFirstMock,
           updateMany: pharmacyVisitRequestUpdateManyMock,
@@ -105,13 +146,43 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    const initialRequestWhere = pharmacyVisitRequestFindFirstMock.mock.calls[0]?.[0]?.where;
+    const postLockShareCaseWhere = patientShareCaseFindFirstMock.mock.calls[0]?.[0]?.where;
+    const { id: postLockShareCaseId, ...activeShareCaseWhere } = postLockShareCaseWhere;
+    expect(postLockShareCaseId).toBe('share_case_1');
+    expect(initialRequestWhere).toEqual(
+      expect.objectContaining({
+        id: 'visit_request_1',
+        org_id: 'org_1',
+        share_case: { is: activeShareCaseWhere },
+      }),
+    );
+    expect(patientShareCaseFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'share_case_1',
+        ...activeShareCaseMutationWhere(),
+      },
+      select: { id: true },
+    });
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'patient_share_case_consent',
+      'org_1:share_case_1',
+    );
+    expect(acquireAdvisoryTxLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      patientShareCaseFindFirstMock.mock.invocationCallOrder[0],
+    );
     expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'visit_request_1',
         org_id: 'org_1',
         status: 'requested',
         updated_at: new Date(CURRENT_UPDATED_AT),
-        share_case: { status: 'active' },
+        share_case: {
+          is: {
+            ...activeShareCaseMutationWhere(),
+          },
+        },
         partnership: {
           status: 'active',
           partner_pharmacy: { status: 'active' },
@@ -157,7 +228,58 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
-  it('records decline metadata without raw decline reason in audit', async () => {
+  it('hides accept targets that are outside the current active-consent boundary', async () => {
+    pharmacyVisitRequestFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await rawPOST(createRequest({ decision: 'accept' }), routeContext);
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '訪問依頼が見つかりません',
+    });
+    expect(acquireAdvisoryTxLockMock).not.toHaveBeenCalled();
+    expect(patientShareCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestFindUniqueOrThrowMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a generic conflict when consent changes after the initial active lookup', async () => {
+    patientShareCaseFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await rawPOST(createRequest({ decision: 'accept' }), routeContext);
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '患者共有ケースが更新されています。再読み込みしてください',
+    });
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledOnce();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestFindUniqueOrThrowMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed without audit when active consent changes before the guarded accept update', async () => {
+    pharmacyVisitRequestUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await rawPOST(createRequest({ decision: 'accept' }), routeContext);
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問依頼はすでに更新されています',
+    });
+    expect(patientShareCaseFindFirstMock).toHaveBeenCalledOnce();
+    expect(pharmacyVisitRequestFindUniqueOrThrowMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('does not extend the accept-only consent gate to the deferred decline policy', async () => {
     pharmacyVisitRequestFindUniqueOrThrowMock.mockResolvedValue({
       id: 'visit_request_1',
       status: 'declined',
@@ -173,8 +295,11 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(acquireAdvisoryTxLockMock).not.toHaveBeenCalled();
+    expect(patientShareCaseFindFirstMock).not.toHaveBeenCalled();
     expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: expect.objectContaining({ share_case: { status: 'active' } }),
         data: expect.objectContaining({
           status: 'declined',
           declined_by: 'user_1',

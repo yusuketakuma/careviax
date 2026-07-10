@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
   withOrgContextMock,
+  acquireAdvisoryTxLockMock,
   pharmacyVisitRequestFindManyMock,
   patientShareCaseFindFirstMock,
   pharmacyContractFindFirstMock,
@@ -11,6 +13,7 @@ const {
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
+  acquireAdvisoryTxLockMock: vi.fn(),
   pharmacyVisitRequestFindManyMock: vi.fn(),
   patientShareCaseFindFirstMock: vi.fn(),
   pharmacyContractFindFirstMock: vi.fn(),
@@ -38,6 +41,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: acquireAdvisoryTxLockMock,
+}));
+
 vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
 }));
@@ -60,25 +67,60 @@ function createGetRequest(query = '') {
   return new NextRequest(`http://localhost/api/pharmacy-visit-requests${query}`);
 }
 
+function activeShareCase() {
+  return {
+    id: 'share_case_1',
+    status: 'active',
+    starts_at: new Date('2026-06-01T00:00:00.000Z'),
+    ends_at: new Date('2026-12-31T00:00:00.000Z'),
+    partnership_id: 'partnership_1',
+    partnership: {
+      id: 'partnership_1',
+      status: 'active',
+      effective_from: new Date('2026-06-01T00:00:00.000Z'),
+      effective_to: new Date('2026-12-31T00:00:00.000Z'),
+      partner_pharmacy_id: 'partner_pharmacy_1',
+      partner_pharmacy: { id: 'partner_pharmacy_1', status: 'active', name: '協力薬局' },
+      base_site: { id: 'site_1', name: '基幹薬局' },
+    },
+  };
+}
+
+function activeShareCaseMutationWhere(asOf = new Date('2026-06-19T00:00:00.000Z')) {
+  return {
+    org_id: 'org_1',
+    status: 'active',
+    revoked_at: null,
+    ended_at: null,
+    partnership: {
+      status: 'active',
+      partner_pharmacy: { status: 'active' },
+      OR: [{ effective_from: null }, { effective_from: { lte: asOf } }],
+      AND: [{ OR: [{ effective_to: null }, { effective_to: { gte: asOf } }] }],
+    },
+    OR: [{ starts_at: null }, { starts_at: { lte: asOf } }],
+    AND: [
+      { OR: [{ ends_at: null }, { ends_at: { gte: asOf } }] },
+      {
+        consents: {
+          some: {
+            revoked_at: null,
+            consent_date: { lte: asOf },
+            OR: [{ valid_until: null }, { valid_until: { gte: asOf } }],
+          },
+        },
+      },
+    ],
+  };
+}
+
 describe('/api/pharmacy-visit-requests', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-19T00:00:00.000Z'));
     vi.clearAllMocks();
-    patientShareCaseFindFirstMock.mockResolvedValue({
-      id: 'share_case_1',
-      status: 'active',
-      starts_at: new Date('2026-06-01T00:00:00.000Z'),
-      ends_at: new Date('2026-12-31T00:00:00.000Z'),
-      partnership_id: 'partnership_1',
-      partnership: {
-        id: 'partnership_1',
-        status: 'active',
-        effective_from: new Date('2026-06-01T00:00:00.000Z'),
-        effective_to: new Date('2026-12-31T00:00:00.000Z'),
-        partner_pharmacy_id: 'partner_pharmacy_1',
-        partner_pharmacy: { id: 'partner_pharmacy_1', status: 'active', name: '協力薬局' },
-        base_site: { id: 'site_1', name: '基幹薬局' },
-      },
-    });
+    acquireAdvisoryTxLockMock.mockResolvedValue(undefined);
+    patientShareCaseFindFirstMock.mockResolvedValue(activeShareCase());
     pharmacyContractFindFirstMock.mockResolvedValue({
       id: 'contract_1',
       closing_day: 20,
@@ -163,6 +205,10 @@ describe('/api/pharmacy-visit-requests', () => {
     );
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('lists requests only through active patient share cases with active consent', async () => {
     const response = await GET(
       new NextRequest(
@@ -185,10 +231,12 @@ describe('/api/pharmacy-visit-requests', () => {
       expect.objectContaining({
         org_id: 'org_1',
         status: 'active',
-        partnership: {
+        revoked_at: null,
+        ended_at: null,
+        partnership: expect.objectContaining({
           status: 'active',
           partner_pharmacy: { status: 'active' },
-        },
+        }),
       }),
     );
     expect(JSON.stringify(where.share_case.is)).toContain('"revoked_at":null');
@@ -315,6 +363,30 @@ describe('/api/pharmacy-visit-requests', () => {
     expect(response.status).toBe(201);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }),
+    );
+    expect(patientShareCaseFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'share_case_1',
+          ...activeShareCaseMutationWhere(),
+        },
+      }),
+    );
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'patient_share_case_consent',
+      'org_1:share_case_1',
+    );
+    expect(acquireAdvisoryTxLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      patientShareCaseFindFirstMock.mock.invocationCallOrder[0],
+    );
     expect(pharmacyVisitRequestCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -356,6 +428,42 @@ describe('/api/pharmacy-visit-requests', () => {
     expect(responseText).not.toContain('1234');
   });
 
+  it('evaluates desired visit and contract dates by the Japan business date', async () => {
+    const response = await POST(
+      createRequest({
+        share_case_id: 'share_case_1',
+        desired_start_at: '2026-06-20T16:00:00.000Z',
+        request_reason: '訪問依頼',
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    const jstDate = new Date('2026-06-21T00:00:00.000Z');
+    expect(pharmacyContractFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ effective_from: null }, { effective_from: { lte: jstDate } }],
+          AND: [{ OR: [{ effective_to: null }, { effective_to: { gte: jstDate } }] }],
+        }),
+      }),
+    );
+    expect(pharmacyContractVersionFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          effective_from: { lte: jstDate },
+          OR: [{ effective_to: null }, { effective_to: { gte: jstDate } }],
+        }),
+      }),
+    );
+    expect(pharmacyVisitRequestCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          estimated_snapshot: expect.objectContaining({ as_of: '2026-06-21' }),
+        }),
+      }),
+    );
+  });
+
   it('returns a sanitized no-store 500 when visit request creation fails unexpectedly', async () => {
     pharmacyVisitRequestCreateMock.mockRejectedValueOnce(
       new Error('患者 山田花子 090-1234-5678 raw pharmacy visit create detail'),
@@ -392,21 +500,87 @@ describe('/api/pharmacy-visit-requests', () => {
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
-  it('rejects inactive share cases before create or audit side effects', async () => {
-    patientShareCaseFindFirstMock.mockResolvedValue({
-      id: 'share_case_1',
-      status: 'consent_pending',
-      starts_at: null,
-      ends_at: null,
-      partnership_id: 'partnership_1',
-      partnership: {
-        status: 'active',
-        effective_from: null,
-        effective_to: null,
-        partner_pharmacy_id: 'partner_pharmacy_1',
-        partner_pharmacy: { status: 'active' },
-      },
+  it('rejects visit request creation when current active consent cannot be proven', async () => {
+    patientShareCaseFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest({
+        share_case_id: 'share_case_1',
+        request_reason: '患者名 山田花子: 訪問依頼',
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '患者共有ケースが見つかりません',
     });
+    expect(pharmacyContractFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacyContractVersionFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('maps serializable consent races to a sanitized retryable conflict', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError(
+        'raw patient 山田花子 consent serialization failure',
+        {
+          code: 'P2034',
+          clientVersion: 'test',
+        },
+      ),
+    );
+
+    const response = await POST(
+      createRequest({
+        share_case_id: 'share_case_1',
+        request_reason: '患者名 山田花子: 訪問依頼',
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '患者共有ケースが更新されています。再読み込みして再試行してください',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('serialization failure');
+    expect(pharmacyVisitRequestCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('fails safely before eligibility reads when the consent lock cannot be acquired', async () => {
+    acquireAdvisoryTxLockMock.mockRejectedValueOnce(
+      new Error('raw lock failure patient 山田花子 token secret'),
+    );
+
+    const response = await POST(
+      createRequest({
+        share_case_id: 'share_case_1',
+        request_reason: '患者名 山田花子: 訪問依頼',
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('token secret');
+    expect(patientShareCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('hides inactive share cases behind the active-consent not-found boundary', async () => {
+    patientShareCaseFindFirstMock.mockResolvedValueOnce(null);
 
     const response = await POST(
       createRequest({
@@ -415,7 +589,11 @@ describe('/api/pharmacy-visit-requests', () => {
       }),
     );
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '患者共有ケースが見つかりません',
+    });
     expect(pharmacyVisitRequestCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });

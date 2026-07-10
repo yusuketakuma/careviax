@@ -6,7 +6,12 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { withOrgContext } from '@/lib/db/rls';
+import {
+  buildPatientShareCaseConsentLockKey,
+  PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+} from '@/server/services/patient-share-access';
 import { resolvePatientShareCaseTransition } from '@/server/services/pharmacy-partnerships';
 
 const revokePatientShareConsentSchema = z.object({
@@ -49,6 +54,12 @@ const authenticatedPOST = withAuthContext<{ id: string; consentId: string }>(
 
     const now = new Date();
     const result = await withOrgContext(ctx.orgId, async (tx) => {
+      await acquireAdvisoryTxLock(
+        tx,
+        PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+        buildPatientShareCaseConsentLockKey({ orgId: ctx.orgId, shareCaseId: id }),
+      );
+
       const existing = await tx.patientShareConsent.findFirst({
         where: { id: consentId, org_id: ctx.orgId, share_case_id: id },
         select: {
