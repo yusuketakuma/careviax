@@ -136,10 +136,13 @@ export function BreakGlassPanel({ orgId, tenantName }: { orgId: string; tenantNa
 
   const activateMutation = useMutation({
     mutationFn: (payload: ActivatePayload) =>
-      platformFetchJson<{ session: BreakGlassSessionSummary }>('/api/platform/break-glass', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      }),
+      platformFetchJson<{ data: { session: BreakGlassSessionSummary } }>(
+        '/api/platform/break-glass',
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: BREAK_GLASS_SESSIONS_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: PLATFORM_TENANTS_QUERY_KEY });

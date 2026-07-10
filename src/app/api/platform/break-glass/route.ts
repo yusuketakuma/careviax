@@ -80,7 +80,9 @@ export async function POST(req: NextRequest) {
       scope,
       mfaVerifiedAt: new Date(),
     });
-    return withSensitiveNoStore(success({ session: serializeBreakGlassSession(session) }, 201));
+    return withSensitiveNoStore(
+      success({ data: { session: serializeBreakGlassSession(session) } }, 201),
+    );
   } catch (err) {
     if (err instanceof BreakGlassAccessError) {
       const status = err.code === 'scope_denied' ? 403 : 400;

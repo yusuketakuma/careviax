@@ -47,7 +47,7 @@ vi.mock('@/lib/utils/logger', () => ({
   logger: { warn: loggerWarnMock },
 }));
 
-import { GET } from './route';
+import { GET, POST } from './route';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const operator = {
@@ -107,6 +107,105 @@ describe('GET /api/platform/break-glass', () => {
             status: 'active',
           },
         ],
+      },
+    });
+  });
+});
+
+describe('POST /api/platform/break-glass', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requirePlatformOperatorMock.mockResolvedValue({ operator });
+    verifyBreakGlassStepUpMock.mockResolvedValue(true);
+    createBreakGlassSessionMock.mockResolvedValue({
+      id: 'bg_2',
+      target_org_id: 'org_2',
+      status: 'active',
+    });
+    serializeSessionMock.mockReturnValue({
+      id: 'bg_2',
+      target_org_id: 'org_2',
+      scope: 'read_only',
+      status: 'active',
+    });
+  });
+
+  function createPostRequest() {
+    return new NextRequest('http://localhost/api/platform/break-glass', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        targetOrgId: ' org_2 ',
+        reason: ' 障害調査のためアクセスします ',
+        referenceTicket: ' SUP-123 ',
+        scope: 'read_only',
+        password: 'test-password',
+        mfaCode: ' 123456 ',
+      }),
+    });
+  }
+
+  it('does not verify credentials or create a session when the guard rejects the request', async () => {
+    requirePlatformOperatorMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
+    });
+
+    const response = await POST(createPostRequest());
+
+    expect(response.status).toBe(403);
+    expect(verifyBreakGlassStepUpMock).not.toHaveBeenCalled();
+    expect(createBreakGlassSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed without creating a session when step-up authentication fails', async () => {
+    verifyBreakGlassStepUpMock.mockResolvedValueOnce(false);
+
+    const response = await POST(createPostRequest());
+
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    expect(verifyBreakGlassStepUpMock).toHaveBeenCalledWith({
+      email: 'operator@example.invalid',
+      password: 'test-password',
+      code: '123456',
+    });
+    expect(createBreakGlassSessionMock).not.toHaveBeenCalled();
+    expect(loggerWarnMock).toHaveBeenCalledWith({
+      event: 'break_glass_stepup_failed',
+      actorId: 'user_1',
+    });
+  });
+
+  it('returns the created session in an exact data envelope after step-up', async () => {
+    const session = { id: 'bg_2', target_org_id: 'org_2', status: 'active' };
+    createBreakGlassSessionMock.mockResolvedValueOnce(session);
+
+    const response = await POST(createPostRequest());
+
+    expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
+    expect(verifyBreakGlassStepUpMock).toHaveBeenCalledWith({
+      email: 'operator@example.invalid',
+      password: 'test-password',
+      code: '123456',
+    });
+    expect(createBreakGlassSessionMock).toHaveBeenCalledWith({
+      operator,
+      targetOrgId: 'org_2',
+      reason: '障害調査のためアクセスします',
+      referenceTicket: 'SUP-123',
+      scope: 'read_only',
+      mfaVerifiedAt: expect.any(Date),
+    });
+    expect(serializeSessionMock).toHaveBeenCalledWith(session);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        session: {
+          id: 'bg_2',
+          target_org_id: 'org_2',
+          scope: 'read_only',
+          status: 'active',
+        },
       },
     });
   });
