@@ -124,6 +124,12 @@ describe('/api/workflow-exceptions/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        id: 'exception_1',
+        status: 'resolved',
+      },
+    });
     expect(workflowExceptionUpdateMock).toHaveBeenCalled();
     expect(medicationCycleUpdateMock).toHaveBeenCalledWith({
       where: { id: 'cycle_1' },

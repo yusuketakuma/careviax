@@ -107,7 +107,7 @@ export const PATCH = withAuthContext(
       return updated;
     });
 
-    return success(result);
+    return success({ data: result });
   },
   {
     permission: 'canDispense',
