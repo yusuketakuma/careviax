@@ -455,7 +455,7 @@ async function authenticatedPATCH(
       where: { id, org_id: ctx.orgId },
     });
     if (!currentSchedule) return notFound('訪問予定が見つかりません');
-    return success(currentSchedule);
+    return success({ data: currentSchedule });
   }
 
   const refResult = await validateOrgReferences(ctx.orgId, {
@@ -770,7 +770,7 @@ async function authenticatedPATCH(
     payload: { source: 'visit_schedules_update', schedule_id: id },
   });
 
-  return success(schedule.schedule);
+  return success({ data: schedule.schedule });
 }
 
 export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

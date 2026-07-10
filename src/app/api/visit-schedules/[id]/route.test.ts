@@ -537,6 +537,16 @@ describe('/api/visit-schedules/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
+      data: {
+        id: 'schedule_1',
+        schedule_status: 'in_progress',
+        version: 2,
+      },
+    });
+    expect(responseBody).not.toHaveProperty('id');
+    expect(responseBody).not.toHaveProperty('schedule_status');
     expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: EXPECTED_PATCH_GUARD,
@@ -719,6 +729,16 @@ describe('/api/visit-schedules/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
+      data: {
+        id: 'schedule_1',
+        schedule_status: 'planned',
+        version: 1,
+      },
+    });
+    expect(responseBody).not.toHaveProperty('id');
+    expect(responseBody).not.toHaveProperty('schedule_status');
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
