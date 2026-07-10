@@ -25,9 +25,20 @@ describe('QRScanPage accessibility status contract', () => {
     expect(politeStatusCount).toBe(statusCount);
   });
 
-  it('normalizes send error messages through the shared fallback helper', () => {
-    expect(SOURCE).toContain("import { messageFromError } from '@/lib/utils/error-message';");
-    expect(SOURCE).toContain("setSendError(messageFromError(err, '送信中にエラーが発生しました'))");
+  it('keeps QR draft submission errors PHI-safe while preserving a corrective alert', () => {
+    expect(SOURCE).toContain("import { clientLog } from '@/lib/utils/client-log';");
+    expect(SOURCE).toContain('QR_DRAFT_SUBMISSION_ERROR_MESSAGE');
+    expect(SOURCE).toContain(
+      'PCへの送信に失敗しました。QRコードと選択した患者を確認して、再送信してください。',
+    );
+    expect(SOURCE).toContain(
+      "clientLog.warn('qr_scan.draft_submission_failed', err, { route: '/qr-scan' });",
+    );
+    expect(SOURCE).toMatch(
+      /catch \(err\) \{\s*clientLog\.warn\([\s\S]*?\);\s*setSendError\(QR_DRAFT_SUBMISSION_ERROR_MESSAGE\);\s*setPhase\('error'\);\s*\}/,
+    );
+    expect(SOURCE).not.toContain("from '@/lib/utils/error-message'");
+    expect(SOURCE).not.toContain('setSendError(messageFromError');
   });
 
   it('unwraps and validates the QR draft create data envelope before success', () => {

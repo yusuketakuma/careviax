@@ -37,7 +37,7 @@ import { JahisSupplementalRecordsCard } from '@/components/features/prescription
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { readApiJson } from '@/lib/api/client-json';
 import { cn } from '@/lib/utils';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { normalizeJahisSupplementalRecords } from '@/lib/pharmacy/jahis-supplemental-records-view';
@@ -73,6 +73,9 @@ type ScanPhase =
   | 'sending' // API送信中
   | 'done' // 送信完了
   | 'error'; // エラー
+
+const QR_DRAFT_SUBMISSION_ERROR_MESSAGE =
+  'PCへの送信に失敗しました。QRコードと選択した患者を確認して、再送信してください。';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Main Component
@@ -378,7 +381,8 @@ export default function QRScanPage() {
 
       setPhase('done');
     } catch (err) {
-      setSendError(messageFromError(err, '送信中にエラーが発生しました'));
+      clientLog.warn('qr_scan.draft_submission_failed', err, { route: '/qr-scan' });
+      setSendError(QR_DRAFT_SUBMISSION_ERROR_MESSAGE);
       setPhase('error');
     }
   };
