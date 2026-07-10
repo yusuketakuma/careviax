@@ -199,6 +199,60 @@ const stockListSelect = {
   },
 } as const;
 
+function presentPharmacyDrugStock(
+  stock: {
+    id: string;
+    site_id: string;
+    drug_master_id: string;
+    is_stocked: boolean;
+    stock_qty: number | null;
+    reorder_point: number | null;
+    preferred_generic_id: string | null;
+    adoption_source: string | null;
+    adoption_note: string | null;
+    last_reviewed_at: Date | null;
+    reviewed_by_id: string | null;
+    follow_up_status: string | null;
+    follow_up_reason: string | null;
+    follow_up_due_date: Date | null;
+    follow_up_resolved_at: Date | null;
+    updated_at: Date;
+    preferred_generic: {
+      id: string;
+      drug_name: string;
+      yj_code: string;
+    } | null;
+  } | null,
+) {
+  if (!stock) return null;
+
+  return {
+    id: stock.id,
+    site_id: stock.site_id,
+    drug_master_id: stock.drug_master_id,
+    is_stocked: stock.is_stocked,
+    stock_qty: stock.stock_qty,
+    reorder_point: stock.reorder_point,
+    preferred_generic_id: stock.preferred_generic_id,
+    adoption_source: stock.adoption_source,
+    adoption_note: stock.adoption_note,
+    last_reviewed_at: stock.last_reviewed_at?.toISOString() ?? null,
+    reviewed_by_id: stock.reviewed_by_id,
+    follow_up_status: stock.follow_up_status,
+    follow_up_reason: stock.follow_up_reason,
+    follow_up_due_date: stock.follow_up_due_date?.toISOString() ?? null,
+    follow_up_resolved_at: stock.follow_up_resolved_at?.toISOString() ?? null,
+    updated_at: stock.updated_at.toISOString(),
+    preferred_generic: stock.preferred_generic
+      ? {
+          id: stock.preferred_generic.id,
+          drug_name: stock.preferred_generic.drug_name,
+          yj_code: stock.preferred_generic.yj_code,
+        }
+      : null,
+  };
+}
+
 const authenticatedGET = withAuthContext(
   async (req: NextRequest, authCtx) => {
     const { searchParams } = new URL(req.url);
@@ -220,7 +274,7 @@ const authenticatedGET = withAuthContext(
     if (!site) return notFound('対象の薬局拠点が見つかりません');
 
     if (parsed.data.drug_master_id) {
-      const stock = await prisma.pharmacyDrugStock.findFirst({
+      const selectedStock = await prisma.pharmacyDrugStock.findFirst({
         where: {
           org_id: authCtx.orgId,
           site_id: site.id,
@@ -230,7 +284,7 @@ const authenticatedGET = withAuthContext(
       });
 
       return success({
-        data: stock,
+        data: presentPharmacyDrugStock(selectedStock),
         meta: { site },
       });
     }
@@ -414,7 +468,7 @@ const authenticatedPOST = withAuthContext(
     const reviewedAt = mark_reviewed ? new Date() : undefined;
     const resolvedAt = follow_up_status === 'resolved' ? new Date() : null;
 
-    const stock = await prisma.$transaction(async (tx) => {
+    const savedStock = await prisma.$transaction(async (tx) => {
       const saved = await tx.pharmacyDrugStock.upsert({
         where: {
           site_id_drug_master_id: {
@@ -488,7 +542,7 @@ const authenticatedPOST = withAuthContext(
     });
 
     return success({
-      data: stock,
+      data: presentPharmacyDrugStock(savedStock),
       meta: { site },
     });
   },

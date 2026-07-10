@@ -74,9 +74,15 @@ describe('/api/pharmacy-drug-stocks', () => {
       preferred_generic_id: 'generic_1',
       adoption_source: 'manual',
       adoption_note: null,
-      last_reviewed_at: null,
-      reviewed_by_id: null,
+      last_reviewed_at: new Date('2026-03-20T10:00:00.000Z'),
+      reviewed_by_id: 'user_1',
+      follow_up_status: 'monitoring',
+      follow_up_reason: '切替確認',
+      follow_up_due_date: new Date('2026-04-01T00:00:00.000Z'),
+      follow_up_resolved_at: null,
       updated_at: new Date('2026-03-28T00:00:00Z'),
+      org_id: 'org_1',
+      secret: 'must-not-cross-api-boundary',
       preferred_generic: {
         id: 'generic_1',
         drug_name: 'アムロジピン錠5mg「GE」',
@@ -96,18 +102,30 @@ describe('/api/pharmacy-drug-stocks', () => {
     expectNoStore(response);
     const body = await response.json();
     expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
-    expect(body).toMatchObject({
-      data: {
-        id: 'stock_1',
-        is_stocked: true,
-        preferred_generic_id: 'generic_1',
-      },
-      meta: {
-        site: {
-          id: 'site_1',
-        },
+    expect(body.data).toEqual({
+      id: 'stock_1',
+      site_id: 'site_1',
+      drug_master_id: 'drug_1',
+      is_stocked: true,
+      stock_qty: null,
+      reorder_point: null,
+      preferred_generic_id: 'generic_1',
+      adoption_source: 'manual',
+      adoption_note: null,
+      last_reviewed_at: '2026-03-20T10:00:00.000Z',
+      reviewed_by_id: 'user_1',
+      follow_up_status: 'monitoring',
+      follow_up_reason: '切替確認',
+      follow_up_due_date: '2026-04-01T00:00:00.000Z',
+      follow_up_resolved_at: null,
+      updated_at: '2026-03-28T00:00:00.000Z',
+      preferred_generic: {
+        id: 'generic_1',
+        drug_name: 'アムロジピン錠5mg「GE」',
+        yj_code: '123456789012',
       },
     });
+    expect(body.meta).toEqual({ site: { id: 'site_1', name: '本店' } });
   });
 
   it('searches stocked formulary rows by practical drug master identifiers', async () => {
@@ -409,9 +427,15 @@ describe('/api/pharmacy-drug-stocks', () => {
       preferred_generic_id: 'generic_1',
       adoption_source: 'manual',
       adoption_note: null,
-      last_reviewed_at: null,
-      reviewed_by_id: null,
+      last_reviewed_at: new Date('2026-03-20T10:00:00.000Z'),
+      reviewed_by_id: 'user_1',
+      follow_up_status: 'monitoring',
+      follow_up_reason: '切替確認',
+      follow_up_due_date: new Date('2026-04-01T00:00:00.000Z'),
+      follow_up_resolved_at: null,
       updated_at: new Date('2026-03-28T00:00:00Z'),
+      org_id: 'org_1',
+      secret: 'must-not-cross-api-boundary',
       preferred_generic: {
         id: 'generic_1',
         drug_name: 'アムロジピン錠5mg「GE」',
@@ -435,10 +459,30 @@ describe('/api/pharmacy-drug-stocks', () => {
     expectNoStore(response);
     const body = await response.json();
     expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
-    expect(body).toMatchObject({
-      data: { id: 'stock_1', is_stocked: true, preferred_generic_id: 'generic_1' },
-      meta: { site: { id: 'site_1', name: '本店' } },
+    expect(body.data).toEqual({
+      id: 'stock_1',
+      site_id: 'site_1',
+      drug_master_id: 'drug_1',
+      is_stocked: true,
+      stock_qty: null,
+      reorder_point: null,
+      preferred_generic_id: 'generic_1',
+      adoption_source: 'manual',
+      adoption_note: null,
+      last_reviewed_at: '2026-03-20T10:00:00.000Z',
+      reviewed_by_id: 'user_1',
+      follow_up_status: 'monitoring',
+      follow_up_reason: '切替確認',
+      follow_up_due_date: '2026-04-01T00:00:00.000Z',
+      follow_up_resolved_at: null,
+      updated_at: '2026-03-28T00:00:00.000Z',
+      preferred_generic: {
+        id: 'generic_1',
+        drug_name: 'アムロジピン錠5mg「GE」',
+        yj_code: '123456789012',
+      },
     });
+    expect(body.meta).toEqual({ site: { id: 'site_1', name: '本店' } });
     expect(prismaMock.pharmacyDrugStock.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({

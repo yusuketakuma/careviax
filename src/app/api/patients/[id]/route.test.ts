@@ -1134,6 +1134,14 @@ describe('/api/patients/[id]', () => {
   });
 
   it('updates patient master and primary residence fields', async () => {
+    patientUpdateMock.mockResolvedValueOnce({
+      id: 'patient_1',
+      phone: '090-1111-2222',
+      name: '更新後 患者A',
+      medical_insurance_number: '1234567890',
+      allergy_info: '薬剤アレルギー',
+    });
+
     const response = await PATCH(
       createRequest(
         {
@@ -1155,6 +1163,8 @@ describe('/api/patients/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    const payload = await response.json();
+    expect(payload.data).toEqual({ id: 'patient_1' });
     expect(patientUpdateMock).toHaveBeenCalledWith({
       where: { id: 'patient_1' },
       data: expect.objectContaining({
@@ -1164,6 +1174,7 @@ describe('/api/patients/[id]', () => {
         gender: 'female',
         phone: '090-1111-2222',
       }),
+      select: { id: true, phone: true },
     });
     expect(residenceFindFirstMock).toHaveBeenCalledWith({
       where: { patient_id: 'patient_1', is_primary: true },
@@ -1287,6 +1298,7 @@ describe('/api/patients/[id]', () => {
       data: expect.objectContaining({
         phone: '090-1111-2222',
       }),
+      select: { id: true, phone: true },
     });
     expect(patientUpdateMock.mock.calls[0]?.[0].data).not.toHaveProperty('expected_updated_at');
   });
@@ -1317,6 +1329,7 @@ describe('/api/patients/[id]', () => {
         primary_staff_id: 'staff_1',
         backup_staff_id: 'staff_2',
       }),
+      select: { id: true, phone: true },
     });
   });
 
@@ -1745,6 +1758,7 @@ describe('/api/patients/[id]', () => {
         medical_insurance_number: '1234567890',
         billing_support_flag: true,
       }),
+      select: { id: true, phone: true },
     });
     expect(patientInsuranceFindFirstMock).toHaveBeenCalledWith({
       where: {

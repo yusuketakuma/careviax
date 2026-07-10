@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 const { authMock, prismaMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -32,6 +33,9 @@ describe('/api/pharmacy-drug-stock-templates/[id]', () => {
       name: '在宅内科 標準セット',
       item_count: 12,
       source_site_id: 'site_1',
+      org_id: 'org_1',
+      created_by_id: 'user_1',
+      items: [{ drug_master_id: 'drug_1' }],
     });
     prismaMock.formularyTemplate.delete.mockResolvedValue({ id: 'template_1' });
     prismaMock.auditLog.create.mockResolvedValue({ id: 'audit_1' });
@@ -50,12 +54,16 @@ describe('/api/pharmacy-drug-stock-templates/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     const payload = await response.json();
     expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
-    expect(payload).toMatchObject({
-      data: { id: 'template_1', name: '在宅内科 標準セット' },
-      meta: { deleted: true },
+    expect(payload.data).toEqual({
+      id: 'template_1',
+      name: '在宅内科 標準セット',
+      item_count: 12,
+      source_site_id: 'site_1',
     });
+    expect(payload.meta).toEqual({ deleted: true });
     expect(prismaMock.formularyTemplate.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'template_1', org_id: 'org_1' },
@@ -91,6 +99,7 @@ describe('/api/pharmacy-drug-stock-templates/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectNoStore(response);
     expect(prismaMock.formularyTemplate.delete).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });

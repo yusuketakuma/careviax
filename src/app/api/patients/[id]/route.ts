@@ -124,6 +124,10 @@ type PatientRequesterPatch = NonNullable<UpdatePatientData['requester']>;
 type PatientIntakePatch = NonNullable<UpdatePatientData['intake']>;
 const PATIENT_EXTERNAL_SHARE_LIMIT = 8;
 
+function presentPatientPatch(patient: { id: string }) {
+  return { id: patient.id };
+}
+
 function normalizeExpectedUpdatedAt(value: string | null | undefined): Date | null {
   if (!value) return null;
   const date = new Date(value);
@@ -1556,7 +1560,7 @@ async function authenticatedPATCH(
   }
 
   try {
-    const patient = await withOrgContext(
+    const updatedPatient = await withOrgContext(
       ctx.orgId,
       async (tx) => {
         // 患者項目の業務差分履歴(層b/層c)。各更新サイトで old→new を算出し、tx 末尾で一括追記する。
@@ -1640,6 +1644,10 @@ async function authenticatedPATCH(
               : {}),
             ...rest,
           } as Prisma.PatientUpdateInput,
+          select: {
+            id: true,
+            phone: true,
+          },
         });
 
         // (基本情報) Patient スカラ項目の差分を履歴化。
@@ -2295,13 +2303,13 @@ async function authenticatedPATCH(
           }
         }
 
-        return updated;
+        return presentPatientPatch(updated);
       },
       { requestContext: ctx },
     );
 
     return success({
-      data: patient,
+      data: updatedPatient,
       meta: {
         warnings:
           duplicateCandidates.length > 0

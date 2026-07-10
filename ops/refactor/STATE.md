@@ -51,6 +51,24 @@
 
 ## 直近の作業
 
+- codex: API DTO response boundary recovery (IN_PROGRESS).
+  - task / acceptance:
+    `API-DTO-001` / CI recovery. The current `main` fails `pnpm dto-direct-prisma-return:check` on three newly exposed
+    response paths: patient PATCH, pharmacy drug-stock-template DELETE, and pharmacy drug-stock selected-item GET.
+    Replace direct Prisma result returns with explicit DTO/presenter mappings, preserve the established `{ data, meta }`
+    envelopes and no-store/auth/audit behavior, add regression coverage for omitted unexpected fields, and return the
+    checker to zero new violations.
+  - evidence / scope:
+    Reproduced locally at `src/app/api/patients/[id]/route.ts:920`,
+    `src/app/api/pharmacy-drug-stock-templates/[id]/route.ts:10`, and
+    `src/app/api/pharmacy-drug-stocks/route.ts:223`. The patient form accepts only `{ data: { id } }`; stock and template
+    consumers already use the selected public fields. Existing dirty files are harness session state only and are excluded
+    from this slice.
+  - safety / validation:
+    No schema, migration, auth/authorization, tenant predicate, audit write, or medical/billing meaning changes. Keep
+    sensitive no-store wrappers, exact response roots, and external behavior stable. Validate focused route tests, DTO
+    checker/test, API-shape and type gates before recording completion.
+
 - codex: main worktree integration and push.
   - task / result / commits:
     `GIT-MAIN-INTEGRATE-001` DONE. Live inventory found exactly one worktree, one local branch (`main`), and no

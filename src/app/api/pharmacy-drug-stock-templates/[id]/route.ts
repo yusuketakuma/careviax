@@ -2,9 +2,24 @@ import { NextRequest } from 'next/server';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { notFound, success } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 
-export const DELETE = withAuthContext(
+function presentDeletedFormularyTemplate(template: {
+  id: string;
+  name: string;
+  item_count: number;
+  source_site_id: string | null;
+}) {
+  return {
+    id: template.id,
+    name: template.name,
+    item_count: template.item_count,
+    source_site_id: template.source_site_id,
+  };
+}
+
+const authenticatedDELETE = withAuthContext(
   async (_req: NextRequest, authCtx, ctx: AuthRouteContext<{ id: string }>) => {
     const { id } = await ctx.params;
     const template = await prisma.formularyTemplate.findFirst({
@@ -30,7 +45,10 @@ export const DELETE = withAuthContext(
       });
     });
 
-    return success({ data: template, meta: { deleted: true } });
+    return success({ data: presentDeletedFormularyTemplate(template), meta: { deleted: true } });
   },
   { permission: 'canAdmin' },
 );
+
+export const DELETE: typeof authenticatedDELETE = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedDELETE(req, routeContext));
