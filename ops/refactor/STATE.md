@@ -51,6 +51,35 @@
 
 ## 直近の作業
 
+- codex: workflow exception sensitive no-store hardening.
+  - commit:
+    `29de03733 fix(API-WORKFLOW-EXCEPTION-NOSTORE-001): prevent clinical response caching`.
+  - current task / source / acceptance:
+    HIGH `API-WORKFLOW-EXCEPTION-NOSTORE-001` (code-scan)。Authenticated clinical workflow exception GET/PATCHの
+    explicit cache prohibition欠落を閉じる。Successとvalidation error両方のprivate no-store/pragma、body/domain不変、
+    shared helper再利用を完了条件とした。
+  - files inspected / changed:
+    Workflow exception GET/PATCH and full tests; sensitive response helper and nearby wrapper patterns; auth/org/domain
+    paths; Plans/archive/state; active dirty tree. Changed only the route wrapper/test and planning ledgers.
+  - implementation / behavior / rollback:
+    Both authenticated handlers are now wrapped at the outer route boundary with `withSensitiveNoStore`, covering
+    success and early error returns. Response bodies, permission checks and domain side effects are unchanged. Rollback
+    is the scoped code and ledger commits; no schema, migration, stored data, dependency or deploy change exists.
+  - security / medical / privacy:
+    `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache` now prevent browser/intermediary retention of
+    exception responses. Human review should confirm header-only behavior; no medical rule changed. Codex alone
+    implemented and verified the task; no subagent, agmsg, Claude, Oracle or external worker was used.
+  - validation:
+    Focused Vitest passed 1 file / 6 tests with GET/PATCH success and validation header assertions. Exact ESLint,
+    Prettier, `api-response-shape:check` (26 allowlisted / 0 new), route-auth, frontend-contract, query-shape,
+    client-PHI-log and `git diff --check` passed. Typegen succeeded; full typecheck remains red only on the pre-existing
+    user-owned `communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that gate is red. No
+    DB/migration, production operation, external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen / remaining:
+    Task is DONE and recorded under completed derived work; the parent no-store ratchet remains broader than this route.
+    Browser/image generation were omitted because headers do not affect UI. Preserve unowned config, harness, inbound
+    and medication-stock work; rescan the 26 remaining response-shape entries and continue with a bounded safe slice.
+
 - codex: workflow exception resolution envelope convergence.
   - commit:
     `55170632e fix(API-CONTRACT-001EK): envelope workflow exception resolution`.
@@ -39203,3 +39232,73 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
 - remaining:
   Other `ErrorState` variants retain their existing semantics; further changes require a separate
   SSOT role decision rather than opportunistic recoloring.
+
+## 2026-07-10 STOCK-002-EQUIVALENCE-REVIEW-GUARD — unresolved identity is write-blocking
+
+- current task:
+  Complete the safe prerequisite for `STOCK-002-EQUIVALENCE-REVIEW`: do not allow a stock item with
+  unresolved medication identity to receive a new ledger event. This is intentionally not the full
+  candidate adoption/rejection lifecycle.
+- plan review:
+  Read-only mapper, medical-safety, and privacy reviews found that the existing status enum
+  (`not_required | needs_review | reviewed | uncertain`) was drifted from the visit UI's legacy
+  `none` sentinel, and that all three ledger write paths could update an unresolved item. The full
+  adoption/rejection workflow remains a separate design gate because the schema has no immutable
+  decision/reviewer/reason/idempotency audit record. Oracle was not used, per the current user
+  instruction.
+- commit:
+  `c2b91232b fix(stock): block writes pending equivalence review`.
+- files inspected:
+  `Plans.md`; `prisma/schema/medication.prisma`; medication-equivalence domain/tests; inbound, visit,
+  prescription-supply, snapshot, and patient-summary applications/tests; visit observation panel and
+  tests; paired inbound/visit/patient-stock routes/tests; `docs/ui-ux-design-guidelines.md`; and the
+  current dirty tree.
+- files changed:
+  `src/modules/pharmacy/medication-stock/domain/medication-equivalence.{ts,test.ts}`;
+  `src/modules/pharmacy/medication-stock/application/apply-{inbound-medication-stock-signal,visit-medication-stock-observation,prescription-supply}.{ts,test.ts}`;
+  `src/modules/pharmacy/medication-stock/application/patient-medication-stock-summary.ts`;
+  `src/types/medication-stock.ts`;
+  `src/components/features/visits/visit-medication-stock-observation-panel.{tsx,test.tsx}`; and
+  `tools/tests/ui-route-mocked-smoke.spec.ts`.
+- bugs found / fixed:
+  Default `not_required` rows were rendered as raw `not_required` and blocked by the obsolete
+  `!== 'none'` check. DTO fields are now strict unions, UI labels are controlled Japanese text, and
+  only `needs_review` / `uncertain` (or an unknown runtime value) are disabled. `reviewed` remains
+  operable and `not_required` has no unnecessary badge.
+- security / medical-safety risks reduced:
+  A shared fail-closed predicate permits a new ledger write only for `not_required` or `reviewed`.
+  Inbound signal application rejects before signal linking/external observation/event/snapshot/task
+  closure; visit observations reject all new items in a mixed batch before any create; and
+  prescription supply returns the established review task with `equivalence_review_pending` before
+  event/snapshot creation. Existing matching idempotent replays remain read-only responses and are
+  covered with an unresolved-status regression per path. No medication item, quantity, unit, event,
+  snapshot, or canonical group is merged or rewritten.
+- privacy / UI:
+  The client never displays a raw enum. Unresolved/unknown values show controlled state text and a
+  PHI-safe disabled reason connected to the primary control. `StateBadge` supplies the shared state
+  role, icon, and label. Image generation was omitted because this is an existing component's
+  validation/state-label correction rather than a visual reconstruction; the UI SSOT was reviewed.
+- performance:
+  The three existing item reads add one persisted enum field and a constant-time predicate. No new
+  query, request, polling, unbounded loop, cache, or render path was introduced.
+- validation:
+  `pnpm vitest run` for the six focused domain/application/UI files passed 6 files / 61 tests;
+  paired inbound/visit/patient-stock route tests passed 3 files / 34 tests; exact ESLint and
+  Prettier checks passed; `git diff --check` passed; `pnpm db:query-shape:check`,
+  `pnpm db:raw-read-org-guard:check`, `pnpm client-phi-log:check`,
+  `pnpm frontend-contract:check`, `pnpm api-response-shape:check`,
+  `pnpm dto-direct-prisma-return:check`, and `pnpm plans:active:check` passed. The mocked browser
+  suite enumerated successfully. Independent implementation and UI reviewers both returned PASS.
+  `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck` completed Next type generation, then
+  stopped only at the pre-existing user-owned
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285` `string | null` versus
+  `string | undefined` error; no changed-file error was reported.
+- remaining work:
+  The complete pharmacist adoption/rejection lifecycle remains blocked pending an immutable,
+  org-scoped/RLS-protected decision model, audit transaction, stale-version/idempotency contract,
+  and the required migration/human gate. Do not auto-merge medication items or use candidate evidence
+  to alter quantities, units, historical events, or snapshots. `PERF-DB-PATIENT-BOARD-CURSOR` also
+  remains a larger design gate rather than a safe cursor-only patch.
+- next action:
+  Re-score the highest safe remaining `Plans.md` P1 slice after preserving concurrent dirty work;
+  keep the full `STOCK-002` lifecycle in the explicit design-gate queue.

@@ -260,6 +260,7 @@
 - `QUERY-SHAPE-WATCHLIST-003G`: patient visit brief/visits tab/visit constraints の route shell watchlist 追加。
 - `QUERY-SHAPE-WATCHLIST-003H`: report today-workspace BFF の bounded top-N read 安定順序固定。
 - `API-CONTRACT-001A`: 〜`API-CONTRACT-001EK` まで envelope 移行 slice 115+件完了。allowlist debt 240 → 26。各 slice の対象 route/reader/検証詳細は `docs/plans-archive.md`。
+- `API-WORKFLOW-EXCEPTION-NOSTORE-001`: workflow exception GET/PATCHの成功・validation応答をshared sensitive no-store wrapperでcache禁止した。
 - `API-SCHEDULE-LIMIT-001`: admin performance の visit-schedules requestをbackend上限へ整合し、必ず400になる`limit=200`を`limit=100`へ修正。
 - `PERF-DB-READ-SLO-001A`: `tools/read-path-slo.json` と `db:read-slo:check` の registry drift 検査。
 - `FRONTEND-CONTRACT-001`: `docs/frontend-screen-contracts.md` と `frontend-contract:check` で7画面契約を固定。
