@@ -454,9 +454,11 @@ async function authenticatedPOST(req: NextRequest) {
 
     return success(
       {
-        facility_label: result.facility_label,
-        patient_count: result.patient_count,
-        entries: result.entries,
+        data: {
+          facility_label: result.facility_label,
+          patient_count: result.patient_count,
+          entries: result.entries,
+        },
       },
       201,
     );

@@ -1002,27 +1002,29 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      facility_label: 'facility_a',
-      patient_count: 2,
-      entries: [
-        {
-          cycle_id: 'cycle_1',
-          intake_id: 'intake_1',
-          case_id: 'case_1',
-          patient_id: 'patient_1',
-          patient_name: '山田 花子',
-          line_count: 2,
-        },
-        {
-          cycle_id: 'cycle_2',
-          intake_id: 'intake_2',
-          case_id: 'case_2',
-          patient_id: 'patient_2',
-          patient_name: '佐藤 次郎',
-          line_count: 1,
-        },
-      ],
+    expect(await response.json()).toEqual({
+      data: expect.objectContaining({
+        facility_label: 'facility_a',
+        patient_count: 2,
+        entries: [
+          expect.objectContaining({
+            cycle_id: 'cycle_1',
+            intake_id: 'intake_1',
+            case_id: 'case_1',
+            patient_id: 'patient_1',
+            patient_name: '山田 花子',
+            line_count: 2,
+          }),
+          expect.objectContaining({
+            cycle_id: 'cycle_2',
+            intake_id: 'intake_2',
+            case_id: 'case_2',
+            patient_id: 'patient_2',
+            patient_name: '佐藤 次郎',
+            line_count: 1,
+          }),
+        ],
+      }),
     });
     expect(cycleCreateMock).toHaveBeenCalledTimes(2);
     expect(intakeCreateMock).toHaveBeenCalledTimes(2);
