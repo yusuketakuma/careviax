@@ -51,6 +51,40 @@
 
 ## 直近の作業
 
+- codex: QR scan draft confirmation envelope convergence.
+  - commit:
+    `6903b537b fix(API-CONTRACT-001EI): envelope QR draft confirmation result`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001EI`。`POST /api/qr-scan-drafts/:id/confirm` の201 successを exact
+    `{ data: { intake, cycle, medicationChanges, profileSyncResult } }` に揃え、readerを同契約へ移行する。
+    Provider/consumer parity、legacy/malformed success拒否、clinical transaction非変更、debt減を完了条件とした。
+  - files inspected / changed:
+    Confirm route and full focused test; review page mutation and tests; special submit-error parser; QR draft/patient/
+    case/drug validation and claim path; intake transaction service call; post-create hooks; webhook/audit/realtime;
+    allowlist; Plans/archive/state; active dirty tree. Changed only success DTO/test, sole reader/test, allowlist and ledgers.
+  - implementation / behavior / rollback:
+    Provider nests the unchanged result under `data`. The reader retains the existing detailed non-2xx parser, then
+    validates string `data.intake.id` and `data.cycle.id` before success toast/navigation; legacy root now fails closed.
+    Rollback is the scoped code and ledger commits; no transaction, persisted field, schema, migration, dependency or
+    deploy configuration changed.
+  - security / medical / privacy / human review:
+    Patient/case/draft/org checks, DrugMaster and packaging validation, pending claim, intake/cycle transaction,
+    medication/profile hooks, supplemental records, webhook, cross-user audit and realtime behavior are unchanged and
+    covered by the focused suite. No PHI field/log/audit payload/query was added. Human review should confirm only the
+    intentional public response nesting and consumer parity; no medical rule or value changed. Codex alone implemented
+    and verified this HR-adjacent slice; no subagent, agmsg, Claude, Oracle or external worker was used.
+  - validation:
+    Baseline and final focused Vitest each passed 2 files / 42 tests, including nested success and legacy-root refusal.
+    Exact ESLint, Prettier, `api-response-shape:check` (28 allowlisted / 0 new), route-auth, frontend-contract,
+    query-shape, client-PHI-log and `git diff --check` passed. Typegen succeeded; full typecheck returned to only the
+    pre-existing user-owned `communications/inbound/inbound-content.tsx:2285` TS2322 after the concurrent stock edits
+    resolved their three temporary DTO errors. Build was not run while typecheck is red. No DB/migration, production
+    operation, external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen / remaining:
+    `API-CONTRACT-001EI` is DONE; parent remains Partial at 28 violations. Browser/image generation were omitted because
+    no visible UI structure or interaction changed. Preserve unowned config, harness, inbound and medication-stock work;
+    the QR response-shape family is now clear, so rescan and select the next bounded non-consent/non-platform route.
+
 - codex: QR scan draft discard envelope convergence.
   - commit:
     `302e80361 fix(API-CONTRACT-001EH): envelope QR draft discard result`.
