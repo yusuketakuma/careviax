@@ -364,6 +364,14 @@ describe('/api/residual-medications', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      data: [
+        {
+          id: 'residual_1',
+          visit_record_id: 'visit_1',
+        },
+      ],
+    });
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(withRoutePerformanceMock).toHaveBeenCalledWith(

@@ -292,7 +292,7 @@ async function authenticatedPOST(req: NextRequest) {
       });
     }
 
-    return success(result, 201);
+    return success({ data: result }, 201);
   });
 }
 
