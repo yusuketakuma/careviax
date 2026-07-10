@@ -78,7 +78,7 @@ describe('useScheduleDayPlannerQueries', () => {
         url ===
         '/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-06-11&visit_type=regular&pharmacist_id=pharmacist_2&site_id=site_2'
       ) {
-        return new Response(JSON.stringify(billingPreview), { status: 200 });
+        return new Response(JSON.stringify({ data: billingPreview }), { status: 200 });
       }
       throw new Error(`Unexpected fetch: ${url} ${JSON.stringify(init)}`);
     });
@@ -153,7 +153,7 @@ describe('useScheduleDayPlannerQueries', () => {
         url ===
         '/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-06-11&visit_type=regular&pharmacist_id=pharmacist_2'
       ) {
-        return new Response(JSON.stringify(billingPreview), { status: 200 });
+        return new Response(JSON.stringify({ data: billingPreview }), { status: 200 });
       }
       throw new Error(`Unexpected fetch: ${url}`);
     });
@@ -234,7 +234,9 @@ describe('useScheduleDayPlannerQueries', () => {
       expect(result.current.billingPreviewLoading).toBe(true);
     });
 
-    billingPreviewResolver.current?.(new Response(JSON.stringify(billingPreview), { status: 200 }));
+    billingPreviewResolver.current?.(
+      new Response(JSON.stringify({ data: billingPreview }), { status: 200 }),
+    );
 
     await waitFor(() => {
       expect(result.current.billingPreviewLoading).toBe(false);

@@ -657,10 +657,11 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch(`/api/visit-schedule-proposals/billing-preview?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<VisitScheduleBillingPreview>(
+      const payload = await readApiJson<{ data: VisitScheduleBillingPreview }>(
         response,
         '算定プレビューの取得に失敗しました',
       );
+      return payload.data;
     },
     enabled: !!orgId && !!selectedCaseId,
   });

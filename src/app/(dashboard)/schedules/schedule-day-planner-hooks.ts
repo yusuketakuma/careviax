@@ -100,7 +100,11 @@ export function useScheduleDayPlannerQueries({
           headers: buildOrgHeaders(orgId),
         },
       );
-      return readApiJson<VisitScheduleBillingPreview>(res, '算定プレビューの取得に失敗しました');
+      const payload = await readApiJson<{ data: VisitScheduleBillingPreview }>(
+        res,
+        '算定プレビューの取得に失敗しました',
+      );
+      return payload.data;
     },
     enabled: billingPreviewEnabled,
   });

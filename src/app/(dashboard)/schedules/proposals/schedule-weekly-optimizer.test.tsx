@@ -386,6 +386,30 @@ describe('ScheduleWeeklyOptimizer', () => {
     }
   });
 
+  it('unwraps the billing preview data envelope', async () => {
+    const preview = {
+      suggested_schedule_slot_count: 4,
+      recommended_visit_type: 'regular',
+      recommended_priority: 'normal',
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ data: preview }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ScheduleWeeklyOptimizer initialCaseId="case_1" />);
+
+    const billingPreviewQuery = useQueryMock.mock.calls
+      .map(([config]) => config as QueryConfig)
+      .find((config) => config.queryKey[0] === 'weekly-optimizer-billing-preview');
+
+    await expect(billingPreviewQuery?.queryFn?.()).resolves.toEqual(preview);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^\/api\/visit-schedule-proposals\/billing-preview\?case_id=case_1&proposed_date=\d{4}-\d{2}-\d{2}$/,
+      ),
+      { headers: { 'x-org-id': 'org_1' } },
+    );
+  });
+
   it('reads route preview from the standard data envelope', async () => {
     const routePlan = {
       status: 'ok',

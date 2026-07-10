@@ -152,7 +152,9 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
         }),
       },
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body.data).toMatchObject({
       suggested_schedule_slot_count: 3,
       cadence: expect.objectContaining({
         current_month_count: 2,
