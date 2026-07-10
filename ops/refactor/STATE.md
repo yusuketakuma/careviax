@@ -39968,3 +39968,54 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 
   error/recovery contract is reviewed; do not erase controlled API detail or consolidate every raw
   message through a global change. Preserve the API-contract worker's dirty paths and explicit
   migration/human gates while selecting the next P1 slice.
+
+## 2026-07-10 FE-PHI-SAFE-CLIENT-LOG-001-COMMENTS — persistent mutation recovery
+
+- current task / plan review:
+  Review of the patient collaboration `CommentThread` found two raw-error paths (create and delete).
+  A toast-only replacement was explicitly rejected because the UI SSOT requires persistent inline failure
+  state and retry for dynamic, retryable errors. The approved two-file slice adds per-operation alert and
+  retry while retaining input and target-row state. Oracle was not used, per the current user instruction.
+- commit:
+  `4f1dfcd03 fix(comments): keep mutation errors PHI-safe`.
+- files inspected / changed:
+  `src/components/features/comments/comment-thread.tsx` and its focused test; inspected the patient
+  collaboration caller, comment API/path helpers, realtime query behavior, existing POST/DELETE tests,
+  UI SSOT error/retry rules, client logger/tests, and current dirty ownership.
+- bugs found / fixed:
+  Comment create/delete passed arbitrary `readApiJson` error messages into transient toasts, and had no
+  persistent mutation-failure state. Create now keeps its draft and mentions, shows a fixed inline alert
+  with `再送信`, and logs only `comment_thread.create_failed`. Delete keeps the comment row, binds a
+  fixed alert and `削除を再試行` to the failed ID, and logs only `comment_thread.delete_failed`. Both log
+  contexts are the static `entityType: 'comment'`; no entity ID, prop entity type, author, content,
+  mention, route, payload, response, or token is emitted. Existing API paths, org headers, ID encoding,
+  success invalidation, and realtime behavior are unchanged.
+- security / medical safety:
+  Tests inject patient-like name, phone, comment-body, and token values through server error messages and
+  prove their absence from the persistent alert and toast. They preserve the user-entered comment and the
+  original row so recovery is deliberate rather than false-success or false-empty. A separate follow-up
+  is still needed for destructive comment-delete confirmation; this error-boundary slice intentionally
+  does not change the existing delete authorization/audit workflow.
+- performance / UI:
+  Two local boolean/ID states and constant-time conditional rendering only; no extra fetch, persistence,
+  polling, data disclosure, or dependency. Image generation was omitted because the implementation
+  extends the existing error/retry pattern inside a working component rather than reconstructing visual
+  hierarchy; `docs/ui-ux-design-guidelines.md` was reviewed.
+- validation:
+  `pnpm vitest run src/components/features/comments/comment-thread.test.tsx
+  src/components/features/comments/mention-input.test.tsx
+  src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx
+  src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 5 files / 42 tests with no React
+  `act` warnings after the dot-ID failure test awaited the persistent alert. Exact ESLint, Prettier,
+  `git diff --check`, `pnpm client-phi-log:check`, `pnpm frontend-contract:check`, and
+  `pnpm colors:check` passed. Independent verifier returned PASS. The last serialized
+  `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck` completed Next route type generation and
+  reported only unchanged non-owned errors in
+  `communications/inbound/inbound-content.tsx:2285:49` and
+  `visits/[id]/capture/capture-content.tsx:103-108` (undefined `record`); no changed-file error was
+  reported.
+- remaining / next action:
+  `FE-PHI-SAFE-CLIENT-LOG-001` remains Partial. Keep each remaining route's recovery contract scoped;
+  do not globally suppress authorization/validation detail. Track comment-delete confirmation as a
+  separate destructive-operation safety slice, and continue avoiding concurrent API-contract and
+  user-owned dirty paths.
