@@ -51,6 +51,36 @@
 
 ## 直近の作業
 
+- codex: set-audit idempotent replay envelope convergence.
+  - commit:
+    `8dd18f3be fix(API-CONTRACT-001EM): envelope set-audit replay result`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001EM`。`POST /api/set-audits` のidempotent replayだけがraw objectを返す
+    FE/BE分岐をexact `{ data: replayResult }` へ揃える。Nested replay、duplicate side effect 0、通常audit不変、
+    adapter parity、debt減を完了条件とした。
+  - files inspected / changed:
+    Set-audits GET/POST and full tests; idempotent replay matcher; normal 201 branch; workbench adapter/mutation;
+    batch/file/cycle/schedule/audit/notification side effects; allowlist; Plans/archive/state; active dirty tree.
+    Changed only replay success/test, allowlist and planning ledgers.
+  - implementation / behavior / rollback:
+    The already-applied audit result is now nested under `data`, matching both normal creation and the typed adapter.
+    Replay remains 200 and returns the same persisted fields/idempotent marker. Rollback is the scoped code/ledger
+    commits; no audit transaction, stored data, schema, migration, dependency or deploy configuration changed.
+  - security / audit / medical / human review:
+    Existing audit equivalence check and zero-duplicate-side-effect guarantees remain covered. No approval rule, audit
+    evidence, medication value, PHI field or log changed. Human review should confirm only replay response parity.
+    Codex alone implemented and verified the slice; no subagent, agmsg, Claude, Oracle or external worker was used.
+  - validation:
+    Baseline and final focused Vitest each passed 1 file / 40 tests. Exact ESLint, Prettier,
+    `api-response-shape:check` (24 allowlisted / 0 new), route-auth, frontend-contract, query-shape, client-PHI-log and
+    `git diff --check` passed. Typegen succeeded; full typecheck remains red only on the pre-existing user-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that gate is red. No DB/migration,
+    production operation, external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen / remaining:
+    `API-CONTRACT-001EM` is DONE; parent remains Partial at 24 violations. Browser/image generation were omitted because
+    no UI changed. Preserve unowned config/harness/inbound and all untracked artifact families recorded by the previous
+    entry; rescan remaining routes and avoid billing/platform/consent gates while safer bounded slices remain.
+
 - codex: residual medication creation envelope convergence.
   - commit:
     `65fb20dfa fix(API-CONTRACT-001EL): envelope residual medication creation`.
