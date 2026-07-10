@@ -174,9 +174,8 @@ export function PatientListPanel({
                       fontSize: '13px',
                       fontWeight: 700,
                       color: 'var(--wb-ink)',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
+                      lineHeight: 1.35,
+                      overflowWrap: 'anywhere',
                     }}
                   >
                     {p.name}

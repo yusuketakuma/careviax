@@ -43385,3 +43385,41 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts --reporter=dot` pa
   contracts. `PERM-DOC-SYNC-001` requires a human choice between role-implied audit capability and explicit
   per-membership opt-in/denial before changes to role defaults, recipient selection, or auth checks. Preserve
   the active API-contract/platform dirty paths and the inbound typecheck blocker.
+
+## 2026-07-11 UI-UX-DV07-DISPENSE-QUEUE — preserve full patient identifiers
+
+- current task:
+  Continue the UI/UX refresh P1 DV-07 remediation in the desktop-only dispense workbench patient queue.
+  The affected line is the patient-selection control, so the acceptance boundary is: show a long name in
+  full without changing patient selection, phase behavior, workbench state model, API data, or write paths.
+- files inspected / changed:
+  Inspected `docs/ui-ux-design-guidelines.md`, `patient-list-panel.tsx`, its module CSS, workbench store,
+  `WorkbenchView`/`PatientListItem` contracts, adjacent component-test style, UI refresh audit/progress,
+  and dirty ownership. Changed `patient-list-panel.tsx`, added `patient-list-panel.test.tsx`, and updated
+  the DV-07/audit progress records.
+- bugs found / fixed:
+  The patient name used `whiteSpace: 'nowrap'`, hidden overflow, and ellipsis without any recovery path.
+  It now uses natural wrapping with `overflowWrap: 'anywhere'`; the non-identifier schedule metadata remains
+  one-line so queue scanning stays dense. The row click continues to call the existing `setPatient(p.id)`.
+- security / medical safety:
+  The change prevents a patient-selection surface from hiding the distinguishing suffix of a long name.
+  It changes no PHI source, disclosure scope, patient ID, query, request, audit, authorization, persistence,
+  or mutation behavior. `gpt-image-2` was omitted because this is a local correction to an existing
+  identification rule, not a visual reconstruction; the UI SSOT was reviewed.
+- performance:
+  No new render loop, request, data structure, dependency, or persisted state. A row only grows when its
+  name exceeds the available width.
+- validation:
+  `pnpm vitest run src/components/features/dispense-workbench/patient-list-panel.test.tsx
+src/components/features/dispense-workbench/dispensing-workbench.from-api.test.ts --reporter=dot` passed
+  2 files / 39 tests. Exact ESLint and Prettier, `pnpm colors:check`, `pnpm client-phi-log:check`,
+  `pnpm frontend-contract:check`, `pnpm boundaries:check`, `pnpm typecheck`, and `git diff --check` passed.
+  `pnpm lint` completed its `eslint .` invocation without reported diagnostics. No build, E2E, a11y,
+  mobile, or full-workflow E2E was run. A local Webpack server was started with `PLAYWRIGHT=1`, mock
+  workbench data, and a local `ph_os_e2e` demo-user `SELECT` only. A signed test session rendered
+  `/dispense` at 1680px; a browser-only synthetic long name wrapped in the queue without ellipsis, and
+  the accessibility tree retained the full name. No browser console or page error was reported.
+- remaining / next action:
+  The required desktop workbench screenshot is complete. This coherent slice is ready for a scoped commit.
+  Patient board, my-day, and facility-record identifier surfaces remain separate DV-07 work; select the
+  next P1 item from the audit rather than treating this partial remediation as full DV-07 closure.
