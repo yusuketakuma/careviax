@@ -300,7 +300,8 @@ function MedicationStockItemCard({
   onDraftChange: (draft: VisitMedicationStockObservationDraft) => void;
   onDraftRemove: () => void;
 }) {
-  const snapshot = item.snapshot;
+  const snapshotUnitMismatch = item.snapshot_status === 'unit_mismatch';
+  const snapshot = snapshotUnitMismatch ? null : item.snapshot;
   const riskLevel = snapshot?.stock_risk_level ?? 'unknown';
   const categoryLabel = CATEGORY_LABELS[item.medication_category] ?? item.medication_category;
   const sourceLabel = SOURCE_LABELS[item.source_type] ?? item.source_type;
@@ -355,6 +356,18 @@ function MedicationStockItemCard({
         ) : null}
       </div>
 
+      {snapshotUnitMismatch ? (
+        <div
+          className="mt-3 rounded-md border border-border/80 bg-muted/40 p-2 text-xs"
+          role="status"
+        >
+          <p className="font-medium text-foreground">残数単位の整合性を確認中です。</p>
+          <p className="mt-1 leading-relaxed text-muted-foreground">
+            前回の記録残数・台帳計算残数・差分・推定値は表示していません。薬剤師が確認してください。
+          </p>
+        </div>
+      ) : null}
+
       <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <div className="rounded-md bg-muted/40 p-2">
           <dt className="text-xs text-muted-foreground">前回の記録残数</dt>
@@ -363,17 +376,25 @@ function MedicationStockItemCard({
               ? `${formatQuantity(snapshot.last_observed_quantity, item.unit)} / ${formatDateTime(
                   snapshot.last_observed_at,
                 )}`
-              : '未確認'}
+              : snapshotUnitMismatch
+                ? '確認不可'
+                : '未確認'}
           </dd>
         </div>
         <div className="rounded-md bg-muted/40 p-2">
           <dt className="text-xs text-muted-foreground">台帳計算残数（参考）</dt>
           <dd className="font-medium tabular-nums text-foreground">
-            {snapshot ? formatQuantity(snapshot.current_quantity, item.unit) : 'snapshot未作成'}
+            {snapshot
+              ? formatQuantity(snapshot.current_quantity, item.unit)
+              : snapshotUnitMismatch
+                ? '確認不可'
+                : 'snapshot未作成'}
           </dd>
           <p className="mt-1 text-xs text-muted-foreground">
             算出日時:{' '}
-            <span className="tabular-nums">{formatDateTime(snapshot?.calculated_at)}</span>
+            <span className="tabular-nums">
+              {snapshotUnitMismatch ? '確認不可' : formatDateTime(snapshot?.calculated_at)}
+            </span>
           </p>
         </div>
         <div className="rounded-md bg-muted/40 p-2">
@@ -394,7 +415,11 @@ function MedicationStockItemCard({
         <div className="rounded-md bg-muted/40 p-2">
           <dt className="text-xs text-muted-foreground">推定使用量</dt>
           <dd className="font-medium tabular-nums text-foreground">
-            {snapshot ? formatDailyUsage(snapshot.estimated_daily_usage, item.unit) : '不明'}
+            {snapshot
+              ? formatDailyUsage(snapshot.estimated_daily_usage, item.unit)
+              : snapshotUnitMismatch
+                ? '確認不可'
+                : '不明'}
           </dd>
         </div>
         <div className="rounded-md bg-muted/40 p-2">
@@ -406,7 +431,9 @@ function MedicationStockItemCard({
                     ? ` / あと${snapshot.days_until_stockout}日`
                     : ''
                 }`
-              : '推定不可'}
+              : snapshotUnitMismatch
+                ? '確認不可'
+                : '推定不可'}
           </dd>
         </div>
       </dl>

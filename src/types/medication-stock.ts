@@ -5,6 +5,8 @@ export type MedicationStockRiskLevelDto =
   | 'urgent'
   | 'unknown';
 
+export type PatientMedicationStockSnapshotStatus = 'available' | 'missing' | 'unit_mismatch';
+
 export type PatientMedicationStockItemDto = {
   id: string;
   display_id: string | null;
@@ -23,6 +25,7 @@ export type PatientMedicationStockItemDto = {
   equivalence_review_status: string;
   equivalence_confidence: string | null;
   active: boolean;
+  snapshot_status: PatientMedicationStockSnapshotStatus;
   snapshot: {
     current_quantity: number | null;
     last_observed_quantity: number | null;

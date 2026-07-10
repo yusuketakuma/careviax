@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { encode } from 'next-auth/jwt';
+import type { PatientMedicationStockSummaryResponse } from '@/types/medication-stock';
 import {
   attachLocalSession,
   AUTH_SECRET,
@@ -2255,7 +2256,7 @@ async function installOfflineVisitRecordRouteMocks(
   return { preparationRequests, scheduleRequests, visitRecordRequests };
 }
 
-function buildGateOffMedicationStockSummary() {
+function buildGateOffMedicationStockSummary(): PatientMedicationStockSummaryResponse {
   const generatedAt = new Date().toISOString();
   return {
     data: {
@@ -2292,6 +2293,7 @@ function buildGateOffMedicationStockSummary() {
           equivalence_review_status: 'none',
           equivalence_confidence: null,
           active: true,
+          snapshot_status: 'available',
           snapshot: {
             current_quantity: 4,
             last_observed_quantity: 12,
@@ -2320,7 +2322,40 @@ function buildGateOffMedicationStockSummary() {
   };
 }
 
-async function installVisitMedicationStockGateOffRouteMocks(page: Page) {
+function buildGateOffMedicationStockUnitMismatchSummary(): PatientMedicationStockSummaryResponse {
+  const summary = buildGateOffMedicationStockSummary();
+  const [stockItem] = summary.data.items;
+  if (!stockItem) throw new Error('Gate-off medication stock fixture is missing its stock item');
+
+  return {
+    ...summary,
+    data: {
+      ...summary.data,
+      summary: {
+        ...summary.data.summary,
+        urgent_count: 0,
+        shortage_expected_count: 0,
+        unknown_risk_count: 1,
+        last_observed_at: null,
+      },
+      items: [
+        {
+          ...stockItem,
+          id: 'gate_off_stock_unit_mismatch',
+          display_id: 'STK-GATE-OFF-MISMATCH',
+          display_name: '単位確認薬',
+          snapshot_status: 'unit_mismatch',
+          snapshot: null,
+        },
+      ],
+    },
+  };
+}
+
+async function installVisitMedicationStockGateOffRouteMocks(
+  page: Page,
+  medicationStockSummary: PatientMedicationStockSummaryResponse = buildGateOffMedicationStockSummary(),
+) {
   const headerSummaryRequests: CapturedRouteRequest[] = [];
   const stockSummaryRequests: CapturedRouteRequest[] = [];
   const observationPostUrls: string[] = [];
@@ -2351,7 +2386,7 @@ async function installVisitMedicationStockGateOffRouteMocks(page: Page) {
     apiPathPattern(`/api/patients/${OFFLINE_PATIENT_ID}/medication-stock`),
     async (route) => {
       stockSummaryRequests.push(captureRouteRequest(route));
-      await fulfillJson(route, buildGateOffMedicationStockSummary());
+      await fulfillJson(route, medicationStockSummary);
     },
   );
 
@@ -3924,6 +3959,66 @@ test.describe('visit medication stock gate-off browser regression', () => {
       const visitPayload = visitRecordRequests[0]?.body as Record<string, unknown>;
       expect(visitPayload).not.toHaveProperty('medication_stock_observations');
       expect(visitPayload).not.toHaveProperty('stock_observations');
+    }
+
+    expect(observationPostUrls).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test('suppresses an incompatible snapshot in desktop and mobile read-only stock context', async ({
+    context,
+  }, testInfo) => {
+    const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
+    const { preparationRequests, scheduleRequests } =
+      await installOfflineVisitRecordRouteMocks(page);
+    const { observationPostUrls, stockSummaryRequests } =
+      await installVisitMedicationStockGateOffRouteMocks(
+        page,
+        buildGateOffMedicationStockUnitMismatchSummary(),
+      );
+
+    await openStableRoute(page, `/visits/${OFFLINE_SCHEDULE_ID}/record`);
+
+    await expect.poll(() => scheduleRequests.length, { timeout: 10_000 }).toBeGreaterThan(0);
+    await expect.poll(() => preparationRequests.length, { timeout: 10_000 }).toBeGreaterThan(0);
+    await expect.poll(() => stockSummaryRequests.length, { timeout: 10_000 }).toBeGreaterThan(0);
+
+    if (testInfo.project.name === 'mobile-chromium') {
+      for (let index = 0; index < 6; index += 1) {
+        await page.getByRole('button', { name: '次へ', exact: true }).click();
+      }
+      await expect(page.getByRole('heading', { name: '残薬確認', exact: true })).toBeVisible();
+    }
+
+    const stockPanel = page.locator('#visit-medication-stock-observation-panel');
+    const observationKind = stockPanel.getByRole('combobox', { name: '今回の観測' });
+    await expect(stockPanel).toBeVisible();
+    await expect(stockPanel.getByText('単位確認薬', { exact: true })).toBeVisible();
+    await expect(stockPanel.getByText('不明', { exact: true })).toBeVisible();
+    await expect(
+      stockPanel.getByText('残数単位の整合性を確認中です。', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      stockPanel.getByText(
+        '前回の記録残数・台帳計算残数・差分・推定値は表示していません。薬剤師が確認してください。',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(stockPanel.getByText('確認不可', { exact: true })).toHaveCount(5);
+    await expect(stockPanel.getByText('算出不可', { exact: true })).toBeVisible();
+    await expect(stockPanel.getByText('snapshot未作成', { exact: true })).toHaveCount(0);
+    await expect(stockPanel.getByText('4枚', { exact: true })).toHaveCount(0);
+    await expect(stockPanel.getByText('12枚', { exact: true })).toHaveCount(0);
+    await expect(stockPanel.getByText('不足見込み', { exact: true })).toHaveCount(0);
+    await expect(observationKind).toBeDisabled();
+
+    if (testInfo.project.name === 'mobile-chromium') {
+      await expectMinTouchBox(observationKind, 'unit mismatch observation selector');
+      await expectNoPageHorizontalOverflow(page);
+      const panelOverflow = await stockPanel.evaluate(
+        (panel) => panel.scrollWidth - panel.clientWidth,
+      );
+      expect(panelOverflow).toBeLessThanOrEqual(2);
     }
 
     expect(observationPostUrls).toEqual([]);

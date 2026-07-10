@@ -66,6 +66,7 @@ const stockSummary: PatientMedicationStockSummaryResponse = {
         equivalence_review_status: 'none',
         equivalence_confidence: null,
         active: true,
+        snapshot_status: 'available',
         snapshot: {
           current_quantity: 4,
           last_observed_quantity: 12,
@@ -97,6 +98,7 @@ const stockSummary: PatientMedicationStockSummaryResponse = {
         equivalence_review_status: 'none',
         equivalence_confidence: null,
         active: true,
+        snapshot_status: 'missing',
         snapshot: null,
       },
     ],
@@ -213,6 +215,64 @@ describe('VisitMedicationStockObservationPanel', () => {
         String(call[0]).includes('/medication-stock-observations'),
       ),
     ).toBe(false);
+  });
+
+  it('fails closed when the summary marks a snapshot unit mismatch', async () => {
+    const unitMismatchSummary: PatientMedicationStockSummaryResponse = {
+      ...freshStockSummary(),
+      data: {
+        ...stockSummary.data,
+        summary: {
+          ...stockSummary.data.summary,
+          total_item_count: 1,
+          visible_item_count: 1,
+          active_item_count: 1,
+          urgent_count: 0,
+          shortage_expected_count: 0,
+          unknown_risk_count: 1,
+          last_observed_at: null,
+        },
+        items: [
+          {
+            ...stockSummary.data.items[0],
+            id: 'stock_unit_mismatch',
+            display_name: '単位確認薬',
+            snapshot_status: 'unit_mismatch',
+            snapshot: {
+              ...stockSummary.data.items[0].snapshot!,
+              current_quantity: 777,
+              last_observed_quantity: 444,
+              stock_risk_level: 'urgent',
+              risk_reason_code: 'legacy-unit-mismatch',
+            },
+          },
+        ],
+      },
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(unitMismatchSummary), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    renderPanel();
+
+    expect(await screen.findByText('単位確認薬')).toBeTruthy();
+    expect(screen.getByText('残数単位の整合性を確認中です。')).toBeTruthy();
+    expect(
+      screen.getByText(
+        '前回の記録残数・台帳計算残数・差分・推定値は表示していません。薬剤師が確認してください。',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('不明', { exact: true })).toBeTruthy();
+    expect(screen.getAllByText('確認不可', { exact: true })).toHaveLength(5);
+    expect(screen.getByText('算出不可', { exact: true })).toBeTruthy();
+    expect(screen.queryByText('777枚')).toBeNull();
+    expect(screen.queryByText('444枚')).toBeNull();
+    expect(screen.queryByText('至急', { exact: true })).toBeNull();
+    expect(screen.queryByText('legacy-unit-mismatch')).toBeNull();
+    expect(screen.queryByText('snapshot未作成')).toBeNull();
   });
 
   it('shows an explicit error state instead of an empty state when summary fetch fails', async () => {

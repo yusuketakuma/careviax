@@ -111,6 +111,13 @@ function toItemDto(
   item: StockItemRow,
   snapshot: StockSnapshotRow | null,
 ): PatientMedicationStockItemDto {
+  const snapshotStatus: PatientMedicationStockItemDto['snapshot_status'] = !snapshot
+    ? 'missing'
+    : snapshot.unit === item.unit
+      ? 'available'
+      : 'unit_mismatch';
+  const availableSnapshot = snapshotStatus === 'available' ? snapshot : null;
+
   return {
     id: item.id,
     display_id: item.display_id,
@@ -129,18 +136,19 @@ function toItemDto(
     equivalence_review_status: item.equivalence_review_status,
     equivalence_confidence: item.equivalence_confidence,
     active: item.active,
-    snapshot: snapshot
+    snapshot_status: snapshotStatus,
+    snapshot: availableSnapshot
       ? {
-          current_quantity: decimalToNumber(snapshot.current_quantity),
-          last_observed_quantity: decimalToNumber(snapshot.last_observed_quantity),
-          last_observed_at: dateToIso(snapshot.last_observed_at),
-          estimated_daily_usage: decimalToNumber(snapshot.estimated_daily_usage),
-          usage_confidence: snapshot.usage_confidence,
-          estimated_stockout_date: dateToIso(snapshot.estimated_stockout_date),
-          days_until_stockout: snapshot.days_until_stockout,
-          stock_risk_level: snapshot.stock_risk_level,
-          risk_reason_code: snapshot.risk_reason_code,
-          calculated_at: dateToIso(snapshot.calculated_at),
+          current_quantity: decimalToNumber(availableSnapshot.current_quantity),
+          last_observed_quantity: decimalToNumber(availableSnapshot.last_observed_quantity),
+          last_observed_at: dateToIso(availableSnapshot.last_observed_at),
+          estimated_daily_usage: decimalToNumber(availableSnapshot.estimated_daily_usage),
+          usage_confidence: availableSnapshot.usage_confidence,
+          estimated_stockout_date: dateToIso(availableSnapshot.estimated_stockout_date),
+          days_until_stockout: availableSnapshot.days_until_stockout,
+          stock_risk_level: availableSnapshot.stock_risk_level,
+          risk_reason_code: availableSnapshot.risk_reason_code,
+          calculated_at: dateToIso(availableSnapshot.calculated_at),
         }
       : null,
   };

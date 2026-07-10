@@ -176,6 +176,7 @@ describe('getPatientMedicationStockSummary', () => {
     expect(result?.data.items[0]).toMatchObject({
       id: 'stock_urgent',
       display_name: '湿布',
+      snapshot_status: 'available',
       snapshot: {
         current_quantity: 2,
         last_observed_quantity: 4,
@@ -246,5 +247,81 @@ describe('getPatientMedicationStockSummary', () => {
       },
     });
     expect(JSON.stringify(result)).not.toContain('visit_record_1');
+  });
+
+  it('fails closed for a snapshot whose unit does not match its stock item', async () => {
+    const db = createDb();
+    vi.mocked(db.patient.findFirst).mockResolvedValue({
+      id: 'patient_1',
+      cases: [{ id: 'case_1' }],
+    } as never);
+    vi.mocked(db.patientMedicationStockItem.count).mockResolvedValue(1);
+    vi.mocked(db.externalMedicationStockObservation.count).mockResolvedValue(0);
+    vi.mocked(db.patientMedicationStockItem.findMany).mockResolvedValue([
+      {
+        id: 'stock_unit_mismatch',
+        display_id: 'MS-MISMATCH',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        display_name: '単位確認薬',
+        normalized_name: null,
+        ingredient_name: null,
+        strength: null,
+        dosage_form: null,
+        route: null,
+        unit: 'sheet',
+        source_type: 'manual',
+        medication_category: 'other',
+        managing_party: 'pharmacy',
+        equivalence_review_status: 'not_required',
+        equivalence_confidence: null,
+        active: true,
+        updated_at: new Date('2026-07-07T01:00:00Z'),
+      },
+    ] as never);
+    vi.mocked(db.medicationStockSnapshot.findMany).mockResolvedValue([
+      {
+        stock_item_id: 'stock_unit_mismatch',
+        current_quantity: '777',
+        unit: 'mL',
+        last_observed_quantity: '444',
+        last_observed_at: new Date('2026-07-06T09:00:00Z'),
+        estimated_daily_usage: '2',
+        usage_confidence: 'high',
+        estimated_stockout_date: new Date('2026-07-08T00:00:00Z'),
+        days_until_stockout: 1,
+        stock_risk_level: 'urgent',
+        risk_reason_code: 'legacy-unit-mismatch',
+        calculated_at: new Date('2026-07-07T00:00:00Z'),
+      },
+    ] as never);
+    vi.mocked(db.medicationStockEvent.findMany).mockResolvedValue([]);
+
+    const result = await getPatientMedicationStockSummary(db, args);
+
+    expect(result?.data.items).toEqual([
+      expect.objectContaining({
+        id: 'stock_unit_mismatch',
+        unit: 'sheet',
+        snapshot_status: 'unit_mismatch',
+        snapshot: null,
+      }),
+    ]);
+    expect(result?.data.summary).toMatchObject({
+      total_item_count: 1,
+      visible_item_count: 1,
+      active_item_count: 1,
+      urgent_count: 0,
+      shortage_expected_count: 0,
+      watch_count: 0,
+      unknown_risk_count: 1,
+      usage_unknown_count: 0,
+      last_observed_at: null,
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('777');
+    expect(serialized).not.toContain('444');
+    expect(serialized).not.toContain('mL');
+    expect(serialized).not.toContain('legacy-unit-mismatch');
   });
 });
