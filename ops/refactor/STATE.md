@@ -51,6 +51,23 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh Phase 7 executable-SSOT plan (IN_PROGRESS, 2026-07-11; documentation-only pending advisory review).
+  - result / scope:
+    Added `docs/ui-ux-refresh/09-implementation-plan.md`, mapping the normative SSOT, role tokens, labels/mappings,
+    components, and tests to the gaps found in Phase 5/6. It sequences a behavior-preserving offline-sync registry
+    adapter before broader state primitives and separates the P1 patient/clinical/sync/auth screen work into gated
+    slices. No source/runtime behavior changed.
+  - advisory gate:
+    An Oracle GPT-5.5 Pro browser review (`sync-status-registry`) is running on the narrow question of whether the
+    existing five offline-sync keys can move to a typed registry adapter without changing labels, roles, retry/queue,
+    persistence, PHI, API, or authorization behavior. GitHub context was included (origin repository, main,
+    `7ac7a7f8a`, ahead two, no PR); model selection was reported as the current Pro choice but engine verification is
+    pending its response. Do not implement the adapter until the advice is retrieved and locally validated.
+  - next action:
+    Reattach to the existing Oracle session rather than starting a duplicate. If it advises a narrow adapter, implement
+    it with exact role/label/component regression tests only; otherwise keep Phase 7 at planning and select a lower-risk
+    documentation/verification slice.
+
 - codex: UI/UX Refresh Phase 6 target design direction and normative state-language boundary (DONE, 2026-07-11; documentation slice).
   - result / scope:
     Added the target design direction, three-level status communication, seven orthogonal state domains, Visual Status
