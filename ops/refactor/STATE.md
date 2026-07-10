@@ -52,6 +52,44 @@
 
 ## 直近の作業
 
+- codex: visit schedule PATCH response-envelope convergence.
+  - commit:
+    `a1f58d005 fix(API-CONTRACT-001EB): envelope schedule patch results`.
+  - current task:
+    P0 `API-CONTRACT-001EB`。`PATCH /api/visit-schedules/:id` のno-op/実更新successを raw scheduleから
+    exact `{ data: schedule }` へ移し、`api-response-shape` allowlist debtを37から35へ削減する。
+    同routeのDELETE 1違反は後続へ残す。
+  - files inspected:
+    `Plans.md`; `docs/plans-archive.md`; this state; schedule detail route/test; all exact endpoint references;
+    schedule team board PATCH caller/test; response-shape allowlist; active dirty tree and recent commits。
+  - files changed:
+    `src/app/api/visit-schedules/[id]/route.ts` and test;
+    `tools/api-response-shape-allowlist.json`; `Plans.md`; `docs/plans-archive.md`; and this state file。
+  - bugs found / fixed:
+    Both successful PATCH branches returned a raw schedule while GET had moved to the standard envelope. The no-op
+    and guarded-write branches now return the same exact nested contract, and tests pin nested status/version plus
+    absence of root schedule fields. The only production mutation caller discards the body and refreshes the board,
+    so no compatibility fallback was added.
+  - frontend/backend, security and performance:
+    Lifecycle/ready gates, assignment permission, org scope, Serializable retry, version/confirmed/route-order/
+    vehicle/time/shift guards, audit, workflow notification, no-store, status and errors are unchanged. No query,
+    mutation, UI state, PHI disclosure, dependency or performance-sensitive work was added.
+  - plan review / agents / Oracle:
+    Codex alone traced all exact endpoint references and the mutation reader. No subagent, agmsg, Claude, external
+    maker/checker or Oracle consultation was used.
+  - validation:
+    Pre-change and post-change focused Vitest each passed 2 files / 117 tests. Exact ESLint, Prettier and
+    `git diff --check` passed. `api-response-shape:check` passed at 35 allowlisted / 0 new; route-auth and
+    query-shape guards passed. Typegen succeeded; full typecheck reported no PATCH error and remains red only on
+    the pre-existing user-owned inbound TS2322 at line 2285. Build was not run while that prerequisite gate is red.
+    No DB/migration command, production operation, external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen:
+    `API-CONTRACT-001EB` is complete; parent remains Partial with 35 violations, including the same route's DELETE
+    success. Image generation/browser screenshots were omitted because response nesting changes no visual state.
+  - remaining / next action:
+    Migrate the bounded DELETE success as a separate rollback unit, preserving all unowned inbound/config/harness
+    dirty files. No push was performed.
+
 - codex: visit schedule detail GET response-envelope convergence.
   - commit:
     `8749ab318 fix(API-CONTRACT-001EA): envelope schedule detail response`.
