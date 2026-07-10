@@ -630,8 +630,10 @@ const authenticatedPATCH = withAuthContext(
     );
 
     return success({
-      schedule_ids: successfulResult.schedule_ids,
-      proposal_ids: successfulResult.proposal_ids,
+      data: {
+        schedule_ids: successfulResult.schedule_ids,
+        proposal_ids: successfulResult.proposal_ids,
+      },
     });
   },
   {

@@ -195,6 +195,15 @@ describe('/api/visit-routes/reorder PATCH', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    const responseBody = await response.json();
+    expect(responseBody).toEqual({
+      data: {
+        schedule_ids: ['schedule_1'],
+        proposal_ids: [],
+      },
+    });
+    expect(responseBody).not.toHaveProperty('schedule_ids');
+    expect(responseBody).not.toHaveProperty('proposal_ids');
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
