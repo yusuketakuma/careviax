@@ -51,6 +51,38 @@
 
 ## 直近の作業
 
+- codex: QR scan draft creation envelope convergence.
+  - commit:
+    `759cb3af1 fix(API-CONTRACT-001EF): envelope QR draft creation result`.
+  - current task / purpose / acceptance:
+    P0 `API-CONTRACT-001EF`。`POST /api/qr-scan-drafts` の201 successを exact
+    `{ data: { draft, parse_result, session_id } }` に揃え、唯一のproduction readerを同契約へ移行する。
+    Exact envelope/root field不在、session継続、malformed success拒否、QR raw情報非露出、debt減を完了条件とした。
+  - files inspected / changed:
+    Next.js route handler guide; QR draft collection route/test; QR scan page/contract test; request payload helper/test;
+    `readApiJson`; sanitizer and session generation path; allowlist; Plans/archive/state; active dirty tree. Changed only
+    the provider/test, sole reader/contract test, boundary helper/test, allowlist and planning ledgers.
+  - implementation / behavior / rollback:
+    Provider nests the existing sanitized create DTO under `data`. The page now uses `readApiJson`, then validates a
+    non-empty `data.session_id` through a focused boundary helper before entering the done phase. Legacy root, missing
+    data and blank session IDs fail with the existing safe user message. Rollback is the scoped code and ledger commits;
+    no schema, migration, stored-data conversion, dependency or deploy change exists.
+  - security / privacy / performance:
+    Existing `toQrDraftResponse` suppression of raw QR text, payload hash, rawText/rawLine stays covered. Patient/site/
+    org checks, prescription mapping, supplemental-record write, realtime event minimization and no-store are unchanged.
+    No field, query, network round-trip, render structure or log was added. Codex alone implemented and verified this
+    privacy-adjacent contract slice; no subagent, agmsg, Claude, Oracle or external worker was used.
+  - validation:
+    Baseline focused Vitest passed 3 files / 41 tests; final passed 3 files / 48 tests. Exact ESLint, Prettier,
+    `api-response-shape:check` (31 allowlisted / 0 new), route-auth, frontend-contract, query-shape, client-PHI-log and
+    `git diff --check` passed. Typegen succeeded; full typecheck remains red only on the pre-existing user-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that gate is red. No DB/migration,
+    production operation, external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen / remaining:
+    `API-CONTRACT-001EF` is DONE; parent remains Partial at 31 violations. Browser/image generation were omitted because
+    no visible UI structure, content or interaction changed. Preserve unowned config, harness and inbound changes;
+    rescan the remaining allowlist and continue with the next bounded non-consent/non-platform slice.
+
 - codex: visit schedule creation envelope convergence.
   - commit:
     `b0e5ec01d fix(API-CONTRACT-001EE): envelope schedule creation result`.
