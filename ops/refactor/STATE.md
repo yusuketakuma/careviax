@@ -51,6 +51,42 @@
 
 ## 直近の作業
 
+- codex: visit-record handoff extraction envelope convergence.
+  - commit:
+    `f0ff41237 fix(API-CONTRACT-001ES): envelope handoff extraction`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001ES`。`POST /api/visit-records/:id/handoff/extract` の201 successを
+    exact `{ data: handoff }`へ揃える。Provider-only contract、assignment/tenant/version、AI extraction、
+    PHI-safe failure、sensitive no-store不変、route/protected tests、debt 18→17を完了条件とした。
+  - files inspected / changed:
+    Handoff extraction route/full test、`processHandoffExtraction`、repository-wide path/caller、collection POSTの
+    background service invocation、rate-limit、protected GET/POST matrices、allowlist、Plans/archive/state、active
+    dirty treeを確認した。Production HTTP consumerはなく、変更は201 success、nested route regression、allowlist、
+    計画台帳だけ。Serviceとcollection POSTは変更していない。
+  - implementation / behavior / rollback:
+    Existing handoff DTOをそのまま`data`配下へ移動した。Status 201、DTO fields、error envelopeは不変。
+    Rollbackはscoped code/ledger commitのrevertで、schema、migration、persisted data、dependency、deploy設定の
+    復元は不要。
+  - security / medical / privacy / human review:
+    `canVisit`、org-scoped record/patient read、assignment guard、structured SOAP validation、AI extraction、
+    optimistic version claim、confirmation task、generic retryable failureとraw cause非露出、sensitive no-storeを
+    変更していない。患者名/SOAP/handoff field、prompt、logは不変。Human reviewはresponse nestingとprovider-only
+    caller scanを確認すればよい。Codex単独で実装・検証し、subagent、agmsg、Claude、Oracle、外部workerは
+    使っていない。
+  - validation:
+    Baseline/final focused Vitestは各1 file / 7 tests pass。Exact ESLint、Prettier、
+    `api-response-shape:check`（17 allowlisted / 0 new）、route-auth、frontend-contract、query-shape、client-PHI-log、
+    diff checkがpass。Protected GET matrixは384/384、protected POST matrixは151/151 pass。Typegenは成功し、
+    full typecheckは今回外のuser-owned `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。
+    buildはtypecheck red中のため未実施。DB/migration、production操作、外部送信、deploy、push、destructive
+    actionは実行していない。
+    Plans/archiveのPrettier checkはpass。Full STATE Prettierはconcurrent commit `ecb8405c1`の既存QR-scan
+    validation command wrapだけを検出したため、未所有hunkを保持して未修正。今回entryはwrite時に変更なし。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001ES`はDONE、parentは17 violationsでPartial。JSON-only/API contractでUI変更がないため
+    browser/imagegenを省略。unowned config/harness/inboundと全untracked artifactを保持した。次はhandoff
+    supervision-confirm/requestのprovider/consumer contractを比較し、最小で独立したsliceを継続する。
+
 - codex: visit-record handoff confirmation envelope convergence.
   - commit:
     `bb82d154b fix(API-CONTRACT-001ER): envelope handoff confirmation`.
