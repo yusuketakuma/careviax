@@ -51,6 +51,36 @@
 
 ## 直近の作業
 
+- codex: workflow exception detail envelope convergence.
+  - commit:
+    `a20b260da fix(API-CONTRACT-001EJ): envelope workflow exception detail`.
+  - current task / purpose / acceptance:
+    P0 / HIGH `API-CONTRACT-001EJ`。`GET /api/workflow-exceptions/:id` の200 successを exact
+    `{ data: exception }` に揃える。Nested DTO/root ID不在、permission/org lookup/validation維持、PATCH非変更、
+    debt減を完了条件とした。
+  - files inspected / changed:
+    Workflow exception GET/PATCH route and full test; repository-wide endpoint consumers; `canDispense`/org lookup;
+    allowlist; Plans/archive/state; active dirty tree. Changed only GET success/test, allowlist count and ledgers;
+    no production consumer exists and PATCH remained unchanged.
+  - implementation / behavior / rollback:
+    Provider nests the unchanged exception DTO under `data`. Rollback is the scoped code and ledger commits; no
+    mutation, transaction, stored field, schema, migration, dependency or deploy configuration changed.
+  - security / medical / follow-up:
+    Permission, org filter, ID validation and not-found behavior remain covered; no PHI field/query/log was added.
+    Scan found that both authenticated clinical handlers still lack `withSensitiveNoStore`; this is concrete residual
+    evidence under the parent no-store ratchet and must be handled separately from envelope migration. Codex alone
+    implemented and verified the slice; no subagent, agmsg, Claude, Oracle or external worker was used.
+  - validation:
+    Baseline and final focused Vitest each passed 1 file / 6 tests. Exact ESLint, Prettier,
+    `api-response-shape:check` (27 allowlisted / 0 new), route-auth, frontend-contract, query-shape, client-PHI-log and
+    `git diff --check` passed. Typegen succeeded; full typecheck remains red only on the pre-existing user-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that gate is red. No DB/migration,
+    production operation, external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen / remaining:
+    `API-CONTRACT-001EJ` is DONE; parent remains Partial at 27 violations. Browser/image generation were omitted because
+    there is no UI change. Next: migrate PATCH success as an isolated mutation slice, then add sensitive no-store to
+    both handlers as a distinct security task. Preserve unowned config, harness, inbound and medication-stock work.
+
 - codex: QR scan draft confirmation envelope convergence.
   - commit:
     `6903b537b fix(API-CONTRACT-001EI): envelope QR draft confirmation result`.
