@@ -820,6 +820,9 @@ describe('/api/visit-records/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body.data).toMatchObject({ id: 'visit_1', version: 2 });
     expect(visitRecordUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'visit_1', org_id: 'org_1', version: 1 },

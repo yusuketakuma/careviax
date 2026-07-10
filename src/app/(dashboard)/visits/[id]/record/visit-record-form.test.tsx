@@ -1385,6 +1385,72 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(fetchUrls.some((url) => url.includes('/medication-stock-observations'))).toBe(false);
   });
 
+  it('unwraps the visit-record PATCH envelope after attaching an uploaded file', async () => {
+    const baselineFetch = globalThis.fetch;
+    const patchBodies: unknown[] = [];
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/files/presigned-upload') {
+        return new Response(
+          JSON.stringify({
+            data: {
+              id: 'file_1',
+              uploadUrl: 'https://upload.example/file_1',
+              headers: { 'x-upload': '1' },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === 'https://upload.example/file_1' && init?.method === 'PUT') {
+        return new Response(null, { status: 200, headers: { etag: 'etag_1' } });
+      }
+      if (url === '/api/files/complete') {
+        return new Response(
+          JSON.stringify({
+            data: { id: 'file_1', completedAt: '2026-04-09T01:30:00.000Z' },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/visit-records/record_1' && init?.method === 'PATCH') {
+        patchBodies.push(JSON.parse(String(init.body)));
+        return new Response(
+          JSON.stringify({
+            data: { id: 'record_1', version: 2, patient_id: 'patient_1' },
+          }),
+          { status: 200 },
+        );
+      }
+      return baselineFetch(input, init);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderVisitRecordForm();
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '添付テスト追加' }));
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(patchBodies).toEqual([
+        {
+          version: 1,
+          attachments: [{ file_id: 'file_1' }],
+        },
+      ]);
+    });
+    await waitFor(() => {
+      expect(routerPushMock).toHaveBeenCalledWith('/visits/record_1');
+    });
+    expect(toastSuccessMock).toHaveBeenCalledWith('訪問記録を保存しました');
+  });
+
   it('fails closed when medication stock drafts exist while the server capability gate is disabled', async () => {
     renderVisitRecordForm();
 

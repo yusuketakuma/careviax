@@ -545,7 +545,7 @@ async function authenticatedPATCH(
     );
   }
 
-  return success(updated);
+  return success({ data: updated });
 }
 
 export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

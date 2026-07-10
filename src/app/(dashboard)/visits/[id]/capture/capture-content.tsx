@@ -330,12 +330,15 @@ export function EvidenceCaptureContent({
           visit_ended_at: endedAt,
         }),
       });
-      const body = await response.json().catch(() => null);
       if (!response.ok) {
+        const body = await response.json().catch(() => null);
         throw new Error(body?.message ?? '訪問終了を記録できませんでした');
       }
+      const payload = await readApiJson<{
+        data?: { visit_ended_at?: unknown };
+      }>(response, '訪問終了を記録できませんでした');
       setRecordedVisitEndedAt(
-        typeof body?.visit_ended_at === 'string' ? body.visit_ended_at : endedAt,
+        typeof payload.data?.visit_ended_at === 'string' ? payload.data.visit_ended_at : endedAt,
       );
       toast.success('訪問終了を記録しました');
     } catch (error) {

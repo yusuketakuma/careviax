@@ -1595,17 +1595,21 @@ export function VisitRecordForm({
           }),
         });
 
-        const patchJson = await patchResponse.json().catch(() => null);
         if (!patchResponse.ok) {
+          const patchJson = await patchResponse.json().catch(() => null);
           return {
             record,
             attachmentWarning:
               patchJson?.message ?? '訪問記録は保存しましたが、添付の紐づけに失敗しました',
           };
         }
+        const patchPayload = await readApiJson<{ data: SavedVisitRecord }>(
+          patchResponse,
+          '訪問記録は保存しましたが、添付の紐づけに失敗しました',
+        );
 
         return {
-          record: patchJson,
+          record: patchPayload.data,
           attachmentWarning: null,
         };
       } catch (cause) {

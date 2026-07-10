@@ -300,7 +300,7 @@ describe('EvidenceCaptureContent', () => {
           version: 3,
           visit_ended_at: '2026-04-09T01:45:00.000Z',
         });
-        return jsonResponse({ visit_ended_at: '2026-04-09T01:45:00.000Z' });
+        return jsonResponse({ data: { visit_ended_at: '2026-04-09T01:45:00.000Z' } });
       }
       return jsonResponse({}, 500);
     });

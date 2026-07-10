@@ -415,7 +415,7 @@ describe('offline evidence draft sync', () => {
           version: 3,
           attachments: [{ file_id: 'file_old' }, { file_id: 'file_existing' }],
         });
-        return jsonResponse({ ok: true });
+        return jsonResponse({ data: { id: 'visit_record_1' } });
       }
       throw new Error(`unexpected fetch ${url}`);
     });
@@ -764,7 +764,7 @@ describe('offline evidence draft sync', () => {
           return jsonResponse({ data: { version: 2, attachments: [] } });
         }
         if (url === '/api/visit-records/visit_record_1' && init?.method === 'PATCH') {
-          return jsonResponse({ ok: true });
+          return jsonResponse({ data: { id: 'visit_record_1' } });
         }
         throw new Error(`unexpected fetch ${url}`);
       });
