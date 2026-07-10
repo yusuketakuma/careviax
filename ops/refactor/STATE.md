@@ -51,6 +51,41 @@
 
 ## 直近の作業
 
+- codex: visit billing candidate POST envelope convergence.
+  - commit:
+    `8b694a4f5 fix(API-CONTRACT-001FB): envelope billing candidate generation`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001FB`。`POST /api/visit-billing-candidates` のgeneration successをexact
+    `{ data: CandidateGenerationResult }`へ揃える。Partner cooperation mutation/schema、auth/tenant/consent/
+    contract/amount/status/audit/no-store不変、tests、allowlist entry除去、debt 10→9を完了条件とした。
+  - files inspected / changed:
+    Candidate GET/POST route/full tests、partner cooperation billing mutation/tests、contract/consent/evaluation helper
+    call graph、protected POST matrix、allowlist、Plans/archive/state、active dirty treeを確認。変更はPOST success、
+    唯一のbody reader/schema/fixtures、route assertions、allowlist、計画台帳だけ。GET standard pagination、
+    generation transaction、DB/schema/migrationは変更していない。
+  - implementation / behavior / rollback:
+    Existing generation result DTOをそのまま`data`配下へ移動し、consumerは`apiDataSchema`でenvelope全体を
+    検証して`json.data`を返す。Message、counts、candidate IDs/truncation、status/error contractは不変。
+    Rollbackはscoped code/ledger commitのrevertで、schema、migration、persisted data、dependency、deploy設定の
+    復元は不要。
+  - security / billing / audit / privacy / human review:
+    `canManageBilling`、org/tenant RLS、confirmed/claim-ready record filter、active consent/contract/fee resolution、
+    locked candidate protection、unique race reuse、visit-request claim_checked transition、audit metadata、sensitive
+    no-storeを変更していない。金額、候補判定、PHI field/logは不変。Human reviewはresponse nesting、consumer
+    unwrap、generation side-effect不変を確認すればよい。Codex単独で実装・検証し、subagent、agmsg、Claude、
+    Oracle、外部workerは使っていない。
+  - validation:
+    Baseline/final route+consumerは各2 files / 32 tests pass。Exact ESLint、Prettier、diff check、
+    `api-response-shape:check`（9 allowlisted / 0 new）、route-auth、frontend-contract、query-shape、client-PHI-logが
+    pass。Protected POST matrixは151/151 pass。Typegenは成功し、full typecheckは今回外のuser-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。buildはtypecheck red中のため未実施。
+    DB/migration、production操作、外部送信、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001FB`はDONE、parentは9 violationsでPartial。Production UIはmutation reader/schemaだけで
+    visual reconstructionがないためbrowser/imagegenを省略し、component testsで回帰確認した。unowned
+    config/harness/inboundと全untracked artifactを保持した。次は残9 violationsを再分類し、pharmacy visit
+    request consent境界またはplatform break-glassの最小安全sliceを選ぶ。
+
 - codex: visit billing candidate GET pagination envelope convergence.
   - commit:
     `9bad9990e fix(API-CONTRACT-001FA): standardize billing candidate pagination`.
