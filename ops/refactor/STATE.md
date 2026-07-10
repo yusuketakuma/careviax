@@ -51,6 +51,40 @@
 
 ## 直近の作業
 
+- codex: platform data explorer rows envelope convergence.
+  - commit:
+    `41f8c0717 fix(API-CONTRACT-001FI): envelope platform data rows`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001FI`。Platform tenant data explorer GETのmodel指定branchをadmin explorerと同じexact
+    `{ data: DataExplorerTableRows }`へ揃える。Operator/session/org/audit-first/RLS/redaction/no-store不変、panel同期、
+    route regression、platform allowlist entry除去、debt 3→2を完了条件とした。
+  - files inspected / changed:
+    Platform data route/full tests、panel/tests、admin data routes/tests、data explorer service/full tests、operator/
+    break-glass、allowlist、Plans/archive/state、active dirty treeを確認。変更はrows success、reader/fixture、route tests、
+    allowlist、計画台帳だけ。Models branch、service、DB/schema/migrationは変更していない。
+  - implementation / behavior / rollback:
+    Existing `DataExplorerTableRows` DTOをouter `data`へ移し、ModelRows queryFn内でunwrapしてcolumns/rows/count/
+    pagination表示を維持した。Status、DTO inner keys、query/service args、unknown model 400、error contractは不変。
+    Rollbackはscoped code/ledger commitのrevertで、schema、migration、persisted data、dependency、deploy設定の
+    復元は不要。
+  - security / authorization / tenant / audit / privacy / medical / billing / human review:
+    `requirePlatformOperator`、operatorId+orgId session lookup、active-session fail-closed 403、`readViaBreakGlass`の
+    audit-first/RLS context、model allowlist、denied-field projection/redaction、read-only model protection、sensitive
+    no-storeを変更していない。薬価/医療/請求値、PHI/PII field/logは変更していない。Human reviewはouter nesting、
+    reader unwrap、rows/model分岐、audit metadataを確認すればよい。Codex単独で実装・検証し、subagent、agmsg、
+    Claude、Oracle、外部workerは使っていない。
+  - validation:
+    Baselineはscope repair直後の5 files / 72 tests、finalは5 files / 74 tests pass。Exact ESLint、Prettier、diff
+    check、`api-response-shape:check`（2 allowlisted / 0 new）、route-auth、frontend-contract、raw-read org guard、
+    query-shape、client-PHI-logがpass。Typegenは成功し、full typecheckはuser-owned inbound TS2322 1件と
+    user-owned MCS test `toHaveValue` typing 4件だけが継続。buildはtypecheck red中のため未実施。DB/migration、
+    production操作、外部送信、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001FI`はDONE、parentは2 violationsでPartial。Production UIはreader contractだけでvisual
+    reconstructionがないためbrowser/imagegenを省略し、component testで回帰確認した。unowned config/harness/
+    inbound/MCSと全untracked artifactを保持した。次は同routeのstrict query/sanitized error hardeningを完了してから、
+    pharmacy-visit-requests 2件をconsumer/consent境界ごとに移行する。
+
 - codex: DrugPriceVersion data explorer scope repair.
   - commit:
     `6fc927092 fix(DATA-EXPLORER-DRUG-PRICE-SCOPE-001): classify price versions global`.
