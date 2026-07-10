@@ -51,6 +51,39 @@
 
 ## 直近の作業
 
+- codex: partner cooperation billing summary envelope convergence.
+  - commit:
+    `b4df605bd fix(API-CONTRACT-001EZ): envelope billing summary`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001EZ`。`GET /api/visit-billing-candidates/summary` のsuccessをexact
+    `{ data: PartnerCooperationSummary }`へ揃える。Partner cooperation billing reader/schema、auth/tenant/filter/
+    月次集計/金額/no-store不変、tests、allowlist entry除去、debt 11→10を完了条件とした。
+  - files inspected / changed:
+    Summary route/full tests、partner cooperation billing content/tests、candidate list隣接route/consumer、route
+    catalog/rate-limit、protected GET matrix、allowlist、Plans/archive/state、active dirty treeを確認。変更はGET
+    success、唯一のbody reader/schema/fixtures、allowlist、計画台帳だけ。Candidate list、DB/schema/migrationは
+    変更していない。
+  - implementation / behavior / rollback:
+    Existing PHI-free monthly summary DTOをそのまま`data`配下へ移動し、consumerは`apiDataSchema`でenvelope
+    全体を検証して`json.data`を返す。Count、filters、planned amount、status/error contractは不変。Rollbackは
+    scoped code/ledger commitのrevertで、schema、migration、persisted data、dependency、deploy設定の復元は不要。
+  - security / billing / privacy / human review:
+    `canManageBilling`、strict billing month、optional filter validation、org-scoped partner records/candidates、tenant
+    RLS、amount snapshot minimization、PHI-free structured log、sensitive no-storeを変更していない。金額、算定可否、
+    record/candidate count、PHI field/logは不変。Human reviewはresponse nesting、Zod envelope、集計値の同一性を
+    確認すればよい。Codex単独で実装・検証し、subagent、agmsg、Claude、Oracle、外部workerは使っていない。
+  - validation:
+    Baseline/final focusedは各2 files / 20 tests pass。Exact ESLint、Prettier、diff check、
+    `api-response-shape:check`（10 allowlisted / 0 new）、route-auth、frontend-contract、query-shape、client-PHI-logが
+    pass。Protected GET matrixは384/384 pass。Typegenは成功し、full typecheckは今回外のuser-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。buildはtypecheck red中のため未実施。
+    DB/migration、production操作、外部送信、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001EZ`はDONE、parentは10 violationsでPartial。Production UIはdata reader/schemaだけでvisual
+    reconstructionがないためbrowser/imagegenを省略し、component testsで回帰確認した。unowned
+    config/harness/inboundと全untracked artifactを保持した。次は隣接visit-billing candidate list GETを独立
+    sliceで確認し、既存pagination envelopeとsuccess helperの余分なnestingを解消する。
+
 - codex: visit schedule billing-preview envelope convergence.
   - commit:
     `38c255575 fix(API-CONTRACT-001EY): envelope billing preview`.
