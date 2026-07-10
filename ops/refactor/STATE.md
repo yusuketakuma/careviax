@@ -51,6 +51,36 @@
 
 ## 直近の作業
 
+- codex: prescription intake update envelope convergence.
+  - commit:
+    `dd503c9bc fix(API-CONTRACT-001EO): envelope prescription intake update`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001EO`。`PATCH /api/prescription-intakes/:id` の200 successを exact
+    `{ data: intake }` に揃える。Nested DTO、status-only caller不変、write/task/audit guard維持、debt減を完了条件とした。
+  - files inspected / changed:
+    PATCH route and full test; four production mutations in patient card workspace/prescription history; writable-patient,
+    assignment/org, institution/original-management validation; task/audit transaction; allowlist; Plans/archive/state;
+    active dirty tree. Changed only PATCH success/test, allowlist and planning ledgers.
+  - implementation / behavior / rollback:
+    Provider nests the unchanged updated intake under `data`. All four callers consume only `response.ok` before
+    invalidate/toast and do not use returned fields, so their status-only behavior remains valid without code changes.
+    Rollback is the scoped code and ledger commits; no mutation ordering, stored field, schema, migration, dependency or
+    deploy configuration changed.
+  - security / medical / privacy / human review:
+    Writable-patient/assignment/org checks, no-store, field validation, operational-task and audit writes remain covered.
+    No prescription rule/value, PHI field or log changed. Human review should confirm response nesting only. Codex alone
+    implemented and verified the slice; no subagent, agmsg, Claude, Oracle or external worker was used.
+  - validation:
+    Baseline and final focused Vitest each passed 1 file / 25 tests. Exact ESLint, Prettier,
+    `api-response-shape:check` (22 allowlisted / 0 new), route-auth, frontend-contract, query-shape, client-PHI-log and
+    `git diff --check` passed. Typegen succeeded; full typecheck remains red only on the pre-existing user-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that gate is red. No DB/migration,
+    production operation, external send, deploy, push or destructive action ran.
+  - shared-tree / Plans / UI / remaining:
+    `API-CONTRACT-001EO` is DONE; parent remains Partial at 22 violations. Browser/image generation were omitted because
+    no UI changed. Concurrent offline-sync code/STATE landed separately as `b0e357cd3` / `c2aa5d543`; preserve current
+    unowned config/harness/inbound and untracked artifacts. Resume collection/facility-batch intake contracts separately.
+
 - codex: prescription intake detail envelope convergence.
   - commit:
     `ddfadec6a fix(API-CONTRACT-001EN): envelope prescription intake detail`.
@@ -39430,7 +39460,7 @@ GET` passed 3 tests with 381 skipped; expected audit mock stderr was emitted.
   screen, not a visual reconstruction; the UI SSOT was checked.
 - validation:
   `pnpm vitest run 'src/app/(dashboard)/offline-sync/offline-sync-content.test.tsx'
-  src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 27 tests; exact
+src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 27 tests; exact
   ESLint, Prettier, `git diff --check`, `pnpm client-phi-log:check`, and
   `pnpm frontend-contract:check` passed. Independent implementation verifier returned PASS.
   `pnpm api-response-shape:check` passed with 23 allowlisted / 0 new violations. At the time of this
