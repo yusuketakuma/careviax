@@ -51,6 +51,42 @@
 
 ## 直近の作業
 
+- codex: handoff supervision request envelope convergence.
+  - commit:
+    `e652a8e1e fix(API-CONTRACT-001ET): envelope handoff supervision request`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001ET`。`POST /api/visit-records/:id/handoff/supervision-request` の
+    successをexact `{ data: request }`へ揃える。Consumer、trainee/supervisor/tenant/version、task/audit、
+    request-note minimization、no-store不変、provider/consumer/protected tests、debt 17→16を完了条件とした。
+  - files inspected / changed:
+    Supervision request/confirm routesとtests、handoff service、`HandoffConfirmPanel` / `HandoffWorkspace` とtests、
+    route catalog/rate-limit、protected GET/POST matrices、allowlist、Plans/archive/state、active dirty treeを確認。
+    変更はrequest success、exact nested route regression、allowlist、計画台帳だけでproduction frontendは
+    変更していない。
+  - implementation / behavior / rollback:
+    Existing request DTOをそのまま`data`配下へ移動した。Consumerは既にenvelope fixtureを使い、返却値を
+    業務分岐に使わずinvalidate/toastだけに依存する。Status 200、DTO fields、error envelopeは不変。
+    Rollbackはscoped code/ledger commitのrevertで、schema、migration、persisted data、dependency、deploy設定の
+    復元は不要。
+  - security / medical / privacy / human review:
+    `canVisit`、trainee assignment、supervisor selection、active same-org membership、self-supervision拒否、
+    optimistic version、task/audit transaction、request-note trim/lengthとmetadata minimization、typed conflict、
+    sensitive no-storeを変更していない。患者/医療DTO、PHI field/logは不変。Human reviewはresponse nestingと
+    consumer非依存を確認すればよい。Codex単独で実装・検証し、subagent、agmsg、Claude、Oracle、外部workerは
+    使っていない。
+  - validation:
+    Baseline/final focused Vitestは各3 files / 50 tests pass。Workspaceの既存React `act(...)` warningsは両方で
+    同一かつtest failureなし。Exact ESLint、Prettier、`api-response-shape:check`（16 allowlisted / 0 new）、
+    route-auth、frontend-contract、query-shape、client-PHI-log、diff checkがpass。Protected GET matrixは384/384、
+    protected POST matrixは151/151 pass。Typegenは成功し、full typecheckは今回外のuser-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。buildはtypecheck red中のため未実施。
+    DB/migration、production操作、外部送信、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001ET`はDONE、parentは16 violationsでPartial。UI production変更やvisual reconstructionが
+    ないためbrowser/imagegenを省略し、consumer DOM testsで回帰確認した。Full STATE Prettierは既存
+    `ecb8405c1` hunkだけがredのため未所有差分を保持。unowned config/harness/inboundと全untracked artifactを
+    保持した。次は隣接supervision-confirm successを独立sliceで移行する。
+
 - codex: visit-record handoff extraction envelope convergence.
   - commit:
     `f0ff41237 fix(API-CONTRACT-001ES): envelope handoff extraction`.
