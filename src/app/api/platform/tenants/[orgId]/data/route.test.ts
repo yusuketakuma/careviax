@@ -70,6 +70,17 @@ describe('GET /api/platform/tenants/[orgId]/data', () => {
         rowCount: 3,
       },
     ]);
+    listDataExplorerRowsMock.mockResolvedValue({
+      modelName: 'Patient',
+      tableName: 'Patient',
+      columns: [{ name: 'id', type: 'String', isRequired: true }],
+      totalCount: 1,
+      totalCountIsExact: true,
+      hasMore: false,
+      limit: 10,
+      offset: 20,
+      rows: [{ id: 'patient_1' }],
+    });
   });
 
   it('does not inspect sessions or explorer data when the platform guard rejects the request', async () => {
@@ -127,5 +138,58 @@ describe('GET /api/platform/tenants/[orgId]/data', () => {
     expect(listDataExplorerModelsMock).toHaveBeenCalledWith('org_1');
     expect(listDataExplorerRowsMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({ data: models });
+  });
+
+  it('returns audited model rows in an exact data envelope', async () => {
+    const rows = {
+      modelName: 'Patient',
+      tableName: 'Patient',
+      columns: [{ name: 'id', type: 'String', isRequired: true }],
+      totalCount: 1,
+      totalCountIsExact: true,
+      hasMore: false,
+      limit: 10,
+      offset: 20,
+      rows: [{ id: 'patient_1' }],
+    };
+    listDataExplorerRowsMock.mockResolvedValueOnce(rows);
+
+    const response = await GET(
+      createRequest('?model=Patient&limit=10&offset=20&search=%20%E8%8A%B1%E5%AD%90%20'),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(readViaBreakGlassMock).toHaveBeenCalledWith(
+      operator,
+      session,
+      {
+        targetType: 'data_explorer',
+        targetId: 'Patient',
+        metadata: { model: 'Patient', limit: 10, offset: 20 },
+      },
+      expect.any(Function),
+    );
+    expect(listDataExplorerModelsMock).not.toHaveBeenCalled();
+    expect(listDataExplorerRowsMock).toHaveBeenCalledWith('org_1', 'Patient', {
+      limit: 10,
+      offset: 20,
+      search: '花子',
+    });
+    await expect(response.json()).resolves.toEqual({ data: rows });
+  });
+
+  it('returns a no-store validation error for a non-allowlisted model', async () => {
+    listDataExplorerRowsMock.mockRejectedValueOnce(new Error('Unknown table: SecretModel'));
+
+    const response = await GET(createRequest('?model=SecretModel'), routeContext());
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '指定されたモデルは参照できません',
+    });
   });
 });

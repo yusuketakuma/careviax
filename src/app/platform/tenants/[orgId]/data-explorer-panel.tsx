@@ -34,7 +34,7 @@ type DataExplorerModelsResponse = { data: DataExplorerModel[] };
 
 type DataExplorerColumn = { name: string; type: string; isRequired: boolean };
 
-type DataExplorerRowsResponse = {
+type DataExplorerRowsData = {
   modelName: string;
   tableName: string;
   columns: DataExplorerColumn[];
@@ -44,6 +44,8 @@ type DataExplorerRowsResponse = {
   offset: number;
   rows: Array<Record<string, unknown>>;
 };
+
+type DataExplorerRowsResponse = { data: DataExplorerRowsData };
 
 function formatCellValue(value: unknown): string {
   if (value === null || value === undefined) return '—';
@@ -76,10 +78,12 @@ function ModelRows({ orgId, tableName }: { orgId: string; tableName: string }) {
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['platform-data-explorer-rows', orgId, tableName, offset, search],
-    queryFn: () =>
-      platformFetchJson<DataExplorerRowsResponse>(
+    queryFn: async () => {
+      const response = await platformFetchJson<DataExplorerRowsResponse>(
         `/api/platform/tenants/${orgId}/data?${params.toString()}`,
-      ),
+      );
+      return response.data;
+    },
   });
 
   const columns: ColumnDef<Record<string, unknown>>[] = (data?.columns ?? []).map((col) => ({

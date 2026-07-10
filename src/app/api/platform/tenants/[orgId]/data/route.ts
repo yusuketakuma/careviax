@@ -55,7 +55,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orgI
       { targetType: 'data_explorer', targetId: model, metadata: { model, limit, offset } },
       () => listDataExplorerRows(orgId, model, { limit, offset, search }),
     );
-    return withSensitiveNoStore(success(rows));
+    return withSensitiveNoStore(success({ data: rows }));
   } catch (err) {
     // getTableMeta throws for an unknown/non-allowlisted model.
     if (err instanceof Error && /model|table|allow/i.test(err.message)) {

@@ -99,14 +99,16 @@ describe('DataExplorerPanel', () => {
         if (url.startsWith('/api/platform/tenants/org_1/data?')) {
           return new Response(
             JSON.stringify({
-              modelName: 'Patient',
-              tableName: 'Patient',
-              columns: [],
-              totalCount: 0,
-              hasMore: false,
-              limit: 25,
-              offset: 0,
-              rows: [],
+              data: {
+                modelName: 'Patient',
+                tableName: 'Patient',
+                columns: [],
+                totalCount: 0,
+                hasMore: false,
+                limit: 25,
+                offset: 0,
+                rows: [],
+              },
             }),
             { status: 200 },
           );
