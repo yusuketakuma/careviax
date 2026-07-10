@@ -150,14 +150,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const responseBody = {
+  return success({
     data: {
       total: requestedIds.length,
       completed,
       failed: requestedIds.length - completed,
       failures,
     },
-  } satisfies BulkCompleteTasksResponse;
-
-  return success(responseBody);
+  } satisfies BulkCompleteTasksResponse);
 }

@@ -106,7 +106,7 @@ describe('/api/tasks/bulk', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(bulkCompleteTasksResponseSchema.safeParse(body).success).toBe(true);
-    expect(body).toMatchObject({
+    expect(body).toEqual({
       data: {
         total: 2,
         completed: 2,
