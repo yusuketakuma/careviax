@@ -91,7 +91,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       requestContext: ctx,
       handoffConfirmationAssigneeId: selectVisitHandoffConfirmationAssignee(record.schedule),
     });
-    return withSensitiveNoStore(success(handoff, 201));
+    return withSensitiveNoStore(success({ data: handoff }, 201));
   } catch (cause) {
     if (cause instanceof VisitHandoffStaleRecordError) {
       return withSensitiveNoStore(

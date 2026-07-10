@@ -93,6 +93,7 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
     const res = await POST(req, { params: Promise.resolve({ id: 'vr_1' }) });
     expect(res!.status).toBe(201);
     expectSensitiveNoStore(res!);
+    await expect(res!.json()).resolves.toEqual({ data: handoff });
     expect(canAccessVisitScheduleAssignmentMock).toHaveBeenCalledWith(
       authCtx.ctx,
       accessibleSchedule,
