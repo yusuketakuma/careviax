@@ -9,11 +9,11 @@
 ## 体制（2026-07-10 最新ユーザー指示）
 
 - 現行は Codex 本体が計画、編集、validation、台帳更新、scoped commit の最終責任を持つ単一制御運用。
-- 2026-07-10 の最新ユーザー指示により、subagent を含む外部workerは使わず、Codex 本体だけで
-  調査、計画、編集、validation、台帳更新、scoped commitを継続する。
+- 2026-07-10 の最新ユーザー指示により、bounded な調査・計画レビュー・検証には read-only subagent を使う。
+  編集、統合、validation、台帳更新、scoped commit は Codex 本体だけが担う。
 - agmsg、codex2/codex3/codex4、Claude などの外部 maker/checker 運用は再開しない。
 - 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
-  直接の影響範囲確認、focused/full gate で代替する。
+  直接の影響範囲確認、read-only subagent の計画レビュー、focused/full gate で代替する。
 - 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
 
 ## 旧体制（2026-07-04/05 履歴）
@@ -44,13 +44,47 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: Codex 単独運用（2026-07-10〜）。
-  調査・編集・validation・commitの責任は Codex 本体が持ち、pushは明示指示時だけ行う。
+- Phase C（実装ループ）: Codex 本体 + bounded read-only subagent 運用（2026-07-10〜）。
+  編集・統合・validation・commitの最終責任は Codex 本体が持ち、pushは明示指示時だけ行う。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex: OfflineSyncBridge PHI-safe retry logging.
+  - commit:
+    `7ce0ac994 fix(offline): log sync retries safely`.
+  - current task:
+    P1 `FE-PHI-SAFE-CLIENT-LOG-001` の offline retry 残スコープ。global offline lifecycle bridge の
+    state refresh、visit-record queue drain、evidence drain の3失敗経路を、raw console 出力ではなく
+    coded PHI-safe client logging へ統一する。
+  - files inspected / changed:
+    `Plans.md`; this state; current Next.js `use client` guidance; `client-log.ts` and test;
+    `offline-sync-bridge.tsx` and test; active dirty tree. Changed only
+    `src/components/providers/offline-sync-bridge.tsx` and `.test.tsx`.
+  - bugs found / fixed:
+    The bridge discarded caught errors and wrote generic direct `console.warn` messages. Each failure path now calls
+    `clientLog.warn` with a stable event (`offline_sync.state_refresh_failed`,
+    `offline_sync.queue_drain_failed`, or `offline_sync.evidence_drain_failed`) and only the static
+    `/offline-sync` route context. The helper emits allowlisted error type/context rather than raw message/stack;
+    org ID, patient values and sync payload stay out of context. Existing null-on-drain-failure and `markSynced()`
+    only-when-both-clear behavior remain unchanged.
+  - plan review / agents / Oracle:
+    Four read-only reviews first assessed the higher-ranked patient-board cursor task. They unanimously rejected a
+    naive `take`/cursor patch because it would hide DB-last urgent patients and falsify exact count/cursor contracts.
+    Its safe future design is a separate rank-projection + page-ID hydration + scoped RLS reader/cursor parity gate.
+    `offline_sync_log_verifier` independently returned PASS for this small non-overlapping P1 slice. Oracle was not used.
+  - validation:
+    Focused Vitest passed 2 files / 16 tests; exact ESLint, Prettier, `pnpm client-phi-log:check`, and
+    `git diff --check` passed. `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` completed typegen and
+    remains red only on the pre-existing user-owned
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285` TS2322. No build, DB/migration,
+    production operation, external send, deploy, push or destructive action ran.
+  - UI / imagegen / remaining:
+    No UI structure, field or interaction changed, so image generation was omitted. The next highest ranked
+    patient-board performance task remains a design gate until its rank projection, cursor secrecy, exact aggregate,
+    RLS and SELECT-only EXPLAIN evidence are planned; continue with the next safe executable P1 after ownership check.
 
 - codex: admin performance visit-schedule limit contract fix.
   - commit:
