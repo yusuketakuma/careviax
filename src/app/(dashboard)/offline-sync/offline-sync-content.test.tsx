@@ -6,6 +6,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 import {
   discardSyncQueueItem,
   overwriteVisitRecordConflict,
+  processSyncQueue,
   type SyncQueueItemSummary,
 } from '@/lib/stores/sync-engine';
 import { OfflineSyncContent } from './offline-sync-content';
@@ -14,6 +15,7 @@ setupDomTestEnv();
 
 const mutationMutateMock = vi.hoisted(() => vi.fn());
 const toastErrorMock = vi.hoisted(() => vi.fn());
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
 const refreshSyncStateMock = vi.hoisted(() => vi.fn(async () => undefined));
 const offlineState = vi.hoisted(() => ({
   isOffline: false,
@@ -52,6 +54,12 @@ vi.mock('sonner', () => ({
     info: vi.fn(),
     success: vi.fn(),
     warning: vi.fn(),
+  },
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: {
+    warn: clientLogWarnMock,
   },
 }));
 
@@ -112,6 +120,13 @@ function buildQueueItem(overrides: Partial<SyncQueueItemSummary> = {}): SyncQueu
 function renderOfflineSyncContent(items: SyncQueueItemSummary[]) {
   offlineState.pendingQueue = items;
   return render(<OfflineSyncContent />);
+}
+
+const PHI_ERROR_TEXT = '患者A 090-1234-5678 token=offline-secret';
+
+function expectNoRawErrorText() {
+  expect(document.body.textContent).not.toContain(PHI_ERROR_TEXT);
+  expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(PHI_ERROR_TEXT);
 }
 
 describe('OfflineSyncContent', () => {
@@ -260,7 +275,7 @@ describe('OfflineSyncContent', () => {
   it('keeps a safe inline error and the selected diff visible when overwrite fails', async () => {
     vi.mocked(overwriteVisitRecordConflict).mockResolvedValueOnce({
       ok: false,
-      message: 'サーバー側の記録が更新されました。差分を確認してください',
+      message: PHI_ERROR_TEXT,
     });
     renderOfflineSyncContent([buildConflictItem()]);
     await openConflictView();
@@ -271,7 +286,55 @@ describe('OfflineSyncContent', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('競合を解決できませんでした');
     expect(screen.getByText('自分の入力で上書きしますか')).toBeTruthy();
-    expect(toastErrorMock).toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      '競合を解決できませんでした。通信状態と最新の内容を確認し、もう一度選択してください。',
+    );
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'offline_sync.use_local_conflict_resolution_failed',
+      expect.any(Error),
+      { route: '/offline-sync' },
+    );
+    expectNoRawErrorText();
+  });
+
+  it('keeps discard-conflict errors out of the UI and records a coded client event', async () => {
+    vi.mocked(discardSyncQueueItem).mockRejectedValueOnce(new Error(PHI_ERROR_TEXT));
+    renderOfflineSyncContent([buildConflictItem()]);
+    await openConflictView();
+
+    fireEvent.click(screen.getByRole('button', { name: '最新の内容を使う' }));
+    fireEvent.click(await screen.findByRole('button', { name: '最新の内容を残す' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('競合を解決できませんでした');
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      '競合を解決できませんでした。通信状態と最新の内容を確認し、もう一度選択してください。',
+    );
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'offline_sync.use_server_conflict_resolution_failed',
+      expect.any(Error),
+      { route: '/offline-sync' },
+    );
+    expectNoRawErrorText();
+  });
+
+  it('keeps retry-all errors out of the toast and records a coded client event', async () => {
+    vi.mocked(processSyncQueue).mockRejectedValueOnce(new Error(PHI_ERROR_TEXT));
+    renderOfflineSyncContent([buildQueueItem({ retryCount: 1 })]);
+
+    fireEvent.click(screen.getByRole('button', { name: '未同期キューをすべて再試行' }));
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        '再試行に失敗しました。通信状態を確認してからもう一度実行してください。',
+      );
+    });
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'offline_sync.retry_all_failed',
+      expect.any(Error),
+      { route: '/offline-sync' },
+    );
+    expectNoRawErrorText();
   });
 
   it('shows the genuine empty state only when the queue loaded successfully with no rows', async () => {
@@ -284,12 +347,14 @@ describe('OfflineSyncContent', () => {
   });
 
   it('does not collapse queue load failures into the empty state', async () => {
-    refreshSyncStateMock.mockRejectedValueOnce(new Error('IndexedDB unavailable'));
+    refreshSyncStateMock
+      .mockRejectedValueOnce(new Error(PHI_ERROR_TEXT))
+      .mockRejectedValueOnce(new Error(PHI_ERROR_TEXT));
 
     renderOfflineSyncContent([]);
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('IndexedDB unavailable');
+    expect(alert.textContent).toContain('未同期データの読み込みに失敗しました');
     expect(screen.queryByText('未同期のデータはありません。すべて同期済みです。')).toBeNull();
     expect(screen.getByText('読込失敗')).toBeTruthy();
     expect(screen.getAllByText('—')).not.toHaveLength(0);
@@ -300,10 +365,19 @@ describe('OfflineSyncContent', () => {
       screen.getByText('未同期データを読み込めないため、再読み込みしてください。'),
     ).toBeTruthy();
     expect(screen.getAllByText('取得エラーのため一覧を表示できません')).not.toHaveLength(0);
-    expect(toastErrorMock).toHaveBeenCalledWith('IndexedDB unavailable');
+    expect(toastErrorMock).toHaveBeenCalledWith('未同期データの読み込みに失敗しました');
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'offline_sync.queue_state_refresh_failed',
+      expect.any(Error),
+      { route: '/offline-sync' },
+    );
+    expectNoRawErrorText();
 
-    refreshSyncStateMock.mockResolvedValueOnce(undefined);
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     await waitFor(() => expect(refreshSyncStateMock).toHaveBeenCalledTimes(2));
+    expect(clientLogWarnMock).toHaveBeenCalledTimes(2);
+    expect(toastErrorMock).toHaveBeenCalledTimes(2);
+    expect(toastErrorMock).toHaveBeenLastCalledWith('未同期データの読み込みに失敗しました');
+    expectNoRawErrorText();
   });
 });

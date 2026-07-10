@@ -11,7 +11,7 @@ import { SyncStateBadge } from '@/components/ui/sync-state-badge';
 import { decryptOfflinePayload } from '@/lib/offline/crypto';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import { offlineDb } from '@/lib/stores/offline-db';
 import { useOfflineStore } from '@/lib/stores/offline-store';
 import {
@@ -49,8 +49,14 @@ const OFFLINE_SYNC_LOCAL_OVERWRITE_DISABLED_REASON_ID =
   'offline-sync-local-overwrite-disabled-reason';
 const OFFLINE_SYNC_RETRY_ALL_DISABLED_REASON_ID = 'offline-sync-retry-all-disabled-reason';
 const OFFLINE_SYNC_QUEUE_ERROR_MESSAGE = '未同期データの読み込みに失敗しました';
+const OFFLINE_SYNC_RETRY_ERROR_MESSAGE =
+  '再試行に失敗しました。通信状態を確認してからもう一度実行してください。';
 const OFFLINE_SYNC_CONFLICT_RESOLUTION_ERROR_MESSAGE =
   '競合を解決できませんでした。通信状態と最新の内容を確認し、もう一度選択してください。';
+
+function reportOfflineSyncFailure(event: string, error: unknown) {
+  clientLog.warn(event, error, { route: '/offline-sync' });
+}
 
 /** visitBriefCache から必要な scheduleId だけ患者名の解決マップを作る(ベストエフォート)。 */
 async function loadPatientNameMap(scheduleIds: string[]): Promise<Map<string, string>> {
@@ -96,9 +102,9 @@ export function OfflineSyncContent() {
       })
       .catch((error) => {
         if (!active) return;
-        const message = messageFromError(error, OFFLINE_SYNC_QUEUE_ERROR_MESSAGE);
-        setSyncQueueError(message);
-        toast.error(message);
+        setSyncQueueError(OFFLINE_SYNC_QUEUE_ERROR_MESSAGE);
+        reportOfflineSyncFailure('offline_sync.queue_state_refresh_failed', error);
+        toast.error(OFFLINE_SYNC_QUEUE_ERROR_MESSAGE);
       });
 
     return () => {
@@ -165,7 +171,8 @@ export function OfflineSyncContent() {
       await refreshSyncState();
     },
     onError: async (error) => {
-      toast.error(messageFromError(error, '再試行に失敗しました'));
+      reportOfflineSyncFailure('offline_sync.retry_all_failed', error);
+      toast.error(OFFLINE_SYNC_RETRY_ERROR_MESSAGE);
       await refreshSyncState();
     },
   });
@@ -182,7 +189,8 @@ export function OfflineSyncContent() {
     },
     onError: (error) => {
       setConflictResolutionError(OFFLINE_SYNC_CONFLICT_RESOLUTION_ERROR_MESSAGE);
-      toast.error(messageFromError(error, '競合の解決に失敗しました'));
+      reportOfflineSyncFailure('offline_sync.use_server_conflict_resolution_failed', error);
+      toast.error(OFFLINE_SYNC_CONFLICT_RESOLUTION_ERROR_MESSAGE);
     },
   });
 
@@ -201,7 +209,8 @@ export function OfflineSyncContent() {
     },
     onError: async (error) => {
       setConflictResolutionError(OFFLINE_SYNC_CONFLICT_RESOLUTION_ERROR_MESSAGE);
-      toast.error(messageFromError(error, '上書き保存に失敗しました'));
+      reportOfflineSyncFailure('offline_sync.use_local_conflict_resolution_failed', error);
+      toast.error(OFFLINE_SYNC_CONFLICT_RESOLUTION_ERROR_MESSAGE);
       await refreshSyncState();
     },
   });
@@ -274,9 +283,9 @@ export function OfflineSyncContent() {
     refreshSyncState()
       .then(() => setSyncQueueError(null))
       .catch((error) => {
-        const message = messageFromError(error, OFFLINE_SYNC_QUEUE_ERROR_MESSAGE);
-        setSyncQueueError(message);
-        toast.error(message);
+        setSyncQueueError(OFFLINE_SYNC_QUEUE_ERROR_MESSAGE);
+        reportOfflineSyncFailure('offline_sync.queue_state_refresh_failed', error);
+        toast.error(OFFLINE_SYNC_QUEUE_ERROR_MESSAGE);
       });
   }
 
