@@ -121,7 +121,7 @@ describe('dispatchNotificationEvent', () => {
       createTx();
 
     notificationRuleFindMany.mockResolvedValue([]);
-    membershipFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
     userFindMany.mockResolvedValue([]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: 'notification_1',
@@ -190,7 +190,7 @@ describe('dispatchNotificationEvent', () => {
       createTx();
 
     notificationRuleFindMany.mockResolvedValue([]);
-    membershipFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
     userFindMany.mockResolvedValue([]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: 'notification_1',
@@ -271,7 +271,12 @@ describe('dispatchNotificationEvent', () => {
         enabled: true,
       },
     ]);
-    membershipFindMany.mockResolvedValue([{ user_id: 'user_3', role: 'admin' }]);
+    membershipFindMany.mockResolvedValue([
+      { user_id: 'user_1', role: 'pharmacist' },
+      { user_id: 'user_2', role: 'pharmacist' },
+      { user_id: 'user_3', role: 'admin' },
+      { user_id: 'user_3', role: 'admin' },
+    ]);
     userFindMany.mockResolvedValue([]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: `notification_${data.user_id as string}`,
@@ -284,7 +289,7 @@ describe('dispatchNotificationEvent', () => {
       type: 'urgent',
       title: '折り返し依頼',
       message: '至急対応してください',
-      explicitUserIds: ['user_1', 'user_2'],
+      explicitUserIds: ['user_1', 'user_2', 'user_3'],
     });
 
     expect(notifications).toHaveLength(3);
@@ -295,13 +300,352 @@ describe('dispatchNotificationEvent', () => {
     expect(userIds).toEqual(['user_1', 'user_2', 'user_3']);
   });
 
+  it('filters invalid direct recipients from in-app and external delivery while keeping valid members', async () => {
+    vi.useFakeTimers();
+    sendSmsMock.mockReset();
+    sendLineMessageMock.mockReset();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
+    const configuredUserIds = [
+      'valid_rule',
+      'cross_org',
+      'inactive_membership',
+      'inactive_user',
+      'suspended_user',
+      'orphan_user',
+    ];
+
+    notificationRuleFindMany.mockResolvedValue([
+      {
+        id: 'rule_in_app',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'in_app',
+        recipients: { user_ids: configuredUserIds },
+        enabled: true,
+      },
+      {
+        id: 'rule_sms',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'sms',
+        recipients: { user_ids: configuredUserIds },
+        enabled: true,
+      },
+    ]);
+    membershipFindMany.mockResolvedValue([
+      { user_id: 'valid_explicit', role: 'pharmacist' },
+      { user_id: 'valid_rule', role: 'admin' },
+    ]);
+    userFindMany.mockResolvedValue([
+      { id: 'valid_explicit', phone: '09000000001' },
+      { id: 'valid_rule', phone: '09000000002' },
+    ]);
+    notificationCreate.mockImplementation(async ({ data }) => ({
+      id: `notification_${data.user_id as string}`,
+      created_at: new Date('2026-06-17T00:00:00.000Z'),
+      is_read: false,
+      ...data,
+    }));
+
+    const notifications = await dispatchNotificationEvent(tx, {
+      orgId: 'org_1',
+      eventType: 'patient_self_report_followup_due',
+      type: 'urgent',
+      title: '折り返し依頼',
+      message: '至急対応してください',
+      explicitUserIds: ['valid_explicit', 'cross_org', 'inactive_membership'],
+    });
+
+    expect(membershipFindMany).toHaveBeenCalledTimes(1);
+    expect(membershipFindMany).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        is_active: true,
+        user: {
+          is_active: true,
+          account_status: 'active',
+        },
+        OR: [
+          {
+            user_id: {
+              in: [
+                'valid_explicit',
+                'cross_org',
+                'inactive_membership',
+                'valid_rule',
+                'inactive_user',
+                'suspended_user',
+                'orphan_user',
+              ],
+            },
+          },
+        ],
+      },
+      select: { user_id: true, role: true },
+    });
+    expect(notifications).toHaveLength(2);
+    expect(
+      notificationCreate.mock.calls.map(
+        ([args]) => (args as { data: { user_id: string } }).data.user_id,
+      ),
+    ).toEqual(['valid_explicit', 'valid_rule']);
+    expect(broadcastStatusUpdateMock).toHaveBeenCalledTimes(2);
+    expect(userFindMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['valid_explicit', 'valid_rule'] },
+        is_active: true,
+        account_status: 'active',
+        memberships: {
+          some: {
+            org_id: 'org_1',
+            is_active: true,
+          },
+        },
+      },
+      select: { id: true, phone: true },
+    });
+
+    await runScheduledDeliveries();
+
+    expect(sendSmsMock).toHaveBeenCalledTimes(2);
+    const serializedSideEffects = JSON.stringify([
+      notificationCreate.mock.calls,
+      broadcastStatusUpdateMock.mock.calls,
+      userFindMany.mock.calls,
+      sendSmsMock.mock.calls,
+      sendLineMessageMock.mock.calls,
+    ]);
+    for (const invalidUserId of [
+      'cross_org',
+      'inactive_membership',
+      'inactive_user',
+      'suspended_user',
+      'orphan_user',
+    ]) {
+      expect(serializedSideEffects).not.toContain(invalidUserId);
+    }
+  });
+
+  it('returns no notifications or delivery side effects when every candidate lacks eligibility', async () => {
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      notificationUpsert,
+      pushSubscriptionFindMany,
+      userFindMany,
+    } = createTx();
+    notificationRuleFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([]);
+
+    const notifications = await dispatchNotificationEvent(tx, {
+      orgId: 'org_1',
+      eventType: 'patient_self_report_followup_due',
+      type: 'urgent',
+      title: '折り返し依頼',
+      message: '至急対応してください',
+      explicitUserIds: ['other_org_user'],
+    });
+
+    expect(notifications).toEqual([]);
+    expect(notificationCreate).not.toHaveBeenCalled();
+    expect(notificationUpsert).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+    expect(pushSubscriptionFindMany).not.toHaveBeenCalled();
+    expect(userFindMany).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
+    expect(sendLineMessageMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps fax and mcs rules delivery-free while resolving their recipients through membership', async () => {
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      notificationUpsert,
+      userFindMany,
+    } = createTx();
+    notificationRuleFindMany.mockResolvedValue([
+      {
+        id: 'rule_fax',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'fax',
+        recipients: { user_ids: ['valid_user', 'invalid_user'] },
+        enabled: true,
+      },
+      {
+        id: 'rule_mcs',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'mcs',
+        recipients: { user_ids: ['valid_user', 'invalid_user'] },
+        enabled: true,
+      },
+    ]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'valid_user', role: 'pharmacist' }]);
+
+    const notifications = await dispatchNotificationEvent(tx, {
+      orgId: 'org_1',
+      eventType: 'patient_self_report_followup_due',
+      type: 'urgent',
+      title: '折り返し依頼',
+      message: '至急対応してください',
+    });
+
+    expect(notifications).toEqual([]);
+    expect(membershipFindMany).toHaveBeenCalledTimes(1);
+    expect(notificationCreate).not.toHaveBeenCalled();
+    expect(notificationUpsert).not.toHaveBeenCalled();
+    expect(userFindMany).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
+    expect(sendLineMessageMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before notification side effects when membership eligibility lookup fails', async () => {
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      notificationUpsert,
+      pushSubscriptionFindMany,
+      userFindMany,
+    } = createTx();
+    notificationRuleFindMany.mockResolvedValue([]);
+    membershipFindMany.mockRejectedValue(new Error('membership lookup failed'));
+
+    await expect(
+      dispatchNotificationEvent(tx, {
+        orgId: 'org_1',
+        eventType: 'patient_self_report_followup_due',
+        type: 'urgent',
+        title: '折り返し依頼',
+        message: '至急対応してください',
+        explicitUserIds: ['user_1'],
+      }),
+    ).rejects.toThrow('membership lookup failed');
+
+    expect(notificationCreate).not.toHaveBeenCalled();
+    expect(notificationUpsert).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+    expect(pushSubscriptionFindMany).not.toHaveBeenCalled();
+    expect(userFindMany).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
+    expect(sendLineMessageMock).not.toHaveBeenCalled();
+  });
+
+  it('uses same-org membership instead of legacy User.org_id for multi-org external delivery', async () => {
+    vi.useFakeTimers();
+    sendSmsMock.mockReset();
+    sendLineMessageMock.mockReset();
+    const { tx, notificationRuleFindMany, membershipFindMany, userFindMany } = createTx();
+    notificationRuleFindMany.mockResolvedValue([
+      {
+        id: 'rule_sms',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'sms',
+        recipients: { user_ids: ['multi_org_user'] },
+        enabled: true,
+      },
+    ]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'multi_org_user', role: 'pharmacist' }]);
+    userFindMany.mockResolvedValue([{ id: 'multi_org_user', phone: '09000000001' }]);
+
+    const notifications = await dispatchNotificationEvent(tx, {
+      orgId: 'org_1',
+      eventType: 'patient_self_report_followup_due',
+      type: 'urgent',
+      title: '折り返し依頼',
+      message: '至急対応してください',
+    });
+
+    expect(notifications).toEqual([]);
+    expect(userFindMany).toHaveBeenCalledTimes(1);
+    const userWhere = userFindMany.mock.calls[0]?.[0]?.where;
+    expect(userWhere).toEqual({
+      id: { in: ['multi_org_user'] },
+      is_active: true,
+      account_status: 'active',
+      memberships: {
+        some: {
+          org_id: 'org_1',
+          is_active: true,
+        },
+      },
+    });
+    expect(userWhere).not.toHaveProperty('org_id');
+
+    await runScheduledDeliveries();
+
+    expect(sendSmsMock).toHaveBeenCalledWith(
+      '09000000001',
+      'PH-OS通知\nアプリで詳細を確認してください',
+    );
+    expect(sendLineMessageMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves dedupe-key upsert semantics after recipient eligibility filtering', async () => {
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      notificationUpsert,
+    } = createTx();
+    notificationRuleFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
+    notificationUpsert.mockResolvedValue({
+      id: 'notification_1',
+      user_id: 'user_1',
+      type: 'business',
+      title: '承認待ち',
+      message: '通知を確認してください',
+      link: null,
+    });
+
+    const notifications = await dispatchNotificationEvent(tx, {
+      orgId: 'org_1',
+      eventType: 'visit_schedule_reschedule_requested',
+      type: 'business',
+      title: '承認待ち',
+      message: '通知を確認してください',
+      explicitUserIds: ['user_1'],
+      dedupeKey: 'visit_schedule:1',
+    });
+
+    expect(notifications).toHaveLength(1);
+    expect(notificationCreate).not.toHaveBeenCalled();
+    expect(notificationUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id_user_id_dedupe_key: {
+            org_id: 'org_1',
+            user_id: 'user_1',
+            dedupe_key: 'visit_schedule:1',
+          },
+        },
+      }),
+    );
+  });
+
   it('bounds concurrent notification row creation for large recipient sets', async () => {
     const originalConcurrency = process.env.NOTIFICATION_DELIVERY_CONCURRENCY;
     process.env.NOTIFICATION_DELIVERY_CONCURRENCY = '2';
     const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
       createTx();
     notificationRuleFindMany.mockResolvedValue([]);
-    membershipFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([
+      { user_id: 'user_1', role: 'pharmacist' },
+      { user_id: 'user_2', role: 'pharmacist' },
+      { user_id: 'user_3', role: 'pharmacist' },
+      { user_id: 'user_4', role: 'pharmacist' },
+    ]);
     userFindMany.mockResolvedValue([]);
 
     let activeCreates = 0;
@@ -374,7 +718,11 @@ describe('dispatchNotificationEvent', () => {
         enabled: true,
       },
     ]);
-    membershipFindMany.mockResolvedValue([{ user_id: 'user_3', role: 'admin' }]);
+    membershipFindMany.mockResolvedValue([
+      { user_id: 'user_1', role: 'pharmacist' },
+      { user_id: 'user_2', role: 'pharmacist' },
+      { user_id: 'user_3', role: 'admin' },
+    ]);
     userFindMany.mockResolvedValue([]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: `notification_${data.user_id as string}`,
@@ -393,9 +741,19 @@ describe('dispatchNotificationEvent', () => {
     expect(notifications).toHaveLength(3);
     expect(membershipFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          role: { in: ['admin'] },
-        }),
+        where: {
+          org_id: 'org_1',
+          is_active: true,
+          user: {
+            is_active: true,
+            account_status: 'active',
+          },
+          OR: [{ user_id: { in: ['user_1', 'user_2'] } }, { role: { in: ['admin'] } }],
+        },
+        select: {
+          user_id: true,
+          role: true,
+        },
       }),
     );
     const userIds = notificationCreate.mock.calls.map(
@@ -418,7 +776,7 @@ describe('dispatchNotificationEvent', () => {
         enabled: true,
       },
     ]);
-    membershipFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
     userFindMany.mockResolvedValue([]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: `notification_${data.user_id as string}`,
@@ -435,7 +793,7 @@ describe('dispatchNotificationEvent', () => {
     });
 
     expect(notifications).toHaveLength(1);
-    expect(membershipFindMany).not.toHaveBeenCalled();
+    expect(membershipFindMany).toHaveBeenCalledTimes(1);
     expect(notificationCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -465,7 +823,11 @@ describe('dispatchNotificationEvent', () => {
         enabled: true,
       },
     ]);
-    membershipFindMany.mockResolvedValue([{ user_id: 'user_3', role: 'admin' }]);
+    membershipFindMany.mockResolvedValue([
+      { user_id: 'user_1', role: 'pharmacist' },
+      { user_id: 'user_2', role: 'pharmacist' },
+      { user_id: 'user_3', role: 'admin' },
+    ]);
     userFindMany.mockResolvedValue([
       { id: 'user_1', phone: '09000000001' },
       { id: 'user_2', phone: null },
@@ -520,7 +882,10 @@ describe('dispatchNotificationEvent', () => {
         enabled: true,
       },
     ]);
-    membershipFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([
+      { user_id: 'user_1', role: 'pharmacist' },
+      { user_id: 'user_2', role: 'pharmacist' },
+    ]);
     userFindMany.mockResolvedValue([
       { id: 'user_1', phone: null },
       { id: 'user_2', phone: null },
@@ -583,7 +948,7 @@ describe('dispatchNotificationEvent', () => {
         enabled: true,
       },
     ]);
-    membershipFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
     userFindMany.mockResolvedValue([{ id: 'user_1', phone: '09000000001' }]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: 'notification_1',
@@ -659,7 +1024,7 @@ describe('dispatchNotificationEvent', () => {
     } = createTx();
 
     notificationRuleFindMany.mockResolvedValue([]);
-    membershipFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: 'notification_1',
       created_at: new Date('2026-06-17T00:00:00.000Z'),
@@ -773,7 +1138,7 @@ describe('dispatchNotificationEvent', () => {
     } = createTx();
 
     notificationRuleFindMany.mockResolvedValue([]);
-    membershipFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: 'notification_1',
       created_at: new Date('2026-06-17T00:00:00.000Z'),
@@ -895,17 +1260,21 @@ describe('dispatchNotificationEvent', () => {
     });
 
     expect(membershipFindMany).toHaveBeenCalledTimes(1);
-    expect(membershipFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          role: { in: ['admin'] },
-        }),
-        select: {
-          user_id: true,
-          role: true,
+    expect(membershipFindMany).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        is_active: true,
+        user: {
+          is_active: true,
+          account_status: 'active',
         },
-      }),
-    );
+        OR: [{ role: { in: ['admin'] } }],
+      },
+      select: {
+        user_id: true,
+        role: true,
+      },
+    });
     expect(notificationCreate).toHaveBeenCalledTimes(1);
     expect(sendSmsMock).not.toHaveBeenCalled();
     expect(sendLineMessageMock).not.toHaveBeenCalled();
@@ -916,7 +1285,7 @@ describe('dispatchNotificationEvent', () => {
     expect(sendLineMessageMock).toHaveBeenCalledTimes(1);
   });
 
-  it('shares pending role membership lookups across concurrent external channels', async () => {
+  it('uses one membership snapshot for direct and role recipients across channels', async () => {
     vi.useFakeTimers();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
@@ -953,7 +1322,10 @@ describe('dispatchNotificationEvent', () => {
         enabled: true,
       },
     ]);
-    membershipFindMany.mockResolvedValue([{ user_id: 'user_admin', role: 'admin' }]);
+    membershipFindMany.mockResolvedValue([
+      { user_id: 'user_explicit', role: 'pharmacist' },
+      { user_id: 'user_admin', role: 'admin' },
+    ]);
     userFindMany.mockResolvedValue([{ id: 'user_admin', phone: '09000000000' }]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: `notification_${data.user_id as string}`,
@@ -1000,7 +1372,7 @@ describe('dispatchNotificationEvent', () => {
         enabled: true,
       },
     ]);
-    membershipFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
     userFindMany.mockResolvedValue([{ id: 'user_1', phone: '09000000001' }]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: `notification_${data.user_id as string}`,
@@ -1050,7 +1422,7 @@ describe('dispatchNotificationEvent', () => {
         enabled: true,
       },
     ]);
-    membershipFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
     userFindMany.mockResolvedValue([{ id: 'user_1', phone: '09000000001' }]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: `notification_${data.user_id as string}`,

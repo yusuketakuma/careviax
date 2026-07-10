@@ -41,6 +41,8 @@ type Tx = {
   user: Pick<Prisma.TransactionClient['user'], 'findMany'>;
 };
 type NotificationChannel = 'in_app' | 'sms' | 'line' | 'email' | 'fax' | 'mcs';
+const DISPATCHED_NOTIFICATION_CHANNELS = ['in_app', 'sms', 'line', 'fax', 'mcs'] as const;
+const dispatchedNotificationChannelSet = new Set<string>(DISPATCHED_NOTIFICATION_CHANNELS);
 type NotificationDeliveryTask = () => Promise<unknown>;
 type PersistedNotification = {
   id: string;
@@ -164,87 +166,103 @@ async function broadcastPersistedNotifications(notifications: PersistedNotificat
 }
 
 function getEnabledRulesForChannel(
-  rules: Array<{
-    channel: string;
-    enabled: boolean;
-    recipients: Prisma.JsonValue;
-  }>,
+  rules: NotificationRecipientRule[],
   channel: NotificationChannel,
 ) {
   return rules.filter((rule) => rule.channel === channel && rule.enabled);
 }
 
-type MembershipRecipientResolver = (roles: MemberRole[]) => Promise<Array<{ user_id: string }>>;
+type NotificationRecipientRule = {
+  channel: string;
+  enabled: boolean;
+  recipients: Prisma.JsonValue;
+};
 
-function createMembershipRecipientResolver(tx: Tx, orgId: string): MembershipRecipientResolver {
-  const rowsByRole = new Map<MemberRole, Array<{ user_id: string }>>();
-  const loadedRoles = new Set<MemberRole>();
-  const pendingLoadsByRole = new Map<MemberRole, Promise<void>>();
+type EligibleNotificationRecipients = {
+  directUserIds: ReadonlySet<string>;
+  userIdsByRole: ReadonlyMap<MemberRole, ReadonlySet<string>>;
+};
 
-  return async (roles) => {
-    const uniqueRoles = uniqueMemberRoles(roles);
-    const missingRoles = uniqueRoles.filter(
-      (role) => !loadedRoles.has(role) && !pendingLoadsByRole.has(role),
-    );
-
-    if (missingRoles.length > 0) {
-      const loadPromise = tx.membership
-        .findMany({
-          where: {
-            org_id: orgId,
-            is_active: true,
-            role: { in: missingRoles },
-            user: {
-              is_active: true,
-            },
-          },
-          select: {
-            user_id: true,
-            role: true,
-          },
-        })
-        .then((memberships) => {
-          for (const role of missingRoles) {
-            rowsByRole.set(role, []);
-            loadedRoles.add(role);
-          }
-
-          for (const membership of memberships) {
-            rowsByRole.get(membership.role)?.push({ user_id: membership.user_id });
-          }
-        })
-        .finally(() => {
-          for (const role of missingRoles) {
-            pendingLoadsByRole.delete(role);
-          }
-        });
-
-      for (const role of missingRoles) {
-        pendingLoadsByRole.set(role, loadPromise);
-      }
-    }
-
-    await Promise.all(
-      uniqueRoles
-        .map((role) => pendingLoadsByRole.get(role))
-        .filter((loadPromise): loadPromise is Promise<void> => Boolean(loadPromise)),
-    );
-
-    return uniqueRoles.flatMap((role) => rowsByRole.get(role) ?? []);
-  };
-}
-
-async function resolveTargetUserIds(
-  input: Pick<DispatchNotificationEventInput, 'orgId' | 'explicitUserIds'>,
-  rules: Array<{
-    channel: string;
-    enabled: boolean;
-    recipients: Prisma.JsonValue;
-  }>,
+function allowsExplicitRecipients(
+  rules: NotificationRecipientRule[],
   channel: NotificationChannel,
-  resolveMembershipRecipients: MembershipRecipientResolver,
 ) {
   const channelRules = rules.filter((rule) => rule.channel === channel);
+  const enabledRules = getEnabledRulesForChannel(rules, channel);
+  return channel === 'in_app'
+    ? channelRules.length === 0 || enabledRules.length > 0
+    : enabledRules.length > 0;
+}
+
+async function resolveEligibleNotificationRecipients(
+  tx: Tx,
+  input: Pick<DispatchNotificationEventInput, 'orgId' | 'explicitUserIds'>,
+  rules: NotificationRecipientRule[],
+): Promise<EligibleNotificationRecipients> {
+  const enabledRules = rules.filter(
+    (rule) => rule.enabled && dispatchedNotificationChannelSet.has(rule.channel),
+  );
+  const explicitRecipientsEnabled = DISPATCHED_NOTIFICATION_CHANNELS.some((channel) =>
+    allowsExplicitRecipients(rules, channel),
+  );
+  const directCandidateUserIds = uniqueStrings([
+    ...(explicitRecipientsEnabled ? (input.explicitUserIds ?? []) : []),
+    ...enabledRules.flatMap((rule) => readRecipientUserIds(rule.recipients)),
+  ]);
+  const candidateRoles = uniqueMemberRoles(
+    enabledRules.flatMap((rule) => readRecipientRoles(rule.recipients)),
+  );
+  const candidateFilters: Prisma.MembershipWhereInput[] = [];
+  if (directCandidateUserIds.length > 0) {
+    candidateFilters.push({ user_id: { in: directCandidateUserIds } });
+  }
+  if (candidateRoles.length > 0) {
+    candidateFilters.push({ role: { in: candidateRoles } });
+  }
+  if (candidateFilters.length === 0) {
+    return { directUserIds: new Set(), userIdsByRole: new Map() };
+  }
+
+  const memberships = await tx.membership.findMany({
+    where: {
+      org_id: input.orgId,
+      is_active: true,
+      user: {
+        is_active: true,
+        account_status: 'active',
+      },
+      OR: candidateFilters,
+    },
+    select: {
+      user_id: true,
+      role: true,
+    },
+  });
+  const directCandidateUserIdSet = new Set(directCandidateUserIds);
+  const candidateRoleSet = new Set(candidateRoles);
+  const directUserIds = new Set<string>();
+  const userIdsByRole = new Map<MemberRole, Set<string>>();
+
+  for (const membership of memberships) {
+    if (directCandidateUserIdSet.has(membership.user_id)) {
+      directUserIds.add(membership.user_id);
+    }
+    if (candidateRoleSet.has(membership.role)) {
+      const userIds = userIdsByRole.get(membership.role) ?? new Set<string>();
+      userIds.add(membership.user_id);
+      userIdsByRole.set(membership.role, userIds);
+    }
+  }
+
+  return { directUserIds, userIdsByRole };
+}
+
+function resolveTargetUserIds(
+  input: Pick<DispatchNotificationEventInput, 'explicitUserIds'>,
+  rules: NotificationRecipientRule[],
+  channel: NotificationChannel,
+  eligibleRecipients: EligibleNotificationRecipients,
+) {
   const enabledRules = getEnabledRulesForChannel(rules, channel);
   if (channel !== 'in_app' && enabledRules.length === 0) {
     return [];
@@ -256,20 +274,16 @@ async function resolveTargetUserIds(
   const userRecipients = uniqueStrings(
     enabledRules.flatMap((rule) => readRecipientUserIds(rule.recipients)),
   );
-
-  const membershipRecipients =
-    roleRecipients.length === 0 ? [] : await resolveMembershipRecipients(roleRecipients);
-
-  const allowExplicitRecipients =
-    channel === 'in_app'
-      ? channelRules.length === 0 || enabledRules.length > 0
-      : enabledRules.length > 0;
-
-  return uniqueStrings([
+  const allowExplicitRecipients = allowsExplicitRecipients(rules, channel);
+  const directUserIds = uniqueStrings([
     ...(allowExplicitRecipients ? (input.explicitUserIds ?? []) : []),
     ...userRecipients,
-    ...membershipRecipients.map((membership) => membership.user_id),
-  ]);
+  ]).filter((userId) => eligibleRecipients.directUserIds.has(userId));
+  const roleUserIds = roleRecipients.flatMap((role) =>
+    Array.from(eligibleRecipients.userIdsByRole.get(role) ?? []),
+  );
+
+  return uniqueStrings([...directUserIds, ...roleUserIds]);
 }
 
 export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificationEventInput) {
@@ -279,22 +293,12 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
       event_type: input.eventType,
     },
   });
-  const resolveMembershipRecipients = createMembershipRecipientResolver(tx, input.orgId);
-  const targetUserIds = await resolveTargetUserIds(
-    input,
-    rules,
-    'in_app',
-    resolveMembershipRecipients,
-  );
+  const eligibleRecipients = await resolveEligibleNotificationRecipients(tx, input, rules);
+  const targetUserIds = resolveTargetUserIds(input, rules, 'in_app', eligibleRecipients);
 
   if (targetUserIds.length === 0) {
-    const smsUserIds = await resolveTargetUserIds(input, rules, 'sms', resolveMembershipRecipients);
-    const lineUserIds = await resolveTargetUserIds(
-      input,
-      rules,
-      'line',
-      resolveMembershipRecipients,
-    );
+    const smsUserIds = resolveTargetUserIds(input, rules, 'sms', eligibleRecipients);
+    const lineUserIds = resolveTargetUserIds(input, rules, 'line', eligibleRecipients);
     if (smsUserIds.length === 0 && lineUserIds.length === 0) {
       return [];
     }
@@ -353,12 +357,10 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
 
   await broadcastPersistedNotifications(notifications);
 
-  const [smsUserIds, lineUserIds, faxUserIds, mcsUserIds] = await Promise.all([
-    resolveTargetUserIds(input, rules, 'sms', resolveMembershipRecipients),
-    resolveTargetUserIds(input, rules, 'line', resolveMembershipRecipients),
-    resolveTargetUserIds(input, rules, 'fax', resolveMembershipRecipients),
-    resolveTargetUserIds(input, rules, 'mcs', resolveMembershipRecipients),
-  ]);
+  const smsUserIds = resolveTargetUserIds(input, rules, 'sms', eligibleRecipients);
+  const lineUserIds = resolveTargetUserIds(input, rules, 'line', eligibleRecipients);
+  const faxUserIds = resolveTargetUserIds(input, rules, 'fax', eligibleRecipients);
+  const mcsUserIds = resolveTargetUserIds(input, rules, 'mcs', eligibleRecipients);
   const externalUserIds = uniqueStrings([
     ...smsUserIds,
     ...lineUserIds,
@@ -400,9 +402,15 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
     const externalNotification = buildExternalNotificationContent();
     const users = await tx.user.findMany({
       where: {
-        org_id: input.orgId,
         id: { in: externalUserIds },
         is_active: true,
+        account_status: 'active',
+        memberships: {
+          some: {
+            org_id: input.orgId,
+            is_active: true,
+          },
+        },
       },
       select: {
         id: true,
