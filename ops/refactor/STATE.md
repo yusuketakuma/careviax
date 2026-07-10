@@ -51,6 +51,42 @@
 
 ## 直近の作業
 
+- codex: break-glass active-session GET envelope convergence.
+  - commit:
+    `2730273c1 fix(API-CONTRACT-001FD): envelope break-glass sessions`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001FD`。`GET /api/platform/break-glass` のactive-session listをexact
+    `{ data: { sessions } }`へ揃える。Shared hook/panels、platform operator/session ownership/no-store不変、
+    route regression、allowlist expectedCount 2→1、debt 8→7を完了条件とした。
+  - files inspected / changed:
+    Collection GET/POST route、revoke route、break-glass/operator service/tests、shared hook、break-glass/data explorer
+    panels/tests、platform fetch helper、allowlist、Plans/archive/state、active dirty treeを確認。変更はGET success、
+    shared hook unwrap/fixtures、新規collection route test、allowlist、計画台帳だけ。POST activation、service、
+    DB/schema/migrationは変更していない。
+  - implementation / behavior / rollback:
+    Existing serialized session listを`data.sessions`へ移動し、shared hookが`payload.data`を返すためpanel公開data
+    shapeは不変。Serializer mapはindex/arrayを余計に渡さない1引数lambdaへ変更した。Status/session fields/error
+    contractは不変。Rollbackはscoped code/ledger commitのrevertで、schema、migration、persisted data、dependency、
+    deploy設定の復元は不要。
+  - security / authorization / tenant / audit / privacy / human review:
+    `requirePlatformOperator`、operatorId-scoped active session list、expiry/revoke predicates、serialized field set、
+    sensitive no-storeを変更していない。PHI/PII field/logは追加していない。Human reviewはresponse nesting、hook
+    unwrap、operatorId binding、POST分離を確認すればよい。Codex単独で実装・検証し、subagent、agmsg、Claude、
+    Oracle、外部workerは使っていない。
+  - validation:
+    Baselineは4 files / 37 tests pass。初回finalはroute testが`Array.map`からserializerへindex/arrayも渡す既存
+    挙動を検出し、testを弱めず1引数lambdaへ修正後、route/operator/service/panels 5 files / 39 tests pass。
+    Exact ESLint、Prettier、diff check、`api-response-shape:check`（7 allowlisted / 0 new）、route-auth、
+    frontend-contract、query-shape、client-PHI-logがpass。Custom platform guardは専用route/operator/service testsで
+    確認。Typegenは成功し、full typecheckは今回外のuser-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。buildはtypecheck red中のため未実施。
+    DB/migration、production操作、外部送信、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001FD`はDONE、parentは7 violationsでPartial。Production UIはshared data readerだけでvisual
+    reconstructionがないためbrowser/imagegenを省略し、panel testsで回帰確認した。unowned config/harness/
+    inbound/report-shareと全untracked artifactを保持した。次は同route POST activationを独立sliceで移行し、
+    collection allowlist entryを除去する。
+
 - codex: break-glass revoke envelope convergence.
   - commit:
     `c0730c41b fix(API-CONTRACT-001FC): envelope break-glass revocation`.
