@@ -39885,3 +39885,48 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 
   route contracts; do not blanket-remove detail needed for controlled authorization/workflow recovery.
   Reconstruct priorities around concurrent API-contract work and retain explicit human/migration gates
   for stock equivalence, RLS persistence proof, and patient-board cursor design.
+
+## 2026-07-10 FE-PHI-SAFE-CLIENT-LOG-001-VISIT-BRIEF — feedback failure boundary
+
+- current task / plan review:
+  Close the next smallest independent raw-error toast in the AI visit-brief feedback flow. The read-only
+  mapper found that this flow already had a fixed PHI-free inline recovery alert, making the toast-only
+  change safer than multi-operation comment, notification, voice-memo, or report-workspace paths. Oracle
+  was not used, per the current user instruction.
+- commit:
+  `b63937d9f fix(visit-brief): keep feedback errors PHI-safe`.
+- files inspected / changed:
+  `src/components/visit-brief/visit-brief-card.tsx` and its focused test; inspected the UI contract,
+  patient visit-brief integration, feedback POST payload, API JSON reader, existing alert/retry state,
+  client logger/tests, UI SSOT, and dirty ownership.
+- bugs found / fixed:
+  Feedback submission sends patient and summary-generation context, then used `messageFromError` to
+  render an arbitrary API/transport message in a toast while its inline alert correctly used the fixed
+  `FEEDBACK_ERROR_MESSAGE`. Both visible recovery channels now use that fixed message. The caught error
+  is recorded only as `visit_brief.feedback_submission_failed` with static
+  `entityType: 'visit_brief_feedback'`; no dynamic patient, generation, summary, route, payload, or
+  response data enters client logging.
+- security / medical safety:
+  The regression response includes patient-like name, phone, summary text, and a token sentinel. It
+  proves those values are absent from both alert and toast, keeps failure-state feedback buttons enabled
+  for a deliberate retry, and preserves the existing feedback POST/audit lifecycle. Success behavior and
+  the fixed inline recovery instruction are unchanged.
+- performance / UI:
+  One safe logging call and reuse of an existing string; no request, cache, polling, persisted state,
+  dependency, or layout change. Image generation was omitted because existing error/recovery hierarchy is
+  retained and the slice only seals an output boundary after UI SSOT review.
+- validation:
+  `pnpm vitest run src/components/visit-brief/visit-brief-card.test.tsx
+  src/components/visit-brief/visit-brief-card.ui-contract.test.ts
+  src/components/visit-brief/patient-visit-brief-section.test.tsx src/lib/utils/client-log.test.ts
+  src/lib/utils/logger.test.ts` passed 5 files / 42 tests. Exact ESLint, Prettier, `git diff --check`,
+  `pnpm client-phi-log:check`, `pnpm frontend-contract:check`, and `pnpm colors:check` passed.
+  Independent verifier returned PASS. `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck`
+  completed Next route type generation and then stopped only at pre-existing non-owned
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285:49` `string | null` to
+  `string | undefined`; no changed-file error was reported.
+- remaining / next action:
+  `FE-PHI-SAFE-CLIENT-LOG-001` remains Partial. Continue only with individual routes whose user-facing
+  error/recovery contract is reviewed; do not erase controlled API detail or consolidate every raw
+  message through a global change. Preserve the API-contract worker's dirty paths and explicit
+  migration/human gates while selecting the next P1 slice.
