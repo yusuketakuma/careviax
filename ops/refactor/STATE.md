@@ -9,11 +9,11 @@
 ## 体制（2026-07-10 最新ユーザー指示）
 
 - 現行は Codex 本体が計画、編集、validation、台帳更新、scoped commit の最終責任を持つ単一制御運用。
-- 2026-07-10 の最新ユーザー指示により、bounded な調査・計画レビュー・検証には read-only subagent を使う。
-  編集、統合、validation、台帳更新、scoped commit は Codex 本体だけが担う。
+- 2026-07-10 の最新ユーザー指示により、subagent を含む外部workerは使わず、Codex 本体だけで
+  調査、計画、編集、validation、台帳更新、scoped commitを継続する。
 - agmsg、codex2/codex3/codex4、Claude などの外部 maker/checker 運用は再開しない。
 - 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
-  直接の影響範囲確認、read-only subagent の計画レビュー、focused/full gate で代替する。
+  直接の影響範囲確認、focused/full gate で代替する。
 - 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
 
 ## 旧体制（2026-07-04/05 履歴）
@@ -44,13 +44,56 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: Codex 本体 + bounded read-only subagent 運用（2026-07-10〜）。
-  編集・統合・validation・commitの最終責任は Codex 本体が持ち、pushは明示指示時だけ行う。
+- Phase C（実装ループ）: Codex 単独運用（2026-07-10〜）。
+  調査・編集・validation・commitの責任は Codex 本体が持ち、pushは明示指示時だけ行う。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex: visit schedule reopen response-envelope convergence.
+  - commit:
+    `87fe76356 fix(API-CONTRACT-001DZ): envelope schedule reopen result`.
+  - current task:
+    P0 `API-CONTRACT-001DZ`。`POST /api/visit-schedules/:id/reopen` successを raw updated scheduleから
+    exact `{ data: schedule }` へ移し、`api-response-shape` allowlist debtを39から38へ削減する。
+    status transition、auth、transaction、audit、notification、status/error semanticsは変更しない。
+  - files inspected:
+    `Plans.md`; `docs/plans-archive.md`; this state; current Next.js route-handler guide;
+    reopen route/test; all repo references; schedule reason catalog; response-shape checker/allowlist;
+    active dirty tree and recent commits。
+  - files changed:
+    `src/app/api/visit-schedules/[id]/reopen/route.ts` and test;
+    `tools/api-response-shape-allowlist.json`; `Plans.md`; `docs/plans-archive.md`; and this state file。
+  - bugs found / fixed:
+    The successful lifecycle mutation returned the updated schedule at the root, contrary to the current public
+    envelope contract. It now returns exact nested `data`; the route test pins the safe fixture and rejects root
+    schedule fields. No repo production consumer exists, so no compatibility fallback or disconnected reader was
+    introduced.
+  - frontend/backend, security and performance:
+    This is response nesting only. Cancelled→planned, version increment, optimistic claim, completed override and
+    replacement-lineage rejection, lifecycle/assignment permission, structured reason audit, workflow notification,
+    no-store, status and error bodies are unchanged. No query, transaction, UI state, payload field, PHI disclosure,
+    log, dependency or mutation behavior was added.
+  - plan review / agents / Oracle:
+    Codex alone mapped the route and all repo references before editing. No subagent, agmsg, Claude, external
+    maker/checker or Oracle consultation was used.
+  - validation:
+    Pre-change and post-change focused Vitest each passed 1 file / 11 tests. Exact ESLint, Prettier and
+    `git diff --check` passed. `pnpm api-response-shape:check` passed at 38 allowlisted / 0 new;
+    `route-auth-wrapper:check` and `db:query-shape:check` passed. Typegen succeeded; full typecheck reported no
+    reopen error and remains red only on the pre-existing user-owned
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that
+    prerequisite gate is red. No DB/migration command, production operation, external send, deploy, push or
+    destructive action ran.
+  - Plans / UI / imagegen / ownership:
+    `API-CONTRACT-001DZ` is recorded as completed; parent `API-CONTRACT-001` remains Partial with 38 violations.
+    Image generation/browser screenshots were omitted because response nesting changes no visual state. The
+    concurrent stock follow-up commit and evidence remain outside this API slice.
+  - remaining / next action:
+    Continue `API-CONTRACT-001` with another bounded consumer-backed route. Preserve all unowned
+    inbound/config/harness dirty files. No push was performed.
 
 - codex: dashboard stock snapshot unit mismatch count follow-up.
   - commit:
