@@ -22,6 +22,8 @@ const BILLING_MONTH = '2026-04-01';
 const BILLING_PATIENT_ID = 'billing_route_mock_patient';
 const OFFLINE_SCHEDULE_ID = 'offline_route_mock_schedule';
 const OFFLINE_PATIENT_ID = 'offline_route_mock_patient';
+const GATE_OFF_VISIT_RECORD_ID = 'gate_off_route_mock_visit_record';
+const GATE_OFF_PROBE_VISIT_RECORD_ID = 'gate_off_route_mock_probe';
 const FORMULARY_SITE_ID = 'formulary_route_mock_site';
 const FORMULARY_DRUG_ID = 'formulary_route_mock_drug';
 const FORMULARY_GENERIC_ID = 'formulary_route_mock_generic';
@@ -2183,7 +2185,16 @@ async function installFormularyRouteMocks(page: Page) {
   return { impactRequests, jobRequests };
 }
 
-async function installOfflineVisitRecordRouteMocks(page: Page) {
+async function installOfflineVisitRecordRouteMocks(
+  page: Page,
+  {
+    visitRecordPostBody = { message: 'offline save smoke should not POST visit records' },
+    visitRecordPostStatus = 500,
+  }: {
+    visitRecordPostBody?: unknown;
+    visitRecordPostStatus?: number;
+  } = {},
+) {
   const visitRecordRequests: CapturedRouteRequest[] = [];
   const scheduleRequests: CapturedRouteRequest[] = [];
   const preparationRequests: CapturedRouteRequest[] = [];
@@ -2234,11 +2245,7 @@ async function installOfflineVisitRecordRouteMocks(page: Page) {
   await page.route(apiPathPattern('/api/visit-records'), async (route) => {
     if (route.request().method() === 'POST') {
       visitRecordRequests.push(captureRouteRequest(route));
-      await fulfillJson(
-        route,
-        { message: 'offline save smoke should not POST visit records' },
-        500,
-      );
+      await fulfillJson(route, visitRecordPostBody, visitRecordPostStatus);
       return;
     }
 
@@ -2246,6 +2253,109 @@ async function installOfflineVisitRecordRouteMocks(page: Page) {
   });
 
   return { preparationRequests, scheduleRequests, visitRecordRequests };
+}
+
+function buildGateOffMedicationStockSummary() {
+  const generatedAt = new Date().toISOString();
+  return {
+    data: {
+      patient_id: OFFLINE_PATIENT_ID,
+      summary: {
+        total_item_count: 1,
+        visible_item_count: 1,
+        active_item_count: 1,
+        urgent_count: 0,
+        shortage_expected_count: 1,
+        watch_count: 0,
+        unknown_risk_count: 0,
+        usage_unknown_count: 0,
+        equivalence_review_count: 0,
+        pending_external_observation_count: 0,
+        last_observed_at: generatedAt,
+      },
+      items: [
+        {
+          id: 'gate_off_stock_item',
+          display_id: 'STK-GATE-OFF-1',
+          patient_id: OFFLINE_PATIENT_ID,
+          case_id: null,
+          display_name: 'モーラスパップ30mg',
+          normalized_name: 'モーラスパップ30mg',
+          ingredient_name: 'ケトプロフェン',
+          strength: '30mg',
+          dosage_form: '貼付剤',
+          route: '外用',
+          unit: '枚',
+          source_type: 'prescription',
+          medication_category: 'topical',
+          managing_party: 'family',
+          equivalence_review_status: 'none',
+          equivalence_confidence: null,
+          active: true,
+          snapshot: {
+            current_quantity: 4,
+            last_observed_quantity: 12,
+            last_observed_at: generatedAt,
+            estimated_daily_usage: 2,
+            usage_confidence: 'medium',
+            estimated_stockout_date: '2026-07-12T00:00:00.000Z',
+            days_until_stockout: 2,
+            stock_risk_level: 'shortage_expected',
+            risk_reason_code: 'before_next_visit',
+            calculated_at: generatedAt,
+          },
+        },
+      ],
+      recent_events: [],
+    },
+    meta: {
+      generated_at: generatedAt,
+      item_limit: 20,
+      event_limit: 0,
+      visible_count: 1,
+      hidden_count: 0,
+      count_basis: 'limited_items',
+      partial_failures: [],
+    },
+  };
+}
+
+async function installVisitMedicationStockGateOffRouteMocks(page: Page) {
+  const headerSummaryRequests: CapturedRouteRequest[] = [];
+  const stockSummaryRequests: CapturedRouteRequest[] = [];
+  const observationPostUrls: string[] = [];
+
+  page.on('request', (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (
+      request.method() === 'POST' &&
+      /^\/api\/visit-records\/[^/]+\/medication-stock-observations$/u.test(pathname)
+    ) {
+      observationPostUrls.push(request.url());
+    }
+  });
+
+  await page.route(
+    apiPathPattern(`/api/patients/${OFFLINE_PATIENT_ID}/header-summary`),
+    async (route) => {
+      headerSummaryRequests.push(captureRouteRequest(route));
+      await fulfillJson(route, {
+        data: {
+          safety: { visible_safety_tags: [], hidden_safety_tag_count: 0 },
+        },
+      });
+    },
+  );
+
+  await page.route(
+    apiPathPattern(`/api/patients/${OFFLINE_PATIENT_ID}/medication-stock`),
+    async (route) => {
+      stockSummaryRequests.push(captureRouteRequest(route));
+      await fulfillJson(route, buildGateOffMedicationStockSummary());
+    },
+  );
+
+  return { headerSummaryRequests, observationPostUrls, stockSummaryRequests };
 }
 
 async function installScheduleDayGanttRouteMocks(page: Page) {
@@ -3673,6 +3783,146 @@ test.describe('formulary route-mocked management smoke', () => {
     expect(overflowWidth).toBeLessThanOrEqual(1);
     expect(highRiskBox?.height ?? 0).toBeGreaterThanOrEqual(40);
     expect(followUpBox?.height ?? 0).toBeGreaterThanOrEqual(40);
+  });
+});
+
+test.describe('visit medication stock gate-off browser regression', () => {
+  test.beforeEach(async ({ context }) => {
+    await attachLocalSession(context);
+  });
+
+  test('keeps stock observations read-only and rejects writes in desktop and mobile', async ({
+    context,
+  }, testInfo) => {
+    const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
+    const { preparationRequests, scheduleRequests, visitRecordRequests } =
+      await installOfflineVisitRecordRouteMocks(page, {
+        visitRecordPostBody: {
+          record: {
+            id: GATE_OFF_VISIT_RECORD_ID,
+            patient_id: OFFLINE_PATIENT_ID,
+            version: 1,
+          },
+        },
+        visitRecordPostStatus: 201,
+      });
+    const { headerSummaryRequests, observationPostUrls, stockSummaryRequests } =
+      await installVisitMedicationStockGateOffRouteMocks(page);
+
+    await openStableRoute(page, `/visits/${OFFLINE_SCHEDULE_ID}/record`);
+
+    await expect
+      .poll(() => scheduleRequests.length, {
+        message: 'gate-off regression should fetch the route-mocked visit schedule',
+        timeout: 10_000,
+      })
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() => preparationRequests.length, {
+        message: 'gate-off regression should fetch the route-mocked visit preparation',
+        timeout: 10_000,
+      })
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() => stockSummaryRequests.length, {
+        message: 'gate-off regression should fetch read-only medication stock context',
+        timeout: 10_000,
+      })
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() => headerSummaryRequests.length, {
+        message: 'gate-off regression should fetch the pinned patient safety summary',
+        timeout: 10_000,
+      })
+      .toBeGreaterThan(0);
+    expect(stockSummaryRequests[0]?.headers['x-org-id']).toBeTruthy();
+
+    const gateOffApiResponse = await context.request.post(
+      new URL(
+        `/api/visit-records/${GATE_OFF_PROBE_VISIT_RECORD_ID}/medication-stock-observations`,
+        page.url(),
+      ).toString(),
+      { data: {} },
+    );
+    expect(gateOffApiResponse.status()).toBe(503);
+    expect(gateOffApiResponse.headers()['cache-control']).toContain('no-store');
+    await expect(gateOffApiResponse.json()).resolves.toEqual({
+      code: 'MEDICATION_STOCK_OBSERVATION_DISABLED',
+      message: '残数観測の登録機能はDB連携確認中です。従来の残薬記録を使用してください。',
+    });
+
+    if (testInfo.project.name === 'mobile-chromium') {
+      for (let index = 0; index < 6; index += 1) {
+        await page.getByRole('button', { name: '次へ', exact: true }).click();
+      }
+      await expect(page.getByRole('heading', { name: '残薬確認', exact: true })).toBeVisible();
+    }
+
+    const stockPanel = page.locator('#visit-medication-stock-observation-panel');
+    const observationKind = stockPanel.getByRole('combobox', { name: '今回の観測' });
+
+    await expect(stockPanel).toBeVisible();
+    await expect(stockPanel.getByText('外用・頓服 残数観測', { exact: true })).toBeVisible();
+    await expect(stockPanel.getByText('登録無効', { exact: true })).toBeVisible();
+    await expect(stockPanel.getByText('モーラスパップ30mg', { exact: true })).toBeVisible();
+    await expect(stockPanel.getByText('4枚', { exact: true })).toBeVisible();
+    await expect(stockPanel.getByText(/12枚/)).toBeVisible();
+    await expect(stockPanel.getByText('不足見込み', { exact: true })).toBeVisible();
+    await expect(
+      stockPanel
+        .getByText(
+          '正本DBの適用・検証が完了し、この環境の書き込みゲートが有効になるまで登録できません。',
+        )
+        .first(),
+    ).toBeVisible();
+    await expect(
+      stockPanel.getByText('従来の残薬記録はこの下の「残薬記録」から引き続き入力できます。'),
+    ).toBeVisible();
+    await expect(observationKind).toBeDisabled();
+    await expect(page.getByRole('heading', { name: '残薬記録', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '薬剤を追加', exact: true })).toBeVisible();
+
+    if (testInfo.project.name === 'mobile-chromium') {
+      await expectMinTouchBox(observationKind, 'gate-off observation selector');
+      await expectMinTouchBox(
+        page.getByRole('button', { name: '薬剤を追加', exact: true }),
+        'legacy residual medication add button',
+      );
+      await expectNoPageHorizontalOverflow(page);
+      const panelOverflow = await stockPanel.evaluate(
+        (panel) => panel.scrollWidth - panel.clientWidth,
+      );
+      expect(panelOverflow).toBeLessThanOrEqual(2);
+    } else {
+      await page
+        .getByRole('textbox', { name: '主観情報', exact: true })
+        .fill('Gate-off browser regression: SOAP S');
+      await page
+        .getByRole('textbox', { name: '客観情報', exact: true })
+        .fill('Gate-off browser regression: SOAP O');
+      await page
+        .getByRole('textbox', { name: '薬学的評価', exact: true })
+        .fill('Gate-off browser regression: SOAP A');
+      await page
+        .getByRole('textbox', { name: '計画・介入', exact: true })
+        .fill('Gate-off browser regression: SOAP P');
+      await page.getByRole('combobox', { name: /訪問結果/ }).click();
+      await page.getByRole('option', { name: '延期' }).click();
+      await page.getByRole('button', { name: '訪問完了', exact: true }).click();
+
+      await expect
+        .poll(() => visitRecordRequests.length, {
+          message: 'gate-off regression should save the ordinary visit record once',
+          timeout: 10_000,
+        })
+        .toBe(1);
+      const visitPayload = visitRecordRequests[0]?.body as Record<string, unknown>;
+      expect(visitPayload).not.toHaveProperty('medication_stock_observations');
+      expect(visitPayload).not.toHaveProperty('stock_observations');
+    }
+
+    expect(observationPostUrls).toEqual([]);
+    expect(errors).toEqual([]);
   });
 });
 
