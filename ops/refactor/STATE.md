@@ -51,6 +51,40 @@
 
 ## 直近の作業
 
+- codex: break-glass activation POST envelope convergence.
+  - commit:
+    `d143cb610 fix(API-CONTRACT-001FE): envelope break-glass activation`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001FE`。`POST /api/platform/break-glass` のactivation successをexact
+    `{ data: { session } }`へ揃える。Platform operator/password+MFA step-up/scope/TTL/audit/no-store不変、
+    route regression、allowlist entry除去、debt 7→6を完了条件とした。
+  - files inspected / changed:
+    Collection GET/POST route/tests、revoke route、platform operator/MFA/break-glass service/tests、panel mutation、
+    platform fetch helper、allowlist、Plans/archive/state、active dirty treeを確認。変更はPOST success、panel response
+    type、専用route POST tests、allowlist、計画台帳だけ。GET/revoke、service、DB/schema/migrationは変更していない。
+  - implementation / behavior / rollback:
+    Existing serialized active sessionを`data.session`へ移動し、success body非依存のpanel mutation typeを同期した。
+    Status 201、session fields、validation/error contractは不変。Rollbackはscoped code/ledger commitのrevertで、
+    schema、migration、persisted data、credential storage、dependency、deploy設定の復元は不要。
+  - security / authentication / authorization / tenant / audit / privacy / human review:
+    `requirePlatformOperator`、password+TOTP step-up、credential非ログ化、scope coercion/permission、TTL、target tenant、
+    active-session conflict、audit write、sensitive no-storeを変更していない。Dummy test credential以外のsecret、
+    PHI/PIIを出力・保存していない。Human reviewはresponse nesting、deny/step-up failureのcreate 0、trimmed input、
+    audit service不変を確認すればよい。Codex単独で実装・検証し、subagent、agmsg、Claude、Oracle、外部workerは
+    使っていない。
+  - validation:
+    Baselineは6 files / 45 tests、finalは6 files / 48 tests pass。Exact ESLint、Prettier、diff check、
+    `api-response-shape:check`（6 allowlisted / 0 new）、route-auth、frontend-contract、query-shape、client-PHI-logが
+    pass。Custom platform guardは専用route/operator/MFA/service testsで確認。Typegenは成功し、full typecheckは
+    今回外のuser-owned `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。buildはtypecheck
+    red中のため未実施。DB/migration、production操作、外部送信、deploy、push、destructive actionは実行して
+    いない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001FE`はDONE、parentは6 violationsでPartial。Production UIはmutation response typeだけでvisual
+    reconstructionがないためbrowser/imagegenを省略し、panel testsで回帰確認した。unowned config/harness/
+    inboundと全untracked artifactを保持した。次はplatform tenant directory/audit/data read routesをconsumerごとに
+    分離して移行する。
+
 - codex: break-glass active-session GET envelope convergence.
   - commit:
     `2730273c1 fix(API-CONTRACT-001FD): envelope break-glass sessions`.
