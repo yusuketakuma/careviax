@@ -39571,3 +39571,52 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 
   Reconstruct the active board after concurrent API-contract edits and select the highest remaining
   safe P1 slice; retain patient-board cursor and full stock equivalence decision lifecycle as explicit
   design gates.
+
+## 2026-07-10 FE-REPORT-EDIT-LEAVE-GUARD-001 — preserve report edits until an explicit decision
+
+- current task / plan review:
+  Complete the report-edit leave guard after read-only implementation and safety reviews. The reviewers
+  required a semantic baseline comparison rather than a first-change flag, a parent-level guard for the
+  inline "表示に戻る" button, and a guard that remains active during a pending save. Oracle was not used,
+  per the current user instruction.
+- commit:
+  `060390547 fix(reports): guard unsaved report edits`.
+- files inspected / changed:
+  `src/components/features/reports/report-edit-form.tsx` and its test;
+  `src/app/(dashboard)/reports/[id]/page.tsx` and its test; and
+  `src/lib/hooks/use-unsaved-changes-guard.test.tsx`. Inspected the shared navigation confirmation
+  provider, unsaved-changes hook, current report PATCH contract, UI SSOT, and pre-existing dirty tree.
+- bugs found / fixed:
+  The form accumulated report free-text locally but had no browser/link leave protection. Its parent
+  unmounted the form directly when the user selected "表示に戻る", losing edits without confirmation.
+  The form now compares the complete controlled fields with a mount-time baseline, clears the guard when
+  values are restored, protects beforeunload/history/same-origin links while dirty or saving, and exposes
+  dirty/saving state to the parent. Parent-level return asks for explicit discard confirmation, while a
+  pending save disables return with a non-PHI accessible explanation. Success alone clears the guard;
+  failed/conflicted saves preserve input and protection.
+- data integrity / security:
+  A separate regression showed that `adverse_events.details: ''` with persisted event labels could erase
+  those labels when an unrelated field was saved. Empty details now initialize from the existing labels,
+  and the outgoing PATCH preserves them. The report save error path no longer sends arbitrary
+  `Error.message` text to a toast: it emits a fixed operational message and a coded PHI-safe
+  `clientLog.warn` event with static `/reports/:id` context. Tests inject patient-like name, phone, and
+  token sentinels and prove they are absent from toast calls.
+- performance / UI:
+  The implementation adds local boolean state and constant-time field comparisons only; it adds no
+  request, cache, persistence, polling, or PHI storage. Image generation was omitted because this is a
+  behavior/accessibility correction in an existing edit surface, with no visual reconstruction or layout
+  change; `docs/ui-ux-design-guidelines.md` was reviewed.
+- validation:
+  Focused Vitest for report form/page, unsaved-changes hook, navigation confirmation provider, and
+  client logger passed 6 files / 71 tests. Exact ESLint, Prettier, `git diff --check`,
+  `pnpm client-phi-log:check`, `pnpm frontend-contract:check`, and `pnpm colors:check` passed.
+  Independent verifier returned PASS. `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck`
+  completed Next route type generation and then stopped only at the pre-existing non-owned
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285:49` `string | null` to
+  `string | undefined` error; no changed-file error was reported.
+- remaining / next action:
+  This report-edit slice is complete. `FE-PHI-SAFE-CLIENT-LOG-001` remains Partial outside the covered
+  report and offline-sync paths; retain the shared `messageFromError` and other route-specific toast
+  policies for separately scoped contract reviews. Continue from the highest safe P1 item after
+  preserving concurrent dirty work; do not bypass the patient-board cursor or full stock-equivalence
+  design gates.
