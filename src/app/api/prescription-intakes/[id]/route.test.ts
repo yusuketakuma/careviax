@@ -309,6 +309,15 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body.data).toMatchObject({
+      id: 'intake_1',
+      source_type: 'fax',
+      original_collected_by: 'user_1',
+    });
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('source_type');
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({
         orgId: 'org_1',

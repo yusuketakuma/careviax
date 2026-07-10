@@ -376,7 +376,7 @@ async function authenticatedPATCH(
     throw error;
   }
 
-  return success(intake);
+  return success({ data: intake });
 }
 
 export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
