@@ -40130,3 +40130,56 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 
   do not globally suppress authorization/validation detail. Track comment-delete confirmation as a
   separate destructive-operation safety slice, and continue avoiding concurrent API-contract and
   user-owned dirty paths.
+
+## 2026-07-10 SEC-EVENT-TRUSTED-ORG-001 — verified tenant audit provenance
+
+- current task / plan review:
+  Review found that a client-controlled `x-org-id` was used as an AuditLog tenant identifier before
+  membership validation. An authenticated member of one organization could therefore cause a denied
+  cross-organization request to create an audit row in the requested target organization. The approved
+  smallest fix establishes explicit `trusted_org_id` provenance: only an organization verified by active
+  membership/permission processing can enter tenant-owned audit persistence. Two independent read-only
+  reviewers returned PASS after the implementation and regression-test review. Oracle was not used, per
+  the current user instruction.
+- commit:
+  `779a3ee72 fix(auth): require trusted org for security audits`.
+- files inspected / changed:
+  `src/lib/auth/context.ts`, `src/lib/auth/context.test.ts`,
+  `src/lib/auth/__tests__/context.test.ts`, `src/lib/auth/security-events.ts`,
+  `src/lib/auth/security-events.test.ts`, `src/lib/auth/security-events.rls.test.ts`,
+  `src/lib/db/rls.ts`, and `src/lib/db/rls.test.ts`; inspected every production
+  `logSecurityEvent` callsite, existing RLS transaction mechanics, policies/contracts, request context,
+  and current dirty ownership.
+- bugs found / fixed:
+  `requireAuthContext` now validates membership before emitting an organization-switch event. Membership
+  misses emit a safe, non-tenant-persisted `unauthorized_access` signal; verified org switches and
+  permission denials carry `trusted_org_id`. The security-event sink ignores legacy/untrusted `org_id`
+  entirely, scopes deduplication by trusted provenance only, and preserves its existing transaction-local
+  RLS settings plus `tx.auditLog.create` path. Missing request context in RLS helpers likewise degrades
+  to safe logging rather than asserting a tenant audit scope.
+- security / medical safety:
+  Regression tests prove an injected legacy target org cannot open an AuditLog transaction/create and
+  that its target org, actor ID, IP, path, and token never appear in the fallback logger output. Tests
+  separately pin no-membership, verified org switch, and verified permission-denial boundaries. No RLS
+  policy, schema, migration, `SECURITY DEFINER`, `BYPASSRLS`, database write, or permission expansion was
+  introduced. Trusted-event raw user-agent capture and heuristic path/details minimization remain
+  existing, separately scoped PHI-minimization work.
+- performance / UI:
+  The changed membership lookup was already required by the request path and is only reordered before
+  audit emission; no query, polling, persistence volume, dependency, or visual hierarchy is added.
+  Image generation was omitted because this is a server-side authorization/audit boundary with no UI
+  change.
+- validation:
+  `pnpm vitest run src/lib/auth/security-events.test.ts src/lib/auth/context.test.ts
+  src/lib/auth/__tests__/context.test.ts src/lib/db/rls.test.ts --reporter=dot` passed 4 files / 43 tests
+  with 1 safely skipped env-gated RLS proof. Exact ESLint and Prettier, `git diff --check`,
+  `pnpm client-phi-log:check`, `pnpm frontend-contract:check`, and `pnpm rls-policy-contract:check`
+  passed (RLS policy contract: 24 tests). `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck`
+  completed Next route type generation and then stopped only at pre-existing non-owned
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285:49` (`string | null` to
+  `string | undefined`); no changed-file type error was reported. The real NOBYPASSRLS proof was not run:
+  `RLS_PROOF_DATABASE_URL` is unset and it would require an approved test database write.
+- remaining / next action:
+  Keep the real RLS proof behind an approved disposable test database gate. Continue the P1 board with a
+  new implementation review, preserving the active API-contract worker paths and the unrelated inbound
+  typecheck blocker.
