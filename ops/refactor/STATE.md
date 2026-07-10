@@ -52,6 +52,72 @@
 
 ## 直近の作業
 
+- codex: patient-share consent scope canonicalization and enabled-only disclosure.
+  - commit:
+    `1b23e7ae9 fix(sharing): normalize consent scope keys`.
+  - current task:
+    P0/P1 `SHARE-CONSENT-SCOPE-NORMALIZE-001A` として、患者共有同意の新規writeを
+    canonical true-only scopeへ限定し、false/unknown/non-boolean keyが同意済みとして
+    保存・表示・監査される境界不整合を閉じる。action mapping、multi-consent union、
+    post-expiry closeout policyは変更しない。
+  - files inspected:
+    `Plans.md`; `docs/plans-archive.md`; bundled Next.js route-handler / server-client component guides;
+    `src/server/services/patient-share-scope.ts`; patient-share policy/summary/case/activate services,
+    routes and tests; patient-share consent route/tests; pharmacy-cooperation workflow caller/schema/tests;
+    DB-backed major-screen fixtures; Zod 4 `partialRecord` behavior; package validation scripts; active dirty tree.
+  - files changed:
+    `Plans.md`; `docs/plans-archive.md`;
+    `src/app/api/patient-share-cases/[id]/consents/route.ts` and `route.test.ts`;
+    `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+    and test; `tools/tests/ui-major-screens.spec.ts`; and this state file.
+  - bugs found / fixed:
+    Consent POST accepted arbitrary JSON, while safe DTO and registration audit used `Object.keys`, so
+    `{ attachments: false }`, unknown `visit_records`, and non-boolean values could appear as consented.
+    The route now accepts only a partial record of the existing canonical keys with literal `true` values;
+    false, unknown, and non-boolean input is rejected with sanitized no-store 400 before RLS transaction,
+    case transition, create, or audit. Omitted/empty scope remains valid and persists as `{}`.
+    GET/POST DTO and registration audit now project only strict enabled keys. Legacy dirty JSON is reduced
+    on read without mutation or backfill. The workflow sends only checked keys, and the DB-backed fixture no
+    longer claims the unratified `visit_records` scope.
+  - security/privacy risks reduced:
+    A disabled or unknown scope can no longer be elevated into an apparent patient consent, API disclosure,
+    or audit assertion. Existing corrupt/legacy rows fail closed at the output boundary, and invalid new input
+    performs no DB or audit side effect. No default clinical scope is applied to consent, so missing keys never
+    become implicit authorization. No schema change, migration, production backfill, action allowlist expansion,
+    PHI payload expansion, external send, or destructive operation was introduced.
+  - performance:
+    No query, transaction, loop, network call, dependency, or render path was added. The request validator is
+    bounded to seven canonical keys, the existing output filter is bounded to the same registry, and client
+    payloads now omit disabled keys.
+  - plan review / subagent / Oracle:
+    Two independent read-only reviewers returned GO at confidence 0.98 / 9 of 10 and agreed on the minimal
+    API+UI slice, enabled-only legacy projection, no backfill, and no action-map expansion. The active plan's
+    explicit acceptance required false-key rejection, resolving the reviewers' sole compatibility disagreement.
+    The full interactive `plan-eng-review` skill could not run in Default mode because AskUserQuestion was
+    unavailable; its architecture/code/test/performance checklist was applied through the bounded reviews.
+    The verifier found one weak `toMatchObject` assertion for 0/1-key payloads; Codex changed both to exact
+    scope equality and the verifier returned PASS at confidence 0.99. Oracle was not used per user instruction.
+  - validation:
+    Focused patient-share case/consent/activate/policy/summary/workflow suites passed 7 files / 100 tests;
+    the final consent route + workflow rerun passed 2 files / 44 tests. Exact-path ESLint and Prettier,
+    `pnpm plans:active:check`, `pnpm api-response-shape:check` (43 allowlisted / 0 new),
+    `pnpm route-auth-wrapper:check`, `pnpm db:raw-read-org-guard:check`,
+    `pnpm db:query-shape:check` (0 / 0), `pnpm dto-direct-prisma-return:check`,
+    `pnpm client-phi-log:check`, `git diff --check`, and Playwright discovery (88 tests) passed.
+    `pnpm typecheck` completed Next type generation, and both it and the 8GB no-unused run stopped only at
+    unrelated user-owned dirty `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285`
+    TS2322 (`string | null` to `string | undefined`). Build/browser execution was not run while that shared
+    type gate remains red; the E2E file was parsed successfully by Playwright discovery.
+  - UI/imagegen:
+    Only the JSON request payload changed; layout, spacing, hierarchy, wording, and visible interaction did not.
+    Image generation was therefore not applicable.
+  - remaining / next action:
+    `SHARE-CONSENT-SCOPE-NORMALIZE-001` remains Partial only for approved action mapping and single-consent /
+    no-union enforcement. `SHARE-CONSENT-WRITE-001` downstream closeout actions remain behind
+    `SHARE-CONSENT-CLOSEOUT-POLICY-001`; do not infer allow/deny rules. The next safe implementation-ready
+    candidate is `NOTIFY-RECIPIENT-MEMBER-001`, starting with a read-only caller/query impact review.
+    No push, deploy, migration, production mutation, external send, or destructive operation ran.
+
 - codex: patient-share current-consent gate for visit-request create and accept.
   - commit:
     `b4127b4b8 fix(sharing): require active consent for visit requests`.
