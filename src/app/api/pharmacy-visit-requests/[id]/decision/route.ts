@@ -15,15 +15,17 @@ const updateVisitRequestDecisionSchema = z
   .object({
     decision: visitRequestDecisionSchema,
     expected_updated_at: z.string().datetime('版情報が不正です'),
-    pharmacist_id: z
-      .string()
-      .trim()
-      .max(128)
-      .transform((value) => (value.length > 0 ? value : undefined))
-      .optional(),
+    pharmacist_id: z.unknown().optional(),
     decline_reason: z.string().trim().max(1000).optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.pharmacist_id !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['pharmacist_id'],
+        message: '実行者は認証情報から記録されるため指定できません',
+      });
+    }
     if (value.decision === 'decline' && !value.decline_reason?.trim()) {
       ctx.addIssue({
         code: 'custom',
@@ -143,12 +145,12 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
           parsed.data.decision === 'accept'
             ? {
                 status: transition.nextStatus,
-                accepted_by: parsed.data.pharmacist_id ?? ctx.userId,
+                accepted_by: ctx.userId,
                 accepted_at: now,
               }
             : {
                 status: transition.nextStatus,
-                declined_by: parsed.data.pharmacist_id ?? ctx.userId,
+                declined_by: ctx.userId,
                 declined_at: now,
                 decline_reason: parsed.data.decline_reason,
               },
@@ -173,7 +175,7 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
           decision: parsed.data.decision,
           previous_status: visitRequest.status,
           status: updated.status,
-          actor_id: parsed.data.pharmacist_id ?? ctx.userId,
+          actor_id: ctx.userId,
           decline_reason_length: parsed.data.decline_reason?.length ?? 0,
         },
       });

@@ -9,6 +9,7 @@ const {
   partnerVisitRecordFindUniqueOrThrowMock,
   pharmacyVisitRequestUpdateManyMock,
   claimCooperationNoteUpsertMock,
+  membershipFindFirstMock,
   dispatchNotificationEventMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
@@ -18,6 +19,7 @@ const {
   partnerVisitRecordFindUniqueOrThrowMock: vi.fn(),
   pharmacyVisitRequestUpdateManyMock: vi.fn(),
   claimCooperationNoteUpsertMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
 }));
@@ -102,6 +104,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     });
     pharmacyVisitRequestUpdateManyMock.mockResolvedValue({ count: 1 });
     claimCooperationNoteUpsertMock.mockResolvedValue({ id: 'claim_note_1' });
+    membershipFindFirstMock.mockResolvedValue({ user_id: 'partner_user_1' });
     dispatchNotificationEventMock.mockResolvedValue([{ id: 'notification_1' }]);
     partnerVisitRecordUpdateManyMock.mockResolvedValue({ count: 1 });
     partnerVisitRecordFindUniqueOrThrowMock.mockResolvedValue({
@@ -126,6 +129,9 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
         },
         claimCooperationNote: {
           upsert: claimCooperationNoteUpsertMock,
+        },
+        membership: {
+          findFirst: membershipFindFirstMock,
         },
       }),
     );
@@ -243,6 +249,15 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
         }),
       }),
     );
+    expect(membershipFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        user_id: 'partner_user_1',
+        is_active: true,
+        user: { is_active: true },
+      },
+      select: { user_id: true },
+    });
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -289,6 +304,92 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
         }),
       }),
     );
+  });
+
+  it('filters legacy cross-org or inactive accepted_by values without blocking review', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce(null);
+    dispatchNotificationEventMock.mockResolvedValueOnce([]);
+
+    const response = await rawPOST(createRequest({ decision: 'confirm' }), routeContext);
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        explicitUserIds: [],
+      }),
+    );
+    expect(JSON.stringify(dispatchNotificationEventMock.mock.calls)).not.toContain(
+      'partner_user_1',
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        changes: expect.objectContaining({ notification_count: 0 }),
+      }),
+    );
+    expect(partnerVisitRecordUpdateManyMock).toHaveBeenCalledOnce();
+  });
+
+  it('skips membership lookup when the legacy visit request has no accepted actor', async () => {
+    partnerVisitRecordFindFirstMock.mockResolvedValueOnce({
+      id: 'partner_visit_record_1',
+      status: 'submitted',
+      updated_at: new Date(CURRENT_UPDATED_AT),
+      visit_request_id: 'visit_request_1',
+      share_case_id: 'share_case_1',
+      owner_partner_pharmacy_id: 'partner_pharmacy_1',
+      visit_at: new Date('2026-06-20T01:30:00.000Z'),
+      revision_no: 1,
+      share_case: { status: 'active' },
+      owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
+      visit_request: {
+        status: 'submitted',
+        accepted_by: null,
+        partnership_id: 'partnership_1',
+        partnership: {
+          status: 'active',
+          partner_pharmacy: { status: 'active' },
+          base_site: { id: 'site_1', name: '基幹薬局' },
+        },
+      },
+    });
+    dispatchNotificationEventMock.mockResolvedValueOnce([]);
+
+    const response = await rawPOST(createRequest({ decision: 'confirm' }), routeContext);
+
+    expect(response.status).toBe(200);
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ explicitUserIds: [] }),
+    );
+  });
+
+  it('fails safely before workflow writes when recipient membership lookup fails', async () => {
+    membershipFindFirstMock.mockRejectedValueOnce(
+      new Error('cross_org_user raw notification recipient lookup detail'),
+    );
+
+    const response = await rawPOST(createRequest({ decision: 'confirm' }), routeContext);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('cross_org_user');
+    expect(JSON.stringify(body)).not.toContain('recipient lookup detail');
+    expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(claimCooperationNoteUpsertMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('stores partner visit claim support dates as Japan business date sentinels', async () => {

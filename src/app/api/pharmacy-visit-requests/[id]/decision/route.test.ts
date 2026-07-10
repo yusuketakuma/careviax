@@ -101,10 +101,7 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
   });
 
   it('accepts a requested visit request with a guarded status update', async () => {
-    const response = await rawPOST(
-      createRequest({ decision: 'accept', pharmacist_id: ' pharmacist_1 ' }),
-      routeContext,
-    );
+    const response = await rawPOST(createRequest({ decision: 'accept' }), routeContext);
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
@@ -122,7 +119,7 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
       },
       data: {
         status: 'accepted',
-        accepted_by: 'pharmacist_1',
+        accepted_by: 'user_1',
         accepted_at: new Date('2026-06-19T00:00:00.000Z'),
       },
     });
@@ -134,10 +131,30 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
         changes: expect.objectContaining({
           decision: 'accept',
           previous_status: 'requested',
-          actor_id: 'pharmacist_1',
+          actor_id: 'user_1',
         }),
       }),
     );
+  });
+
+  it('rejects caller-supplied actor attribution before RLS or workflow writes', async () => {
+    const response = await rawPOST(
+      createRequest({ decision: 'accept', pharmacist_id: 'cross_org_user' }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        pharmacist_id: ['実行者は認証情報から記録されるため指定できません'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('records decline metadata without raw decline reason in audit', async () => {
@@ -163,6 +180,14 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
           declined_by: 'user_1',
           decline_reason: '患者名 山田花子: スケジュール都合で不可',
         }),
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({
+        action: 'pharmacy_visit_request_declined',
+        changes: expect.objectContaining({ actor_id: 'user_1' }),
       }),
     );
     const auditText = JSON.stringify(createAuditLogEntryMock.mock.calls);

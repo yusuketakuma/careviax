@@ -181,6 +181,21 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
           return { response: conflict('提出済みの有効な協力訪問のみ確認できます') };
         }
 
+        const explicitRecipientMembership = record.visit_request.accepted_by
+          ? await tx.membership.findFirst({
+              where: {
+                org_id: ctx.orgId,
+                user_id: record.visit_request.accepted_by,
+                is_active: true,
+                user: { is_active: true },
+              },
+              select: { user_id: true },
+            })
+          : null;
+        const explicitNotificationUserIds = explicitRecipientMembership
+          ? [explicitRecipientMembership.user_id]
+          : [];
+
         const updatedCount = await tx.partnerVisitRecord.updateMany({
           where: {
             id,
@@ -279,9 +294,6 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
         }
 
         const notification = notificationForDecision(parsed.data.decision);
-        const explicitUserIds = record.visit_request.accepted_by
-          ? [record.visit_request.accepted_by]
-          : [];
         const notifications = await dispatchNotificationEvent(tx, {
           orgId: ctx.orgId,
           eventType: notification.eventType,
@@ -289,7 +301,7 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
           title: notification.title,
           message: notification.message,
           link: buildPartnerVisitRecordHref(record.id),
-          explicitUserIds,
+          explicitUserIds: explicitNotificationUserIds,
           metadata: {
             partner_visit_record_id: record.id,
             visit_request_id: record.visit_request_id,

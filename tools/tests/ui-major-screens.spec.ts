@@ -2105,7 +2105,6 @@ test.describe('major authenticated screens', () => {
       {
         data: {
           decision: 'accept',
-          pharmacist_id: demoContext.userId,
           expected_updated_at: visitRequest!.updated_at.toISOString(),
         },
       },
@@ -2739,7 +2738,6 @@ test.describe('major authenticated screens', () => {
       {
         data: {
           decision: 'accept',
-          pharmacist_id: demoContext.userId,
           expected_updated_at: visitRequest!.updated_at.toISOString(),
         },
       },
