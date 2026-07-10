@@ -51,6 +51,39 @@
 
 ## 直近の作業
 
+- codex: facility-batch prescription intake envelope convergence.
+  - commit:
+    `5a1c19134 fix(API-CONTRACT-001EQ): envelope facility batch creation`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001EQ`。`POST /api/prescription-intakes/facility-batch` の201 successを
+    exact `{ data: { facility_label, patient_count, entries } }`へ揃える。Nested DTO、form success flow、
+    auth/identity/transaction/no-store不変、route snapshot、debt 20→19を完了条件とした。
+  - files inspected / changed:
+    Facility-batch POST route/full tests、batch transactionとpost-create hooks、作成フォームmutationとcontract/
+    DOM tests、protected POST matrix、allowlist、Plans/archive/state、active dirty treeを確認した。変更はsuccess
+    response、nested route regression、allowlist、計画台帳だけでproduction frontendは変更していない。
+  - implementation / behavior / rollback:
+    Existing facility label、patient count、entry DTOをそのまま`data`配下へ移動した。唯一のcallerはresponse
+    JSONをparseするが返却値を業務分岐に使わず、成功後のdraft clearと一覧遷移だけを行う。Rollbackはscoped
+    code/ledger commitのrevertで、schema、migration、persisted data、dependency、deploy設定の復元は不要。
+  - security / medical / privacy / human review:
+    `canVisit`、org/patient/case/facility/identity snapshot validation、all-or-nothing batch transaction、cycle/
+    intake/task/profile write、post-create hook、sensitive no-storeとsanitized error logは不変。処方/患者同定ルール、
+    PHI field/logは変更していない。Human reviewはresponse nestingとconsumer非依存だけを確認すればよい。
+    Codex単独で実装・検証し、subagent、agmsg、Claude、Oracle、外部workerは使っていない。
+  - validation:
+    Baseline/final focused Vitestは各3 files / 38 tests pass。Exact ESLint、Prettier、
+    `api-response-shape:check`（19 allowlisted / 0 new）、route-auth、frontend-contract、query-shape、client-PHI-log、
+    diff checkがpass。Protected POST matrixは今回routeへ到達する前に、2026-07-10追加のserver-only visit gateを
+    Vitestが解決できず0 testsで停止した。Typegenは成功。Full typecheckはuser-owned inbound TS2322に加え、
+    同時編集中のreport edit Props不足4件だけが失敗し、今回対象pathの型errorはない。buildはtypecheck red中
+    のため未実施。DB/migration、production操作、外部送信、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001EQ`はDONE、parentは19 violationsでPartial。UI変更がないためbrowser/imagegenを省略。
+    unowned config/harness/inbound/reportと全untracked artifactを保持した。増分scanで
+    `TEST-SERVER-ONLY-RESOLUTION-001`をREADY候補として検出。Vitest限定のsafe alias/shimでprotected matrixを
+    復旧し、Next production boundaryを変更しないことを次の最優先にする。
+
 - codex: prescription intake collection creation envelope convergence.
   - commit:
     `e6b72d297 fix(API-CONTRACT-001EP): envelope prescription intake creation`.
