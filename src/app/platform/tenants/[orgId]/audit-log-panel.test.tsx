@@ -20,7 +20,7 @@ describe('AuditLogPanel', () => {
         async () =>
           new Response(
             JSON.stringify({
-              entries: [
+              data: [
                 {
                   id: 'a1',
                   actor_id: 'user_1',
@@ -32,7 +32,7 @@ describe('AuditLogPanel', () => {
                   created_at: '2026-01-01T00:00:00.000Z',
                 },
               ],
-              truncated: false,
+              meta: { limit: 100, has_more: false },
             }),
             { status: 200 },
           ),
@@ -45,6 +45,22 @@ describe('AuditLogPanel', () => {
     // row's text appears twice in jsdom.
     await waitFor(() => expect(screen.getAllByText('起動').length).toBeGreaterThan(0));
     expect(screen.getAllByText('障害調査のため確認します').length).toBeGreaterThan(0);
+  });
+
+  it('shows the bounded-history notice from response metadata', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ data: [], meta: { limit: 100, has_more: true } }), {
+            status: 200,
+          }),
+      ),
+    );
+
+    render(<AuditLogPanel orgId="org_1" />, { wrapper: createQueryClientWrapper() });
+
+    expect(await screen.findByText(/直近の履歴のみ表示しています/)).toBeTruthy();
   });
 
   it('shows a forbidden ErrorState (not a false-empty table) when there is no active session', async () => {

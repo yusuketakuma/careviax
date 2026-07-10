@@ -23,7 +23,10 @@ type BreakGlassAuditEntry = {
   created_at: string;
 };
 
-type AuditResponse = { entries: BreakGlassAuditEntry[]; truncated: boolean };
+type AuditResponse = {
+  data: BreakGlassAuditEntry[];
+  meta: { limit: number; has_more: boolean };
+};
 
 const ACTION_LABEL: Record<string, string> = {
   break_glass_activate: '起動',
@@ -123,12 +126,12 @@ export function AuditLogPanel({ orgId }: { orgId: string }) {
           <>
             <DataTable
               columns={columns}
-              data={data?.entries ?? []}
+              data={data?.data ?? []}
               isLoading={isLoading}
               caption="ブレークグラスアクセス監査ログ"
               emptyMessage="このテナントへのブレークグラスアクセス履歴はまだありません"
             />
-            {data?.truncated ? (
+            {data?.meta.has_more ? (
               <p className="text-xs text-muted-foreground">
                 直近の履歴のみ表示しています。すべての履歴が必要な場合はエクスポート機能の追加を検討してください。
               </p>

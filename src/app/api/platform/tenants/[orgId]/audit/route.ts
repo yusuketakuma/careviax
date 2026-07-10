@@ -25,10 +25,7 @@ const AUDIT_PAGE_SIZE = 100;
  * scoped to that tenant, and viewing the log is itself recorded as a
  * break_glass_read audit row (transparency).
  */
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ orgId: string }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ orgId: string }> }) {
   const guard = await requirePlatformOperator(req);
   if ('response' in guard) return guard.response;
   const { operator } = guard;
@@ -75,7 +72,13 @@ export async function GET(
   }));
 
   return withSensitiveNoStore(
-    success({ entries, truncated: entries.length === AUDIT_PAGE_SIZE }),
+    success({
+      data: entries,
+      meta: {
+        limit: AUDIT_PAGE_SIZE,
+        has_more: entries.length === AUDIT_PAGE_SIZE,
+      },
+    }),
   );
 }
 
