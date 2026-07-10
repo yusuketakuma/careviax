@@ -91,6 +91,13 @@ describe('/api/workflow-exceptions/[id]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        id: 'exception_1',
+        cycle_id: 'cycle_1',
+        status: 'open',
+      },
+    });
   });
 
   it('rejects blank route params before exception lookup', async () => {

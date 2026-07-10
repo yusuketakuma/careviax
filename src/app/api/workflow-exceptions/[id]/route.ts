@@ -19,7 +19,7 @@ export const GET = withAuthContext(
     });
     if (!exception) return notFound('ワークフロー例外が見つかりません');
 
-    return success(exception);
+    return success({ data: exception });
   },
   {
     permission: 'canDispense',
