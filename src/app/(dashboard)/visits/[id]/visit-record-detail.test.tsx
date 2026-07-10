@@ -160,6 +160,8 @@ type QueryStubOptions = {
 };
 
 type MutationConfig = {
+  mutationFn?: (input: unknown) => Promise<unknown>;
+  onSuccess?: (data: unknown) => void;
   onError?: (error: Error) => void;
 };
 
@@ -310,6 +312,51 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
       '請求候補APIからの詳細エラー',
       '請求候補の生成に失敗しました',
     );
+  });
+
+  it('unwraps the created schedule data envelope before navigating', async () => {
+    const { mutationConfigs } = setupQueries();
+    render(<VisitRecordDetail recordId="record_1" />);
+    const createNextVisit = mutationConfigs[1];
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ data: { id: 'schedule_2' } }, 201));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const created = await createNextVisit.mutationFn?.({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-06-18',
+        pharmacist_id: 'pharmacist_1',
+      });
+      expect(created).toEqual({ id: 'schedule_2' });
+      createNextVisit.onSuccess?.(created);
+      expect(routerPushMock).toHaveBeenCalledWith('/schedules?selected=schedule_2');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a legacy root schedule response before navigation', async () => {
+    const { mutationConfigs } = setupQueries();
+    render(<VisitRecordDetail recordId="record_1" />);
+    const createNextVisit = mutationConfigs[1];
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ id: 'legacy' })));
+
+    try {
+      await expect(
+        createNextVisit.mutationFn?.({
+          case_id: 'case_1',
+          visit_type: 'regular',
+          scheduled_date: '2026-06-18',
+          pharmacist_id: 'pharmacist_1',
+        }),
+      ).rejects.toThrow('次回訪問予定の作成に失敗しました');
+      expect(routerPushMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('pins the patient identity and allergy safety tag above the visit summary (SSOT 2.3)', () => {

@@ -506,12 +506,14 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
         body: JSON.stringify(payload),
       });
 
-      const json = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(json?.message ?? '次回訪問予定の作成に失敗しました');
+      const responsePayload = await readApiJson<{ data?: { id?: unknown } }>(
+        response,
+        '次回訪問予定の作成に失敗しました',
+      );
+      if (typeof responsePayload.data?.id !== 'string' || !responsePayload.data.id.trim()) {
+        throw new Error('次回訪問予定の作成に失敗しました');
       }
-
-      return json as { id: string };
+      return { id: responsePayload.data.id };
     },
     onSuccess: (schedule) => {
       toast.success('次回訪問予定を作成しました');

@@ -545,6 +545,15 @@ describe('/api/visit-schedules', () => {
 
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
+    const responseBody = await response.json();
+    expect(responseBody).toEqual({
+      data: {
+        id: 'schedule_2',
+        assignment_mode: 'primary',
+      },
+    });
+    expect(responseBody).not.toHaveProperty('id');
+    expect(responseBody).not.toHaveProperty('assignment_mode');
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       case_id: 'case_1',
       pharmacist_id: 'user_2',

@@ -85,7 +85,7 @@ const authenticatedPOST = withAuthContext(
       payload: { source: 'visit_schedules_create', case_id: parsed.data.case_id },
     });
 
-    return success(result, 201);
+    return success({ data: result }, 201);
   },
   {
     permission: 'canVisit',
