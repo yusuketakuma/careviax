@@ -152,4 +152,32 @@ describe('ResidualMedicationChart', () => {
       }
     }
   });
+
+  it('keeps SVG scale, date, and threshold labels at the 12px minimum', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 'r1',
+            drug_name: '薬A',
+            excess_days: 7,
+            created_at: '2026-06-12T00:00:00.000Z',
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    const { container } = render(<ResidualMedicationChart patientId="pt_1" />);
+    const chartLabels = container.querySelectorAll('svg text');
+
+    expect(chartLabels.length).toBeGreaterThan(0);
+    for (const chartLabel of chartLabels) {
+      expect(chartLabel.getAttribute('font-size')).toBe('12');
+    }
+    expect(Array.from(chartLabels).find((label) => label.textContent === '7日')).toBeTruthy();
+  });
 });

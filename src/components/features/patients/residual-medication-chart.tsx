@@ -148,7 +148,7 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
                   y={y + 4}
                   textAnchor="end"
                   className="fill-muted-foreground"
-                  fontSize={10}
+                  fontSize={12}
                 >
                   {Math.round(maxVal * ratio)}
                 </text>
@@ -174,10 +174,10 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
                 i === chartData.length - 1) && (
                 <text
                   x={p.x}
-                  y={chartHeight - 2}
+                  y={chartHeight - 6}
                   textAnchor="middle"
                   className="fill-muted-foreground"
-                  fontSize={9}
+                  fontSize={12}
                 >
                   {p.label}
                 </text>
@@ -201,7 +201,7 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
                 x={chartWidth - paddingX + 2}
                 y={paddingY + plotHeight - (7 / maxVal) * plotHeight + 3}
                 className="fill-destructive"
-                fontSize={9}
+                fontSize={12}
               >
                 7日
               </text>

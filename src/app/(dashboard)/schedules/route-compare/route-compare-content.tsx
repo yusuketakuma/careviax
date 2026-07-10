@@ -246,7 +246,7 @@ function ScenarioRouteChart({ scenario }: { scenario: RouteScenario }) {
                 dy="0.35em"
                 textAnchor="middle"
                 fill="#ffffff"
-                fontSize={11}
+                fontSize={12}
                 fontWeight={600}
               >
                 {stop.order}

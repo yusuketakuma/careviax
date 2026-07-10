@@ -15,7 +15,7 @@ function setAuditView(ngValue: string): WorkbenchView {
     isSet: false,
     isSeta: true,
     target: {
-      date: '2026/4/1（水）',
+      date: '2026年4月1日（水）',
       timing: '朝食後',
       packetText: '1包',
       ptpText: 'PTP 1錠',
@@ -27,7 +27,7 @@ function setAuditView(ngValue: string): WorkbenchView {
     checkItems: [{ index: 0, label: '日付が正しい', checked: false }],
     ngValue,
     ngOptions: ['数量不足'],
-    rejectList: [{ di: 0, tk: '朝', label: '4/1 朝食後', ng: '数量不足' }],
+    rejectList: [{ di: 0, tk: '朝', label: '2026年4月1日（水） 朝食後', ng: '数量不足' }],
     rejectEmpty: false,
     riskList: [{ rank: 1, label: 'ハイリスク薬を先に照合', color: '#b42318' }],
   } as unknown as WorkbenchView;
@@ -40,7 +40,7 @@ function setWorkView(): WorkbenchView {
     isSet: true,
     isSeta: false,
     target: {
-      date: '2026/4/1（水）',
+      date: '2026年4月1日（水）',
       timing: '朝食後',
       packetText: '1包',
       ptpText: 'PTP 1錠',
@@ -198,7 +198,7 @@ describe('RightPane typography floor', () => {
       }
       if (phase === 'seta') {
         expectClinicalBodyText('アムロジピン錠5mg');
-        expectClinicalBodyText('4/1 朝食後');
+        expectClinicalBodyText('2026年4月1日（水） 朝食後');
         expectClinicalBodyText('NG：数量不足');
         expectClinicalBodyText('ハイリスク薬を先に照合');
       }

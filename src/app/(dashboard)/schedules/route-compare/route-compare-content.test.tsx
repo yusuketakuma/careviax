@@ -342,6 +342,16 @@ describe('RouteCompareContent', () => {
     renderRouteCompareContent();
 
     expect(await screen.findAllByText(/移動23分/)).not.toHaveLength(0);
+    for (const label of ['案A 移動少なめ', '案B 希望時間優先', '案C 緊急余力優先']) {
+      const routeChart = within(screen.getByLabelText(label)).getByRole('img', {
+        name: new RegExp(`${label}の訪問順`),
+      });
+      const orderLabels = routeChart.querySelectorAll('text');
+      expect(orderLabels.length).toBeGreaterThan(0);
+      for (const orderLabel of orderLabels) {
+        expect(orderLabel.getAttribute('font-size')).toBe('12');
+      }
+    }
     const vehicleDuration = screen.getByTestId('route-compare-vehicle-duration');
     expect(within(vehicleDuration).getByText('推奨車両 社用車A')).toBeTruthy();
     expect(within(vehicleDuration).getByText('稼働 42分 / 上限 180分')).toBeTruthy();

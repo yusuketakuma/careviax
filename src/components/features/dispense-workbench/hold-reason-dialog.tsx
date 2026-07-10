@@ -42,7 +42,7 @@ const FIELD_INPUT_STYLE: CSSProperties = {
 };
 
 const FIELD_LABEL_STYLE: CSSProperties = {
-  fontSize: 11,
+  fontSize: 12,
   color: 'var(--wb-ink-muted)',
   fontWeight: 700,
   marginBottom: 3,
@@ -120,7 +120,18 @@ export function HoldReasonDialog({ view, phase, handlers }: HoldReasonDialogProp
         {/* ヘッダ（橙グラデ・設計 L483-485）*/}
         <div className={styles.modalHeaderHold}>
           <span>保留理由の登録</span>
-          <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.9 }}>{view.holdCellLabel}</span>
+          <span
+            style={{
+              minWidth: 0,
+              fontSize: 12,
+              fontWeight: 400,
+              opacity: 0.9,
+              overflowWrap: 'anywhere',
+              textAlign: 'right',
+            }}
+          >
+            {view.holdCellLabel}
+          </span>
         </div>
 
         {/* 本体（設計 L486-505: padding:13px 15px）*/}
@@ -128,7 +139,7 @@ export function HoldReasonDialog({ view, phase, handlers }: HoldReasonDialogProp
           {/* 保留理由（必須）ラジオ群 */}
           <div
             style={{
-              fontSize: 11.5,
+              fontSize: 12,
               fontWeight: 700,
               color: 'var(--wb-ink-muted)',
               marginBottom: 6,

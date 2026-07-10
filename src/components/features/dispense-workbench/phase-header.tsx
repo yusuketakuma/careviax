@@ -53,7 +53,7 @@ export function PhaseHeader({ view, phase }: PhaseHeaderProps) {
         <div style={{ flex: 1 }} />
         <div
           style={{
-            fontSize: 11,
+            fontSize: 12,
             color: 'var(--wb-ink-muted)',
             padding: '0 8px 6px 0',
             alignSelf: 'flex-end',

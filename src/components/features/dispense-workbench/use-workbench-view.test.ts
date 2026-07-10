@@ -102,10 +102,79 @@ describe('buildView calendar period', () => {
     });
 
     expect(view.calDays).toHaveLength(1);
-    expect(view.calDays[0]).toMatchObject({ d: '4/1', w: '水' });
-    expect(view.cur.period).toBe('2026/4/1（水）〜4/1（水）');
+    expect(view.calDays[0]).toMatchObject({
+      date: '2026-04-01',
+      label: '2026年4月1日',
+      w: '水',
+    });
+    expect(view.cur.period).toBe('2026年4月1日（水）〜2026年4月1日（水）');
     expect(view.progress.fraction).toBe('0 / 1');
     expect(view.gate.text).toContain('未セット 1');
+  });
+
+  it('keeps full clinical dates and years distinct across a calendar year boundary', () => {
+    const view = buildView({
+      phase: 'setp',
+      selId: patient.id,
+      sortMode: 'start',
+      done: {},
+      audit: {},
+      setCells: {},
+      auditCells: { [cellKey(patient.id, 1, '朝')]: 'ng' },
+      outChk: {},
+      checks: {},
+      ng: { [cellKey(patient.id, 1, '朝')]: '日付違い' },
+      target: { di: 1, tk: '朝' },
+      holdModal: {
+        di: 1,
+        tk: '朝',
+        reason: '在庫不足',
+        due: '',
+        owner: '',
+        memo: '',
+      },
+      holdInfo: {},
+      packet: {},
+      compareOpen: false,
+      model: {
+        [patient.id]: [
+          {
+            ...singleRowGroup,
+            start: '2026-12-31',
+            days: 2,
+            calendarStart: '2026-12-31',
+            calendarDayCount: 2,
+          },
+        ],
+      },
+      patients: [patient],
+    });
+
+    expect(view.calDays).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          date: '2026-12-31',
+          label: '2026年12月31日',
+          w: '木',
+        }),
+        expect.objectContaining({
+          date: '2027-01-01',
+          label: '2027年1月1日',
+          w: '金',
+        }),
+      ]),
+    );
+    expect(view.cur.period).toBe('2026年12月31日（木）〜2027年1月1日（金）');
+    expect(view.target.date).toBe('2027年1月1日（金）');
+    expect(view.rejectList).toEqual([
+      expect.objectContaining({
+        di: 1,
+        tk: '朝',
+        label: '2027年1月1日（金） 朝食後',
+        ng: '日付違い',
+      }),
+    ]);
+    expect(view.holdCellLabel).toBe('2027年1月1日（金） 朝食後');
   });
 
   it('fails closed to — for set/set-audit operator metadata (no fabricated names)', () => {

@@ -617,14 +617,24 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     const dt = new Date(calendarStartDate);
     dt.setDate(calendarStartDate.getDate() + i);
     const first = dt.getDate() === 1;
-    return { idx: i, d: dt.getMonth() + 1 + '/' + dt.getDate(), w: DNW[dt.getDay()], cross: first };
+    const year = dt.getFullYear();
+    const month = dt.getMonth() + 1;
+    const day = dt.getDate();
+    return {
+      idx: i,
+      date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      label: `${year}年${month}月${day}日`,
+      w: DNW[dt.getDay()],
+      cross: first,
+    };
   });
   const periodLabel =
     days.length > 0
-      ? `${calendarStartDate.getFullYear()}/${days[0].d}（${days[0].w}）〜${days[days.length - 1].d}（${days[days.length - 1].w}）`
+      ? `${days[0].label}（${days[0].w}）〜${days[days.length - 1].label}（${days[days.length - 1].w}）`
       : '—';
   const calDays = days.map((dd) => ({
-    d: dd.d,
+    date: dd.date,
+    label: dd.label,
     w: dd.w,
     // 日曜=赤 / 土曜=青 のカレンダー慣習色は維持（state ではなく曜日 category）。
     color: dd.cross
@@ -886,7 +896,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     const c = cal.content[tg.tk];
     const day = days[tg.di];
     target = {
-      date: day.d + '（' + day.w + '）',
+      date: day.label + '（' + day.w + '）',
       timing: cal.tlabel[tg.tk],
       packetText: c.packetText,
       ptpText: c.ptpText,
@@ -937,7 +947,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
         rejectList.push({
           di,
           tk,
-          label: day.d + '（' + day.w + '）' + cal.tlabel[tk],
+          label: `${day.label}（${day.w}） ${cal.tlabel[tk]}`,
           ng: ng[cellKey(id, di, tk)] || '分類未設定',
         });
       }
@@ -1167,9 +1177,9 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     selected: !!hm && hm.reason === r,
   }));
   const holdReady = !!hm && !!hm.reason;
-  const holdCellLabel = hm
-    ? (days[hm.di] ? days[hm.di].d : '') + ' ' + (cal.tlabel[hm.tk] || '')
-    : '';
+  const holdDay = hm ? days[hm.di] : undefined;
+  const holdCellLabel =
+    holdDay && hm ? `${holdDay.label}（${holdDay.w}） ${cal.tlabel[hm.tk] || ''}` : '';
 
   const phaseLabel =
     ph === 'dispense'

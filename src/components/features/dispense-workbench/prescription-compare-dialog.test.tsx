@@ -51,4 +51,15 @@ describe('PrescriptionCompareDialog', () => {
     });
     expect(useWorkbenchStore.getState().compareOpen).toBe(false);
   });
+
+  it('keeps comparison counts and supplemental medication text at the 12px minimum', () => {
+    act(() => {
+      useWorkbenchStore.setState({ compareOpen: true });
+    });
+
+    render(<CompareDialogHarness />);
+
+    expect(screen.getByText('継続 1 ・ 新規 0 ・ 変更 0 ・ 中止 0').style.fontSize).toBe('12px');
+    expect(screen.getByText('前回と同じ').style.fontSize).toBe('12px');
+  });
 });

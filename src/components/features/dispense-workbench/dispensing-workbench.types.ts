@@ -512,8 +512,10 @@ export interface InfoItem {
 
 /** カレンダー日付ヘッダ */
 export interface CalendarDay {
-  /** 'M/D' */
-  d: string;
+  /** Canonical ISO date key (`YYYY-MM-DD`). */
+  date: string;
+  /** Clinical primary display (`YYYY年M月D日`). */
+  label: string;
   /** 曜日（日月火…）*/
   w: string;
   color: string;

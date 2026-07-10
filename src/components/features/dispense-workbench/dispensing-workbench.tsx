@@ -542,7 +542,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
             borderRight: '1px solid var(--wb-line)',
           }}
         >
-          <div style={{ fontSize: 10.5, color: 'var(--wb-ink-muted)', lineHeight: 1.2 }}>
+          <div style={{ fontSize: 12, color: 'var(--wb-ink-muted)', lineHeight: 1.2 }}>
             患者番号
             <br />
             <span
@@ -564,7 +564,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
           }}
         >
           {cur.kana && (
-            <div style={{ fontSize: 11, color: 'var(--wb-ink-muted)', letterSpacing: 1 }}>
+            <div style={{ fontSize: 12, color: 'var(--wb-ink-muted)', letterSpacing: 1 }}>
               {cur.kana}
             </div>
           )}

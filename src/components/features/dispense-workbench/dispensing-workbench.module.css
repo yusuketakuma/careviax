@@ -253,7 +253,7 @@
   border-right: 1px solid var(--border);
 }
 .ribbonLabel {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted-foreground);
 }
 .ribbonValue {
@@ -363,7 +363,7 @@
   align-items: stretch;
   background: var(--secondary);
   border-bottom: 1.5px solid var(--border);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--foreground);
 }
@@ -417,7 +417,7 @@
   justify-content: space-between;
   background: var(--wb-primary-bg);
   color: var(--wb-primary-fg);
-  font-size: 11px;
+  font-size: 12px;
   padding: 0 10px;
 }
 

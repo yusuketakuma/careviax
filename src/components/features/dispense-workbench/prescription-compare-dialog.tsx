@@ -85,7 +85,7 @@ export function PrescriptionCompareDialog({ view }: PrescriptionCompareDialogPro
         {/* ヘッダ（青グラデ・タイトル + カウント） */}
         <div className={styles.modalHeaderCompare}>
           <span>前回処方との比較 — {cur.name} 様</span>
-          <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.9 }}>
+          <span style={{ fontSize: 12, fontWeight: 400, opacity: 0.9 }}>
             継続 {cmpCount.cont} ・ 新規 {cmpCount.neu} ・ 変更 {cmpCount.chg} ・ 中止{' '}
             {cmpCount.disc}
           </span>
@@ -145,7 +145,7 @@ export function PrescriptionCompareDialog({ view }: PrescriptionCompareDialogPro
                     >
                       {it.name}
                     </span>
-                    <span style={{ fontSize: 11, color: 'var(--wb-ink-muted)' }}>{it.sub}</span>
+                    <span style={{ fontSize: 12, color: 'var(--wb-ink-muted)' }}>{it.sub}</span>
                   </div>
                 ))}
               </div>

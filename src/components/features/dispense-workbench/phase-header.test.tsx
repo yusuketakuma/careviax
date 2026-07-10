@@ -36,6 +36,10 @@ describe('PhaseHeader（静的・現工程のみ）', () => {
     const text = container.textContent ?? '';
     expect(text.includes('調剤監査')).toBe(true);
     expect(text.includes('調剤 → 調剤監査 → セット → セット監査')).toBe(true);
+    const flow = [...container.querySelectorAll<HTMLElement>('[style]')].find(
+      (element) => element.textContent === '工程：調剤 → 調剤監査 → セット → セット監査',
+    );
+    expect(flow?.style.fontSize).toBe('12px');
   });
 
   it('他工程への遷移リンク（アンカー）を一切持たない', () => {
