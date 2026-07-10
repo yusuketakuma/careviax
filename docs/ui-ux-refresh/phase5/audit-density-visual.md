@@ -82,7 +82,7 @@
 - **Priority**: P2
 - **Verification**: 7 箇所の before/after スクリーンショット + ガード 0 違反 + 該当画面の既存 unit test（schedule-team-board 等は test-lock の可能性があるため先に test 確認）。
 - **Evidence**: `src/app/(dashboard)/handoff/handoff-workspace.tsx:889,893` / `src/app/(dashboard)/communications/requests/requests-content.tsx:400` / `src/components/features/visits/visit-card-mobile.tsx:279` / `src/app/(dashboard)/schedules/proposal-human-decision-flow.tsx:26` / `src/app/(dashboard)/schedules/schedule-team-board.tsx:292` / `src/components/features/visits/facility-visit-record-switcher.tsx:220`
-- **Partial remediation (2026-07-11, `TBD` commit)**: `visit-card-mobile` の「訪問完了」ボタンから `bg-state-done` を除去し、既定のPrimary操作色へ戻した。done緑は状態表示に限定し、操作ラベル・callback・スワイプ動作は不変。残る6箇所の完了系mutation buttonと再発防止ガードは未実施。
+- **Partial remediation (2026-07-11, `TBD` commit)**: `visit-card-mobile` の「訪問完了」と `communications/requests` の「対応済みにする」から `bg-state-done` を除去し、既定のPrimary操作色へ戻した。done緑は状態表示に限定し、操作ラベル・callback・スワイプ・mutation payloadは不変。再調査で `proposal-human-decision-flow` と `schedule-team-board` は状態アイコン/ガント帯、`facility-visit-record-switcher` はBadgeであり、mutation buttonではないと分類訂正した。残る実操作候補は `handoff-workspace` の3解決操作で、action hierarchyを独立に確認する必要がある。再発防止ガードは未実施。
 
 ---
 

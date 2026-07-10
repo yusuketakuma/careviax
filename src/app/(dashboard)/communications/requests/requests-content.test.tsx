@@ -117,16 +117,16 @@ describe('CommunicationRequestsContent', () => {
     expect(screen.getByTestId('reply-followup-list')).toBeTruthy();
     expect(screen.getByText('返信内容と次の対応')).toBeTruthy();
     expect(screen.getAllByText(/報告書返信依頼/).length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: '対応済みにする' }).className).toContain(
-      '!min-h-[44px]',
-    );
+    const resolveButton = screen.getByRole('button', { name: '対応済みにする' });
+    expect(resolveButton.className).toContain('!min-h-[44px]');
+    expect(resolveButton.className).not.toContain('bg-state-done');
     fireEvent.change(screen.getByLabelText('返信内容'), {
       target: { value: '服薬状況の確認が取れました' },
     });
     fireEvent.change(screen.getByLabelText('次回カードへ残すこと'), {
       target: { value: '夕食後薬の飲み忘れを確認' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '対応済みにする' }));
+    fireEvent.click(resolveButton);
 
     expect(resolveFocusedMutateMock).toHaveBeenCalledWith({
       item: expect.objectContaining({ id: 'request_1', subject: '服薬情報提供書の確認' }),

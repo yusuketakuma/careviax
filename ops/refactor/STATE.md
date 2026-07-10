@@ -51,6 +51,19 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh P2 DV-04 communication completion action semantics (PARTIAL, 2026-07-11; focused UI behavior slice).
+  - result / scope:
+    The `/communications/requests` "対応済みにする" mutation now uses the existing Primary action styling rather than
+    done-green, matching the visit completion action slice. The button label, 44px target, mutation payload, invalidation,
+    success/error behavior, API, auth/authz, PHI/audit behavior, and data flow are unchanged. A source recheck corrected
+    the audit: the previously listed proposal/team-board/facility occurrences are state icon, gantt, or Badge treatments,
+    not mutation buttons. Handoff resolution action hierarchy remains a separate review-required scope. `gpt-image-2` was
+    omitted because this replaces a tokenized class on an existing button and introduces no new visual pattern.
+  - validation / limits:
+    Focused Vitest passed 1 file / 16 tests. Exact ESLint/Prettier, colors, client PHI-log, frontend-contract,
+    module-boundary, typecheck, and diff-check passed. E2E, runtime a11y/responsive evidence, full build, and
+    standalone remain NOT_EXECUTED pending the Phase 9 evidence run.
+
 - codex: UI/UX Refresh P2 DV-03/DV-04 visit completion action semantics (PARTIAL, 2026-07-11; focused UI behavior slice).
   - result / scope:
     The mobile visit card now uses `CircleCheck` for the completion action while retaining `Play` only for starting a

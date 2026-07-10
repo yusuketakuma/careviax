@@ -399,7 +399,7 @@ export function CommunicationRequestsContent({
 
                   <div className="flex justify-start pt-1">
                     <Button
-                      className="!h-auto !min-h-[44px] bg-state-done text-white hover:bg-state-done/90"
+                      className="!h-auto !min-h-[44px]"
                       onClick={() =>
                         resolveFocusedMutation.mutate({
                           item: focusedSelected,
