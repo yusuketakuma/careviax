@@ -893,6 +893,9 @@ describe('/api/prescription-intakes POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({
+      data: expect.objectContaining({ id: 'intake_1' }),
+    });
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       case_id: 'case_1',
       patient_id: 'patient_1',
@@ -1339,6 +1342,9 @@ describe('/api/prescription-intakes POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({
+      data: expect.objectContaining({ id: 'intake_qr' }),
+    });
     expect(qrDraftClaimMock).toHaveBeenCalledWith({
       where: {
         id: 'draft_qr',

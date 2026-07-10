@@ -1052,7 +1052,7 @@ export const POST = withAuthContext(
         payload: { source: 'prescription_intakes_create' },
       });
 
-      return success(qrResult.intake, 201);
+      return success({ data: qrResult.intake }, 201);
     }
 
     const result = await createPrescriptionIntake(parsed.data, ctx.orgId, ctx.userId, {
@@ -1131,7 +1131,7 @@ export const POST = withAuthContext(
       payload: { source: 'prescription_intakes_create' },
     });
 
-    return success(result.intake, 201);
+    return success({ data: result.intake }, 201);
   },
   {
     permission: 'canVisit',
