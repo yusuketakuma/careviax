@@ -52,6 +52,93 @@
 
 ## 直近の作業
 
+- codex: pharmacy cooperation actor attribution and notification recipient boundary.
+  - commit:
+    `d9cb39ff7 fix(cooperation): bind decisions to authenticated actors`.
+  - current task:
+    P0 `COOP-ACTOR-ATTR-001` として、pharmacy visit request decision の実行者を認証済み
+    actor に固定し、legacy/corrupt `accepted_by` を後続 review の explicit notification recipient
+    として無検証利用しない。
+  - files inspected:
+    `Plans.md`, `docs/plans-archive.md`, bundled Next.js route-handler guide,
+    `src/app/api/pharmacy-visit-requests/[id]/decision/route.ts` and tests,
+    `src/app/api/partner-visit-records/[id]/review/route.ts` and tests,
+    notification dispatch/realtime behavior, Membership/User schema, workflow UI callers,
+    `tools/tests/ui-major-screens.spec.ts`, and the active dirty tree.
+  - files changed:
+    `Plans.md`; `docs/plans-archive.md`;
+    `src/app/api/pharmacy-visit-requests/[id]/decision/route.ts` and `route.test.ts`;
+    `src/app/api/partner-visit-records/[id]/review/route.ts` and `route.test.ts`;
+    `tools/tests/ui-major-screens.spec.ts`; and this state file.
+  - bugs found / fixed:
+    Public `pharmacist_id` could overwrite `accepted_by` / `declined_by` and audit metadata actor
+    without membership, organization, role, or identity validation. The route now rejects any supplied
+    `pharmacist_id` with 400 before RLS/DB/audit work, and all persisted/audit actors use `ctx.userId`.
+    Existing paid/free E2E request fixtures no longer send the removed override.
+  - security/privacy risks reduced:
+    Partner visit review previously forwarded persisted `accepted_by` directly to `explicitUserIds`,
+    allowing orphan/inactive/cross-org values to create an invalid notification target or realtime user
+    channel. Review now performs one transaction-local active same-org Membership + active User lookup
+    before the first workflow write. Only a valid member is retained; invalid/null values become `[]`
+    without blocking the clinical review or rule-based notification dispatch. Lookup errors fail before
+    writes with the existing sanitized sensitive no-store 500. No notification service, schema, migration,
+    backfill, production data, PHI payload, audit body, or external delivery contract changed.
+  - performance:
+    Non-null legacy actors add one bounded `findFirst` membership lookup inside the existing transaction;
+    null actors skip it. No loop, unbounded read, network request, dependency, or render work was added.
+  - plan review / subagent / Oracle:
+    Two read-only plan reviewers returned GO / Conditional GO at confidence 0.97 and 9.8/10, requiring
+    explicit override rejection, route-local membership filtering, no implicit fallback, and no service-wide
+    expansion. The independent verifier returned PASS at confidence 0.99. Oracle was not used per current
+    user instruction. `COOP-ACTOR-ATTR-001` is now Done/frozen; service-wide notification membership and
+    external pharmacist identity proof remain separately tracked as `NOTIFY-RECIPIENT-MEMBER-001` and
+    `COOP-EXTERNAL-PHARMACIST-VERIFY-001`.
+  - validation:
+    Focused decision/review/notification/workflow suites passed 4 files / 67 tests; verifier rerun passed
+    2 files / 20 tests. `pnpm plans:active:check`, `pnpm api-response-shape:check` (43 allowlisted / 0 new),
+    `pnpm route-auth-wrapper:check`, `pnpm db:raw-read-org-guard:check`,
+    `pnpm dto-direct-prisma-return:check`, `pnpm client-phi-log:check`, exact-path ESLint/Prettier,
+    and `git diff --check` passed. Playwright discovery listed 88 tests; browser execution was not run.
+    `pnpm typecheck` completed Next type generation then stopped only at unrelated user-owned dirty
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285` TS2322. The first no-unused run
+    hit the 4GB Node heap limit; rerunning with 8GB reached the same sole unrelated TS2322.
+  - remaining / next action:
+    `SHARE-CONSENT-WRITE-001` is now the highest-priority implementation task. Run a fresh read-only
+    action-policy/impact review, implement only mutations whose current-consent requirement is unambiguous,
+    and leave post-expiry legal closeout semantics behind the documented human policy gate. No push,
+    deploy, migration, production mutation, external send, or destructive operation ran.
+
+- codex: tasks/bulk static envelope ratchet visibility.
+  - commit:
+    `cd924aba0 chore(api): expose bulk task envelope to ratchet`.
+  - current task:
+    `API-CONTRACT-001DU` として、runtime では既に strict `{ data: ... }` だった tasks bulk completion
+    response を静的 response-shape checker が認識できる call-site shape へ直し、allowlist debt を
+    44 から 43 へ削減する。
+  - files inspected / changed:
+    Inspected `Plans.md`, `docs/plans-archive.md`, bulk route/tests, shared bulk completion contract/reader,
+    task assignment/write guards, and the response-shape allowlist. Changed `Plans.md`,
+    `docs/plans-archive.md`, `src/app/api/tasks/bulk/route.ts`, its route test,
+    `tools/api-response-shape-allowlist.json`, and this state file.
+  - bugs found / fixed:
+    Runtime response and frontend contract were already correct, but `success(responseBody)` hid the typed
+    inner `data` object from the static checker and preserved false allowlist debt. The route now passes the
+    exact typed envelope literal directly to `success`; response bytes/status/reader behavior are unchanged.
+  - security/performance:
+    Existing canVisit, org/assignment scope, 100-ID limit, ID dedupe, dedicated-flow exclusion,
+    patient write guard, RLS `updateMany`, stale partial failure, and safe failure DTO remain unchanged.
+    No query, mutation, transaction, request, memory, dependency, or render behavior changed.
+  - plan review / subagent / Oracle:
+    Read-only plan/review agents returned PASS at confidence 0.99 after confirming the runtime contract was
+    already current and only the checker visibility changed. Oracle was not used per user instruction.
+  - validation:
+    Focused route/contract/tasks reader suites passed 3 files / 29 tests. `pnpm api-response-shape:check`
+    passed at 43 allowlisted / 0 new; Plans/auth/raw-read/client-log/DTO gates, scoped lint/format/diff,
+    and verifier checks passed. Full TypeScript remains blocked only by the unrelated dirty inbound TS2322
+    described above.
+  - remaining / next action:
+    `API-CONTRACT-001` remains Partial at 43 allowlisted entries, but security P0 work now takes precedence.
+
 - codex: visit brief feedback minimal success-envelope migration.
   - commit:
     `aeca5db1f fix(api): envelope visit brief feedback success`.
