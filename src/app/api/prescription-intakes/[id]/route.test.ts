@@ -193,23 +193,29 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
     expectSensitiveNoStore(response);
     const findFirstArg = prescriptionIntakeFindFirstMock.mock.calls[0]?.[0];
     expect(findFirstArg.include.cycle.select.display_id).toBe(true);
-    await expect(response.json()).resolves.toMatchObject({
-      id: 'intake_phi_1',
-      display_id: 'r0000000202',
-      lines: [expect.objectContaining({ drug_name: 'アムロジピン錠5mg' })],
-      jahis_supplemental_records: [
-        expect.objectContaining({
-          raw_line: 'JAHIS RAW 山田 太郎',
-          payload: expect.objectContaining({ insurance_number: '12345678' }),
-        }),
-      ],
-      cycle: {
-        display_id: 'mcyc0000000009',
-        case_: {
-          patient: expect.objectContaining({ name: '山田 太郎' }),
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body).toMatchObject({
+      data: {
+        id: 'intake_phi_1',
+        display_id: 'r0000000202',
+        lines: [expect.objectContaining({ drug_name: 'アムロジピン錠5mg' })],
+        jahis_supplemental_records: [
+          expect.objectContaining({
+            raw_line: 'JAHIS RAW 山田 太郎',
+            payload: expect.objectContaining({ insurance_number: '12345678' }),
+          }),
+        ],
+        cycle: {
+          display_id: 'mcyc0000000009',
+          case_: {
+            patient: expect.objectContaining({ name: '山田 太郎' }),
+          },
         },
       },
     });
+    expect(body).not.toHaveProperty('id');
+    expect(body).not.toHaveProperty('cycle');
   });
 
   it('returns no-store 404 when the prescription intake is not found', async () => {

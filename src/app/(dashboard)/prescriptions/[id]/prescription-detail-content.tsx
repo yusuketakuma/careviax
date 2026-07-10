@@ -311,7 +311,14 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
       const res = await fetch(buildPrescriptionIntakeApiPath(intakeId), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PrescriptionIntakeDetail>(res, '処方受付の取得に失敗しました');
+      const payload = await readApiJson<{ data?: PrescriptionIntakeDetail }>(
+        res,
+        '処方受付の取得に失敗しました',
+      );
+      if (!payload.data || typeof payload.data.id !== 'string') {
+        throw new Error('処方受付の取得に失敗しました');
+      }
+      return payload.data;
     },
     enabled: !!orgId,
   });

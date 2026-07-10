@@ -125,7 +125,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
 
   if (!intake) return notFound('処方箋が見つかりません');
 
-  return success(intake);
+  return success({ data: intake });
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

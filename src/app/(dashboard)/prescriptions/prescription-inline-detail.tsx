@@ -175,7 +175,11 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
       const res = await fetch(buildPrescriptionIntakeApiPath(intakeId), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<IntakeDetail>(res, '取得失敗');
+      const payload = await readApiJson<{ data?: IntakeDetail }>(res, '取得失敗');
+      if (!payload.data || typeof payload.data.id !== 'string') {
+        throw new Error('取得失敗');
+      }
+      return payload.data;
     },
     enabled: !!orgId && !!intakeId,
   });

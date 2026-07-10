@@ -201,7 +201,7 @@ describe('PrescriptionInlineDetail', () => {
 
     useOrgIdMock.mockReturnValue('org_1');
     vi.mocked(buildOrgHeaders).mockReturnValueOnce(sentinelHeaders);
-    fetchMock.mockResolvedValue(jsonResponse({}));
+    fetchMock.mockResolvedValue(jsonResponse({ data: { id: hostileId } }));
     useQueryMock.mockImplementation((config: QueryConfig) => {
       queryConfig = config;
       return {
@@ -225,6 +225,26 @@ describe('PrescriptionInlineDetail', () => {
     );
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
     expect(fetchMock.mock.calls[0]?.[0]).not.toContain('%25');
+  });
+
+  it('unwraps the detail data envelope and rejects a legacy root response', async () => {
+    let queryConfig: QueryConfig | undefined;
+    const detail = buildDetailData('intake_1', 'patient_1');
+
+    useOrgIdMock.mockReturnValue('org_1');
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ data: detail }))
+      .mockResolvedValueOnce(jsonResponse(detail));
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      queryConfig = config;
+      return { data: null, isLoading: true, error: null };
+    });
+
+    render(<PrescriptionInlineDetail intakeId="intake_1" />);
+
+    if (!queryConfig) throw new Error('query config was not captured');
+    await expect(queryConfig.queryFn()).resolves.toEqual(detail);
+    await expect(queryConfig.queryFn()).rejects.toThrow('取得失敗');
   });
 
   it.each(['.', '..'])(
