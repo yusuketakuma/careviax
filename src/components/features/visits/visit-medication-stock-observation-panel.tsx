@@ -141,7 +141,8 @@ const MANAGING_PARTY_LABELS: Record<string, string> = {
 
 const dateTimeFormatter = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
-  month: 'numeric',
+  year: 'numeric',
+  month: 'long',
   day: 'numeric',
   hour: '2-digit',
   minute: '2-digit',
@@ -149,8 +150,13 @@ const dateTimeFormatter = new Intl.DateTimeFormat('ja-JP', {
 
 const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
-  month: 'numeric',
+  year: 'numeric',
+  month: 'long',
   day: 'numeric',
+});
+
+const quantityDifferenceFormatter = new Intl.NumberFormat('ja-JP', {
+  maximumFractionDigits: 4,
 });
 
 function formatDateTime(value: string | null | undefined) {
@@ -168,13 +174,34 @@ function formatDate(value: string | null | undefined) {
 }
 
 function formatQuantity(value: number | null | undefined, unit: string) {
-  if (value == null) return '不明';
+  if (value == null || !Number.isFinite(value)) return '不明';
   return `${value}${unit}`;
 }
 
 function formatDailyUsage(value: number | null | undefined, unit: string) {
-  if (value == null) return '不明';
+  if (value == null || !Number.isFinite(value)) return '不明';
   return `${value}${unit}/日`;
+}
+
+export function formatStockLedgerDifference(
+  currentQuantity: number | null | undefined,
+  priorRecordedQuantity: number | null | undefined,
+  unit: string,
+) {
+  if (
+    currentQuantity == null ||
+    priorRecordedQuantity == null ||
+    !Number.isFinite(currentQuantity) ||
+    !Number.isFinite(priorRecordedQuantity)
+  ) {
+    return '算出不可';
+  }
+
+  const difference = Math.round((currentQuantity - priorRecordedQuantity) * 10_000) / 10_000;
+  const magnitude = `${quantityDifferenceFormatter.format(Math.abs(difference))}${unit}`;
+  if (difference > 0) return `+${magnitude}（増加）`;
+  if (difference < 0) return `-${magnitude}（減少）`;
+  return `${magnitude}（変化なし）`;
 }
 
 function buildMedicationStockPath(patientId: string, itemLimit: number) {
@@ -328,16 +355,10 @@ function MedicationStockItemCard({
         ) : null}
       </div>
 
-      <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <div className="rounded-md bg-muted/40 p-2">
-          <dt className="text-xs text-muted-foreground">現在推定残数</dt>
-          <dd className="font-medium text-foreground">
-            {snapshot ? formatQuantity(snapshot.current_quantity, item.unit) : 'snapshot未作成'}
-          </dd>
-        </div>
-        <div className="rounded-md bg-muted/40 p-2">
-          <dt className="text-xs text-muted-foreground">前回実測</dt>
-          <dd className="font-medium text-foreground">
+          <dt className="text-xs text-muted-foreground">前回の記録残数</dt>
+          <dd className="font-medium tabular-nums text-foreground">
             {snapshot
               ? `${formatQuantity(snapshot.last_observed_quantity, item.unit)} / ${formatDateTime(
                   snapshot.last_observed_at,
@@ -346,14 +367,39 @@ function MedicationStockItemCard({
           </dd>
         </div>
         <div className="rounded-md bg-muted/40 p-2">
+          <dt className="text-xs text-muted-foreground">台帳計算残数（参考）</dt>
+          <dd className="font-medium tabular-nums text-foreground">
+            {snapshot ? formatQuantity(snapshot.current_quantity, item.unit) : 'snapshot未作成'}
+          </dd>
+          <p className="mt-1 text-xs text-muted-foreground">
+            算出日時:{' '}
+            <span className="tabular-nums">{formatDateTime(snapshot?.calculated_at)}</span>
+          </p>
+        </div>
+        <div className="rounded-md bg-muted/40 p-2">
+          <dt className="text-xs text-muted-foreground">前回記録以降の台帳差分</dt>
+          <dd className="font-medium tabular-nums text-foreground">
+            {snapshot
+              ? formatStockLedgerDifference(
+                  snapshot.current_quantity,
+                  snapshot.last_observed_quantity,
+                  item.unit,
+                )
+              : '算出不可'}
+          </dd>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            台帳計算残数 − 前回の記録残数。今回の実測ではありません。
+          </p>
+        </div>
+        <div className="rounded-md bg-muted/40 p-2">
           <dt className="text-xs text-muted-foreground">推定使用量</dt>
-          <dd className="font-medium text-foreground">
+          <dd className="font-medium tabular-nums text-foreground">
             {snapshot ? formatDailyUsage(snapshot.estimated_daily_usage, item.unit) : '不明'}
           </dd>
         </div>
         <div className="rounded-md bg-muted/40 p-2">
           <dt className="text-xs text-muted-foreground">推定切れ日</dt>
-          <dd className="font-medium text-foreground">
+          <dd className="font-medium tabular-nums text-foreground">
             {snapshot
               ? `${formatDate(snapshot.estimated_stockout_date)}${
                   snapshot.days_until_stockout != null

@@ -91,6 +91,25 @@ describe('recalculateMedicationStockSnapshot', () => {
     );
   });
 
+  it('persists the stock item unit for both snapshot creation and updates', async () => {
+    const db = createDb([observedEvent('3')]);
+
+    await recalculateMedicationStockSnapshot({
+      db: db as unknown as MedicationStockSnapshotDb,
+      orgId: 'org_1',
+      stockItem: stockItem({ unit: 'mL' }),
+      eventId: 'stock_event_1',
+      asOf: new Date('2026-07-07T15:30:00.000Z'),
+    });
+
+    expect(db.medicationStockSnapshot.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ unit: 'mL' }),
+        update: expect.objectContaining({ unit: 'mL' }),
+      }),
+    );
+  });
+
   it('classifies stockout before the next visit as shortage_expected', async () => {
     const db = createDb([observedEvent('3')]);
 

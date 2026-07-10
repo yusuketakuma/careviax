@@ -3865,8 +3865,13 @@ test.describe('visit medication stock gate-off browser regression', () => {
     await expect(stockPanel.getByText('外用・頓服 残数観測', { exact: true })).toBeVisible();
     await expect(stockPanel.getByText('登録無効', { exact: true })).toBeVisible();
     await expect(stockPanel.getByText('モーラスパップ30mg', { exact: true })).toBeVisible();
+    await expect(stockPanel.getByText('前回の記録残数', { exact: true })).toBeVisible();
+    await expect(stockPanel.getByText('台帳計算残数（参考）', { exact: true })).toBeVisible();
+    await expect(stockPanel.getByText('前回記録以降の台帳差分', { exact: true })).toBeVisible();
     await expect(stockPanel.getByText('4枚', { exact: true })).toBeVisible();
     await expect(stockPanel.getByText(/12枚/)).toBeVisible();
+    await expect(stockPanel.getByText('-8枚（減少）', { exact: true })).toBeVisible();
+    await expect(stockPanel.getByText('前回実測', { exact: true })).toHaveCount(0);
     await expect(stockPanel.getByText('不足見込み', { exact: true })).toBeVisible();
     await expect(
       stockPanel

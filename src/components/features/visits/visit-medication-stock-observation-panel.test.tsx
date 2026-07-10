@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { VisitMedicationStockObservationPanel } from './visit-medication-stock-observation-panel';
+import {
+  formatStockLedgerDifference,
+  VisitMedicationStockObservationPanel,
+} from './visit-medication-stock-observation-panel';
 import type {
   PatientMedicationStockSummaryResponse,
   VisitMedicationStockObservationDraft,
@@ -147,6 +150,18 @@ function WritePanelHarness({
   );
 }
 
+describe('formatStockLedgerDifference', () => {
+  it('formats signed, rounded, and unavailable ledger differences without treating them as measurements', () => {
+    expect(formatStockLedgerDifference(4, 12, '枚')).toBe('-8枚（減少）');
+    expect(formatStockLedgerDifference(6, 4, '枚')).toBe('+2枚（増加）');
+    expect(formatStockLedgerDifference(0, 0, '錠')).toBe('0錠（変化なし）');
+    expect(formatStockLedgerDifference(0.3, 0.1, 'mL')).toBe('+0.2mL（増加）');
+    expect(formatStockLedgerDifference(null, 4, '枚')).toBe('算出不可');
+    expect(formatStockLedgerDifference(4, Number.NaN, '枚')).toBe('算出不可');
+    expect(formatStockLedgerDifference(Number.POSITIVE_INFINITY, 4, '枚')).toBe('算出不可');
+  });
+});
+
 describe('VisitMedicationStockObservationPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -170,9 +185,16 @@ describe('VisitMedicationStockObservationPanel', () => {
     renderPanel();
 
     expect(await screen.findByText('モーラスパップ30mg')).toBeTruthy();
-    expect(screen.getAllByText('現在推定残数')).toHaveLength(2);
+    expect(screen.getAllByText('前回の記録残数')).toHaveLength(2);
+    expect(screen.getAllByText('台帳計算残数（参考）')).toHaveLength(2);
+    expect(screen.getAllByText('前回記録以降の台帳差分')).toHaveLength(2);
     expect(screen.getByText('4枚')).toBeTruthy();
     expect(screen.getByText(/12枚/)).toBeTruthy();
+    expect(screen.getByText('-8枚（減少）')).toBeTruthy();
+    expect(screen.getByText('算出不可')).toBeTruthy();
+    expect(screen.getByText(/2026年7月6日/)).toBeTruthy();
+    expect(screen.getAllByText(/2026年7月7日/)).toHaveLength(2);
+    expect(screen.queryByText('前回実測')).toBeNull();
     expect(screen.getByText('不足見込み')).toBeTruthy();
     expect(screen.getByText(/あと2日/)).toBeTruthy();
     expect(screen.getByText('snapshot未作成')).toBeTruthy();
