@@ -52,6 +52,34 @@
 
 ## 直近の作業
 
+- codex: admin performance visit-schedule limit contract fix.
+  - commit:
+    `82b4c5c9f fix(API-SCHEDULE-LIMIT-001): align admin schedule page limit`.
+  - current task:
+    HIGH `API-SCHEDULE-LIMIT-001`。admin performance readerの`limit=200`をbackend contract上限100へ揃え、
+    deterministic 400を解消する。date range、data shape、realtime invalidationは変更しない。
+  - files inspected:
+    collection query schema/service/tests; admin performance page/test; all `limit=200` references to distinguish
+    endpoint-specific maxima; active dirty tree and recent commits。
+  - files changed:
+    `src/app/(dashboard)/admin/performance/page.tsx` and test; `Plans.md`; `docs/plans-archive.md`; and this state。
+  - bugs found / fixed:
+    The page sent 200 while `optionalBoundedIntegerSearchParam` rejects visit-schedule limits above 100. It now
+    sends 100 and the test asserts both the accepted value and absence of 200. Other endpoints with their own 200
+    contracts were not changed.
+  - security / performance / agents:
+    This restores the existing bounded list request; it adds no query, field, PHI, permission, mutation, dependency
+    or rendering work. Codex alone implemented and verified it; no subagent/Oracle/external worker was used.
+  - validation:
+    Focused Vitest passed 2 files / 46 tests; ESLint, Prettier, frontend-contract, response-shape and diff checks
+    passed. Typegen succeeded; full typecheck has no limit-fix error and remains red only on the pre-existing
+    user-owned inbound TS2322. Build was not run while that gate is red. No DB/migration, deploy, push or destructive
+    operation ran.
+  - Plans / UI / imagegen / next:
+    Task is DONE with code/test evidence. Image generation/browser screenshots were omitted because no layout or
+    visual state changed. Resume `API-CONTRACT-001` at collection POST; preserve unowned inbound/config/harness/
+    offline-sync bridge dirty files. No push was performed.
+
 - codex: visit schedule list cursor metadata convergence.
   - commit:
     `7f0247d34 fix(API-CONTRACT-001ED): standardize schedule cursor metadata`.
