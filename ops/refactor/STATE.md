@@ -52,6 +52,42 @@
 
 ## 直近の作業
 
+- codex: visit schedule cancel response-envelope convergence.
+  - commit:
+    `da21676e3 fix(API-CONTRACT-001EC): envelope schedule cancel result`.
+  - current task:
+    P0 `API-CONTRACT-001EC`。`DELETE /api/visit-schedules/:id` cancel successを raw scheduleから exact
+    `{ data: schedule }` へ移し、同routeのallowlist entryを除去してdebtを35から34へ削減する。
+  - files inspected:
+    `Plans.md`; `docs/plans-archive.md`; this state; schedule route/test; all DELETE references;
+    cancellation reason/status workflow; response-shape allowlist; active dirty tree and recent commits。
+  - files changed:
+    `src/app/api/visit-schedules/[id]/route.ts` and test;
+    `tools/api-response-shape-allowlist.json`; `Plans.md`; `docs/plans-archive.md`; and this state file。
+  - bugs found / fixed:
+    The remaining success branch in the otherwise-converged route returned a raw updated schedule. It now returns
+    nested `data`; the test verifies the nested result and absence of root schedule fields. No repo production
+    consumer exists, so no compatibility fallback was added.
+  - frontend/backend, security and performance:
+    Lifecycle/assignment permission, terminal status rejection, version/status optimistic claim, override/task/
+    proposal cleanup, structured reason audit, workflow notification, no-store, status and errors are unchanged.
+    No query, mutation, PHI disclosure, dependency or performance-sensitive work was added.
+  - plan review / agents / Oracle:
+    Codex alone traced cancellation references and route outcomes. No subagent, agmsg, Claude, external
+    maker/checker or Oracle consultation was used.
+  - validation:
+    Focused Vitest passed 1 file / 84 tests. Exact ESLint, Prettier and `git diff --check` passed.
+    `api-response-shape:check` passed at 34 allowlisted / 0 new; route-auth and query-shape guards passed.
+    Typegen succeeded; full typecheck reported no cancel error and remains red only on the pre-existing user-owned
+    inbound TS2322 at line 2285. Build was not run while that prerequisite gate is red. No DB/migration command,
+    production operation, external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen:
+    `API-CONTRACT-001EC` is complete; parent remains Partial with 34 violations. Image generation/browser
+    screenshots were omitted because response nesting changes no visual state.
+  - remaining / next action:
+    Select the next bounded allowlist route after a live re-scan; preserve all unowned inbound/config/harness dirty
+    files. No push was performed.
+
 - codex: visit schedule PATCH response-envelope convergence.
   - commit:
     `a1f58d005 fix(API-CONTRACT-001EB): envelope schedule patch results`.
