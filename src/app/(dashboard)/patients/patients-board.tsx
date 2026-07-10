@@ -621,7 +621,7 @@ function PatientBoardCompactListRow({ card, now }: { card: PatientBoardCard; now
           className="inline-flex min-h-11 max-w-full items-center font-bold text-foreground underline-offset-4 hover:underline"
           data-testid="patient-board-list-link"
         >
-          <span className="truncate">{card.name}</span>
+          <span className="break-words">{card.name}</span>
         </Link>
         <p className="text-xs tabular-nums text-muted-foreground">
           {card.age != null ? `${card.age}歳・` : ''}

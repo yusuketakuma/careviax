@@ -535,6 +535,30 @@ describe('PatientsBoard', () => {
     expect(detailLink.className).toContain('!min-h-[44px]');
   });
 
+  it('keeps long patient names readable in compact list mode', () => {
+    const longPatientName = '佐藤山田鈴木高橋渡辺伊藤田中山本中村小林加藤吉田太郎';
+    useRealtimeQueryMock.mockReturnValue({
+      data: buildFixture({ data: [card({ patient_id: 'pt_long_name', name: longPatientName })] }),
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+
+    render(<PatientsBoard />);
+
+    fireEvent.click(
+      within(screen.getByRole('group', { name: '患者一覧の表示切替' })).getByRole('button', {
+        name: 'リスト',
+      }),
+    );
+
+    const patientName = screen.getByText(longPatientName);
+    expect(patientName.className).toContain('break-words');
+    expect(patientName.className).not.toContain('truncate');
+    expect(screen.getByRole('link', { name: longPatientName })).toBeTruthy();
+  });
+
   it('routes patient card links through the shared patient href helper', () => {
     const data = buildFixture();
     const hostilePatientId = 'pt/1?x=y#z';

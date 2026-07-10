@@ -43461,3 +43461,33 @@ src/components/features/dispense-workbench/dispensing-workbench.from-api.test.ts
 - remaining / next action:
   DV-02 remains Partial: the audit's other sub-12px surfaces and the ratchet guard remain. Run the full
   static gate bundle, then commit this small, validated calendar slice before choosing the next P1/P2 issue.
+
+## 2026-07-11 UI-UX-DV07-PATIENT-BOARD — preserve full list identities
+
+- current task:
+  Continue the P1 DV-07 patient-identity remediation in the patient board's compact list, where a patient
+  name is the primary selection link and was the remaining `truncate` use on that screen.
+- files inspected / changed:
+  Inspected the board card/list renderers, shared navigation helper, server-query ownership, existing fixture
+  and list-mode tests, the UI SSOT/audit, and dirty ownership. Changed `patients-board.tsx`, its test, and
+  the DV-07/progress evidence.
+- bugs found / fixed:
+  The compact-list patient name had no recovery path after `truncate`. It now uses `break-words`; the link,
+  patient ID/href helper, server sort/filter query, safety tags, status cues, and action links are unchanged.
+- security / medical safety:
+  A long patient name now remains visible at the exact board selection point, reducing same-prefix selection
+  risk. No API, data, authz, PHI disclosure scope, mutation, or persistence changed. `gpt-image-2` was
+  omitted because this corrects an existing identity typography rule rather than reconstructing a screen.
+  The browser used only the synthetic long name and a mock `/api/patients/board` response, with local E2E
+  demo-session user lookup by `SELECT` only.
+- validation:
+  `pnpm vitest run 'src/app/(dashboard)/patients/patients-board.test.tsx'
+'src/app/(dashboard)/patients/page.test.tsx' --reporter=dot` passed 2 files / 26 tests. Exact ESLint,
+  Prettier, and `git diff --check` passed. A 1680px local Playwright mock changed to list mode and showed
+  the complete synthetic name across two lines, preserved `/patients/visual-long-name`, and reported zero
+  page/console errors. `pnpm colors:check`, `pnpm client-phi-log:check`, `pnpm frontend-contract:check`,
+  `pnpm boundaries:check`, `pnpm typecheck`, `pnpm lint`, and `git diff --check` passed. Full E2E, build,
+  a11y, mobile, offline, and clinical review are pending.
+- remaining / next action:
+  Run the full static gates and commit this focused slice. DV-07 remains Partial only for my-day and the
+  facility-record switcher, each needing its own layout and responsive verification.
