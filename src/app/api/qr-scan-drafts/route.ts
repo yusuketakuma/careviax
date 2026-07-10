@@ -513,13 +513,15 @@ const authenticatedPOST = withAuthContext(
 
     return success(
       {
-        draft: toQrDraftResponse(draft),
-        parse_result: {
-          success: allErrors.length === 0,
-          warnings: allWarnings,
-          errors: allErrors,
+        data: {
+          draft: toQrDraftResponse(draft),
+          parse_result: {
+            success: allErrors.length === 0,
+            warnings: allWarnings,
+            errors: allErrors,
+          },
+          session_id,
         },
-        session_id,
       },
       201,
     );

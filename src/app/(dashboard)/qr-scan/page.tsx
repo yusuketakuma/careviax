@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/dialog';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { readApiJson } from '@/lib/api/client-json';
 import { cn } from '@/lib/utils';
 import { messageFromError } from '@/lib/utils/error-message';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -50,7 +51,7 @@ import {
   type JahisParseResult,
 } from '@/lib/pharmacy/jahis-qr';
 import type { IScannerControls } from '@zxing/browser';
-import { buildQrScanDraftPayload } from './qr-scan-draft-payload';
+import { buildQrScanDraftPayload, extractQrScanDraftSessionId } from './qr-scan-draft-payload';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -372,13 +373,8 @@ export default function QRScanPage() {
         body: JSON.stringify(body),
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.message || 'PCへの送信に失敗しました');
-      }
-
-      const json = await res.json();
-      if (json.session_id) setSessionId(json.session_id as string);
+      const responsePayload = await readApiJson<unknown>(res, 'PCへの送信に失敗しました');
+      setSessionId(extractQrScanDraftSessionId(responsePayload));
 
       setPhase('done');
     } catch (err) {

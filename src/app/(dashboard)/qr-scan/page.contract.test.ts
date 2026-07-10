@@ -30,6 +30,13 @@ describe('QRScanPage accessibility status contract', () => {
     expect(SOURCE).toContain("setSendError(messageFromError(err, '送信中にエラーが発生しました'))");
   });
 
+  it('unwraps and validates the QR draft create data envelope before success', () => {
+    expect(SOURCE).toContain("import { readApiJson } from '@/lib/api/client-json';");
+    expect(SOURCE).toContain("readApiJson<unknown>(res, 'PCへの送信に失敗しました')");
+    expect(SOURCE).toContain('setSessionId(extractQrScanDraftSessionId(responsePayload));');
+    expect(SOURCE).not.toContain('json.session_id');
+  });
+
   it('announces non-blocking scan progress and successful send state as status messages', () => {
     expect(SOURCE).toContain('role="status"');
     expect(SOURCE).toContain('aria-live="polite"');

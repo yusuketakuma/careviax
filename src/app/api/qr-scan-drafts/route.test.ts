@@ -636,7 +636,16 @@ describe('/api/qr-scan-drafts POST', () => {
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(body.draft).toMatchObject({
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body.data).toMatchObject({
+      session_id: expect.any(String),
+      parse_result: {
+        success: true,
+        warnings: [],
+        errors: [],
+      },
+    });
+    expect(body.data.draft).toMatchObject({
       id: 'draft_1',
       status: 'pending',
       parsed_data: {
@@ -644,9 +653,12 @@ describe('/api/qr-scan-drafts POST', () => {
         rawRecords: [{ recordType: '1', lineNumber: 2 }],
       },
     });
-    expect(body.draft).not.toHaveProperty('raw_qr_texts');
-    expect(body.draft).not.toHaveProperty('qr_payload_hash');
-    expect(body.draft.parsed_data).not.toHaveProperty('rawText');
+    expect(body).not.toHaveProperty('draft');
+    expect(body).not.toHaveProperty('parse_result');
+    expect(body).not.toHaveProperty('session_id');
+    expect(body.data.draft).not.toHaveProperty('raw_qr_texts');
+    expect(body.data.draft).not.toHaveProperty('qr_payload_hash');
+    expect(body.data.draft.parsed_data).not.toHaveProperty('rawText');
     expect(JSON.stringify(body)).not.toContain('rawLine');
   });
 
