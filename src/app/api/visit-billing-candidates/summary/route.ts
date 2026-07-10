@@ -169,7 +169,7 @@ async function authenticatedGET(req: NextRequest) {
       { requestContext: ctx },
     );
 
-    return withSensitiveNoStore(success(result));
+    return withSensitiveNoStore(success({ data: result }));
   });
 }
 

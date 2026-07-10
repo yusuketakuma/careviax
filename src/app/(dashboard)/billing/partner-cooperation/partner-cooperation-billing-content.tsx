@@ -158,6 +158,7 @@ const partnerCooperationSummarySchema = z.object({
   planned_invoice_amount: z.number(),
   pending_candidate_generation_count: z.number(),
 });
+const partnerCooperationSummaryResponseSchema = apiDataSchema(partnerCooperationSummarySchema);
 
 const visitBillingCandidateRowSchema = z.object({
   id: z.string(),
@@ -311,10 +312,11 @@ async function fetchSummary(orgId: string, billingMonth: string) {
     `/api/visit-billing-candidates/summary?billing_month=${encodeURIComponent(billingMonth)}`,
     { headers: buildOrgHeaders(orgId) },
   );
-  return readApiJson<PartnerCooperationSummary>(response, {
+  const json = await readApiJson<{ data: PartnerCooperationSummary }>(response, {
     fallbackMessage: '薬局間協力請求サマリーの取得に失敗しました',
-    schema: partnerCooperationSummarySchema,
+    schema: partnerCooperationSummaryResponseSchema,
   });
+  return json.data;
 }
 
 async function fetchActiveContracts(orgId: string) {

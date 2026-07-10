@@ -96,18 +96,20 @@ describe('PartnerCooperationBillingContent', () => {
         if (url.startsWith('/api/visit-billing-candidates/summary?')) {
           return new Response(
             JSON.stringify({
-              billing_month: '2026-06-01',
-              visit_record_count: 4,
-              confirmed_visit_record_count: 3,
-              unconfirmed_visit_record_count: 1,
-              generated_candidate_count: 2,
-              billable_candidate_count: 2,
-              excluded_candidate_count: 0,
-              invoiced_candidate_count: 0,
-              free_candidate_count: 1,
-              paid_candidate_count: 1,
-              planned_invoice_amount: 5500,
-              pending_candidate_generation_count: 1,
+              data: {
+                billing_month: '2026-06-01',
+                visit_record_count: 4,
+                confirmed_visit_record_count: 3,
+                unconfirmed_visit_record_count: 1,
+                generated_candidate_count: 2,
+                billable_candidate_count: 2,
+                excluded_candidate_count: 0,
+                invoiced_candidate_count: 0,
+                free_candidate_count: 1,
+                paid_candidate_count: 1,
+                planned_invoice_amount: 5500,
+                pending_candidate_generation_count: 1,
+              },
             }),
             { status: 200 },
           );
@@ -269,17 +271,19 @@ describe('PartnerCooperationBillingContent', () => {
       if (url.startsWith('/api/visit-billing-candidates/summary?')) {
         return new Response(
           JSON.stringify({
-            billing_month: '2026-06-01',
-            visit_record_count: 4,
-            confirmed_visit_record_count: 3,
-            unconfirmed_visit_record_count: 1,
-            generated_candidate_count: 2,
-            billable_candidate_count: 2,
-            excluded_candidate_count: 0,
-            invoiced_candidate_count: 0,
-            free_candidate_count: 1,
-            paid_candidate_count: 1,
-            planned_invoice_amount: '5500',
+            data: {
+              billing_month: '2026-06-01',
+              visit_record_count: 4,
+              confirmed_visit_record_count: 3,
+              unconfirmed_visit_record_count: 1,
+              generated_candidate_count: 2,
+              billable_candidate_count: 2,
+              excluded_candidate_count: 0,
+              invoiced_candidate_count: 0,
+              free_candidate_count: 1,
+              paid_candidate_count: 1,
+              planned_invoice_amount: '5500',
+            },
           }),
           { status: 200 },
         );

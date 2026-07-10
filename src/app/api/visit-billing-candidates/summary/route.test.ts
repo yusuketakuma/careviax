@@ -171,7 +171,9 @@ describe('/api/visit-billing-candidates/summary GET', () => {
         amount_snapshot: true,
       },
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body.data).toMatchObject({
       billing_month: '2026-06-01',
       filters: {
         share_case_id: 'share_case_1',
