@@ -1063,7 +1063,7 @@ const authenticatedPATCH = withAuthContext(
       ),
     );
 
-    return success(successfulResult);
+    return success({ data: successfulResult });
   },
   {
     permission: 'canVisit',

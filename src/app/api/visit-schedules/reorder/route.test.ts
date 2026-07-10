@@ -319,6 +319,17 @@ describe('/api/visit-schedules/reorder PATCH', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    const responseBody = await response.json();
+    expect(responseBody).toEqual({
+      data: {
+        case_ids: ['case_1', 'case_2'],
+        schedule_ids: ['schedule_1', 'schedule_3'],
+        vehicle_assignment: null,
+      },
+    });
+    expect(responseBody).not.toHaveProperty('case_ids');
+    expect(responseBody).not.toHaveProperty('schedule_ids');
+    expect(responseBody).not.toHaveProperty('vehicle_assignment');
     expect(scheduleUpdateManyMock).toHaveBeenCalledTimes(2);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
