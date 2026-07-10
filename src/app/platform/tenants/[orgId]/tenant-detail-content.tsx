@@ -6,17 +6,18 @@ import { ArrowLeft } from 'lucide-react';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { platformFetchJson } from '../../platform-fetch';
-import { PLATFORM_TENANTS_QUERY_KEY, type PlatformTenant } from '../../tenant-directory-content';
+import {
+  PLATFORM_TENANTS_QUERY_KEY,
+  type PlatformTenantsResponse,
+} from '../../tenant-directory-content';
 import { AuditLogPanel } from './audit-log-panel';
 import { BreakGlassPanel } from './break-glass-panel';
 import { DataExplorerPanel } from './data-explorer-panel';
 
-type TenantsResponse = { tenants: PlatformTenant[] };
-
 export function TenantDetailContent({ orgId }: { orgId: string }) {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: PLATFORM_TENANTS_QUERY_KEY,
-    queryFn: () => platformFetchJson<TenantsResponse>('/api/platform/tenants'),
+    queryFn: () => platformFetchJson<PlatformTenantsResponse>('/api/platform/tenants'),
   });
 
   if (isLoading) {
@@ -39,7 +40,7 @@ export function TenantDetailContent({ orgId }: { orgId: string }) {
     );
   }
 
-  const tenant = data?.tenants.find((t) => t.id === orgId);
+  const tenant = data?.data.tenants.find((t) => t.id === orgId);
 
   if (!tenant) {
     return (

@@ -30,17 +30,19 @@ describe('TenantDirectoryContent', () => {
         async () =>
           new Response(
             JSON.stringify({
-              tenants: [
-                {
-                  id: 'org_1',
-                  name: 'さくら薬局',
-                  corporate_number: '1234567890123',
-                  created_at: '2026-01-01T00:00:00.000Z',
-                  member_count: 5,
-                  site_count: 2,
-                  active_break_glass: null,
-                },
-              ],
+              data: {
+                tenants: [
+                  {
+                    id: 'org_1',
+                    name: 'さくら薬局',
+                    corporate_number: '1234567890123',
+                    created_at: '2026-01-01T00:00:00.000Z',
+                    member_count: 5,
+                    site_count: 2,
+                    active_break_glass: null,
+                  },
+                ],
+              },
             }),
             { status: 200 },
           ),
@@ -62,21 +64,23 @@ describe('TenantDirectoryContent', () => {
         async () =>
           new Response(
             JSON.stringify({
-              tenants: [
-                {
-                  id: 'org_2',
-                  name: 'ひまわり薬局',
-                  corporate_number: null,
-                  created_at: '2026-01-01T00:00:00.000Z',
-                  member_count: 3,
-                  site_count: 1,
-                  active_break_glass: {
-                    id: 'bg_1',
-                    expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-                    scope: 'read_only',
+              data: {
+                tenants: [
+                  {
+                    id: 'org_2',
+                    name: 'ひまわり薬局',
+                    corporate_number: null,
+                    created_at: '2026-01-01T00:00:00.000Z',
+                    member_count: 3,
+                    site_count: 1,
+                    active_break_glass: {
+                      id: 'bg_1',
+                      expires_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+                      scope: 'read_only',
+                    },
                   },
-                },
-              ],
+                ],
+              },
             }),
             { status: 200 },
           ),

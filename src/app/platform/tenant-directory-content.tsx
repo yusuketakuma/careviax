@@ -21,7 +21,7 @@ export type PlatformTenant = {
   active_break_glass: { id: string; expires_at: string; scope: 'read_only' | 'read_write' } | null;
 };
 
-type TenantsResponse = { tenants: PlatformTenant[] };
+export type PlatformTenantsResponse = { data: { tenants: PlatformTenant[] } };
 
 export const PLATFORM_TENANTS_QUERY_KEY = ['platform-tenants'] as const;
 
@@ -46,10 +46,10 @@ export function TenantDirectoryContent() {
   const router = useRouter();
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: PLATFORM_TENANTS_QUERY_KEY,
-    queryFn: () => platformFetchJson<TenantsResponse>('/api/platform/tenants'),
+    queryFn: () => platformFetchJson<PlatformTenantsResponse>('/api/platform/tenants'),
   });
 
-  const tenants = data?.tenants ?? [];
+  const tenants = data?.data.tenants ?? [];
 
   const columns: ColumnDef<PlatformTenant>[] = [
     {

@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return withSensitiveNoStore(success({ tenants }));
+  return withSensitiveNoStore(success({ data: { tenants } }));
 }
 
 export const dynamic = 'force-dynamic';
