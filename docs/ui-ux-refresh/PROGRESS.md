@@ -9,9 +9,9 @@ Status: `TODO` / `IN_PROGRESS` / `DONE` / `BLOCKED` / `NOT_EXECUTED`（計画の
 | 1 | Scope, users, medical context | DONE (2026-07-11) | workflow wf_f4d00519: 15 agents / 1.43M tok / 0 error | 01-scope-and-users.md | — | Phase 5 で監査に反映 |
 | 1 | Compliance applicability + traceability | DONE (2026-07-11) | 同上。GL 22件確認・Matrix 55行。**MHLW GL は第7.0版が最新（CLAUDE.md の v6.0 前提は旧版）**。legal 11/clinical 8/security 8 項が専門家レビュー待ち | 02-compliance-applicability.md, phase1/ | 専門家レビューは未実施 | SSOT未定義項目を Phase 6 へ |
 | 2 | External benchmark (レセコン/電子薬歴) | DONE (2026-07-11) | 同上。6製品×10軸マトリクス、採用原理8軸/不採用12件、コピー回避方針 | 03-external-benchmark.md, phase2/ | — | Phase 6 設計方針へ反映 |
-| 3 | SSOT discovery + screen/state inventory | IN_PROGRESS | workflow wf_0a36c574 実行中（route 動的バケット分割並列棚卸し） | 04-screen-and-state-inventory.md, phase3/ | — | 完了待ち |
-| 4 | State ownership audit | IN_PROGRESS | workflow wf_0a36c574 実行中 | 05-state-ownership.md | — | 完了待ち |
-| 5 | UI/UX audit + use-error risk register | TODO | — | 06-ui-ux-audit.md, 07-use-error-risk-register.md | — | — |
+| 3 | SSOT discovery + screen/state inventory | DONE (2026-07-11) | workflow wf_0a36c574: 15 agents / 1.59M tok / 0 error。128 route 検算一致（10 バケット）、ジャーニー17件+実在せず6件、SSOT 矛盾7件・逸脱定量化 | 04-screen-and-state-inventory.md, phase3/ | ブラウザ実画面確認は Phase 9 へ延期（理由記載済み） | Phase 5 監査へ |
+| 4 | State ownership audit | DONE (2026-07-11) | 同上。Ownership Map 30行×16列、重点8項目検出（workbench 空振り invalidate、URL state 欠落、logout 残存、下書き保存の両義性、OCC 6 route のみ） | 05-state-ownership.md | — | Phase 5 引き継ぎ8件 |
+| 5 | UI/UX audit + use-error risk register | IN_PROGRESS | 監査9クラスタ + リスク台帳2レーン + P0/P1 敵対的検証 | 06-ui-ux-audit.md, 07-use-error-risk-register.md, phase5/ | — | workflow 実行中 |
 | 6 | Target design direction + visual status language | TODO | — | 08-target-design-direction.md | — | 文書のみ、SSOT 統合方針 |
 | 7 | SSOT reconstruction | TODO | — | docs/ui-ux-design-guidelines.md ほか | — | 既存 SSOT へ統合 |
 | 8 | Implementation (tokens → components → screens) | TODO | — | 09-implementation-plan.md | — | 代表 vertical slice から |
