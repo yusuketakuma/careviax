@@ -3158,8 +3158,8 @@ export function PharmacyCooperationWorkflowContent() {
             consent_person: currentConsentForm.consentPerson,
             consent_method: currentConsentForm.consentMethod,
             scope: {
-              pdf_output: currentConsentForm.allowPdfOutput,
-              attachments: currentConsentForm.allowAttachments,
+              ...(currentConsentForm.allowPdfOutput ? { pdf_output: true } : {}),
+              ...(currentConsentForm.allowAttachments ? { attachments: true } : {}),
             },
             ...(currentConsentForm.consentRecordId.trim()
               ? { consent_record_id: currentConsentForm.consentRecordId.trim() }

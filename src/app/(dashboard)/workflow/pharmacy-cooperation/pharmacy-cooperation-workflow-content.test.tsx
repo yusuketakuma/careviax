@@ -1711,10 +1711,35 @@ describe('PharmacyCooperationWorkflowContent', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('患者共有同意の登録に失敗しました');
     });
+    const firstCreateConsentCall = vi
+      .mocked(fetch)
+      .mock.calls.find(
+        ([input, init]) =>
+          String(input) === '/api/patient-share-cases/share_case_1/consents' &&
+          init?.method === 'POST',
+      );
+    expect(JSON.parse(String(firstCreateConsentCall?.[1]?.body)).scope).toEqual({});
     expect(toast.success).not.toHaveBeenCalledWith('患者共有同意を登録しました');
     expect(screen.getByLabelText<HTMLInputElement>('患者共有同意者').value).toBe(
       '患者家族 山田花子',
     );
+
+    fireEvent.click(screen.getByLabelText('患者共有同意PDF出力'));
+    fireEvent.click(screen.getByRole('button', { name: /同意登録/ }));
+
+    await waitFor(() => {
+      const createConsentCalls = vi
+        .mocked(fetch)
+        .mock.calls.filter(
+          ([input, init]) =>
+            String(input) === '/api/patient-share-cases/share_case_1/consents' &&
+            init?.method === 'POST',
+        );
+      expect(createConsentCalls).toHaveLength(2);
+      expect(JSON.parse(String(createConsentCalls[1]?.[1]?.body)).scope).toEqual({
+        pdf_output: true,
+      });
+    });
   });
 
   it('rejects malformed pharmacy visit request create success before clearing raw clinical fields', async () => {

@@ -12,17 +12,25 @@ import { withOrgContext } from '@/lib/db/rls';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { CONSENT_DOCUMENT_MIME_TYPES } from '@/server/services/consent-record-documents';
+import {
+  enabledPatientShareScopeKeys,
+  PATIENT_SHARE_SCOPE_KEYS,
+} from '@/server/services/patient-share-scope';
 import { resolvePatientShareCaseTransition } from '@/server/services/pharmacy-partnerships';
 
 const consentMethodSchema = z.enum(['paper_scan', 'digital']);
 const consentDateSchema = dateKeySchema('同意日が不正です（YYYY-MM-DD）');
+const patientShareConsentScopeSchema = z.partialRecord(
+  z.enum(PATIENT_SHARE_SCOPE_KEYS),
+  z.literal(true),
+);
 
 const createPatientShareConsentSchema = z
   .object({
     consent_date: consentDateSchema,
     consent_person: z.string().trim().min(1, '同意者は必須です').max(120),
     consent_method: consentMethodSchema,
-    scope: z.record(z.string(), z.unknown()).default({}),
+    scope: patientShareConsentScopeSchema.default({}),
     consent_record_id: z.string().trim().min(1).max(128).optional(),
     file_asset_id: z.string().trim().min(1).max(128).optional(),
     valid_until: consentDateSchema.optional().nullable(),
@@ -61,7 +69,7 @@ function toSafePatientShareConsent(row: SafePatientShareConsentRow) {
     consent_record_id: row.consent_record_id,
     consent_date: row.consent_date,
     consent_method: row.consent_method,
-    scope_keys: Object.keys(scope ?? {}).sort(),
+    scope_keys: enabledPatientShareScopeKeys(scope).sort(),
     has_file_asset: Boolean(row.file_asset_id),
     valid_until: row.valid_until,
     revoked_at: row.revoked_at,
@@ -274,7 +282,7 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
           share_case_status_after: nextShareCaseStatus,
           consent_date: parsed.data.consent_date,
           consent_method: parsed.data.consent_method,
-          scope_keys: Object.keys(parsed.data.scope).sort(),
+          scope_keys: enabledPatientShareScopeKeys(parsed.data.scope).sort(),
           has_consent_record: Boolean(parsed.data.consent_record_id),
           has_file_asset: Boolean(parsed.data.file_asset_id),
           consent_person_length: parsed.data.consent_person.length,

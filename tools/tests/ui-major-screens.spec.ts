@@ -2622,7 +2622,6 @@ test.describe('major authenticated screens', () => {
         share_scope: {
           medication_profile: true,
           care_reports: true,
-          visit_records: true,
         },
         starts_at: dateKeyFromOffset(0),
         ends_at: dateKeyFromOffset(30),
@@ -2652,7 +2651,6 @@ test.describe('major authenticated screens', () => {
           scope: {
             medication_profile: true,
             care_reports: true,
-            visit_records: true,
           },
           valid_until: dateKeyFromOffset(30),
         },

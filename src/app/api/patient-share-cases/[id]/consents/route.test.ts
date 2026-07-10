@@ -85,7 +85,12 @@ describe('/api/patient-share-cases/[id]/consents', () => {
         consent_record_id: 'consent_record_1',
         consent_date: new Date('2026-06-19T00:00:00.000Z'),
         consent_method: 'paper_scan',
-        scope: { pdf_output: true, attachments: false },
+        scope: {
+          pdf_output: true,
+          attachments: false,
+          visit_records: true,
+          care_reports: 'yes',
+        },
         file_asset_id: 'file_1',
         valid_until: null,
         revoked_at: null,
@@ -147,7 +152,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
       data: [
         {
           id: 'share_consent_1',
-          scope_keys: ['attachments', 'pdf_output'],
+          scope_keys: ['pdf_output'],
           has_file_asset: true,
         },
       ],
@@ -342,6 +347,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
         share_case_id: 'share_case_1',
         consent_record_id: 'consent_record_1',
         consent_method: 'paper_scan',
+        scope: { pdf_output: true },
         file_asset_id: 'file_1',
         created_by: 'user_1',
       }),
@@ -365,6 +371,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
         changes: expect.objectContaining({
           share_case_status_before: 'consent_pending',
           share_case_status_after: 'partner_confirmation_pending',
+          scope_keys: ['pdf_output'],
           consent_person_length: expect.any(Number),
           has_file_asset: true,
           has_consent_record: true,
@@ -379,6 +386,59 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     expect(body).not.toHaveProperty('id');
     expect(body).not.toHaveProperty('share_case_id');
     expect(JSON.stringify(body)).not.toContain('山田花子');
+  });
+
+  it.each([
+    ['a canonical false key', { pdf_output: false }],
+    ['an unknown key', { visit_records: true }],
+    ['a non-boolean canonical value', { pdf_output: 'true' }],
+  ])('rejects %s before any database or audit side effect', async (_label, scope) => {
+    const response = await rawPOST(
+      createPostRequest({
+        consent_date: '2026-06-19',
+        consent_person: '患者家族',
+        consent_method: 'paper_scan',
+        scope,
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(JSON.stringify(body)).not.toContain('visit_records');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientShareConsentCreateMock).not.toHaveBeenCalled();
+    expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts an omitted scope as an empty enabled-key set', async () => {
+    const response = await rawPOST(
+      createPostRequest({
+        consent_date: '2026-06-19',
+        consent_person: '患者家族',
+        consent_method: 'paper_scan',
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
+    expect(patientShareConsentCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({ scope: {} }),
+    });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        changes: expect.objectContaining({ scope_keys: [] }),
+      }),
+    );
   });
 
   it('returns a sanitized no-store 500 when consent creation fails unexpectedly', async () => {
