@@ -315,7 +315,8 @@ describe('/api/visit-records/[id]', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(body).toMatchObject({
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body.data).toMatchObject({
       id: 'visit_1',
       attachments: [
         {
@@ -327,8 +328,8 @@ describe('/api/visit-records/[id]', () => {
         },
       ],
     });
-    expect(body).not.toHaveProperty('patient_state_snapshot');
-    expect(body).not.toHaveProperty('visit_geo_log');
+    expect(body.data).not.toHaveProperty('patient_state_snapshot');
+    expect(body.data).not.toHaveProperty('visit_geo_log');
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
       expect.any(Function),
@@ -498,7 +499,7 @@ describe('/api/visit-records/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({ id: 'visit_1' });
+    await expect(response.json()).resolves.toMatchObject({ data: { id: 'visit_1' } });
     expect(auditLogFindFirstMock).toHaveBeenCalled();
   });
 
@@ -1510,19 +1511,21 @@ describe('/api/visit-records/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      id: 'visit_1',
-      baseline_context: {
-        care_level: 'care_3',
-        adl_level: 'b',
-        dementia_level: 'ii',
-        medication_support_methods: ['unit_dose', 'calendar'],
-        special_medical_procedures: ['narcotics', 'home_oxygen'],
-        family_key_person: '山田 長男',
-        money_management: 'family',
-        visit_before_contact_required: true,
-        narcotics_base: true,
-        narcotics_rescue: false,
-        infection_isolation: 'droplet',
+      data: {
+        id: 'visit_1',
+        baseline_context: {
+          care_level: 'care_3',
+          adl_level: 'b',
+          dementia_level: 'ii',
+          medication_support_methods: ['unit_dose', 'calendar'],
+          special_medical_procedures: ['narcotics', 'home_oxygen'],
+          family_key_person: '山田 長男',
+          money_management: 'family',
+          visit_before_contact_required: true,
+          narcotics_base: true,
+          narcotics_rescue: false,
+          infection_isolation: 'droplet',
+        },
       },
     });
   });

@@ -66,7 +66,8 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
       }
       const recordRes = await fetch(`/api/visit-records/${visitId}`, { headers });
       if (recordRes.ok) {
-        const patientId = pickVisitPatientId(await recordRes.json());
+        const payload = await readApiJson<{ data: unknown }>(recordRes);
+        const patientId = pickVisitPatientId(payload.data);
         if (patientId) return { patientId };
       }
       throw new Error('訪問に紐づく患者を解決できませんでした');

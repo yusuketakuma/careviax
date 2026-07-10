@@ -406,7 +406,9 @@ describe('offline evidence draft sync', () => {
         return jsonResponse({ data: { visit_record: { id: 'visit_record_1' } } });
       }
       if (url === '/api/visit-records/visit_record_1' && !init?.method) {
-        return jsonResponse({ version: 3, attachments: [{ file_id: 'file_old' }] });
+        return jsonResponse({
+          data: { version: 3, attachments: [{ file_id: 'file_old' }] },
+        });
       }
       if (url === '/api/visit-records/visit_record_1' && init?.method === 'PATCH') {
         expect(JSON.parse(String(init.body))).toEqual({
@@ -468,7 +470,7 @@ describe('offline evidence draft sync', () => {
         return jsonResponse({ data: { id: 'file_new' } });
       }
       if (url === expectedVisitRecordUrl && !init?.method) {
-        return jsonResponse({ version: 2, attachments: [] });
+        return jsonResponse({ data: { version: 2, attachments: [] } });
       }
       if (url === expectedVisitRecordUrl && init?.method === 'PATCH') {
         expect(JSON.parse(String(init.body))).toEqual({
@@ -537,7 +539,9 @@ describe('offline evidence draft sync', () => {
       }
       if (url === expectedFallbackRecordUrl && !init?.method) {
         if (fetchMock.mock.calls.length === 2) return jsonResponse({ ok: true });
-        return jsonResponse({ version: 4, attachments: [{ file_id: 'file_old' }] });
+        return jsonResponse({
+          data: { version: 4, attachments: [{ file_id: 'file_old' }] },
+        });
       }
       if (url === expectedFallbackRecordUrl && init?.method === 'PATCH') {
         expect(JSON.parse(String(init.body))).toEqual({
@@ -631,7 +635,7 @@ describe('offline evidence draft sync', () => {
         return jsonResponse({ data: { id: 'file_new' } });
       }
       if (url === '/api/visit-records/visit_record_1' && !init?.method) {
-        return jsonResponse({ version: 2, attachments: [] });
+        return jsonResponse({ data: { version: 2, attachments: [] } });
       }
       if (url === '/api/visit-records/visit_record_1' && init?.method === 'PATCH') {
         return jsonResponse(
@@ -757,7 +761,7 @@ describe('offline evidence draft sync', () => {
               500,
             );
           }
-          return jsonResponse({ version: 2, attachments: [] });
+          return jsonResponse({ data: { version: 2, attachments: [] } });
         }
         if (url === '/api/visit-records/visit_record_1' && init?.method === 'PATCH') {
           return jsonResponse({ ok: true });

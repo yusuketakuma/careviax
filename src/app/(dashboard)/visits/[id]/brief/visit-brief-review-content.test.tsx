@@ -126,6 +126,35 @@ describe('VisitBriefReviewContent', () => {
     }
   });
 
+  it('unwraps the visit record detail data envelope in the schedule fallback', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    let patientQueryFn: (() => Promise<unknown>) | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        if (config.queryKey[0] === 'visit-brief-review-patient') patientQueryFn = config.queryFn;
+        return { data: undefined, isLoading: true, error: null };
+      },
+    );
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url === '/api/visit-schedules/visit_1') return jsonResponse({}, 404);
+      if (url === '/api/visit-records/visit_1') {
+        return jsonResponse({ data: { patient_id: 'patient_1' } });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<VisitBriefReviewContent visitId="visit_1" />);
+      await expect(patientQueryFn?.()).resolves.toEqual({ patientId: 'patient_1' });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
   it('routes patient visit brief fetches through the shared patient API path helper', async () => {
     const patientId = 'pt/1?tab=x#frag';
     useOrgIdMock.mockReturnValue('org_1');

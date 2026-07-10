@@ -1,6 +1,7 @@
 'use client';
 
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { offlineDb, type OfflineEvidenceDraft } from '@/lib/stores/offline-db';
@@ -285,10 +286,14 @@ async function uploadEvidenceDraft(
   const detailRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordPathId}`, {
     headers: buildOrgHeaders(orgId),
   });
-  const detail = await detailRes.json().catch(() => null);
-  if (!detailRes.ok || typeof detail?.version !== 'number') {
+  if (!detailRes.ok) {
     throw new Error('訪問記録の取得に失敗しました');
   }
+  const detailPayload = await readApiJson<{
+    data?: { version?: unknown; attachments?: unknown };
+  }>(detailRes, '訪問記録の取得に失敗しました');
+  const detail = detailPayload.data;
+  if (typeof detail?.version !== 'number') throw new Error('訪問記録の取得に失敗しました');
 
   const patchRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordPathId}`, {
     method: 'PATCH',

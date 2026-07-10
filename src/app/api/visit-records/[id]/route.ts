@@ -222,15 +222,17 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       delete (publicRecord as { visit_geo_log?: unknown }).visit_geo_log;
 
       return success({
-        ...publicRecord,
-        attachments: parseStoredVisitRecordAttachments(record.attachments),
-        pharmacist_name: userById.get(record.pharmacist_id) ?? null,
-        last_modified_by_id: latestAudit?.actor_id ?? record.pharmacist_id,
-        last_modified_by_name:
-          (latestAudit?.actor_id ? userById.get(latestAudit.actor_id) : null) ??
-          userById.get(record.pharmacist_id) ??
-          null,
-        baseline_context: baselineContext,
+        data: {
+          ...publicRecord,
+          attachments: parseStoredVisitRecordAttachments(record.attachments),
+          pharmacist_name: userById.get(record.pharmacist_id) ?? null,
+          last_modified_by_id: latestAudit?.actor_id ?? record.pharmacist_id,
+          last_modified_by_name:
+            (latestAudit?.actor_id ? userById.get(latestAudit.actor_id) : null) ??
+            userById.get(record.pharmacist_id) ??
+            null,
+          baseline_context: baselineContext,
+        },
       });
     },
     { requestContext: ctx },

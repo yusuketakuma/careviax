@@ -161,7 +161,7 @@ describe('VoiceMemoContent', () => {
         });
       }
       if (url === '/api/visit-records/record_1' && init?.method !== 'PATCH') {
-        return new Response(JSON.stringify({ version: 3, soap_subjective: '既存メモ' }), {
+        return new Response(JSON.stringify({ data: { version: 3, soap_subjective: '既存メモ' } }), {
           status: 200,
         });
       }

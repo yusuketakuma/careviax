@@ -291,6 +291,22 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
     expect(screen.queryByText(/データの一部を取得できませんでした/)).toBeNull();
   });
 
+  it('unwraps the visit record detail data envelope', async () => {
+    const { queryConfigs } = setupQueries();
+    render(<VisitRecordDetail recordId="record_1" />);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: RECORD }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      await expect(queryConfigs.get('visit-record')!.queryFn()).resolves.toEqual(RECORD);
+      expect(fetchMock).toHaveBeenCalledWith('/api/visit-records/record_1', {
+        headers: { 'x-org-id': 'org_1' },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('keeps server messages and falls back for mutation error toasts', () => {
     const { mutationConfigs } = setupQueries();
     render(<VisitRecordDetail recordId="record_1" />);

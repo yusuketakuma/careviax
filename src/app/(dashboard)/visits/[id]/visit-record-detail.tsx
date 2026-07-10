@@ -535,7 +535,11 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       const res = await fetch(`/api/visit-records/${recordId}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<VisitRecordFull>(res, '訪問記録の取得に失敗しました');
+      const payload = await readApiJson<{ data: VisitRecordFull }>(
+        res,
+        '訪問記録の取得に失敗しました',
+      );
+      return payload.data;
     },
     enabled: !!orgId && !!recordId,
   });

@@ -9,6 +9,7 @@ import { messageFromError } from '@/lib/utils/error-message';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { resolveScheduleVisitRecordId } from '@/lib/offline/evidence-drafts.shared';
@@ -344,10 +345,13 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
       }
 
       const detailRes = await fetch(`/api/visit-records/${recordId}`, { headers });
-      const detail = await detailRes.json().catch(() => null);
       if (!detailRes.ok) throw new Error('訪問記録の取得に失敗しました');
+      const detailPayload = await readApiJson<{ data: unknown }>(
+        detailRes,
+        '訪問記録の取得に失敗しました',
+      );
 
-      const body = buildVoiceMemoRecordPatchBody(detail, transcript);
+      const body = buildVoiceMemoRecordPatchBody(detailPayload.data, transcript);
       if (!body) throw new Error('訪問記録の取得に失敗しました');
 
       const patchRes = await fetch(`/api/visit-records/${recordId}`, {

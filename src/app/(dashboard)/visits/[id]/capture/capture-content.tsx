@@ -84,7 +84,11 @@ export function EvidenceCaptureContent({
 
       const recordRes = await fetch(`/api/visit-records/${visitId}`, { headers });
       if (recordRes.ok) {
-        const record = await recordRes.json();
+        const payload = await readApiJson<{ data: unknown }>(recordRes);
+        const record =
+          payload.data && typeof payload.data === 'object'
+            ? (payload.data as Record<string, unknown>)
+            : {};
         const patientId = pickVisitPatientId(record);
         if (patientId) {
           const patientRes = await fetch(buildPatientApiPath(patientId), { headers });
