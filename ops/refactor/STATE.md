@@ -52,6 +52,65 @@
 
 ## 直近の作業
 
+- codex: visit medication stock gate-off browser/mobile regression evidence.
+  - commit:
+    `5cb43c754 test(visits): cover gate-off stock observations`.
+  - current task:
+    P1 `STOCK-001-VISIT-UI` の既存 shared release gate を production code に触れず実ブラウザで
+    固定する。対象は gate-off 時の read-only stock context、ordinary visit save、実POST route の
+    fail-closed 応答、Chromium/Pixel 5 の操作面とoverflowであり、migration/DB integration/gate-onは
+    実行しない。
+  - files inspected:
+    `Plans.md`; `ops/refactor/STATE.md`; `docs/ui-ux-design-guidelines.md`; bundled Next.js route-handler /
+    server-client guides; visit record page/form/step navigation; medication stock panel/API gate/route/helper
+    and focused tests; `playwright.local.config.ts`; local E2E auth/route-mock helpers; active dirty tree。
+  - files changed:
+    `tools/tests/ui-route-mocked-smoke.spec.ts`; `Plans.md`; this state file; and
+    `projects/careviax/gates/2026-07-10/stock-001-visit-ui-gate-off.md`.
+  - bugs found / fixed:
+    No production behavior was changed. The repository lacked an end-to-end contract proving that the
+    server-rendered page and real observation POST stay matched while the release gate is off. The new
+    route-mocked regression supplies only synthetic stock/header/schedule data, verifies the read-only panel,
+    and calls the real write route with schema-invalid `{}` and no Idempotency-Key. It must return sanitized
+    `503` + `no-store` before any write work. Test development also exposed an unmocked header-summary 404;
+    the isolated fixture now models that existing client dependency instead of suppressing the console error.
+  - security/privacy risks reduced:
+    The regression proves no browser observation POST occurs, ordinary visit payloads omit stock-observation
+    fields, and the disabled UI cannot imply a successful observation write. The API probe is intentionally
+    invalid if the gate ever drifts on, so it stops at validation rather than reaching an org-scoped mutation.
+    Fixtures use synthetic IDs and a non-patient medication label only. No PHI, secret, migration, DB write,
+    production mutation, external send, deploy, or destructive operation ran.
+  - performance:
+    Test-only fixtures and one request listener; no production query, render, network, dependency, or runtime
+    work changed. The stock summary mock remains bounded to one item.
+  - plan review / subagent / Oracle:
+    Two independent read-only plan reviewers returned GO / conditional GO (0.96 / 0.97), requiring a real
+    gate-first API probe, both Playwright projects, no DB write, scoped 44px/overflow checks, and no false
+    completion claim. They identified the remaining explicit prior/current/delta display gap and existing
+    unrelated small mobile controls. The independent verifier returned PASS (0.96) with no blocker. Oracle was
+    not used per the current user instruction.
+  - validation:
+    Targeted Playwright ran against a local server started with
+    `PHOS_ENABLE_VISIT_MEDICATION_STOCK_OBSERVATIONS=0`: Chromium + `mobile-chromium` passed 2/2. The test
+    checks visible `登録無効`, synthetic current/previous/risk context, disabled observation selector, legacy
+    residual form, real API `503`/`no-store`, zero observation POSTs, ordinary visit payload exclusion, and
+    mobile 44px selector/add-button plus page/panel horizontal overflow. Focused gate/page/form/panel/route
+    Vitest passed 5 files / 68 tests. Exact ESLint, Prettier, Playwright discovery, and `git diff --check`
+    passed. Full typecheck/build were not rerun for this test-only slice because the shared tree still has the
+    unrelated user-owned `communications/inbound/inbound-content.tsx:2285` TS2322 gate failure; no type was
+    weakened.
+  - gbrain:
+    `projects/careviax/gates/2026-07-10/stock-001-visit-ui-gate-off` records the verified test recipe and
+    remaining human/UX gates without secrets or PHI.
+  - UI/imagegen:
+    Image generation was omitted under the UI SSOT because this is test-only regression evidence with no
+    production layout, wording, hierarchy, style, or interaction change.
+  - remaining / next action:
+    `STOCK-001-VISIT-UI` remains Partial. The next implementation-ready residual is explicit prior/current/delta
+    display in the stock panel; it needs a fresh plan review and a UI slice with its own visual/accessible
+    evidence. `STOCK-001-VISIT-CONTEXT-APPLY` and `STOCK-001-VISIT-DB-INTEGRATION` remain human gates before
+    any environment gate activation. No push was performed.
+
 - codex: service-wide active membership gate for notification recipients.
   - commit:
     `facbc1511 fix(notifications): validate member recipients`.
