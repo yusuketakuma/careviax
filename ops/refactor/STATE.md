@@ -52,6 +52,51 @@
 
 ## 直近の作業
 
+- codex: visit schedule list cursor metadata convergence.
+  - commit:
+    `7f0247d34 fix(API-CONTRACT-001ED): standardize schedule cursor metadata`.
+  - current task:
+    P0 `API-CONTRACT-001ED`。`GET /api/visit-schedules` のpaginationを legacy root camelCaseから
+    standard `meta { limit, has_more, next_cursor }`へ移し、共有readerを同契約へ揃えてallowlist debtを
+    34から33へ削減する。POSTは変更しない。
+  - files inspected:
+    `Plans.md`; `docs/plans-archive.md`; this state; collection route/test/snapshot; list service;
+    cursor pagination readers; shared schedule window helper/test; calendar/weekly/conflicts/emergency/compare and
+    direct my-day/admin readers/tests; response-shape allowlist; active dirty tree and recent commits。
+  - files changed:
+    collection route/test/snapshot; shared cursor helper/test; route-compare/emergency fixtures;
+    `tools/api-response-shape-allowlist.json`; `Plans.md`; `docs/plans-archive.md`; and this state file。
+  - bugs found / fixed:
+    The runtime payload nested list data but exposed cursor state as root camelCase, while the standard and newer
+    consumers use snake_case `meta`. The provider now emits explicit metadata and the shared reader consumes only
+    that contract. Initial post-change consumer failures identified five stale legacy fixtures; they were migrated
+    instead of adding a dual-shape fallback. Page aggregation and stop conditions remain covered.
+  - new high-confidence finding:
+    `API-SCHEDULE-LIMIT-001` is READY: admin performance requests `limit=200` while the route validation maximum is
+    100, so the live query would return 400. Next safe slice is to align that reader to the API maximum and pin the
+    request/test; this is separate from the response-envelope diff.
+  - frontend/backend, security and performance:
+    List data, filters, assignment/org scope, bounded query, sort, patient summary and no-store are unchanged.
+    Metadata becomes explicit without extra query/network/render work or PHI. No mutation, audit or dependency was
+    added.
+  - plan review / agents / Oracle:
+    Codex alone traced the shared and direct readers. No subagent, agmsg, Claude, external maker/checker or Oracle
+    consultation was used.
+  - validation:
+    Pre-change focused Vitest passed 6 files / 73 tests. First post-change run failed 8 consumer tests solely because
+    route-compare/emergency fixtures still returned legacy root metadata; after fixture migration, final focused
+    Vitest passed 6 files / 73 tests. ESLint, supported-file Prettier and `git diff --check` passed. Prettier could
+    not infer a parser for `.snap`; Vitest snapshot equality and diff check were used instead. Response-shape passed
+    at 33 allowlisted / 0 new; route-auth, frontend-contract and query-shape guards passed. Typegen succeeded; full
+    typecheck remains red only on the pre-existing user-owned inbound TS2322. Build was not run while that gate is
+    red. No DB/migration command, production operation, external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen:
+    `API-CONTRACT-001ED` is complete; parent remains Partial with 33 violations and the collection POST remains.
+    Image generation/browser screenshots were omitted because metadata nesting does not change visual structure.
+  - remaining / next action:
+    Implement `API-SCHEDULE-LIMIT-001`, then return to the collection POST envelope. Preserve unowned inbound,
+    config/harness and offline-sync bridge dirty files. No push was performed.
+
 - codex: visit schedule cancel response-envelope convergence.
   - commit:
     `da21676e3 fix(API-CONTRACT-001EC): envelope schedule cancel result`.
