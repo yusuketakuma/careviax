@@ -51,6 +51,36 @@
 
 ## 直近の作業
 
+- codex: QR scan draft discard envelope convergence.
+  - commit:
+    `302e80361 fix(API-CONTRACT-001EH): envelope QR draft discard result`.
+  - current task / purpose / acceptance:
+    P0 `API-CONTRACT-001EH`。`DELETE /api/qr-scan-drafts/:id` の200 successを exact `{ data: draft }` に揃える。
+    Nested result/root ID不在、raw QR/hash非露出、pending claim/cleanup/conflict維持、debt減を完了条件とした。
+  - files inspected / changed:
+    Detail route/test; review page discard mutation and tests; assignment/org access; pending `updateMany` claim;
+    sanitizer and cleanup path; allowlist; Plans/archive/state; active dirty tree. Changed only DELETE success/test,
+    allowlist and planning ledgers; the consumer intentionally remains status-only.
+  - implementation / behavior / rollback:
+    Provider nests the existing sanitized discarded draft under `data`. The UI does not consume the success body and
+    still navigates only after an OK status. Rollback is the scoped code and ledger commits; no mutation ordering,
+    stored field, schema, migration, dependency or deploy configuration changed.
+  - security / privacy / stability:
+    Assignment/org checks, pending-only optimistic claim, claim-loss conflict, raw QR/hash/parser data clearing,
+    supplemental-record deletion and no-store remain covered. No PHI field, query, network round-trip, render or log was
+    added. Codex alone implemented and verified the slice; no subagent, agmsg, Claude, Oracle or external worker was used.
+  - validation:
+    Baseline and final focused Vitest each passed 1 file / 12 tests. Exact ESLint, Prettier,
+    `api-response-shape:check` (29 allowlisted / 0 new), route-auth, frontend-contract, query-shape, client-PHI-log and
+    `git diff --check` passed. Typegen succeeded. Full typecheck is red on four unowned errors: the existing inbound
+    TS2322 plus three newly appeared medication-stock DTO test errors where `"none"` is not assignable to
+    `MedicationStockEquivalenceReviewStatusDto`; no error points to this slice. Build was not run while that gate is red.
+    No DB/migration, production operation, external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen / remaining:
+    `API-CONTRACT-001EH` is DONE; parent remains Partial at 29 violations. Browser/image generation were omitted because
+    JSON nesting changes no visible UI. Preserve unowned config, harness, inbound and medication-stock work; continue
+    the remaining QR family only after confirming the next contract's reader and clinical mutation boundary.
+
 - codex: QR scan draft detail envelope convergence.
   - commit:
     `d8026e75f fix(API-CONTRACT-001EG): envelope QR draft detail`.
