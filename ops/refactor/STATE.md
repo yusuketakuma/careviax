@@ -39800,3 +39800,51 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 
   error-code/output contract. Reconstruct the active P1 board after concurrent API-contract work and
   choose the next clean, implementation-ready slice; keep migration and full stock-equivalence gates
   explicit.
+
+## 2026-07-10 FE-PHI-SAFE-CLIENT-LOG-001-REPORT-DELIVERY — follow-up failure boundary
+
+- current task / plan review:
+  Reduce a second independent P1 client-error display surface in the report delivery dashboard. Read-only
+  mapper and safety review selected this single mutation over notification and report-workspace paths
+  because it has one localized error boundary and the dashboard is used only at `/reports/analytics`.
+  The review required a fixed message that covers both bulk reminder tasks and individual snoozes, and
+  tells an operator to verify delivery status before retrying. Oracle was not used, per the current user
+  instruction.
+- commit:
+  `28b36bc09 fix(reports): keep reminder errors PHI-safe`.
+- files inspected / changed:
+  `src/app/(dashboard)/reports/report-delivery-dashboard.tsx` and its focused test; inspected the
+  analytics page caller, reminder API JSON reader, reminder/snooze payload and success invalidation
+  behavior, client logger/tests, UI SSOT, and current dirty ownership.
+- bugs found / fixed:
+  The reminder mutation used `messageFromError` to display arbitrary API/transport `Error.message` in a
+  toast. Its dashboard contains patient and recipient/contact data, so an untrusted error could expose
+  that information outside the intended operational region. The onError boundary now emits only coded
+  `care_report.delivery_reminder_queue_failed` through `clientLog` with static `/reports/analytics`
+  context, and shows a fixed instruction to verify delivery status before retrying. Successful queue
+  counts, snooze copy, POST payload, API route, and query invalidations are unchanged.
+- security / medical safety:
+  A regression injects patient-like name, phone, insurance number, and token sentinels into an Error and
+  proves none reach toast calls; it also pins the coded logger event and static route. The UI does not
+  imply that the operation failed safely or encourage blind duplicate follow-up creation when its outcome
+  is uncertain. No delivery/report/patient IDs, recipient contact, payload, response body, status, or
+  token is sent to client logging.
+- performance / UI:
+  This is one catch-path logger call and one static message; no request, mutation, query, retry loop,
+  dependency, or render shape changed. Image generation was omitted because the existing dashboard
+  layout and action hierarchy are unchanged; only the safe error-output contract changed after UI SSOT
+  review.
+- validation:
+  `pnpm vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx'
+  'src/app/(dashboard)/reports/analytics/page.test.tsx' src/lib/utils/client-log.test.ts
+  src/lib/utils/logger.test.ts` passed 4 files / 31 tests. Exact ESLint, Prettier, `git diff --check`,
+  `pnpm client-phi-log:check`, and `pnpm frontend-contract:check` passed. Independent verifier returned
+  PASS. `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck` completed Next route type generation
+  and then stopped only at pre-existing non-owned
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285:49` `string | null` to
+  `string | undefined`; no changed-file error was reported.
+- remaining / next action:
+  `FE-PHI-SAFE-CLIENT-LOG-001` remains Partial. Treat further raw error/toast replacements as isolated
+  route contracts; do not blanket-remove detail needed for controlled authorization/workflow recovery.
+  Reconstruct priorities around concurrent API-contract work and retain explicit human/migration gates
+  for stock equivalence, RLS persistence proof, and patient-board cursor design.
