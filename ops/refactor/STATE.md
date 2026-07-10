@@ -43679,3 +43679,214 @@ leading-5`, preserving route-order prefixes, status badges, chevrons, links, and
   hit targets on right-pane action/check rows; visual long-content/200% verification remains blocked on
   the local E2E database. Continue DV-02 with the remaining 120 debt entries in focused,
   screenshot-backed slices; do not treat the ratchet or this pane as full DV-02 completion.
+
+## 2026-07-11 UI-UX-DV02-WORKBENCH-GRID-AND-TAILWIND-FLOOR — reduce browser typography debt to 29
+
+- current task:
+  Continue the P1 DV-02 remediation without changing medication, quantity, audit, workflow, permission,
+  persistence, or mutation contracts. Raise all remaining Tailwind arbitrary browser text below 12px and
+  the dispense prescription-grid inline surface below 12px; encode the right-pane 44px target on the
+  component rather than relying only on the workbench root selector.
+- files inspected / changed:
+  Inspected the UI SSOT §§2.4, 3.4, 7.8, and 8.2; the active DV-02 audit/progress/risk/evidence records;
+  `prescription-grid.tsx` and test; `right-pane.tsx` and test; the typography checker and allowlist; and
+  the final stable route-local typography diffs across auth, admin, dispense queue, patient, prescription,
+  print, schedule, task, visit, shared-viewer, medication, and home-care surfaces. Changed the central
+  grid and its test, the right-pane target contract and test, 58 static Tailwind arbitrary font-size
+  occurrences across the inspected route-local surfaces, the allowlist, and the UI/UX evidence documents.
+- bugs found / fixed:
+  The central dispense prescription grid contained 33 inline 9.5px–11.5px values for drug-change and
+  safety tags, use/dose/day values, period controls, actual-quantity/discrepancy inputs, and narcotic
+  double-count evidence. They now use 12px or more. Its rich component fixture renders a populated
+  prescription, period warning, quantity confirmation, discrepancy reason, and double-count inputs and
+  locks the explicit pixel floor. The right pane was runtime-protected by the broad workbench root selector,
+  but had no local target contract; all ten set/set-audit buttons and the select now explicitly declare
+  44px min width/height and border-box sizing. The 58 route-local Tailwind 9px–11px labels/badges were
+  raised to 12px. The checker baseline is now 29 occurrences (inline 22, JSX/SVG 4, CSS 3) with zero drift.
+- security / medical safety:
+  This reduces medication, quantity, audit, status, schedule, and patient-context readability risk while
+  preserving all existing data and safety behaviors. No API, payload, authorization, tenant context, PHI
+  disclosure boundary, audit event, mutation, database state, dependency, or external request changed.
+  The concurrent route-local typography batch was treated as external shared-worktree input, read-only
+  reviewed after its final diff stabilized, and then included only because every change was a static
+  `text-[9px|10px|11px]` to `text-[12px]` replacement with no branch or data-flow change.
+- performance:
+  No computation, I/O, request, cache key, state loop, or dependency was added. The only runtime layout
+  change is the required text floor and the already-effective right-pane 44px minimum being made local.
+- UI/imagegen:
+  `gpt-image-2` was omitted because this is a constrained standards correction in established workbench
+  and route layouts, not a new visual composition or information-architecture reconstruction. The SSOT was
+  reviewed before implementation.
+- validation:
+  `pnpm vitest run src/components/features/dispense-workbench/prescription-grid.test.tsx
+src/components/features/dispense-workbench/right-pane.test.tsx
+tools/scripts/check-typography-minimum.test.ts --reporter=dot` passed 3 files / 14 tests.
+  `pnpm typography:check` passed at 29 allowlisted occurrences / 0 drift. `pnpm lint`, `pnpm typecheck`,
+  `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck:no-unused`, `pnpm colors:check`,
+  `pnpm boundaries:check`, `pnpm frontend-contract:check`, `pnpm client-phi-log:check`,
+  `pnpm api-response-shape:check`, `pnpm client-json-schema:check`, focused `pnpm format:check`, and
+  `git diff --check` passed.
+- remaining / next action:
+  DV-02 remains partial: 29 browser occurrences remain in workbench inline/CSS and JSX/SVG chart paths.
+  The local route-mock workbench E2E remains blocked by the documented local `ph_os_e2e` connection refusal;
+  no live workbench screenshot, bounding-box, 200% zoom, or long-content proof was produced. MFA step labels
+  retain `leading-3` and SOAP step labels retain `leading-none`; verify their 320/375px and 200% zoom layout
+  before accepting them as fully visually proven. Build, full E2E, forced-colors, offline, and clinical/legal/
+  security review are still NOT_EXECUTED. Continue with the remaining 29 debt entries as focused slices.
+
+## 2026-07-11 UI-UX-DV02-WORKBENCH-CALENDAR-FLOOR-AND-TARGETS — reduce browser typography debt to 15
+
+- current task:
+  Continue the P1 dispense-workbench typography remediation in the calendar without changing cell selection,
+  hold state, phase transition, date calculation, write handlers, patient/medication data, or persistence.
+- files inspected / changed:
+  Inspected the calendar component, its view-model types and generator, focused tests, UI SSOT
+  §§2.4/3.4/7.8/8.2, typography allowlist/checker, active UI/UX evidence, and current dirty ownership.
+  Changed `medication-calendar-grid.tsx`, its test, the typography allowlist, and the active evidence/ledger
+  records.
+- bugs found / fixed:
+  All 14 calendar inline 9.5px–11.5px values now meet the 12px floor across change labels, attention,
+  weekday/legend, evidence-photo, gate, PTP, and state text. Change type remains 12px while the medication/
+  change body is an explicit 14px, 1.6-line-height, break-anywhere element. The three calendar-footer
+  actions (generate, bulk, primary) now each declare `minWidth`, `minHeight` 44px and `border-box` locally;
+  `font: inherit` is ordered before `fontSize` so the shorthand cannot suppress the intended size. The rich
+  test fixture covers change, attention, weekday, evidence photo, PTP, and held-cell content; it fixes both
+  the text floor and all three footer target declarations.
+- security / medical safety:
+  This makes medication/change content, PTP evidence, and hold state readable at the decision point while
+  preserving patient scope, request shape, authorization, clinical rules, mutation, audit behavior, and
+  cell semantics. No data value, API, DB, PHI boundary, or external request changed. `gpt-image-2` was
+  omitted under UI SSOT §2.4.2 because this is a constrained accessibility/typography correction within an
+  established dense workbench, not a visual reconstruction.
+- performance:
+  No runtime computation, request, dependency, state loop, or persistence changed. Long change content may
+  use the existing wrapping row rather than being clipped.
+- validation:
+  `pnpm vitest run src/components/features/dispense-workbench/medication-calendar-grid.test.tsx
+src/components/features/dispense-workbench/prescription-grid.test.tsx
+src/components/features/dispense-workbench/right-pane.test.tsx
+tools/scripts/check-typography-minimum.test.ts --reporter=dot` passed 4 files / 21 tests.
+  `pnpm typography:check` passed at 15 allowlisted occurrences / 0 drift. Focused Prettier format check,
+  `pnpm typecheck`, `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck:no-unused`, `pnpm lint`,
+  `pnpm colors:check`, `pnpm boundaries:check`, `pnpm frontend-contract:check`,
+  `pnpm client-phi-log:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`, and
+  `git diff --check` passed. ESLint exited 0 with two unrelated existing no-unused warnings in
+  `src/lib/platform/break-glass.test.ts`.
+- remaining / next action:
+  DV-02 remains partial: 15 browser typography occurrences remain. Browser/E2E proof for the calendar's
+  long text, 375px, 200% zoom, and actual bounding boxes remains NOT_EXECUTED because the local route-mock
+  workbench stops at Prisma `ph_os_e2e` ECONNREFUSED before rendering. The next P1 safety slice is the
+  calendar's abbreviated `M/D` date display and year-boundary proof; full E2E, build, forced-colors,
+  offline, and clinical/legal/security review remain NOT_EXECUTED.
+
+## 2026-07-11 UI-UX-CALENDAR-CLINICAL-DATE-PRIMARY-DISPLAY — remove ambiguous M/D dates
+
+- current task:
+  Remove the P1 `M/D` clinical-date ambiguity from the dispense workbench calendar while preserving all
+  cell keys, selection, hold, audit, gate, phase-transition, and write-handler behavior.
+- files inspected / changed:
+  Inspected UI SSOT §7.8, the calendar view generator, types, grid/RightPane consumers, date/key logic,
+  focused view/component tests, and the read-only impact review. Changed the calendar view type/generator,
+  grid date markup, focused calendar/right-pane fixtures, view tests, and active evidence/ledger records.
+- bugs found / fixed:
+  Calendar headers, period metadata, right-pane target/scan step, audit reject labels, and hold-dialog
+  context previously derived `M/D` strings; a period gave the year only at its start. `CalendarDay` now
+  separates canonical ISO `date` from clinical `label`, and all primary displays use a full Japanese date
+  plus weekday. The view test locks `2026年12月31日（木）〜2027年1月1日（金）`, the manually targeted
+  year-new cell, reject label, hold label, and unchanged `di` position. The header uses semantic
+  `<time dateTime>` markup with the full clinical date.
+- security / medical safety:
+  This prevents day/month and year-boundary ambiguity at set, audit, return, and hold decision points. No
+  API, payload, patient/medication data, authorization, PHI boundary, audit event, persistence, mutation,
+  cell-state key, or phase behavior changed. `gpt-image-2` was omitted because this is a constrained
+  clinical-date safety correction in an existing workbench, not a visual reconstruction.
+- performance:
+  The view adds only two small display strings per calendar day; it introduces no I/O, request, state loop,
+  or dependency.
+- validation:
+  `pnpm vitest run src/components/features/dispense-workbench/use-workbench-view.test.ts
+src/components/features/dispense-workbench/medication-calendar-grid.test.tsx
+src/components/features/dispense-workbench/right-pane.test.tsx
+src/components/features/dispense-workbench/prescription-grid.test.tsx
+tools/scripts/check-typography-minimum.test.ts --reporter=dot` passed 5 files / 50 tests.
+  `pnpm typography:check` passed at 15 allowlisted occurrences / 0 drift, and `git diff --check` passed.
+- remaining / next action:
+  Full static gates will be rerun after the next coherent workbench typography slice. Browser proof of the
+  full-date header's 375px/200% layout remains NOT_EXECUTED because the local route-mock workbench stops at
+  Prisma `ph_os_e2e` ECONNREFUSED before rendering. Continue with the remaining 15 typography entries,
+  then run the global static gate bundle and retain build/E2E/a11y/forced-colors/offline/clinical/legal/
+  security review as NOT_EXECUTED.
+
+## 2026-07-11 UI-UX-DV02-ZERO-BASELINE — close all static browser typography debt
+
+- current task:
+  Complete the remaining browser-only sub-12px typography remediation while retaining the workbench's
+  clinical workflow, calendar state keys, API boundaries, and component behavior.
+- files inspected / changed:
+  Inspected the remaining allowlist paths, workbench CSS/shell/dialog/header/compare components and tests,
+  route comparison SVG, residual-medication SVG, the typography checker, UI SSOT §§2.4/3.4/7.8/8.2, and
+  current shared-tree ownership. Changed the 11 remaining workbench values, four SVG labels, focused tests,
+  and `tools/typography-minimum-allowlist.json` to the zero-debt baseline. Updated the active UI/UX
+  evidence and this ledger.
+- bugs found / fixed:
+  Patient ribbon metadata, grid/status labels, hold-dialog labels/target, phase flow, and comparison
+  summary/subtext used 10.5px–11.5px. They now use 12px; the full-date hold target can wrap instead of
+  clipping. Route order numbers and residual-chart scale/date/threshold labels now use 12px. The chart's
+  X-axis label baseline moved from 198 to 194 in a 200px viewBox to make the larger type less likely to
+  clip. The typography checker now reports zero allowlisted sub-12px browser occurrences and zero drift.
+- security / medical safety:
+  This closes the measured small-text risk for patient identity support, medication/hold evidence, workflow
+  position, route order, and residual-medication data. No API, DB, query, authorization, patient scope,
+  PHI boundary, audit event, mutation, state key, route computation, or clinical decision rule changed.
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a constrained standards/accessibility
+  correction, not a visual reconstruction.
+- performance:
+  No request, dependency, state loop, or persisted data changed. The added tests are test-only.
+- validation:
+  Focused `pnpm vitest run` passed 10 files / 68 tests across workbench view/grid/right pane/dialogs,
+  route comparison, residual chart, and checker. `pnpm typography:check` passed with 0 allowlisted
+  occurrences / 0 drift. Focused Prettier format check, `git diff --check`, `pnpm lint`,
+  `pnpm colors:check`, `pnpm boundaries:check`, `pnpm frontend-contract:check`,
+  `pnpm client-phi-log:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`,
+  `pnpm typecheck`, and `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck:no-unused` passed.
+  ESLint exited 0 with two unrelated existing no-unused warnings in `src/lib/platform/break-glass.test.ts`.
+- remaining / next action:
+  DV-02 static acceptance is complete. Do not claim full visual acceptance: local route-mock workbench E2E
+  still stops at Prisma `ph_os_e2e` ECONNREFUSED before rendering, so 375px/200% proof of the full-date
+  calendar, long hold target, route number, and residual-chart X-axis remains NOT_EXECUTED. Build, full
+  E2E, forced-colors, offline, and clinical/legal/security review are also NOT_EXECUTED. Next action is
+  to restore a non-mutating local E2E dependency path or obtain authorized environment support, then run
+  the Phase 9 visual/a11y scenarios; no commit was made by this slice.
+
+## 2026-07-11 UI-UX-DV02-COMPLETE-AND-LAND — DV-02 typography floor to zero, landed
+
+- current task:
+  Under user directive「claudeが全部実装して良い」, take sole ownership of the in-flight DV-02 work
+  (a concurrent Codex loop had been co-editing the same tree) and land it with gates + independent review.
+- coordination:
+  A stale codex-bridge auto-restore loop (see memory careviax-parallel-mode-and-codex-auto-restore) was
+  co-driving DV-02 and ignoring agmsg stand-down; it cannot be stopped from the Claude peer side. Per the
+  documented fix, the user stopped the codex-side session; Claude then reconciled the tree solo. Route-local
+  Tailwind (58) was raised by a 6-agent Claude workflow; the workbench inline/CSS/grid + charts + the full
+  Japanese calendar dates were authored in the Codex lane and independently reviewed by Claude (reviewer-audit
+  PASS twice: raises byte-surgical, date refactor display-only and TZ-safe).
+- result:
+  DV-02 browser sub-12px typography is COMPLETE: `pnpm typography:check` passes at 0 occurrences / 0 drift
+  with an EMPTY allowlist; the AST/CSS ratchet now enforces the 12px floor repo-wide. The dispense calendar
+  day model moved from `d:'M/D'` to a canonical ISO `date` key + full `label:'YYYY年M月D日'` (TZ-safe,
+  display-only, year-boundary test). right-pane (10) and calendar-footer (3) controls encode a component-level
+  44px touch target.
+- commits:
+  0156ba5a9 (ratchet + right-pane 28-inline), 943bb5ca4 (Group A 58 Tailwind + workbench grids, 120→15),
+  e85248373 (workbench inline/CSS + charts + full JP dates, 15→0), 959929859 (fix stale StageTimeline label
+  test unrelated to DV-02, restoring a green suite).
+- validation:
+  `pnpm typecheck` exit 0, `pnpm test` 15298 pass / 0 fail (after 959929859), `pnpm typography:check` 0/0,
+  format/diff-check/colors/boundaries/frontend-contract/phi-log checks pass, focused workbench+chart suites
+  pass, reviewer-audit PASS.
+- remaining / NOT_EXECUTED:
+  `pnpm build` was ATTEMPTED but OOM-killed (exit 137) in this 16GB shared env (~30% free vs ~8GB heap;
+  ollama/openclaw/dev-server contention) — environmental, not a code failure; needs a clean-env/CI run.
+  a11y (forced-colors / 200% zoom / screen reader), E2E (local ph_os_e2e ECONNREFUSED), visual regression,
+  and clinical/legal/security expert review remain NOT_EXECUTED. Phase 8 DV-02 is statically complete; the
+  visual/a11y/clinical gates for Phase 9 are the next work.
