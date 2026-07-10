@@ -126,6 +126,16 @@ describe('/api/visit-schedules/[id]/reopen POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    const responseBody = await response.json();
+    expect(responseBody).toEqual({
+      data: {
+        id: 'schedule_1',
+        schedule_status: 'planned',
+        version: 2,
+      },
+    });
+    expect(responseBody).not.toHaveProperty('id');
+    expect(responseBody).not.toHaveProperty('schedule_status');
     expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
       where: expectedReopenClaimWhere(),
       data: { schedule_status: 'planned', version: { increment: 1 } },

@@ -159,7 +159,7 @@ async function authenticatedPOST(
     payload: { source: 'visit_schedules_reopen', schedule_id: id },
   });
 
-  return success(result.schedule);
+  return success({ data: result.schedule });
 }
 
 export async function POST(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
