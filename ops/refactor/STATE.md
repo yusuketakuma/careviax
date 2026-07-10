@@ -51,6 +51,16 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh P1 NF-02 admin performance false-zero prevention (DONE, 2026-07-11; focused UI behavior slice).
+  - result / scope:
+    The actionable performance signal strip now renders `—` rather than a fabricated zero when workflow/schedule/
+    proposal or runtime source is loading, missing, or failed. Existing aggregation when loaded, polling, ErrorState/
+    retry, API payloads, auth/authz, patient data, and alert behavior are unchanged. Image generation was omitted because
+    this changes existing text values in-place without reconstructing the screen.
+  - validation / limits:
+    Performance page tests passed 1 file / 8 tests. Exact ESLint/Prettier, typecheck, frontend-contract, and diff-check
+    passed. E2E, visual/a11y runtime evidence, full build, and standalone remain NOT_EXECUTED.
+
 - codex: UI/UX Refresh P1 NF-01 patient-edit false-not-found recovery (DONE, 2026-07-11; focused UI behavior slice).
   - result / scope:
     Patient edit now renders existing `ErrorState` with fixed cause/recovery copy and `refetch()` only when the overview

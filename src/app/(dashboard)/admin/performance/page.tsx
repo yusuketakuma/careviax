@@ -315,6 +315,16 @@ export default function PerformancePage() {
 
   // 業務 KPI は workflow/schedules/proposals の集計。いずれか失敗時は 0 (false-zero) 表示せず ErrorState を出す。
   const metricsError = workflowQuery.isError || schedulesQuery.isError || proposalsQuery.isError;
+  const metricsSignalsUnavailable =
+    metricsError ||
+    workflowQuery.isLoading ||
+    schedulesQuery.isLoading ||
+    proposalsQuery.isLoading ||
+    !workflowQuery.data ||
+    !schedulesQuery.data ||
+    !proposalsQuery.data;
+  const runtimeSignalsUnavailable =
+    runtimeQuery.isError || runtimeQuery.isLoading || !runtimeQuery.data;
   const refetchMetrics = () => {
     void workflowQuery.refetch();
     void schedulesQuery.refetch();
@@ -391,36 +401,38 @@ export default function PerformancePage() {
           <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3">
             <p className="text-sm font-medium text-state-confirm">変更承認待ち</p>
             <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-              {performance.pendingOverrides}
+              {metricsSignalsUnavailable ? '—' : performance.pendingOverrides}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">専用リスケで処理</p>
           </div>
           <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
             <p className="text-sm font-medium text-destructive">緊急影響</p>
             <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-              {performance.emergencyItems}
+              {metricsSignalsUnavailable ? '—' : performance.emergencyItems}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">割込・緊急訪問</p>
           </div>
           <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3">
             <p className="text-sm font-medium text-state-confirm">API P95</p>
             <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-              {runtime?.summary.overall_p95_ms ?? 0}
+              {runtimeSignalsUnavailable ? '—' : runtime?.summary.overall_p95_ms}
               <span className="ml-1 text-sm text-muted-foreground">ms</span>
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">目標 {runtime?.target_ms ?? 500}ms</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              目標 {runtimeSignalsUnavailable ? '—' : runtime?.target_ms}ms
+            </p>
           </div>
           <div className="rounded-lg border border-border/70 bg-background px-4 py-3">
             <p className="text-sm font-medium text-muted-foreground">閾値超過 route</p>
             <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-              {runtime?.summary.routes_over_target ?? 0}
+              {runtimeSignalsUnavailable ? '—' : runtime?.summary.routes_over_target}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">current-process</p>
           </div>
           <div className="rounded-lg border border-border/70 bg-background px-4 py-3 max-xl:col-span-2">
             <p className="text-sm font-medium text-muted-foreground">報告待ち</p>
             <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-              {workflow?.outcome_metrics.awaiting_reports ?? 0}
+              {metricsSignalsUnavailable ? '—' : workflow?.outcome_metrics.awaiting_reports}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">訪問後の後続作業</p>
           </div>

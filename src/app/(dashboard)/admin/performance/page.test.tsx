@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -158,6 +158,25 @@ describe('PerformancePage polling policy', () => {
     const retryButtons = screen.getAllByRole('button', { name: '再読み込み' });
     fireEvent.click(retryButtons[retryButtons.length - 1]);
     expect(refetch).toHaveBeenCalled();
+  });
+
+  it('does not present missing workflow metrics as zero in actionable signals', () => {
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'admin-performance-proposals') {
+        return { data: undefined, isLoading: false, isError: true, refetch: vi.fn() };
+      }
+      return { data: undefined, isLoading: false, refetch: vi.fn() };
+    });
+    useQueryMock.mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn() });
+
+    render(<PerformancePage />);
+
+    const signals = screen
+      .getByRole('heading', { name: '今すぐ見る要対応シグナル' })
+      .closest('section');
+    expect(signals).toBeTruthy();
+    expect(within(signals!).getAllByText('—')).toHaveLength(5);
+    expect(within(signals!).queryByText('0')).toBeNull();
   });
 
   it('shows ErrorState (not a false-empty) with retry when the runtime metrics query fails', () => {
