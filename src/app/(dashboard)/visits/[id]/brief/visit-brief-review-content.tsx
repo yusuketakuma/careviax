@@ -60,7 +60,8 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
       const headers = buildOrgHeaders(orgId);
       const scheduleRes = await fetch(`/api/visit-schedules/${visitId}`, { headers });
       if (scheduleRes.ok) {
-        const patientId = pickVisitPatientId(await scheduleRes.json());
+        const payload = await readApiJson<{ data: unknown }>(scheduleRes).catch(() => null);
+        const patientId = pickVisitPatientId(payload?.data);
         if (patientId) return { patientId };
       }
       const recordRes = await fetch(`/api/visit-records/${visitId}`, { headers });

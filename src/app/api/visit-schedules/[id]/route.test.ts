@@ -377,26 +377,29 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(response.headers.get('Pragma')).toBe('no-cache');
     const body = await response.json();
     expect(body).toMatchObject({
-      id: 'schedule_1',
-      case_id: 'case_1',
-      cycle_id: 'cycle_1',
-      patient_id: 'patient_1',
-      patient_summary: expect.objectContaining({
+      data: {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        cycle_id: 'cycle_1',
         patient_id: 'patient_1',
-        name: '患者A',
-        insurance: expect.objectContaining({
-          missing: true,
+        patient_summary: expect.objectContaining({
+          patient_id: 'patient_1',
+          name: '患者A',
+          insurance: expect.objectContaining({
+            missing: true,
+          }),
+          safety: expect.objectContaining({
+            has_allergy: true,
+            critical_lab_count: 1,
+          }),
         }),
-        safety: expect.objectContaining({
-          has_allergy: true,
-          critical_lab_count: 1,
-        }),
-      }),
+      },
     });
-    expect(body.case_.patient).not.toHaveProperty('allergy_info');
-    expect(body.case_.patient).not.toHaveProperty('insurances');
-    expect(body.case_.patient).not.toHaveProperty('lab_observations');
-    expect(body.case_.patient).not.toHaveProperty('archived_at');
+    expect(body).not.toHaveProperty('id');
+    expect(body.data.case_.patient).not.toHaveProperty('allergy_info');
+    expect(body.data.case_.patient).not.toHaveProperty('insurances');
+    expect(body.data.case_.patient).not.toHaveProperty('lab_observations');
+    expect(body.data.case_.patient).not.toHaveProperty('archived_at');
     const patientSelect =
       visitScheduleFindFirstMock.mock.calls[0]?.[0]?.include.case_.select.patient.select;
     expect(patientSelect.insurances.where).toMatchObject({ org_id: 'org_1' });

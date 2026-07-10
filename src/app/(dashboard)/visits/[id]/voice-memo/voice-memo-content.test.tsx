@@ -156,7 +156,9 @@ describe('VoiceMemoContent', () => {
     const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
       const url = String(input);
       if (url === '/api/visit-schedules/visit_1') {
-        return new Response(JSON.stringify({ visit_record: { id: 'record_1' } }), { status: 200 });
+        return new Response(JSON.stringify({ data: { visit_record: { id: 'record_1' } } }), {
+          status: 200,
+        });
       }
       if (url === '/api/visit-records/record_1' && init?.method !== 'PATCH') {
         return new Response(JSON.stringify({ version: 3, soap_subjective: '既存メモ' }), {

@@ -783,7 +783,11 @@ export function VisitRecordForm({
       const res = await fetch(`/api/visit-schedules/${schedulePathId}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<ScheduleDetail>(res, 'スケジュール情報の取得に失敗しました');
+      const payload = await readApiJson<{ data: ScheduleDetail }>(
+        res,
+        'スケジュール情報の取得に失敗しました',
+      );
+      return payload.data;
     },
     enabled: !!orgId && !!id,
   });

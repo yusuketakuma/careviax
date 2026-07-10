@@ -196,9 +196,11 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   const safeSchedule = attachVisitSchedulePatientSummary(schedule);
 
   return success({
-    ...safeSchedule,
-    patient_id: careCase.patient_id,
-    cycle_id: schedule.cycle_id,
+    data: {
+      ...safeSchedule,
+      patient_id: careCase.patient_id,
+      cycle_id: schedule.cycle_id,
+    },
   });
 }
 

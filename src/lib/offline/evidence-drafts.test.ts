@@ -314,7 +314,7 @@ describe('offline evidence draft sync', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url === '/api/visit-schedules/schedule_1') {
-        return jsonResponse({ visit_record: null });
+        return jsonResponse({ data: { visit_record: null } });
       }
       if (url === '/api/visit-records/schedule_1') {
         return jsonResponse({ message: 'not found' }, 404);
@@ -403,7 +403,7 @@ describe('offline evidence draft sync', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       if (url === '/api/visit-schedules/schedule_1') {
-        return jsonResponse({ visit_record: { id: 'visit_record_1' } });
+        return jsonResponse({ data: { visit_record: { id: 'visit_record_1' } } });
       }
       if (url === '/api/visit-records/visit_record_1' && !init?.method) {
         return jsonResponse({ version: 3, attachments: [{ file_id: 'file_old' }] });
@@ -443,7 +443,7 @@ describe('offline evidence draft sync', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       if (url === expectedScheduleUrl) {
-        return jsonResponse({ visit_record: { id: hostileVisitRecordId } });
+        return jsonResponse({ data: { visit_record: { id: hostileVisitRecordId } } });
       }
       if (url === 'data:image/png;base64,AAAA') {
         return new Response(new Uint8Array([1, 2, 3]), {
@@ -607,7 +607,7 @@ describe('offline evidence draft sync', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       if (url === '/api/visit-schedules/schedule_1') {
-        return jsonResponse({ visit_record: { id: 'visit_record_1' } });
+        return jsonResponse({ data: { visit_record: { id: 'visit_record_1' } } });
       }
       if (url === 'data:image/png;base64,AAAA') {
         return new Response(new Uint8Array([1, 2, 3]), {
@@ -674,7 +674,7 @@ describe('offline evidence draft sync', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url === '/api/visit-schedules/schedule_1') {
-        return jsonResponse({ visit_record: { id: 'visit_record_1' } });
+        return jsonResponse({ data: { visit_record: { id: 'visit_record_1' } } });
       }
       if (url === 'data:image/png;base64,AAAA') {
         throw new Error('upload failed for 患者名=山田 token=secret-upload-token');
@@ -718,7 +718,7 @@ describe('offline evidence draft sync', () => {
       vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
         const url = String(input);
         if (url === '/api/visit-schedules/schedule_1') {
-          return jsonResponse({ visit_record: { id: 'visit_record_1' } });
+          return jsonResponse({ data: { visit_record: { id: 'visit_record_1' } } });
         }
         if (url === 'data:image/png;base64,AAAA') {
           return new Response(new Uint8Array([1, 2, 3]), {
@@ -836,7 +836,7 @@ describe('offline evidence draft sync', () => {
       const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
         const url = String(input);
         if (url === '/api/visit-schedules/schedule_1') {
-          return jsonResponse({ visit_record: { id: 'visit_record_1' } });
+          return jsonResponse({ data: { visit_record: { id: 'visit_record_1' } } });
         }
         if (url === 'data:image/png;base64,AAAA') {
           return new Response(new Uint8Array([1, 2, 3]), {

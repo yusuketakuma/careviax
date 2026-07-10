@@ -381,6 +381,26 @@ function renderVisitRecordForm({
   );
 }
 
+function scheduleDetailResponse(overrides: Record<string, unknown> = {}) {
+  return new Response(
+    JSON.stringify({
+      data: {
+        id: 'schedule_partial',
+        patient_id: 'patient_1',
+        cycle_id: null,
+        scheduled_date: '2026-04-09',
+        time_window_start: '1970-01-01T09:00:00.000Z',
+        schedule_status: 'ready',
+        visit_type: 'regular',
+        carry_items_status: 'ready',
+        recurrence_rule: null,
+        ...overrides,
+      },
+    }),
+    { status: 200 },
+  );
+}
+
 describe('VisitRecordForm carry-item acknowledgement', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -452,20 +472,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         const url = String(input);
         fetchUrls.push(url);
         if (url === '/api/visit-schedules/schedule_partial') {
-          return new Response(
-            JSON.stringify({
-              id: 'schedule_partial',
-              patient_id: 'patient_1',
-              cycle_id: null,
-              scheduled_date: '2026-04-09',
-              time_window_start: '1970-01-01T09:00:00.000Z',
-              schedule_status: 'ready',
-              visit_type: 'regular',
-              carry_items_status: 'partial',
-              recurrence_rule: null,
-            }),
-            { status: 200 },
-          );
+          return scheduleDetailResponse({ carry_items_status: 'partial' });
         }
         if (url === '/api/visit-preparations/schedule_partial') {
           return new Response(
@@ -604,20 +611,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         const url = String(input);
         fetchUrls.push(url);
         if (url === '/api/visit-schedules/schedule_partial') {
-          return new Response(
-            JSON.stringify({
-              id: 'schedule_partial',
-              patient_id: 'patient_1',
-              cycle_id: null,
-              scheduled_date: '2026-04-09',
-              time_window_start: '1970-01-01T09:00:00.000Z',
-              schedule_status: 'ready',
-              visit_type: 'regular',
-              carry_items_status: 'ready',
-              recurrence_rule: null,
-            }),
-            { status: 200 },
-          );
+          return scheduleDetailResponse();
         }
         if (url === '/api/visit-preparations/schedule_partial') {
           return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
@@ -651,20 +645,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         const url = String(input);
         fetchUrls.push(url);
         if (url === '/api/visit-schedules/schedule_partial') {
-          return new Response(
-            JSON.stringify({
-              id: 'schedule_partial',
-              patient_id: 'patient_1',
-              cycle_id: null,
-              scheduled_date: '2026-04-09',
-              time_window_start: '1970-01-01T09:00:00.000Z',
-              schedule_status: 'ready',
-              visit_type: 'regular',
-              carry_items_status: 'ready',
-              recurrence_rule: null,
-            }),
-            { status: 200 },
-          );
+          return scheduleDetailResponse();
         }
         if (url === '/api/visit-preparations/schedule_partial') {
           return new Response(JSON.stringify({ data: { pack: {} } }), { status: 200 });
@@ -717,20 +698,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         const url = String(input);
         fetchUrls.push(url);
         if (url === '/api/visit-schedules/schedule_partial') {
-          return new Response(
-            JSON.stringify({
-              id: 'schedule_partial',
-              patient_id: 'patient_1',
-              cycle_id: null,
-              scheduled_date: '2026-04-09',
-              time_window_start: '1970-01-01T09:00:00.000Z',
-              schedule_status: 'ready',
-              visit_type: 'regular',
-              carry_items_status: 'ready',
-              recurrence_rule: null,
-            }),
-            { status: 200 },
-          );
+          return scheduleDetailResponse();
         }
         if (url === '/api/visit-preparations/schedule_partial') {
           return new Response(JSON.stringify({ data: { pack } }), { status: 200 });
@@ -761,20 +729,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         const url = String(input);
         fetchUrls.push(url);
         if (url === '/api/visit-schedules/schedule_partial') {
-          return new Response(
-            JSON.stringify({
-              id: 'schedule_partial',
-              patient_id: 'patient_1',
-              cycle_id: null,
-              scheduled_date: '2026-04-09',
-              time_window_start: '1970-01-01T09:00:00.000Z',
-              schedule_status: 'ready',
-              visit_type: 'regular',
-              carry_items_status: 'ready',
-              recurrence_rule: null,
-            }),
-            { status: 200 },
-          );
+          return scheduleDetailResponse();
         }
         if (url === '/api/visit-preparations/schedule_partial') {
           preparationRequestCount += 1;
@@ -859,20 +814,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         const url = String(input);
         fetchUrls.push(url);
         if (url === '/api/visit-schedules/schedule_partial') {
-          return new Response(
-            JSON.stringify({
-              id: 'schedule_partial',
-              patient_id: 'patient_1',
-              cycle_id: null,
-              scheduled_date: '2026-04-09',
-              time_window_start: '1970-01-01T09:00:00.000Z',
-              schedule_status: 'ready',
-              visit_type: 'regular',
-              carry_items_status: 'ready',
-              recurrence_rule: null,
-            }),
-            { status: 200 },
-          );
+          return scheduleDetailResponse();
         }
         if (url === '/api/visit-preparations/schedule_partial') {
           preparationRequestCount += 1;
@@ -960,20 +902,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         const url = String(input);
         fetchUrls.push(url);
         if (url === `/api/visit-schedules/${encodedScheduleId}`) {
-          return new Response(
-            JSON.stringify({
-              id: hostileScheduleId,
-              patient_id: 'patient_1',
-              cycle_id: null,
-              scheduled_date: '2026-04-09',
-              time_window_start: '1970-01-01T09:00:00.000Z',
-              schedule_status: 'ready',
-              visit_type: 'regular',
-              carry_items_status: 'ready',
-              recurrence_rule: null,
-            }),
-            { status: 200 },
-          );
+          return scheduleDetailResponse({ id: hostileScheduleId });
         }
         if (url === `/api/visit-preparations/${encodedScheduleId}`) {
           return new Response(
@@ -1030,20 +959,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         const url = String(input);
         fetchUrls.push(url);
         if (url === '/api/visit-schedules/schedule_partial') {
-          return new Response(
-            JSON.stringify({
-              id: 'schedule_partial',
-              patient_id: 'patient_1',
-              cycle_id: null,
-              scheduled_date: '2026-04-09',
-              time_window_start: '1970-01-01T09:00:00.000Z',
-              schedule_status: 'ready',
-              visit_type: 'regular',
-              carry_items_status: 'none',
-              recurrence_rule: null,
-            }),
-            { status: 200 },
-          );
+          return scheduleDetailResponse({ carry_items_status: 'none' });
         }
         if (url.endsWith('/header-summary')) {
           return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
@@ -1172,20 +1088,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         const url = String(input);
         fetchUrls.push(url);
         if (url === '/api/visit-schedules/schedule_partial') {
-          return new Response(
-            JSON.stringify({
-              id: 'schedule_partial',
-              patient_id: 'patient_1',
-              cycle_id: 'cycle_1',
-              scheduled_date: '2026-04-09',
-              time_window_start: '1970-01-01T09:00:00.000Z',
-              schedule_status: 'ready',
-              visit_type: 'regular',
-              carry_items_status: 'ready',
-              recurrence_rule: null,
-            }),
-            { status: 200 },
-          );
+          return scheduleDetailResponse({ cycle_id: 'cycle_1' });
         }
         if (url === '/api/visit-preparations/schedule_partial') {
           return new Response(
@@ -2151,20 +2054,10 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
         const url = String(input);
         const method = init?.method ?? 'GET';
         if (url === '/api/visit-schedules/schedule_partial') {
-          return new Response(
-            JSON.stringify({
-              id: 'schedule_partial',
-              patient_id: schedulePatientId,
-              cycle_id: null,
-              scheduled_date: '2026-04-09',
-              time_window_start: '1970-01-01T09:00:00.000Z',
-              schedule_status: 'ready',
-              visit_type: 'regular',
-              carry_items_status: 'partial',
-              recurrence_rule: null,
-            }),
-            { status: 200 },
-          );
+          return scheduleDetailResponse({
+            patient_id: schedulePatientId,
+            carry_items_status: 'partial',
+          });
         }
         if (url === '/api/visit-preparations/schedule_partial') {
           return new Response(

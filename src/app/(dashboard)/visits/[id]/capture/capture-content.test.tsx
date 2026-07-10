@@ -143,6 +143,45 @@ describe('EvidenceCaptureContent', () => {
     expect(syncEvidenceDraftsMock).not.toHaveBeenCalled();
   });
 
+  it('unwraps the schedule detail data envelope before resolving patient context', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    setupEvidenceAutoSyncMock.mockReturnValue(undefined);
+    let patientQueryFn: (() => Promise<unknown>) | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey?: readonly unknown[]; queryFn: () => Promise<unknown> }) => {
+        if (config.queryKey?.[0] === 'visit-capture-patient') patientQueryFn = config.queryFn;
+        return { data: null, isPending: false, isError: false, error: null };
+      },
+    );
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url === '/api/visit-schedules/visit_1') {
+        return jsonResponse({
+          data: {
+            patient_id: 'patient_1',
+            scheduled_date: '2026-04-09T00:00:00.000Z',
+            time_window_start: '1970-01-01T10:00:00.000Z',
+            case_: { patient: { name: '田中 一郎' } },
+            visit_record: null,
+          },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<EvidenceCaptureContent visitId="visit_1" />);
+      await expect(patientQueryFn?.()).resolves.toMatchObject({
+        patientId: 'patient_1',
+        patientName: '田中 一郎',
+      });
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/visit-records/visit_1', expect.anything());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('routes fallback patient detail fetches through the shared patient API path helper', async () => {
     const patientId = 'pt/1?tab=x#frag';
     useOrgIdMock.mockReturnValue('org_1');

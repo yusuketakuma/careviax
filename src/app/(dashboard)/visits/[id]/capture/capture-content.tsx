@@ -77,7 +77,8 @@ export function EvidenceCaptureContent({
       const headers = buildOrgHeaders(orgId);
       const scheduleRes = await fetch(`/api/visit-schedules/${visitId}`, { headers });
       if (scheduleRes.ok) {
-        const context = resolveCapturePatientContext(await scheduleRes.json());
+        const payload = await readApiJson<{ data: unknown }>(scheduleRes).catch(() => null);
+        const context = resolveCapturePatientContext(payload?.data);
         if (context.patientName || context.patientId) return context;
       }
 

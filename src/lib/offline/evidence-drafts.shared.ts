@@ -9,7 +9,9 @@ export const MAX_EVIDENCE_SYNC_RETRIES = 3;
 /** 訪問予定詳細 API レスポンスから、紐づく訪問記録 ID を安全に取り出す。 */
 export function resolveScheduleVisitRecordId(payload: unknown): string | null {
   if (typeof payload !== 'object' || payload === null) return null;
-  const visitRecord = (payload as { visit_record?: unknown }).visit_record;
+  const data = (payload as { data?: unknown }).data;
+  if (typeof data !== 'object' || data === null) return null;
+  const visitRecord = (data as { visit_record?: unknown }).visit_record;
   if (typeof visitRecord !== 'object' || visitRecord === null) return null;
   const id = (visitRecord as { id?: unknown }).id;
   return typeof id === 'string' && id.length > 0 ? id : null;
