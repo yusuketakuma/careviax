@@ -18,6 +18,10 @@ Status: `TODO` / `IN_PROGRESS` / `DONE` / `BLOCKED` / `NOT_EXECUTED`（計画の
 | 9     | Verification and evidence                        | IN_PROGRESS                 | 実コマンド、必須scenario、visual evidence protocolを記録。UI/UX Refresh実装後のfull verificationは全てNOT_EXECUTED                                                                                                                                                                                                                                                                                                                                                                                                    | 10-verification-evidence.md                                                             | 実装slice・E2E環境・専門家評価が未完了                      | Phase 7/8の変更ごとにfocused evidence、最後に全gateを実行                                   |
 | —     | Remaining risks                                  | IN_PROGRESS                 | P0/P1 gate、暫定緩和、owner、次の証拠を集約                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 11-remaining-risks.md                                                                   | clinical/legal/security review未実施                        | 実装/検証結果に応じてresidual riskを更新                                                    |
 
+## Phase 8 evidence update（2026-07-11）
+
+- DV-02 の調剤患者キューを 12px 下限へ是正。component test で患者数・並替え・開始/登録日・年齢・状態・凡例を固定し、1680px mock screenshot で約55px行高、横スクロールなし、page/console errorなし、書込みrequestなしを確認した。残る sub-12px 表面と ratchet guard は未実施。
+
 ## 作業前提（2026-07-11 開始時点）
 
 - ブランチ: `main`（origin と同期、HEAD=`037a9eb64`、working tree clean）

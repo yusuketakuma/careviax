@@ -43552,3 +43552,35 @@ leading-5`, preserving route-order prefixes, status badges, chevrons, links, and
 - remaining / next action:
   Commit the focused implementation. DV-07 implementation paths are complete; its remaining verification
   includes the facility switcher's DB-fixture-backed 390px/swipe scenario and broad a11y/clinical gates.
+
+## 2026-07-11 UI-UX-DV02-WORKBENCH-QUEUE — enforce readable patient metadata
+
+- current task:
+  Continue the P1 DV-02 typography remediation at the dispense workbench's patient-selection queue, where
+  patient context and state labels still used 9px to 11px text.
+- files inspected / changed:
+  Inspected the queue header, sorting controls, patient-row identity/metadata/status/legend, CSS row layout,
+  existing long-name/selection test, the UI SSOT/audit, prior long-name screenshot, and dirty ownership.
+  Changed `patient-list-panel.tsx`, its test, and the DV-02/progress evidence.
+- bugs found / fixed:
+  The queue's count, sort label/control, start/registration label, age, status badge, and footer legend now
+  use the 12px minimum. Patient-name wrap, selection, status color, row structure, and data mapping remain
+  unchanged.
+- security / medical safety:
+  Patient selection context and status are now readable at the visual safety floor, reducing low-contrast,
+  small-text scanning risk in a high-frequency dispense surface. No request, authorization, data,
+  persistence, mutation, dependency, or workbench action behavior changed. `gpt-image-2` was omitted
+  because this corrects an existing typography safety contract rather than reconstructing the workbench;
+  the UI SSOT was reviewed and before/after local visual evidence was used.
+- validation:
+  `pnpm vitest run src/components/features/dispense-workbench/patient-list-panel.test.tsx --reporter=dot`
+  passed 1 file / 2 tests, including long-name selection and each metadata/font-size contract. Exact ESLint,
+  Prettier, `pnpm colors:check`, `pnpm client-phi-log:check`, `pnpm frontend-contract:check`,
+  `pnpm boundaries:check`, `pnpm typecheck`, `pnpm lint`, and `git diff --check` passed. A 1680px local
+  mock-workbench screenshot retained the patient queue with a 54.58px row, no horizontal overflow, no
+  page/console errors, and no write request. The local session resolved only the E2E demo user by `SELECT`;
+  all displayed data was mock data. Build, a11y, mobile, 200% zoom, offline, and clinical review remain
+  pending.
+- remaining / next action:
+  Commit this focused implementation. Continue DV-02 with the remaining sub-12px surfaces and a guarded
+  ratchet without treating the current partial remediation as completion.

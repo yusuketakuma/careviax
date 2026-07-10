@@ -83,7 +83,7 @@ export function PatientListPanel({
       {/* ヘッダ（24px・青グラデ）*/}
       <div className={styles.paneHeader}>
         <span>処方登録患者</span>
-        <span style={{ fontSize: '10.5px', opacity: 0.85, fontWeight: 400 }}>{countLabel}</span>
+        <span style={{ fontSize: '12px', opacity: 0.85, fontWeight: 400 }}>{countLabel}</span>
       </div>
 
       {/* 並び替え */}
@@ -98,7 +98,7 @@ export function PatientListPanel({
           background: 'var(--wb-surface-muted)',
         }}
       >
-        <span style={{ fontSize: '10.5px', color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+        <span style={{ fontSize: '12px', color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
           並び替え
         </span>
         {view.sortButtons.map((sb) => (
@@ -109,7 +109,7 @@ export function PatientListPanel({
             aria-pressed={sb.active}
             style={{
               cursor: 'pointer',
-              fontSize: '10.5px',
+              fontSize: '12px',
               fontWeight: 700,
               color: sb.color,
               background: sb.bg,
@@ -182,7 +182,7 @@ export function PatientListPanel({
                   </div>
                   <div
                     style={{
-                      fontSize: '10px',
+                      fontSize: '12px',
                       color: 'var(--wb-ink-muted)',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
@@ -193,13 +193,13 @@ export function PatientListPanel({
                   </div>
                 </div>
                 <div style={{ flex: 'none', textAlign: 'right' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+                  <div style={{ fontSize: '12px', color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
                     {p.age}
                   </div>
                   <div
                     style={{
                       display: 'inline-block',
-                      fontSize: '9px',
+                      fontSize: '12px',
                       fontWeight: 700,
                       color: '#fff',
                       background: p.statusColor,
@@ -246,7 +246,7 @@ export function PatientListPanel({
           padding: '6px 8px',
           borderTop: '1px solid var(--wb-line)',
           background: 'var(--wb-surface-alt)',
-          fontSize: '10px',
+          fontSize: '12px',
           color: 'var(--wb-ink-muted)',
           lineHeight: 1.5,
         }}

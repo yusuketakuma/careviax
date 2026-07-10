@@ -14,7 +14,16 @@ function patientListView(): WorkbenchView {
   return {
     listState: 'ready',
     patientCount: '1',
-    sortButtons: [],
+    sortButtons: [
+      {
+        key: 'start',
+        label: '服用開始',
+        color: 'var(--wb-ink)',
+        bg: 'var(--wb-surface)',
+        border: 'var(--wb-line)',
+        active: true,
+      },
+    ],
     patients: [
       {
         id: 'patient-long-name',
@@ -58,5 +67,21 @@ describe('PatientListPanel', () => {
     fireEvent.click(row);
 
     expect(useWorkbenchStore.getState().selId).toBe('patient-long-name');
+  });
+
+  it('keeps patient-queue labels and status metadata at the 12px minimum', () => {
+    render(<PatientListPanel phase="dispense" view={patientListView()} />);
+
+    expect(screen.getByText('1名').style.fontSize).toBe('12px');
+    expect(screen.getByText('並び替え').style.fontSize).toBe('12px');
+    expect(screen.getByRole('button', { name: '服用開始' }).style.fontSize).toBe('12px');
+    expect(screen.getByText('開始 7/11 ・ 登録 7/1').style.fontSize).toBe('12px');
+    expect(screen.getByText('80歳').style.fontSize).toBe('12px');
+
+    const status = screen
+      .getAllByText('未着手')
+      .find((element) => element.style.fontSize === '12px');
+    expect(status).toBeTruthy();
+    expect(screen.getByText('監査済').parentElement?.parentElement?.style.fontSize).toBe('12px');
   });
 });
