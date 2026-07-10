@@ -195,13 +195,15 @@ describe('PartnerCooperationBillingContent', () => {
         if (url === '/api/visit-billing-candidates' && init?.method === 'POST') {
           return new Response(
             JSON.stringify({
-              message: '2026-06-01 の薬局間協力訪問請求候補を生成しました',
-              billing_month: '2026-06-01',
-              scanned_confirmed_records: 3,
-              generated_candidates: 3,
-              billable_count: 2,
-              excluded_count: 1,
-              skipped_locked_count: 0,
+              data: {
+                message: '2026-06-01 の薬局間協力訪問請求候補を生成しました',
+                billing_month: '2026-06-01',
+                scanned_confirmed_records: 3,
+                generated_candidates: 3,
+                billable_count: 2,
+                excluded_count: 1,
+                skipped_locked_count: 0,
+              },
             }),
             { status: 200 },
           );
@@ -407,12 +409,14 @@ describe('PartnerCooperationBillingContent', () => {
       if (url === '/api/visit-billing-candidates' && init?.method === 'POST') {
         return new Response(
           JSON.stringify({
-            message: '2026-06-01 の薬局間協力訪問請求候補を生成しました',
-            billing_month: '2026-06-01',
-            scanned_confirmed_records: 3,
-            generated_candidates: 3,
-            billable_count: 2,
-            excluded_count: 1,
+            data: {
+              message: '2026-06-01 の薬局間協力訪問請求候補を生成しました',
+              billing_month: '2026-06-01',
+              scanned_confirmed_records: 3,
+              generated_candidates: 3,
+              billable_count: 2,
+              excluded_count: 1,
+            },
           }),
           { status: 200 },
         );

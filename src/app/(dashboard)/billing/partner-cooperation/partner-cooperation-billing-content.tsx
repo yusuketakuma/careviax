@@ -241,6 +241,7 @@ const candidateGenerationResultSchema = z.object({
   excluded_count: z.number(),
   skipped_locked_count: z.number(),
 });
+const candidateGenerationResponseSchema = apiDataSchema(candidateGenerationResultSchema);
 
 const activeContractsResponseSchema = apiDataSchema(z.array(pharmacyCooperationContractRowSchema));
 const billingCandidatesResponseSchema = z
@@ -1018,10 +1019,11 @@ export function PartnerCooperationBillingContent() {
         headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({ billing_month: billingMonth }),
       });
-      return readApiJson<CandidateGenerationResult>(response, {
+      const json = await readApiJson<{ data: CandidateGenerationResult }>(response, {
         fallbackMessage: '請求候補の生成に失敗しました',
-        schema: candidateGenerationResultSchema,
+        schema: candidateGenerationResponseSchema,
       });
+      return json.data;
     },
     onSuccess: async (result) => {
       toast.success(result.message);

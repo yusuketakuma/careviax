@@ -498,8 +498,10 @@ const authenticatedPOST = withAuthContext(
 
     return withSensitiveNoStore(
       success({
-        message: `${billingMonth.canonical} の薬局間協力訪問請求候補を生成しました`,
-        ...result,
+        data: {
+          message: `${billingMonth.canonical} の薬局間協力訪問請求候補を生成しました`,
+          ...result,
+        },
       }),
     );
   },

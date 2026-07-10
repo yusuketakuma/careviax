@@ -351,7 +351,9 @@ describe('/api/visit-billing-candidates POST', () => {
       }),
     );
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['data']);
+    expect(body.data).toMatchObject({
       generated_candidates: 1,
       billable_count: 1,
       excluded_count: 0,
@@ -401,10 +403,12 @@ describe('/api/visit-billing-candidates POST', () => {
     expect(visitBillingCandidateFindUniqueMock).not.toHaveBeenCalled();
     expect(visitBillingCandidateCreateMock).toHaveBeenCalledTimes(2);
     await expect(response.json()).resolves.toMatchObject({
-      generated_candidates: 2,
-      billable_count: 2,
-      skipped_locked_count: 0,
-      candidate_ids: ['visit_billing_candidate_1', 'visit_billing_candidate_2'],
+      data: {
+        generated_candidates: 2,
+        billable_count: 2,
+        skipped_locked_count: 0,
+        candidate_ids: ['visit_billing_candidate_1', 'visit_billing_candidate_2'],
+      },
     });
   });
 
@@ -433,9 +437,11 @@ describe('/api/visit-billing-candidates POST', () => {
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
-      generated_candidates: 1,
-      billable_count: 0,
-      excluded_count: 1,
+      data: {
+        generated_candidates: 1,
+        billable_count: 0,
+        excluded_count: 1,
+      },
     });
   });
 
@@ -478,9 +484,11 @@ describe('/api/visit-billing-candidates POST', () => {
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
-      generated_candidates: 1,
-      billable_count: 0,
-      excluded_count: 1,
+      data: {
+        generated_candidates: 1,
+        billable_count: 0,
+        excluded_count: 1,
+      },
     });
   });
 
@@ -506,9 +514,11 @@ describe('/api/visit-billing-candidates POST', () => {
     expect(visitBillingCandidateCreateMock).not.toHaveBeenCalled();
     expect(visitBillingCandidateUpdateManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      scanned_confirmed_records: 0,
-      generated_candidates: 0,
-      candidate_ids: [],
+      data: {
+        scanned_confirmed_records: 0,
+        generated_candidates: 0,
+        candidate_ids: [],
+      },
     });
   });
 
@@ -543,9 +553,11 @@ describe('/api/visit-billing-candidates POST', () => {
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
-      generated_candidates: 1,
-      skipped_locked_count: 1,
-      candidate_ids: ['visit_billing_candidate_locked'],
+      data: {
+        generated_candidates: 1,
+        skipped_locked_count: 1,
+        candidate_ids: ['visit_billing_candidate_locked'],
+      },
     });
   });
 
@@ -587,9 +599,11 @@ describe('/api/visit-billing-candidates POST', () => {
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
-      generated_candidates: 1,
-      skipped_locked_count: 1,
-      candidate_ids: ['visit_billing_candidate_raced'],
+      data: {
+        generated_candidates: 1,
+        skipped_locked_count: 1,
+        candidate_ids: ['visit_billing_candidate_raced'],
+      },
     });
   });
 
@@ -645,9 +659,11 @@ describe('/api/visit-billing-candidates POST', () => {
       }),
     });
     await expect(response.json()).resolves.toMatchObject({
-      generated_candidates: 1,
-      skipped_locked_count: 0,
-      candidate_ids: ['visit_billing_candidate_concurrent'],
+      data: {
+        generated_candidates: 1,
+        skipped_locked_count: 0,
+        candidate_ids: ['visit_billing_candidate_concurrent'],
+      },
     });
   });
 
