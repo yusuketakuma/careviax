@@ -51,6 +51,41 @@
 
 ## 直近の作業
 
+- codex: platform tenant audit list envelope convergence.
+  - commit:
+    `e0e3a8731 fix(API-CONTRACT-001FG): envelope platform tenant audit list`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001FG`。`GET /api/platform/tenants/:orgId/audit` のsuccessをstandard
+    `{ data: entries, meta: { limit, has_more } }`へ揃える。Platform operator/session/org/RLS/read-audit/no-store不変、
+    panel同期、専用route regression、allowlist entry除去、debt 5→4を完了条件とした。
+  - files inspected / changed:
+    Tenant audit route/panel/tests、platform fetch、operator/break-glass service/tests、break-glass audit writer、audit
+    convention、list envelope precedent、allowlist、Plans/archive/state、active dirty treeを確認。変更はGET success、
+    panel reader/fixture/notice、新規route test、allowlist、計画台帳だけ。Service、DB/schema/migrationは変更していない。
+  - implementation / behavior / rollback:
+    Existing 100-entry audit listを`data`へ移し、root `truncated`を`meta.limit/has_more`へ正規化した。Panelのbounded
+    history noticeは`meta.has_more`で同じ条件表示を維持する。Status、row fields、query/order/take、error contractは
+    不変。Rollbackはscoped code/ledger commitのrevertで、schema、migration、persisted audit data、dependency、
+    deploy設定の復元は不要。
+  - security / authorization / tenant / audit / privacy / human review:
+    `requirePlatformOperator`、operatorId+orgId session lookup、active-session fail-closed 403、RLS-scoped
+    `withBreakGlassOrgContext`、allowed action filter、same-transaction read audit metadata、sensitive no-storeを変更して
+    いない。PHI/PII field/logは追加していない。Human reviewはresponse nesting、meta key、session binding、query/audit
+    callback不変を確認すればよい。Codex単独で実装・検証し、subagent、agmsg、Claude、Oracle、外部workerは
+    使っていない。
+  - validation:
+    Baselineは4 files / 38 tests、finalは5 files / 42 tests pass。Exact ESLint、Prettier、diff check、
+    `api-response-shape:check`（4 allowlisted / 0 new）、route-auth、frontend-contract、query-shape、client-PHI-logが
+    pass。初回format checkだけ対象2 filesでredとなり、Prettier機械整形後に再check pass。Typegenは成功し、full
+    typecheckは今回外のuser-owned `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。buildは
+    typecheck red中のため未実施。DB/migration、production操作、外部送信、deploy、push、destructive actionは
+    実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001FG`はDONE、parentは4 violationsでPartial。Production UIはdata/meta readerとnotice条件だけで
+    visual reconstructionがないためbrowser/imagegenを省略し、component testで回帰確認した。unowned config/
+    harness/inbound/MCSと全untracked artifactを保持した。次はplatform tenant data explorer GETの2 success branchを
+    caller契約ごとに分離して移行する。
+
 - codex: platform tenant directory envelope convergence.
   - commit:
     `7ca214e51 fix(API-CONTRACT-001FF): envelope platform tenant directory`.
