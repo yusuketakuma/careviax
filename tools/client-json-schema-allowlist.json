@@ -228,12 +228,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/clerk-support/clerk-support-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/communications/inbound/inbound-content.tsx",
       "counts": {
         "objectWithoutSchema": 9

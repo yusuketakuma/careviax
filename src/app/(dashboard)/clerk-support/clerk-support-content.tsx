@@ -9,12 +9,14 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { apiDataSchema } from '@/lib/api/response-schemas';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
-import type {
-  ClerkSupportKpis,
-  ClerkSupportResponse,
-  ClerkSupportTask,
+import {
+  clerkSupportResponseSchema,
+  type ClerkSupportKpis,
+  type ClerkSupportResponse,
+  type ClerkSupportTask,
 } from '@/types/clerk-support';
 
 /**
@@ -23,14 +25,16 @@ import type {
  * 薬剤師の判断が必要な境界は右カードに常時掲示する(迷わず相談へ回す)。
  */
 
+const clerkSupportEnvelopeSchema = apiDataSchema(clerkSupportResponseSchema);
+
 async function fetchClerkSupport(orgId: string): Promise<ClerkSupportResponse> {
   const res = await fetch('/api/dashboard/clerk-support', {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: ClerkSupportResponse }>(
-    res,
-    '事務サポート集計の取得に失敗しました',
-  );
+  const json = await readApiJson(res, {
+    fallbackMessage: '事務サポート集計の取得に失敗しました',
+    schema: clerkSupportEnvelopeSchema,
+  });
   return json.data;
 }
 

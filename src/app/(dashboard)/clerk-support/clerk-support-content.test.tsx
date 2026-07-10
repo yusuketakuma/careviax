@@ -209,4 +209,37 @@ describe('ClerkSupportContent', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('rejects a mixed-root clerk response without exposing PHI-bearing response details', async () => {
+    const responseDetail = '患者A token=clerk-response-secret';
+    const fetchMock = stubJsonFetch({
+      data: buildFixture(),
+      patient_name: responseDetail,
+    });
+
+    let captured: { queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation((config: { queryFn: () => Promise<unknown> }) => {
+      captured = config;
+      return {
+        data: buildFixture(),
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      };
+    });
+
+    try {
+      render(<ClerkSupportContent />);
+
+      if (!captured) throw new Error('query config was not captured');
+      const error = await captured.queryFn().catch((cause: unknown) => cause);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe('事務サポート集計の取得に失敗しました');
+      expect((error as Error).message).not.toContain(responseDetail);
+      expect((error as Error).message).not.toContain('clerk-response-secret');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
