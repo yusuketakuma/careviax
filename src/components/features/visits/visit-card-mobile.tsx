@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRef, type TouchEvent } from 'react';
-import { MapPin, Clock, Navigation, Play } from 'lucide-react';
+import { CircleCheck, MapPin, Clock, Navigation, Play } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { StateBadge } from '@/components/ui/state-badge';
@@ -276,11 +276,11 @@ export function VisitCardMobile({
         {!showStartAction && showCompleteAction && (
           <Button
             size="sm"
-            className="flex-1 bg-state-done text-white hover:bg-state-done/90"
+            className="flex-1"
             onClick={() => onCompleteVisit(id)}
             aria-label={`${patientName}の訪問を完了`}
           >
-            <Play className="mr-1.5 h-4 w-4" aria-hidden="true" />
+            <CircleCheck className="mr-1.5 h-4 w-4" aria-hidden="true" />
             訪問完了
           </Button>
         )}

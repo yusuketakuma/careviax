@@ -38,6 +38,18 @@ function swipeRight() {
   });
 }
 
+function swipeLeft() {
+  const card = screen.getByRole('article', {
+    name: '訪問カード: 山田花子 4/9 18:00 - 19:00',
+  });
+  fireEvent.touchStart(card, {
+    changedTouches: [{ clientX: 110, clientY: 80 }],
+  });
+  fireEvent.touchEnd(card, {
+    changedTouches: [{ clientX: 20, clientY: 86 }],
+  });
+}
+
 describe('VisitCardMobile', () => {
   it.each(['ready', 'departed'] as const)(
     'starts %s visits by tap and right swipe with the schedule id',
@@ -73,6 +85,25 @@ describe('VisitCardMobile', () => {
       expect(handleStart).not.toHaveBeenCalled();
     },
   );
+
+  it('uses the complete icon and primary action styling for an in-progress visit', () => {
+    const handleComplete = vi.fn();
+
+    render(
+      <VisitCardMobile {...baseProps} status="in_progress" onCompleteVisit={handleComplete} />,
+    );
+
+    const completeButton = screen.getByRole('button', { name: '山田花子の訪問を完了' });
+    expect(completeButton.querySelector('svg.lucide-circle-check')).toBeTruthy();
+    expect(completeButton.className).not.toContain('bg-state-done');
+
+    fireEvent.click(completeButton);
+    expect(handleComplete).toHaveBeenCalledWith('schedule_1');
+
+    swipeLeft();
+    expect(handleComplete).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('左スワイプで訪問完了')).toBeTruthy();
+  });
 
   it('labels blocked carry-item starts as warning review actions', () => {
     const handleStart = vi.fn();

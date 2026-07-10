@@ -51,6 +51,19 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh P2 DV-03/DV-04 visit completion action semantics (PARTIAL, 2026-07-11; focused UI behavior slice).
+  - result / scope:
+    The mobile visit card now uses `CircleCheck` for the completion action while retaining `Play` only for starting a
+    visit, and returns the completion control from done-green to the existing Primary button styling. Labels, tap/left
+    swipe behavior, callback ID, status transition, routes, API, auth/authz, PHI, audit, and visit data are unchanged.
+    This is a partial remediation only: other icon aliases/meanings and six remaining done/info mutation buttons are
+    intentionally out of scope. `gpt-image-2` was omitted because the change swaps an existing icon and tokenized button
+    class under the established UI SSOT; it does not reconstruct a screen or introduce a new visual pattern.
+  - validation / limits:
+    Focused Vitest passed 1 file / 10 tests. Exact ESLint/Prettier, colors, client PHI-log, frontend-contract,
+    module-boundary, typecheck, and diff-check passed. E2E, runtime a11y/responsive evidence, full build, and
+    standalone remain NOT_EXECUTED pending the Phase 9 evidence run.
+
 - codex: UI/UX Refresh P2 NF-06 saved-views retrieval recovery (DONE, 2026-07-11; focused UI behavior slice).
   - result / scope:
     `/views` now distinguishes an initial preferences/saved-views read failure from default conditions or a legitimate

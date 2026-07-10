@@ -63,6 +63,7 @@
 - **Priority**: P2
 - **Verification**: alias 禁止 lint の 0 違反 + visit-card-mobile の開始/完了ボタンのアイコン差分をスナップショットで確認。
 - **Evidence**: `src/lib/constants/status-tokens.ts:2,48,55` / `src/components/features/visits/visit-card-mobile.tsx:271,283` / `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx:2606-2607` / `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx:1253` / `src/components/ui/phi-mask-field.tsx`
+- **Partial remediation (2026-07-11, `TBD` commit)**: 訪問カードの完了操作だけを `Play` から `CircleCheck` へ変更し、開始（Play）と完了（CircleCheck）を形状でも区別した。ラベル、タップ、左スワイプ、callback ID、状態遷移は不変で、focused testは開始/完了双方の操作契約とicon classを確認する。Eye/Clockの多義性、Lucide alias横断統一、SOAP-Oなど他画面の意味分裂は未解決のまま残す。
 
 ---
 
@@ -81,6 +82,7 @@
 - **Priority**: P2
 - **Verification**: 7 箇所の before/after スクリーンショット + ガード 0 違反 + 該当画面の既存 unit test（schedule-team-board 等は test-lock の可能性があるため先に test 確認）。
 - **Evidence**: `src/app/(dashboard)/handoff/handoff-workspace.tsx:889,893` / `src/app/(dashboard)/communications/requests/requests-content.tsx:400` / `src/components/features/visits/visit-card-mobile.tsx:279` / `src/app/(dashboard)/schedules/proposal-human-decision-flow.tsx:26` / `src/app/(dashboard)/schedules/schedule-team-board.tsx:292` / `src/components/features/visits/facility-visit-record-switcher.tsx:220`
+- **Partial remediation (2026-07-11, `TBD` commit)**: `visit-card-mobile` の「訪問完了」ボタンから `bg-state-done` を除去し、既定のPrimary操作色へ戻した。done緑は状態表示に限定し、操作ラベル・callback・スワイプ動作は不変。残る6箇所の完了系mutation buttonと再発防止ガードは未実施。
 
 ---
 
