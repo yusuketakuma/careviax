@@ -100,7 +100,7 @@ describeProof('logSecurityEvent real RLS persistence (RLS_PROOF_DATABASE_URL)', 
       logSecurityEvent({
         event_type: 'auth_failure',
         ip_address: '192.0.2.10',
-        org_id: orgId,
+        trusted_org_id: orgId,
         path: `/api/security-events/${pathId}?token=secret-path-token`,
         method: 'POST',
         details: { reason: 'rls_proof' },

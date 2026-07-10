@@ -1,14 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { authMock, membershipFindFirstMock, userFindUniqueMock, loggerErrorMock } = vi.hoisted(
-  () => ({
-    authMock: vi.fn(),
-    membershipFindFirstMock: vi.fn(),
-    userFindUniqueMock: vi.fn(),
-    loggerErrorMock: vi.fn(),
-  }),
-);
+const {
+  authMock,
+  membershipFindFirstMock,
+  userFindUniqueMock,
+  loggerErrorMock,
+  logSecurityEventMock,
+} = vi.hoisted(() => ({
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
+  userFindUniqueMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  logSecurityEventMock: vi.fn(),
+}));
 
 vi.mock('./config', () => ({ auth: authMock }));
 vi.mock('@/lib/db/client', () => ({
@@ -20,6 +25,7 @@ vi.mock('@/lib/db/client', () => ({
 vi.mock('@/lib/utils/logger', () => ({
   logger: { error: loggerErrorMock, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
+vi.mock('./security-events', () => ({ logSecurityEvent: logSecurityEventMock }));
 
 import { withAuthContext } from './context';
 
@@ -80,5 +86,45 @@ describe('withAuthContext error envelope', () => {
       redirectError,
     );
     expect(loggerErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('does not assign an unverified requested org to the tenant audit log', async () => {
+    membershipFindFirstMock.mockResolvedValue(null);
+    const handler = vi.fn().mockResolvedValue(NextResponse.json({ ok: true }, { status: 200 }));
+    const request = new NextRequest('http://localhost/api/x', {
+      headers: { 'x-org-id': 'org_target' },
+    });
+
+    const response = await withAuthContext(handler)(request, routeContext);
+
+    expect(response.status).toBe(403);
+    expect(handler).not.toHaveBeenCalled();
+    const event = logSecurityEventMock.mock.calls
+      .map(([input]) => input as Record<string, unknown>)
+      .find((input) => input.event_type === 'unauthorized_access');
+    expect(event).toMatchObject({
+      event_type: 'unauthorized_access',
+      details: { reason: 'no_membership' },
+    });
+    expect(event).not.toHaveProperty('trusted_org_id');
+  });
+
+  it('records a requested org switch only after membership makes the org trusted', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1', orgId: 'org_primary' } });
+    const handler = vi.fn().mockResolvedValue(NextResponse.json({ ok: true }, { status: 200 }));
+    const request = new NextRequest('http://localhost/api/x', {
+      headers: { 'x-org-id': 'org_target' },
+    });
+
+    const response = await withAuthContext(handler)(request, routeContext);
+
+    expect(response.status).toBe(200);
+    expect(logSecurityEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'org_switch',
+        trusted_org_id: 'org_target',
+        details: { reason: 'org_switch' },
+      }),
+    );
   });
 });

@@ -70,10 +70,9 @@ export async function withOrgContext<T>(
   if (!requestContext) {
     logSecurityEvent({
       event_type: 'rls_context_missing',
-      org_id: orgId,
       path: 'db/withOrgContext',
       method: 'INTERNAL',
-      details: { org_id: orgId },
+      details: { reason: 'request_context_missing' },
     });
   }
 
@@ -140,10 +139,9 @@ export function createScopedTxRunner(
     if (!requestContext) {
       logSecurityEvent({
         event_type: 'rls_context_missing',
-        org_id: orgId,
         path: 'db/createScopedTxRunner',
         method: 'INTERNAL',
-        details: { org_id: orgId },
+        details: { reason: 'request_context_missing' },
       });
     }
 

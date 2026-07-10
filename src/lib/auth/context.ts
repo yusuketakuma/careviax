@@ -238,26 +238,12 @@ export async function requireAuthContext(
     };
   }
 
-  // Audit org switches: when client sends x-org-id that differs from the session's primary org
-  if (requestedOrgId && sessionOrgId && requestedOrgId !== sessionOrgId) {
-    logSecurityEvent({
-      event_type: 'org_switch',
-      ip_address: ipAddress,
-      user_id: userId,
-      org_id: requestedOrgId,
-      path,
-      method,
-      details: { from_org: sessionOrgId, to_org: requestedOrgId },
-    });
-  }
-
   const membership = await getMembership(userId, orgId);
   if (!membership) {
     logSecurityEvent({
       event_type: 'unauthorized_access',
       ip_address: ipAddress,
       user_id: userId,
-      org_id: orgId,
       path,
       method,
       details: { reason: 'no_membership' },
@@ -265,6 +251,20 @@ export async function requireAuthContext(
     return {
       response: await forbiddenResponse('この組織へのアクセス権限がありません'),
     };
+  }
+
+  // A requested org becomes eligible for tenant-owned audit persistence only
+  // after an active membership has confirmed the requester's authority.
+  if (requestedOrgId && sessionOrgId && requestedOrgId !== sessionOrgId) {
+    logSecurityEvent({
+      event_type: 'org_switch',
+      ip_address: ipAddress,
+      user_id: userId,
+      trusted_org_id: orgId,
+      path,
+      method,
+      details: { reason: 'org_switch' },
+    });
   }
 
   const actorSiteId = await resolveActorSiteId({
@@ -292,7 +292,7 @@ export async function requireAuthContext(
         event_type: 'unauthorized_access',
         ip_address: ipAddress,
         user_id: userId,
-        org_id: orgId,
+        trusted_org_id: orgId,
         path,
         method,
         details: {

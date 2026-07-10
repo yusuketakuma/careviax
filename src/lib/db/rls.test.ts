@@ -96,7 +96,10 @@ describe('createScopedTxRunner', () => {
     await runScoped(async () => 'ok');
 
     expect(logSecurityEventMock).toHaveBeenCalledWith(
-      expect.objectContaining({ event_type: 'rls_context_missing', org_id: ORG_ID }),
+      expect.objectContaining({
+        event_type: 'rls_context_missing',
+        details: { reason: 'request_context_missing' },
+      }),
     );
     expect(executeRawSpy).toHaveBeenCalledTimes(8);
   });

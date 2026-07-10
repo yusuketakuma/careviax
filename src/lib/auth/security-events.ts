@@ -15,7 +15,8 @@ interface SecurityEvent {
   event_type: SecurityEventType;
   ip_address?: string;
   user_id?: string;
-  org_id?: string;
+  /** Set only after membership/permission validation or by trusted internal scope. */
+  trusted_org_id?: string;
   path: string;
   method: string;
   user_agent?: string;
@@ -49,8 +50,8 @@ async function setLocalConfig(
   await tx.$executeRaw(Prisma.sql`SELECT set_config(${key}, ${value ?? ''}, true)`);
 }
 
-function resolveSafeOrgId(event: SecurityEvent): string | null {
-  const orgId = event.org_id?.trim();
+function resolveTrustedAuditOrgId(event: SecurityEvent): string | null {
+  const orgId = event.trusted_org_id?.trim();
   if (!orgId) {
     logger.error({
       event: 'security_event.audit_log_org_unknown',
@@ -143,7 +144,7 @@ function buildSafeChanges(event: SecurityEvent): Prisma.InputJsonObject {
 }
 
 async function persistSecurityEvent(event: SecurityEvent): Promise<void> {
-  const orgId = resolveSafeOrgId(event);
+  const orgId = resolveTrustedAuditOrgId(event);
   if (!orgId) return;
 
   const actorId = event.user_id ?? ANONYMOUS_ACTOR_ID;
@@ -179,7 +180,7 @@ async function persistSecurityEvent(event: SecurityEvent): Promise<void> {
  * Identical events (same org + type + IP + sanitized path) are deduplicated within a 60s window.
  */
 export function logSecurityEvent(event: SecurityEvent): void {
-  const orgScope = event.org_id?.trim() || 'unknown';
+  const orgScope = event.trusted_org_id?.trim() || 'unknown';
   const key = `${orgScope}:${event.event_type}:${event.ip_address ?? ''}:${sanitizePathForAudit(event.path)}`;
   const now = Date.now();
 

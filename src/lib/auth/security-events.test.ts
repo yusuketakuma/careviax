@@ -47,7 +47,7 @@ describe('logSecurityEvent', () => {
       event_type: 'unauthorized_access',
       ip_address: '192.0.2.1',
       user_id: 'user_1',
-      org_id: 'org_1',
+      trusted_org_id: 'org_1',
       path: '/api/patients/patient_123456?name=山田&token=secret-path-token',
       method: 'GET',
       user_agent: 'test-agent',
@@ -112,6 +112,33 @@ describe('logSecurityEvent', () => {
     expect(JSON.stringify(entry)).not.toContain('patient@example.test');
   });
 
+  it('does not treat an untrusted legacy org value as tenant audit provenance', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const untrustedEvent = {
+      event_type: 'unauthorized_access',
+      ip_address: '192.0.2.22',
+      user_id: 'user_1',
+      org_id: 'org_target',
+      path: '/api/patients/patient_123?token=secret-path-token',
+      method: 'POST',
+      details: { reason: 'no_membership' },
+    } as unknown as Parameters<typeof logSecurityEvent>[0];
+
+    logSecurityEvent(untrustedEvent);
+
+    await vi.waitFor(() => expect(consoleError).toHaveBeenCalledTimes(1));
+
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    const serialized = String(consoleError.mock.calls[0]?.[0]);
+    expect(serialized).toContain('security_event.audit_log_org_unknown');
+    expect(serialized).not.toContain('org_target');
+    expect(serialized).not.toContain('user_1');
+    expect(serialized).not.toContain('192.0.2.22');
+    expect(serialized).not.toContain('patient_123');
+    expect(serialized).not.toContain('secret-path-token');
+  });
+
   it('rejects invalid org ids without logging raw path or invalid value', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
@@ -119,7 +146,7 @@ describe('logSecurityEvent', () => {
       event_type: 'unauthorized_access',
       ip_address: '192.0.2.3',
       user_id: 'user_1',
-      org_id: 'bad org;drop',
+      trusted_org_id: 'bad org;drop',
       path: '/api/patients/patient_123?name=山田',
       method: 'GET',
       details: { reason: 'no_membership' },
@@ -147,7 +174,7 @@ describe('logSecurityEvent', () => {
       event_type: 'unauthorized_access',
       ip_address: '192.0.2.4',
       user_id: 'user_1',
-      org_id: 'org_1',
+      trusted_org_id: 'org_1',
       path: '/api/patients/patient_123?name=山田&token=secret-path-token',
       method: 'GET',
       details: {
@@ -190,9 +217,9 @@ describe('logSecurityEvent', () => {
       details: { reason: 'bad_origin' },
     };
 
-    logSecurityEvent({ ...event, org_id: 'org_a' });
-    logSecurityEvent({ ...event, org_id: 'org_b' });
-    logSecurityEvent({ ...event, org_id: 'org_a' });
+    logSecurityEvent({ ...event, trusted_org_id: 'org_a' });
+    logSecurityEvent({ ...event, trusted_org_id: 'org_b' });
+    logSecurityEvent({ ...event, trusted_org_id: 'org_a' });
 
     await vi.waitFor(() => expect(auditLogCreateMock).toHaveBeenCalledTimes(2));
     expect(transactionMock).toHaveBeenCalledTimes(2);
@@ -233,7 +260,7 @@ describe('logSecurityEvent', () => {
       logSecurityEvent({
         event_type: 'auth_failure',
         ip_address: '192.0.2.6',
-        org_id: 'org_1',
+        trusted_org_id: 'org_1',
         path,
         method: 'POST',
       });
@@ -257,7 +284,7 @@ describe('logSecurityEvent', () => {
     logSecurityEvent({
       event_type: 'unauthorized_access',
       ip_address: '192.0.2.7',
-      org_id: 'org_1',
+      trusted_org_id: 'org_1',
       path,
       method: 'POST',
     });
@@ -278,7 +305,7 @@ describe('logSecurityEvent', () => {
     logSecurityEvent({
       event_type: 'unauthorized_access',
       ip_address: '192.0.2.9',
-      org_id: 'org_1',
+      trusted_org_id: 'org_1',
       path: '/api/reports/2026-07-09',
       method: 'GET',
     });
@@ -299,7 +326,7 @@ describe('logSecurityEvent', () => {
     const baseEvent = {
       event_type: 'auth_failure' as const,
       ip_address: '192.0.2.8',
-      org_id: 'org_1',
+      trusted_org_id: 'org_1',
       method: 'POST',
     };
     logSecurityEvent({ ...baseEvent, path: '/api/auth/callback/alice@example.test' });

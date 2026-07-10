@@ -214,6 +214,7 @@ describe('requireAuthContext', () => {
     expect(logSecurityEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
         event_type: 'unauthorized_access',
+        trusted_org_id: 'org_1',
         details: expect.objectContaining({ reason: 'insufficient_permission' }),
       }),
     );
