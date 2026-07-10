@@ -52,6 +52,51 @@
 
 ## 直近の作業
 
+- codex: visit schedule detail GET response-envelope convergence.
+  - commit:
+    `8749ab318 fix(API-CONTRACT-001EA): envelope schedule detail response`.
+  - current task:
+    P0 `API-CONTRACT-001EA`。`GET /api/visit-schedules/:id` successを legacy root detailから exact
+    `{ data: ScheduleDetail }` へ移し、5 production consumerを同じcontractへ揃えて
+    `api-response-shape` allowlist debtを38から37へ削減する。PATCH/DELETEの残3違反は変更しない。
+  - files inspected:
+    `Plans.md`; `docs/plans-archive.md`; this state; current Next.js route-handler guide;
+    visit schedule detail route/test; visit record form; evidence capture; voice memo; visit brief review;
+    offline evidence sync/shared resolver and tests; all direct endpoint references; response-shape allowlist;
+    active dirty tree and recent commits。
+  - files changed:
+    provider route/test; the five reader families and related tests; schedule-specific offline resolver/test;
+    `tools/api-response-shape-allowlist.json`; `Plans.md`; `docs/plans-archive.md`; and this state file。
+  - bugs found / fixed:
+    The GET provider and every reader shared a legacy root contract. The provider now returns exact nested `data`;
+    record form unwraps the typed detail, capture/brief unwrap before their safe projectors, and voice/offline sync
+    use a schedule-specific resolver that rejects legacy root payloads. This prevents a half-migration false-empty,
+    missing patient context or unresolved visit-record attachment path. Repeated record-form schedule fixtures were
+    consolidated into one envelope factory instead of duplicating 10 wire shapes.
+  - frontend/backend, security and performance:
+    Patient/cycle IDs, patient summary, visit-record link, fallback ordering, assignment permission, org scope,
+    sensitive no-store and authorized PHI display remain unchanged. Malformed/legacy success fails closed or follows
+    the existing visit-record fallback. No query, mutation, audit, log, network round-trip, dependency or render
+    state was added; payload nesting adds no meaningful performance cost.
+  - plan review / agents / Oracle:
+    Codex alone traced all endpoint references and readers. No subagent, agmsg, Claude, external maker/checker or
+    Oracle consultation was used.
+  - validation:
+    Pre-change baseline passed 6 files / 169 tests. The first post-change run exposed 12 offline-evidence and one
+    voice fixture still serving legacy roots; those fixtures were migrated without fallback/assertion weakening.
+    Final focused Vitest passed 7 files / 177 tests. Exact ESLint, Prettier and `git diff --check` passed.
+    `api-response-shape:check` passed at 37 allowlisted / 0 new; route-auth, frontend-contract, query-shape and
+    client-PHI-log guards passed. Typegen succeeded; full typecheck reported no `001EA` error and remains red only
+    on the pre-existing user-owned inbound TS2322 at line 2285. Build was not run while that prerequisite gate is
+    red. No DB/migration command, production operation, external send, deploy, push or destructive action ran.
+  - Plans / UI / imagegen:
+    `API-CONTRACT-001EA` is complete; parent `API-CONTRACT-001` remains Partial with 37 violations and the same
+    route retains 3 mutation-success violations. Image generation/browser screenshots were omitted because only
+    JSON nesting/readers changed; layout, interactions and displayed data are identical.
+  - remaining / next action:
+    Continue with a bounded PATCH or DELETE success slice for this route, preserving all unowned
+    inbound/config/harness dirty files. No push was performed.
+
 - codex: visit schedule reopen response-envelope convergence.
   - commit:
     `87fe76356 fix(API-CONTRACT-001DZ): envelope schedule reopen result`.
