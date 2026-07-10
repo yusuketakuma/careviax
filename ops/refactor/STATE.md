@@ -51,6 +51,39 @@
 
 ## 直近の作業
 
+- codex: platform tenant directory envelope convergence.
+  - commit:
+    `7ca214e51 fix(API-CONTRACT-001FF): envelope platform tenant directory`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001FF`。`GET /api/platform/tenants` のsuccessをexact
+    `{ data: { tenants } }`へ揃える。Platform operator guard、metadata-only tenant list、operator-owned active
+    break-glass合成、bounded query、sensitive no-store不変、2 reader同期、専用route regression、allowlist entry除去、
+    debt 6→5を完了条件とした。
+  - files inspected / changed:
+    Tenant directory route、directory/detail reader、directory test、platform fetch helper、operator/break-glass service
+    とtests、response helper/checker/allowlist、Plans/archive/state、active dirty treeを確認。変更はGET success、共有
+    response typeと2 reader、directory fixtures、新規route test、allowlist、計画台帳だけ。Service、DB/schema/
+    migrationは変更していない。
+  - implementation / behavior / rollback:
+    Existing tenant DTO listを`data.tenants`へ移動し、directory/detailは同じexported response typeを参照する。
+    Status、row fields、sort、take 500、display/navigation/error contractは不変。Rollbackはscoped code/ledger commitの
+    revertで、schema、migration、persisted data、dependency、deploy設定の復元は不要。
+  - security / authorization / tenant / audit / privacy / human review:
+    `requirePlatformOperator`、guard拒否時query 0、organization metadata-only select、operatorId-scoped active session
+    list、tenant-session mapping、sensitive no-storeを変更していない。PHI/PII field/logは追加していない。Human
+    reviewはresponse nesting、2 reader、bounded select、operator session bindingを確認すればよい。Codex単独で
+    実装・検証し、subagent、agmsg、Claude、Oracle、外部workerは使っていない。
+  - validation:
+    Baselineは3 files / 37 tests、finalは4 files / 39 tests pass。Exact ESLint、Prettier、diff check、
+    `api-response-shape:check`（5 allowlisted / 0 new）、route-auth、frontend-contract、query-shape、client-PHI-logが
+    pass。Custom platform guardは専用route/operator/service testsで確認。Typegenは成功し、full typecheckは今回外の
+    user-owned `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。buildはtypecheck red中のため
+    未実施。DB/migration、production操作、外部送信、deploy、push、destructive actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001FF`はDONE、parentは5 violationsでPartial。Production UIはdata reader contractだけでvisual
+    reconstructionがないためbrowser/imagegenを省略し、component testsで回帰確認した。unowned config/harness/
+    inboundと全untracked artifactを保持した。次はplatform tenant audit GETを独立sliceで移行する。
+
 - codex: break-glass activation POST envelope convergence.
   - commit:
     `d143cb610 fix(API-CONTRACT-001FE): envelope break-glass activation`.
