@@ -43584,3 +43584,98 @@ leading-5`, preserving route-order prefixes, status badges, chevrons, links, and
 - remaining / next action:
   Commit this focused implementation. Continue DV-02 with the remaining sub-12px surfaces and a guarded
   ratchet without treating the current partial remediation as completion.
+
+## 2026-07-11 UI-UX-DV02-TYPOGRAPHY-RATCHET — browser text-size regression gate
+
+- current task:
+  Implement the remaining DV-02 prevention control without claiming that the existing typography debt is
+  remediated: no new browser UI text below the 12px floor, and any focused remediation must reduce the
+  measured debt rather than silently resetting its baseline.
+- files inspected / changed:
+  Inspected the UI SSOT §3.4, DV-02 audit/progress records, CI sequence, existing check-script patterns,
+  all current `fontSize` and CSS `font-size` forms, and dirty ownership. Added
+  `tools/scripts/check-typography-minimum.mjs`, its focused test, and a path × syntax-kind baseline in
+  `tools/typography-minimum-allowlist.json`; wired `pnpm typography:check` into package scripts and CI;
+  updated the DV-02 audit and progress records.
+- bugs found / fixed:
+  The initial regex-only implementation missed a conditional inline 11px value, JSX/SVG `fontSize`
+  values, and type-swaps that left a file-level total unchanged. The replacement uses TypeScript AST for
+  inline/JSX/SVG literals, conditional and `||`/nullish fallback branches; covers Tailwind arbitrary
+  text-size variants and CSS; and compares each allowlist entry by path and syntax kind. Non-static inline
+  values and CSS `calc()`, `var()`, or `font` shorthand fail explicitly because they cannot prove the
+  12px minimum.
+- security / medical safety:
+  The guard prevents a future dense clinical/dispense surface from quietly reintroducing unreadable patient,
+  medication, or state text. It makes no data, PHI, request, authorization, persistence, or runtime UI
+  change. React-PDF service files are deliberately excluded: their font unit is point, not browser CSS px
+  (9pt equals 12 CSS px), so PDF/print layout needs a separate unit-aware verification slice. `gpt-image-2`
+  was omitted because this is a non-visual static regression control, not a visual reconstruction.
+- performance:
+  The check scans production `src` files once during CI and has no application runtime cost. Its initial
+  browser-only baseline was 148 occurrences: Tailwind 58, inline 83, JSX/SVG 4, and CSS 3.
+- validation:
+  `pnpm vitest run tools/scripts/check-typography-minimum.test.ts --reporter=dot` passed 1 file / 5
+  tests, covering static conditional/fallback and JSX/SVG detection, Tailwind variants, kind drift,
+  fixture/PDF exclusion, and unresolved-value failure. `pnpm typography:check` passed with 148
+  allowlisted occurrences and 0 drift. `pnpm lint`, `pnpm colors:check`, `pnpm boundaries:check`,
+  `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm api-response-shape:check`,
+  `pnpm client-json-schema:check`, `pnpm typecheck`, and
+  `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck:no-unused`, exact Prettier format check, and
+  `git diff --check` passed.
+- remaining / next action:
+  DV-02 remains Partial: the initial 148 existing browser occurrences must be removed through focused,
+  screenshot-backed remediation slices. Build, full E2E, a11y, 200% zoom, mobile, offline, and clinical
+  review remain unexecuted; PDF/print typography requires a separate point-unit policy and layout proof.
+
+## 2026-07-11 UI-UX-DV02-WORKBENCH-RIGHT-PANE — readable clinical evidence and identity
+
+- current task:
+  Remediate the full remaining sub-12px surface of the dispense workbench right pane without changing the
+  phase workflow, selection requirements, mutation handlers, or data contracts. The acceptance boundary is
+  readable patient/medication/risk evidence with full text recovery in the fixed desktop pane.
+- files inspected / changed:
+  Inspected right-pane.tsx, its focused tests and view-model types, the desktop workbench layout, current
+  typography guard/allowlist, workflow typography consumers, local route-mock E2E helpers, UI SSOT
+  §§2.3/2.4/3.4/7.8/8.2, current dirty ownership, and the independent read-only review. Changed the right
+  pane and its test; removed its 28-entry allowlist debt; hardened the typography checker/test for non-px
+  arbitrary Tailwind values; normalized three existing arbitrary-rem uses to explicit equivalent pixel
+  values; updated UI audit/progress evidence and this ledger.
+- bugs found / fixed:
+  The fixed 300px pane had 28 inline 9.5px–11.5px values across patient context, medication/evidence,
+  status, set instructions, audit, and risk/rejection surfaces. All are now at least 12px. Clinical body
+  evidence (drug names, notes, set method, outside medication, rejection reason, and risk label) is 14px
+  with line-height 1.6. Patient name/kana and step supplemental text now have a flexible min-width and
+  natural overflowWrap: anywhere rather than hidden ellipsis. The new ratchet also rejects arbitrary
+  Tailwind non-px/length values it cannot prove, including text-[0.625rem],
+  text-[length:var(...)] and [font-size:inherit]; existing 0.8rem and 2rem uses were converted to 13px
+  and 32px respectively.
+- security / medical safety:
+  This improves readability of patient identity, drug names, caution text, NG reasons, and risk priority
+  at the decision point. No request, auth/authz, PHI scope, query, persistence, mutation, phase,
+  disabled-state, handler, or audit behavior changed. gpt-image-2 was omitted because this is a measured
+  typography and content-recovery correction within an existing high-density workbench, not a visual
+  reconstruction.
+- performance:
+  No new request, state, dependency, render loop, or persisted data. The pane may grow vertically and use
+  its existing scroll regions for long clinical content rather than silently clipping it. Current
+  browser-only typography debt is 120 occurrences: Tailwind 58, inline 55, JSX/SVG 4, and CSS 3.
+- validation:
+  pnpm vitest run src/components/features/workflow/workflow-back-link.test.tsx
+  src/components/features/workflow/workflow-page-header.test.tsx
+  src/components/features/dispense-workbench/right-pane.test.tsx
+  tools/scripts/check-typography-minimum.test.ts --reporter=dot passed 4 files / 13 tests. The right-pane
+  test renders populated grid/set/audit variants and asserts the 12px floor, 14px/1.6 clinical text,
+  patient identity wrapping, and no step-sub ellipsis contract. pnpm typography:check passed at 120 / 0
+  drift; pnpm lint, pnpm colors:check, pnpm boundaries:check, pnpm frontend-contract:check, pnpm
+  client-phi-log:check, pnpm api-response-shape:check, pnpm client-json-schema:check, pnpm typecheck,
+  and NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck:no-unused passed.
+  A local Turbopack server rendered the login route through agent-browser. The route-mock workbench E2E
+  first stopped at its required PLAYWRIGHT=1 safety gate; with that flag it attempted only the local
+  demo-user SELECT and mocked workbench APIs, but route rendering failed before the page loaded because
+  Prisma's user lookup received ECONNREFUSED from local ph_os_e2e. No browser workbench screenshot or
+  write request was produced, so visual/200% proof is NOT_EXECUTED.
+- remaining / next action:
+  The independent reviewer found no blocker in this slice. Existing P1 work remains for 44px-equivalent
+  hit targets on right-pane action/check rows; visual long-content/200% verification remains blocked on
+  the local E2E database. Continue DV-02 with the remaining 120 debt entries in focused,
+  screenshot-backed slices; do not treat the ratchet or this pane as full DV-02 completion.

@@ -30,10 +30,11 @@
 
 ---
 
-## DV-02: sub-12px タイポグラフィ残存 81 箇所 — 服薬カレンダーの薬剤名 10px・印刷 9px を含む
+## DV-02: sub-12px タイポグラフィ残存 — 服薬カレンダーの薬剤名 10px・印刷 9px を含む
 
 - **ID**: DV-02
-- **Target**: `text-[9px]`/`text-[10px]`/`text-[11px]` クラス 61 箇所（35 ファイル）+ inline `fontSize: '10px'/'11px'` 18 箇所 + CSS `font-size: 10/11px` 2 箇所（いずれも本日 grep 実測、.test 除外）
+- **Initial audit target**: `text-[9px]`/`text-[10px]`/`text-[11px]` クラス 61 箇所（35 ファイル）+ inline `fontSize: '10px'/'11px'` 18 箇所 + CSS `font-size: 10/11px` 2 箇所（いずれも当初の grep 実測、.test 除外）。
+- **Current browser ratchet baseline (2026-07-11)**: `pnpm typography:check` は既存の browser UI debt を 120 件（Tailwind 58 / React inline 55 / JSX/SVG 4 / CSS 3）として検出する。conditional・`||`/nullish fallback・JSX/SVG・Tailwind の line-height/length variant を含む AST/構文走査であり、React-PDF の point 単位は browser CSS px と混同しないため対象外。
 - **Reproduction**: `grep -rn "text-\[9px\]\|text-\[10px\]\|text-\[11px\]" src`（61 行）、`grep -rn "fontSize: '1[01]px'" src`（18 行）。
 - **Current behavior**: 最重要例 — 服薬カレンダーのスロットセルが**薬剤名を text-[10px] で描画**（`medication-calendar-content.tsx:164`）、同テーブルは印刷時 `print:text-[9px]`（`:375`）。ほか QR ドラフト詳細の差分注記バッジ 10px（`qr-drafts/[id]/page.tsx:341,350,929,936`）、調剤ワークベンチ患者キューのメタ行 inline 10px（`patient-list-panel.tsx:185-190`）、スケジュール日ビューのタグ 10px（`schedule-day-view.sections.tsx:230`）、MFA セットアップ注記 11px（`mfa/setup/page.tsx:278`）、タスクボード/共有ビューア/オフラインパネル等の 11px バッジ多数。
 - **Expected behavior**: guidelines §3.4「`text-[9px]`/`text-[10px]`/`text-[11px]` は廃し、最小 `text-xs`(12px)。密度はブロック高・余白で調整」。§2.4 原則4「高密度画面でも本文 14px 以上」。薬剤名は §7.8 の安全表示対象。
@@ -41,11 +42,13 @@
 - **Patient safety・operational impact**: **薬剤名の 10px/印刷 9px は類似名薬（アマリール/アルマール型、§7.8）の誤読リスクを直接高める**。服薬カレンダーは患者・家族へ渡り得る帳票であり、最も判読性が要る面で最小サイズが使われている。
 - **Root cause**: §3.4 の禁止が lint/ガード（`colors:check` 相当）で executable 化されておらず、密度調整の手段としてフォント縮小が使われ続けている。StateBadge が className 直渡しでサイズ上書き可能な点も逃げ道になっている。
 - **Affected screens**: patients/[id]/medication-calendar（最重要）、prescriptions/qr-drafts/[id]、dispense workbench 患者キュー、schedules（day view / offline panel / proposals）、tasks、shared/[token]、mfa/setup、admin 系（capacity / operating-hours / operations-insights / master-hub）ほか 35 ファイル。
-- **Proposed control**: **token + pattern 層**。① ESLint/カスタムガードで `text-[9-11px]` と inline sub-12px を ratchet 禁止（colors:check 方式）。② 薬剤名・臨床値を含むセルは最低 `text-xs`、印刷は A4 印刷契約（globals.css）側で最小サイズを定義。③ StateBadge へのサイズ縮小 className 直渡しを variant 化して下限を encode。
+- **Proposed control**: **token + pattern 層**。① CI 接続済みの `pnpm typography:check` で `text-[9-11px]`、inline、JSX/SVG、CSS の sub-12px を path × syntax-kind で ratchet 禁止する。新規・増加・kind 入替・stale debt は失敗し、動的値、Tailwind arbitrary の非px/length 値、CSS `calc()`/`var()`/`font` shorthand は下限を証明できないため明示的に失敗する。② 薬剤名・臨床値を含むセルは最低 `text-xs`、印刷は A4 印刷契約（globals.css）側で最小サイズを定義。③ StateBadge へのサイズ縮小 className 直渡しを variant 化して下限を encode。
 - **Priority**: P1（薬剤名 10px/9px が判読性の患者安全線を割る。純装飾の 11px 単独なら P2 相当）
-- **Verification**: ガードスクリプトの 0 件到達（ratchet）+ medication-calendar の light/print スクリーンショットで薬剤名 12px 以上を確認。
+- **Verification**: 各 slice で `pnpm typography:check` の baseline drift 0 件を確認し、全 remediations 後は allowlist 0 件へ到達する。medication-calendar の light/print スクリーンショットで薬剤名 12px 以上を確認。
 - **Evidence**: `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx:159,164,375` / `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx:341,350` / `src/components/features/dispense-workbench/patient-list-panel.tsx:185-190` / `src/app/(auth)/mfa/setup/page.tsx:278` / `src/app/(dashboard)/tasks/task-health-board-panel.tsx:176-182`
 - **Partial remediation (2026-07-11)**: 最重要経路の `patients/[id]/medication-calendar` は、desktop/月間とmobile/日次で共用する `SlotCell` の薬剤名を `text-xs leading-5` に変更し、空セルとtable印刷も `text-xs` 下限へ揃えた。合成薬剤名でcomponent test、1680px browser screenshot、print media screenshot を確認し、画面・印刷ともcomputed `font-size: 12px` / `line-height: 20px`、page/console error 0 件だった。調剤ワークベンチ患者キューも、患者数・並替え・開始/登録日・年齢・状態・凡例の全てを 12px 下限へ揃え、長名/選択契約を保つcomponent testと12px契約testで固定した。1680px・mock workbench の再スクリーンショットでは患者行高約55px、横スクロールなし、page/console error なし、書込みrequestなしを確認した。残る他画面のsub-12pxとratchet guardは別sliceであり、DV-02全体は未解決。
+- **Ratchet follow-up (2026-07-11)**: `tools/scripts/check-typography-minimum.mjs` と unit test、path × syntax-kind baseline、`package.json` script、CI step を追加した。導入時の基準線は 148 件で、`right-pane.tsx` の28件を解消した現在は120件、いずれも `pnpm typography:check` の drift 0 件を確認済み。React-PDF service は point 単位（9pt = CSS 12px）なので browser px gate から明示除外し、印刷/PDF は別の単位・レイアウト検証で扱う。これは既存 debt の固定であり、DV-02全体の解決ではない。
+- **Right-pane remediation (2026-07-11)**: 調剤ワークベンチ右ペインの患者カナ・患者情報ラベル・状態chip、薬剤/注意/セット手順、同梱・監査・NG分類・差戻し・リスク確認の全28件を12px以上へ揃えた。薬剤名・申し送り・用量/セット方法・同梱薬・差戻しNG理由・リスク本文は14px/line-height 1.6へ格上げし、患者名/カナと工程補足は300pxペイン内で折返す。全ての populated grid/set/audit variant をrenderするcomponent testが、inline `fontSize` 下限、臨床本文、折返し契約を固定する。route-mock browser E2E はlocal `ph_os_e2e` 接続拒否でerror boundaryになり、実画面スクリーンショットは `NOT_EXECUTED` とする。既存の主要操作/チェック行の44px hit target不足は別P1として残る。
 
 ---
 

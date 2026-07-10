@@ -58,6 +58,9 @@ jobs:
       - name: State color token check
         run: pnpm colors:check
 
+      - name: Typography minimum check
+        run: pnpm typography:check
+
       - name: Module boundary check
         run: pnpm boundaries:check
 

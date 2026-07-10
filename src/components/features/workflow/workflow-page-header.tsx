@@ -51,7 +51,7 @@ export function WorkflowPageHeader({
           ) : null}
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[2rem]">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[32px]">
                 {title}
               </h1>
               <HelpPopover title={title} description={description} />

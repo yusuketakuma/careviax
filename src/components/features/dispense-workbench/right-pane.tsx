@@ -41,7 +41,7 @@ function SectionHeading({ color, label }: { color: string; label: string }) {
   return (
     <div
       style={{
-        fontSize: '11.5px',
+        fontSize: '12px',
         fontWeight: 700,
         color: 'var(--wb-ink-muted)',
         marginBottom: '5px',
@@ -81,7 +81,7 @@ function CheckBox({ look, size = 17 }: { look: CheckboxLook; size?: number }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: size >= 17 ? '12px' : '11px',
+        fontSize: '12px',
         fontWeight: 800,
       }}
     >
@@ -164,11 +164,26 @@ function GridInfo({ view }: { view: WorkbenchView }) {
         >
           {cur.initial}
         </div>
-        <div>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--wb-ink)' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: '15px',
+              fontWeight: 700,
+              color: 'var(--wb-ink)',
+              overflowWrap: 'anywhere',
+            }}
+          >
             {cur.name}
           </div>
-          <div style={{ fontSize: '11px', color: 'var(--wb-ink-muted)' }}>{cur.kana}</div>
+          <div
+            style={{
+              fontSize: '12px',
+              color: 'var(--wb-ink-muted)',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            {cur.kana}
+          </div>
         </div>
       </div>
 
@@ -188,13 +203,21 @@ function GridInfo({ view }: { view: WorkbenchView }) {
               style={{
                 width: '96px',
                 flex: 'none',
-                fontSize: '11px',
+                fontSize: '12px',
                 color: 'var(--wb-ink-muted)',
               }}
             >
               {it.label}
             </span>
-            <span style={{ flex: 1, fontSize: '12px', fontWeight: 700, color: 'var(--wb-ink)' }}>
+            <span
+              style={{
+                flex: 1,
+                fontSize: '14px',
+                fontWeight: 700,
+                color: 'var(--wb-ink)',
+                lineHeight: 1.6,
+              }}
+            >
               {it.value}
             </span>
           </div>
@@ -216,7 +239,7 @@ function GridInfo({ view }: { view: WorkbenchView }) {
           <span
             key={`${c.label}-${i}`}
             style={{
-              fontSize: '10.5px',
+              fontSize: '12px',
               fontWeight: 700,
               color: c.color,
               background: c.bg,
@@ -260,7 +283,7 @@ function GridInfo({ view }: { view: WorkbenchView }) {
                 display: 'flex',
                 gap: '6px',
                 marginBottom: '5px',
-                fontSize: '12px',
+                fontSize: '14px',
                 lineHeight: 1.6,
                 color: 'var(--wb-state-confirm)',
               }}
@@ -340,7 +363,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
           >
             一包化袋 {target.packetText}
             {target.hasPtp && (
-              <span style={{ fontSize: '11px', color: 'var(--wb-tag-ptp)', marginLeft: '6px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--wb-tag-ptp)', marginLeft: '6px' }}>
                 ／ {target.ptpText}
               </span>
             )}
@@ -359,10 +382,11 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
               <div
                 key={`${d}-${i}`}
                 style={{
-                  fontSize: '11.5px',
+                  fontSize: '14px',
                   color: 'var(--wb-ink-muted)',
                   display: 'flex',
                   gap: '5px',
+                  lineHeight: 1.6,
                 }}
               >
                 <span aria-hidden style={{ color: 'var(--wb-state-readonly)' }}>
@@ -376,12 +400,13 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
             <div
               style={{
                 marginTop: '7px',
-                fontSize: '11px',
+                fontSize: '14px',
                 color: 'var(--wb-state-blocked)',
                 background: 'var(--wb-blocked-bg)',
                 border: '1px solid var(--wb-blocked-border-warm)',
                 borderRadius: '4px',
                 padding: '5px 8px',
+                lineHeight: 1.6,
               }}
             >
               ⚠ {target.note}
@@ -398,7 +423,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
           >
             <div
               style={{
-                fontSize: '10px',
+                fontSize: '12px',
                 fontWeight: 700,
                 color: 'var(--wb-ink-muted)',
                 letterSpacing: '.5px',
@@ -408,10 +433,11 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
             </div>
             <div
               style={{
-                fontSize: '12.5px',
+                fontSize: '14px',
                 fontWeight: 700,
                 color: 'var(--wb-ink)',
                 marginTop: '2px',
+                lineHeight: 1.6,
               }}
             >
               {setMethod}
@@ -432,7 +458,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: '11px',
+                    fontSize: '12px',
                     fontWeight: 700,
                   }}
                 >
@@ -441,9 +467,10 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
                 <span
                   style={{
                     flex: 'none',
-                    fontSize: '11.5px',
+                    fontSize: '12px',
                     fontWeight: 700,
                     color: 'var(--wb-ink)',
+                    lineHeight: 1.6,
                   }}
                 >
                   {st.label}
@@ -451,12 +478,13 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
                 <span
                   style={{
                     flex: 1,
-                    fontSize: '10.5px',
+                    minWidth: 0,
+                    fontSize: '12px',
                     color: 'var(--wb-ink-muted)',
                     textAlign: 'right',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
+                    lineHeight: 1.6,
+                    whiteSpace: 'normal',
+                    overflowWrap: 'anywhere',
                   }}
                 >
                   {st.sub}
@@ -549,7 +577,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
               <span
                 style={{
                   flex: 'none',
-                  fontSize: '9.5px',
+                  fontSize: '12px',
                   fontWeight: 700,
                   color: '#fff',
                   background: o.kindColor,
@@ -562,9 +590,10 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
               <span
                 style={{
                   flex: 1,
-                  fontSize: '11.5px',
+                  fontSize: '14px',
                   color: 'var(--wb-ink-muted)',
-                  lineHeight: 1.2,
+                  lineHeight: 1.6,
+                  overflowWrap: 'anywhere',
                 }}
               >
                 {o.name}
@@ -574,7 +603,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
           {outsideEmpty && (
             <div
               style={{
-                fontSize: '11px',
+                fontSize: '12px',
                 color: 'var(--wb-state-readonly)',
                 textAlign: 'center',
                 padding: '14px 0',
@@ -620,9 +649,10 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
               <span
                 style={{
                   flex: 1,
-                  fontSize: '11.5px',
+                  fontSize: '12px',
                   color: 'var(--wb-ink-muted)',
                   fontWeight: 700,
+                  lineHeight: 1.6,
                 }}
               >
                 {pk.label}
@@ -703,7 +733,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
           >
             一包化袋 {target.packetText}
             {target.hasPtp && (
-              <span style={{ fontSize: '11px', color: 'var(--wb-tag-ptp)', marginLeft: '6px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--wb-tag-ptp)', marginLeft: '6px' }}>
                 ／ {target.ptpText}
               </span>
             )}
@@ -722,10 +752,11 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
               <div
                 key={`${d}-${i}`}
                 style={{
-                  fontSize: '11px',
+                  fontSize: '14px',
                   color: 'var(--wb-ink-muted)',
                   display: 'flex',
                   gap: '5px',
+                  lineHeight: 1.6,
                 }}
               >
                 <span aria-hidden style={{ color: 'var(--wb-state-readonly)' }}>
@@ -742,7 +773,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
       <div style={{ flex: 'none', margin: '0 9px' }}>
         <div
           style={{
-            fontSize: '11.5px',
+            fontSize: '12px',
             fontWeight: 700,
             color: 'var(--wb-ink-muted)',
             marginBottom: '4px',
@@ -780,7 +811,9 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
               }}
             >
               <CheckBox look={look(ci.checked, 'var(--wb-phase-audit-strong)')} size={16} />
-              <span style={{ flex: 1, fontSize: '11.5px', color: 'var(--wb-ink-muted)' }}>
+              <span
+                style={{ flex: 1, fontSize: '12px', color: 'var(--wb-ink-muted)', lineHeight: 1.6 }}
+              >
                 {ci.label}
               </span>
             </button>
@@ -863,7 +896,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
           <label
             htmlFor="ng-classification"
             style={{
-              fontSize: '11px',
+              fontSize: '12px',
               color: 'var(--wb-ink-muted)',
               fontWeight: 700,
               flex: 'none',
@@ -878,7 +911,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
             disabled={ngClassificationDisabled}
             style={{
               flex: 1,
-              fontSize: '11px',
+              fontSize: '12px',
               color: 'var(--wb-ink)',
               background: 'var(--wb-surface)',
               border: '1px solid var(--wb-state-blocked)',
@@ -919,10 +952,25 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--wb-ink)' }}>
+                <div
+                  style={{
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    color: 'var(--wb-ink)',
+                    lineHeight: 1.6,
+                    overflowWrap: 'anywhere',
+                  }}
+                >
                   {rj.label}
                 </div>
-                <div style={{ fontSize: '10px', color: 'var(--wb-state-blocked)' }}>
+                <div
+                  style={{
+                    fontSize: '14px',
+                    color: 'var(--wb-state-blocked)',
+                    lineHeight: 1.6,
+                    overflowWrap: 'anywhere',
+                  }}
+                >
                   NG：{rj.ng}
                 </div>
               </div>
@@ -933,7 +981,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
                 style={{
                   flex: 'none',
                   cursor: auditButtonCursor,
-                  fontSize: '10.5px',
+                  fontSize: '12px',
                   fontWeight: 700,
                   color: '#fff',
                   background: isPending
@@ -952,7 +1000,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
           {rejectEmpty && (
             <div
               style={{
-                fontSize: '11px',
+                fontSize: '12px',
                 color: 'var(--wb-state-readonly)',
                 textAlign: 'center',
                 padding: '8px 0',
@@ -1009,7 +1057,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '11px',
+                  fontSize: '12px',
                   fontWeight: 700,
                 }}
               >
@@ -1018,9 +1066,11 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
               <span
                 style={{
                   flex: 1,
-                  fontSize: '11.5px',
+                  fontSize: '14px',
                   color: 'var(--wb-ink-muted)',
                   fontWeight: 700,
+                  lineHeight: 1.6,
+                  overflowWrap: 'anywhere',
                 }}
               >
                 {rk.label}

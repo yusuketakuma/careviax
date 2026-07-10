@@ -98,6 +98,7 @@
     "frontend-contract:check": "node tools/scripts/check-frontend-contract.mjs",
     "plans:active:check": "node tools/scripts/check-plans-active-board.mjs",
     "colors:check": "node tools/scripts/check-raw-state-colors.mjs",
+    "typography:check": "node tools/scripts/check-typography-minimum.mjs",
     "boundaries:check": "node tools/scripts/check-module-boundaries.mjs",
     "api-response-shape:check": "node tools/scripts/check-api-response-shape.mjs",
     "client-json-schema:check": "node tools/scripts/check-client-json-schema.mjs",

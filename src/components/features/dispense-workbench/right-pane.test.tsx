@@ -18,8 +18,8 @@ function setAuditView(ngValue: string): WorkbenchView {
       date: '2026/4/1（水）',
       timing: '朝食後',
       packetText: '1包',
-      ptpText: '',
-      hasPtp: false,
+      ptpText: 'PTP 1錠',
+      hasPtp: true,
       drugs: ['アムロジピン錠5mg'],
       note: '',
       hasNote: false,
@@ -27,9 +27,9 @@ function setAuditView(ngValue: string): WorkbenchView {
     checkItems: [{ index: 0, label: '日付が正しい', checked: false }],
     ngValue,
     ngOptions: ['数量不足'],
-    rejectList: [],
-    rejectEmpty: true,
-    riskList: [],
+    rejectList: [{ di: 0, tk: '朝', label: '4/1 朝食後', ng: '数量不足' }],
+    rejectEmpty: false,
+    riskList: [{ rank: 1, label: 'ハイリスク薬を先に照合', color: '#b42318' }],
   } as unknown as WorkbenchView;
 }
 
@@ -43,18 +43,60 @@ function setWorkView(): WorkbenchView {
       date: '2026/4/1（水）',
       timing: '朝食後',
       packetText: '1包',
-      ptpText: '',
-      hasPtp: false,
+      ptpText: 'PTP 1錠',
+      hasPtp: true,
       drugs: ['アムロジピン錠5mg'],
-      note: '',
-      hasNote: false,
+      note: '冷所薬は別袋で確認',
+      hasNote: true,
     },
     setMethod: 'お薬カレンダーの該当ポケットへ投入',
-    setSteps: [],
-    outsideMeds: [],
-    outsideEmpty: true,
-    packetItems: [],
+    setSteps: [{ n: '1', label: '薬剤を取り出す', sub: '棚番 A-12' }],
+    outsideMeds: [{ name: '外用薬を同梱', kind: '外用', kindColor: '#155eef', checked: false }],
+    outsideEmpty: false,
+    packetItems: [{ key: 'doc', label: '連絡票を同梱', checked: false }],
   } as unknown as WorkbenchView;
+}
+
+function gridView(): WorkbenchView {
+  return {
+    rightTitle: '調剤',
+    isGrid: true,
+    isSet: false,
+    isSeta: false,
+    cur: {
+      avatarBg: '#155eef',
+      initial: '田',
+      name: '田中花子患者識別用の非常に長い氏名',
+      kana: 'タナカハナコカンジャシキベツヨウノナガイカナ',
+      chips: [{ label: '要確認', color: '#b42318', bg: '#fef3f2', border: '#fecdca' }],
+      biko: ['服薬時に声かけをお願いします。'],
+    },
+    infoItems: [{ label: '生年月日', value: '1940/01/01' }],
+  } as unknown as WorkbenchView;
+}
+
+function expectInlineFontSizesAtLeast12(container: HTMLElement) {
+  const fontSizedElements = [...container.querySelectorAll<HTMLElement>('[style]')].filter(
+    (element) => element.style.fontSize,
+  );
+
+  expect(fontSizedElements).not.toHaveLength(0);
+  for (const element of fontSizedElements) {
+    expect(Number.parseFloat(element.style.fontSize)).toBeGreaterThanOrEqual(12);
+  }
+}
+
+function expectClinicalBodyText(text: string | RegExp) {
+  const element = screen.getByText(text);
+  let fontSizedElement: HTMLElement | null = element;
+
+  while (fontSizedElement && !fontSizedElement.style.fontSize) {
+    fontSizedElement = fontSizedElement.parentElement;
+  }
+
+  expect(fontSizedElement).not.toBeNull();
+  expect(fontSizedElement?.style.fontSize).toBe('14px');
+  expect(fontSizedElement?.style.lineHeight).toBe('1.6');
 }
 
 const handlers = {
@@ -98,6 +140,57 @@ describe('RightPane set work cell controls', () => {
     expect((screen.getByRole('button', { name: '保留…' }) as HTMLButtonElement).disabled).toBe(
       false,
     );
+  });
+});
+
+describe('RightPane typography floor', () => {
+  afterEach(() => {
+    act(() => {
+      useWorkbenchStore.setState({ target: null });
+    });
+  });
+
+  it('keeps populated grid, set, and audit pane text at 12px or larger', () => {
+    const views = [
+      { phase: 'dispense' as const, view: gridView() },
+      { phase: 'setp' as const, view: setWorkView() },
+      { phase: 'seta' as const, view: setAuditView('数量不足') },
+    ];
+
+    for (const { phase, view } of views) {
+      const { container, unmount } = render(
+        <RightPane view={view} phase={phase} handlers={handlers} />,
+      );
+
+      expectInlineFontSizesAtLeast12(container);
+      if (phase === 'dispense') {
+        const patientName = screen.getByText('田中花子患者識別用の非常に長い氏名');
+        const patientKana = screen.getByText('タナカハナコカンジャシキベツヨウノナガイカナ');
+
+        expect(patientName.style.overflowWrap).toBe('anywhere');
+        expect(patientName.parentElement?.style.minWidth).toBe('0px');
+        expect(patientKana.style.overflowWrap).toBe('anywhere');
+        expectClinicalBodyText('1940/01/01');
+        expectClinicalBodyText('服薬時に声かけをお願いします。');
+      }
+      if (phase === 'setp') {
+        expectClinicalBodyText('アムロジピン錠5mg');
+        expectClinicalBodyText(/冷所薬は別袋で確認/);
+        expectClinicalBodyText('お薬カレンダーの該当ポケットへ投入');
+        expectClinicalBodyText('外用薬を同梱');
+
+        const stepSub = screen.getByText('棚番 A-12');
+        expect(stepSub.style.whiteSpace).toBe('normal');
+        expect(stepSub.style.overflowWrap).toBe('anywhere');
+      }
+      if (phase === 'seta') {
+        expectClinicalBodyText('アムロジピン錠5mg');
+        expectClinicalBodyText('4/1 朝食後');
+        expectClinicalBodyText('NG：数量不足');
+        expectClinicalBodyText('ハイリスク薬を先に照合');
+      }
+      unmount();
+    }
   });
 });
 
