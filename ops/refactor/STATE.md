@@ -51,6 +51,35 @@
 
 ## 直近の作業
 
+- codex: protected GET cockpit details fixture isolation.
+  - commit:
+    `61e7e132b test(TEST-PROTECTED-GET-COCKPIT-DETAILS-001): isolate billing export fixture`.
+  - current task / purpose / acceptance:
+    HIGH / LOW `TEST-PROTECTED-GET-COCKPIT-DETAILS-001`。Protected GET全体でcockpit details authorized
+    successだけが500、単独では200になる順序依存を解消する。Root cause、test-only修正、focused/full GET、
+    POST matrix不変、production contract非変更を完了条件とした。
+  - root cause / files inspected / changed:
+    Protected GET route table/setup lifecycle、dashboard cockpit details route/service/cache/Prisma reads、billing
+    export fixture、focused/cockpit/full matrix、active dirty treeを確認した。Billing export handlerが401/403でも
+    `mockResolvedValueOnce`を積み、未消費candidate 2件が後続detailsのbilling urgent queryへ漏れ、`updated_at`
+    欠落で500になっていた。変更はprotected GET matrix 1 fileだけ。
+  - implementation / behavior / rollback:
+    Billing exportのone-shot candidateをhandler内から既存`setupSuccess`へ移し、authorized test直前だけqueue
+    する。Assertion、route order、provider response、billing/dashboard serviceは変更していない。Rollbackは
+    scoped test commitのrevert。
+  - security / privacy / performance / UI:
+    Auth拒否時にsuccess DB fixtureを準備しないtest isolationを回復した。API/DB/auth/tenant/PHI/medical/
+    billing/UI/runtime挙動とperformanceは不変。UI変更がないためbrowser/imagegen省略。Codex単独で実装・
+    検証し、subagent、agmsg、Claude、Oracle、外部workerは使っていない。
+  - validation:
+    Focused details 1/1 pass、cockpit segment subset 4/4 pass、protected GET 384/384 pass、protected POST
+    151/151 pass。Exact ESLint、Prettier、Plans active、diff checkがpass。Typegenは成功し、full typecheckは
+    user-owned inbound TS2322だけが継続。buildはtypecheck red中のため未実施。
+  - Plans / shared tree / next:
+    TaskはDONE/frozenへ移動。unowned config/harness/inboundと全untracked artifactを保持した。Test matrixの
+    実行可能性が戻ったため、次はAPI allowlist残19件を再スキャンし、billing/consent/platform gateを避けた
+    visit-record handoff/read契約を優先する。
+
 - codex: Vitest server-only resolution and protected POST matrix recovery.
   - commit:
     `7d213af6a test(TEST-SERVER-ONLY-RESOLUTION-001): restore protected route matrix`.
