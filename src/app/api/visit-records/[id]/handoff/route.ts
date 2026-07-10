@@ -146,7 +146,7 @@ async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<
         ? { overrideReason, ...(overrideReasonCode ? { overrideReasonCode } : {}) }
         : {}),
     });
-    return withSensitiveNoStore(success(handoff));
+    return withSensitiveNoStore(success({ data: handoff }));
   } catch (cause) {
     if (cause instanceof VisitHandoffMissingDataError) {
       return withSensitiveNoStore(

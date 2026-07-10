@@ -482,6 +482,7 @@ describe('/api/visit-records/[id]/handoff', () => {
       const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
       expect(res!.status).toBe(200);
       expectSensitiveNoStore(res!);
+      await expect(res!.json()).resolves.toEqual({ data: handoffResult });
       expect(canConfirmVisitHandoffMock).toHaveBeenCalledWith(authCtx.ctx, accessibleSchedule);
       expect(confirmHandoffMock).toHaveBeenCalledWith(expect.anything(), {
         orgId: 'org_1',
