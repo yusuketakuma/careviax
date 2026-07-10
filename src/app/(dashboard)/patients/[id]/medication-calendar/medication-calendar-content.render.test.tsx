@@ -71,6 +71,41 @@ describe('MedicationCalendarContent states', () => {
     expect(screen.getByText(/現在の服薬情報が登録されていません/)).toBeTruthy();
   });
 
+  it('keeps medication names at the text-xs minimum in screen and print calendars', () => {
+    const medicationName = 'アムロジピン錠5mg「安全確認用」';
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        data: [
+          {
+            id: 'medication_1',
+            drug_name: medicationName,
+            dose: '1錠',
+            frequency: '毎朝食後',
+            start_date: '2020-01-01',
+            end_date: '2030-12-31',
+          },
+        ],
+      },
+    });
+
+    render(<MedicationCalendarContent patientId="patient_1" />);
+
+    const renderedNames = screen.getAllByText(`${medicationName} 1錠`);
+    expect(renderedNames.length).toBeGreaterThan(0);
+    for (const name of renderedNames) {
+      expect(name.className).toContain('text-xs');
+      expect(name.className).toContain('leading-5');
+      expect(name.className).not.toContain('text-[10px]');
+    }
+
+    const calendar = screen.getByRole('grid', { name: /服薬カレンダー/ });
+    expect(calendar.className).toContain('text-xs');
+    expect(calendar.className).toContain('print:text-xs');
+    expect(calendar.className).not.toContain('print:text-[9px]');
+  });
+
   it('encodes the medication profile query and calendar PDF href at URL boundaries', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ data: [] }));
     vi.stubGlobal('fetch', fetchMock);

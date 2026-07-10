@@ -156,12 +156,12 @@ export function medicationCalendarSlotLabel(dateKey: string, slot: TimeSlot) {
 
 function SlotCell({ drugs }: { drugs?: string[] }) {
   if (!drugs || drugs.length === 0) {
-    return <span className="text-[10px] text-muted-foreground/40">—</span>;
+    return <span className="text-xs text-muted-foreground/40">—</span>;
   }
   return (
     <ul className="space-y-0.5">
       {drugs.map((d, i) => (
-        <li key={i} className="text-[10px] leading-tight">
+        <li key={i} className="text-xs leading-5">
           {d}
         </li>
       ))}
@@ -372,7 +372,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
       profiles.length > 0 ? (
         <div className="hidden overflow-x-auto md:block">
           <table
-            className="min-w-full border-collapse text-xs print:text-[9px]"
+            className="min-w-full border-collapse text-xs print:text-xs"
             role="grid"
             aria-label={`${monthLabel}の服薬カレンダー`}
           >

@@ -43423,3 +43423,41 @@ src/components/features/dispense-workbench/dispensing-workbench.from-api.test.ts
   The required desktop workbench screenshot is complete. This coherent slice is ready for a scoped commit.
   Patient board, my-day, and facility-record identifier surfaces remain separate DV-07 work; select the
   next P1 item from the audit rather than treating this partial remediation as full DV-07 closure.
+
+## 2026-07-11 UI-UX-DV02-MEDICATION-CALENDAR — restore readable medication names
+
+- current task:
+  Address the highest-risk part of DV-02: current medication names in the month grid were 10px on screen
+  and 9px when printed, despite the normative 12px minimum and the drug-name safety-display rule.
+- files inspected / changed:
+  Inspected `docs/ui-ux-design-guidelines.md` §§3.4/7.8, the Phase 5 DV-02 audit, calendar page/content,
+  query and path contracts, existing render/accessibility/page tests, and local E2E authentication helpers.
+  Changed `medication-calendar-content.tsx`, its render test, the UI audit/progress evidence, and this ledger.
+- bugs found / fixed:
+  Shared `SlotCell` made both desktop month-grid and mobile day-list drug names `text-[10px]`; the parent
+  table then reduced every print value to 9px. Drug names now use `text-xs leading-5`; the empty-slot marker
+  and print table use `text-xs`. Query, schedule derivation, medication/dose text, PDF href, timing colors,
+  page structure, and patient/organization access are unchanged.
+- security / medical safety:
+  This removes a direct similar-drug-name readability risk without changing medication data or clinical
+  behavior. `gpt-image-2` was omitted because the slice corrects an existing typography safety contract,
+  not the screen's visual information architecture; the normative UI SSOT was reviewed. Browser evidence
+  used only a synthetic medication, a mock API response, a local `ph_os_e2e` user lookup by `SELECT`, and a
+  signed local test session. No production system, patient record, API write, migration, seed, or external
+  request was used.
+- performance:
+  No requests, cache behavior, data shape, persistence, or dependencies changed. Calendar rows may grow for
+  wrapped names, preserving content rather than shrinking it.
+- validation:
+  `pnpm vitest run 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.test.ts'
+'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.render.test.tsx'
+'src/app/(dashboard)/patients/[id]/medication-calendar/page.test.tsx' --reporter=dot` passed 3 files /
+  10 tests. Exact ESLint, Prettier, and `git diff --check` passed. Local Playwright API mock at 1680px
+  rendered the calendar with computed medication `font-size: 12px`, `line-height: 20px`, class
+  `text-xs leading-5`, table class `print:text-xs`, and zero page/console errors. Print media emulation
+  retained 12px/20px. Prettier, `pnpm colors:check`, `pnpm client-phi-log:check`,
+  `pnpm frontend-contract:check`, `pnpm boundaries:check`, `pnpm typecheck`, `pnpm lint`, and
+  `git diff --check` passed. Full E2E, build, a11y, mobile, offline, and clinical review are pending.
+- remaining / next action:
+  DV-02 remains Partial: the audit's other sub-12px surfaces and the ratchet guard remain. Run the full
+  static gate bundle, then commit this small, validated calendar slice before choosing the next P1/P2 issue.

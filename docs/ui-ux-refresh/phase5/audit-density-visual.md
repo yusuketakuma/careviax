@@ -45,6 +45,7 @@
 - **Priority**: P1（薬剤名 10px/9px が判読性の患者安全線を割る。純装飾の 11px 単独なら P2 相当）
 - **Verification**: ガードスクリプトの 0 件到達（ratchet）+ medication-calendar の light/print スクリーンショットで薬剤名 12px 以上を確認。
 - **Evidence**: `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx:159,164,375` / `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx:341,350` / `src/components/features/dispense-workbench/patient-list-panel.tsx:185-190` / `src/app/(auth)/mfa/setup/page.tsx:278` / `src/app/(dashboard)/tasks/task-health-board-panel.tsx:176-182`
+- **Partial remediation (2026-07-11, `TBD` commit)**: 最重要経路の `patients/[id]/medication-calendar` は、desktop/月間とmobile/日次で共用する `SlotCell` の薬剤名を `text-xs leading-5` に変更し、空セルとtable印刷も `text-xs` 下限へ揃えた。合成薬剤名でcomponent test、1680px browser screenshot、print media screenshot を確認し、画面・印刷ともcomputed `font-size: 12px` / `line-height: 20px`、page/console error 0 件だった。35ファイルの残存sub-12pxとratchet guardは別sliceであり、DV-02全体は未解決。
 
 ---
 
