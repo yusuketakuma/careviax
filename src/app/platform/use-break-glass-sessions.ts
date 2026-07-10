@@ -15,7 +15,7 @@ export type BreakGlassSessionSummary = {
   revoked_at: string | null;
 };
 
-type BreakGlassSessionsResponse = { sessions: BreakGlassSessionSummary[] };
+type BreakGlassSessionsResponse = { data: { sessions: BreakGlassSessionSummary[] } };
 
 export const BREAK_GLASS_SESSIONS_QUERY_KEY = ['platform-break-glass-sessions'] as const;
 
@@ -29,7 +29,12 @@ export const BREAK_GLASS_SESSIONS_QUERY_KEY = ['platform-break-glass-sessions'] 
 export function useBreakGlassSessions() {
   return useQuery({
     queryKey: BREAK_GLASS_SESSIONS_QUERY_KEY,
-    queryFn: () => platformFetchJson<BreakGlassSessionsResponse>('/api/platform/break-glass'),
+    queryFn: async () => {
+      const payload = await platformFetchJson<BreakGlassSessionsResponse>(
+        '/api/platform/break-glass',
+      );
+      return payload.data;
+    },
   });
 }
 

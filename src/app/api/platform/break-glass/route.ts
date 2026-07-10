@@ -20,7 +20,11 @@ export async function GET(req: NextRequest) {
   const guard = await requirePlatformOperator(req);
   if ('response' in guard) return guard.response;
   const sessions = await listActiveBreakGlassSessions(guard.operator.operatorId);
-  return withSensitiveNoStore(success({ sessions: sessions.map(serializeBreakGlassSession) }));
+  return withSensitiveNoStore(
+    success({
+      data: { sessions: sessions.map((session) => serializeBreakGlassSession(session)) },
+    }),
+  );
 }
 
 /**
@@ -52,7 +56,9 @@ export async function POST(req: NextRequest) {
     return withSensitiveNoStore(validationError('アクセス理由を10文字以上で入力してください'));
   }
   if (!password || !mfaCode) {
-    return withSensitiveNoStore(validationError('再認証のためパスワードとMFAコードを入力してください'));
+    return withSensitiveNoStore(
+      validationError('再認証のためパスワードとMFAコードを入力してください'),
+    );
   }
 
   const reauthenticated = await verifyBreakGlassStepUp({
@@ -62,9 +68,7 @@ export async function POST(req: NextRequest) {
   });
   if (!reauthenticated) {
     logger.warn({ event: 'break_glass_stepup_failed', actorId: operator.userId });
-    return withSensitiveNoStore(
-      error('BREAK_GLASS_REAUTH_FAILED', '再認証に失敗しました', 401),
-    );
+    return withSensitiveNoStore(error('BREAK_GLASS_REAUTH_FAILED', '再認証に失敗しました', 401));
   }
 
   try {

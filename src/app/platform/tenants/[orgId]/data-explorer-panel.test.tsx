@@ -21,19 +21,21 @@ describe('DataExplorerPanel', () => {
         if (url === '/api/platform/break-glass') {
           return new Response(
             JSON.stringify({
-              sessions: [
-                {
-                  id: 'session_1',
-                  target_org_id: 'org_1',
-                  reason: '監査確認',
-                  reference_ticket: null,
-                  scope: 'read_only',
-                  status: 'active',
-                  granted_at: '2026-07-04T00:00:00.000Z',
-                  expires_at: '2026-07-04T01:00:00.000Z',
-                  revoked_at: null,
-                },
-              ],
+              data: {
+                sessions: [
+                  {
+                    id: 'session_1',
+                    target_org_id: 'org_1',
+                    reason: '監査確認',
+                    reference_ticket: null,
+                    scope: 'read_only',
+                    status: 'active',
+                    granted_at: '2026-07-04T00:00:00.000Z',
+                    expires_at: '2026-07-04T01:00:00.000Z',
+                    revoked_at: null,
+                  },
+                ],
+              },
             }),
             { status: 200 },
           );

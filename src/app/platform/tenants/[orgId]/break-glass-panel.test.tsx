@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 function stubSessionsFetch(sessions: unknown[]) {
-  const fetchMock = createJsonFetchMock({ sessions });
+  const fetchMock = createJsonFetchMock({ data: { sessions } });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }
