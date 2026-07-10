@@ -810,7 +810,14 @@ export function ScheduleWeeklyOptimizer({
           travel_mode: plannerSettings.travel_mode,
         }),
       });
-      return readApiJson<VisitRoutePlan>(response, 'ルートプレビューの取得に失敗しました');
+      const payload = await readApiJson<{ data?: VisitRoutePlan }>(
+        response,
+        'ルートプレビューの取得に失敗しました',
+      );
+      if (!payload.data) {
+        throw new Error('ルートプレビューの取得に失敗しました');
+      }
+      return payload.data;
     },
     enabled: Boolean(
       orgId &&

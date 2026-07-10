@@ -458,7 +458,7 @@ const authenticatedPOST = withAuthContext(
       return notFound('訪問ルートの対象が見つかりません');
     }
 
-    return success(routePlan);
+    return success({ data: routePlan });
   },
   {
     permission: 'canVisit',

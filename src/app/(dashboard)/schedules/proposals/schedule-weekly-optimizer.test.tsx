@@ -386,7 +386,7 @@ describe('ScheduleWeeklyOptimizer', () => {
     }
   });
 
-  it('reads route preview as a top-level VisitRoutePlan response', async () => {
+  it('reads route preview from the standard data envelope', async () => {
     const routePlan = {
       status: 'ok',
       note: null,
@@ -398,7 +398,7 @@ describe('ScheduleWeeklyOptimizer', () => {
       totalDurationSeconds: null,
       stopSummaries: [],
     };
-    const fetchMock = vi.fn<typeof fetch>(async () => Response.json(routePlan));
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: routePlan }));
     vi.stubGlobal('fetch', fetchMock);
 
     render(<ScheduleWeeklyOptimizer />);
@@ -413,6 +413,33 @@ describe('ScheduleWeeklyOptimizer', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/visit-routes',
       expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('rejects a legacy top-level route preview success shape', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json({
+        status: 'ok',
+        note: null,
+        travelMode: 'DRIVE',
+        origin: null,
+        encodedPath: null,
+        orderedScheduleIds: ['schedule_1'],
+        totalDistanceMeters: null,
+        totalDurationSeconds: null,
+        stopSummaries: [],
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ScheduleWeeklyOptimizer />);
+
+    const routePreviewQuery = useQueryMock.mock.calls
+      .map(([config]) => config as QueryConfig)
+      .find((config) => config.queryKey[0] === 'weekly-optimizer-route-preview');
+
+    await expect(routePreviewQuery?.queryFn?.()).rejects.toThrow(
+      'ルートプレビューの取得に失敗しました',
     );
   });
 

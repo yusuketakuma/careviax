@@ -165,10 +165,14 @@ describe('/api/visit-routes POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      status: 'ok',
-      orderedScheduleIds: ['schedule_2', 'schedule_1'],
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
+      data: {
+        status: 'ok',
+        orderedScheduleIds: ['schedule_2', 'schedule_1'],
+      },
     });
+    expect(responseBody).not.toHaveProperty('status');
     expect(computeOptimizedVisitRouteMock).toHaveBeenCalledWith({
       origin: { lat: 35.0, lng: 139.0, label: '本店' },
       travelMode: 'DRIVE',
@@ -378,8 +382,10 @@ describe('/api/visit-routes POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      status: 'unavailable',
-      note: expect.stringContaining('座標未設定: 座標なし患者'),
+      data: {
+        status: 'unavailable',
+        note: expect.stringContaining('座標未設定: 座標なし患者'),
+      },
     });
   });
 
@@ -505,12 +511,14 @@ describe('/api/visit-routes POST', () => {
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
-      vehicle_resource: {
-        vehicle_id: 'vehicle_1',
-        label: '社用車A',
-        max_stops: 4,
-        max_route_duration_minutes: 60,
-        constraint_status: 'ok',
+      data: {
+        vehicle_resource: {
+          vehicle_id: 'vehicle_1',
+          label: '社用車A',
+          max_stops: 4,
+          max_route_duration_minutes: 60,
+          constraint_status: 'ok',
+        },
       },
     });
   });
@@ -765,15 +773,17 @@ describe('/api/visit-routes POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      status: 'unavailable',
-      note: '社用車1 の稼働上限 60分を超えています',
-      vehicle_resource: {
-        vehicle_id: 'car_1',
-        label: '社用車1',
-        max_route_duration_minutes: 60,
-        stop_count: 1,
-        route_duration_minutes: 90,
-        constraint_status: 'exceeded',
+      data: {
+        status: 'unavailable',
+        note: '社用車1 の稼働上限 60分を超えています',
+        vehicle_resource: {
+          vehicle_id: 'car_1',
+          label: '社用車1',
+          max_route_duration_minutes: 60,
+          stop_count: 1,
+          route_duration_minutes: 90,
+          constraint_status: 'exceeded',
+        },
       },
     });
   });
@@ -828,14 +838,16 @@ describe('/api/visit-routes POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      status: 'unavailable',
-      note: expect.stringContaining('社用車1 の稼働上限は経路時間未計算のため未確認です'),
-      vehicle_resource: {
-        vehicle_id: 'car_1',
-        label: '社用車1',
-        max_route_duration_minutes: 60,
-        route_duration_minutes: null,
-        constraint_status: 'unverified',
+      data: {
+        status: 'unavailable',
+        note: expect.stringContaining('社用車1 の稼働上限は経路時間未計算のため未確認です'),
+        vehicle_resource: {
+          vehicle_id: 'car_1',
+          label: '社用車1',
+          max_route_duration_minutes: 60,
+          route_duration_minutes: null,
+          constraint_status: 'unverified',
+        },
       },
     });
   });
