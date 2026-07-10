@@ -317,6 +317,7 @@ const GLOBAL_DATA_EXPLORER_MODELS: ReadonlySet<string> = new Set([
   'DrugMasterImportLog',
   'DrugPackage',
   'DrugPackageInsert',
+  'DrugPriceVersion',
   'GenericDrugMapping',
 ] as const);
 

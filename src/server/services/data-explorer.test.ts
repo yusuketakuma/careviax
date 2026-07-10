@@ -159,6 +159,8 @@ describe('data explorer service hardening', () => {
     expect(modelCountSql).toContain('FROM "Organization" AS t WHERE t."id" = $1');
     expect(modelCountSql).toContain('FROM "DrugMaster" AS t');
     expect(modelCountSql).not.toContain('FROM "DrugMaster" AS t WHERE');
+    expect(modelCountSql).toContain('FROM "DrugPriceVersion" AS t');
+    expect(modelCountSql).not.toContain('FROM "DrugPriceVersion" AS t WHERE');
     expect(modelCountSql).not.toContain('FROM "Setting" AS t');
     expect(modelTx.$queryRawUnsafe.mock.calls[0]?.slice(1)).toEqual(['org_1']);
 
@@ -218,6 +220,54 @@ describe('data explorer service hardening', () => {
     expect(result.limit).toBe(100);
     expect(result.offset).toBe(999_900);
     expect(result.hasMore).toBe(true);
+  });
+
+  it('keeps global drug price versions readable but non-editable and omits source hashes', async () => {
+    const tx = mockOrgContext(async (query) => {
+      if (query.includes('COUNT(*)')) {
+        return [{ row_count: 1 }];
+      }
+      return [
+        {
+          row: {
+            id: 'price_1',
+            display_id: 'dpv_1',
+            drug_master_id: 'drug_1',
+            source: 'mhlw_price',
+            source_url: 'https://www.mhlw.go.jp/example.xlsx',
+            source_file_hash: 'sha256-sensitive-source-proof',
+            effective_from: new Date('2026-04-01T00:00:00.000Z'),
+            drug_price: '12.30',
+          },
+        },
+      ];
+    });
+
+    const result = await listDataExplorerRows('org_1', 'DrugPriceVersion');
+    const sql = joinedSql(tx);
+    const [countCall, rowsCall] = tx.$queryRawUnsafe.mock.calls;
+
+    expect(sql).toContain('FROM "DrugPriceVersion" AS t');
+    expect(countCall?.slice(1)).toEqual([]);
+    expect(rowsCall?.slice(1)).toEqual([25, 0]);
+    expect(result.columns.every((field) => field.isEditable === false)).toBe(true);
+    expect(result.columns.map((field) => field.name)).not.toContain('source_file_hash');
+    expect(result.rows[0]).toMatchObject({
+      id: 'price_1',
+      drug_master_id: 'drug_1',
+      source: 'mhlw_price',
+      drug_price: '12.30',
+    });
+    expect(result.rows[0]).not.toHaveProperty('source_file_hash');
+
+    vi.clearAllMocks();
+    await expect(
+      updateDataExplorerRow(ACTOR, 'DrugPriceVersion', 'price_1', { drug_price: '99.99' }),
+    ).rejects.toThrow(DATA_EXPLORER_READ_ONLY_MODEL_ERROR);
+    await expect(deleteDataExplorerRow(ACTOR, 'DrugPriceVersion', 'price_1')).rejects.toThrow(
+      DATA_EXPLORER_READ_ONLY_MODEL_ERROR,
+    );
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it.each(['Setting', 'ExternalAccessGrant', 'PatientMcsMessage', 'PushSubscription'])(
