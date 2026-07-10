@@ -488,7 +488,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
   },
   {
     name: 'billing-candidates/export GET',
-    handler: () => {
+    setupSuccess: () => {
       txMock.billingCandidate.findMany.mockResolvedValueOnce([
         {
           id: 'candidate_1',
@@ -507,11 +507,12 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
           source_snapshot: {},
         },
       ]);
-      return billingCandidatesExportGet(
+    },
+    handler: () =>
+      billingCandidatesExportGet(
         createRequest('http://localhost/api/billing-candidates/export', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
-      );
-    },
+      ),
   },
   {
     name: 'billing-candidates/[id]/documents/pdf GET',
