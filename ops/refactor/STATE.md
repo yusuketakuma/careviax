@@ -51,6 +51,37 @@
 
 ## 直近の作業
 
+- codex: prescription intake detail envelope convergence.
+  - commit:
+    `ddfadec6a fix(API-CONTRACT-001EN): envelope prescription intake detail`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001EN`。`GET /api/prescription-intakes/:id` の200 successを exact `{ data: intake }`
+    に揃え、inline/full detailの2 readerを同契約へ移行する。Nested DTO、legacy/malformed refusal、
+    authorized detail/no-store/assignment維持、PATCH非変更、debt減を完了条件とした。
+  - files inspected / changed:
+    Prescription-intake GET/PATCH route and full tests; inline/full detail readers and tests; shared path builder;
+    `readApiJson`; assignment/org detail select; allowlist; Plans/archive/state; active dirty tree. Changed only GET
+    success/test, both readers/tests, allowlist count and planning ledgers; PATCH remained unchanged.
+  - implementation / behavior / rollback:
+    Provider nests the unchanged authorized intake detail under `data`. Both readers validate a string `data.id` before
+    rendering and reject legacy root/malformed success. Rollback is the scoped code and ledger commits; no query shape,
+    persisted field, schema, migration, dependency or deploy configuration changed.
+  - security / medical / privacy / human review:
+    Permission/assignment/org boundary, sensitive no-store and authorized operational disclosure of line/cycle/patient/
+    inquiry/prescriber/supplemental records (including raw JAHIS/payload on the detail boundary) remain unchanged and
+    covered. No field/log/audit payload was added. Human review should confirm response nesting/consumer parity only.
+    Codex alone implemented and verified the slice; no subagent, agmsg, Claude, Oracle or external worker was used.
+  - validation:
+    Baseline focused Vitest passed 3 files / 45 tests; final passed 3 files / 47 tests. Exact ESLint, Prettier,
+    `api-response-shape:check` (23 allowlisted / 0 new), route-auth, frontend-contract, query-shape, client-PHI-log and
+    `git diff --check` passed. Typegen succeeded; full typecheck remains red only on the pre-existing user-owned
+    `communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that gate is red. No DB/migration,
+    production operation, external send, deploy, push or destructive action ran.
+  - shared-tree / Plans / UI / remaining:
+    `API-CONTRACT-001EN` is DONE; parent remains Partial at 23 violations. Browser/image generation were omitted because
+    JSON nesting changes no visual UI. Preserve unowned config/harness/inbound, newly appeared offline-sync page/test,
+    and all recorded untracked artifact families. PATCH success is a separate mutation slice after consumer audit.
+
 - codex: set-audit idempotent replay envelope convergence.
   - commit:
     `8dd18f3be fix(API-CONTRACT-001EM): envelope set-audit replay result`.
