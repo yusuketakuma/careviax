@@ -985,7 +985,7 @@ async function authenticatedDELETE(
     payload: { source: 'visit_schedules_delete', schedule_id: id },
   });
 
-  return success(schedule.schedule);
+  return success({ data: schedule.schedule });
 }
 
 export async function DELETE(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

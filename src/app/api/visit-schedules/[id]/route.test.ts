@@ -2432,6 +2432,10 @@ describe('/api/visit-schedules/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({ data: { id: 'schedule_1' } });
+    expect(responseBody).not.toHaveProperty('id');
+    expect(responseBody).not.toHaveProperty('schedule_status');
     expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
