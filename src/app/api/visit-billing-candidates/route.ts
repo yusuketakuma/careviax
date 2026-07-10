@@ -225,8 +225,12 @@ const authenticatedGET = withAuthContext(
     const page = buildCursorPage(rows, limit, (row) => row.id);
     return withSensitiveNoStore(
       success({
-        ...page,
         data: page.data.map(toSafeVisitBillingCandidate),
+        meta: {
+          limit,
+          has_more: page.hasMore,
+          next_cursor: page.nextCursor ?? null,
+        },
       }),
     );
   },

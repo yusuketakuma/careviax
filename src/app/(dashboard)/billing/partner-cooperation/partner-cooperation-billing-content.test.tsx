@@ -179,7 +179,7 @@ describe('PartnerCooperationBillingContent', () => {
                   },
                 },
               ],
-              hasMore: false,
+              meta: { limit: 20, has_more: false, next_cursor: null },
             }),
             { status: 200 },
           );
@@ -466,7 +466,7 @@ describe('PartnerCooperationBillingContent', () => {
                 },
               },
             ],
-            hasMore: false,
+            meta: { limit: 20, has_more: false, next_cursor: null },
           }),
           { status: 200 },
         );
@@ -481,7 +481,7 @@ describe('PartnerCooperationBillingContent', () => {
     expect(screen.queryByText('candidate_1')).toBeNull();
   });
 
-  it('shows the billing error state when a valid candidate list omits hasMore', async () => {
+  it('shows the billing error state when a valid candidate list omits cursor metadata', async () => {
     const originalFetch = vi.mocked(fetch).getMockImplementation();
     expect(originalFetch).toBeTruthy();
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {

@@ -103,6 +103,21 @@ describe('/api/visit-billing-candidates GET', () => {
     );
   });
 
+  it('returns the standard data and cursor meta envelope', async () => {
+    const response = await GET(createGetRequest('?limit=20'));
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      data: [],
+      meta: {
+        limit: 20,
+        has_more: false,
+        next_cursor: null,
+      },
+    });
+  });
+
   it.each([
     ['status', '?billing_month=2026-06-01&status=', { status: ['ステータスを指定してください'] }],
     [

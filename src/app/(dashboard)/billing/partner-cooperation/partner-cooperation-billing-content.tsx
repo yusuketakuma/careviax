@@ -28,11 +28,7 @@ import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-import {
-  apiDataSchema,
-  cursorPaginatedPageSchema,
-  type CursorPaginatedPage,
-} from '@/lib/api/response-schemas';
+import { apiDataSchema } from '@/lib/api/response-schemas';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { formatYen } from '@/lib/format/currency';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -247,7 +243,24 @@ const candidateGenerationResultSchema = z.object({
 });
 
 const activeContractsResponseSchema = apiDataSchema(z.array(pharmacyCooperationContractRowSchema));
-const billingCandidatesResponseSchema = cursorPaginatedPageSchema(visitBillingCandidateRowSchema);
+const billingCandidatesResponseSchema = z
+  .object({
+    data: z.array(visitBillingCandidateRowSchema),
+    meta: z.object({
+      limit: z.number().int().min(1).max(100),
+      has_more: z.boolean(),
+      next_cursor: z.string().trim().min(1).nullable(),
+    }),
+  })
+  .superRefine((value, ctx) => {
+    if (value.meta.has_more && !value.meta.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor is required when has_more is true',
+      });
+    }
+  });
 const pharmacyInvoicesResponseSchema = apiDataSchema(z.array(pharmacyInvoiceRowSchema));
 const pharmacyInvoiceTransitionResponseSchema = apiDataSchema(
   pharmacyInvoiceTransitionResultSchema,
@@ -335,7 +348,10 @@ async function fetchCandidates(orgId: string, billingMonth: string) {
     `/api/visit-billing-candidates?billing_month=${encodeURIComponent(billingMonth)}&limit=20`,
     { headers: buildOrgHeaders(orgId) },
   );
-  const json = await readApiJson<CursorPaginatedPage<VisitBillingCandidateRow>>(response, {
+  const json = await readApiJson<{
+    data: VisitBillingCandidateRow[];
+    meta: { limit: number; has_more: boolean; next_cursor: string | null };
+  }>(response, {
     fallbackMessage: '請求候補の取得に失敗しました',
     schema: billingCandidatesResponseSchema,
   });
