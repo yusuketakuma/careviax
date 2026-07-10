@@ -1,41 +1,26 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import {
-  CURSOR_PAGINATION_PAGE_LIMIT,
-  fetchAllCursorPages,
-  fetchAllMetaCursorPages,
-} from './cursor-pagination-client';
+import { CURSOR_PAGINATION_PAGE_LIMIT, fetchAllCursorPages } from './cursor-pagination-client';
 import { jsonResponse } from '@/test/fetch-test-utils';
 
 describe('cursor-pagination-client', () => {
-  it('follows nextCursor and preserves first-page metadata', async () => {
+  it('follows meta.next_cursor and aggregates current cursor pages', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
         jsonResponse({
           data: [{ id: 'row_1' }],
-          hasMore: true,
-          nextCursor: 'cursor_1',
-          deliverySummary: { pending_delivery_count: 2 },
+          meta: { limit: 1, has_more: true, next_cursor: 'cursor_1' },
         }),
       )
       .mockResolvedValueOnce(
         jsonResponse({
           data: [{ id: 'row_2' }],
-          hasMore: false,
-          deliverySummary: { pending_delivery_count: 99 },
+          meta: { limit: 1, has_more: false, next_cursor: null },
         }),
       );
 
-    const payload = await fetchAllCursorPages<
-      { id: string },
-      {
-        data: Array<{ id: string }>;
-        hasMore: boolean;
-        nextCursor?: string;
-        deliverySummary: { pending_delivery_count: number };
-      }
-    >({
+    const payload = await fetchAllCursorPages<{ id: string }>({
       path: '/api/example',
       errorMessage: 'failed',
       fetchImpl,
@@ -43,8 +28,8 @@ describe('cursor-pagination-client', () => {
     });
 
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[1][0]).toBe('/api/example?limit=1&cursor=cursor_1');
     expect(payload.data).toEqual([{ id: 'row_1' }, { id: 'row_2' }]);
-    expect(payload.deliverySummary.pending_delivery_count).toBe(2);
     expect(payload.hasMore).toBe(false);
     expect(payload.nextCursor).toBeUndefined();
   });
@@ -53,7 +38,7 @@ describe('cursor-pagination-client', () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         data: [],
-        hasMore: false,
+        meta: { has_more: false, next_cursor: null },
       }),
     );
 
@@ -74,7 +59,7 @@ describe('cursor-pagination-client', () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         data: [],
-        hasMore: false,
+        meta: { has_more: false, next_cursor: null },
       }),
     );
 
@@ -92,8 +77,7 @@ describe('cursor-pagination-client', () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         data: { id: 'not-array' },
-        hasMore: true,
-        nextCursor: 123,
+        meta: { has_more: true, next_cursor: 'cursor_1' },
       }),
     );
 
@@ -106,11 +90,11 @@ describe('cursor-pagination-client', () => {
     ).rejects.toThrow('failed');
   });
 
-  it('throws instead of truncating when a page reports hasMore without a next cursor', async () => {
+  it('throws instead of truncating when a page reports has_more without a next cursor', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         data: [{ id: 'row_1' }],
-        hasMore: true,
+        meta: { has_more: true, next_cursor: null },
       }),
     );
 
@@ -127,8 +111,7 @@ describe('cursor-pagination-client', () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         data: [{ id: 123 }],
-        hasMore: false,
-        deliverySummary: { pending_delivery_count: 2 },
+        meta: { has_more: false, next_cursor: null },
       }),
     );
 
@@ -162,7 +145,7 @@ describe('cursor-pagination-client', () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         data: [{ id: 'row_1' }],
-        hasMore: false,
+        meta: { has_more: false, next_cursor: null },
       }),
     );
 
@@ -183,15 +166,13 @@ describe('cursor-pagination-client', () => {
       .mockResolvedValueOnce(
         jsonResponse({
           data: [{ id: 'row_1' }],
-          hasMore: true,
-          nextCursor: 'cursor_1',
+          meta: { has_more: true, next_cursor: 'cursor_1' },
         }),
       )
       .mockResolvedValueOnce(
         jsonResponse({
           data: [{ id: 'row_2' }],
-          hasMore: true,
-          nextCursor: 'cursor_2',
+          meta: { has_more: true, next_cursor: 'cursor_2' },
         }),
       );
 
@@ -209,56 +190,37 @@ describe('cursor-pagination-client', () => {
     expect(payload.nextCursor).toBe('cursor_2');
   });
 
-  it('follows meta next_cursor for current data/meta cursor pages', async () => {
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        jsonResponse({
-          data: [{ id: 'row_1' }],
-          meta: {
-            has_more: true,
-            next_cursor: 'cursor_1',
-          },
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          data: [{ id: 'row_2' }],
-          meta: {
-            has_more: false,
-            next_cursor: null,
-          },
-        }),
-      );
-
-    const payload = await fetchAllMetaCursorPages<{ id: string }>({
-      path: '/api/example',
-      errorMessage: 'failed',
-      fetchImpl,
-      limit: 1,
-    });
-
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(fetchImpl.mock.calls[1][0]).toBe('/api/example?limit=1&cursor=cursor_1');
-    expect(payload).toEqual({
-      data: [{ id: 'row_1' }, { id: 'row_2' }],
-      hasMore: false,
-    });
-  });
-
-  it('rejects meta cursor pages that report has_more without next_cursor', async () => {
+  it('rejects meta cursor pages that expose next_cursor when has_more is false', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         data: [{ id: 'row_1' }],
         meta: {
-          has_more: true,
-          next_cursor: null,
+          has_more: false,
+          next_cursor: 'cursor_1',
         },
       }),
     );
 
     await expect(
-      fetchAllMetaCursorPages({
+      fetchAllCursorPages({
+        path: '/api/example',
+        errorMessage: 'failed',
+        fetchImpl,
+      }),
+    ).rejects.toThrow('failed');
+  });
+
+  it('rejects legacy root cursor fields for meta cursor consumers', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: [{ id: 'row_1' }],
+        hasMore: false,
+        nextCursor: null,
+      }),
+    );
+
+    await expect(
+      fetchAllCursorPages({
         path: '/api/example',
         errorMessage: 'failed',
         fetchImpl,

@@ -971,8 +971,10 @@ async function authenticatedGET(req: NextRequest) {
     return withSensitiveNoStore(
       success({
         data,
-        hasMore: page.hasMore,
-        nextCursor: page.nextCursor,
+        meta: {
+          has_more: page.hasMore,
+          next_cursor: page.nextCursor ?? null,
+        },
       }),
     );
   });

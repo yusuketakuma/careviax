@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -549,6 +550,28 @@ describe('PharmacistCredentialsContent', () => {
     });
   });
 
+  it('rejects a legacy successful credential save without closing the form', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: '資格情報を登録しました' }), { status: 201 }),
+      ),
+    );
+    render(<PharmacistCredentialsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '資格を登録' }));
+    fireEvent.change(screen.getByLabelText('対象スタッフ'), { target: { value: 'user_1' } });
+    fireEvent.change(screen.getByLabelText('認定種別'), { target: { value: '研修認定' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('保存に失敗しました');
+    });
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: '資格情報を登録' })).toBeTruthy();
+  });
+
   it('update (PATCH) encodes a hostile credential id via the shared path helper', async () => {
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
       if (queryKey[0] === 'pharmacist-credentials') {
@@ -646,6 +669,25 @@ describe('PharmacistCredentialsContent', () => {
       );
     });
     expect(buildPharmacistCredentialApiPath).toHaveBeenCalledWith('credential/a b?x#y');
+  });
+
+  it('rejects a legacy successful credential deletion', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: '資格情報を削除しました' }), { status: 200 }),
+      ),
+    );
+    render(<PharmacistCredentialsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎 の 研修認定 を失効' }));
+    fireEvent.click(screen.getByRole('button', { name: '失効する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('削除に失敗しました');
+    });
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
   });
 
   it('DELETE with a dot-segment credential id fails closed before any DELETE fetch', async () => {

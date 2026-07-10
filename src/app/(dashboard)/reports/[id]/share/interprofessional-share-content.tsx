@@ -12,7 +12,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Skeleton } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiJson, type ApiJsonSchema } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -20,6 +20,10 @@ import {
   buildCommunicationRequestApiPath,
   buildCommunicationRequestsApiPath,
 } from '@/lib/communications/api-paths';
+import {
+  createCommunicationRequestResponseSchema,
+  type CreateCommunicationRequestResponse,
+} from '@/lib/communications/response-schemas';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -78,13 +82,6 @@ type ShareReplyDetail = {
   }>;
 };
 
-type CreateCommunicationRequestResponse = {
-  data?: {
-    id?: string;
-    status?: string;
-  };
-};
-
 const FOLLOWUP_TASK_FAILURE_MESSAGE = '次回タスクの作成に失敗しました。もう一度お試しください。';
 const FOLLOWUP_TASK_CONFLICT_MESSAGE =
   '次回タスクは既に作成されている可能性があります。タスク一覧を確認してください。';
@@ -105,11 +102,12 @@ class ShareMutationResponseError extends Error {
 async function readShareMutationResponse<T>(
   response: Response,
   fallbackMessage: string,
+  schema?: ApiJsonSchema<T>,
 ): Promise<T> {
   if (!response.ok) {
     throw new ShareMutationResponseError(response.status, fallbackMessage);
   }
-  return readApiJson<T>(response, fallbackMessage);
+  return readApiJson<T>(response, { fallbackMessage, schema });
 }
 
 function getShareMutationResponseStatus(error: unknown): number | null {
@@ -448,17 +446,15 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       return readShareMutationResponse<CreateCommunicationRequestResponse>(
         res,
         REPLY_REQUEST_FAILURE_MESSAGE,
+        createCommunicationRequestResponseSchema,
       );
     },
-    onSuccess: async (result?: CreateCommunicationRequestResponse) => {
+    onSuccess: async (result: CreateCommunicationRequestResponse) => {
       setCreatedRequestAudiences((prev) => [...prev, audience]);
-      const createdRequestId = result?.data?.id?.trim();
-      if (createdRequestId) {
-        setCreatedRequestIdsByAudience((prev) => ({
-          ...prev,
-          [audience]: createdRequestId,
-        }));
-      }
+      setCreatedRequestIdsByAudience((prev) => ({
+        ...prev,
+        [audience]: result.data.id,
+      }));
       toast.success('返信依頼を起票しました');
       await queryClient.invalidateQueries({
         queryKey: ['communication-requests', 'care_report', reportId, orgId],

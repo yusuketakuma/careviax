@@ -521,7 +521,6 @@ describe('BillingRulesPage', () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          message: 'legacy root delete message must not be required',
           data: { id: ruleId },
         }),
         { status: 200 },
@@ -540,6 +539,23 @@ describe('BillingRulesPage', () => {
         method: 'DELETE',
       },
     );
+  });
+
+  it('rejects a mixed-root successful billing rule deletion response', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: { id: 'rule_1' },
+          message: 'legacy root delete message must not be accepted',
+        }),
+        { status: 200 },
+      ),
+    );
+    render(<BillingRulesPage />);
+
+    await expect(
+      mutationFnAt(3)({ id: 'rule_1', updated_at: '2026-06-19T00:00:00.000Z' }),
+    ).rejects.toThrow('Failed to delete billing rule');
   });
 
   it('keeps server messages and fallbacks for billing rule deletion failures', async () => {

@@ -168,7 +168,9 @@ describe('/api/admin/facilities GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: [
         expect.objectContaining({
           id: 'facility_1',
@@ -179,12 +181,15 @@ describe('/api/admin/facilities GET', () => {
           contacts: [expect.objectContaining({ name: '施設担当' })],
         }),
       ],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'facilities',
-      filters_applied: { q: null },
+      meta: {
+        has_more: false,
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'facilities',
+        filters_applied: { q: null },
+      },
     });
   });
 
@@ -305,14 +310,16 @@ describe('/api/admin/facilities GET', () => {
           patient_count: 1,
         },
       ],
-      hasMore: true,
-      total_count: 3,
-      visible_count: 2,
-      hidden_count: 1,
-      truncated: true,
-      count_basis: 'facilities',
-      filters_applied: { q: 'あおば' },
-      limit: 2,
+      meta: {
+        has_more: true,
+        total_count: 3,
+        visible_count: 2,
+        hidden_count: 1,
+        truncated: true,
+        count_basis: 'facilities',
+        filters_applied: { q: 'あおば' },
+        limit: 2,
+      },
     });
     expect(body.data[0]).not.toHaveProperty('contacts');
     expect(body.data[0]).not.toHaveProperty('phone');

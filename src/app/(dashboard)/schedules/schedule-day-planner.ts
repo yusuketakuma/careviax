@@ -12,6 +12,7 @@ import { normalizeVehicleResourceSelectValue, toDateKey } from './day-view.share
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
+import { visitScheduleProposalGenerationResponseSchema } from '@/types/api/visit-schedule-proposals';
 
 export type ScheduleDayRouteTravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
 
@@ -30,6 +31,11 @@ export type ScheduleDayProposalGenerationResult = {
   data: Proposal[];
   alerts?: BillingRequirementAlert[];
 };
+
+const scheduleDayProposalGenerationResponseSchema = visitScheduleProposalGenerationResponseSchema<
+  Proposal,
+  BillingRequirementAlert
+>();
 
 export type ScheduleDayPharmacistLookup = {
   pharmacistNameById: Map<string, string>;
@@ -441,7 +447,10 @@ export async function generateScheduleDayProposals({
     ),
   });
 
-  return readApiJson<ScheduleDayProposalGenerationResult>(res, '候補生成に失敗しました');
+  return readApiJson<ScheduleDayProposalGenerationResult>(res, {
+    fallbackMessage: '候補生成に失敗しました',
+    schema: scheduleDayProposalGenerationResponseSchema,
+  });
 }
 
 export function getScheduleDayProposalWarningDescription(

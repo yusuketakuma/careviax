@@ -129,16 +129,18 @@ describe('/api/facilities', () => {
           patient_count: 5,
         },
       ],
-      hasMore: false,
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'facilities',
-      filters_applied: {
-        q: 'テスト',
+      meta: {
+        has_more: false,
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'facilities',
+        filters_applied: {
+          q: 'テスト',
+        },
+        limit: 8,
       },
-      limit: 8,
     });
     expect(body.data[0]).not.toHaveProperty('contacts');
     expect(body.data[0]).not.toHaveProperty('phone');

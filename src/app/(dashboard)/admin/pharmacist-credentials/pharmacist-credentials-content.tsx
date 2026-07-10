@@ -34,7 +34,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -336,7 +336,7 @@ export function PharmacistCredentialsContent() {
           weekly_work_hours: toNullableNumberText(currentForm.weekly_work_hours),
         }),
       });
-      await readApiJson<unknown>(response, '保存に失敗しました');
+      await readApiAcknowledgement(response, '保存に失敗しました');
       return { wasEditing };
     },
     onSuccess: async ({ wasEditing }) => {
@@ -358,7 +358,7 @@ export function PharmacistCredentialsContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      await readApiJson<unknown>(response, '削除に失敗しました');
+      await readApiAcknowledgement(response, '削除に失敗しました');
     },
     onSuccess: async () => {
       toast.success('資格情報を削除しました');

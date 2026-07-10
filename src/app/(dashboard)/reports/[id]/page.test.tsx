@@ -1262,6 +1262,57 @@ describe('ReportDetailPage send safety dialog', () => {
     ).rejects.toThrow('一括送付は締切済みです');
   });
 
+  it('rejects legacy successful report detail mutation responses', async () => {
+    const mutationConfigs: Array<MutationConfig> = [];
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: sendMutateMock,
+        isPending: false,
+      };
+    });
+    useQueryMock.mockImplementation((options: QueryConfig) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      return { data: { data: { ...mockReport(), status: 'draft' } }, isLoading: false };
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    );
+
+    render(<ReportDetailPage />);
+
+    await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(
+      '薬剤師確認の保存に失敗しました',
+    );
+    await expect(
+      mutationConfigs[1]?.mutationFn?.({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        expected_updated_at: '2026-05-12T00:00:00.000Z',
+        safety_ack: true,
+      }),
+    ).rejects.toThrow('送付に失敗しました');
+    await expect(
+      mutationConfigs[2]?.mutationFn?.({
+        recipients: [
+          {
+            channel: 'fax',
+            recipient_name: '青葉内科',
+            recipient_contact: '03-1111-1111',
+            recipient_role: 'physician',
+          },
+        ],
+        expected_updated_at: '2026-05-12T00:00:00.000Z',
+        safety_ack: true,
+      }),
+    ).rejects.toThrow('一括送付に失敗しました');
+  });
+
   it('keeps report mutation server messages and uses operation fallbacks for non-Error failures', () => {
     const mutationConfigs: Array<MutationConfig> = [];
     useMutationMock.mockImplementation((config: MutationConfig) => {

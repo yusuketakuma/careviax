@@ -370,6 +370,34 @@ describe('JobsDashboardContent', () => {
     });
   });
 
+  it('rejects a legacy successful job rerun response', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ message: 'ジョブを再実行しました' }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      data: { data: [] },
+      refetch: vi.fn(),
+    });
+
+    render(<JobsDashboardContent />);
+
+    const mutationOptions = useMutationMock.mock.calls.at(-1)?.[0] as
+      | {
+          mutationFn: (args: { endpoint: string; jobType: string }) => Promise<string>;
+        }
+      | undefined;
+
+    await expect(
+      mutationOptions?.mutationFn({
+        endpoint: '/api/jobs/monthly',
+        jobType: 'monthly',
+      }),
+    ).rejects.toThrow('ジョブ "monthly" の再実行に失敗しました');
+  });
+
   it('keeps server messages and fallback copy when rerunning jobs fails', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

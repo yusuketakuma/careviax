@@ -6,6 +6,7 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { Plus, Trash2 } from 'lucide-react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -30,7 +31,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -81,10 +82,18 @@ export type Facility = {
 
 type FacilitiesResponse = {
   data: Facility[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
+  meta: {
+    has_more: boolean;
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    count_basis: 'facilities';
+    filters_applied: {
+      q: string | null;
+    };
+    limit?: number;
+  };
 };
 
 export type FacilityUnit = {
@@ -150,6 +159,35 @@ const FACILITY_TYPES: Array<{ value: FacilityType; label: string }> = [
   { value: 'home', label: '居宅' },
   { value: 'other', label: 'その他' },
 ];
+
+const facilitySchema = z.custom<Facility>((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item.id === 'string' &&
+    typeof item.name === 'string' &&
+    typeof item.facility_type === 'string' &&
+    FACILITY_TYPES.some((option) => option.value === item.facility_type)
+  );
+});
+
+const facilitiesResponseSchema: z.ZodType<FacilitiesResponse> = z
+  .object({
+    data: z.array(facilitySchema),
+    meta: z
+      .object({
+        has_more: z.boolean(),
+        total_count: z.number().int().nonnegative(),
+        visible_count: z.number().int().nonnegative(),
+        hidden_count: z.number().int().nonnegative(),
+        truncated: z.boolean(),
+        count_basis: z.literal('facilities'),
+        filters_applied: z.object({ q: z.string().nullable() }).strict(),
+        limit: z.number().int().positive().optional(),
+      })
+      .strict(),
+  })
+  .strict();
 
 const WEEKDAYS = [
   { value: 0, label: '日' },
@@ -457,7 +495,10 @@ export function FacilitiesContent() {
       const response = await fetch(buildAdminFacilitiesApiPath(new URLSearchParams()), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<FacilitiesResponse>(response, '施設マスターの取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '施設マスターの取得に失敗しました',
+        schema: facilitiesResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -482,8 +523,8 @@ export function FacilitiesContent() {
   const form = normalizeFacilityForm(watchedFacilityForm);
   const formBlocker = getFormBlocker(form, editingFacility);
   const unitFormBlocker = getUnitFormBlocker(unitForm);
-  const totalCount = data?.total_count ?? facilities.length;
-  const hiddenCount = data?.hidden_count ?? 0;
+  const totalCount = data?.meta.total_count ?? facilities.length;
+  const hiddenCount = data?.meta.hidden_count ?? 0;
 
   function getCurrentFacilityForm() {
     return normalizeFacilityForm(getFacilityFormValues());
@@ -555,7 +596,7 @@ export function FacilitiesContent() {
             : buildCreatePayload(currentForm),
         ),
       });
-      return readApiJson<unknown>(response, '保存に失敗しました');
+      return readApiAcknowledgement(response, '保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success(editingFacility ? '施設マスターを更新しました' : '施設を登録しました');
@@ -577,7 +618,7 @@ export function FacilitiesContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<unknown>(response, '削除に失敗しました');
+      return readApiAcknowledgement(response, '削除に失敗しました');
     },
     onSuccess: async () => {
       toast.success('施設マスターを削除しました');
@@ -604,7 +645,7 @@ export function FacilitiesContent() {
           editingUnitId ? buildUpdateUnitPayload(unitForm) : buildCreateUnitPayload(unitForm),
         ),
       });
-      return readApiJson<unknown>(response, 'ユニット保存に失敗しました');
+      return readApiAcknowledgement(response, 'ユニット保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success(editingUnitId ? 'ユニットを更新しました' : 'ユニットを登録しました');
@@ -626,7 +667,7 @@ export function FacilitiesContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<unknown>(response, 'ユニット削除に失敗しました');
+      return readApiAcknowledgement(response, 'ユニット削除に失敗しました');
     },
     onSuccess: async () => {
       toast.success('ユニットを削除しました');
@@ -803,7 +844,7 @@ export function FacilitiesContent() {
             <StateBadge role={hiddenCount > 0 ? 'confirm' : 'done'}>
               表示 {filteredFacilities.length}件
             </StateBadge>
-            {hiddenCount > 0 || data?.truncated ? (
+            {hiddenCount > 0 || data?.meta.truncated ? (
               <StateBadge role="confirm">非表示 {hiddenCount}件</StateBadge>
             ) : null}
           </div>

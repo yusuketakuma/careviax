@@ -51,7 +51,7 @@ import {
   roleRequiresSite,
   type ManageableMemberRole,
 } from '@/lib/auth/member-roles';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
@@ -481,9 +481,7 @@ export function ShiftsContent() {
               note: shift.note || undefined,
             }),
           });
-          if (!res.ok) {
-            await readApiJson<unknown>(res, 'シフト保存に失敗しました');
-          }
+          await readApiAcknowledgement(res, 'シフト保存に失敗しました');
         }),
       );
 
@@ -513,7 +511,7 @@ export function ShiftsContent() {
           site_id: holidayForm.site_scope === 'site' ? holidayForm.site_id || undefined : undefined,
         }),
       });
-      return readApiJson(res, '休日設定の保存に失敗しました');
+      return readApiAcknowledgement(res, '休日設定の保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success('休日設定を追加しました');
@@ -546,7 +544,7 @@ export function ShiftsContent() {
               : undefined,
         }),
       });
-      return readApiJson(res, '休日設定の更新に失敗しました');
+      return readApiAcknowledgement(res, '休日設定の更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('休日設定を更新しました');
@@ -564,9 +562,7 @@ export function ShiftsContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) {
-        await readApiJson<unknown>(res, '休日設定の削除に失敗しました');
-      }
+      await readApiAcknowledgement(res, '休日設定の削除に失敗しました');
       return holiday;
     },
     onSuccess: async (holiday) => {
@@ -595,7 +591,7 @@ export function ShiftsContent() {
           coverage_area: parseListInput(pharmacistForm.coverage_area),
         }),
       });
-      return readApiJson(res, 'メンバー登録に失敗しました');
+      return readApiAcknowledgement(res, 'メンバー登録に失敗しました');
     },
     onSuccess: async () => {
       toast.success('メンバーを登録しました');
@@ -643,7 +639,7 @@ export function ShiftsContent() {
           coverage_area: parseListInput(pharmacistForm.coverage_area),
         }),
       });
-      return readApiJson(res, 'メンバー更新に失敗しました');
+      return readApiAcknowledgement(res, 'メンバー更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('メンバー情報を更新しました');
@@ -671,9 +667,7 @@ export function ShiftsContent() {
             : { action: target.action },
         ),
       });
-      if (!res.ok) {
-        await readApiJson<unknown>(res, '薬剤師状態の更新に失敗しました');
-      }
+      await readApiAcknowledgement(res, '薬剤師状態の更新に失敗しました');
       return target;
     },
     onSuccess: async (target) => {
@@ -757,7 +751,7 @@ export function ShiftsContent() {
           note: effectiveTemplateForm.note || undefined,
         }),
       });
-      return readApiJson(res, '定型シフトの保存に失敗しました');
+      return readApiAcknowledgement(res, '定型シフトの保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success(editingTemplateId ? '定型シフトを更新しました' : '定型シフトを登録しました');
@@ -775,9 +769,7 @@ export function ShiftsContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      if (!res.ok) {
-        await readApiJson<unknown>(res, '定型シフトの削除に失敗しました');
-      }
+      await readApiAcknowledgement(res, '定型シフトの削除に失敗しました');
       return template;
     },
     onSuccess: async (template) => {

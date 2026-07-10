@@ -237,7 +237,10 @@ function stubFetch(
       return new Response(JSON.stringify({ data: COCKPIT }), { status: 200 });
     }
     if (url.includes('/api/tasks')) {
-      return new Response(JSON.stringify({ data: handoffTasks }), { status: 200 });
+      return new Response(
+        JSON.stringify({ data: handoffTasks, meta: { has_more: false, next_cursor: null } }),
+        { status: 200 },
+      );
     }
     if (url.includes('/api/comments/recent')) {
       if (recentCommentsStatus !== 200) {
@@ -282,13 +285,15 @@ function stubFetch(
               confirmed_at: null,
               extracted_at: '2026-06-11T00:00:00.000Z',
             },
-            visit_record_version: 7,
-            visit_record_updated_at: '2026-06-11T00:00:00.000Z',
-            confirmation_policy: {
-              can_confirm: true,
-              requires_override_reason: false,
-              authorized_basis: 'assigned_schedule',
-              override_reason_max_length: 500,
+            meta: {
+              visit_record_version: 7,
+              visit_record_updated_at: '2026-06-11T00:00:00.000Z',
+              confirmation_policy: {
+                can_confirm: true,
+                requires_override_reason: false,
+                authorized_basis: 'assigned_schedule',
+                override_reason_max_length: 500,
+              },
             },
           },
         ),
@@ -380,13 +385,15 @@ describe('HandoffWorkspace', () => {
           confirmed_at: null,
           extracted_at: '2026-06-11T00:00:00.000Z',
         },
-        visit_record_version: 7,
-        visit_record_updated_at: '2026-06-11T00:00:00.000Z',
-        confirmation_policy: {
-          can_confirm: true,
-          requires_override_reason: false,
-          authorized_basis: 'assigned_schedule',
-          override_reason_max_length: 500,
+        meta: {
+          visit_record_version: 7,
+          visit_record_updated_at: '2026-06-11T00:00:00.000Z',
+          confirmation_policy: {
+            can_confirm: true,
+            requires_override_reason: false,
+            authorized_basis: 'assigned_schedule',
+            override_reason_max_length: 500,
+          },
         },
       }),
     );
@@ -394,9 +401,37 @@ describe('HandoffWorkspace', () => {
 
     await expect(fetchVisitHandoff('org_1', 'visit_record_1')).resolves.toMatchObject({
       data: { next_check_items: ['残薬を確認'] },
-      visit_record_version: 7,
-      confirmation_policy: { can_confirm: true },
+      meta: {
+        visit_record_version: 7,
+        confirmation_policy: { can_confirm: true },
+      },
     });
+  });
+
+  it('rejects legacy root metadata from the visit handoff response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async () =>
+        jsonResponse({
+          data: {
+            next_check_items: ['残薬を確認'],
+            ongoing_monitoring: ['眠気'],
+            decision_rationale: '訪問時に眠気の訴えあり',
+            ai_extracted: true,
+            ai_confidence: 0.88,
+            confirmed_by: null,
+            confirmed_at: null,
+            extracted_at: '2026-06-11T00:00:00.000Z',
+          },
+          visit_record_version: 7,
+          confirmation_policy: { can_confirm: true },
+        }),
+      ),
+    );
+
+    await expect(fetchVisitHandoff('org_1', 'visit_record_1')).rejects.toThrow(
+      '訪問申し送りの取得に失敗しました',
+    );
   });
 
   it('renders 私が渡した cards with status badges, 3-point summaries and rule bar', async () => {
@@ -511,21 +546,23 @@ describe('HandoffWorkspace', () => {
           confirmed_at: null,
           extracted_at: '2026-06-11T00:00:00.000Z',
         },
-        visit_record_version: 7,
-        visit_record_updated_at: '2026-06-11T00:00:00.000Z',
-        confirmation_policy: {
-          can_confirm: false,
-          requires_override_reason: true,
-          authorized_basis: 'admin_emergency_override',
-          override_reason_max_length: 500,
-          override_reason_code_required: false,
-          override_reason_codes: [
-            {
-              code: 'assignee_unavailable',
-              label: '担当者不在',
-              description: '担当者が確認できないため、管理者が代行確認する',
-            },
-          ],
+        meta: {
+          visit_record_version: 7,
+          visit_record_updated_at: '2026-06-11T00:00:00.000Z',
+          confirmation_policy: {
+            can_confirm: false,
+            requires_override_reason: true,
+            authorized_basis: 'admin_emergency_override',
+            override_reason_max_length: 500,
+            override_reason_code_required: false,
+            override_reason_codes: [
+              {
+                code: 'assignee_unavailable',
+                label: '担当者不在',
+                description: '担当者が確認できないため、管理者が代行確認する',
+              },
+            ],
+          },
         },
       },
     });
@@ -577,17 +614,19 @@ describe('HandoffWorkspace', () => {
           confirmed_at: null,
           extracted_at: '2026-06-11T00:00:00.000Z',
         },
-        visit_record_version: 7,
-        visit_record_updated_at: '2026-06-11T00:00:00.000Z',
-        confirmation_policy: {
-          can_confirm: false,
-          requires_override_reason: false,
-          authorized_basis: null,
-          override_reason_max_length: 500,
-          can_request_supervision: true,
-          supervision_required: true,
-          supervision_available: true,
-          supervision_request_note_max_length: 500,
+        meta: {
+          visit_record_version: 7,
+          visit_record_updated_at: '2026-06-11T00:00:00.000Z',
+          confirmation_policy: {
+            can_confirm: false,
+            requires_override_reason: false,
+            authorized_basis: null,
+            override_reason_max_length: 500,
+            can_request_supervision: true,
+            supervision_required: true,
+            supervision_available: true,
+            supervision_request_note_max_length: 500,
+          },
         },
       },
     });
@@ -656,14 +695,16 @@ describe('HandoffWorkspace', () => {
           confirmed_at: null,
           extracted_at: '2026-06-11T00:00:00.000Z',
         },
-        visit_record_version: 7,
-        visit_record_updated_at: '2026-06-11T00:00:00.000Z',
-        confirmation_policy: {
-          can_confirm: false,
-          requires_override_reason: false,
-          authorized_basis: null,
-          override_reason_max_length: 500,
-          can_request_supervision: false,
+        meta: {
+          visit_record_version: 7,
+          visit_record_updated_at: '2026-06-11T00:00:00.000Z',
+          confirmation_policy: {
+            can_confirm: false,
+            requires_override_reason: false,
+            authorized_basis: null,
+            override_reason_max_length: 500,
+            can_request_supervision: false,
+          },
         },
       },
     });
@@ -825,6 +866,26 @@ describe('HandoffWorkspace', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('この仕事は既に渡されています');
     });
+  });
+
+  it('rejects legacy successful transfer responses', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    stubFetch(BOARD, {
+      itemPostFailure: new Response(JSON.stringify({ id: 'legacy_handoff' }), { status: 201 }),
+    });
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
+    });
+    await submitCompleteTransferDraft();
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('仕事を渡せませんでした');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith(
+      '仕事を渡しました。受領確認と根拠が記録されます。',
+    );
   });
 
   it('keeps error envelopes and non-JSON fallbacks when transfer creation fails', async () => {

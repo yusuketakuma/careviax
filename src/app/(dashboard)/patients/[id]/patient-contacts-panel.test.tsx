@@ -35,6 +35,44 @@ setupDomTestEnv();
 
 const EXPECTED_UPDATED_AT = '2026-03-30T09:00:00.000Z';
 
+type ReliabilityWarningFixture = {
+  code: string;
+  severity: 'warning';
+  message: string;
+};
+
+type ContactSaveResponseFixture = {
+  data: unknown[];
+  meta: {
+    warnings: ReliabilityWarningFixture[];
+    contact_readiness: {
+      ready: boolean;
+      detail: string;
+    };
+    duplicate_contacts: ReliabilityWarningFixture[];
+    expected_updated_at: string;
+    version_basis: 'patient_updated_at';
+  };
+};
+
+function contactSaveResponse(
+  warnings: ReliabilityWarningFixture[] = [],
+): ContactSaveResponseFixture {
+  return {
+    data: [],
+    meta: {
+      warnings,
+      contact_readiness: {
+        ready: true,
+        detail: '電話可能な主連絡先または緊急連絡先があります。',
+      },
+      duplicate_contacts: [],
+      expected_updated_at: EXPECTED_UPDATED_AT,
+      version_basis: 'patient_updated_at',
+    },
+  };
+}
+
 describe('PatientContactsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -171,15 +209,15 @@ describe('PatientContactsPanel', () => {
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
     useMutationMock.mockImplementation((config) => ({
       mutate: () =>
-        config.onSuccess?.({
-          warnings: [
+        config.onSuccess?.(
+          contactSaveResponse([
             {
               code: 'PATIENT_CONTACT_UNREADY',
               severity: 'warning',
               message: '訪問前連絡が必要ですが電話可能な連絡先が未確認です。',
             },
-          ],
-        }),
+          ]),
+        ),
       isPending: false,
     }));
 
@@ -216,7 +254,7 @@ describe('PatientContactsPanel', () => {
 
   type CapturedConfig = {
     mutationFn?: () => Promise<unknown>;
-    onSuccess?: (payload: { warnings?: unknown[] }) => Promise<void> | void;
+    onSuccess?: (payload: ContactSaveResponseFixture) => Promise<void> | void;
   };
 
   const sampleContacts = [
@@ -248,7 +286,7 @@ describe('PatientContactsPanel', () => {
       return { mutate: vi.fn(), isPending: false };
     });
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(contactSaveResponse()));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -293,7 +331,7 @@ describe('PatientContactsPanel', () => {
       });
 
       // onSuccess invalidation keeps the RAW patientId; no encoded id leaks into any invalidation key.
-      await savedConfig?.onSuccess?.({});
+      await savedConfig?.onSuccess?.(contactSaveResponse());
       expect(invalidateQueries).toHaveBeenCalledWith({
         queryKey: ['patient-contacts', hostileId, 'org_1'],
       });
@@ -319,7 +357,7 @@ describe('PatientContactsPanel', () => {
       return { mutate: vi.fn(), isPending: false };
     });
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({}));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(contactSaveResponse()));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -345,6 +383,44 @@ describe('PatientContactsPanel', () => {
         headers: buildOrgJsonHeaders('org_1'),
         body: expect.any(String),
       });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('rejects legacy root metadata and warnings in successful save responses', async () => {
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+
+    let savedConfig: CapturedConfig | undefined;
+    useMutationMock.mockImplementation((config: CapturedConfig) => {
+      savedConfig = config;
+      return { mutate: vi.fn(), isPending: false };
+    });
+
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: [],
+        warnings: [],
+        metadata: {
+          expected_updated_at: EXPECTED_UPDATED_AT,
+          version_basis: 'patient_updated_at',
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(
+        <PatientContactsPanel
+          patientId="patient_1"
+          orgId="org_1"
+          initialExpectedUpdatedAt={EXPECTED_UPDATED_AT}
+          initialContacts={sampleContacts}
+        />,
+      );
+
+      await expect(savedConfig?.mutationFn?.()).rejects.toThrow('連絡先の保存に失敗しました');
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

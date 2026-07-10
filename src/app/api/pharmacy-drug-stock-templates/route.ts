@@ -135,7 +135,7 @@ const authenticatedPOST = withAuthContext(
       return created;
     });
 
-    return success({ site, data: template }, 201);
+    return success({ data: template, meta: { site } }, 201);
   },
   { permission: 'canAdmin' },
 );

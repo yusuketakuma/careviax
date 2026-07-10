@@ -205,7 +205,13 @@ const authenticatedGET = withAuthContext(
           ...r,
           patient_name: patientNameById.get(r.patient_id) ?? null,
         }));
-        return success({ data, hasMore: page.hasMore, nextCursor: page.nextCursor });
+        return success({
+          data,
+          meta: {
+            has_more: page.hasMore,
+            next_cursor: page.nextCursor ?? null,
+          },
+        });
       },
       { requestContext: ctx },
     );

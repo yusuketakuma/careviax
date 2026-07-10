@@ -143,55 +143,129 @@ function readFirstArgument(content, openParenIndex) {
   return content.slice(start).trim();
 }
 
-function hasTopLevelDataProperty(objectLiteral) {
+function skipWhitespaceAndComments(content, start) {
+  let index = start;
+  while (index < content.length) {
+    if (/\s/.test(content[index])) {
+      index += 1;
+      continue;
+    }
+    if (content[index] === '/' && content[index + 1] === '/') {
+      index = skipLineComment(content, index);
+      continue;
+    }
+    if (content[index] === '/' && content[index + 1] === '*') {
+      index = skipBlockComment(content, index);
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
+function skipObjectPropertyValue(content, start) {
   let depth = 0;
-  for (let i = 0; i < objectLiteral.length; i += 1) {
-    const char = objectLiteral[i];
-    const next = objectLiteral[i + 1];
+  for (let i = start; i < content.length; i += 1) {
+    const char = content[i];
+    const next = content[i + 1];
     if (char === '"' || char === "'" || char === '`') {
-      i = skipQuoted(objectLiteral, i, char) - 1;
+      i = skipQuoted(content, i, char) - 1;
       continue;
     }
     if (char === '/' && next === '/') {
-      i = skipLineComment(objectLiteral, i) - 1;
+      i = skipLineComment(content, i) - 1;
       continue;
     }
     if (char === '/' && next === '*') {
-      i = skipBlockComment(objectLiteral, i) - 1;
+      i = skipBlockComment(content, i) - 1;
       continue;
     }
-    if (char === '{' || char === '[' || char === '(') {
+    if (char === '(' || char === '{' || char === '[') {
       depth += 1;
       continue;
     }
-    if (char === '}' || char === ']' || char === ')') {
-      depth -= 1;
+    if (char === ')' || char === '}' || char === ']') {
+      if (depth === 0 && char === '}') return i;
+      depth = Math.max(0, depth - 1);
       continue;
     }
-    if (depth === 1 && objectLiteral.slice(i).match(/^data\s*(?:,|:|\})/)) return true;
+    if (char === ',' && depth === 0) return i + 1;
   }
-  return false;
+  return content.length;
 }
 
-function isEnvelopeSuccessArgument(argument) {
-  const trimmed = argument.trim();
-  if (!trimmed.startsWith('{')) return false;
-  return hasTopLevelDataProperty(trimmed);
+function readTopLevelObjectKeys(objectLiteral) {
+  const trimmed = objectLiteral.trim();
+  if (!trimmed.startsWith('{')) return null;
+
+  const keys = [];
+  let index = 1;
+  while (index < trimmed.length) {
+    index = skipWhitespaceAndComments(trimmed, index);
+    if (trimmed[index] === '}') return keys;
+    if (trimmed.slice(index, index + 3) === '...') {
+      keys.push('<spread>');
+      index = skipObjectPropertyValue(trimmed, index + 3);
+      continue;
+    }
+
+    const char = trimmed[index];
+    let key = null;
+    if (char === '"' || char === "'") {
+      const end = skipQuoted(trimmed, index, char);
+      key = trimmed.slice(index + 1, end - 1);
+      index = end;
+    } else {
+      const identifier = trimmed.slice(index).match(/^[A-Za-z_$][A-Za-z0-9_$]*/u);
+      if (identifier) {
+        key = identifier[0];
+        index += key.length;
+      }
+    }
+
+    if (!key) {
+      keys.push('<computed>');
+      index = skipObjectPropertyValue(trimmed, index + 1);
+      continue;
+    }
+    keys.push(key);
+    index = skipObjectPropertyValue(trimmed, index);
+  }
+  return null;
+}
+
+function successEnvelopeViolationReason(argument, helperName) {
+  const keys = readTopLevelObjectKeys(argument);
+  if (!keys) {
+    return helperName === 'success'
+      ? 'success() response is not wrapped in { data, meta? }'
+      : `${helperName}() response is not a static { data, meta? } envelope`;
+  }
+  if (!keys.includes('data')) {
+    return `${helperName}() response is not wrapped in { data, meta? }`;
+  }
+  const unexpectedKeys = [...new Set(keys.filter((key) => key !== 'data' && key !== 'meta'))];
+  if (unexpectedKeys.length > 0) {
+    return `${helperName}() response has non-envelope root keys: ${unexpectedKeys.join(', ')}`;
+  }
+  return null;
 }
 
 function findSuccessShapeViolations(content, file) {
   const violations = [];
-  const pattern = /\bsuccess\s*\(/g;
+  const pattern = /\b(success|successWithMeasuredJsonPayload)\s*\(/g;
   let match;
   while ((match = pattern.exec(content)) !== null) {
+    const helperName = match[1];
     const openParenIndex = content.indexOf('(', match.index);
     const firstArgument = readFirstArgument(content, openParenIndex);
-    if (isEnvelopeSuccessArgument(firstArgument)) continue;
+    const reason = successEnvelopeViolationReason(firstArgument, helperName);
+    if (!reason) continue;
     violations.push({
       path: file,
       line: lineOf(content, match.index),
-      symbol: 'success',
-      reason: 'success() response is not wrapped in { data, meta? }',
+      symbol: helperName,
+      reason,
     });
   }
   return violations;

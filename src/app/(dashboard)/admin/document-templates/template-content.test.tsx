@@ -134,6 +134,12 @@ describe('DocumentTemplateContent', () => {
           });
         }
 
+        if (url === '/api/templates' && init?.method === 'POST') {
+          return new Response(JSON.stringify({ data: { id: 'template_new' } }), {
+            status: 201,
+          });
+        }
+
         return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
       }),
     );
@@ -396,6 +402,33 @@ describe('DocumentTemplateContent', () => {
     });
   });
 
+  it('rejects a legacy successful template save without clearing the draft', async () => {
+    renderContent();
+
+    await screen.findByText('先頭1件を表示 / 他2件');
+    fireEvent.change(screen.getByLabelText('テンプレート名'), {
+      target: { value: '新規テンプレート' },
+    });
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(global.fetch).mockImplementationOnce(
+      async () =>
+        new Response(JSON.stringify({ message: '文書テンプレートを登録しました' }), {
+          status: 201,
+        }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('テンプレートの保存に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('テンプレート名') as HTMLInputElement).value).toBe(
+      '新規テンプレート',
+    );
+  });
+
   it('keeps server delete error messages when template deletion fails', async () => {
     vi.stubGlobal(
       'fetch',
@@ -446,6 +479,30 @@ describe('DocumentTemplateContent', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('文書テンプレートの削除権限がありません');
     });
+  });
+
+  it('rejects a legacy successful template deletion without showing success', async () => {
+    renderContent();
+
+    const [deleteButton] = await screen.findAllByRole('button', {
+      name: '主治医報告 基本 を削除',
+    });
+    fireEvent.click(deleteButton);
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(global.fetch).mockImplementationOnce(
+      async () =>
+        new Response(JSON.stringify({ message: '文書テンプレートを削除しました' }), {
+          status: 200,
+        }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('テンプレートの削除に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('blocks invalid JSON template content without mutating', async () => {

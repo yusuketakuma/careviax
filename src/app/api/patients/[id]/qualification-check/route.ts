@@ -191,7 +191,7 @@ async function authenticatedPOST(
 
     return success({
       data: clientQualificationCheckResult(result, patient),
-      capabilities: adapter.getCapabilities(),
+      meta: { capabilities: adapter.getCapabilities() },
     });
   } catch (cause) {
     if (cause instanceof QualificationCheckAdapterError) {

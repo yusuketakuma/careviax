@@ -171,7 +171,7 @@ describe('/api/qr-scan-drafts GET', () => {
           parsed_data: { patient: { name: '山田 太郎' } },
         },
       ],
-      unmatchedCount: 3,
+      meta: { unmatched_count: 3 },
     });
     expect(qrScanDraftFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -193,7 +193,7 @@ describe('/api/qr-scan-drafts GET', () => {
     expect(qrScanDraftCountMock).not.toHaveBeenCalled();
   });
 
-  it('preserves the top-level cursor page shape', async () => {
+  it('returns cursor metadata in an exact data/meta envelope', async () => {
     qrScanDraftFindManyMock.mockResolvedValueOnce([
       {
         id: 'draft_2',
@@ -221,12 +221,14 @@ describe('/api/qr-scan-drafts GET', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor', 'unmatchedCount']);
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [{ id: 'draft_2' }],
-      hasMore: true,
-      nextCursor: 'draft_2',
-      unmatchedCount: 3,
+      meta: {
+        has_more: true,
+        next_cursor: 'draft_2',
+        unmatched_count: 3,
+      },
     });
     expect(body.data).toHaveLength(1);
     expect(body.data[0]).not.toHaveProperty('raw_qr_texts');
@@ -243,13 +245,15 @@ describe('/api/qr-scan-drafts GET', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'unmatchedCount']);
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [{ id: 'draft_1' }],
-      hasMore: false,
-      unmatchedCount: 3,
+      meta: {
+        has_more: false,
+        next_cursor: null,
+        unmatched_count: 3,
+      },
     });
-    expect(body).not.toHaveProperty('nextCursor');
     expect(body.data).toHaveLength(1);
   });
 

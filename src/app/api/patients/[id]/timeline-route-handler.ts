@@ -255,7 +255,10 @@ function toMovementTimelineResponse(timeline: PatientTimelineData, query: Moveme
   const lastEvent = page.at(-1);
 
   return {
-    movement_events: page,
+    data: {
+      movement_events: page,
+      ...(timeline.partial_failures ? { partial_failures: timeline.partial_failures } : {}),
+    },
     meta: {
       next_cursor: hasMore && lastEvent ? encodeMovementCursor(lastEvent, query.filterHash) : null,
       has_more: hasMore,
@@ -264,7 +267,6 @@ function toMovementTimelineResponse(timeline: PatientTimelineData, query: Moveme
       filters: query.filters,
       window_limit: MOVEMENT_TIMELINE_WINDOW_LIMIT,
     },
-    ...(timeline.partial_failures ? { partial_failures: timeline.partial_failures } : {}),
   };
 }
 
@@ -293,9 +295,11 @@ export function createPatientMovementTimelineGET() {
       // PHI 閲覧監査（3省2GL アクセス記録）。ベストエフォート、await しない。
       recordPhiReadAuditForRequest(ctx, { patientId: id, view: 'patient_movement_timeline' });
 
-      return successWithMeasuredJsonPayload(
-        toMovementTimelineResponse(timeline, movementQuery.value),
-      );
+      const responseData = toMovementTimelineResponse(timeline, movementQuery.value);
+      return successWithMeasuredJsonPayload({
+        data: responseData.data,
+        meta: responseData.meta,
+      });
     },
     {
       permission: 'canVisit',

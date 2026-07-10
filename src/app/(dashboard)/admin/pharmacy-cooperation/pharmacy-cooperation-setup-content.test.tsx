@@ -134,7 +134,7 @@ describe('PharmacyCooperationSetupContent', () => {
                   },
                 },
               ],
-              hasMore: false,
+              meta: { has_more: false, next_cursor: null },
             }),
             { status: 200 },
           );
@@ -152,7 +152,18 @@ describe('PharmacyCooperationSetupContent', () => {
                   is_default: true,
                 },
               ],
-              hasMore: false,
+              meta: {
+                total_count: 1,
+                visible_count: 1,
+                hidden_count: 0,
+                truncated: false,
+                count_basis: 'templates',
+                filters_applied: {
+                  template_type: 'contract_document',
+                  target_role: null,
+                },
+                limit: 100,
+              },
             }),
             { status: 200 },
           );

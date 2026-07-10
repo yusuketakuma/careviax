@@ -45,6 +45,10 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { ResidualMedicationChart } from '@/components/features/patients/residual-medication-chart';
 import { readApiJson } from '@/lib/api/client-json';
+import {
+  medicationIssuesCursorResponseSchema,
+  type MedicationIssueListItem,
+} from '@/types/api/medication-issues';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -70,18 +74,7 @@ type MedicationProfile = {
   created_at: string;
 };
 
-type MedicationIssue = {
-  id: string;
-  patient_id: string;
-  case_id: string | null;
-  title: string;
-  description: string;
-  status: 'open' | 'in_progress' | 'resolved' | 'dismissed';
-  priority: 'critical' | 'high' | 'medium' | 'low';
-  category: 'adherence' | 'side_effect' | 'interaction' | 'duplicate' | 'other' | null;
-  identified_at: string;
-  resolved_at?: string | null;
-};
+type MedicationIssue = MedicationIssueListItem;
 
 type ResidualMedication = {
   id: string;
@@ -728,7 +721,10 @@ export function MedicationsContent({
         `/api/medication-issues?${new URLSearchParams({ patient_id: patientId })}`,
         { headers: buildOrgHeaders(orgId) },
       );
-      return readApiJson<{ data: MedicationIssue[] }>(response, '課題の取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '課題の取得に失敗しました',
+        schema: medicationIssuesCursorResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

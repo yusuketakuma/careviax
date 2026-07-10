@@ -174,7 +174,6 @@ export const GET = withAuthContext(
     const page = buildCursorPage(rows, limit, (row) => row.id);
     return withSensitiveNoStore(
       success({
-        ...page,
         data: page.data.map((row) => ({
           id: row.id,
           contract_id: row.contract_id,
@@ -195,6 +194,10 @@ export const GET = withAuthContext(
           item_count: row._count.items,
           partnership: row.contract.partnership,
         })),
+        meta: {
+          has_more: page.hasMore,
+          next_cursor: page.nextCursor ?? null,
+        },
       }),
     );
   },

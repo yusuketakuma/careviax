@@ -47,9 +47,13 @@ const SUCCESS_DATA = {
         id: 'standard_1',
         standard_type: '在宅患者訪問薬剤管理指導',
         filed_date: '2025-04-01T00:00:00.000Z',
-        requirements_status: 'met',
+        effective_date: '2025-04-01T00:00:00.000Z',
         expiry_date: '2028-03-31T00:00:00.000Z',
+        renewal_alert_date: '2027-12-31T00:00:00.000Z',
+        requirements_status: { staffing: true },
         claim_status: 'claimable',
+        site_id: 'site_1',
+        site_name: '本店',
       },
     ],
     meta: {
@@ -126,6 +130,35 @@ describe('FacilityStandardsContent', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/facility-standards', {
       headers: { 'x-org-id': 'org_1' },
     });
+  });
+
+  it('rejects a mixed-root facility standards response without exposing response details', async () => {
+    const responseDetail = '患者A token=facility-standard-response-secret';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: SUCCESS_DATA.data.data,
+              meta: SUCCESS_DATA.data.meta,
+              patient_name: responseDetail,
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+
+    render(<FacilityStandardsContent />);
+
+    const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
+      | { queryFn: () => Promise<unknown> }
+      | undefined;
+    const error = await queryOptions?.queryFn().catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe('施設基準の取得に失敗しました');
+    expect((error as Error).message).not.toContain(responseDetail);
+    expect((error as Error).message).not.toContain('facility-standard-response-secret');
   });
 
   it('shows hidden counts and avoids whole-list claim judgement when standards are truncated', () => {

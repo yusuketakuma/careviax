@@ -144,7 +144,7 @@ describe('PartnerCooperationBillingContent', () => {
                   },
                 },
               ],
-              hasMore: false,
+              meta: { has_more: false, next_cursor: null },
             }),
             { status: 200 },
           );
@@ -188,6 +188,7 @@ describe('PartnerCooperationBillingContent', () => {
           return new Response(
             JSON.stringify({
               data: invoiceRows,
+              meta: { has_more: false, next_cursor: null },
             }),
             { status: 200 },
           );
@@ -338,6 +339,26 @@ describe('PartnerCooperationBillingContent', () => {
       (screen.getByRole('button', { name: /請求書ドラフト/ }) as HTMLButtonElement).disabled,
     ).toBe(false);
     expect(contractsCallCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it('rejects legacy root invoice cursor metadata instead of rendering a partial list', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/pharmacy-invoices?')) {
+        return new Response(
+          JSON.stringify({ data: invoiceRows, hasMore: false, nextCursor: null }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間月次ドキュメントを表示できません')).toBeTruthy();
+    expect(screen.queryByRole('table', { name: '薬局間月次ドキュメント一覧' })).toBeNull();
   });
 
   it('rejects malformed invoice draft success payloads before rendering the draft result', async () => {

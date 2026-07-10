@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildQrScanDraftPayload, extractQrScanDraftSessionId } from './qr-scan-draft-payload';
+import {
+  buildQrScanDraftPayload,
+  qrScanDraftSessionIdResponseSchema,
+} from './qr-scan-draft-payload';
 
 describe('buildQrScanDraftPayload', () => {
   it('includes the required site_id for QR scan draft creation', () => {
@@ -43,25 +46,32 @@ describe('buildQrScanDraftPayload', () => {
   });
 });
 
-describe('extractQrScanDraftSessionId', () => {
-  it('reads the session id from the create response data envelope', () => {
+describe('qrScanDraftSessionIdResponseSchema', () => {
+  it('reads and normalizes the session id from the provider data envelope', () => {
     expect(
-      extractQrScanDraftSessionId({
-        data: { draft: { id: 'draft_1' }, session_id: 'session_1' },
+      qrScanDraftSessionIdResponseSchema.parse({
+        data: {
+          draft: { id: 'draft_1' },
+          parse_result: { success: true },
+          session_id: ' session_1 ',
+        },
       }),
     ).toBe('session_1');
   });
 
   it('rejects the legacy root create response', () => {
-    expect(() => extractQrScanDraftSessionId({ session_id: 'legacy_session' })).toThrow(
-      'PCへの送信に失敗しました',
-    );
+    expect(
+      qrScanDraftSessionIdResponseSchema.safeParse({ session_id: 'legacy_session' }).success,
+    ).toBe(false);
   });
 
-  it.each([{}, { data: null }, { data: {} }, { data: { session_id: '   ' } }])(
-    'rejects a malformed create response %#',
-    (payload) => {
-      expect(() => extractQrScanDraftSessionId(payload)).toThrow('PCへの送信に失敗しました');
-    },
-  );
+  it.each([
+    {},
+    { data: null },
+    { data: {} },
+    { data: { session_id: '   ' } },
+    { data: { session_id: 'session_1' }, unexpected_root: true },
+  ])('rejects a malformed create response %#', (payload) => {
+    expect(qrScanDraftSessionIdResponseSchema.safeParse(payload).success).toBe(false);
+  });
 });

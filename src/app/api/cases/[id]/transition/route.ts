@@ -122,5 +122,5 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   if (!transitionResult.ok) return transitionResult.response;
 
-  return success({ data: transitionResult.careCase, warnings });
+  return success({ data: transitionResult.careCase, meta: { warnings } });
 }

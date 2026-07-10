@@ -24,6 +24,14 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { SkeletonRows } from '@/components/ui/loading';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { StatCard } from '@/components/ui/stat-card';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
@@ -857,17 +865,15 @@ function SummaryTile({
   value: number;
   caption: string;
 }) {
+  // 画面ローカルの KPI カード再実装をやめ、共通 StatCard へ委譲する(SSOT 7.2。
+  // workflow の MetricCard と同型の薄い adapter)。
   return (
-    <div className="rounded-lg border border-border bg-card px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium text-muted-foreground">{label}</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{value}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{caption}</p>
-        </div>
-        <Icon className="size-5 text-muted-foreground" aria-hidden="true" />
-      </div>
-    </div>
+    <StatCard
+      icon={<Icon className="size-4" aria-hidden="true" />}
+      label={label}
+      value={value}
+      hint={caption}
+    />
   );
 }
 
@@ -1321,22 +1327,31 @@ export function InboundCommunicationsContent() {
             </label>
             <label className="space-y-1 text-sm">
               <span className="font-medium text-foreground">職種</span>
-              <select
+              {/* 生 select を新規に作らない(SSOT 5.4)。SelectValue は明示 children で
+                  SSR の生 enum 値リークを防ぐ(Radix SelectValue leak 対策)。 */}
+              <Select
                 value={intakeForm.senderRole}
-                onChange={(event) =>
+                onValueChange={(value) =>
                   setIntakeForm((current) => ({
                     ...current,
-                    senderRole: event.target.value as InboundIntakeFormState['senderRole'],
+                    senderRole: value as InboundIntakeFormState['senderRole'],
                   }))
                 }
-                className="min-h-[44px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
               >
-                {INTAKE_SENDER_ROLES.map((role) => (
-                  <option key={role.value} value={role.value}>
-                    {role.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full" aria-label="職種">
+                  <SelectValue>
+                    {INTAKE_SENDER_ROLES.find((role) => role.value === intakeForm.senderRole)
+                      ?.label ?? intakeForm.senderRole}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {INTAKE_SENDER_ROLES.map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      {role.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
           </div>
 
@@ -1918,43 +1933,57 @@ export function InboundCommunicationsContent() {
                             <div className="grid gap-2 sm:grid-cols-2">
                               <label className="grid gap-1 text-xs">
                                 <span className="font-medium text-foreground">confidence</span>
-                                <select
+                                <Select
                                   value={sourceMappingForm.confidence}
-                                  onChange={(event) =>
+                                  onValueChange={(value) =>
                                     setSourceMappingForm((current) => ({
                                       ...current,
-                                      confidence: event.target
-                                        .value as InboundSourceMappingConfidence,
+                                      confidence: value as InboundSourceMappingConfidence,
                                     }))
                                   }
-                                  className="min-h-[44px] rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
                                 >
-                                  {SOURCE_MAPPING_CONFIDENCES.map((item) => (
-                                    <option key={item.value} value={item.value}>
-                                      {item.label}
-                                    </option>
-                                  ))}
-                                </select>
+                                  <SelectTrigger className="w-full" aria-label="confidence">
+                                    <SelectValue>
+                                      {SOURCE_MAPPING_CONFIDENCES.find(
+                                        (item) => item.value === sourceMappingForm.confidence,
+                                      )?.label ?? sourceMappingForm.confidence}
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {SOURCE_MAPPING_CONFIDENCES.map((item) => (
+                                      <SelectItem key={item.value} value={item.value}>
+                                        {item.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               </label>
                               <label className="grid gap-1 text-xs">
                                 <span className="font-medium text-foreground">review status</span>
-                                <select
+                                <Select
                                   value={sourceMappingForm.mappingStatus}
-                                  onChange={(event) =>
+                                  onValueChange={(value) =>
                                     setSourceMappingForm((current) => ({
                                       ...current,
-                                      mappingStatus: event.target
-                                        .value as InboundSourceMappingStatus,
+                                      mappingStatus: value as InboundSourceMappingStatus,
                                     }))
                                   }
-                                  className="min-h-[44px] rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
                                 >
-                                  {SOURCE_MAPPING_STATUSES.map((item) => (
-                                    <option key={item.value} value={item.value}>
-                                      {item.label}
-                                    </option>
-                                  ))}
-                                </select>
+                                  <SelectTrigger className="w-full" aria-label="review status">
+                                    <SelectValue>
+                                      {SOURCE_MAPPING_STATUSES.find(
+                                        (item) => item.value === sourceMappingForm.mappingStatus,
+                                      )?.label ?? sourceMappingForm.mappingStatus}
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {SOURCE_MAPPING_STATUSES.map((item) => (
+                                      <SelectItem key={item.value} value={item.value}>
+                                        {item.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               </label>
                             </div>
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -2248,22 +2277,26 @@ export function InboundCommunicationsContent() {
                                           <span className="font-medium text-foreground">
                                             対象薬剤
                                           </span>
-                                          <select
-                                            className="min-h-[44px] rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
-                                            value={stockApplyForm.targetStockItemId}
-                                            onChange={(event) =>
+                                          {/* 未選択は Radix の placeholder で表す(SelectItem に空値は置けない)。 */}
+                                          <Select
+                                            value={stockApplyForm.targetStockItemId || null}
+                                            onValueChange={(value) =>
                                               updateStockApplyForm(item.signal_id, {
-                                                targetStockItemId: event.target.value,
+                                                targetStockItemId: value ?? '',
                                               })
                                             }
                                           >
-                                            <option value="">選択してください</option>
-                                            {stockItems.map((stockItem) => (
-                                              <option key={stockItem.id} value={stockItem.id}>
-                                                {stockItem.display_name} / {stockItem.unit}
-                                              </option>
-                                            ))}
-                                          </select>
+                                            <SelectTrigger className="w-full" aria-label="対象薬剤">
+                                              <SelectValue placeholder="選択してください" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {stockItems.map((stockItem) => (
+                                                <SelectItem key={stockItem.id} value={stockItem.id}>
+                                                  {stockItem.display_name} / {stockItem.unit}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
                                         </label>
                                         <div className="grid gap-2 sm:grid-cols-2">
                                           <label className="grid gap-1 text-xs">

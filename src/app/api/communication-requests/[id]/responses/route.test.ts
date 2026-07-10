@@ -186,9 +186,11 @@ describe('/api/communication-requests/[id]/responses', () => {
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
       expect.any(Function),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: [{ id: 'response_1' }],
-      request_updated_at: REQUEST_UPDATED_AT_ISO,
+      meta: { request_updated_at: REQUEST_UPDATED_AT_ISO },
     });
     expect(communicationResponseFindManyMock).toHaveBeenCalledWith({
       where: { request_id: 'request_1', org_id: 'org_1' },
@@ -302,9 +304,11 @@ describe('/api/communication-requests/[id]/responses', () => {
         role: 'pharmacist',
       }),
     });
-    await expect(response.clone().json()).resolves.toMatchObject({
+    const payload = await response.clone().json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: { id: 'response_2' },
-      request_updated_at: '2026-03-28T09:01:00.000Z',
+      meta: { request_updated_at: '2026-03-28T09:01:00.000Z' },
     });
     expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
       where: {
@@ -552,9 +556,11 @@ describe('/api/communication-requests/[id]/responses', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: { id: 'response_existing' },
-      request_updated_at: '2026-03-28T09:01:00.000Z',
+      meta: { request_updated_at: '2026-03-28T09:01:00.000Z' },
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
@@ -693,7 +699,7 @@ describe('/api/communication-requests/[id]/responses', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: { id: 'response_existing' },
-      request_updated_at: REQUEST_UPDATED_AT_ISO,
+      meta: { request_updated_at: REQUEST_UPDATED_AT_ISO },
     });
     expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationRequestTxFindFirstMock).toHaveBeenNthCalledWith(1, {
@@ -753,7 +759,7 @@ describe('/api/communication-requests/[id]/responses', () => {
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
       data: { id: 'response_new' },
-      request_updated_at: '2026-03-28T09:02:00.000Z',
+      meta: { request_updated_at: '2026-03-28T09:02:00.000Z' },
     });
     expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
       where: {
@@ -882,7 +888,7 @@ describe('/api/communication-requests/[id]/responses', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: { id: 'response_race' },
-      request_updated_at: REQUEST_UPDATED_AT_ISO,
+      meta: { request_updated_at: REQUEST_UPDATED_AT_ISO },
     });
     expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
       where: {

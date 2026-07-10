@@ -1,6 +1,8 @@
 'use client';
 
+import { z } from 'zod';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { apiDataSchema } from '@/lib/api/response-schemas';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { WORKFLOW_DASHBOARD_INVALIDATION_EVENTS } from '@/lib/realtime/workflow-invalidation-policy';
@@ -170,6 +172,15 @@ export function normalizeWorkflowDashboardResponse(
     },
   };
 }
+
+const workflowDashboardResponseSchema = apiDataSchema(z.unknown()).transform((payload, ctx) => {
+  const normalized = normalizeWorkflowDashboardResponse(payload);
+  if (!normalized) {
+    ctx.addIssue({ code: 'custom', message: 'Invalid workflow dashboard response' });
+    return z.NEVER;
+  }
+  return normalized;
+});
 
 function previewFromWorkbenchItem(item: WorkflowWorkbenchItem): WorkflowPreviewItem {
   return {
@@ -370,13 +381,10 @@ export async function fetchWorkflowDashboardPhaseAccess(
   const response = await fetch('/api/dashboard/workflow?view=phase', {
     headers: buildOrgHeaders(orgId),
   });
-  const payload = normalizeWorkflowDashboardResponse(
-    await readApiJson<unknown>(response, '工程ナビゲーションの取得に失敗しました'),
-  );
-  if (!payload) {
-    throw new Error('工程ナビゲーションの取得に失敗しました');
-  }
-  return payload;
+  return readApiJson(response, {
+    fallbackMessage: '工程ナビゲーションの取得に失敗しました',
+    schema: workflowDashboardResponseSchema,
+  });
 }
 
 export function useWorkflowPhaseAccess() {

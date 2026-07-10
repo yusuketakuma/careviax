@@ -440,8 +440,10 @@ describe('/api/external-access GET', () => {
           },
         },
       ],
-      hasMore: false,
-      nextCursor: null,
+      meta: {
+        has_more: false,
+        next_cursor: null,
+      },
     });
     expect(body.data[0]).not.toHaveProperty('granted_to_contact');
     const payloadText = JSON.stringify(body);
@@ -468,8 +470,9 @@ describe('/api/external-access GET', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.data).toHaveLength(200);
-    expect(body.hasMore).toBe(true);
-    expect(body.nextCursor).toBe('grant_199');
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body.meta.has_more).toBe(true);
+    expect(body.meta.next_cursor).toBe('grant_199');
     expect(body.data.at(-1).id).toBe('grant_199');
   });
 
@@ -530,8 +533,10 @@ describe('/api/external-access GET', () => {
     expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
       data: [],
-      hasMore: false,
-      nextCursor: null,
+      meta: {
+        has_more: false,
+        next_cursor: null,
+      },
     });
   });
 

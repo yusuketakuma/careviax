@@ -33,6 +33,9 @@ const METRICS_BODY = {
     prescriptions_per_pharmacist: 35, // <= PRESCRIPTIONS_LIMIT(40) -> no 超過 alert
     home_visit_count_ytd: 50,
     monthly_prescription_count: 1200,
+    reference_month: '2026-03',
+    active_pharmacist_count: 4,
+    business_days_elapsed: 20,
   },
 };
 
@@ -58,6 +61,26 @@ describe('MetricsDashboardContent', () => {
     expect(screen.queryByText(/未達/)).toBeNull();
     expect(screen.queryByText(/超過/)).toBeNull();
     expect(screen.queryByText('サンプル表示（実データ未接続）')).toBeNull();
+  });
+
+  it('rejects a mixed-root metrics response before rendering cards', async () => {
+    const responseDetail = '患者A token=metrics-response-secret';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ...METRICS_BODY, patient_name: responseDetail }), {
+            status: 200,
+          }),
+      ),
+    );
+
+    renderWith(makeClient());
+
+    expect(await screen.findByText(ERROR_DESCRIPTION)).toBeTruthy();
+    expect(screen.queryByText('処方箋集中率')).toBeNull();
+    expect(document.body.textContent ?? '').not.toContain(responseDetail);
+    expect(document.body.textContent ?? '').not.toContain('metrics-response-secret');
   });
 
   it('shows a confirm-severity alert when the generic dispensing rate is below target', async () => {
@@ -141,6 +164,9 @@ describe('MetricsDashboardContent', () => {
                 prescriptions_per_pharmacist: 0,
                 home_visit_count_ytd: 0,
                 monthly_prescription_count: 0,
+                reference_month: '2026-03',
+                active_pharmacist_count: 0,
+                business_days_elapsed: 20,
               },
             }),
             { status: 200 },

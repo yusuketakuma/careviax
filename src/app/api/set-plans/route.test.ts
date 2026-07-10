@@ -260,7 +260,7 @@ describe('/api/set-plans', () => {
 
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({ replayed: false });
+    await expect(response.json()).resolves.toMatchObject({ meta: { replayed: false } });
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
       expect.any(Function),
@@ -316,8 +316,8 @@ describe('/api/set-plans', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      replayed: true,
       data: { id: 'plan_existing' },
+      meta: { replayed: true },
     });
     expect(setPlanCreateMock).not.toHaveBeenCalled();
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
@@ -347,8 +347,8 @@ describe('/api/set-plans', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      replayed: true,
       data: { id: 'plan_race' },
+      meta: { replayed: true },
     });
     expect(setPlanCreateMock).toHaveBeenCalled();
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();

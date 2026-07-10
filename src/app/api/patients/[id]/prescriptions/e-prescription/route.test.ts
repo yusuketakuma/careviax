@@ -122,7 +122,7 @@ function mockAccessiblePatient() {
   listAccessiblePatientCaseIdsMock.mockResolvedValue(['case_1', 'case_2']);
 }
 
-function mockEPrescription() {
+function mockEPrescription(overrides: Record<string, unknown> = {}) {
   fetchPrescriptionMock.mockResolvedValue({
     prescriptionId: 'rx_abc123',
     issuedAt: '2026-05-01T09:00:00Z',
@@ -146,6 +146,7 @@ function mockEPrescription() {
         notes: null,
       },
     ],
+    ...overrides,
   });
 }
 
@@ -508,7 +509,9 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body).toMatchObject({
       data: {
         id: 'intake_1',
         cycle_id: 'cycle_1',
@@ -516,8 +519,10 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
         prescribed_date: '2026-05-01',
         external_prescription_id: 'rx_abc123',
       },
-      e_prescription_id: 'rx_abc123',
-      idempotent: false,
+      meta: {
+        e_prescription_id: 'rx_abc123',
+        idempotent: false,
+      },
     });
     expect(txMock.prescriptionIntake.create).not.toHaveBeenCalled();
     expect(createPrescriptionIntakeMock).toHaveBeenCalledWith(
@@ -681,7 +686,9 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body).toMatchObject({
       data: {
         id: 'intake_existing',
         cycle_id: 'cycle_1',
@@ -689,8 +696,10 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
         prescribed_date: '2026-05-01',
         external_prescription_id: 'rx_abc123',
       },
-      e_prescription_id: 'rx_abc123',
-      idempotent: true,
+      meta: {
+        e_prescription_id: 'rx_abc123',
+        idempotent: true,
+      },
     });
     expect(txMock.medicationCycle.findMany).not.toHaveBeenCalled();
     expect(createPrescriptionIntakeMock).not.toHaveBeenCalled();
@@ -728,6 +737,39 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
     expect(createPrescriptionIntakeMock).not.toHaveBeenCalled();
   });
 
+  it('returns the existing intake when the upstream canonical prescription id was already accepted', async () => {
+    mockAccessiblePatient();
+    mockEPrescription({ prescriptionId: 'rx_canonical' });
+    txMock.prescriptionIntake.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'intake_canonical',
+      cycle_id: 'cycle_1',
+      prescribed_date: new Date('2026-05-01T00:00:00.000Z'),
+      source_type: 'e_prescription',
+      external_prescription_id: 'rx_canonical',
+      cycle: { case_id: 'case_1' },
+    });
+
+    const response = await POST(createRequest({ prescription_id: 'rx_alias' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body).toMatchObject({
+      data: {
+        id: 'intake_canonical',
+        external_prescription_id: 'rx_canonical',
+      },
+      meta: {
+        e_prescription_id: 'rx_canonical',
+        idempotent: true,
+      },
+    });
+    expect(createPrescriptionIntakeMock).not.toHaveBeenCalled();
+  });
+
   it('converges a unique conflict from a concurrent retry to the existing intake', async () => {
     mockAccessiblePatient();
     mockEPrescription();
@@ -748,7 +790,9 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body).toMatchObject({
       data: {
         id: 'intake_existing',
         cycle_id: 'cycle_1',
@@ -756,8 +800,10 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
         prescribed_date: '2026-05-01',
         external_prescription_id: 'rx_abc123',
       },
-      e_prescription_id: 'rx_abc123',
-      idempotent: true,
+      meta: {
+        e_prescription_id: 'rx_abc123',
+        idempotent: true,
+      },
     });
     expect(createPrescriptionIntakeMock).toHaveBeenCalledOnce();
     expect(txMock.prescriptionIntake.create).not.toHaveBeenCalled();

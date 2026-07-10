@@ -813,7 +813,7 @@ describe('TasksContent', () => {
   it('loads staff workload through the org header helper and returns the response envelope', async () => {
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValueOnce(sentinelHeaders);
-    const workloadPayload = { data: [], date: '2026-04-10' };
+    const workloadPayload = { data: [], meta: { date: '2026-04-10' } };
     const fetchMock = stubJsonFetch(workloadPayload);
     let staffWorkloadQueryFn: (() => Promise<unknown>) | undefined;
     useQueryMock.mockImplementation(
@@ -836,6 +836,14 @@ describe('TasksContent', () => {
       headers: sentinelHeaders,
     });
     expect(buildOrgHeaders).toHaveBeenCalledWith('org_1');
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: [], date: '2026-04-10' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await expect(staffWorkloadQueryFn?.()).rejects.toThrow('スタッフ別業務量の取得に失敗しました');
   });
 
   it('prefills work request fields from visit or audit deep links', () => {
@@ -868,16 +876,22 @@ describe('TasksContent', () => {
     );
   });
 
-  it('surfaces API error messages when work request creation fails', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
+  it('surfaces API errors and rejects legacy successful work request responses', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
         new Response(JSON.stringify({ message: '業務依頼の作成権限がありません' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         }),
-      ),
-    );
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: '業務を依頼しました' }), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
 
     render(<TasksContent />);
 
@@ -893,6 +907,8 @@ describe('TasksContent', () => {
       body: expect.any(String),
     });
     expect(toast.error).toHaveBeenCalledWith('業務依頼の作成権限がありません');
+
+    await expect(createRequestOptions.mutationFn()).rejects.toThrow('業務依頼の作成に失敗しました');
   });
 
   it('surfaces server-provided bulk completion failure details', async () => {

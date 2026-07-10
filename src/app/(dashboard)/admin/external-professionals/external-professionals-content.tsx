@@ -89,10 +89,21 @@ export type ExternalProfessional = {
 
 type ExternalProfessionalsResponse = {
   data: ExternalProfessional[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
+  meta: {
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    count_basis: 'external_professionals';
+    has_more: boolean;
+    limit?: number;
+    filters_applied: {
+      q: string | null;
+      profession_type: ProfessionType | null;
+      facility_id: string | null;
+      preferred_contact_method: ContactMethod | null;
+    };
+  };
 };
 
 type ExternalProfessionalMutationResponse = { data: ExternalProfessional };
@@ -126,13 +137,18 @@ type LinkedPatient = {
 
 type LinkedPatientsResponse = {
   data: LinkedPatient[];
-  metadata?: {
-    limit?: number;
-    total_count?: number;
-    visible_count?: number;
-    hidden_count?: number;
-    has_more?: boolean;
-    count_basis?: string;
+  meta: {
+    limit: number;
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    has_more: boolean;
+    count_basis: 'care_team_links';
+    filters_applied: {
+      external_professional_id: string;
+      archive_status: 'active' | 'archived' | 'all';
+      assignment_scoped: boolean;
+    };
   };
 };
 
@@ -181,6 +197,74 @@ const CONTACT_METHODS: Array<{ value: ContactMethod; label: string }> = [
   { value: 'in_person', label: '対面' },
   { value: 'ses', label: 'SESメール' },
 ];
+
+const professionTypeSchema = z.custom<ProfessionType>(
+  (value) => typeof value === 'string' && PROFESSION_TYPES.some((option) => option.value === value),
+);
+
+const contactMethodSchema = z.custom<ContactMethod>(
+  (value) => typeof value === 'string' && CONTACT_METHODS.some((option) => option.value === value),
+);
+
+const externalProfessionalSchema = z.custom<ExternalProfessional>((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return typeof item.id === 'string' && typeof item.name === 'string';
+});
+
+const externalProfessionalsResponseSchema: z.ZodType<ExternalProfessionalsResponse> = z
+  .object({
+    data: z.array(externalProfessionalSchema),
+    meta: z
+      .object({
+        total_count: z.number().int().nonnegative(),
+        visible_count: z.number().int().nonnegative(),
+        hidden_count: z.number().int().nonnegative(),
+        truncated: z.boolean(),
+        count_basis: z.literal('external_professionals'),
+        has_more: z.boolean(),
+        limit: z.number().int().positive().optional(),
+        filters_applied: z
+          .object({
+            q: z.string().nullable(),
+            profession_type: professionTypeSchema.nullable(),
+            facility_id: z.string().nullable(),
+            preferred_contact_method: contactMethodSchema.nullable(),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const linkedPatientSchema = z.custom<LinkedPatient>((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return typeof item.id === 'string' && typeof item.patient_id === 'string';
+});
+
+const linkedPatientsResponseSchema: z.ZodType<LinkedPatientsResponse> = z
+  .object({
+    data: z.array(linkedPatientSchema),
+    meta: z
+      .object({
+        limit: z.number().int().positive(),
+        total_count: z.number().int().nonnegative(),
+        visible_count: z.number().int().nonnegative(),
+        hidden_count: z.number().int().nonnegative(),
+        has_more: z.boolean(),
+        count_basis: z.literal('care_team_links'),
+        filters_applied: z
+          .object({
+            external_professional_id: z.string(),
+            archive_status: z.enum(['active', 'archived', 'all']),
+            assignment_scoped: z.boolean(),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
 
 function createEmptyForm(): FormState {
   return {
@@ -428,10 +512,10 @@ export function ExternalProfessionalsContent() {
       const response = await fetch(buildAdminExternalProfessionalsApiPath(new URLSearchParams()), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<ExternalProfessionalsResponse>(
-        response,
-        '他職種マスターの取得に失敗しました',
-      );
+      return readApiJson(response, {
+        fallbackMessage: '他職種マスターの取得に失敗しました',
+        schema: externalProfessionalsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -454,8 +538,8 @@ export function ExternalProfessionalsContent() {
     [professionals, query],
   );
   const editingProfessionalId = editingProfessional?.id;
-  const totalCount = professionalsQuery.data?.total_count ?? professionals.length;
-  const hiddenCount = professionalsQuery.data?.hidden_count ?? 0;
+  const totalCount = professionalsQuery.data?.meta.total_count ?? professionals.length;
+  const hiddenCount = professionalsQuery.data?.meta.hidden_count ?? 0;
   const formBlocker = getFormBlocker(form);
 
   const linkedPatientsQuery = useQuery({
@@ -469,7 +553,10 @@ export function ExternalProfessionalsContent() {
           headers: buildOrgHeaders(orgId),
         },
       );
-      return readApiJson<LinkedPatientsResponse>(response, '担当患者の取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '担当患者の取得に失敗しました',
+        schema: linkedPatientsResponseSchema,
+      });
     },
     enabled: Boolean(orgId && sheetOpen && editingProfessionalId),
   });
@@ -692,7 +779,7 @@ export function ExternalProfessionalsContent() {
             <StateBadge role={hiddenCount > 0 ? 'confirm' : 'done'}>
               表示 {filteredProfessionals.length}件
             </StateBadge>
-            {hiddenCount > 0 || professionalsQuery.data?.truncated ? (
+            {hiddenCount > 0 || professionalsQuery.data?.meta.truncated ? (
               <StateBadge role="confirm">非表示 {hiddenCount}件</StateBadge>
             ) : null}
           </div>
@@ -981,7 +1068,7 @@ function LinkedPatientsPanel({
   onRetry: () => void;
 }) {
   const linkedPatients = data?.data ?? EMPTY_LINKED_PATIENTS;
-  const metadata = data?.metadata;
+  const metadata = data?.meta;
   const visibleCount = metadata?.visible_count ?? linkedPatients.length;
   const hiddenCount = metadata?.hidden_count ?? 0;
   const totalCount = metadata?.total_count ?? visibleCount + hiddenCount;

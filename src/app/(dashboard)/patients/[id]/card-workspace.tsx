@@ -86,6 +86,7 @@ import type {
   PatientWorkspaceTodayTask,
 } from './patient-detail.types';
 import type { CaseRiskCockpitResponse, CaseRiskNextAction } from '@/types/case-risk-cockpit';
+import { patientMovementTimelineResponseSchema } from '@/types/patient-movement-timeline';
 import type { PatientMovementTimelineProps } from './patient-movement-timeline';
 import {
   buildCaseRiskCommandPanelModel,
@@ -4926,10 +4927,14 @@ export function CardWorkspace({
         limit: String(timelineLimit),
       }).toString()}`;
       const response = await fetch(path, { headers: buildOrgHeaders(orgId) });
-      return readApiJson<PatientMovementTimelineSnapshot>(
-        response,
-        '患者の動きの取得に失敗しました',
-      );
+      const payload = await readApiJson(response, {
+        fallbackMessage: '患者の動きの取得に失敗しました',
+        schema: patientMovementTimelineResponseSchema,
+      });
+      return {
+        ...payload.data,
+        meta: payload.meta,
+      } satisfies PatientMovementTimelineSnapshot;
     },
     enabled: Boolean(
       orgId && patient && (isDetailTabMounted('command') || isDetailTabMounted('movement')),

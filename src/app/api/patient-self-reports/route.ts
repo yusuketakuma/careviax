@@ -113,7 +113,10 @@ async function authenticatedGET(req: NextRequest) {
     if (accessiblePatientIds.length === 0) {
       const page = buildCursorPage<never>([], limit, () => undefined);
       return withSensitiveNoStore(
-        success({ data: page.data, hasMore: page.hasMore, nextCursor: page.nextCursor }),
+        success({
+          data: page.data,
+          meta: { has_more: page.hasMore, next_cursor: page.nextCursor ?? null },
+        }),
       );
     }
 
@@ -136,7 +139,10 @@ async function authenticatedGET(req: NextRequest) {
     );
 
     return withSensitiveNoStore(
-      success({ data, hasMore: page.hasMore, nextCursor: page.nextCursor }),
+      success({
+        data,
+        meta: { has_more: page.hasMore, next_cursor: page.nextCursor ?? null },
+      }),
     );
   });
 }

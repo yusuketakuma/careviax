@@ -25,7 +25,7 @@ import {
   type ContactProfileKind,
 } from '@/lib/contact-profile-options';
 import { buildContactProfilesApiPath } from '@/lib/contact-profile-api-paths';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -367,7 +367,7 @@ function ContactProfileEditor({
               : currentForm.preferred_contact_method,
         }),
       });
-      return readApiJson<unknown>(response, '保存に失敗しました');
+      return readApiAcknowledgement(response, '保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success('連絡先を保存しました');

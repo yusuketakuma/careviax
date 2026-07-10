@@ -174,8 +174,9 @@ describe('/api/contact-profiles', () => {
           last_contacted_at: '2026-03-30T00:00:00.000Z',
         },
       ],
-      hasMore: false,
+      meta: { limit: 8, has_more: false },
     });
+    expect(body).not.toHaveProperty('hasMore');
     expect(body.data[0]).not.toHaveProperty('phone');
     expect(body.data[0]).not.toHaveProperty('email');
     expect(body.data[0]).not.toHaveProperty('fax');

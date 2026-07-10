@@ -28,7 +28,7 @@ import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-import { apiDataSchema } from '@/lib/api/response-schemas';
+import { apiCursorPageSchema, apiDataSchema } from '@/lib/api/response-schemas';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { formatYen } from '@/lib/format/currency';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -262,7 +262,7 @@ const billingCandidatesResponseSchema = z
       });
     }
   });
-const pharmacyInvoicesResponseSchema = apiDataSchema(z.array(pharmacyInvoiceRowSchema));
+const pharmacyInvoicesResponseSchema = apiCursorPageSchema(pharmacyInvoiceRowSchema);
 const pharmacyInvoiceTransitionResponseSchema = apiDataSchema(
   pharmacyInvoiceTransitionResultSchema,
 );

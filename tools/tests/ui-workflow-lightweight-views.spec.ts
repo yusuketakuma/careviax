@@ -229,7 +229,12 @@ async function installWorkflowRouteMock(page: Page, requests: URL[]) {
 
 async function installScheduleProposalRouteMocks(page: Page) {
   await page.route(apiPathPattern('/api/visit-schedule-proposals'), (route) =>
-    fulfillJson(route, { data: [] }),
+    fulfillJson(
+      route,
+      route.request().method() === 'POST'
+        ? { data: [], meta: { alerts: [], replayed: false } }
+        : { data: [] },
+    ),
   );
   await page.route(apiPathPattern('/api/visit-schedules/day-board'), (route) =>
     fulfillJson(route, { data: [] }),
@@ -239,7 +244,9 @@ async function installScheduleProposalRouteMocks(page: Page) {
   );
   await page.route(apiPathPattern('/api/cases'), (route) => fulfillJson(route, { data: [] }));
   await page.route(apiPathPattern('/api/pharmacists'), (route) => fulfillJson(route, { data: [] }));
-  await page.route(apiPathPattern('/api/tasks'), (route) => fulfillJson(route, { data: [] }));
+  await page.route(apiPathPattern('/api/tasks'), (route) =>
+    fulfillJson(route, { data: [], meta: { has_more: false, next_cursor: null } }),
+  );
   await page.route(apiPathPattern('/api/visit-preparations/brief-batch'), (route) =>
     fulfillJson(route, { data: [] }),
   );

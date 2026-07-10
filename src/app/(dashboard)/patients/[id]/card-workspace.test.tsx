@@ -4199,8 +4199,16 @@ describe('CardWorkspace', () => {
   it('fetches the patient movement timeline from an encoded patient path with a bounded initial limit and org headers', async () => {
     const hostileId = 'pt/1?x=y#z';
     const getConfig = captureWorkspaceQueryConfig('patient-movement-timeline', hostileId);
+    const meta = {
+      next_cursor: null,
+      has_more: false,
+      returned_count: 0,
+      count_basis: 'bounded_latest_window' as const,
+      filters: { category: null, date_from: null, date_to: null },
+      window_limit: 40,
+    };
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ movement_events: [] }), {
+      new Response(JSON.stringify({ data: { movement_events: [] }, meta }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
@@ -4212,7 +4220,7 @@ describe('CardWorkspace', () => {
 
       const config = getConfig();
       expect(config?.queryKey).toEqual(['patient-movement-timeline', hostileId, 'org_1', 5]);
-      await config?.queryFn?.();
+      await expect(config?.queryFn?.()).resolves.toEqual({ movement_events: [], meta });
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(buildPatientApiPath).toHaveBeenCalledWith(hostileId, '/movement-timeline');
@@ -4221,6 +4229,38 @@ describe('CardWorkspace', () => {
       expect(url).not.toContain('#z');
       expect(url).not.toContain('%25');
       expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('rejects the legacy root movement timeline envelope', async () => {
+    const getConfig = captureWorkspaceQueryConfig('patient-movement-timeline', 'patient_1');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            movement_events: [],
+            meta: {
+              next_cursor: null,
+              has_more: false,
+              returned_count: 0,
+              count_basis: 'bounded_latest_window',
+              filters: { category: null, date_from: null, date_to: null },
+              window_limit: 40,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+
+    try {
+      render(<CardWorkspace patientId="patient_1" />);
+
+      await expect(getConfig()?.queryFn?.()).rejects.toThrow('患者の動きの取得に失敗しました');
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

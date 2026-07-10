@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
@@ -638,7 +638,7 @@ export function ReportEditForm({
           content: updatedContent,
         }),
       });
-      return readApiJson<unknown>(res, '保存に失敗しました');
+      return readApiAcknowledgement(res, '保存に失敗しました');
     },
     onSuccess: () => {
       setIsSaving(false);

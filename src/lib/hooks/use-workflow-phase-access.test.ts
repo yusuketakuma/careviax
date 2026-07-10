@@ -250,4 +250,17 @@ describe('fetchWorkflowDashboardPhaseAccess', () => {
       '工程ナビゲーションの取得に失敗しました',
     );
   });
+
+  it('fails closed when a successful workflow phase response has mixed root fields', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        data: createWorkflowPayload(),
+        legacy_phase_count: 3,
+      }),
+    );
+
+    await expect(fetchWorkflowDashboardPhaseAccess('org_1')).rejects.toThrow(
+      '工程ナビゲーションの取得に失敗しました',
+    );
+  });
 });

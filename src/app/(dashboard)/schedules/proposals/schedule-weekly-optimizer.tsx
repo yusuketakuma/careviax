@@ -16,6 +16,10 @@ import { ja } from 'date-fns/locale';
 import { CalendarClock, Car, GripVertical, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { readApiJson } from '@/lib/api/client-json';
+import {
+  type VisitScheduleProposalBillingAlert,
+  visitScheduleProposalGenerationResponseSchema,
+} from '@/types/api/visit-schedule-proposals';
 import { messageFromError } from '@/lib/utils/error-message';
 import type { ProposalGenerationDiagnosticsCardData } from '@/components/features/visits/visit-proposal-diagnostics-card';
 import {
@@ -190,10 +194,16 @@ type MixedRouteItem = {
 type ProposalGenerationDiagnostics = ProposalGenerationDiagnosticsCardData;
 type CreateProposalResponse = {
   data: Proposal[];
-  alerts?: unknown[];
+  alerts?: VisitScheduleProposalBillingAlert[];
   diagnostics?: ProposalGenerationDiagnostics;
   replayed?: boolean;
 };
+
+const createProposalResponseSchema = visitScheduleProposalGenerationResponseSchema<
+  Proposal,
+  VisitScheduleProposalBillingAlert,
+  ProposalGenerationDiagnostics
+>();
 
 const EMPTY_CASES: CaseOption[] = [];
 const EMPTY_SCHEDULES: VisitSchedule[] = [];
@@ -456,7 +466,10 @@ async function requestVisitScheduleProposal(
     headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(payload),
   });
-  return readApiJson<CreateProposalResponse>(response, '候補生成に失敗しました');
+  return readApiJson<CreateProposalResponse>(response, {
+    fallbackMessage: '候補生成に失敗しました',
+    schema: createProposalResponseSchema,
+  });
 }
 
 export function ScheduleWeeklyOptimizer({

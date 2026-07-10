@@ -182,7 +182,7 @@ describe('EvidenceCaptureContent', () => {
     }
   });
 
-  it('routes fallback patient detail fetches through the shared patient API path helper', async () => {
+  it('falls back after a mixed-root schedule response and uses the shared patient path helper', async () => {
     const patientId = 'pt/1?tab=x#frag';
     useOrgIdMock.mockReturnValue('org_1');
     setupEvidenceAutoSyncMock.mockReturnValue(undefined);
@@ -201,7 +201,7 @@ describe('EvidenceCaptureContent', () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input);
       if (url === '/api/visit-schedules/visit_1') {
-        return jsonResponse({}, 500);
+        return jsonResponse({ data: { patient_id: 'wrong_patient' }, legacy_patient_id: true });
       }
       if (url === '/api/visit-records/visit_1') {
         return jsonResponse({ data: { patient_id: patientId } });

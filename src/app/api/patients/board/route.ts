@@ -887,7 +887,10 @@ const authenticatedGET = withAuthContext(
       },
     };
 
-    return successWithMeasuredJsonPayload(responseData);
+    return successWithMeasuredJsonPayload({
+      data: responseData.data,
+      meta: responseData.meta,
+    });
   },
   {
     permission: 'canVisit',

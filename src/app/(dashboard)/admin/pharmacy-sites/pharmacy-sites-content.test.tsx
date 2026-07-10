@@ -295,7 +295,11 @@ describe('PharmacySitesContent', () => {
 
   // A fetch stub that serves one site (id=siteId, name keeps 本店 so the action button
   // names are stable) and one insurance config (id=configId), and 200s every mutation.
-  function stubFetch(siteId: string, configId: string) {
+  function stubFetch(
+    siteId: string,
+    configId: string,
+    mutationOverride?: (url: string, method: string | undefined) => Response | undefined,
+  ) {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/pharmacy-sites' && !init?.method) {
@@ -337,10 +341,21 @@ describe('PharmacySitesContent', () => {
           { status: 200 },
         );
       }
+      const overridden = mutationOverride?.(url, init?.method);
+      if (overridden) return overridden;
       if (url.includes('/insurance-configs/') && init?.method === 'DELETE') {
         return new Response(JSON.stringify({ data: { id: configId } }), { status: 200 });
       }
-      return new Response(JSON.stringify({}), { status: 200 });
+      if (url.includes('/insurance-configs/') && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ data: { id: configId } }), { status: 200 });
+      }
+      if (url.endsWith('/insurance-configs') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ data: { id: configId } }), { status: 201 });
+      }
+      if (url.startsWith('/api/pharmacy-sites/') && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ data: { id: siteId } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
     });
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
@@ -381,6 +396,25 @@ describe('PharmacySitesContent', () => {
     expect(buildPharmacySiteApiPath).toHaveBeenCalledWith('a/b c');
   });
 
+  it('rejects a legacy successful pharmacy site update', async () => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+    stubFetch('site_1', 'cfg_1', (url, method) =>
+      url === '/api/pharmacy-sites/site_1' && method === 'PATCH'
+        ? new Response(JSON.stringify({ message: '薬局情報を更新しました' }), { status: 200 })
+        : undefined,
+    );
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '本店の薬局情報を編集' }));
+    fireEvent.click(screen.getByRole('button', { name: '更新する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('更新に失敗しました');
+    });
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalledWith('薬局情報を更新しました');
+  });
+
   it('create insurance config (POST) encodes the site id segment via the shared path helper and uses buildOrgJsonHeaders', async () => {
     const fetchMock = stubFetch('a/b c', 'cfg_1');
     renderContent();
@@ -397,6 +431,28 @@ describe('PharmacySitesContent', () => {
       );
     });
     expect(buildPharmacySiteInsuranceConfigsApiPath).toHaveBeenCalledWith('a/b c');
+  });
+
+  it('rejects a legacy successful insurance config save without clearing the form', async () => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+    stubFetch('site_1', 'cfg_1', (url, method) =>
+      url === '/api/pharmacy-sites/site_1/insurance-configs' && method === 'POST'
+        ? new Response(JSON.stringify({ message: '保険設定を登録しました' }), { status: 201 })
+        : undefined,
+    );
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '本店の保険設定を開く' }));
+    fireEvent.click(await screen.findByRole('button', { name: '本店の保険設定を追加' }));
+    fireEvent.change(screen.getByLabelText('施行日'), { target: { value: '2026-06-01' } });
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('保存に失敗しました');
+    });
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalledWith('保険設定を登録しました');
+    expect((screen.getByLabelText('施行日') as HTMLInputElement).value).toBe('2026-06-01');
   });
 
   it('update insurance config (PATCH) encodes BOTH the site id and config id segments via the shared path helper', async () => {
@@ -431,6 +487,27 @@ describe('PharmacySitesContent', () => {
       );
     });
     expect(buildPharmacySiteInsuranceConfigApiPath).toHaveBeenCalledWith('a/b c', 'x/y z');
+  });
+
+  it('rejects a legacy successful insurance config deletion', async () => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+    stubFetch('site_1', 'config_2024_medical', (url, method) =>
+      url === '/api/pharmacy-sites/site_1/insurance-configs/config_2024_medical' &&
+      method === 'DELETE'
+        ? new Response(JSON.stringify({ message: '保険設定を削除しました' }), { status: 200 })
+        : undefined,
+    );
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '本店の保険設定を開く' }));
+    fireEvent.click(await screen.findByRole('button', { name: '医療保険 2024の保険設定を削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('削除に失敗しました');
+    });
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalledWith('保険設定を削除しました');
   });
 
   it('delete insurance config with a dot-segment config id fails closed before any DELETE fetch', async () => {

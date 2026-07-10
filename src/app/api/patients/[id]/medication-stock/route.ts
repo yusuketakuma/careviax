@@ -53,7 +53,12 @@ const authenticatedGET = withAuthContext(
         },
       });
 
-      return withSensitiveNoStore(successWithMeasuredJsonPayload(stockSummary));
+      return withSensitiveNoStore(
+        successWithMeasuredJsonPayload({
+          data: stockSummary.data,
+          meta: stockSummary.meta,
+        }),
+      );
     } catch (err) {
       unstable_rethrow(err);
       logger.error(

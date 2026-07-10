@@ -209,12 +209,15 @@ describe('/api/patients/[id]/qualification-check POST', () => {
         coverage: { startDate: '2026-01-01', endDate: null },
         warnings: [],
       },
-      capabilities: {
-        supportsOnlineLookup: false,
-        supportsBenefitHistory: false,
-        supportsCareInsurance: false,
+      meta: {
+        capabilities: {
+          supportsOnlineLookup: false,
+          supportsBenefitHistory: false,
+          supportsCareInsurance: false,
+        },
       },
     });
+    expect(body).not.toHaveProperty('capabilities');
     const serializedBody = JSON.stringify(body);
     expect(serializedBody).not.toContain('raw');
     expect(serializedBody).not.toContain('patientName');

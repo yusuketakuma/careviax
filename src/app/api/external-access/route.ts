@@ -403,8 +403,10 @@ export const GET = withAuthContext(
             },
           };
         }),
-        hasMore: grantPage.hasMore,
-        nextCursor: grantPage.nextCursor,
+        meta: {
+          has_more: grantPage.hasMore,
+          next_cursor: grantPage.nextCursor,
+        },
       }),
     );
   },

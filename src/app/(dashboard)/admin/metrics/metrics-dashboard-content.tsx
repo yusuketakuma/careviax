@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { z } from 'zod';
 import {
   TrendingUp,
   Users,
@@ -16,6 +17,7 @@ import { HelpPopover } from '@/components/ui/help-popover';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { apiDataSchema } from '@/lib/api/response-schemas';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/loading';
@@ -25,13 +27,19 @@ type MetricAlert = { text: string; role: 'confirm' | 'blocked' };
 
 // --- Types ---
 
-type MetricsData = {
-  prescription_concentration_rate: number; // 処方箋集中率 (%)
-  generic_dispensing_rate: number; // 後発品調剤割合 (%)
-  prescriptions_per_pharmacist: number; // 薬剤師1人あたり処方箋枚数
-  home_visit_count_ytd: number; // 在宅訪問実績回数（年累計）
-  monthly_prescription_count: number; // 処方箋月次受付枚数
-};
+const metricsDataSchema = z
+  .object({
+    prescription_concentration_rate: z.number().finite().nonnegative(),
+    generic_dispensing_rate: z.number().finite().nonnegative(),
+    prescriptions_per_pharmacist: z.number().finite().nonnegative(),
+    home_visit_count_ytd: z.number().int().nonnegative(),
+    monthly_prescription_count: z.number().int().nonnegative(),
+    reference_month: z.string().regex(/^\d{4}-\d{2}$/u),
+    active_pharmacist_count: z.number().int().nonnegative(),
+    business_days_elapsed: z.number().int().positive(),
+  })
+  .strict();
+const metricsResponseSchema = apiDataSchema(metricsDataSchema);
 
 // --- Constants ---
 
@@ -147,7 +155,10 @@ export function MetricsDashboardContent() {
       const res = await fetch('/api/admin/metrics', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: MetricsData }>(res, '経営指標の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '経営指標の取得に失敗しました',
+        schema: metricsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

@@ -181,7 +181,15 @@ const sliceRoutes = [
       ],
     },
     expectedBody: {
-      movement_events: [],
+      data: {
+        movement_events: [],
+        partial_failures: [
+          {
+            source: 'communicationEvents',
+            message: '一部のタイムライン情報を取得できませんでした',
+          },
+        ],
+      },
       meta: {
         next_cursor: null,
         has_more: false,
@@ -190,12 +198,6 @@ const sliceRoutes = [
         filters: { category: null, date_from: null, date_to: null },
         window_limit: 40,
       },
-      partial_failures: [
-        {
-          source: 'communicationEvents',
-          message: '一部のタイムライン情報を取得できませんでした',
-        },
-      ],
     },
     // F-003 Cycle C: the movement timeline route injects a ScopedTxRunner (a function),
     // not the global prisma client, so its first service arg is a function.
@@ -595,7 +597,15 @@ describe('patient detail slice routes', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      movement_events: [],
+      data: {
+        movement_events: [],
+        partial_failures: [
+          {
+            source: 'communicationEvents',
+            message: '一部のタイムライン情報を取得できませんでした',
+          },
+        ],
+      },
       meta: {
         next_cursor: null,
         has_more: false,
@@ -604,12 +614,6 @@ describe('patient detail slice routes', () => {
         filters: { category: null, date_from: null, date_to: null },
         window_limit: 40,
       },
-      partial_failures: [
-        {
-          source: 'communicationEvents',
-          message: '一部のタイムライン情報を取得できませんでした',
-        },
-      ],
     });
     expect(getPatientTimelineDataMock).toHaveBeenCalledWith(expect.any(Function), {
       orgId: 'org_1',

@@ -127,7 +127,7 @@ async function installTaskRouteMocks(page: Page) {
   });
   await page.route(apiPathPattern('/api/tasks'), async (route) => {
     taskListRequests.push(route.request().url());
-    await fulfillJson(route, { data: [], hasMore: false, nextCursor: null });
+    await fulfillJson(route, { data: [], meta: { has_more: false, next_cursor: null } });
   });
 
   return { healthBoardRequests, taskListRequests };

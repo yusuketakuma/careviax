@@ -675,7 +675,7 @@ const authenticatedPOST = withAuthContext(
     if ('reusedDraft' in result) {
       return success({
         data: result.reusedDraft,
-        reused_existing_draft: true,
+        meta: { reused_existing_draft: true },
       });
     }
 

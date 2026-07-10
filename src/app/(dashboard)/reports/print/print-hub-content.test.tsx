@@ -825,6 +825,20 @@ describe('PrintHubContent', () => {
     expect(screen.queryByText(/患者文書にこの印刷プレビューの控えリンクを保存/)).toBeNull();
   });
 
+  it('rejects legacy root care-report pagination metadata', async () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
+    vi.mocked(fetch).mockImplementationOnce(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe('/api/care-reports?limit=50&status=confirmed');
+      return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
+    });
+
+    renderPrintHubContent();
+
+    expect(
+      await screen.findByText('帳票データの読み込みに失敗しました。再読み込みしてください。'),
+    ).toBeTruthy();
+  });
+
   it('loads visit report preview content through the print audit endpoint', async () => {
     useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {

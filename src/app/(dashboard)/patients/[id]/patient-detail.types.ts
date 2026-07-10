@@ -547,20 +547,22 @@ export type PatientDocumentsSnapshot = {
   }>;
 };
 
+export type PatientMovementTimelineMeta = {
+  next_cursor: string | null;
+  has_more: boolean;
+  returned_count: number;
+  count_basis: 'bounded_latest_window';
+  filters: {
+    category: PatientMovementCategory | null;
+    date_from: string | null;
+    date_to: string | null;
+  };
+  window_limit: number;
+};
+
 export type PatientMovementTimelineSnapshot = {
   movement_events: PatientMovementTimelineEvent[];
-  meta?: {
-    next_cursor: string | null;
-    has_more: boolean;
-    returned_count: number;
-    count_basis: 'bounded_latest_window';
-    filters: {
-      category: PatientMovementCategory | null;
-      date_from: string | null;
-      date_to: string | null;
-    };
-    window_limit: number;
-  };
+  meta?: PatientMovementTimelineMeta;
   partial_failures?: { source: string; message: string }[];
 };
 

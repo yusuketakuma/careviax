@@ -38,6 +38,17 @@ function makeJsonResponse<T>(data: T, ok = true) {
   });
 }
 
+function makePrescriptionListResponse(data: unknown[] = []) {
+  return Promise.resolve({
+    ok: true,
+    json: () =>
+      Promise.resolve({
+        data,
+        meta: { has_more: false, next_cursor: null },
+      }),
+  });
+}
+
 const PATIENT_RESULTS = [
   {
     id: 'patient_1',
@@ -100,13 +111,27 @@ function setupFetchMocks(overrides: Partial<Record<string, unknown>> = {}) {
       });
     }
     if (url.includes('/api/prescription-intakes')) {
-      return makeJsonResponse(overrides.prescriptions ?? []);
+      if ('prescriptionResponse' in overrides) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(overrides.prescriptionResponse),
+        });
+      }
+      return makePrescriptionListResponse((overrides.prescriptions as unknown[] | undefined) ?? []);
     }
     if (url.includes('/api/drug-masters')) {
       return makeJsonResponse(overrides.drugs ?? DRUG_RESULTS);
     }
     if (url.includes('/api/facilities')) return makeJsonResponse([]);
-    if (url.includes('/api/care-reports')) return makeJsonResponse([]);
+    if (url.includes('/api/care-reports')) {
+      if ('reportResponse' in overrides) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(overrides.reportResponse),
+        });
+      }
+      return makeJsonResponse((overrides.reports as unknown[] | undefined) ?? []);
+    }
     if (url.includes('/api/contact-profiles')) return makeJsonResponse([]);
     return makeJsonResponse([]);
   });
@@ -517,6 +542,7 @@ describe('SearchContent', () => {
   it('shows no-result message when query has no matches', async () => {
     fetchMock.mockImplementation((url: string) => {
       if (url.includes('/api/pharmacists')) return makeJsonResponse([]);
+      if (url.includes('/api/prescription-intakes')) return makePrescriptionListResponse();
       return makeJsonResponse([]);
     });
 
@@ -535,6 +561,7 @@ describe('SearchContent', () => {
           json: () => Promise.reject(new Error('')),
         });
       }
+      if (url.includes('/api/prescription-intakes')) return makePrescriptionListResponse();
       return makeJsonResponse([]);
     });
 
@@ -572,6 +599,7 @@ describe('SearchContent', () => {
         });
       }
       if (url.includes('/api/drug-masters')) return makeJsonResponse(DRUG_RESULTS);
+      if (url.includes('/api/prescription-intakes')) return makePrescriptionListResponse();
       return makeJsonResponse([]);
     });
 
@@ -589,5 +617,48 @@ describe('SearchContent', () => {
     });
 
     expect(screen.getByText('アムロジピン錠')).toBeTruthy();
+  });
+
+  it('reports legacy prescription pagination as a partial failure instead of false-empty success', async () => {
+    setupFetchMocks({
+      prescriptionResponse: {
+        data: [{ id: 'legacy_intake', prescribed_date: '2026-06-18' }],
+        hasMore: false,
+        nextCursor: null,
+      },
+    });
+
+    render(<SearchContent initialCategory="prescription" />);
+    await triggerSearch('処方');
+
+    const partialFailureStatus = screen
+      .getAllByRole('status')
+      .find((element) => element.textContent?.includes('一部の検索結果を取得できませんでした'));
+    expect(partialFailureStatus?.textContent).toContain('処方');
+    expect(screen.queryByText('legacy_intake')).toBeNull();
+  });
+
+  it('reports legacy care-report pagination as a partial failure instead of false-empty success', async () => {
+    setupFetchMocks({
+      reportResponse: {
+        data: [
+          {
+            id: 'legacy_report',
+            report_type: 'physician_report',
+            status: 'confirmed',
+            created_at: '2026-06-18T00:00:00.000Z',
+          },
+        ],
+        hasMore: false,
+      },
+    });
+
+    render(<SearchContent initialCategory="report" />);
+    await triggerSearch('報告');
+
+    const partialFailureStatus = screen
+      .getAllByRole('status')
+      .find((element) => element.textContent?.includes('一部の検索結果を取得できませんでした'));
+    expect(partialFailureStatus?.textContent).toContain('報告書');
   });
 });

@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import {
@@ -365,8 +365,8 @@ export function DocumentTemplateContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
-      const responsePayload = await readApiJson<unknown>(res, 'テンプレートの保存に失敗しました');
-      return { responsePayload, templateId, wasEditing: Boolean(templateId) };
+      await readApiAcknowledgement(res, 'テンプレートの保存に失敗しました');
+      return { templateId, wasEditing: Boolean(templateId) };
     },
     onSuccess: async ({ templateId, wasEditing }) => {
       toast.success(wasEditing ? 'テンプレートを更新しました' : 'テンプレートを登録しました');
@@ -389,7 +389,7 @@ export function DocumentTemplateContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      await readApiJson<unknown>(res, 'テンプレートの削除に失敗しました');
+      await readApiAcknowledgement(res, 'テンプレートの削除に失敗しました');
       return templateId;
     },
     onSuccess: async (templateId) => {

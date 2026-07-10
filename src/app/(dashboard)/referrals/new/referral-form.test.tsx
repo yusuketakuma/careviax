@@ -368,10 +368,12 @@ beforeEach(() => {
   // Default: a single clean 201 success.
   queueReferralResponses(() =>
     jsonResponse(201, {
-      patient: { id: 'patient_123' },
-      case: { id: 'case_1' },
-      warnings: [],
-      metadata: {},
+      data: {
+        patient: { id: 'patient_123' },
+        case: { id: 'case_1' },
+        warnings: [],
+      },
+      meta: {},
     }),
   );
 
@@ -653,10 +655,12 @@ describe('ReferralForm unsaved-changes guard', () => {
     await act(async () => {
       releaseReferral(
         jsonResponse(201, {
-          patient: { id: 'patient_123' },
-          case: { id: 'case_1' },
-          warnings: [],
-          metadata: {},
+          data: {
+            patient: { id: 'patient_123' },
+            case: { id: 'case_1' },
+            warnings: [],
+          },
+          meta: {},
         }),
       );
       await referralPromise;
@@ -803,10 +807,12 @@ describe('ReferralForm duplicate-acknowledgement flow', () => {
         }),
       () =>
         jsonResponse(201, {
-          patient: { id: 'patient_123' },
-          case: { id: 'case_1' },
-          warnings: [],
-          metadata: {},
+          data: {
+            patient: { id: 'patient_123' },
+            case: { id: 'case_1' },
+            warnings: [],
+          },
+          meta: {},
         }),
     );
 

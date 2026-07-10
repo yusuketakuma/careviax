@@ -296,7 +296,7 @@ describe('SafetyCheckContent url/header convergence', () => {
   }
 
   function stubFetch() {
-    return stubJsonFetch({ data: [] });
+    return stubJsonFetch({ data: [], meta: { has_more: false, next_cursor: null } });
   }
 
   beforeEach(() => {
@@ -323,6 +323,22 @@ describe('SafetyCheckContent url/header convergence', () => {
         'org_1',
         HOSTILE,
       ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects legacy root medication-issue cursor metadata', async () => {
+    const { queryConfigs } = renderSafetyCheck();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ data: [], hasMore: false, nextCursor: null })),
+    );
+
+    try {
+      await expect(queryConfigs.get('medication-issues')!.queryFn()).rejects.toThrow(
+        '服薬課題の取得に失敗しました',
+      );
     } finally {
       vi.unstubAllGlobals();
     }

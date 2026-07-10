@@ -125,9 +125,12 @@ describe('withOrgContext', () => {
       expect(logSecurityEventMock).toHaveBeenCalledWith(
         expect.objectContaining({
           event_type: 'rls_context_missing',
-          org_id: validCuid,
+          path: 'db/withOrgContext',
+          method: 'INTERNAL',
+          details: { reason: 'request_context_missing' },
         }),
       );
+      expect(logSecurityEventMock.mock.calls[0]?.[0]).not.toHaveProperty('org_id');
       expect(mockClient.mockExecuteRaw).toHaveBeenCalledTimes(8);
       expect(mockClient.mockExecuteRaw.mock.calls.map(([query]) => query.values)).toEqual([
         ['app.current_org_id', validCuid],

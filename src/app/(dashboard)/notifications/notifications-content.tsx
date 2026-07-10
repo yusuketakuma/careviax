@@ -20,7 +20,7 @@ import {
 import { useOfflineStore } from '@/lib/stores/offline-store';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { NOTIFICATIONS_API_PATH, buildNotificationsApiPath } from '@/lib/notifications/api-paths';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
@@ -170,7 +170,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ ids }),
       });
-      await readApiJson<unknown>(res, '既読化に失敗しました');
+      await readApiAcknowledgement(res, '既読化に失敗しました');
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['notifications', 'inbox', orgId] });

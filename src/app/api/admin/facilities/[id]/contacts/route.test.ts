@@ -112,9 +112,11 @@ describe('/api/admin/facilities/[id]/contacts', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: [{ id: 'contact_1', name: '相談員A', updated_at: CURRENT_UPDATED_AT }],
-      metadata: {
+      meta: {
         expected_updated_at: CURRENT_UPDATED_AT,
         version_basis: 'facility_updated_at',
       },
@@ -161,7 +163,7 @@ describe('/api/admin/facilities/[id]/contacts', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: [{ name: '相談員A', updated_at: CURRENT_UPDATED_AT }],
-      metadata: {
+      meta: {
         expected_updated_at: expect.any(String),
         version_basis: 'facility_updated_at',
       },

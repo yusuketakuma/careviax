@@ -63,7 +63,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
 
     return success({
       data: contacts.map(toResponse),
-      metadata: {
+      meta: {
         expected_updated_at: facility.updated_at.toISOString(),
         version_basis: 'facility_updated_at',
       },
@@ -148,7 +148,7 @@ export const PUT = withAuthContext<{ id: string }>(
 
     return success({
       data: result.contacts.map(toResponse),
-      metadata: {
+      meta: {
         expected_updated_at: result.expectedUpdatedAt.toISOString(),
         version_basis: 'facility_updated_at',
       },

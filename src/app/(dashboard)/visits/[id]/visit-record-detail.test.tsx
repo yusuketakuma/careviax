@@ -307,6 +307,29 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
     }
   });
 
+  it('accepts an exact care-report envelope and rejects legacy root pagination metadata', async () => {
+    const { queryConfigs } = setupQueries();
+    render(<VisitRecordDetail recordId="record_1" />);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ data: [], meta: { has_more: false, next_cursor: null } }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: [], hasMore: false }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      await expect(queryConfigs.get('care-reports-by-visit')!.queryFn()).resolves.toEqual({
+        data: [],
+      });
+      await expect(queryConfigs.get('care-reports-by-visit')!.queryFn()).rejects.toThrow(
+        '報告書の取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('keeps server messages and falls back for mutation error toasts', () => {
     const { mutationConfigs } = setupQueries();
     render(<VisitRecordDetail recordId="record_1" />);

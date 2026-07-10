@@ -141,4 +141,31 @@ describe('FacilityPacketContent', () => {
       }),
     });
   });
+
+  it('rejects a legacy successful facility packet save without clearing the draft', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (input === '/api/visit-preparations/schedule_1') {
+        return jsonResponse(buildFacilityPacketResponse());
+      }
+      return jsonResponse({ message: '施設訪問パケットを保存しました' }, 201);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<FacilityPacketContent scheduleId="schedule_1" />, {
+      wrapper: createQueryClientWrapper(),
+    });
+
+    expect(await screen.findByTestId('facility-packet-page')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '施設訪問パケットを編集' }));
+    fireEvent.change(screen.getByLabelText('入館方法'), {
+      target: { value: '正面玄関で受付' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('施設訪問パケットの保存に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('入館方法') as HTMLInputElement).value).toBe('正面玄関で受付');
+  });
 });

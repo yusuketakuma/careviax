@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { messageFromError } from '@/lib/utils/error-message';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
@@ -49,18 +50,35 @@ type ContactRow = {
   notes: string;
 };
 
-type ReliabilityWarning = {
-  code: string;
-  severity: 'warning';
-  message: string;
-};
+const reliabilityWarningSchema = z
+  .object({
+    code: z.string(),
+    severity: z.literal('warning'),
+    message: z.string(),
+  })
+  .passthrough();
 
-type ContactSaveResponse = {
-  warnings?: ReliabilityWarning[];
-  metadata?: {
-    expected_updated_at?: string | null;
-  };
-};
+const contactSaveResponseSchema = z
+  .object({
+    data: z.array(z.unknown()),
+    meta: z
+      .object({
+        warnings: z.array(reliabilityWarningSchema),
+        contact_readiness: z
+          .object({
+            ready: z.boolean(),
+            detail: z.string(),
+          })
+          .strict(),
+        duplicate_contacts: z.array(reliabilityWarningSchema),
+        expected_updated_at: z.string().datetime(),
+        version_basis: z.literal('patient_updated_at'),
+      })
+      .strict(),
+  })
+  .strict();
+
+type ContactSaveResponse = z.infer<typeof contactSaveResponseSchema>;
 
 const relationLabel: Record<ContactRow['relation'], string> = {
   self: '本人',
@@ -166,14 +184,15 @@ export function PatientContactsPanel({
             })),
         }),
       });
-      return readApiJson<ContactSaveResponse>(res, '連絡先の保存に失敗しました');
+      return readApiJson<ContactSaveResponse>(res, {
+        fallbackMessage: '連絡先の保存に失敗しました',
+        schema: contactSaveResponseSchema,
+      });
     },
     onSuccess: async (payload) => {
-      if (payload.metadata?.expected_updated_at) {
-        setExpectedUpdatedAt(payload.metadata.expected_updated_at);
-      }
+      setExpectedUpdatedAt(payload.meta.expected_updated_at);
       toast.success('連絡先を更新しました');
-      for (const warning of payload.warnings ?? []) {
+      for (const warning of payload.meta.warnings) {
         toast.warning(warning.message);
       }
       await invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId }));

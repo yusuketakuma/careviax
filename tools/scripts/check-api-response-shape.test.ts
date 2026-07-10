@@ -66,6 +66,16 @@ describe('check-api-response-shape', () => {
     expect(runCheck(root)).toContain('API response shape check passed');
   });
 
+  it('allows measured success responses with exact data and meta keys', () => {
+    const root = createFixtureRepo({
+      'src/app/api/example/route.ts': `
+        return successWithMeasuredJsonPayload({ data: rows, meta: { returned_count: rows.length } });
+      `,
+    });
+
+    expect(runCheck(root)).toContain('API response shape check passed');
+  });
+
   it('rejects direct success payloads', () => {
     const root = createFixtureRepo({
       'src/app/api/example/route.ts': `
@@ -84,6 +94,39 @@ describe('check-api-response-shape', () => {
     });
 
     expect(() => runCheck(root)).toThrow(/success\(\) response is not wrapped/);
+  });
+
+  it('rejects root keys outside data and meta', () => {
+    const root = createFixtureRepo({
+      'src/app/api/example/route.ts': `
+        return success({ data: rows, warnings: ['legacy-root-field'] });
+      `,
+    });
+
+    expect(() => runCheck(root)).toThrow(/non-envelope root keys: warnings/);
+  });
+
+  it('rejects top-level spreads because the exact envelope cannot be proven', () => {
+    const root = createFixtureRepo({
+      'src/app/api/example/route.ts': `
+        return success({ data: rows, ...legacyMetadata });
+      `,
+    });
+
+    expect(() => runCheck(root)).toThrow(/non-envelope root keys: <spread>/);
+  });
+
+  it('rejects variable measured payloads because their exact envelope is not static', () => {
+    const root = createFixtureRepo({
+      'src/app/api/example/route.ts': `
+        const payload = buildTimelinePayload();
+        return successWithMeasuredJsonPayload(payload);
+      `,
+    });
+
+    expect(() => runCheck(root)).toThrow(
+      /successWithMeasuredJsonPayload\(\) response is not a static/,
+    );
   });
 
   it('rejects route-local legacy error JSON shapes', () => {

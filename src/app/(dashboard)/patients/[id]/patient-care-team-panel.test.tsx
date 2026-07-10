@@ -35,6 +35,46 @@ import { toast } from 'sonner';
 
 setupDomTestEnv();
 
+function externalProfessionalOptionsResponse(data: unknown[] = []) {
+  return {
+    data,
+    meta: {
+      total_count: data.length,
+      visible_count: data.length,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'external_professionals',
+      has_more: false,
+      filters_applied: {
+        q: null,
+        profession_type: null,
+        facility_id: null,
+        preferred_contact_method: null,
+      },
+    },
+  };
+}
+
+function careTeamSaveResponse(
+  warnings: Array<{ code: string; severity: 'warning'; message: string }> = [],
+) {
+  return {
+    data: [],
+    meta: {
+      case_id: 'case_active_123456',
+      warnings,
+      care_team_reliability: {
+        needs_confirmation: warnings.length > 0,
+        alert_count: warnings.length,
+        detail: warnings[0]?.message ?? '緊急連絡先と主要連携先の連絡手段があります。',
+        missing_role_labels: [],
+        phone_missing_role_labels: [],
+        fax_missing_role_labels: [],
+      },
+    },
+  };
+}
+
 describe('PatientCareTeamPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -42,7 +82,7 @@ describe('PatientCareTeamPanel', () => {
 
   it('renders care team editing with a semantic section heading and shared actions', () => {
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
-    useQueryMock.mockReturnValue({ data: { data: [] } });
+    useQueryMock.mockReturnValue({ data: externalProfessionalOptionsResponse() });
     useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
 
     render(
@@ -116,20 +156,20 @@ describe('PatientCareTeamPanel', () => {
 
   it('shows reliability warnings returned by the care-team save API', () => {
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
-    useQueryMock.mockReturnValue({ data: { data: [] } });
+    useQueryMock.mockReturnValue({ data: externalProfessionalOptionsResponse() });
     useMutationMock
       .mockReturnValueOnce({ mutate: vi.fn(), isPending: false })
       .mockImplementationOnce((config) => ({
         mutate: () =>
-          config.onSuccess?.({
-            warnings: [
+          config.onSuccess?.(
+            careTeamSaveResponse([
               {
                 code: 'CARE_TEAM_RELIABILITY_UNREADY',
                 severity: 'warning',
                 message: '緊急連絡先あり / 不足: 訪看、ケアマネ / 報告FAX未登録: 医師',
               },
-            ],
-          }),
+            ]),
+          ),
         isPending: false,
       }));
 
@@ -187,11 +227,20 @@ describe('PatientCareTeamPanel', () => {
             notes: null,
           },
         ],
-        total_count: 3,
-        visible_count: 1,
-        hidden_count: 2,
-        truncated: true,
-        count_basis: 'external_professionals',
+        meta: {
+          total_count: 3,
+          visible_count: 1,
+          hidden_count: 2,
+          truncated: true,
+          count_basis: 'external_professionals',
+          has_more: true,
+          filters_applied: {
+            q: null,
+            profession_type: null,
+            facility_id: null,
+            preferred_contact_method: null,
+          },
+        },
       },
     });
     useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
@@ -241,7 +290,7 @@ describe('PatientCareTeamPanel', () => {
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
     useQueryMock.mockImplementation((config: CapturedConfig) => {
       queryConfigs.push(config);
-      return { data: { data: [] } };
+      return { data: externalProfessionalOptionsResponse() };
     });
     useMutationMock.mockImplementation((config: CapturedConfig) => {
       mutationConfigs.push(config);
@@ -250,13 +299,13 @@ describe('PatientCareTeamPanel', () => {
     return { queryConfigs, mutationConfigs };
   }
 
-  function okFetch() {
-    return vi.fn<typeof fetch>().mockImplementation(() => Promise.resolve(jsonResponse({})));
+  function okFetch(payload: unknown = {}) {
+    return vi.fn<typeof fetch>().mockImplementation(() => Promise.resolve(jsonResponse(payload)));
   }
 
   it('fetches external professional options with org headers (static path)', async () => {
     const { queryConfigs } = captureConfigs();
-    const fetchMock = okFetch();
+    const fetchMock = okFetch(externalProfessionalOptionsResponse());
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -267,6 +316,29 @@ describe('PatientCareTeamPanel', () => {
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe('/api/admin/external-professionals');
       expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('rejects legacy root external-professional list metadata', async () => {
+    const { queryConfigs } = captureConfigs();
+    const fetchMock = okFetch({
+      data: [],
+      total_count: 0,
+      visible_count: 0,
+      hidden_count: 0,
+      truncated: false,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientCareTeamPanel patientId="patient_1" orgId="org_1" cases={buildCases()} />);
+
+      await expect(queryConfigs[0]?.queryFn?.()).rejects.toThrow(
+        '他職種マスターの取得に失敗しました',
+      );
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
@@ -297,7 +369,7 @@ describe('PatientCareTeamPanel', () => {
 
   it('posts a quick-create master with JSON org headers (static path)', async () => {
     const { mutationConfigs } = captureConfigs();
-    const fetchMock = okFetch();
+    const fetchMock = okFetch({ data: { id: 'external_1' } });
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -358,7 +430,7 @@ describe('PatientCareTeamPanel', () => {
   it('saves the care team to an encoded patient path with JSON headers and a raw case_id body', async () => {
     const hostileId = 'pt/1?x=y#z';
     const { mutationConfigs } = captureConfigs();
-    const fetchMock = okFetch();
+    const fetchMock = okFetch(careTeamSaveResponse());
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -379,6 +451,37 @@ describe('PatientCareTeamPanel', () => {
       expect(body).not.toContain(hostileId);
       expect(body).not.toContain('cc0000000777');
       expect(JSON.parse(body)).toEqual({ case_id: 'case_active_123456', links: [] });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('rejects legacy root care-team save metadata and warnings', async () => {
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch({
+      case_id: 'case_active_123456',
+      data: [],
+      warnings: [],
+      metadata: {
+        care_team_reliability: {
+          needs_confirmation: false,
+          alert_count: 0,
+          detail: '緊急連絡先と主要連携先の連絡手段があります。',
+          missing_role_labels: [],
+          phone_missing_role_labels: [],
+          fax_missing_role_labels: [],
+        },
+      },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientCareTeamPanel patientId="patient_1" orgId="org_1" cases={buildCases()} />);
+
+      await expect(mutationConfigs[1]?.mutationFn?.()).rejects.toThrow(
+        '多職種連携先の保存に失敗しました',
+      );
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
@@ -418,7 +521,7 @@ describe('PatientCareTeamPanel', () => {
       '/api/patients/__helper_patient_1__/care-team',
     );
     const { mutationConfigs } = captureConfigs();
-    const fetchMock = okFetch();
+    const fetchMock = okFetch(careTeamSaveResponse());
     vi.stubGlobal('fetch', fetchMock);
 
     try {

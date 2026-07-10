@@ -387,7 +387,9 @@ describe('/api/tasks', () => {
       where: { org_id: 'org_1', id: { in: ['user_2'] } },
       select: { id: true, name: true },
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: [
         {
           id: 'task_1',
@@ -396,7 +398,7 @@ describe('/api/tasks', () => {
           can_complete_inline: true,
         },
       ],
-      hasMore: false,
+      meta: { has_more: false, next_cursor: null },
     });
   });
 
@@ -502,8 +504,7 @@ describe('/api/tasks', () => {
           can_complete_inline: true,
         },
       ],
-      hasMore: true,
-      nextCursor: 'task_1',
+      meta: { has_more: true, next_cursor: 'task_1' },
     });
   });
 
@@ -646,7 +647,7 @@ describe('/api/tasks', () => {
           can_complete_inline: true,
         },
       ],
-      hasMore: false,
+      meta: { has_more: false, next_cursor: null },
     });
   });
 

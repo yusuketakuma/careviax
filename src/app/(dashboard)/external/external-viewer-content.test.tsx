@@ -75,7 +75,19 @@ describe('ExternalViewerContent', () => {
   });
 
   it('keeps external read queries on org-scoped endpoints through the shared JSON helper', async () => {
-    const fetchMock = stubJsonFetch({ data: [] });
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      const payload = url.startsWith('/api/patient-self-reports')
+        ? { data: [], meta: { has_more: false, next_cursor: null } }
+        : url === '/api/external-access'
+          ? { data: [], meta: { has_more: false, next_cursor: null } }
+          : { data: [] };
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     render(<ExternalViewerContent />);
 
@@ -106,6 +118,22 @@ describe('ExternalViewerContent', () => {
         headers: { 'x-org-id': 'org_1' },
       },
     );
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: [], hasMore: false, nextCursor: null }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await expect(grantsQuery?.queryFn()).rejects.toThrow('外部共有の取得に失敗しました');
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: [], hasMore: false }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await expect(selfReportsQuery?.queryFn()).rejects.toThrow('自己申告の取得に失敗しました');
   });
 
   it('sends the self report version timestamp when updating status', async () => {
@@ -228,6 +256,61 @@ describe('ExternalViewerContent', () => {
     expect((caughtError as Error).message).toBe('同じ自己申告のタスクが既に存在します');
     createTaskMutation.onError?.(caughtError as Error);
     expect(toastErrorMock).toHaveBeenCalledWith('同じ自己申告のタスクが既に存在します');
+  });
+
+  it('rejects legacy successful self-report mutations before applying follow-up state', async () => {
+    const updateMutateAsync = vi.fn();
+    useMutationMock
+      .mockReturnValueOnce({ mutate: vi.fn(), mutateAsync: updateMutateAsync, isPending: false })
+      .mockReturnValueOnce({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false });
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'resolved' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'task_1' }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ExternalViewerContent />);
+
+    const updateMutation = useMutationMock.mock.calls[0]?.[0] as {
+      mutationFn: (variables: {
+        id: string;
+        status: 'resolved';
+        updated_at: string;
+      }) => Promise<unknown>;
+    };
+    const createTaskMutation = useMutationMock.mock.calls[1]?.[0] as {
+      mutationFn: (report: {
+        id: string;
+        patient_id: string;
+        patient_name: string | null;
+        category: string;
+        subject: string;
+        reported_by_name: string | null;
+        requested_callback: boolean;
+        updated_at: string;
+      }) => Promise<unknown>;
+    };
+
+    await expect(
+      updateMutation.mutationFn({
+        id: 'report_1',
+        status: 'resolved',
+        updated_at: '2026-03-28T01:02:03.000Z',
+      }),
+    ).rejects.toThrow('自己申告の更新に失敗しました');
+    await expect(
+      createTaskMutation.mutationFn({
+        id: 'report_1',
+        patient_id: 'patient_1',
+        patient_name: '患者A',
+        category: '服薬相談',
+        subject: '残薬が増えた',
+        reported_by_name: '家族A',
+        requested_callback: true,
+        updated_at: '2026-03-28T01:02:03.000Z',
+      }),
+    ).rejects.toThrow('タスク作成に失敗しました');
+    expect(updateMutateAsync).not.toHaveBeenCalled();
   });
 
   it('keeps server messages and falls back for self-report mutation error toasts', () => {

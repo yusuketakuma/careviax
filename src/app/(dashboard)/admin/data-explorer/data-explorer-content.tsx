@@ -23,7 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { SkeletonRows } from '@/components/ui/loading';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
@@ -213,7 +213,7 @@ export function DataExplorerContent() {
           body: JSON.stringify({ patch }),
         },
       );
-      return readApiJson<unknown>(response, '更新に失敗しました');
+      return readApiAcknowledgement(response, '更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('レコードを更新しました');

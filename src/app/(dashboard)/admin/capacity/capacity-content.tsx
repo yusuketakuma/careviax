@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { z } from 'zod';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminCapacityShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { PageScaffold } from '@/components/layout/page-scaffold';
@@ -9,6 +10,7 @@ import { Skeleton } from '@/components/ui/loading';
 import { StatCard } from '@/components/ui/stat-card';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { apiDataSchema } from '@/lib/api/response-schemas';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import type { CapacityProcessKey } from '@/lib/analytics/capacity';
 
@@ -38,18 +40,45 @@ export function emergencyCapacityState(count: number): CapacityKpiState {
  * 行程ごとの残り・スタッフ別の負荷(CSS バー)+ 今すぐ見るべきことで示す。
  */
 
-type CapacitySummary = {
-  generated_at: string;
-  kpis: {
-    visit_slots: { completed: number; total: number };
-    dispense_set: { completed: number; total: number };
-    staff_utilization_percent: number;
-    emergency_capacity_count: number;
-  };
-  process_remaining: Array<{ key: CapacityProcessKey; label: string; count: number }>;
-  staff_load: Array<{ user_id: string; label: string; load_percent: number }>;
-  attention_items: string[];
-};
+const completedTotalSchema = z
+  .object({
+    completed: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  })
+  .strict();
+const capacitySummarySchema = z
+  .object({
+    generated_at: z.string().datetime(),
+    kpis: z
+      .object({
+        visit_slots: completedTotalSchema,
+        dispense_set: completedTotalSchema,
+        staff_utilization_percent: z.number().finite().nonnegative(),
+        emergency_capacity_count: z.number().finite().nonnegative(),
+      })
+      .strict(),
+    process_remaining: z.array(
+      z
+        .object({
+          key: z.enum(['input', 'confirm', 'dispense', 'set', 'visit', 'report']),
+          label: z.string().min(1),
+          count: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ),
+    staff_load: z.array(
+      z
+        .object({
+          user_id: z.string().min(1),
+          label: z.string().min(1),
+          load_percent: z.number().finite().nonnegative(),
+        })
+        .strict(),
+    ),
+    attention_items: z.array(z.string().min(1)),
+  })
+  .strict();
+const capacityResponseSchema = apiDataSchema(capacitySummarySchema);
 
 // 行程バーの系列色。状態色ではなくデータ可視化の系列なので --chart-* トークンを使う。
 const PROCESS_COLORS: Record<CapacityProcessKey, string> = {
@@ -143,11 +172,11 @@ export function CapacityContent() {
       const res = await fetch('/api/admin/capacity', {
         headers: buildOrgHeaders(orgId),
       });
-      const json = await readApiJson<{ data: CapacitySummary }>(
-        res,
-        'キャパシティの取得に失敗しました',
-      );
-      return json.data as CapacitySummary;
+      const json = await readApiJson(res, {
+        fallbackMessage: 'キャパシティの取得に失敗しました',
+        schema: capacityResponseSchema,
+      });
+      return json.data;
     },
     enabled: !!orgId,
   });

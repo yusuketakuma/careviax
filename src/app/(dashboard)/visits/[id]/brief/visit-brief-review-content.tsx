@@ -9,8 +9,9 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { apiUnknownDataEnvelopeSchema } from '@/lib/api/response-schemas';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
@@ -60,13 +61,19 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
       const headers = buildOrgHeaders(orgId);
       const scheduleRes = await fetch(`/api/visit-schedules/${visitId}`, { headers });
       if (scheduleRes.ok) {
-        const payload = await readApiJson<{ data: unknown }>(scheduleRes).catch(() => null);
+        const payload = await readApiJson(scheduleRes, {
+          fallbackMessage: '訪問予定の取得に失敗しました',
+          schema: apiUnknownDataEnvelopeSchema,
+        }).catch(() => null);
         const patientId = pickVisitPatientId(payload?.data);
         if (patientId) return { patientId };
       }
       const recordRes = await fetch(`/api/visit-records/${visitId}`, { headers });
       if (recordRes.ok) {
-        const payload = await readApiJson<{ data: unknown }>(recordRes);
+        const payload = await readApiJson(recordRes, {
+          fallbackMessage: '訪問記録の取得に失敗しました',
+          schema: apiUnknownDataEnvelopeSchema,
+        });
         const patientId = pickVisitPatientId(payload.data);
         if (patientId) return { patientId };
       }
@@ -115,7 +122,7 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
           is_fallback: summary.kind === 'ai' ? brief.ai_summary.is_fallback : false,
         }),
       });
-      return readApiJson<unknown>(res, '確認結果の送信に失敗しました');
+      return readApiAcknowledgement(res, '確認結果の送信に失敗しました');
     },
     onSuccess: (_data, { choice, feedback }) => {
       setConfirmChoice(choice);

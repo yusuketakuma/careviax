@@ -483,7 +483,7 @@ const authenticatedPOST = withAuthContext(
 
     if ('error' in result) return result.error;
 
-    return success({ data: result.note, sync: result.sync }, 201);
+    return success({ data: result.note, meta: { sync: result.sync } }, 201);
   },
   {
     permission: 'canAuthorReport',

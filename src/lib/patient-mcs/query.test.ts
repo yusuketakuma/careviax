@@ -211,4 +211,28 @@ describe('patient-mcs query', () => {
 
     global.fetch = originalFetch;
   });
+
+  it('maps a mixed-root successful payload to a typed failed query error', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        data: {
+          patient: { id: 'patient_1', name: '青葉 花子' },
+          link: null,
+          profile: null,
+          summary: null,
+          messages: [],
+          checkLogs: [],
+        },
+        legacy_messages: [],
+      }),
+    );
+
+    await expect(fetchPatientMcsOverview('patient_1', 'org_1', 30)).rejects.toMatchObject({
+      code: 'failed',
+      message: 'MCS 連携情報の取得に失敗しました',
+    } satisfies Partial<PatientMcsOverviewQueryError>);
+
+    global.fetch = originalFetch;
+  });
 });

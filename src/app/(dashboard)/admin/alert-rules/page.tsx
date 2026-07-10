@@ -24,7 +24,7 @@ import { SegmentError } from '@/components/ui/segment-state';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -247,7 +247,7 @@ export default function AlertRulesPage() {
           }),
         },
       );
-      await readApiJson<unknown>(res, '処方安全アラートルールの保存に失敗しました');
+      await readApiAcknowledgement(res, '処方安全アラートルールの保存に失敗しました');
       return { wasEditing: Boolean(values.id) };
     },
     onSuccess: async ({ wasEditing }) => {
@@ -506,7 +506,8 @@ export default function AlertRulesPage() {
                   強く表示
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  ON でこのルールを強く表示、OFF で標準表示。組み込み安全チェックは常に実行されます。
+                  ON でこのルールを強く表示、OFF
+                  で標準表示。組み込み安全チェックは常に実行されます。
                 </p>
               </div>
               <Controller

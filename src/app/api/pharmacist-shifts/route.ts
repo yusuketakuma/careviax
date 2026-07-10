@@ -110,10 +110,9 @@ async function authenticatedGET(req: NextRequest) {
         ? { data: shifts, hasMore: false }
         : buildCursorPage(shifts, limit, (shift) => shift.id);
 
-    return success({
-      data: page.data,
-      ...(limit === undefined ? {} : { meta: { limit, has_more: page.hasMore } }),
-    });
+    return limit === undefined
+      ? success({ data: page.data })
+      : success({ data: page.data, meta: { limit, has_more: page.hasMore } });
   });
 }
 

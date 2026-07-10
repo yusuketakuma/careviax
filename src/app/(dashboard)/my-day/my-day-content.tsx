@@ -27,12 +27,14 @@ import {
   Workflow,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { z } from 'zod';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { readApiJson } from '@/lib/api/client-json';
+import { auditLogsResponseSchemaFor } from '@/types/api/audit-logs';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -99,6 +101,28 @@ type StatusChangeAuditLog = {
   };
   created_at: string;
 };
+
+const patientStatusIconSchema = z.custom<PatientStatusIcon>(
+  (value) => typeof value === 'string' && value in STATUS_ICON_CONFIG,
+);
+
+const statusChangeAuditLogSchema: z.ZodType<StatusChangeAuditLog> = z
+  .object({
+    id: z.string(),
+    target_id: z.string(),
+    changes: z
+      .object({
+        from: patientStatusIconSchema,
+        from_label: z.string(),
+        to: patientStatusIconSchema,
+        to_label: z.string(),
+      })
+      .passthrough(),
+    created_at: z.string(),
+  })
+  .passthrough();
+
+const statusChangeAuditLogsResponseSchema = auditLogsResponseSchemaFor(statusChangeAuditLogSchema);
 
 // QueuePriority 写像(PRIORITY_ROLE 準拠): urgent(緊急+至急統合)=blocked, high=confirm, normal=info, low=readonly。
 const QUEUE_PRIORITY_ROLE = {
@@ -255,11 +279,11 @@ export function MyDayContent({
       const res = await fetch(`/api/audit-logs?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      const json = await readApiJson<{ data?: StatusChangeAuditLog[] }>(
-        res,
-        'ステータス変更の取得に失敗しました',
-      );
-      return json.data ?? [];
+      const json = await readApiJson(res, {
+        fallbackMessage: 'ステータス変更の取得に失敗しました',
+        schema: statusChangeAuditLogsResponseSchema,
+      });
+      return json.data;
     },
     enabled: !!orgId && canViewStatusChanges,
   });

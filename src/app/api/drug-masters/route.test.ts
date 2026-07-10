@@ -190,7 +190,9 @@ describe('/api/drug-masters GET', () => {
         }),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: [
         expect.objectContaining({
           id: 'drug_1',
@@ -201,6 +203,7 @@ describe('/api/drug-masters GET', () => {
           }),
         }),
       ],
+      meta: { has_more: false, next_cursor: null, total_count: 1 },
     });
   });
 
@@ -352,10 +355,9 @@ describe('/api/drug-masters GET', () => {
     const payload = await response.json();
     expect(payload).toMatchObject({
       data: [expect.objectContaining({ id: 'drug_1' })],
-      hasMore: true,
-      nextCursor: '1',
+      meta: { has_more: true, next_cursor: '1' },
     });
-    expect(payload).not.toHaveProperty('totalCount');
+    expect(payload.meta).not.toHaveProperty('total_count');
   });
 
   it('caches the org-independent search result across repeated identical queries', async () => {

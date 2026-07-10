@@ -2301,18 +2301,18 @@ async function authenticatedPATCH(
     );
 
     return success({
-      ...patient,
-      warnings:
-        duplicateCandidates.length > 0
-          ? [
-              {
-                code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
-                severity: 'warning',
-                message: '重複候補を確認済みとして患者情報を更新しました。',
-              },
-            ]
-          : [],
-      metadata: {
+      data: patient,
+      meta: {
+        warnings:
+          duplicateCandidates.length > 0
+            ? [
+                {
+                  code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
+                  severity: 'warning',
+                  message: '重複候補を確認済みとして患者情報を更新しました。',
+                },
+              ]
+            : [],
         duplicate_candidates: duplicateCandidates,
       },
     });

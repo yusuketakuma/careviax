@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
@@ -176,7 +176,7 @@ export function JobsDashboardContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({}),
       });
-      await readApiJson<unknown>(res, `ジョブ "${jobType}" の再実行に失敗しました`);
+      await readApiAcknowledgement(res, `ジョブ "${jobType}" の再実行に失敗しました`);
       return jobType;
     },
     onSuccess: (jobType) => {

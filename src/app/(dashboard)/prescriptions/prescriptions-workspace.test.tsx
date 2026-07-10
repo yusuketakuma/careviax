@@ -199,13 +199,16 @@ describe('PrescriptionsWorkspace', () => {
     fetchMock.mockImplementation(async () =>
       jsonResponse({
         data: [],
-        hasMore: true,
-        nextCursor: 'cursor_1',
-        totalCount: 75,
-        facets: {
-          status: {
-            inquiry_pending: 12,
-            ready_to_dispense: 34,
+        meta: {
+          has_more: true,
+          next_cursor: 'cursor_1',
+          total_count: 75,
+          facets: {
+            status: {
+              inquiry_pending: 12,
+              ready_to_dispense: 34,
+            },
+            source_type: {},
           },
         },
       }),
@@ -224,7 +227,12 @@ describe('PrescriptionsWorkspace', () => {
     expect(options.refetchInterval).toBeUndefined();
     expect(options.getNextPageParam({ nextCursor: 'cursor_1' })).toBe('cursor_1');
 
-    await options.queryFn({ pageParam: undefined });
+    await expect(options.queryFn({ pageParam: undefined })).resolves.toMatchObject({
+      data: [],
+      hasMore: true,
+      nextCursor: 'cursor_1',
+      totalCount: 75,
+    });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     let url = parseFetchUrl();
@@ -247,6 +255,22 @@ describe('PrescriptionsWorkspace', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     url = parseFetchUrl();
     expect(url.searchParams.get('cursor')).toBe('cursor_1');
+  });
+
+  it('rejects legacy root pagination and facet metadata', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: [],
+        hasMore: false,
+        totalCount: 0,
+        facets: { status: {}, source_type: {} },
+      }),
+    );
+    render(<PrescriptionsWorkspace />);
+
+    await expect(latestInfiniteQueryOptions().queryFn({ pageParam: undefined })).rejects.toThrow(
+      '処方受付一覧の取得に失敗しました',
+    );
   });
 
   it('shows server facet counts instead of loaded-window status counts', () => {

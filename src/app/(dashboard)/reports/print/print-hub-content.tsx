@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -13,6 +14,7 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildCareReportPrintAuditApiPath } from '@/lib/reports/api-paths';
 import { messageFromError } from '@/lib/utils/error-message';
+import { careReportListResponseSchema } from '@/types/api/care-reports';
 import {
   careReportPrintAuditResponseSchema,
   type CareReportPrintAuditResponse,
@@ -65,7 +67,12 @@ type PatientPrescriptionsResponse = {
   patient: { id: string; name: string; name_kana: string };
   data: PrescriptionIntakeForPrint[];
 };
-type CareReportsResponse = { data: CareReportForPrint[] };
+const careReportForPrintSchema = z.custom<CareReportForPrint>((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const report = value as Record<string, unknown>;
+  return typeof report.id === 'string' && typeof report.report_type === 'string';
+});
+const careReportsResponseSchema = careReportListResponseSchema(careReportForPrintSchema);
 type PatientDocumentsForPrintResponse = {
   patient: { id: string; name: string; name_kana: string };
   print_readiness: FirstVisitPrintReadinessForPrint;
@@ -167,7 +174,10 @@ function usePrintHubData(
       const res = await fetch('/api/care-reports?limit=50&status=confirmed', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<CareReportsResponse>(res, '報告書の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '報告書の取得に失敗しました',
+        schema: careReportsResponseSchema,
+      });
     },
     enabled: !!orgId && needsCareReports,
     staleTime: 60_000,

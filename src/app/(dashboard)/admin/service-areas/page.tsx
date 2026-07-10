@@ -26,7 +26,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { SERVICE_AREAS_API_PATH, buildServiceAreaApiPath } from '@/lib/service-areas/api-paths';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -230,7 +230,7 @@ export default function ServiceAreasPage() {
           }),
         },
       );
-      await readApiJson<unknown>(res, '訪問エリアの保存に失敗しました');
+      await readApiAcknowledgement(res, '訪問エリアの保存に失敗しました');
       return values;
     },
     onSuccess: async (savedForm) => {
@@ -251,7 +251,7 @@ export default function ServiceAreasPage() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      await readApiJson<unknown>(res, '訪問エリアの削除に失敗しました');
+      await readApiAcknowledgement(res, '訪問エリアの削除に失敗しました');
     },
     onSuccess: async (_data, deletedId) => {
       toast.success('訪問エリアを削除しました');

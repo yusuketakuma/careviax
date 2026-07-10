@@ -1006,6 +1006,43 @@ describe('ScheduleTeamBoard', () => {
     ).rejects.toThrow('タスクは既に処理済みです');
   });
 
+  it('rejects legacy successful schedule and task status updates', async () => {
+    const mutationConfigs: MutationConfig[] = [];
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: vi.fn(),
+        isPending: false,
+        variables: undefined,
+      };
+    });
+    mockQueries();
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const statusMutation = mutationConfigs[0] as MutationConfig<VisitStatusPayload>;
+    const taskStatusMutation = mutationConfigs[1] as MutationConfig<TaskStatusPayload>;
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: '訪問予定を更新しました' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: '運用タスクを更新しました' }), { status: 200 }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      statusMutation.mutationFn({
+        scheduleId: 'schedule_1',
+        status: 'in_progress',
+        expectedStatus: 'planned',
+      }),
+    ).rejects.toThrow('訪問予定の更新に失敗しました');
+    await expect(
+      taskStatusMutation.mutationFn({ taskId: 'task_1', status: 'in_progress' }),
+    ).rejects.toThrow('運用タスクの更新に失敗しました');
+  });
+
   it('surfaces a toast instead of silently swallowing mutation failures', async () => {
     type MutationConfigWithHandlers = MutationConfig & {
       onError?: (error: unknown) => void;

@@ -1,5 +1,5 @@
 import { format, parseISO } from 'date-fns';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
@@ -154,7 +154,7 @@ export async function updateScheduleDayProposalAction({
     body: JSON.stringify(request.payload),
   });
 
-  return readApiJson<unknown>(res, '候補更新に失敗しました');
+  return readApiAcknowledgement(res, '候補更新に失敗しました');
 }
 
 export function getScheduleDayProposalActionSuccessMessage(

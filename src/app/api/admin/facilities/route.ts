@@ -85,16 +85,18 @@ const authenticatedGET = withAuthContext(
           address: facility.address,
           patient_count: patientCountByFacilityId.get(facility.id) ?? 0,
         })),
-        hasMore: hasMore || hiddenCount > 0,
-        total_count: totalCount,
-        visible_count: visibleCount,
-        hidden_count: hiddenCount,
-        truncated: hiddenCount > 0,
-        count_basis: 'facilities',
-        filters_applied: {
-          q: query,
+        meta: {
+          has_more: hasMore || hiddenCount > 0,
+          total_count: totalCount,
+          visible_count: visibleCount,
+          hidden_count: hiddenCount,
+          truncated: hiddenCount > 0,
+          count_basis: 'facilities',
+          filters_applied: {
+            q: query,
+          },
+          limit,
         },
-        limit,
       });
     }
 
@@ -138,13 +140,16 @@ const authenticatedGET = withAuthContext(
           { includeTimestamps: true },
         ),
       ),
-      total_count: facilities.length,
-      visible_count: facilities.length,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'facilities',
-      filters_applied: {
-        q: null,
+      meta: {
+        has_more: false,
+        total_count: facilities.length,
+        visible_count: facilities.length,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'facilities',
+        filters_applied: {
+          q: null,
+        },
       },
     });
   },

@@ -186,8 +186,11 @@ describe('/api/pharmacy-drug-stock-templates', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: { id: 'template_1', item_count: 1 },
+      meta: { site: { id: 'site_1', name: '本店' } },
     });
     expect(prismaMock.formularyTemplate.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -374,7 +377,9 @@ describe('/api/pharmacy-drug-stock-templates', () => {
       code: 'AUTH_FORBIDDEN',
     });
     expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
-    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.formularyTemplate.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('marks sanitized unexpected POST errors as no-store', async () => {

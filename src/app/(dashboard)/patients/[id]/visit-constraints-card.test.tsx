@@ -86,7 +86,9 @@ function captureConfigs() {
 }
 
 function okFetch() {
-  return vi.fn<typeof fetch>().mockImplementation(() => Promise.resolve(jsonResponse({})));
+  return vi
+    .fn<typeof fetch>()
+    .mockImplementation(() => Promise.resolve(jsonResponse({ data: { id: 'pref_1' } })));
 }
 
 afterEach(() => {
@@ -237,6 +239,25 @@ describe('VisitConstraintsCard', () => {
       body: expect.any(String),
     });
     expect(toast.error).toHaveBeenCalledWith('訪問条件の更新権限がありません');
+  });
+
+  it('rejects a legacy successful visit-constraint save', async () => {
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ message: '訪問条件を保存しました' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<VisitConstraintsCard patientId="patient_1" orgId="org_1" />);
+
+    await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(
+      '訪問条件の保存に失敗しました',
+    );
+    expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/visit-constraints', {
+      method: 'PUT',
+      headers: buildOrgJsonHeaders('org_1'),
+      body: expect.any(String),
+    });
   });
 
   it('routes visit constraint reads and writes through the shared patient API path helper', async () => {

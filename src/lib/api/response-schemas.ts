@@ -1,11 +1,18 @@
 import { z, type ZodType } from 'zod';
-import { readJsonObject } from '@/lib/db/json';
 
-export function apiDataSchema<TData>(dataSchema: ZodType<TData>): ZodType<{ data: TData }> {
-  return z.object({
-    data: dataSchema,
-  });
+export function apiDataSchema<TData>(
+  dataSchema: ZodType<TData>,
+): ZodType<{ data: TData; meta?: Record<string, unknown> }> {
+  return z
+    .object({
+      data: dataSchema,
+      meta: z.record(z.string(), z.unknown()).optional(),
+    })
+    .strict();
 }
+
+export const apiAcknowledgementSchema = apiDataSchema(z.unknown()).transform(() => undefined);
+export const apiUnknownDataEnvelopeSchema = apiDataSchema(z.unknown());
 
 export type CursorPaginatedPage<T> = {
   data: T[];
@@ -13,65 +20,47 @@ export type CursorPaginatedPage<T> = {
   nextCursor?: string;
 };
 
-export function cursorPaginatedPageSchema<TItem>(
+type ApiCursorPageSchemaOptions = {
+  allowAdditionalMeta?: boolean;
+};
+
+export function apiCursorPageSchema<TItem>(
   itemSchema: ZodType<TItem>,
+  options: ApiCursorPageSchemaOptions = {},
 ): ZodType<CursorPaginatedPage<TItem>> {
+  const metaBaseSchema = z.object({
+    has_more: z.boolean(),
+    next_cursor: z.string().trim().min(1).nullable(),
+  });
+  const metaSchema = options.allowAdditionalMeta
+    ? metaBaseSchema.passthrough()
+    : metaBaseSchema.strict();
+
   return z
     .object({
       data: z.array(itemSchema),
-      hasMore: z.boolean(),
-      nextCursor: z.string().trim().min(1).optional(),
+      meta: metaSchema,
     })
+    .strict()
     .superRefine((value, ctx) => {
-      if (value.hasMore && !value.nextCursor) {
+      if (value.meta.has_more && !value.meta.next_cursor) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['nextCursor'],
-          message: 'nextCursor is required when hasMore is true',
+          path: ['meta', 'next_cursor'],
+          message: 'next_cursor is required when has_more is true',
+        });
+      }
+      if (!value.meta.has_more && value.meta.next_cursor) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['meta', 'next_cursor'],
+          message: 'next_cursor must be null when has_more is false',
         });
       }
     })
-    .transform(({ data, hasMore, nextCursor }) => ({
+    .transform(({ data, meta }) => ({
       data,
-      hasMore,
-      ...(nextCursor !== undefined ? { nextCursor } : {}),
+      hasMore: meta.has_more,
+      ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
     }));
-}
-
-export function normalizeCursorPaginatedPagePayload<TItem>(
-  payload: unknown,
-  itemSchema?: ZodType<TItem>,
-): { page: CursorPaginatedPage<TItem>; metadata: Record<string, unknown> } | null {
-  const object = readJsonObject(payload);
-  if (!object) return null;
-
-  const { data, hasMore, nextCursor, ...metadata } = object;
-  const pageEnvelope = cursorPaginatedPageSchema(z.unknown()).safeParse({
-    data,
-    hasMore,
-    nextCursor,
-  });
-  if (!pageEnvelope.success) return null;
-
-  const parsedData: TItem[] = [];
-  for (const item of pageEnvelope.data.data) {
-    if (!itemSchema) {
-      parsedData.push(item as TItem);
-      continue;
-    }
-    const parsedItem = itemSchema.safeParse(item);
-    if (!parsedItem.success) return null;
-    parsedData.push(parsedItem.data);
-  }
-
-  return {
-    page: {
-      data: parsedData,
-      hasMore: pageEnvelope.data.hasMore,
-      ...(pageEnvelope.data.nextCursor !== undefined
-        ? { nextCursor: pageEnvelope.data.nextCursor }
-        : {}),
-    },
-    metadata,
-  };
 }

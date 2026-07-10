@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -131,7 +131,7 @@ export function PackagingMethodsContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(body),
       });
-      await readApiJson<unknown>(res, '配薬方法マスターの保存に失敗しました');
+      await readApiAcknowledgement(res, '配薬方法マスターの保存に失敗しました');
       return { wasEditing: Boolean(currentForm.id) };
     },
     onSuccess: async ({ wasEditing }) => {

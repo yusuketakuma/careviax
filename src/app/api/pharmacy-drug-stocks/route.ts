@@ -230,8 +230,8 @@ const authenticatedGET = withAuthContext(
       });
 
       return success({
-        site,
         data: stock,
+        meta: { site },
       });
     }
 
@@ -280,9 +280,9 @@ const authenticatedGET = withAuthContext(
     const hiddenCount = Math.max(totalCount - visibleCount, 0);
 
     return success({
-      site,
       data: stocked,
-      metadata: {
+      meta: {
+        site,
         limit,
         total_count: totalCount,
         visible_count: visibleCount,
@@ -488,8 +488,8 @@ const authenticatedPOST = withAuthContext(
     });
 
     return success({
-      site,
       data: stock,
+      meta: { site },
     });
   },
   { permission: 'canAdmin' },

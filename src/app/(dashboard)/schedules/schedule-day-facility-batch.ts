@@ -1,4 +1,4 @@
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildOrderedFacilityScheduleIds } from './calendar-view.helpers';
 import {
@@ -86,7 +86,7 @@ export async function saveScheduleDayFacilityBatch({
     ),
   });
 
-  return readApiJson<unknown>(res, '同時訪問グループの保存に失敗しました');
+  return readApiAcknowledgement(res, '同時訪問グループの保存に失敗しました');
 }
 
 export async function handleScheduleDayFacilityBatchSuccess({

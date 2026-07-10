@@ -22,6 +22,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
 import { PatientHeader } from '@/components/features/patients/patient-header';
 import { readApiJson } from '@/lib/api/client-json';
+import { medicationIssuesCursorResponseSchema } from '@/types/api/medication-issues';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -45,15 +46,6 @@ import {
  * (主操作「医師への確認を記録」+ 副操作「問題なしにする」)。
  * データ源は /api/medication-issues(主)+ /api/cds/check(現行サイクルがあるときの補強)。
  */
-
-type MedicationIssueResponse = {
-  data: Array<
-    SafetyIssueRecord & {
-      patient_id: string;
-      case_id: string | null;
-    }
-  >;
-};
 
 type PatientSummaryResponse = {
   name: string;
@@ -345,7 +337,10 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
         `/api/medication-issues?${new URLSearchParams({ patient_id: patientId })}`,
         { headers: buildOrgHeaders(orgId) },
       );
-      return readApiJson<MedicationIssueResponse>(response, '服薬課題の取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '服薬課題の取得に失敗しました',
+        schema: medicationIssuesCursorResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

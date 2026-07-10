@@ -189,6 +189,22 @@ describe('PackagingMethodsContent', () => {
     });
   });
 
+  it('rejects a legacy successful packaging method save', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ message: '配薬方法を登録しました' }), { status: 201 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    render(<PackagingMethodsContent />);
+    fireEvent.change(screen.getByLabelText('名称'), { target: { value: '新規配薬' } });
+
+    await expect(latestMutationFn()()).rejects.toThrow('配薬方法マスターの保存に失敗しました');
+    expect(fetchMock).toHaveBeenCalledWith(
+      PACKAGING_METHODS_API_PATH,
+      expect.objectContaining({ method: 'POST', headers: buildOrgJsonHeaders('org_1') }),
+    );
+  });
+
   it('update (PATCH) encodes a hostile id via encodePathSegment and uses buildOrgJsonHeaders', async () => {
     const fetchMock = stubFetchOk();
     // a hostile id whose encodeURIComponent form differs from the raw string proves

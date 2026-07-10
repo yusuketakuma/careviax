@@ -62,11 +62,13 @@ const BILLING_BODY = {
 };
 
 const RESOURCE_BODY = {
-  summary: {
-    total_sites: 1,
-    emergency_ready_sites: 1,
-    holiday_gap_sites: 0,
-    missing_geo_sites: 0,
+  meta: {
+    summary: {
+      total_sites: 1,
+      emergency_ready_sites: 1,
+      holiday_gap_sites: 0,
+      missing_geo_sites: 0,
+    },
   },
   data: [
     {
@@ -135,11 +137,13 @@ describe('AnalyticsContent', () => {
         if (url === '/api/pharmacy-sites?view=resource_map') {
           return new Response(
             JSON.stringify({
-              summary: {
-                total_sites: 1,
-                emergency_ready_sites: 1,
-                holiday_gap_sites: 0,
-                missing_geo_sites: 0,
+              meta: {
+                summary: {
+                  total_sites: 1,
+                  emergency_ready_sites: 1,
+                  holiday_gap_sites: 0,
+                  missing_geo_sites: 0,
+                },
               },
               data: [
                 {
@@ -256,11 +260,13 @@ describe('AnalyticsContent', () => {
         if (url === '/api/pharmacy-sites?view=resource_map') {
           return new Response(
             JSON.stringify({
-              summary: {
-                total_sites: 1,
-                emergency_ready_sites: 1,
-                holiday_gap_sites: 0,
-                missing_geo_sites: 0,
+              meta: {
+                summary: {
+                  total_sites: 1,
+                  emergency_ready_sites: 1,
+                  holiday_gap_sites: 0,
+                  missing_geo_sites: 0,
+                },
               },
               data: [
                 {
@@ -361,6 +367,31 @@ describe('AnalyticsContent', () => {
     expect(screen.queryByText('拠点数')).toBeNull();
     expect(screen.queryByText('地域資源データはありません。')).toBeNull();
     // billing section is unaffected and still renders (unique blocker-reason text)
+    expect(await screen.findByText('添付書類未確認')).toBeTruthy();
+  });
+
+  it('rejects legacy resource-map summary roots without crashing the analytics page', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/billing-evidence/analytics') {
+          return new Response(JSON.stringify(BILLING_BODY), { status: 200 });
+        }
+        if (url === '/api/pharmacy-sites?view=resource_map') {
+          return new Response(
+            JSON.stringify({ data: RESOURCE_BODY.data, summary: RESOURCE_BODY.meta.summary }),
+            { status: 200 },
+          );
+        }
+        return new Response('{}', { status: 404 });
+      }),
+    );
+
+    renderContent();
+
+    expect(await screen.findByText('地域資源マップを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('拠点数')).toBeNull();
     expect(await screen.findByText('添付書類未確認')).toBeTruthy();
   });
 

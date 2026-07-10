@@ -107,7 +107,7 @@ describe('/api/admin/external-professionals/[id]/patients', () => {
           archive: { status: 'active', archived: false, archived_at: null },
         },
       ],
-      metadata: {
+      meta: {
         limit: 100,
         total_count: 1,
         visible_count: 1,
@@ -194,7 +194,8 @@ describe('/api/admin/external-professionals/[id]/patients', () => {
         archived_at: '2026-04-01T09:30:00.000Z',
       },
     });
-    expect(body.metadata).toMatchObject({
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body.meta).toMatchObject({
       limit: 1,
       total_count: 2,
       visible_count: 1,

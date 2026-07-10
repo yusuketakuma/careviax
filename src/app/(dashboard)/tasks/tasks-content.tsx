@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/select';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -101,23 +101,45 @@ const taskSchema: z.ZodType<Task> = z.object({
   created_at: z.string(),
 });
 
-type StaffWorkload = {
-  id: string;
-  name: string;
-  role_label: string;
-  open_task_count: number;
-  today_visit_count: number;
-  dispense_task_count: number;
-  workload_score: number;
-  visits: Array<{
-    id: string;
-    patient_name: string;
-  }>;
-  open_tasks: Array<{
-    id: string;
-    title: string;
-  }>;
-};
+const staffWorkloadSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    role: z.string(),
+    role_label: z.string(),
+    open_task_count: z.number().int().nonnegative(),
+    today_visit_count: z.number().int().nonnegative(),
+    dispense_task_count: z.number().int().nonnegative(),
+    workload_score: z.number().int().nonnegative(),
+    visits: z.array(
+      z
+        .object({
+          id: z.string(),
+          patient_name: z.string(),
+        })
+        .strict(),
+    ),
+    open_tasks: z.array(
+      z
+        .object({
+          id: z.string(),
+          title: z.string(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+const staffWorkloadEnvelopeSchema = z
+  .object({
+    data: z.array(staffWorkloadSchema),
+    meta: z
+      .object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+      .strict(),
+  })
+  .strict();
 
 // --- Constants ---
 
@@ -324,10 +346,10 @@ export function TasksContent({
       const res = await fetch('/api/staff-workload', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: StaffWorkload[]; date: string }>(
-        res,
-        'スタッフ別業務量の取得に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: 'スタッフ別業務量の取得に失敗しました',
+        schema: staffWorkloadEnvelopeSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -373,7 +395,7 @@ export function TasksContent({
           },
         }),
       });
-      return readApiJson<unknown>(res, '業務依頼の作成に失敗しました');
+      await readApiAcknowledgement(res, '業務依頼の作成に失敗しました');
     },
     onSuccess: () => {
       toast.success('業務を依頼しました');

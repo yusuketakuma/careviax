@@ -1908,20 +1908,23 @@ describe('/api/patients GET', () => {
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
     const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
-      id: 'patient_new',
-      warnings: [
-        {
-          code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
-          severity: 'warning',
-        },
-      ],
-      metadata: {
+      data: {
+        id: 'patient_new',
+      },
+      meta: {
+        warnings: [
+          {
+            code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
+            severity: 'warning',
+          },
+        ],
         duplicate_acknowledged: true,
         duplicate_candidate_count: 1,
       },
     });
-    expect(body.metadata).not.toHaveProperty('duplicate_candidates');
+    expect(body.meta).not.toHaveProperty('duplicate_candidates');
     const bodyText = JSON.stringify(body);
     expect(bodyText).not.toContain('patient_existing');
     expect(bodyText).not.toContain('1944-04-01');

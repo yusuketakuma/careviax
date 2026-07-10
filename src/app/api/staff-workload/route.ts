@@ -182,7 +182,7 @@ async function authenticatedGET(req: NextRequest) {
       workloadReads;
 
     if (staffIds.length === 0) {
-      return success({ data: [], date: dateKey });
+      return success({ data: [], meta: { date: dateKey } });
     }
 
     const openTaskCountByUser = new Map(
@@ -247,7 +247,7 @@ async function authenticatedGET(req: NextRequest) {
         return left.name.localeCompare(right.name, 'ja');
       });
 
-    return success({ data, date: dateKey });
+    return success({ data, meta: { date: dateKey } });
   });
 }
 

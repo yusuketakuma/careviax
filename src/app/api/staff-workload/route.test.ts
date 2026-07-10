@@ -251,8 +251,8 @@ describe('/api/staff-workload', () => {
     expect(assignedStaffIds).toEqual(['user_a', 'user_b']);
     expect(limit).toBe(2);
     const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
     expect(payload).toMatchObject({
-      date: '2026-06-15',
       data: [
         {
           id: 'user_a',
@@ -275,6 +275,7 @@ describe('/api/staff-workload', () => {
           open_tasks: [{ title: '配送確認' }],
         },
       ],
+      meta: { date: '2026-06-15' },
     });
     expect(payload.data[0].open_tasks).toHaveLength(2);
     expect(Object.keys(payload.data[0].open_tasks[0]).sort()).toEqual(['id', 'title']);
@@ -301,11 +302,27 @@ describe('/api/staff-workload', () => {
         }),
       );
       await expect(response.json()).resolves.toMatchObject({
-        date: '2026-06-12',
+        meta: { date: '2026-06-12' },
       });
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('returns an exact dated envelope when no active staff are available', async () => {
+    membershipFindManyMock.mockResolvedValueOnce([]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/staff-workload?date=2026-06-15'),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toStrictEqual({
+      data: [],
+      meta: { date: '2026-06-15' },
+    });
   });
 
   it('wraps auth failure responses in no-store headers before querying staff', async () => {

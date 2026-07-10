@@ -693,7 +693,9 @@ const authenticatedGET = withAuthContext(
               ? { name: pharmacistById.get(proposal.proposed_pharmacist_id)!.name }
               : null,
         })),
-        hasMore: page.hasMore,
+        meta: {
+          has_more: page.hasMore,
+        },
       });
     }
 
@@ -982,8 +984,10 @@ const authenticatedPOST = withAuthContext(
         return success(
           {
             data: omitProposalRejectReasons(existingBatch.proposals),
-            alerts: [],
-            replayed: true,
+            meta: {
+              alerts: [],
+              replayed: true,
+            },
           },
           200,
         );
@@ -1502,9 +1506,11 @@ const authenticatedPOST = withAuthContext(
     return success(
       {
         data: omitProposalRejectReasons(proposalResult.proposals),
-        alerts: allAlerts,
-        diagnostics: responseDiagnostics,
-        replayed: proposalResult.replayed,
+        meta: {
+          alerts: allAlerts,
+          diagnostics: responseDiagnostics,
+          replayed: proposalResult.replayed,
+        },
       },
       proposalResult.replayed ? 200 : 201,
     );

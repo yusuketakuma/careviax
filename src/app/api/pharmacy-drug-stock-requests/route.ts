@@ -78,13 +78,15 @@ const authenticatedGET = withAuthContext(
 
     return success({
       data: requests,
-      summary: {
-        status: parsed.data.status,
-        total_count: totalCount,
-        overdue_count: overdueCount,
-        overdue_days: parsed.data.overdue_days,
-        oldest_pending_created_at: oldestPending?.created_at?.toISOString() ?? null,
-        notification_level: overdueCount > 0 ? 'overdue' : totalCount > 0 ? 'pending' : 'clear',
+      meta: {
+        summary: {
+          status: parsed.data.status,
+          total_count: totalCount,
+          overdue_count: overdueCount,
+          overdue_days: parsed.data.overdue_days,
+          oldest_pending_created_at: oldestPending?.created_at?.toISOString() ?? null,
+          notification_level: overdueCount > 0 ? 'overdue' : totalCount > 0 ? 'pending' : 'clear',
+        },
       },
     });
   },
@@ -204,7 +206,7 @@ const authenticatedPOST = withAuthContext(
       return created;
     });
 
-    return success({ site, drug, data: request }, 201);
+    return success({ data: request, meta: { site, drug } }, 201);
   },
   { permission: 'canAdmin' },
 );

@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -237,7 +237,7 @@ export function HandoffConfirmPanel({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
-      return readApiJson<unknown>(res, '申し送りの確定に失敗しました');
+      return readApiAcknowledgement(res, '申し送りの確定に失敗しました');
     },
     onSuccess: () => {
       toast.success(
@@ -278,7 +278,7 @@ export function HandoffConfirmPanel({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
-      return readApiJson<unknown>(res, '上長確認の依頼に失敗しました');
+      return readApiAcknowledgement(res, '上長確認の依頼に失敗しました');
     },
     onSuccess: () => {
       toast.success('上長確認を依頼しました');

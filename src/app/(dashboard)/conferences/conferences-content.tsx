@@ -29,6 +29,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/ui/state-badge';
@@ -58,7 +59,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { readApiJson } from '@/lib/api/client-json';
-import { fetchAllMetaCursorPages } from '@/lib/api/cursor-pagination-client';
+import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { sectionTemplatesFor, type StructuredSectionDraft } from './conference-note-templates';
@@ -176,16 +177,31 @@ type CommunityActivity = {
   created_at: string;
 };
 
-type ConferenceNoteCreateResponse = {
-  data: ConferenceNote;
-  sync?: {
-    report_draft_ids?: string[];
-    billing_candidate_id?: string;
-    visit_proposal_id?: string;
-    tasks_created?: number;
-    medication_issues_created?: number;
-  };
-};
+const conferenceNoteCreateResponseSchema = z
+  .object({
+    data: z
+      .object({
+        id: z.string(),
+        title: z.string(),
+        case_id: z.string().nullable(),
+        patient_id: z.string().nullable().optional(),
+      })
+      .passthrough(),
+    meta: z
+      .object({
+        sync: z
+          .object({
+            report_draft_ids: z.array(z.string()).optional(),
+            billing_candidate_id: z.string().optional(),
+            visit_proposal_id: z.string().optional(),
+            tasks_created: z.number().int().nonnegative(),
+            medication_issues_created: z.number().int().nonnegative(),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
 
 type CommunityActivityCreateResponse = { data: CommunityActivity };
 type ConvertActionItemResponse = { data: { task_id: string } };
@@ -633,7 +649,7 @@ export function ConferencesContent({
       if (contextCaseId) {
         params.set('case_id', contextCaseId);
       }
-      return fetchAllMetaCursorPages<ConferenceNote>({
+      return fetchAllCursorPages<ConferenceNote>({
         path: '/api/conference-notes',
         params,
         init: {
@@ -664,7 +680,7 @@ export function ConferencesContent({
   const activitiesQuery = useQuery({
     queryKey: ['community-activities', orgId],
     queryFn: async () => {
-      return fetchAllMetaCursorPages<CommunityActivity>({
+      return fetchAllCursorPages<CommunityActivity>({
         path: '/api/community-activities',
         init: {
           headers: buildOrgHeaders(orgId),
@@ -715,7 +731,7 @@ export function ConferencesContent({
       if (contextCaseId) {
         params.set('case_id', contextCaseId);
       }
-      return fetchAllMetaCursorPages<ConferenceNote>({
+      return fetchAllCursorPages<ConferenceNote>({
         path: '/api/conference-notes',
         params,
         init: {
@@ -760,7 +776,10 @@ export function ConferencesContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
-      return readApiJson<ConferenceNoteCreateResponse>(response, '作成に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '作成に失敗しました',
+        schema: conferenceNoteCreateResponseSchema,
+      });
     },
     onSuccess: (payload) => {
       queryClient.invalidateQueries({ queryKey: ['conference-notes', orgId] });
@@ -777,11 +796,11 @@ export function ConferencesContent({
         title: payload.data.title,
         caseId: payload.data.case_id ?? null,
         patientId: payload.data.patient_id ?? null,
-        reportDraftIds: payload.sync?.report_draft_ids,
-        billingCandidateId: payload.sync?.billing_candidate_id,
-        visitProposalId: payload.sync?.visit_proposal_id,
-        tasksCreated: payload.sync?.tasks_created,
-        medicationIssuesCreated: payload.sync?.medication_issues_created,
+        reportDraftIds: payload.meta.sync.report_draft_ids,
+        billingCandidateId: payload.meta.sync.billing_candidate_id,
+        visitProposalId: payload.meta.sync.visit_proposal_id,
+        tasksCreated: payload.meta.sync.tasks_created,
+        medicationIssuesCreated: payload.meta.sync.medication_issues_created,
       });
     },
     onError: () => toast.error('カンファレンスノートの作成に失敗しました'),

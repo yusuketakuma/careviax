@@ -270,33 +270,35 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   return withSensitiveNoStore(
     success({
       data: handoff,
-      extraction,
-      visit_record_version: record.version,
-      visit_record_updated_at: record.updated_at.toISOString(),
-      confirmation_policy: {
-        can_confirm: canConfirmDirectly,
-        requires_override_reason:
-          !canConfirmDirectly && canOverrideVisitHandoffConfirmation(ctx) && Boolean(handoff),
-        authorized_basis: canConfirmDirectly
-          ? record.schedule?.pharmacist_id === ctx.userId
-            ? 'assigned_schedule'
-            : 'case_primary_or_backup'
-          : canOverrideVisitHandoffConfirmation(ctx) && Boolean(handoff)
-            ? 'admin_emergency_override'
-            : null,
-        override_reason_max_length: 500,
-        override_reason_code_required: false,
-        override_reason_codes:
-          !canConfirmDirectly && canOverrideVisitHandoffConfirmation(ctx) && Boolean(handoff)
-            ? VISIT_HANDOFF_OVERRIDE_REASON_OPTIONS
-            : [],
-        can_request_supervision: canRequestSupervision,
-        supervision_required:
-          Boolean(handoff) &&
-          !canConfirmDirectly &&
-          canRequestSupervisedVisitHandoffConfirmation(ctx, record.schedule),
-        supervision_available: canRequestSupervision,
-        supervision_request_note_max_length: 500,
+      meta: {
+        extraction,
+        visit_record_version: record.version,
+        visit_record_updated_at: record.updated_at.toISOString(),
+        confirmation_policy: {
+          can_confirm: canConfirmDirectly,
+          requires_override_reason:
+            !canConfirmDirectly && canOverrideVisitHandoffConfirmation(ctx) && Boolean(handoff),
+          authorized_basis: canConfirmDirectly
+            ? record.schedule?.pharmacist_id === ctx.userId
+              ? 'assigned_schedule'
+              : 'case_primary_or_backup'
+            : canOverrideVisitHandoffConfirmation(ctx) && Boolean(handoff)
+              ? 'admin_emergency_override'
+              : null,
+          override_reason_max_length: 500,
+          override_reason_code_required: false,
+          override_reason_codes:
+            !canConfirmDirectly && canOverrideVisitHandoffConfirmation(ctx) && Boolean(handoff)
+              ? VISIT_HANDOFF_OVERRIDE_REASON_OPTIONS
+              : [],
+          can_request_supervision: canRequestSupervision,
+          supervision_required:
+            Boolean(handoff) &&
+            !canConfirmDirectly &&
+            canRequestSupervisedVisitHandoffConfirmation(ctx, record.schedule),
+          supervision_available: canRequestSupervision,
+          supervision_request_note_max_length: 500,
+        },
       },
     }),
   );

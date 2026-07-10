@@ -35,7 +35,7 @@ import {
 import { cn } from '@/lib/utils';
 import { messageFromError } from '@/lib/utils/error-message';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   buildNextCheckTaskInput,
@@ -55,6 +55,10 @@ import {
   buildCommunicationRequestApiPath,
   buildCommunicationRequestsApiPath,
 } from '@/lib/communications/api-paths';
+import {
+  createCommunicationRequestResponseSchema,
+  type CreateCommunicationRequestResponse,
+} from '@/lib/communications/response-schemas';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildTasksApiPath } from '@/lib/tasks/api-paths';
@@ -131,13 +135,6 @@ type ShareReplyDetail = {
     content: string;
     responded_at: string;
   }>;
-};
-
-type CreateCommunicationRequestResponse = {
-  data?: {
-    id?: string;
-    status?: string;
-  };
 };
 
 type ShareFormErrors = {
@@ -444,7 +441,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
       });
-      return readApiJson<unknown>(res, '次回タスクの作成に失敗しました');
+      await readApiAcknowledgement(res, '次回タスクの作成に失敗しました');
     },
     onSuccess: () => {
       if (latestReply) {
@@ -479,17 +476,17 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
       });
-      return readApiJson<CreateCommunicationRequestResponse>(res, '返信依頼の起票に失敗しました');
+      return readApiJson<CreateCommunicationRequestResponse>(res, {
+        fallbackMessage: '返信依頼の起票に失敗しました',
+        schema: createCommunicationRequestResponseSchema,
+      });
     },
-    onSuccess: async (result?: CreateCommunicationRequestResponse) => {
+    onSuccess: async (result: CreateCommunicationRequestResponse) => {
       setCreatedRequestAudiences((prev) => [...prev, audience]);
-      const createdRequestId = result?.data?.id?.trim();
-      if (createdRequestId) {
-        setCreatedRequestIdsByAudience((prev) => ({
-          ...prev,
-          [audience]: createdRequestId,
-        }));
-      }
+      setCreatedRequestIdsByAudience((prev) => ({
+        ...prev,
+        [audience]: result.data.id,
+      }));
       toast.success('返信依頼を起票しました');
       await queryClient.invalidateQueries({
         queryKey: ['communication-requests', 'patient', patientId, orgId],

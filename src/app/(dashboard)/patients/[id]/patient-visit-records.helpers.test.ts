@@ -12,14 +12,13 @@ describe('patient-visit-records.helpers', () => {
       .mockResolvedValueOnce(
         jsonResponse({
           data: [{ id: 'record_1' }],
-          hasMore: true,
-          nextCursor: 'cursor_1',
+          meta: { has_more: true, next_cursor: 'cursor_1' },
         }),
       )
       .mockResolvedValueOnce(
         jsonResponse({
           data: [{ id: 'record_2' }],
-          hasMore: false,
+          meta: { has_more: false, next_cursor: null },
         }),
       );
 
@@ -38,7 +37,7 @@ describe('patient-visit-records.helpers', () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         data: [],
-        hasMore: false,
+        meta: { has_more: false, next_cursor: null },
       }),
     );
 
@@ -59,7 +58,7 @@ describe('patient-visit-records.helpers', () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         data: [],
-        hasMore: false,
+        meta: { has_more: false, next_cursor: null },
       }),
     );
 

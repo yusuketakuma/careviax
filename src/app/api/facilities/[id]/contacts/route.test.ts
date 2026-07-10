@@ -122,9 +122,11 @@ describe('/api/facilities/[id]/contacts', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: [expect.objectContaining({ name: '相談員A', updated_at: CURRENT_UPDATED_AT })],
-      metadata: {
+      meta: {
         expected_updated_at: CURRENT_UPDATED_AT,
         version_basis: 'facility_updated_at',
       },
@@ -181,7 +183,7 @@ describe('/api/facilities/[id]/contacts', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: [{ name: '看護師B', updated_at: CURRENT_UPDATED_AT }],
-      metadata: {
+      meta: {
         expected_updated_at: expect.any(String),
         version_basis: 'facility_updated_at',
       },

@@ -850,7 +850,10 @@ describe('ScheduleWeeklyOptimizer', () => {
         if (postCount === 2) {
           return new Response(JSON.stringify({ message: '枠が埋まっています' }), { status: 409 });
         }
-        return Response.json({ data: [{ id: 'created' }] });
+        return Response.json({
+          data: [{ id: 'created' }],
+          meta: { alerts: [], replayed: false },
+        });
       }
       return Response.json({ data: {} });
     });

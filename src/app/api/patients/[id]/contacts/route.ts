@@ -80,7 +80,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
       address: privacy.addressFieldsMasked ? maskAddressDetail(contact.address) : contact.address,
     })),
-    metadata: {
+    meta: {
       expected_updated_at: patient.updated_at.toISOString(),
       version_basis: 'patient_updated_at',
     },
@@ -239,19 +239,19 @@ async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<
       email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
       address: privacy.addressFieldsMasked ? maskAddressDetail(contact.address) : contact.address,
     })),
-    warnings: [
-      ...(contactReliability.ready
-        ? []
-        : [
-            {
-              code: 'PATIENT_CONTACT_UNREADY',
-              severity: 'warning',
-              message: contactReliability.detail,
-            },
-          ]),
-      ...duplicateContactWarnings,
-    ],
-    metadata: {
+    meta: {
+      warnings: [
+        ...(contactReliability.ready
+          ? []
+          : [
+              {
+                code: 'PATIENT_CONTACT_UNREADY',
+                severity: 'warning',
+                message: contactReliability.detail,
+              },
+            ]),
+        ...duplicateContactWarnings,
+      ],
       contact_readiness: contactReliability,
       duplicate_contacts: duplicateContactWarnings,
       expected_updated_at: result.expectedUpdatedAt.toISOString(),

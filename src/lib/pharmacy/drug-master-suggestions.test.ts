@@ -18,6 +18,8 @@ const validSuggestion = {
   max_administration_days: null,
 };
 
+const currentPageMeta = { has_more: false, next_cursor: null };
+
 describe('fetchDrugMasterSuggestions', () => {
   it('skips short queries before making a request', async () => {
     const fetchImpl = vi.fn<typeof fetch>();
@@ -32,6 +34,7 @@ describe('fetchDrugMasterSuggestions', () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         data: [validSuggestion],
+        meta: currentPageMeta,
       }),
     );
 
@@ -78,7 +81,21 @@ describe('fetchDrugMasterSuggestions', () => {
       fetchDrugMasterSuggestions({
         query: 'アム',
         orgId: 'org_1',
-        fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: [{ id: 123 }] })),
+        fetchImpl: vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(jsonResponse({ data: [{ id: 123 }], meta: currentPageMeta })),
+      }),
+    ).resolves.toEqual([]);
+
+    await expect(
+      fetchDrugMasterSuggestions({
+        query: 'アム',
+        orgId: 'org_1',
+        fetchImpl: vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(
+            jsonResponse({ data: [validSuggestion], hasMore: false, nextCursor: null }),
+          ),
       }),
     ).resolves.toEqual([]);
   });
@@ -90,7 +107,9 @@ describe('fetchDrugMasterSuggestions', () => {
         orgId: 'org_1',
         fetchImpl: vi
           .fn<typeof fetch>()
-          .mockResolvedValue(jsonResponse({ data: [{ ...validSuggestion, yj_code: 123 }] })),
+          .mockResolvedValue(
+            jsonResponse({ data: [{ ...validSuggestion, yj_code: 123 }], meta: currentPageMeta }),
+          ),
       }),
     ).resolves.toEqual([]);
 
@@ -108,6 +127,7 @@ describe('fetchDrugMasterSuggestions', () => {
                 is_narcotic: null,
               },
             ],
+            meta: currentPageMeta,
           }),
         ),
       }),

@@ -29,8 +29,8 @@ import { SegmentError } from '@/components/ui/segment-state';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import {
+  apiCursorPageSchema,
   apiDataSchema,
-  cursorPaginatedPageSchema,
   type CursorPaginatedPage,
 } from '@/lib/api/response-schemas';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
@@ -261,7 +261,7 @@ const pharmacyPartnershipResponseSchema = apiDataSchema(pharmacyPartnershipRowSc
 const pharmacyPartnershipActivationResponseSchema = apiDataSchema(
   pharmacyPartnershipRowSchema,
 ).transform(({ data }) => data);
-const pharmacyContractPageSchema = cursorPaginatedPageSchema(pharmacyContractRowSchema);
+const pharmacyContractPageSchema = apiCursorPageSchema(pharmacyContractRowSchema);
 const pharmacyContractResponseSchema = apiDataSchema(pharmacyContractRowSchema).transform(
   ({ data }) => data,
 );

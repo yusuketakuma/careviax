@@ -108,7 +108,10 @@ const authenticatedGET = withAuthContext(
       throw err;
     }
 
-    return success<DispenseWorkbenchPatientsResponse>(responseData);
+    return success({
+      data: responseData.data,
+      meta: responseData.meta,
+    });
   },
   {
     permission: 'canDispense',

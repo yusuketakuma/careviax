@@ -40,7 +40,7 @@ describe('schedule day reschedule helpers', () => {
         form: rescheduleForm,
         fetchImpl,
       }),
-    ).resolves.toEqual({ data: [{ id: 'proposal_1' }] });
+    ).resolves.toBeUndefined();
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0]!;
@@ -102,6 +102,19 @@ describe('schedule day reschedule helpers', () => {
         fetchImpl,
       }),
     ).rejects.toThrow('再提案できる候補がありません');
+  });
+
+  it('rejects a legacy successful reschedule generation', async () => {
+    const fetchImpl = vi.fn(async () => Response.json({ message: 'リスケ候補を生成しました' }));
+
+    await expect(
+      generateScheduleDayRescheduleProposals({
+        orgId: 'org_1',
+        target: { id: 'schedule_1' },
+        form: rescheduleForm,
+        fetchImpl,
+      }),
+    ).rejects.toThrow('リスケ候補の生成に失敗しました');
   });
 
   it('notifies success, closes the dialog, and refreshes reschedule-dependent queries', async () => {

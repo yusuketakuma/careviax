@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState, type FormEvent } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { FilePlus, FileText, Keyboard, Search, X } from 'lucide-react';
 import Link from 'next/link';
+import { z } from 'zod';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
@@ -13,6 +14,7 @@ import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeInvalidation } from '@/lib/hooks/use-realtime-invalidation';
 import { CYCLE_STATUS_SHORT_LABELS } from '@/lib/prescription/cycle-workspace';
+import { prescriptionIntakeListResponseSchema } from '@/types/api/prescription-intakes';
 import {
   useKeyboardShortcuts,
   type ShortcutDefinition,
@@ -67,6 +69,15 @@ type PrescriptionIntakesPage = {
     source_type?: Record<string, number>;
   };
 };
+
+const prescriptionIntakeRowSchema = z.custom<PrescriptionIntakeRow>((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return typeof row.id === 'string' && typeof row.cycle_id === 'string';
+});
+
+const prescriptionIntakesPageResponseSchema: z.ZodType<PrescriptionIntakesPage> =
+  prescriptionIntakeListResponseSchema(prescriptionIntakeRowSchema);
 
 function PrescriptionFilterGroup({
   label,
@@ -178,7 +189,10 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
       const res = await fetch(`/api/prescription-intakes?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PrescriptionIntakesPage>(res, '処方受付一覧の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '処方受付一覧の取得に失敗しました',
+        schema: prescriptionIntakesPageResponseSchema,
+      });
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,

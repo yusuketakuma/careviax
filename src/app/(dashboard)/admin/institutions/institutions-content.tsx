@@ -25,7 +25,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { hasPermission } from '@/lib/auth/permission-matrix';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
@@ -224,7 +224,7 @@ export function InstitutionsContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(form),
       });
-      await readApiJson<unknown>(response, '保存に失敗しました');
+      await readApiAcknowledgement(response, '保存に失敗しました');
       return { wasEditing: Boolean(editingId) };
     },
     onSuccess: async ({ wasEditing }) => {
@@ -244,7 +244,7 @@ export function InstitutionsContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<unknown>(response, '削除に失敗しました');
+      return readApiAcknowledgement(response, '削除に失敗しました');
     },
     onSuccess: async () => {
       toast.success('医療機関マスターを削除しました');

@@ -35,7 +35,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
@@ -626,7 +626,7 @@ export default function ReportDetailPage() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ expected_updated_at: report.updated_at, status: 'confirmed' }),
       });
-      return readApiJson<unknown>(res, '薬剤師確認の保存に失敗しました');
+      return readApiAcknowledgement(res, '薬剤師確認の保存に失敗しました');
     },
     onSuccess: () => {
       toast.success('薬剤師確認済みにしました');
@@ -645,7 +645,7 @@ export default function ReportDetailPage() {
         }),
         body: JSON.stringify(formData),
       });
-      return readApiJson<unknown>(res, '送付に失敗しました');
+      return readApiAcknowledgement(res, '送付に失敗しました');
     },
     onSuccess: () => {
       toast.success('報告書を送付しました');
@@ -677,7 +677,7 @@ export default function ReportDetailPage() {
         }),
         body: JSON.stringify(requestData),
       });
-      return readApiJson<unknown>(res, '一括送付に失敗しました');
+      return readApiAcknowledgement(res, '一括送付に失敗しました');
     },
     onSuccess: () => {
       toast.success('報告書を共有先へ送付しました');

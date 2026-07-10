@@ -436,6 +436,26 @@ describe('PatientLabsCard', () => {
     );
   });
 
+  it('rejects legacy successful lab mutation responses', async () => {
+    const { mutationOptions } = setupComponent({ labs: [baseLab] });
+
+    fireEvent.click(screen.getByRole('button', { name: '検査値を追加' }));
+    fireEvent.change(screen.getByLabelText('測定日時'), {
+      target: { value: '2026-04-10T09:30' },
+    });
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'legacy_lab' }, 201));
+    await expect(latestCreateMutation(mutationOptions).mutationFn()).rejects.toThrow(
+      '検査値の登録に失敗しました',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '補正' }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }));
+    await expect(latestUpdateMutation(mutationOptions).mutationFn(baseLab.id)).rejects.toThrow(
+      '検査値の更新に失敗しました',
+    );
+    expect(invalidateQueriesMock).not.toHaveBeenCalled();
+  });
+
   it.each(['.', '..'])('fails before fetch for dot-segment patient ids (%s)', async (patientId) => {
     const { queryOptions } = setupComponent({ patientId });
 

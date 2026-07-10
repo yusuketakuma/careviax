@@ -1,3 +1,5 @@
+import { apiAcknowledgementSchema } from './response-schemas';
+
 type ApiJsonSchemaResult<T> = { success: true; data: T } | { success: false };
 
 export type ApiJsonSchema<T> = {
@@ -11,8 +13,16 @@ export type ReadApiJsonOptions<T> = {
 
 function readApiErrorMessage(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object') return null;
+  const object = payload as Record<string, unknown>;
+  const nestedError = object.error;
+  if (nestedError && typeof nestedError === 'object') {
+    const nestedMessage = (nestedError as Record<string, unknown>).message;
+    if (typeof nestedMessage !== 'string') return null;
+    const normalized = nestedMessage.trim();
+    return normalized || null;
+  }
   for (const key of ['message', 'error'] as const) {
-    const value = (payload as Record<string, unknown>)[key];
+    const value = object[key];
     if (typeof value === 'string') {
       const normalized = value.trim();
       if (normalized) return normalized;
@@ -73,4 +83,14 @@ export async function readApiJson<T>(
     return parsed.data;
   }
   return json.value as T;
+}
+
+export async function readApiAcknowledgement(
+  response: Response,
+  fallbackMessage = '処理に失敗しました',
+): Promise<void> {
+  await readApiJson(response, {
+    fallbackMessage,
+    schema: apiAcknowledgementSchema,
+  });
 }

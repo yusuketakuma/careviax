@@ -68,7 +68,7 @@ type QueryConfig = {
 
 type MutationConfig = {
   mutationFn?: () => Promise<unknown>;
-  onSuccess?: () => Promise<void> | void;
+  onSuccess?: (data: unknown) => Promise<void> | void;
   onError?: (error: unknown) => void;
 };
 
@@ -489,7 +489,7 @@ describe('ExternalShareContent', () => {
     fireEvent.click(button);
     expect(createReplyMutate).toHaveBeenCalledTimes(1);
 
-    await mutationConfigs[2]?.mutationFn?.();
+    const createResult = await mutationConfigs[2]?.mutationFn?.();
     const requestCall = fetchMock.mock.calls.find(
       ([input, init]) => String(input) === '/api/communication-requests' && init?.method === 'POST',
     );
@@ -532,11 +532,21 @@ describe('ExternalShareContent', () => {
     expect(body.content).toContain('ケアマネ向けに共有する患者情報です');
 
     await act(async () => {
-      await mutationConfigs[2]?.onSuccess?.();
+      await mutationConfigs[2]?.onSuccess?.(createResult);
     });
     expect(invalidateQueriesMock).toHaveBeenCalledWith({
       queryKey: ['communication-requests', 'patient', 'patient_1', 'org_1'],
     });
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({}), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await expect(mutationConfigs[2]?.mutationFn?.()).rejects.toThrow(
+      '返信依頼の起票に失敗しました',
+    );
   });
 
   it('creates a patient-scoped follow-up task through shared task path and header helpers', async () => {
@@ -636,6 +646,16 @@ describe('ExternalShareContent', () => {
       report_id: 'patient_1',
       communication_request_id: 'request_1',
     });
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: '次回タスクを作成しました' }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await expect(mutationConfigs[1]?.mutationFn?.()).rejects.toThrow(
+      '次回タスクの作成に失敗しました',
+    );
   });
 
   it('keeps server messages and falls back for patient-share mutation toasts', () => {

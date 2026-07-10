@@ -365,18 +365,18 @@ const authenticatedPOST = withAuthContext(
       const patient = await createPatientWithIntake(ctx.orgId, parsed.data);
       return success(
         {
-          ...patient,
-          warnings:
-            duplicates.length > 0
-              ? [
-                  {
-                    code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
-                    severity: 'warning',
-                    message: '重複候補を確認済みとして患者を登録しました。',
-                  },
-                ]
-              : [],
-          metadata: {
+          data: patient,
+          meta: {
+            warnings:
+              duplicates.length > 0
+                ? [
+                    {
+                      code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
+                      severity: 'warning',
+                      message: '重複候補を確認済みとして患者を登録しました。',
+                    },
+                  ]
+                : [],
             duplicate_acknowledged: duplicateAcknowledged,
             duplicate_candidate_count: duplicates.length,
           },

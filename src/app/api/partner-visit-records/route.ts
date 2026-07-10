@@ -187,8 +187,11 @@ const authenticatedGET = withAuthContext(
 
     const page = buildCursorPage(rows, limit, (row) => row.id);
     return success({
-      ...page,
       data: page.data.map(toSafePartnerVisitRecord),
+      meta: {
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+      },
     });
   },
   {

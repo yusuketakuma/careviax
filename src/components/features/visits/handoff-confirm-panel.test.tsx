@@ -162,6 +162,26 @@ describe('HandoffConfirmPanel', () => {
     });
   });
 
+  it('rejects legacy successful handoff confirmation responses', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ confirmed_at: '2026-06-11T01:00:00.000Z' }), {
+            status: 200,
+          }),
+      ),
+    );
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: '確認' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('申し送りの確定に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('申し送りを確定しました');
+  });
+
   it('requires an override reason before sending admin confirmation', async () => {
     const fetchMock = vi.fn<typeof fetch>(
       async () =>

@@ -169,11 +169,14 @@ const authenticatedGET = withAuthContext(
 
     return success({
       data,
-      summary: {
-        total_sites: data.length,
-        emergency_ready_sites: data.filter((site) => site.emergency_capable_shift_count > 0).length,
-        holiday_gap_sites: data.filter((site) => site.holiday_gap_dates.length > 0).length,
-        missing_geo_sites: data.filter((site) => !site.has_geo).length,
+      meta: {
+        summary: {
+          total_sites: data.length,
+          emergency_ready_sites: data.filter((site) => site.emergency_capable_shift_count > 0)
+            .length,
+          holiday_gap_sites: data.filter((site) => site.holiday_gap_dates.length > 0).length,
+          missing_geo_sites: data.filter((site) => !site.has_geo).length,
+        },
       },
     });
   },

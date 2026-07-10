@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -185,7 +185,7 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
           geocode_accuracy: form.geocode_accuracy || undefined,
         }),
       });
-      return readApiJson<unknown>(res, '訪問条件の保存に失敗しました');
+      return readApiAcknowledgement(res, '訪問条件の保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success('訪問条件を保存しました');

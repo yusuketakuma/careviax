@@ -177,11 +177,10 @@ describe('/api/medication-issues', () => {
       expect.any(Function),
     );
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor']);
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [expect.objectContaining({ id: 'issue_1' })],
-      hasMore: true,
-      nextCursor: 'issue_1',
+      meta: { has_more: true, next_cursor: 'issue_1' },
     });
     expect(body.data).toHaveLength(1);
     expect(medicationIssueFindManyMock).toHaveBeenCalledWith(
@@ -203,12 +202,11 @@ describe('/api/medication-issues', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore']);
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [expect.objectContaining({ id: 'issue_1' })],
-      hasMore: false,
+      meta: { has_more: false, next_cursor: null },
     });
-    expect(body).not.toHaveProperty('nextCursor');
     expect(body.data).toHaveLength(1);
   });
 
@@ -223,7 +221,7 @@ describe('/api/medication-issues', () => {
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [],
-      hasMore: false,
+      meta: { has_more: false, next_cursor: null },
     });
     expect(medicationIssueFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();

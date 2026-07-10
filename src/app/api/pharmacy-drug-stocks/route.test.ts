@@ -94,14 +94,18 @@ describe('/api/pharmacy-drug-stocks', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body).toMatchObject({
       data: {
         id: 'stock_1',
         is_stocked: true,
         preferred_generic_id: 'generic_1',
       },
-      site: {
-        id: 'site_1',
+      meta: {
+        site: {
+          id: 'site_1',
+        },
       },
     });
   });
@@ -185,7 +189,9 @@ describe('/api/pharmacy-drug-stocks', () => {
         take: 21,
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body).toMatchObject({
       data: [
         {
           id: 'stock_1',
@@ -194,7 +200,8 @@ describe('/api/pharmacy-drug-stocks', () => {
           },
         },
       ],
-      metadata: {
+      meta: {
+        site: { id: 'site_1', name: '本店' },
         limit: 20,
         total_count: 1,
         visible_count: 1,
@@ -324,9 +331,11 @@ describe('/api/pharmacy-drug-stocks', () => {
       expect.objectContaining({ take: 3 }),
     );
     const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
     expect(body.data).toHaveLength(2);
     expect(body.data.map((stock: { id: string }) => stock.id)).toEqual(['stock_1', 'stock_2']);
-    expect(body.metadata).toMatchObject({
+    expect(body.meta).toMatchObject({
+      site: { id: 'site_1', name: '本店' },
       limit: 2,
       total_count: 3,
       visible_count: 2,
@@ -424,6 +433,12 @@ describe('/api/pharmacy-drug-stocks', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
+    const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body).toMatchObject({
+      data: { id: 'stock_1', is_stocked: true, preferred_generic_id: 'generic_1' },
+      meta: { site: { id: 'site_1', name: '本店' } },
+    });
     expect(prismaMock.pharmacyDrugStock.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useForm, useWatch, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { toast } from 'sonner';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -103,16 +104,79 @@ type ServiceAreaOption = ServiceAreaRecord & {
   } | null;
 };
 
-type QualificationCheckPayload = {
-  data?: {
-    valid?: boolean;
-    identityMatch?: 'matched' | 'mismatch' | 'unknown';
-    payerName?: string | null;
-    copayRatio?: number | null;
-    warnings?: string[];
-  } | null;
-  message?: string;
-};
+const qualificationCheckPayloadSchema = z
+  .object({
+    data: z
+      .object({
+        valid: z.boolean(),
+        identityMatch: z.enum(['matched', 'mismatch', 'unknown']),
+        payerName: z.string().nullable(),
+        payerType: z.enum(['medical', 'care', 'public', 'unknown']),
+        copayRatio: z.number().nullable(),
+        coverage: z
+          .object({
+            startDate: z.string().nullable(),
+            endDate: z.string().nullable(),
+          })
+          .strict(),
+        warnings: z.array(z.string()),
+      })
+      .strict()
+      .nullable(),
+    meta: z
+      .object({
+        capabilities: z
+          .object({
+            supportsOnlineLookup: z.boolean(),
+            supportsBenefitHistory: z.boolean(),
+            supportsCareInsurance: z.boolean(),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
+
+type QualificationCheckPayload = z.infer<typeof qualificationCheckPayloadSchema>;
+
+const patientSaveDataSchema = z
+  .object({
+    id: z.string().trim().min(1),
+  })
+  .passthrough();
+
+const patientSaveWarningSchema = z
+  .object({
+    code: z.string(),
+    severity: z.literal('warning'),
+    message: z.string(),
+  })
+  .strict();
+
+const patientCreateResponseSchema = z
+  .object({
+    data: patientSaveDataSchema,
+    meta: z
+      .object({
+        warnings: z.array(patientSaveWarningSchema),
+        duplicate_acknowledged: z.boolean(),
+        duplicate_candidate_count: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const patientUpdateResponseSchema = z
+  .object({
+    data: patientSaveDataSchema,
+    meta: z
+      .object({
+        warnings: z.array(patientSaveWarningSchema),
+        duplicate_candidates: z.array(z.unknown()),
+      })
+      .strict(),
+  })
+  .strict();
 
 interface PatientFormProps {
   /** When provided, submits an update instead of a create */
@@ -688,10 +752,24 @@ export function PatientForm({
       return;
     }
 
-    const patient = await res.json();
+    let patient: { data: { id: string } };
+    try {
+      patient = patientId
+        ? await readApiJson(res, {
+            fallbackMessage: '更新に失敗しました',
+            schema: patientUpdateResponseSchema,
+          })
+        : await readApiJson(res, {
+            fallbackMessage: '登録に失敗しました',
+            schema: patientCreateResponseSchema,
+          });
+    } catch (error) {
+      toast.error(messageFromError(error, patientId ? '更新に失敗しました' : '登録に失敗しました'));
+      return;
+    }
     toast.success(patientId ? '患者情報を更新しました' : '患者を登録しました');
     allowNavigation(); // 正常保存後の遷移は離脱防止プロンプトを出さない。
-    onSuccess?.(patient.id ?? patientId);
+    onSuccess?.(patient.data.id);
     if (redirectTo) {
       router.push(redirectTo);
     }
@@ -707,20 +785,10 @@ export function PatientForm({
         method: 'POST',
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<QualificationCheckPayload>(
-        res,
-        '資格確認に失敗しました',
-      ).catch((err): QualificationCheckPayload => {
-        if (!res.ok) throw err;
-        return {};
+      const payload = await readApiJson<QualificationCheckPayload>(res, {
+        fallbackMessage: '資格確認に失敗しました',
+        schema: qualificationCheckPayloadSchema,
       });
-
-      if (!res.ok) {
-        const message = payload.message ?? '資格確認に失敗しました';
-        setQualificationCheckMessage({ tone: 'error', text: message });
-        toast.error(message);
-        return;
-      }
 
       const result = payload.data ?? null;
       if (!result) {

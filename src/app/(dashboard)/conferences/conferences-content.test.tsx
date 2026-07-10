@@ -285,13 +285,70 @@ describe('ConferencesContent', () => {
           case_id: 'case_1',
           patient_id: 'patient_1',
         },
-        sync: {},
+        meta: {
+          sync: {
+            tasks_created: 0,
+            medication_issues_created: 0,
+          },
+        },
       });
     });
 
     expect(invalidateQueriesMock).toHaveBeenCalledWith({
       queryKey: ['patient-home-operations', 'patient_1', 'org_1'],
     });
+  });
+
+  it('reads create sync metadata from meta and rejects the legacy root shape', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: 'note_1',
+            title: '担当者会議',
+            case_id: 'case_1',
+            patient_id: 'patient_1',
+          },
+          meta: {
+            sync: {
+              report_draft_ids: ['report_1'],
+              tasks_created: 1,
+              medication_issues_created: 0,
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: 'note_legacy',
+            title: '旧形式',
+            case_id: 'case_1',
+            patient_id: 'patient_1',
+          },
+          sync: {
+            tasks_created: 0,
+            medication_issues_created: 0,
+          },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ConferencesContent initialFocus="notes" />);
+    const createMutation = mutationConfigs[0]?.mutationFn;
+
+    await expect(createMutation?.({ title: '担当者会議' })).resolves.toMatchObject({
+      meta: {
+        sync: {
+          report_draft_ids: ['report_1'],
+          tasks_created: 1,
+        },
+      },
+    });
+    await expect(createMutation?.({ title: '旧形式' })).rejects.toThrow('作成に失敗しました');
+
+    vi.unstubAllGlobals();
   });
 
   it('requests summary detail level for the conference calendar query', async () => {
@@ -529,9 +586,13 @@ describe('ConferencesContent', () => {
           case_id: hostileCaseId,
           patient_id: hostilePatientId,
         },
-        sync: {
-          report_draft_ids: [hostileReportId],
-          visit_proposal_id: 'proposal_1',
+        meta: {
+          sync: {
+            report_draft_ids: [hostileReportId],
+            visit_proposal_id: 'proposal_1',
+            tasks_created: 0,
+            medication_issues_created: 0,
+          },
         },
       });
     });

@@ -43,9 +43,11 @@ describe('/api/jobs/flush-metrics POST', () => {
     const response = await POST(createRequest({ authorization: 'Bearer job-secret' }));
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      jobType: 'flush-metrics',
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: { jobType: 'flush-metrics' },
     });
+    expect(Object.keys(body)).toEqual(['data']);
     expect(requireApiKeyOrAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
       apiKey: 'job-secret',
       permission: 'canAdmin',

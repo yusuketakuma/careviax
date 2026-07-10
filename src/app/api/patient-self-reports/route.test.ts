@@ -229,7 +229,7 @@ describe('/api/patient-self-reports', () => {
       expect.any(Function),
     );
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor']);
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [
         expect.objectContaining({
@@ -246,8 +246,7 @@ describe('/api/patient-self-reports', () => {
           updated_at: '2026-03-28T00:00:00.000Z',
         }),
       ],
-      hasMore: true,
-      nextCursor: 'report_1',
+      meta: { has_more: true, next_cursor: 'report_1' },
     });
     expect(body.data).toHaveLength(1);
     expect(patientSelfReportFindManyMock).toHaveBeenCalledWith(
@@ -268,12 +267,11 @@ describe('/api/patient-self-reports', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore']);
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [expect.objectContaining({ id: 'report_1' })],
-      hasMore: false,
+      meta: { has_more: false, next_cursor: null },
     });
-    expect(body).not.toHaveProperty('nextCursor');
     expect(body.data).toHaveLength(1);
   });
 
@@ -315,7 +313,7 @@ describe('/api/patient-self-reports', () => {
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [],
-      hasMore: false,
+      meta: { has_more: false, next_cursor: null },
     });
     expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
   });

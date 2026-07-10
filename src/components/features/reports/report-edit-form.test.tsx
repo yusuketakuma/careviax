@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -243,9 +243,43 @@ describe('ReportEditForm', () => {
     const mutationOptions = mutationOptionsMock.mock.calls.at(-1)?.[0] as
       | { onError?: (error: unknown) => void }
       | undefined;
-    mutationOptions?.onError?.('network-failure');
+    act(() => {
+      mutationOptions?.onError?.('network-failure');
+    });
 
     expect(toast.error).toHaveBeenCalledWith('報告書の保存に失敗しました');
+  });
+
+  it('rejects legacy successful report save responses', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    const onSaved = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ id: 'report_1', status: 'draft' }), { status: 200 }),
+      ),
+    );
+
+    render(
+      <ReportEditForm
+        reportId="report_1"
+        reportType="physician_report"
+        updatedAt="2026-04-21T00:00:00.000Z"
+        content={physicianContent}
+        onSaved={onSaved}
+        onDirtyChange={() => undefined}
+        onSavingChange={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('報告書の保存に失敗しました');
+    });
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalledWith('報告書を保存しました');
   });
 
   it('guards only semantic report edits and clears the guard when a field returns to baseline', async () => {

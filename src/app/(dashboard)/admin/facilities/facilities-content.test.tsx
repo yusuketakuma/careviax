@@ -134,6 +134,21 @@ function unitFixture(id = 'unit_1'): FacilityUnit {
   };
 }
 
+function facilitiesResponse(data: Facility[]) {
+  return {
+    data,
+    meta: {
+      has_more: false,
+      total_count: data.length,
+      visible_count: data.length,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'facilities',
+      filters_applied: { q: null },
+    },
+  };
+}
+
 function stubFetchWithFacility(
   facility = facilityFixture(),
   units: FacilityUnit[] = [unitFixture()],
@@ -142,16 +157,7 @@ function stubFetchWithFacility(
     const url = String(input);
 
     if (url === '/api/admin/facilities?' && !init?.method) {
-      return new Response(
-        JSON.stringify({
-          data: [facility],
-          total_count: 1,
-          visible_count: 1,
-          hidden_count: 0,
-          truncated: false,
-        }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify(facilitiesResponse([facility])), { status: 200 });
     }
 
     if (url === `/api/admin/facilities/${encodeURIComponent(facility.id)}/units` && !init?.method) {
@@ -181,7 +187,7 @@ function stubFetchWithFacility(
     }
 
     if (url.includes('/units/') && init?.method === 'DELETE') {
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      return new Response(JSON.stringify({ data: { id: 'unit_1' } }), { status: 200 });
     }
 
     if (url.startsWith('/api/admin/facilities/') && init?.method === 'PATCH') {
@@ -189,7 +195,7 @@ function stubFetchWithFacility(
     }
 
     if (url.startsWith('/api/admin/facilities/') && init?.method === 'DELETE') {
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      return new Response(JSON.stringify({ data: { id: facility.id } }), { status: 200 });
     }
 
     return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
@@ -215,6 +221,30 @@ describe('FacilitiesContent', () => {
     expect(screen.getByText('佐藤 施設長')).toBeTruthy();
     expect(screen.queryByText('実データ接続待ちのマスターです。')).toBeNull();
     expect(screen.queryByText('施設マスター1')).toBeNull();
+  });
+
+  it('rejects legacy root list metadata instead of rendering a partial facility list', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [facilityFixture()],
+              total_count: 1,
+              visible_count: 1,
+              hidden_count: 0,
+              truncated: false,
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+
+    renderContent();
+
+    expect(await screen.findByText('施設マスターを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('グリーンヒル')).toBeNull();
   });
 
   it('GET facilities delegates to buildOrgHeaders(orgId)', async () => {
@@ -323,16 +353,7 @@ describe('FacilitiesContent', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/admin/facilities?' && !init?.method) {
-        return new Response(
-          JSON.stringify({
-            data: [facility],
-            total_count: 1,
-            visible_count: 1,
-            hidden_count: 0,
-            truncated: false,
-          }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify(facilitiesResponse([facility])), { status: 200 });
       }
       if (url === '/api/admin/facilities' && init?.method === 'POST') {
         return new Response(JSON.stringify({ message: '施設名が重複しています' }), {
@@ -368,16 +389,7 @@ describe('FacilitiesContent', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/admin/facilities?' && !init?.method) {
-        return new Response(
-          JSON.stringify({
-            data: [facility],
-            total_count: 1,
-            visible_count: 1,
-            hidden_count: 0,
-            truncated: false,
-          }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify(facilitiesResponse([facility])), { status: 200 });
       }
       if (url === '/api/admin/facilities/facility_1' && init?.method === 'DELETE') {
         return new Response(JSON.stringify({ message: '入居患者がいる施設は削除できません' }), {
@@ -404,6 +416,32 @@ describe('FacilitiesContent', () => {
     );
   });
 
+  it('rejects legacy successful facility delete responses', async () => {
+    const facility = { ...facilityFixture(), patient_count: 0 };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/admin/facilities?' && !init?.method) {
+          return new Response(JSON.stringify(facilitiesResponse([facility])), { status: 200 });
+        }
+        if (url === '/api/admin/facilities/facility_1' && init?.method === 'DELETE') {
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'グリーンヒル を削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('削除に失敗しました');
+    });
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalledWith('施設マスターを削除しました');
+  });
+
   it('loads facility units when editing a facility', async () => {
     const fetchMock = stubFetchWithFacility();
     renderContent();
@@ -425,16 +463,7 @@ describe('FacilitiesContent', () => {
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url === '/api/admin/facilities?' && !init?.method) {
-          return new Response(
-            JSON.stringify({
-              data: [facility],
-              total_count: 1,
-              visible_count: 1,
-              hidden_count: 0,
-              truncated: false,
-            }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify(facilitiesResponse([facility])), { status: 200 });
         }
         if (
           url === `/api/admin/facilities/${encodeURIComponent(facility.id)}/units` &&
@@ -533,16 +562,7 @@ describe('FacilitiesContent', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/admin/facilities?' && !init?.method) {
-        return new Response(
-          JSON.stringify({
-            data: [facility],
-            total_count: 1,
-            visible_count: 1,
-            hidden_count: 0,
-            truncated: false,
-          }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify(facilitiesResponse([facility])), { status: 200 });
       }
       if (url === '/api/admin/facilities/facility_1/units' && !init?.method) {
         return new Response(JSON.stringify({ data: [unitFixture()] }), { status: 200 });
@@ -583,16 +603,7 @@ describe('FacilitiesContent', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/admin/facilities?' && !init?.method) {
-        return new Response(
-          JSON.stringify({
-            data: [facility],
-            total_count: 1,
-            visible_count: 1,
-            hidden_count: 0,
-            truncated: false,
-          }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify(facilitiesResponse([facility])), { status: 200 });
       }
       if (url === '/api/admin/facilities/facility_1/units' && !init?.method) {
         return new Response(JSON.stringify({ data: [removableUnit] }), { status: 200 });

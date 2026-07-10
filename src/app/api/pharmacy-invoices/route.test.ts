@@ -132,7 +132,9 @@ describe('/api/pharmacy-invoices GET', () => {
         }),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: [
         {
           id: 'invoice_1',
@@ -144,6 +146,10 @@ describe('/api/pharmacy-invoices GET', () => {
           },
         },
       ],
+      meta: {
+        has_more: false,
+        next_cursor: null,
+      },
     });
   });
 

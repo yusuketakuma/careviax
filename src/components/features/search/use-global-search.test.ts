@@ -10,7 +10,10 @@ const ORG = 'org_1';
 function okBody(url: string): unknown {
   if (url.startsWith('/api/patients')) return { data: { data: [{ id: 'p1', name: '山田 太郎' }] } };
   if (url.startsWith('/api/visit-schedule-proposals'))
-    return { data: [{ id: 'pr1', proposal_status: 'pending', proposed_date: '2026-06-20' }] };
+    return {
+      data: [{ id: 'pr1', proposal_status: 'pending', proposed_date: '2026-06-20' }],
+      meta: { has_more: false },
+    };
   if (url.startsWith('/api/prescription-intakes'))
     return {
       data: [
@@ -19,12 +22,20 @@ function okBody(url: string): unknown {
       ],
     };
   if (url.startsWith('/api/drug-masters'))
-    return { data: [{ id: 'd1', drug_name: 'ロキソニン錠' }] };
+    return {
+      data: [{ id: 'd1', drug_name: 'ロキソニン錠' }],
+      meta: { has_more: false, next_cursor: null, total_count: 1 },
+    };
   if (url.startsWith('/api/care-reports'))
     return {
       data: [{ id: 'r1', report_type: 'monthly', status: 'draft', created_at: '2026-06-20' }],
     };
-  if (url.startsWith('/api/contact-profiles')) return { data: [{ id: 'c1', name: '田中薬局' }] };
+  if (url.startsWith('/api/contact-profiles')) {
+    return {
+      data: [{ id: 'c1', name: '田中薬局' }],
+      meta: { limit: 8, has_more: false },
+    };
+  }
   return { data: [] };
 }
 
@@ -94,7 +105,7 @@ describe('useGlobalSearch', () => {
     vi.useFakeTimers();
   });
   afterEach(() => {
-    vi.runOnlyPendingTimers();
+    vi.clearAllTimers();
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
@@ -134,7 +145,10 @@ describe('useGlobalSearch', () => {
     });
     expect(hook.result.current.pending).toBe(false); // results correspond to 'ふる'
 
-    hook.rerender({ q: 'しん' }); // query changed; no new fetch completed yet
+    await act(async () => {
+      hook.rerender({ q: 'しん' }); // query changed; no new fetch completed yet
+      await Promise.resolve();
+    });
     // results are now stale relative to the current query -> pending until the new fetch lands.
     expect(hook.result.current.pending).toBe(true);
   });
@@ -218,7 +232,13 @@ describe('useGlobalSearch', () => {
     installFetch(async (url) => {
       if (url.startsWith('/api/drug-masters')) {
         const data = Array.from({ length: 9 }, (_, i) => ({ id: `d${i}`, drug_name: `薬${i}` }));
-        return new Response(JSON.stringify({ data }), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            data,
+            meta: { has_more: false, next_cursor: null, total_count: data.length },
+          }),
+          { status: 200 },
+        );
       }
       return new Response(JSON.stringify(okBody(url)), { status: 200 });
     });
@@ -239,9 +259,13 @@ describe('useGlobalSearch', () => {
             resolveFirst = resolve;
           });
         }
-        return new Response(JSON.stringify({ data: [{ id: 'd-new', drug_name: '新薬' }] }), {
-          status: 200,
-        });
+        return new Response(
+          JSON.stringify({
+            data: [{ id: 'd-new', drug_name: '新薬' }],
+            meta: { has_more: false, next_cursor: null, total_count: 1 },
+          }),
+          { status: 200 },
+        );
       }
       return new Response(JSON.stringify(okBody(url)), { status: 200 });
     });
@@ -263,9 +287,13 @@ describe('useGlobalSearch', () => {
     // now release the stale first response
     await act(async () => {
       resolveFirst?.(
-        new Response(JSON.stringify({ data: [{ id: 'd-old', drug_name: '旧薬' }] }), {
-          status: 200,
-        }),
+        new Response(
+          JSON.stringify({
+            data: [{ id: 'd-old', drug_name: '旧薬' }],
+            meta: { has_more: false, next_cursor: null, total_count: 1 },
+          }),
+          { status: 200 },
+        ),
       );
       await Promise.resolve();
       await Promise.resolve();

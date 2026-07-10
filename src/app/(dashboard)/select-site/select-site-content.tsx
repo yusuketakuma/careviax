@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
@@ -51,7 +51,7 @@ export function SelectSiteContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ site_id: siteId }),
       });
-      await readApiJson<unknown>(res, '薬局の切り替えに失敗しました');
+      await readApiAcknowledgement(res, '薬局の切り替えに失敗しました');
     },
     onSuccess: async () => {
       toast.success('使う薬局を切り替えました');

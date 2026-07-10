@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { PatientMcsOverviewQueryError } from '@/lib/patient-mcs/query';
 import { PatientMcsContent } from './mcs-content';
 
 setupDomTestEnv();
@@ -13,6 +14,7 @@ const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
 
 // Actual-backed spies so URL/header teeth can prove helper adoption via return-value identity.
 vi.mock('@/lib/api/org-headers', async (importActual) => {
@@ -30,7 +32,7 @@ vi.mock('@/lib/patient/api-paths', async (importActual) => {
 });
 
 type MutationOptions = {
-  mutationFn?: (input?: unknown) => unknown;
+  mutationFn?: (input?: unknown) => Promise<unknown>;
   onSuccess?: (result?: unknown) => unknown;
   onError?: (error: Error) => unknown;
 };
@@ -48,6 +50,10 @@ vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
   useMutation: useMutationMock,
   useQueryClient: useQueryClientMock,
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 vi.mock('next/link', () => ({
@@ -444,7 +450,7 @@ describe('PatientMcsContent', () => {
     }
   });
 
-  it('keeps server messages and falls back for MCS mutation error toasts', async () => {
+  it('keeps raw mutation errors out of MCS toasts and logs only static context', async () => {
     const patientId = 'patient_1';
     const mutationOptions: MutationOptions[] = [];
 
@@ -466,31 +472,70 @@ describe('PatientMcsContent', () => {
 
     expect(mutationOptions).toHaveLength(3);
     const [sync, checkLog, profile] = mutationOptions;
+    const syncError = new Error('患者A 090-1234-5678 token=sync-secret の同期に失敗しました');
+    const checkLogError = new Error('患者A token=log-secret の確認ログに失敗しました');
+    const profileError = new Error('患者A https://mcs.example.test/patient/1 の保存に失敗しました');
 
-    await sync.onError?.(new Error('MCS同期APIからの詳細エラー'));
-    expect(toast.error).toHaveBeenLastCalledWith('MCS同期APIからの詳細エラー');
-    await sync.onError?.(new Error(''));
-    expect(toast.error).toHaveBeenLastCalledWith('MCS 連携の同期に失敗しました');
+    await sync.onError?.(syncError);
+    expect(toast.error).toHaveBeenLastCalledWith(
+      'MCS 連携の同期に失敗しました。連携元URLと通信状態を確認してからもう一度お試しください。',
+    );
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith('patient_mcs.sync_failed', syncError, {
+      route: '/patients/:id/mcs',
+      entityType: 'patient_mcs_sync',
+    });
 
-    checkLog.onError?.(new Error('確認ログAPIからの詳細エラー'));
-    expect(toast.error).toHaveBeenLastCalledWith('確認ログAPIからの詳細エラー');
-    checkLog.onError?.(new Error(''));
-    expect(toast.error).toHaveBeenLastCalledWith('MCS 確認ログの登録に失敗しました');
+    checkLog.onError?.(checkLogError);
+    expect(toast.error).toHaveBeenLastCalledWith(
+      'MCS 確認ログの登録に失敗しました。入力内容を確認してからもう一度お試しください。',
+    );
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+      'patient_mcs.check_log_create_failed',
+      checkLogError,
+      { route: '/patients/:id/mcs', entityType: 'patient_mcs_check_log' },
+    );
 
-    profile.onError?.(new Error('参加情報APIからの詳細エラー'));
-    expect(toast.error).toHaveBeenLastCalledWith('参加情報APIからの詳細エラー');
-    profile.onError?.(new Error(''));
-    expect(toast.error).toHaveBeenLastCalledWith('MCS 参加情報の保存に失敗しました');
+    profile.onError?.(profileError);
+    expect(toast.error).toHaveBeenLastCalledWith(
+      'MCS 参加情報の保存に失敗しました。入力内容を確認してからもう一度お試しください。',
+    );
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+      'patient_mcs.profile_save_failed',
+      profileError,
+      { route: '/patients/:id/mcs', entityType: 'patient_mcs_profile' },
+    );
+    const rawValues = ['090-1234-5678', 'sync-secret', 'log-secret', 'mcs.example.test'];
+    for (const rawValue of rawValues) {
+      expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain(rawValue);
+      expect(
+        JSON.stringify(clientLogWarnMock.mock.calls.map(([, , context]) => context)),
+      ).not.toContain(rawValue);
+    }
   });
 
-  it('keeps server messages from failed direct MCS mutation responses', async () => {
+  it('uses HTTP status without server messages for MCS mutation recovery guidance', async () => {
     const patientId = 'patient_1';
     const mutationOptions: MutationOptions[] = [];
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(createJsonResponse({ message: 'MCS同期APIからの詳細エラー' }, 409))
-      .mockResolvedValueOnce(createJsonResponse({ message: '確認ログAPIからの詳細エラー' }, 400))
-      .mockResolvedValueOnce(createJsonResponse({ message: '参加情報APIからの詳細エラー' }, 422));
+      .mockResolvedValueOnce(
+        createJsonResponse(
+          { code: 'WORKFLOW_CONFLICT', message: '患者A token=sync-response-secret' },
+          409,
+        ),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse(
+          { code: 'WORKFLOW_CONFLICT', message: '患者A token=check-response-secret' },
+          409,
+        ),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse(
+          { code: 'WORKFLOW_CONFLICT', message: '患者A token=profile-response-secret' },
+          409,
+        ),
+      );
 
     useOrgIdMock.mockReturnValue('org_1');
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
@@ -511,29 +556,194 @@ describe('PatientMcsContent', () => {
       render(<PatientMcsContent patientId={patientId} />);
 
       expect(mutationOptions).toHaveLength(3);
-      await expect(
-        mutationOptions[0].mutationFn?.('https://www.medical-care.net/patients/2463520'),
-      ).rejects.toThrow('MCS同期APIからの詳細エラー');
-      await expect(
-        mutationOptions[1].mutationFn?.({
+      const syncError = await mutationOptions[0]
+        .mutationFn?.('https://www.medical-care.net/patients/2463520')
+        .catch((error: unknown) => error);
+      const checkLogError = await mutationOptions[1]
+        .mutationFn?.({
           contentType: 'report',
           summary: 'MCS投稿を確認',
           nextAction: '',
-        }),
-      ).rejects.toThrow('確認ログAPIからの詳細エラー');
-      await expect(
-        mutationOptions[2].mutationFn?.({
+        })
+        .catch((error: unknown) => error);
+      const profileError = await mutationOptions[2]
+        .mutationFn?.({
           linkedStatus: 'linked',
           participationStatus: 'joined',
           pharmacyParticipants: ['薬剤師 佐藤'],
           counterpartRoles: ['visiting_nurse'],
           lastCheckedAt: null,
           note: null,
-        }),
-      ).rejects.toThrow('参加情報APIからの詳細エラー');
+        })
+        .catch((error: unknown) => error);
+
+      for (const error of [syncError, checkLogError, profileError]) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).not.toContain('token=');
+      }
+
+      await mutationOptions[0].onError?.(syncError as Error);
+      expect(toast.error).toHaveBeenLastCalledWith(
+        '連携先と現在の患者情報が一致しないため同期できませんでした。連携元URLを確認してください。',
+      );
+      expect(clientLogWarnMock).toHaveBeenLastCalledWith('patient_mcs.sync_failed', syncError, {
+        route: '/patients/:id/mcs',
+        entityType: 'patient_mcs_sync',
+        status: 409,
+      });
+
+      mutationOptions[1].onError?.(checkLogError as Error);
+      expect(toast.error).toHaveBeenLastCalledWith(
+        'MCS 確認ログの登録に失敗しました。入力内容を確認してからもう一度お試しください。',
+      );
+      mutationOptions[2].onError?.(profileError as Error);
+      expect(toast.error).toHaveBeenLastCalledWith(
+        'MCS 参加情報の保存に失敗しました。入力内容を確認してからもう一度お試しください。',
+      );
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('rejects mixed-root MCS mutation responses without exposing response details', async () => {
+    const patientId = 'patient_1';
+    const mutationOptions: MutationOptions[] = [];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          data: {
+            importedCount: 0,
+            latestMessageAt: null,
+            link: null,
+            summary: null,
+          },
+          patient_name: '患者A token=sync-response-secret',
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          data: { log: { id: 'mcs_log_1' } },
+          message: '患者A token=check-response-secret',
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          data: { profile: { linked_status: 'linked' } },
+          message: '患者A token=profile-response-secret',
+        }),
+      );
+
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockImplementation((options: MutationOptions) => {
+      mutationOptions.push(options);
+      return { isPending: false, mutate: vi.fn() };
+    });
+    useQueryMock.mockReturnValue({
+      data: { link: null, profile: null, summary: null, messages: [], checkLogs: [] },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientMcsContent patientId={patientId} />);
+
+      expect(mutationOptions).toHaveLength(3);
+      const mutationCalls: Array<{
+        run: () => Promise<unknown> | undefined;
+        fallbackMessage: string;
+        secret: string;
+      }> = [
+        {
+          run: () =>
+            mutationOptions[0].mutationFn?.('https://www.medical-care.net/patients/2463520'),
+          fallbackMessage:
+            'MCS 連携の同期に失敗しました。連携元URLと通信状態を確認してからもう一度お試しください。',
+          secret: 'sync-response-secret',
+        },
+        {
+          run: () =>
+            mutationOptions[1].mutationFn?.({
+              contentType: 'report',
+              summary: 'MCS投稿を確認',
+              nextAction: '',
+            }),
+          fallbackMessage:
+            'MCS 確認ログの登録に失敗しました。入力内容を確認してからもう一度お試しください。',
+          secret: 'check-response-secret',
+        },
+        {
+          run: () =>
+            mutationOptions[2].mutationFn?.({
+              linkedStatus: 'linked',
+              participationStatus: 'joined',
+              pharmacyParticipants: ['薬剤師 佐藤'],
+              counterpartRoles: ['visiting_nurse'],
+              lastCheckedAt: null,
+              note: null,
+            }),
+          fallbackMessage:
+            'MCS 参加情報の保存に失敗しました。入力内容を確認してからもう一度お試しください。',
+          secret: 'profile-response-secret',
+        },
+      ];
+
+      for (const { run, fallbackMessage, secret } of mutationCalls) {
+        const error = await run()?.catch((cause: unknown) => cause);
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toBe(fallbackMessage);
+        expect((error as Error).message).not.toContain(secret);
+        expect((error as Error).message).not.toContain('患者A');
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    [
+      new Error('患者A 090-1234-5678 https://mcs.example.test/patient/1 token=query-secret'),
+      'MCS 連携情報を取得できませんでした。通信状態を確認してから再読み込みしてください。',
+    ],
+    [
+      new PatientMcsOverviewQueryError(
+        'forbidden',
+        '患者A https://mcs.example.test/patient/1 token=forbidden-secret',
+      ),
+      'MCS 連携情報を表示する権限がありません。権限を確認してから再読み込みしてください。',
+    ],
+  ])('keeps overview error output PHI-safe and retryable', async (error, expectedMessage) => {
+    const refetch = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ isPending: false, mutate: vi.fn() });
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error,
+      refetch,
+    });
+
+    render(<PatientMcsContent patientId="patient_1" />);
+
+    expect(screen.getByText(expectedMessage)).toBeTruthy();
+    expect(screen.queryByText(error.message)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(clientLogWarnMock).toHaveBeenCalledWith('patient_mcs.overview_fetch_failed', error, {
+        route: '/patients/:id/mcs',
+        entityType: 'patient_mcs',
+      });
+    });
+    expect(
+      JSON.stringify(clientLogWarnMock.mock.calls.map(([, , context]) => context)),
+    ).not.toContain('mcs.example.test');
   });
 
   it('shows an inline validation error and keeps actions disabled for invalid draft urls', async () => {
@@ -661,11 +871,27 @@ describe('PatientMcsContent', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '確認ログを登録' }));
 
-    expect(checkLogMutate).toHaveBeenCalledWith({
-      contentType: 'report',
-      summary: '訪看からの転倒リスク共有を確認',
-      nextAction: '次回訪問でふらつきを確認',
+    expect(checkLogMutate).toHaveBeenCalledWith(
+      {
+        contentType: 'report',
+        summary: '訪看からの転倒リスク共有を確認',
+        nextAction: '次回訪問でふらつきを確認',
+      },
+      { onSuccess: expect.any(Function) },
+    );
+    expect((screen.getByLabelText('要約') as HTMLTextAreaElement).value).toBe(
+      '訪看からの転倒リスク共有を確認',
+    );
+    expect((screen.getByLabelText('次アクション') as HTMLInputElement).value).toBe(
+      '次回訪問でふらつきを確認',
+    );
+    const [, mutationCallbacks] = checkLogMutate.mock.calls[0] ?? [];
+    expect(mutationCallbacks).toEqual({ onSuccess: expect.any(Function) });
+    act(() => {
+      (mutationCallbacks as { onSuccess: () => void }).onSuccess();
     });
+    expect((screen.getByLabelText('要約') as HTMLTextAreaElement).value).toBe('');
+    expect((screen.getByLabelText('次アクション') as HTMLInputElement).value).toBe('');
     expect(syncMutate).not.toHaveBeenCalled();
     expect(profileMutate).not.toHaveBeenCalled();
   });
@@ -811,17 +1037,33 @@ describe('PatientMcsContent', () => {
       );
     });
 
-    writeText.mockRejectedValueOnce(new Error('クリップボードAPIからの詳細エラー'));
-    fireEvent.click(screen.getByRole('button', { name: 'URLをコピー' }));
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenLastCalledWith('クリップボードAPIからの詳細エラー'),
+    const rawClipboardError = new Error(
+      '患者A https://mcs.example.test/project/1 token=clipboard-secret のコピーに失敗しました',
     );
+    writeText.mockRejectedValueOnce(rawClipboardError);
+    fireEvent.click(screen.getByRole('button', { name: 'URLをコピー' }));
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenLastCalledWith(
+        'MCS URLのコピーに失敗しました。ブラウザの設定を確認してからもう一度お試しください。',
+      );
+      expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+        'patient_mcs.copy_url_failed',
+        rawClipboardError,
+        { route: '/patients/:id/mcs', entityType: 'patient_mcs' },
+      );
+    });
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain('clipboard-secret');
+    expect(
+      JSON.stringify(clientLogWarnMock.mock.calls.map(([, , context]) => context)),
+    ).not.toContain('clipboard-secret');
 
     writeText.mockRejectedValueOnce(new Error(''));
     fireEvent.click(screen.getByRole('button', { name: 'URLをコピー' }));
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenLastCalledWith('MCS URLのコピーに失敗しました'),
-    );
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenLastCalledWith(
+        'MCS URLのコピーに失敗しました。ブラウザの設定を確認してからもう一度お試しください。',
+      );
+    });
 
     fireEvent.click(screen.getByRole('button', { name: '最終確認を今に更新' }));
 

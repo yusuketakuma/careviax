@@ -98,6 +98,22 @@ describe('DocumentDeliveryRuleManager', () => {
           return new Response(JSON.stringify({ data: { id: 'rule_1' } }), { status: 200 });
         }
 
+        if (url === '/api/document-delivery-rules' && init?.method === 'POST') {
+          return new Response(
+            JSON.stringify({
+              data: {
+                id: 'rule_new',
+                document_type: 'care_report',
+                target_role: 'physician',
+                channel: 'fax',
+                fallback_channels: ['email'],
+                is_active: true,
+              },
+            }),
+            { status: 201 },
+          );
+        }
+
         return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
       }),
     );
@@ -269,6 +285,56 @@ describe('DocumentDeliveryRuleManager', () => {
       fallback_channels: ['email'],
       is_active: true,
     });
+  });
+
+  it('rejects a legacy successful delivery-rule save without clearing the form', async () => {
+    renderManager();
+
+    await screen.findByText('送達ルール一覧');
+    fireEvent.change(screen.getByLabelText('フォールバック順'), {
+      target: { value: 'mcs' },
+    });
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(global.fetch).mockImplementationOnce(
+      async () =>
+        new Response(JSON.stringify({ message: '文書送達ルールを登録しました' }), {
+          status: 201,
+        }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('文書送達ルールの保存に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('フォールバック順') as HTMLInputElement).value).toBe('mcs');
+  });
+
+  it('rejects a legacy successful delivery-rule deletion without showing success', async () => {
+    renderManager();
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '報告書 / 医師 / FAX の送達ルールを削除',
+      }),
+    );
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(global.fetch).mockImplementationOnce(
+      async () =>
+        new Response(JSON.stringify({ message: '文書送達ルールを削除しました' }), {
+          status: 200,
+        }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('文書送達ルールの削除に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('keeps server save error envelopes when delivery rule creation fails', async () => {

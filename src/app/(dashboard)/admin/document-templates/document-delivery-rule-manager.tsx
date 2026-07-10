@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   DOCUMENT_DELIVERY_RULES_API_PATH,
@@ -58,10 +58,6 @@ type DocumentDeliveryRulesResponse = {
     };
     limit: number;
   };
-};
-
-type DocumentDeliveryRuleDeleteResponse = {
-  data: { id: string };
 };
 
 const DOCUMENT_TYPE_OPTIONS = [
@@ -208,7 +204,7 @@ export function DocumentDeliveryRuleManager() {
           }),
         },
       );
-      await readApiJson<unknown>(res, '文書送達ルールの保存に失敗しました');
+      await readApiAcknowledgement(res, '文書送達ルールの保存に失敗しました');
       return { wasEditing: Boolean(currentForm.id) };
     },
     onSuccess: async ({ wasEditing }) => {
@@ -227,10 +223,7 @@ export function DocumentDeliveryRuleManager() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      await readApiJson<DocumentDeliveryRuleDeleteResponse>(
-        res,
-        '文書送達ルールの削除に失敗しました',
-      );
+      await readApiAcknowledgement(res, '文書送達ルールの削除に失敗しました');
     },
     onSuccess: async (_data, ruleId) => {
       toast.success('文書送達ルールを削除しました');

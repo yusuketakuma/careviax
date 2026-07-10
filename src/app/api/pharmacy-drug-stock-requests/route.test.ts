@@ -122,8 +122,14 @@ describe('/api/pharmacy-drug-stock-requests', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body).toMatchObject({
       data: { id: 'request_1', status: 'pending' },
+      meta: {
+        site: { id: 'site_1', name: '本店' },
+        drug: { id: 'drug_1', drug_name: 'ノルバスク錠5mg', generic_name: 'アムロジピン' },
+      },
     });
     expect(prismaMock.formularyChangeRequest.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -405,7 +411,7 @@ describe('/api/pharmacy-drug-stock-requests', () => {
       code: 'AUTH_FORBIDDEN',
     });
     expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
-    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.create).not.toHaveBeenCalled();
   });
 
   it('marks sanitized unexpected POST errors as no-store', async () => {
@@ -462,15 +468,19 @@ describe('/api/pharmacy-drug-stock-requests', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body).toMatchObject({
       data: [{ id: 'request_1', status: 'pending' }],
-      summary: {
-        status: 'pending',
-        total_count: 3,
-        overdue_count: 1,
-        overdue_days: 7,
-        oldest_pending_created_at: '2026-05-10T00:00:00.000Z',
-        notification_level: 'overdue',
+      meta: {
+        summary: {
+          status: 'pending',
+          total_count: 3,
+          overdue_count: 1,
+          overdue_days: 7,
+          oldest_pending_created_at: '2026-05-10T00:00:00.000Z',
+          notification_level: 'overdue',
+        },
       },
     });
     expect(prismaMock.formularyChangeRequest.findMany).toHaveBeenCalledWith(

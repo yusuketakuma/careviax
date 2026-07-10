@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { messageFromError } from '@/lib/utils/error-message';
 import { readApiJson } from '@/lib/api/client-json';
+import { apiUnknownDataEnvelopeSchema } from '@/lib/api/response-schemas';
 import { Button } from '@/components/ui/button';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -77,14 +78,20 @@ export function EvidenceCaptureContent({
       const headers = buildOrgHeaders(orgId);
       const scheduleRes = await fetch(`/api/visit-schedules/${visitId}`, { headers });
       if (scheduleRes.ok) {
-        const payload = await readApiJson<{ data: unknown }>(scheduleRes).catch(() => null);
+        const payload = await readApiJson(scheduleRes, {
+          fallbackMessage: '訪問予定の取得に失敗しました',
+          schema: apiUnknownDataEnvelopeSchema,
+        }).catch(() => null);
         const context = resolveCapturePatientContext(payload?.data);
         if (context.patientName || context.patientId) return context;
       }
 
       const recordRes = await fetch(`/api/visit-records/${visitId}`, { headers });
       if (recordRes.ok) {
-        const payload = await readApiJson<{ data: unknown }>(recordRes);
+        const payload = await readApiJson(recordRes, {
+          fallbackMessage: '訪問記録の取得に失敗しました',
+          schema: apiUnknownDataEnvelopeSchema,
+        });
         const record =
           payload.data && typeof payload.data === 'object'
             ? (payload.data as Record<string, unknown>)

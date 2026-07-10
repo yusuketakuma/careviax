@@ -1177,6 +1177,7 @@ function buildPharmacyCoopVisitRequest(args: { created: boolean; status: string 
     has_carry_items: true,
     has_patient_home_notes: true,
     has_decline_reason: false,
+    updated_at: '2026-06-20T01:45:00.000Z',
   };
 }
 
@@ -1196,6 +1197,7 @@ function buildPharmacyCoopPartnerRecord(args: { created: boolean; status: string
         ? '2026-06-20T02:30:00.000Z'
         : null,
     confirmed_at: args.status === 'confirmed' ? '2026-06-20T03:00:00.000Z' : null,
+    updated_at: '2026-06-20T03:00:00.000Z',
     owner_partner_pharmacy: {
       id: PHARMACY_COOP_PARTNER_PHARMACY_ID,
       name: 'RouteMock協力薬局',
@@ -1543,10 +1545,12 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       state.visitRequestStatus = 'requested';
       await fulfillJson(
         route,
-        buildPharmacyCoopVisitRequest({
-          created: state.visitRequestCreated,
-          status: state.visitRequestStatus,
-        }),
+        {
+          data: buildPharmacyCoopVisitRequest({
+            created: state.visitRequestCreated,
+            status: state.visitRequestStatus,
+          }),
+        },
         201,
       );
       return;
@@ -1556,7 +1560,10 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       created: state.visitRequestCreated,
       status: state.visitRequestStatus,
     });
-    await fulfillJson(route, { data: visitRequest ? [visitRequest] : [], hasMore: false });
+    await fulfillJson(route, {
+      data: visitRequest ? [visitRequest] : [],
+      meta: { has_more: false, next_cursor: null },
+    });
   });
 
   await page.route(apiPathPattern('/api/pharmacy-cooperation-message-threads'), async (route) => {
@@ -1603,8 +1610,10 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
         state.visitRequestStatus = 'accepted';
       }
       await fulfillJson(route, {
-        id: PHARMACY_COOP_VISIT_REQUEST_ID,
-        status: state.visitRequestStatus,
+        data: {
+          id: PHARMACY_COOP_VISIT_REQUEST_ID,
+          status: state.visitRequestStatus,
+        },
       });
     },
   );
@@ -1618,10 +1627,12 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       state.visitRequestStatus = 'recording';
       await fulfillJson(
         route,
-        buildPharmacyCoopPartnerRecord({
-          created: state.partnerRecordCreated,
-          status: state.partnerRecordStatus,
-        }),
+        {
+          data: buildPharmacyCoopPartnerRecord({
+            created: state.partnerRecordCreated,
+            status: state.partnerRecordStatus,
+          }),
+        },
         201,
       );
       return;
@@ -1631,7 +1642,10 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       created: state.partnerRecordCreated,
       status: state.partnerRecordStatus,
     });
-    await fulfillJson(route, { data: record ? [record] : [], hasMore: false });
+    await fulfillJson(route, {
+      data: record ? [record] : [],
+      meta: { has_more: false, next_cursor: null },
+    });
   });
 
   await page.route(
@@ -1664,12 +1678,14 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       await fulfillJson(
         route,
         {
-          message: '医師向け報告書ドラフトを作成しました',
-          reused_existing_draft: false,
-          report: {
-            id: PHARMACY_COOP_REPORT_ID,
-            status: 'draft',
-            report_type: 'physician',
+          data: {
+            message: '医師向け報告書ドラフトを作成しました',
+            reused_existing_draft: false,
+            report: {
+              id: PHARMACY_COOP_REPORT_ID,
+              status: 'draft',
+              report_type: 'physician',
+            },
           },
         },
         201,
@@ -1696,7 +1712,10 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
   });
 
   await page.route(apiPathPattern('/api/pharmacy-contracts'), async (route) => {
-    await fulfillJson(route, { data: [buildPharmacyCoopContract()] });
+    await fulfillJson(route, {
+      data: [buildPharmacyCoopContract()],
+      meta: { has_more: false, next_cursor: null },
+    });
   });
 
   await page.route(apiPathPattern('/api/visit-billing-candidates'), async (route) => {
@@ -1706,19 +1725,24 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       state.billingCandidateGenerated = true;
       state.visitRequestStatus = 'claim_checked';
       await fulfillJson(route, {
-        message: '2026-06-01 の薬局間協力訪問請求候補を生成しました',
-        billing_month: PHARMACY_COOP_BILLING_MONTH,
-        scanned_confirmed_records: 1,
-        generated_candidates: 1,
-        billable_count: 1,
-        excluded_count: 0,
-        skipped_locked_count: 0,
+        data: {
+          message: '2026-06-01 の薬局間協力訪問請求候補を生成しました',
+          billing_month: PHARMACY_COOP_BILLING_MONTH,
+          scanned_confirmed_records: 1,
+          generated_candidates: 1,
+          billable_count: 1,
+          excluded_count: 0,
+          skipped_locked_count: 0,
+        },
       });
       return;
     }
 
     const candidate = buildPharmacyCoopBillingCandidate(state.billingCandidateGenerated);
-    await fulfillJson(route, { data: candidate ? [candidate] : [], hasMore: false });
+    await fulfillJson(route, {
+      data: candidate ? [candidate] : [],
+      meta: { limit: 20, has_more: false, next_cursor: null },
+    });
   });
 
   await page.route(apiPathPattern('/api/pharmacy-invoices'), async (route) => {
@@ -2116,8 +2140,7 @@ async function installFormularyRouteMocks(page: Page) {
           generic_price_comparison: null,
         },
       ],
-      hasMore: false,
-      totalCount: 1,
+      meta: { has_more: false, next_cursor: null, total_count: 1 },
     });
   });
 
@@ -2501,7 +2524,12 @@ async function installScheduleDayGanttRouteMocks(page: Page) {
   });
 
   await page.route(apiPathPattern('/api/visit-schedule-proposals'), async (route) => {
-    await fulfillJson(route, { data: [] });
+    await fulfillJson(
+      route,
+      route.request().method() === 'POST'
+        ? { data: [], meta: { alerts: [], replayed: false } }
+        : { data: [] },
+    );
   });
 
   await page.route(
@@ -2530,7 +2558,7 @@ async function installScheduleDayGanttRouteMocks(page: Page) {
   });
 
   await page.route(apiPathPattern('/api/tasks'), async (route) => {
-    await fulfillJson(route, { data: [] });
+    await fulfillJson(route, { data: [], meta: { has_more: false, next_cursor: null } });
   });
 
   await page.route(apiPathPattern('/api/visit-preparations/brief-batch'), async (route) => {

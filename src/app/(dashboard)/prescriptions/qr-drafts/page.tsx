@@ -7,6 +7,7 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { QrCode, ArrowRight } from 'lucide-react';
+import { z } from 'zod';
 import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { DataTable } from '@/components/ui/data-table';
@@ -23,30 +24,40 @@ import {
 import { cn } from '@/lib/utils';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
-type QrDraftMedication = {
-  name: string;
-  [key: string]: unknown;
-};
+const qrDraftMedicationSchema = z.object({ name: z.string() }).passthrough();
 
-type QrDraftRow = {
-  id: string;
-  status: 'pending' | 'confirmed';
-  created_at: string;
-  scanned_by: string;
-  scanned_by_name: string | null;
-  patient_id: string | null;
-  parsed_data: {
-    patient?: {
-      name?: string;
-    };
-    medications?: QrDraftMedication[];
-  } | null;
-};
+const qrDraftRowSchema = z
+  .object({
+    id: z.string(),
+    status: z.enum(['pending', 'confirmed']),
+    created_at: z.string(),
+    scanned_by: z.string(),
+    scanned_by_name: z.string().nullable(),
+    patient_id: z.string().nullable(),
+    parsed_data: z
+      .object({
+        patient: z.object({ name: z.string().optional() }).passthrough().optional(),
+        medications: z.array(qrDraftMedicationSchema).optional(),
+      })
+      .passthrough()
+      .nullable(),
+  })
+  .passthrough();
 
-type QrDraftListResponse = {
-  data: QrDraftRow[];
-  unmatchedCount?: number;
-};
+type QrDraftRow = z.infer<typeof qrDraftRowSchema>;
+
+const qrDraftListResponseSchema = z
+  .object({
+    data: z.array(qrDraftRowSchema),
+    meta: z
+      .object({
+        has_more: z.boolean(),
+        next_cursor: z.string().nullable(),
+        unmatched_count: z.number().int().nonnegative().optional(),
+      })
+      .strict(),
+  })
+  .strict();
 
 const statusConfig: Record<
   string,
@@ -143,7 +154,10 @@ function QrDraftList() {
       const res = await fetch('/api/qr-scan-drafts?include_unmatched_count=1', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<QrDraftListResponse>(res, 'QRスキャン下書きの取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: 'QRスキャン下書きの取得に失敗しました',
+        schema: qrDraftListResponseSchema,
+      });
     },
     enabled: !!orgId,
     fallbackRefetchInterval: 30_000,
@@ -160,7 +174,10 @@ function QrDraftList() {
       const res = await fetch('/api/qr-scan-drafts?unmatched=true', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<QrDraftListResponse>(res, 'QRスキャン下書きの取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: 'QRスキャン下書きの取得に失敗しました',
+        schema: qrDraftListResponseSchema,
+      });
     },
     enabled: !!orgId && filterMode === 'unmatched',
     fallbackRefetchInterval: 30_000,
@@ -175,7 +192,7 @@ function QrDraftList() {
     () => (filterMode === 'unmatched' ? (unmatchedData?.data ?? []) : (allData?.data ?? [])),
     [filterMode, allData, unmatchedData],
   );
-  const unmatchedCount = allData?.unmatchedCount ?? 0;
+  const unmatchedCount = allData?.meta.unmatched_count ?? 0;
 
   const handleMoveUp = useCallback(() => {
     setSelectedIndex((prev) => Math.max(0, prev - 1));

@@ -53,7 +53,7 @@ const authenticatedGET = withAuthContext(
     });
 
     if (!stock) {
-      return success({ site, stock: null, data: [] });
+      return success({ data: [], meta: { site, stock: null } });
     }
 
     const auditLogs = await prisma.auditLog.findMany({
@@ -94,7 +94,7 @@ const authenticatedGET = withAuthContext(
       )
       .slice(0, parsed.data.limit);
 
-    return success({ site, stock, data });
+    return success({ data, meta: { site, stock } });
   },
   { permission: 'canAdmin' },
 );

@@ -164,16 +164,19 @@ const authenticatedGET = withAuthContext(
     if (!query) {
       return success({
         data: items.map(toResponse),
-        total_count: items.length,
-        visible_count: items.length,
-        hidden_count: 0,
-        truncated: false,
-        count_basis: 'external_professionals',
-        filters_applied: {
-          q: null,
-          profession_type: parsedProfessionType.data ?? null,
-          facility_id: parsedFacilityId.data ?? null,
-          preferred_contact_method: parsedPreferredContactMethod.data ?? null,
+        meta: {
+          total_count: items.length,
+          visible_count: items.length,
+          hidden_count: 0,
+          truncated: false,
+          count_basis: 'external_professionals',
+          has_more: false,
+          filters_applied: {
+            q: null,
+            profession_type: parsedProfessionType.data ?? null,
+            facility_id: parsedFacilityId.data ?? null,
+            preferred_contact_method: parsedPreferredContactMethod.data ?? null,
+          },
         },
       });
     }
@@ -184,19 +187,21 @@ const authenticatedGET = withAuthContext(
 
     return success({
       data: page.data.map(toResponse),
-      total_count: totalCount ?? visibleCount,
-      visible_count: visibleCount,
-      hidden_count: hiddenCount,
-      truncated: hiddenCount > 0,
-      count_basis: 'external_professionals',
-      filters_applied: {
-        q: query,
-        profession_type: parsedProfessionType.data ?? null,
-        facility_id: parsedFacilityId.data ?? null,
-        preferred_contact_method: parsedPreferredContactMethod.data ?? null,
+      meta: {
+        total_count: totalCount ?? visibleCount,
+        visible_count: visibleCount,
+        hidden_count: hiddenCount,
+        truncated: hiddenCount > 0,
+        count_basis: 'external_professionals',
+        filters_applied: {
+          q: query,
+          profession_type: parsedProfessionType.data ?? null,
+          facility_id: parsedFacilityId.data ?? null,
+          preferred_contact_method: parsedPreferredContactMethod.data ?? null,
+        },
+        limit,
+        has_more: page.hasMore || hiddenCount > 0,
       },
-      limit,
-      meta: { limit, has_more: page.hasMore || hiddenCount > 0 },
     });
   },
   {

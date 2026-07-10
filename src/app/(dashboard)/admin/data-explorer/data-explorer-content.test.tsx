@@ -398,6 +398,32 @@ describe('DataExplorerContent', () => {
     );
   });
 
+  it('rejects a legacy successful row update without clearing the editor draft', async () => {
+    runMutationFnsMock.current = true;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/admin/data-explorer/patients/patient_1' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ message: 'レコードを更新しました' }), {
+          status: 200,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DataExplorerContent />);
+    fireEvent.click(screen.getByRole('button', { name: 'patients テーブルの 1 行目を選択' }));
+    const editor = screen.getByLabelText('許可フィールド JSON') as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: '{"name":"更新予定"}' } });
+    fireEvent.click(screen.getByRole('button', { name: /保存/ }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('更新に失敗しました');
+    });
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+    expect(editor.value).toBe('{"name":"更新予定"}');
+  });
+
   it('shows a retryable error instead of an empty model list when models fail to load', () => {
     queryErrorKeysMock.add('admin-data-explorer-models');
 

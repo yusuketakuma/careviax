@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useMemo, useState, type ElementType, type ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, ShieldCheck, MapPinned } from 'lucide-react';
+import { z } from 'zod';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -46,32 +47,44 @@ type AnalyticsResponse = {
   }>;
 };
 
-type ResourceMapResponse = {
-  summary: {
-    total_sites: number;
-    emergency_ready_sites: number;
-    holiday_gap_sites: number;
-    missing_geo_sites: number;
-  };
-  data: Array<{
-    id: string;
-    name: string;
-    address: string;
-    phone: string | null;
-    emergency_capable_shift_count: number;
-    holiday_gap_dates: Array<{
-      id: string;
-      date: string;
-      name: string;
-    }>;
-    supports_narcotic: boolean;
-    supports_sterile: boolean;
-    can_delegate: boolean;
-    has_geo: boolean;
-    capability_tags: string[];
-    action_href: string;
-  }>;
-};
+const resourceMapResponseSchema = z
+  .object({
+    data: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        address: z.string(),
+        phone: z.string().nullable(),
+        emergency_capable_shift_count: z.number().int().nonnegative(),
+        holiday_gap_dates: z.array(
+          z.object({
+            id: z.string(),
+            date: z.string(),
+            name: z.string(),
+          }),
+        ),
+        supports_narcotic: z.boolean(),
+        supports_sterile: z.boolean(),
+        can_delegate: z.boolean(),
+        has_geo: z.boolean(),
+        capability_tags: z.array(z.string()),
+        action_href: z.string(),
+      }),
+    ),
+    meta: z
+      .object({
+        summary: z.object({
+          total_sites: z.number().int().nonnegative(),
+          emergency_ready_sites: z.number().int().nonnegative(),
+          holiday_gap_sites: z.number().int().nonnegative(),
+          missing_geo_sites: z.number().int().nonnegative(),
+        }),
+      })
+      .strict(),
+  })
+  .strict();
+
+type ResourceMapResponse = z.infer<typeof resourceMapResponseSchema>;
 
 type ResourceFilter =
   | 'all'
@@ -190,10 +203,10 @@ export function AnalyticsContent() {
       const res = await fetch('/api/pharmacy-sites?view=resource_map', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{
-        data: ResourceMapResponse['data'];
-        summary: ResourceMapResponse['summary'];
-      }>(res, '地域資源マップの取得に失敗しました');
+      return readApiJson<ResourceMapResponse>(res, {
+        fallbackMessage: '地域資源マップの取得に失敗しました',
+        schema: resourceMapResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -413,28 +426,28 @@ export function AnalyticsContent() {
                   <MetricCard
                     icon={MapPinned}
                     label="拠点数"
-                    value={resourceMap?.summary.total_sites ?? 0}
+                    value={resourceMap?.meta.summary.total_sites ?? 0}
                     caption="集約対象の拠点"
                     isLoading={resourceMapLoading}
                   />
                   <MetricCard
                     icon={ShieldCheck}
                     label="緊急対応可"
-                    value={resourceMap?.summary.emergency_ready_sites ?? 0}
+                    value={resourceMap?.meta.summary.emergency_ready_sites ?? 0}
                     caption="直近シフトあり"
                     isLoading={resourceMapLoading}
                   />
                   <MetricCard
                     icon={AlertTriangle}
                     label="休日ギャップ"
-                    value={resourceMap?.summary.holiday_gap_sites ?? 0}
+                    value={resourceMap?.meta.summary.holiday_gap_sites ?? 0}
                     caption="当番未設定の拠点"
                     isLoading={resourceMapLoading}
                   />
                   <MetricCard
                     icon={AlertTriangle}
                     label="座標未整備"
-                    value={resourceMap?.summary.missing_geo_sites ?? 0}
+                    value={resourceMap?.meta.summary.missing_geo_sites ?? 0}
                     caption="lat/lng 未設定"
                     isLoading={resourceMapLoading}
                   />

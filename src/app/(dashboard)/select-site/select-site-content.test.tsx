@@ -75,10 +75,13 @@ describe('SelectSiteContent', () => {
       ...extra,
     }));
     vi.stubGlobal('fetch', fetchMock);
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/me/sites') {
         return jsonResponse({ data: SITES });
+      }
+      if (url === '/api/me/site' && init?.method === 'PUT') {
+        return jsonResponse({ data: { site_id: 'site_east' } });
       }
       return jsonResponse({});
     });
@@ -169,6 +172,29 @@ describe('SelectSiteContent', () => {
         body: JSON.stringify({ site_id: 'site_east' }),
       }),
     );
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a legacy successful site switch without navigating', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/me/sites') {
+        return jsonResponse({ data: SITES });
+      }
+      if (url === '/api/me/site' && init?.method === 'PUT') {
+        return jsonResponse({ message: '使う薬局を切り替えました' });
+      }
+      return jsonResponse({});
+    });
+
+    renderPage();
+    const cards = await screen.findAllByTestId('select-site-card');
+    fireEvent.click(within(cards[1]).getByRole('button', { name: 'この薬局を使う' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('薬局の切り替えに失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
   });
 });

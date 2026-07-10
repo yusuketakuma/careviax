@@ -290,6 +290,28 @@ describe('NotificationsContent', () => {
     expect(toast.error).toHaveBeenCalledWith('通知の既読化権限がありません');
   });
 
+  it('rejects legacy, empty, and non-JSON successful mark-read responses', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: '既読にしました' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response('', { status: 200 }))
+      .mockResolvedValueOnce(new Response('not-json', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NotificationsContent />);
+
+    const mutationOptions = useMutationMock.mock.calls.at(-1)?.[0] as
+      | { mutationFn: (ids: string[]) => Promise<void> }
+      | undefined;
+
+    for (const id of ['legacy', 'empty', 'non-json']) {
+      await expect(mutationOptions?.mutationFn([id])).rejects.toThrow('既読化に失敗しました');
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it('shows an error state instead of an empty inbox when notifications fail to load', () => {
     const refetch = vi.fn();
     useQueryMock.mockReturnValue({

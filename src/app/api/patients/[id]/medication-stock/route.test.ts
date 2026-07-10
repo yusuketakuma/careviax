@@ -91,6 +91,7 @@ describe('GET /api/patients/[id]/medication-stock', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
     expect(response.headers.get('Content-Length')).toBe(String(jsonPayloadBytes(payload)));
     expect(payload.meta).toMatchObject({
       generated_at: '2026-07-07T00:00:00.000Z',

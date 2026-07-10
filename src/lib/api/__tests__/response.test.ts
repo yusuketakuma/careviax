@@ -8,7 +8,34 @@ vi.mock('@/server/services/label-dictionary', () => ({
   getLabelDictionaryValue: getLabelDictionaryValueMock,
 }));
 
-import { conflict, localizedError, notFound, rateLimited, unauthorized } from '../response';
+import {
+  type ApiSuccess,
+  conflict,
+  error,
+  localizedError,
+  notFound,
+  rateLimited,
+  success,
+  successWithMeasuredJsonPayload,
+  unauthorized,
+  validationError,
+} from '../response';
+
+function assertApiSuccessInputContract() {
+  const exactEnvelope = {
+    data: { ok: true },
+    meta: { source: 'type-probe' },
+  } satisfies ApiSuccess<{ ok: boolean }>;
+  void success(exactEnvelope);
+  void successWithMeasuredJsonPayload(exactEnvelope);
+
+  // @ts-expect-error success metadata belongs under meta, never at the root.
+  void success({ data: { ok: true }, legacy_metadata: true });
+  // @ts-expect-error every success response requires a data root.
+  void success({ meta: { source: 'type-probe' } });
+}
+
+void assertApiSuccessInputContract;
 
 describe('api response helpers', () => {
   beforeEach(() => {
@@ -16,6 +43,48 @@ describe('api response helpers', () => {
     getLabelDictionaryValueMock.mockImplementation(
       async (_key: string, fallback: string) => fallback,
     );
+  });
+
+  it('preserves exact success envelopes and explicit status codes', async () => {
+    const response = success({ data: { ok: true }, meta: { source: 'test' } }, 201);
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      data: { ok: true },
+      meta: { source: 'test' },
+    });
+  });
+
+  it('measures the encoded exact success envelope', async () => {
+    const payload = { data: { ok: true } };
+    const response = successWithMeasuredJsonPayload(payload);
+
+    expect(response.headers.get('Content-Length')).toBe(
+      String(new TextEncoder().encode(JSON.stringify(payload)).length),
+    );
+    await expect(response.json()).resolves.toEqual(payload);
+  });
+
+  it('returns standard errors without legacy root aliases', async () => {
+    const response = error('EXAMPLE_ERROR', '処理に失敗しました', 503, { retryable: true });
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      code: 'EXAMPLE_ERROR',
+      message: '処理に失敗しました',
+      details: { retryable: true },
+    });
+  });
+
+  it('keeps validation details under details only', async () => {
+    const response = validationError('入力値が不正です', { url: ['URLが不正です'] });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: { url: ['URLが不正です'] },
+    });
   });
 
   it('localizes messages through LabelDictionary fallbacks', async () => {

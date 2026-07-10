@@ -305,7 +305,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   has_decline_reason: false,
                 },
               ],
-              hasMore: false,
+              meta: { has_more: false, next_cursor: null },
             }),
             { status: 200 },
           );
@@ -407,7 +407,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   has_base_confirmation_snapshot: false,
                 },
               ],
-              hasMore: false,
+              meta: { has_more: false, next_cursor: null },
             }),
             { status: 200 },
           );
@@ -540,47 +540,50 @@ describe('PharmacyCooperationWorkflowContent', () => {
           );
         }
         if (url === '/api/pharmacy-visit-requests/visit_request_1/decision') {
-          return new Response(JSON.stringify({ id: 'visit_request_1', status: 'accepted' }), {
-            status: 200,
-          });
+          return new Response(
+            JSON.stringify({ data: { id: 'visit_request_1', status: 'accepted' } }),
+            { status: 200 },
+          );
         }
         if (url === '/api/pharmacy-visit-requests' && init?.method === 'POST') {
           return new Response(
             JSON.stringify({
-              id: 'visit_request_created',
-              share_case_id: 'share_case_active',
-              urgency: 'emergency',
-              desired_start_at: '2026-06-20T01:30:00.000Z',
-              desired_end_at: '2026-06-20T02:30:00.000Z',
-              visit_type: 'physician_co_visit',
-              status: 'requested',
-              contract_id: 'contract_1',
-              contract_version_id: 'contract_version_1',
-              estimated_amount: 8800,
-              estimated_snapshot: {
-                estimate_status: 'estimated',
-                billing_model: 'per_visit_with_addon',
-                unit_price: 8800,
-                tax_category: 'taxable',
+              data: {
+                id: 'visit_request_created',
+                share_case_id: 'share_case_active',
+                urgency: 'emergency',
+                desired_start_at: '2026-06-20T01:30:00.000Z',
+                desired_end_at: '2026-06-20T02:30:00.000Z',
+                visit_type: 'physician_co_visit',
+                status: 'requested',
+                contract_id: 'contract_1',
+                contract_version_id: 'contract_version_1',
+                estimated_amount: 8800,
+                estimated_snapshot: {
+                  estimate_status: 'estimated',
+                  billing_model: 'per_visit_with_addon',
+                  unit_price: 8800,
+                  tax_category: 'taxable',
+                },
+                accepted_at: null,
+                declined_at: null,
+                completed_at: null,
+                updated_at: '2026-06-20T01:45:00.000Z',
+                partner_pharmacy: {
+                  id: 'partner_pharmacy_1',
+                  name: '協力薬局',
+                  status: 'active',
+                },
+                partnership: {
+                  id: 'partnership_1',
+                  base_site: { id: 'site_1', name: '基幹薬局' },
+                },
+                has_request_reason: true,
+                has_physician_instruction: true,
+                has_carry_items: true,
+                has_patient_home_notes: true,
+                has_decline_reason: false,
               },
-              accepted_at: null,
-              declined_at: null,
-              completed_at: null,
-              updated_at: '2026-06-20T01:45:00.000Z',
-              partner_pharmacy: {
-                id: 'partner_pharmacy_1',
-                name: '協力薬局',
-                status: 'active',
-              },
-              partnership: {
-                id: 'partnership_1',
-                base_site: { id: 'site_1', name: '基幹薬局' },
-              },
-              has_request_reason: true,
-              has_physician_instruction: true,
-              has_carry_items: true,
-              has_patient_home_notes: true,
-              has_decline_reason: false,
             }),
             { status: 201 },
           );
@@ -1039,7 +1042,10 @@ describe('PharmacyCooperationWorkflowContent', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/pharmacy-visit-requests?limit=8') {
-        return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
+        return new Response(
+          JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+          { status: 200 },
+        );
       }
       return originalFetch!(input, init);
     });
@@ -1073,7 +1079,10 @@ describe('PharmacyCooperationWorkflowContent', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/partner-visit-records?limit=8') {
-        return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
+        return new Response(
+          JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+          { status: 200 },
+        );
       }
       return originalFetch!(input, init);
     });
@@ -1334,6 +1343,42 @@ describe('PharmacyCooperationWorkflowContent', () => {
         expected_updated_at: '2026-06-18T00:00:00.000Z',
       });
     });
+  });
+
+  it('rejects a legacy activation 2xx before showing success', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (
+        String(input) === '/api/patient-share-cases/share_case_activation_ready/activate' &&
+        init?.method === 'POST'
+      ) {
+        return new Response(
+          JSON.stringify({ id: 'share_case_activation_ready', status: 'active' }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    const shareCasesTable = await screen.findByRole('table', { name: '患者共有ケース一覧' });
+    const activationReadyRow = within(shareCasesTable)
+      .getByText('share_case_activation_ready')
+      .closest('tr');
+    expect(activationReadyRow).toBeTruthy();
+    fireEvent.click(
+      within(activationReadyRow as HTMLTableRowElement).getByRole('button', {
+        name: 'share_case_activation_ready 協力薬局 を共有開始',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '共有開始する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('患者共有ケースの有効化に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('患者共有ケースを共有中にしました');
   });
 
   it('updates patient links with base approval, partner acceptance, and decline reason', async () => {
@@ -1788,6 +1833,42 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(screen.getByLabelText<HTMLTextAreaElement>('訪問依頼の居宅注意事項').value).toBe(
       '玄関暗証番号は家族へ確認',
     );
+  });
+
+  it('rejects legacy pharmacy visit decision success envelopes', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url === '/api/pharmacy-visit-requests/visit_request_1/decision' &&
+        init?.method === 'POST'
+      ) {
+        return new Response(JSON.stringify({ id: 'visit_request_1', status: 'accepted' }), {
+          status: 200,
+        });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    const visitRequestsTable = await screen.findByRole('table', {
+      name: '協力薬局訪問依頼一覧',
+    });
+    const requestedRow = within(visitRequestsTable).getByText('visit_request_1').closest('tr');
+    expect(requestedRow).toBeTruthy();
+    fireEvent.click(
+      within(requestedRow as HTMLTableRowElement).getByRole('button', {
+        name: 'visit_request_1 協力薬局 の訪問依頼を受諾',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '受諾する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('訪問依頼の更新に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('訪問依頼を更新しました');
   });
 
   it('rejects malformed pharmacy cooperation message create success before clearing message text', async () => {

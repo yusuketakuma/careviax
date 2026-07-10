@@ -43,8 +43,10 @@ describe('QRScanPage accessibility status contract', () => {
 
   it('unwraps and validates the QR draft create data envelope before success', () => {
     expect(SOURCE).toContain("import { readApiJson } from '@/lib/api/client-json';");
-    expect(SOURCE).toContain("readApiJson<unknown>(res, 'PCへの送信に失敗しました')");
-    expect(SOURCE).toContain('setSessionId(extractQrScanDraftSessionId(responsePayload));');
+    expect(SOURCE).toContain('schema: qrScanDraftSessionIdResponseSchema,');
+    expect(SOURCE).toContain("fallbackMessage: 'PCへの送信に失敗しました',");
+    expect(SOURCE).toContain('setSessionId(nextSessionId);');
+    expect(SOURCE).not.toContain('readApiJson<unknown>');
     expect(SOURCE).not.toContain('json.session_id');
   });
 

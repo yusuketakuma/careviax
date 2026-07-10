@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { z } from 'zod';
 import {
   MessageSquare,
   Eye,
@@ -48,6 +49,7 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
+import { careReportListResponseSchema } from '@/types/api/care-reports';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
 import { VISIT_OUTCOME_ROLE } from '@/lib/constants/status-labels';
 import { StateBadge } from '@/components/ui/state-badge';
@@ -217,6 +219,14 @@ type CareReportSummary = {
 type CareReportsResponse = {
   data?: CareReportSummary[];
 };
+
+const careReportSummarySchema = z.custom<CareReportSummary>((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const report = value as Record<string, unknown>;
+  return typeof report.id === 'string' && typeof report.report_type === 'string';
+});
+
+const careReportsResponseSchema = careReportListResponseSchema(careReportSummarySchema);
 
 type BillingCandidateSummary = {
   id: string;
@@ -576,7 +586,10 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       const res = await fetch(`/api/care-reports?visit_record_id=${recordId}&limit=10`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<CareReportsResponse>(res, '報告書の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '報告書の取得に失敗しました',
+        schema: careReportsResponseSchema,
+      });
     },
     enabled: !!orgId && !!recordId,
   });

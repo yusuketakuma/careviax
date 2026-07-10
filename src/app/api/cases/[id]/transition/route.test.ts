@@ -112,6 +112,10 @@ describe('/api/cases/[id]/transition', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: { id: 'case_1', status: 'active' },
+      meta: { warnings: [] },
+    });
     expect(careCaseUpdateManyMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         id: 'case_1',
@@ -143,7 +147,8 @@ describe('/api/cases/[id]/transition', () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.warnings).toContain('初回訪問文書が未交付です');
+    expect(body.meta.warnings).toContain('初回訪問文書が未交付です');
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
     expect(careCaseUpdateManyMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         id: 'case_1',

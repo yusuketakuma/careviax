@@ -491,6 +491,35 @@ describe('UsersContent', () => {
     );
   });
 
+  it('rejects legacy successful user invite responses', async () => {
+    runMutationFnsMock.current = true;
+    roleRequiresSiteOverrideMock.current = () => false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ id: 'legacy_invitation' }), {
+            status: 201,
+          }),
+      ),
+    );
+
+    render(<UsersContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'ユーザーを招待' }));
+    fireEvent.change(screen.getByLabelText('氏名'), { target: { value: '佐藤 花子' } });
+    fireEvent.change(screen.getByLabelText('フリガナ'), { target: { value: 'サトウ ハナコ' } });
+    fireEvent.change(screen.getByLabelText('メールアドレス'), {
+      target: { value: 'hanako@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '招待する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('招待に失敗しました');
+    });
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalledWith('ユーザーを招待しました');
+  });
+
   it('surfaces API error messages when user detail update fails', async () => {
     runMutationFnsMock.current = true;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

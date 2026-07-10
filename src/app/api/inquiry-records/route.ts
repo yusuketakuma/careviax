@@ -135,10 +135,9 @@ async function authenticatedGET(req: NextRequest) {
       : { data: records, hasMore: false };
 
     return withSensitiveNoStore(
-      success({
-        data: page.data,
-        ...(shouldLimit ? { meta: { limit, has_more: page.hasMore } } : {}),
-      }),
+      shouldLimit
+        ? success({ data: page.data, meta: { limit, has_more: page.hasMore } })
+        : success({ data: page.data }),
     );
   });
 }

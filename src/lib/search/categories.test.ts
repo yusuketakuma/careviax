@@ -99,17 +99,29 @@ describe('palette category registry (F-009 MVP)', () => {
     );
   });
 
-  // --- wire-shape schemas: patient is ApiSuccess-wrapped, other categories keep raw list bodies. ---
+  // --- wire-shape schemas: each category validates its current exact response envelope. ---
 
   const validRaw: Record<PaletteCategoryId, unknown> = {
     patient: { data: { data: [{ id: 'p1', name: '山田 太郎' }] } },
-    proposal: { data: [{ id: 'pr1', proposal_status: 'pending', proposed_date: '2026-06-20' }] },
-    prescription: { data: [{ id: 'rx1' }] },
-    drug: { data: [{ id: 'd1', drug_name: 'ロキソニン錠' }] },
+    proposal: {
+      data: [{ id: 'pr1', proposal_status: 'pending', proposed_date: '2026-06-20' }],
+      meta: { has_more: false },
+    },
+    prescription: {
+      data: [{ id: 'rx1' }],
+      meta: { has_more: false, next_cursor: null },
+    },
+    drug: {
+      data: [{ id: 'd1', drug_name: 'ロキソニン錠' }],
+      meta: { has_more: false, next_cursor: null, total_count: 1 },
+    },
     report: {
       data: [{ id: 'r1', report_type: 'monthly', status: 'draft', created_at: '2026-06-20' }],
     },
-    contact: { data: [{ id: 'c1', name: '田中薬局' }] },
+    contact: {
+      data: [{ id: 'c1', name: '田中薬局' }],
+      meta: { limit: PALETTE_RESULT_LIMIT, has_more: false },
+    },
   };
 
   it('accepts the real category wire body and normalizes to the items array', () => {
@@ -156,9 +168,53 @@ describe('palette category registry (F-009 MVP)', () => {
     expect(byId('patient').schema.safeParse({ data: { data: [{ id: 'p1' }] } }).success).toBe(
       false,
     );
-    expect(byId('drug').schema.safeParse({ data: [{ id: 'd1' }] }).success).toBe(false);
+    expect(
+      byId('drug').schema.safeParse({
+        data: [{ id: 'd1' }],
+        meta: { has_more: false, next_cursor: null, total_count: 1 },
+      }).success,
+    ).toBe(false);
     expect(
       byId('report').schema.safeParse({ data: [{ id: 'r1', report_type: 'monthly' }] }).success,
+    ).toBe(false);
+  });
+
+  it('rejects the legacy contact search root pagination contract', () => {
+    expect(
+      byId('contact').schema.safeParse({
+        data: [{ id: 'c1', name: '田中薬局' }],
+        hasMore: false,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects the legacy prescription search root pagination contract', () => {
+    expect(
+      byId('prescription').schema.safeParse({
+        data: [{ id: 'rx1' }],
+        hasMore: false,
+        nextCursor: null,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects the legacy proposal palette root pagination contract', () => {
+    expect(
+      byId('proposal').schema.safeParse({
+        data: [{ id: 'pr1', proposal_status: 'pending', proposed_date: '2026-06-20' }],
+        hasMore: false,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects the legacy drug search root pagination contract', () => {
+    expect(
+      byId('drug').schema.safeParse({
+        data: [{ id: 'd1', drug_name: 'ロキソニン錠' }],
+        hasMore: false,
+        nextCursor: null,
+        totalCount: 1,
+      }).success,
     ).toBe(false);
   });
 
@@ -174,9 +230,13 @@ describe('palette category registry (F-009 MVP)', () => {
       const overLimitItems = Array.from({ length: PALETTE_RESULT_LIMIT + 1 }, () => item);
       const atLimitItems = Array.from({ length: PALETTE_RESULT_LIMIT }, () => item);
       const overLimit =
-        category.id === 'patient' ? { data: { data: overLimitItems } } : { data: overLimitItems };
+        category.id === 'patient'
+          ? { data: { data: overLimitItems } }
+          : { ...(validRaw[category.id] as Record<string, unknown>), data: overLimitItems };
       const atLimit =
-        category.id === 'patient' ? { data: { data: atLimitItems } } : { data: atLimitItems };
+        category.id === 'patient'
+          ? { data: { data: atLimitItems } }
+          : { ...(validRaw[category.id] as Record<string, unknown>), data: atLimitItems };
       expect(category.schema.safeParse(overLimit).success, `${category.id} >limit must fail`).toBe(
         false,
       );

@@ -148,6 +148,11 @@ describe('/api/pharmacy-visit-requests', () => {
       desired_start_at: new Date('2026-06-20T01:00:00.000Z'),
       desired_end_at: new Date('2026-06-20T02:00:00.000Z'),
       estimated_amount: 5500,
+      request_reason: '患者名 山田花子: 発熱と残薬確認',
+      physician_instruction: '医師指示: 血圧確認',
+      carry_items: { medication: ['A薬'] },
+      patient_home_notes: '玄関暗証番号 1234',
+      decline_reason: null,
       partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
       partnership: { id: 'partnership_1', base_site: { id: 'site_1', name: '基幹薬局' } },
     });
@@ -241,7 +246,14 @@ describe('/api/pharmacy-visit-requests', () => {
     );
     expect(JSON.stringify(where.share_case.is)).toContain('"revoked_at":null');
     expect(JSON.stringify(where.share_case.is)).toContain('"valid_until":null');
-    const responseText = JSON.stringify(await response.json());
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
+      data: [expect.objectContaining({ id: 'visit_request_1', status: 'requested' })],
+      meta: { has_more: false, next_cursor: null },
+    });
+    expect(responseBody).not.toHaveProperty('hasMore');
+    expect(responseBody).not.toHaveProperty('nextCursor');
+    const responseText = JSON.stringify(responseBody);
     expect(responseText).toContain('has_request_reason');
     expect(responseText).not.toContain('山田花子');
     expect(responseText).not.toContain('医師指示');
@@ -421,7 +433,20 @@ describe('/api/pharmacy-visit-requests', () => {
     expect(auditText).not.toContain('山田花子');
     expect(auditText).not.toContain('血圧確認');
     expect(auditText).not.toContain('1234');
-    const responseText = JSON.stringify(await response.json());
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
+      data: {
+        id: 'visit_request_1',
+        status: 'requested',
+        has_request_reason: true,
+        has_physician_instruction: true,
+        has_carry_items: true,
+        has_patient_home_notes: true,
+        has_decline_reason: false,
+      },
+    });
+    expect(responseBody).not.toHaveProperty('id');
+    const responseText = JSON.stringify(responseBody);
     expect(responseText).toContain('has_request_reason');
     expect(responseText).not.toContain('山田花子');
     expect(responseText).not.toContain('血圧確認');

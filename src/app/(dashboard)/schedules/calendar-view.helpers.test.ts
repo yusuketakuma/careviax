@@ -132,14 +132,19 @@ describe('calendar-view.helpers', () => {
       .mockResolvedValueOnce(
         jsonResponse({
           data: [{ id: 'schedule_1' }],
-          hasMore: true,
-          nextCursor: 'cursor_1',
+          meta: {
+            has_more: true,
+            next_cursor: 'cursor_1',
+          },
         }),
       )
       .mockResolvedValueOnce(
         jsonResponse({
           data: [{ id: 'schedule_2' }],
-          hasMore: false,
+          meta: {
+            has_more: false,
+            next_cursor: null,
+          },
         }),
       );
 

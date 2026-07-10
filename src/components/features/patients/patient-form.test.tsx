@@ -430,10 +430,16 @@ describe('PatientForm', () => {
           },
         }),
       } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ id: 'patient_new' }),
-      } as Response);
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: { id: 'patient_new' },
+          meta: {
+            warnings: [],
+            duplicate_acknowledged: true,
+            duplicate_candidate_count: 1,
+          },
+        }),
+      );
 
     render(<PatientForm />);
     fillRequiredPatientFields();
@@ -477,16 +483,50 @@ describe('PatientForm', () => {
     });
   });
 
+  it('rejects legacy root patient success responses without navigating', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    const fetchMock = vi.mocked(fetch);
+    const successCallCount = vi.mocked(toast.success).mock.calls.length;
+    const allowNavigationCallCount = allowNavigationMock.mock.calls.length;
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        id: 'patient_new',
+        warnings: [],
+        metadata: {
+          duplicate_acknowledged: false,
+          duplicate_candidate_count: 0,
+        },
+      }),
+    );
+
+    render(<PatientForm />);
+    fillRequiredPatientFields();
+
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('登録に失敗しました');
+    });
+    expect(toast.success).toHaveBeenCalledTimes(successCallCount);
+    expect(allowNavigationMock).toHaveBeenCalledTimes(allowNavigationCallCount);
+  });
+
   it('submits edit PATCH through the shared patient API path with expected_updated_at', async () => {
     const hostilePatientId = 'pt/1?tab=x#frag';
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({ data: [], isLoading: false });
     vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_pt__');
     const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ id: hostilePatientId }),
-    } as Response);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: { id: hostilePatientId },
+        meta: {
+          warnings: [],
+          duplicate_candidates: [],
+        },
+      }),
+    );
 
     render(
       <PatientForm
@@ -523,6 +563,44 @@ describe('PatientForm', () => {
     expect(url).not.toContain('#frag');
   });
 
+  it('rejects legacy root patient update responses without navigating', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    const fetchMock = vi.mocked(fetch);
+    const successCallCount = vi.mocked(toast.success).mock.calls.length;
+    const allowNavigationCallCount = allowNavigationMock.mock.calls.length;
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        id: 'patient_1',
+        warnings: [],
+        metadata: {
+          duplicate_candidates: [],
+        },
+      }),
+    );
+
+    render(
+      <PatientForm
+        patientId="patient_1"
+        defaultValues={{
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: '1950-01-01',
+          gender: 'male',
+        }}
+        expectedUpdatedAt="2026-03-30T09:00:00.000Z"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('更新に失敗しました');
+    });
+    expect(toast.success).toHaveBeenCalledTimes(successCallCount);
+    expect(allowNavigationMock).toHaveBeenCalledTimes(allowNavigationCallCount);
+  });
+
   it('runs qualification check from the current edit form through the shared patient API path', async () => {
     const hostilePatientId = 'pt/1?tab=x#frag';
     useOrgIdMock.mockReturnValue('org_1');
@@ -537,8 +615,17 @@ describe('PatientForm', () => {
           valid: true,
           identityMatch: 'matched',
           payerName: '東京健保',
+          payerType: 'medical',
           copayRatio: 0.1,
+          coverage: { startDate: '2026-01-01', endDate: null },
           warnings: [],
+        },
+        meta: {
+          capabilities: {
+            supportsOnlineLookup: false,
+            supportsBenefitHistory: false,
+            supportsCareInsurance: false,
+          },
         },
       }),
     );
@@ -571,6 +658,51 @@ describe('PatientForm', () => {
     expect(init.body).toBeUndefined();
     expect(url).not.toContain('?tab=x');
     expect(url).not.toContain('#frag');
+  });
+
+  it('rejects legacy qualification success envelopes instead of treating them as no result', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: {
+          valid: true,
+          identityMatch: 'matched',
+          payerName: '東京健保',
+          payerType: 'medical',
+          copayRatio: 0.1,
+          coverage: { startDate: '2026-01-01', endDate: null },
+          warnings: [],
+        },
+        capabilities: {
+          supportsOnlineLookup: false,
+          supportsBenefitHistory: false,
+          supportsCareInsurance: false,
+        },
+      }),
+    );
+
+    render(
+      <PatientForm
+        patientId="patient_1"
+        defaultValues={{
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: '1950-01-01',
+          gender: 'male',
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: '住所・保険' }));
+    fireEvent.click(screen.getByRole('button', { name: '資格確認' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('資格確認に失敗しました');
+    });
+    expect(screen.getByRole('alert').textContent).not.toContain('資格情報が見つかりませんでした');
+    expect(toast.error).toHaveBeenCalledWith('資格確認に失敗しました');
   });
 
   it('surfaces qualification check failures near the insurance field instead of treating them as empty', async () => {

@@ -405,6 +405,32 @@ describe('VisitBriefCard', () => {
     }
   });
 
+  it('rejects legacy successful feedback payloads before changing the rating state', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      renderBriefCard(buildBrief());
+
+      fireEvent.click(screen.getByRole('button', { name: '実用的' }));
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(
+          '要約フィードバックを保存できませんでした。通信状態を確認し、もう一度評価を選択してください。',
+        );
+      });
+      expect(toast.success).not.toHaveBeenCalledWith('要約フィードバックを保存しました');
+      expect((screen.getByRole('button', { name: '実用的' }) as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
   it('disables both feedback choices while a save is pending to prevent duplicate audits', async () => {
     const fetchMock = vi.fn<typeof fetch>(() => new Promise<Response>(() => undefined));
     vi.stubGlobal('fetch', fetchMock);

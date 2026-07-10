@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { z } from 'zod';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,19 +13,25 @@ import { Button } from '@/components/ui/button';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { apiDataSchema } from '@/lib/api/response-schemas';
 
-type RejectBreakdownItem = {
-  code: string;
-  label: string;
-  count: number;
-  percentage: number;
-};
-
-type RejectReasonStats = {
-  total_rejected: number;
-  period_days: number;
-  breakdown: RejectBreakdownItem[];
-};
+const rejectBreakdownItemSchema = z
+  .object({
+    code: z.string().min(1),
+    label: z.string().min(1),
+    count: z.number().int().nonnegative(),
+    percentage: z.number().finite().min(0).max(100),
+  })
+  .strict();
+const rejectReasonStatsResponseSchema = apiDataSchema(
+  z
+    .object({
+      total_rejected: z.number().int().nonnegative(),
+      period_days: z.number().int().min(0).max(365),
+      breakdown: z.array(rejectBreakdownItemSchema),
+    })
+    .strict(),
+);
 
 const PERIOD_OPTIONS = [
   { label: '7日', days: 7 },
@@ -88,7 +95,10 @@ export default function DispenseAuditStatsPage() {
       const res = await fetch(`/api/admin/reject-reason-stats?days=${days}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: RejectReasonStats }>(res, '統計の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '統計の取得に失敗しました',
+        schema: rejectReasonStatsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

@@ -604,6 +604,48 @@ describe('InterprofessionalShareContent', () => {
     expect(body.content).toContain('昼分はヘルパー訪問時の声かけ');
   });
 
+  it('rejects a legacy-root 2xx reply-request response and leaves retry available', async () => {
+    stubFetch({
+      failRequestPost: new Response(
+        JSON.stringify({
+          data: { id: 'req_legacy', status: 'sent' },
+          reused_existing_draft: true,
+        }),
+        { status: 200 },
+      ),
+    });
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('share-audience-card')).toHaveLength(5);
+    });
+    fireEvent.click(
+      screen
+        .getAllByTestId('share-audience-card')
+        .find((card) => card.getAttribute('data-audience') === 'physician')!,
+    );
+    const button = await screen.findByTestId('share-create-request-button');
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        '返信依頼の起票に失敗しました。もう一度お試しください。',
+      );
+      expect((button as HTMLButtonElement).disabled).toBe(false);
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('返信依頼を起票しました');
+    expect(screen.queryByText('返信依頼起票済み')).toBeNull();
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'care_report.interprofessional_share_reply_request_failed',
+      expect.any(Error),
+      {
+        route: '/reports/:id/share',
+        entityType: 'care_report_reply_request',
+        status: null,
+      },
+    );
+  });
+
   it('keeps a 409 follow-up task failure PHI-safe and leaves retry available', async () => {
     const rawMessage = '患者A 090-1234-5678 token=secret-task-token は既に作成済みです';
     stubFetch({

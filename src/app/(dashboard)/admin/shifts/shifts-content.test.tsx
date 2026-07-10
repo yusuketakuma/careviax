@@ -438,6 +438,58 @@ describe('ShiftsContent', () => {
     await expect(mutationFnAt(10)()).rejects.toThrow('定型シフトの反映権限がありません');
   });
 
+  it('rejects legacy successful shift administration acknowledgements', async () => {
+    render(<ShiftsContent />);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '休日設定を保存しました' }, 201));
+    await expect(mutationFnAt(1)()).rejects.toThrow('休日設定の保存に失敗しました');
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '休日設定を削除しました' }));
+    await expect(mutationFnAt(3)({ id: 'holiday_1', name: '棚卸休業' })).rejects.toThrow(
+      '休日設定の削除に失敗しました',
+    );
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'user_2' }, 201));
+    await expect(mutationFnAt(4)()).rejects.toThrow('メンバー登録に失敗しました');
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ status: 'suspended' }));
+    await expect(
+      mutationFnAt(6)({
+        pharmacist: { id: 'user_1', name: '山田 太郎' },
+        action: 'suspend',
+      }),
+    ).rejects.toThrow('薬剤師状態の更新に失敗しました');
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'template_1' }, 201));
+    await expect(mutationFnAt(8)()).rejects.toThrow('定型シフトの保存に失敗しました');
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '定型シフトを削除しました' }));
+    await expect(mutationFnAt(9)({ id: 'template_1' })).rejects.toThrow(
+      '定型シフトの削除に失敗しました',
+    );
+  });
+
+  it('rejects legacy successful changed-shift saves', async () => {
+    render(<ShiftsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'シフト編集' }));
+    const editableCells = await screen.findAllByRole('button', {
+      name: /山田 太郎 \/ \d{4}年\d+月\d+日\(.+\) \/ 本店 \/ .* を編集/,
+    });
+    fireEvent.click(editableCells[0]);
+    fireEvent.change(screen.getByLabelText('備考', { selector: 'textarea#shift-note' }), {
+      target: { value: '午前は在宅優先' },
+    });
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input) === '/api/pharmacist-shifts') {
+        return jsonResponse({ message: 'シフトを保存しました' }, 201);
+      }
+      return jsonResponse({ data: { id: 'ok' } });
+    });
+
+    await findRejectingMutationForUrl('/api/pharmacist-shifts', 'シフト保存に失敗しました');
+  });
+
   it('preserves server messages for changed shift saves', async () => {
     render(<ShiftsContent />);
 

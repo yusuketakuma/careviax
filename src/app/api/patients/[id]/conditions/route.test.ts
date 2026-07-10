@@ -168,9 +168,11 @@ describe('/api/patients/[id]/conditions PUT', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: [{ id: 'condition_1', name: '高血圧' }],
-      metadata: {
+      meta: {
         expected_updated_at: CURRENT_UPDATED_AT,
         version_basis: 'patient_updated_at',
       },
@@ -403,9 +405,11 @@ describe('/api/patients/[id]/conditions PUT', () => {
         ],
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: [expect.objectContaining({ id: 'condition_1', name: '高血圧' })],
-      metadata: {
+      meta: {
         expected_updated_at: expect.any(String),
         version_basis: 'patient_updated_at',
       },

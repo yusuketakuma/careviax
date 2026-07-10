@@ -11,6 +11,7 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+import { z } from 'zod';
 import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { ExpiryBadge } from '@/components/ui/expiry-badge';
@@ -23,29 +24,37 @@ import { readApiJson } from '@/lib/api/client-json';
 
 // --- Types ---
 
-type FacilityStandard = {
-  id: string;
-  standard_type: string;
-  filed_date: string;
-  effective_date: string | null;
-  expiry_date: string | null;
-  renewal_alert_date: string | null;
-  requirements_status: Record<string, boolean> | null;
-  claim_status: 'claimable' | 'blocked' | 'unknown';
-};
-
-type FacilityStandardsResponse = {
-  data: FacilityStandard[];
-  meta: {
-    total_count: number;
-    visible_count: number;
-    hidden_count: number;
-    truncated: boolean;
-    count_basis: 'facility_standards';
-    filters_applied: Record<string, never>;
-    limit: number;
-  };
-};
+const facilityStandardSchema = z
+  .object({
+    id: z.string().min(1),
+    standard_type: z.string().min(1),
+    filed_date: z.string().datetime(),
+    effective_date: z.string().datetime().nullable(),
+    expiry_date: z.string().datetime().nullable(),
+    renewal_alert_date: z.string().datetime().nullable(),
+    requirements_status: z.record(z.string(), z.boolean()).nullable(),
+    claim_status: z.enum(['claimable', 'blocked', 'unknown']),
+    site_id: z.string().min(1),
+    site_name: z.string().min(1),
+  })
+  .strict();
+const facilityStandardsResponseSchema = z
+  .object({
+    data: z.array(facilityStandardSchema),
+    meta: z
+      .object({
+        total_count: z.number().int().nonnegative(),
+        visible_count: z.number().int().nonnegative(),
+        hidden_count: z.number().int().nonnegative(),
+        truncated: z.boolean(),
+        count_basis: z.literal('facility_standards'),
+        filters_applied: z.object({}).strict(),
+        limit: z.number().int().min(1).max(200),
+      })
+      .strict(),
+  })
+  .strict();
+type FacilityStandard = z.infer<typeof facilityStandardSchema>;
 
 // --- Helpers ---
 
@@ -116,7 +125,10 @@ export function FacilityStandardsContent() {
       const res = await fetch('/api/admin/facility-standards', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<FacilityStandardsResponse>(res, '施設基準の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '施設基準の取得に失敗しました',
+        schema: facilityStandardsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

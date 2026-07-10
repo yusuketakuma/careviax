@@ -116,6 +116,26 @@ describe('CapacityContent', () => {
     });
   });
 
+  it('rejects a mixed-root capacity response before rendering KPI data', async () => {
+    const responseDetail = '患者A token=capacity-response-secret';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ data: BASE_PAYLOAD, patient_name: responseDetail }), {
+            status: 200,
+          }),
+      ),
+    );
+
+    renderContent();
+
+    expect(await screen.findByText('キャパシティを表示できません')).toBeTruthy();
+    expect(screen.queryByTestId('capacity-kpis')).toBeNull();
+    expect(document.body.textContent ?? '').not.toContain(responseDetail);
+    expect(document.body.textContent ?? '').not.toContain('capacity-response-secret');
+  });
+
   it('loading state mirrors the loaded layout: KPI skeletons → attention skeleton → 2 chart skeletons', async () => {
     // never-resolving fetch keeps capacityQuery in the loading state.
     vi.stubGlobal(

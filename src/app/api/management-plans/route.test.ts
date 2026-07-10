@@ -190,7 +190,8 @@ describe('/api/management-plans', () => {
       }),
     );
     const payload = await response.json();
-    expect(payload).toMatchObject({ hasMore: false });
+    expect(payload).toMatchObject({ meta: { has_more: false } });
+    expect(payload).not.toHaveProperty('hasMore');
   });
 
   it('reports hasMore and truncates at the safety cap for the org-wide management plan list', async () => {
@@ -206,7 +207,8 @@ describe('/api/management-plans', () => {
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.data).toHaveLength(500);
-    expect(payload.hasMore).toBe(true);
+    expect(payload.meta).toEqual({ has_more: true });
+    expect(payload).not.toHaveProperty('hasMore');
   });
 
   it('rejects blank case filters before listing management plans', async () => {

@@ -288,9 +288,11 @@ async function authenticatedGET(req: NextRequest) {
             ...drug,
             stock_config: stockByDrugMasterId.get(drug.id) ?? null,
           })),
-          hasMore,
-          ...(includeTotal ? { totalCount: totalCount ?? 0 } : {}),
-          nextCursor: hasMore ? String(offset + limit) : undefined,
+          meta: {
+            has_more: hasMore,
+            next_cursor: hasMore ? String(offset + limit) : null,
+            ...(includeTotal ? { total_count: totalCount ?? 0 } : {}),
+          },
         });
       },
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },

@@ -43,7 +43,9 @@ describe('/api/admin/flush-metrics POST', () => {
       message: 'メトリクスのフラッシュ権限がありません',
     });
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ ok: true });
+    const body = await response.json();
+    expect(body).toMatchObject({ data: { ok: true } });
+    expect(Object.keys(body)).toEqual(['data']);
     expect(flushMetricsMock).toHaveBeenCalledTimes(1);
   });
 

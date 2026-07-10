@@ -355,7 +355,7 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
         conference_type: result.note.note_type,
         generated_report_id: result.note.generated_report_id,
       },
-      sync: result.sync,
+      meta: { sync: result.sync },
     });
   },
   {

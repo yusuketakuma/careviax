@@ -109,7 +109,16 @@ describe('PatientPackagingCard', () => {
   }
 
   function okFetch() {
-    return vi.fn<typeof fetch>().mockImplementation(() => Promise.resolve(jsonResponse({})));
+    return vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        jsonResponse({
+          data: {
+            packaging_profile: null,
+            effective_summary: null,
+          },
+        }),
+      ),
+    );
   }
 
   it('fetches packaging settings from an encoded patient path with org headers', async () => {
@@ -130,6 +139,16 @@ describe('PatientPackagingCard', () => {
       expect(url).not.toContain('#z');
       expect(url).not.toContain('%25');
       expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          data: { packaging_profile: null },
+          effective_summary: null,
+        }),
+      );
+      await expect(queryConfigs[0]?.queryFn?.()).rejects.toThrow(
+        '患者配薬設定の取得に失敗しました',
+      );
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
@@ -208,6 +227,23 @@ describe('PatientPackagingCard', () => {
         special_instructions: '手渡し順に注意',
         cognitive_note: '飲み忘れ傾向あり',
       });
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            default_packaging_method: 'medication_box',
+            medication_box_color: '赤',
+            notes: '朝だけ別包',
+            special_instructions: '手渡し順に注意',
+            cognitive_note: '飲み忘れ傾向あり',
+            updated_at: '2026-06-01T10:00:00.000Z',
+          },
+          effective_summary: 'お薬BOX 赤',
+        }),
+      );
+      await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(
+        '患者配薬設定の保存に失敗しました',
+      );
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

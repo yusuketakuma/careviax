@@ -617,10 +617,12 @@ const authenticatedGET = withAuthContext(
         attachPrescriptionIntakeQueryCount(
           success({
             data,
-            hasMore: page.hasMore,
-            nextCursor: page.nextCursor,
-            ...(filters.includeTotal ? { totalCount } : {}),
-            ...(filters.includeFacets ? { facets: facets?.facets } : {}),
+            meta: {
+              has_more: page.hasMore,
+              next_cursor: page.nextCursor ?? null,
+              ...(filters.includeTotal ? { total_count: totalCount } : {}),
+              ...(filters.includeFacets ? { facets: facets?.facets } : {}),
+            },
           }),
           queryCount,
         ),
@@ -675,10 +677,12 @@ const authenticatedGET = withAuthContext(
       attachPrescriptionIntakeQueryCount(
         success({
           data: page.data,
-          hasMore: page.hasMore,
-          nextCursor: page.nextCursor,
-          ...(filters.includeTotal ? { totalCount } : {}),
-          ...(filters.includeFacets ? { facets: facets?.facets } : {}),
+          meta: {
+            has_more: page.hasMore,
+            next_cursor: page.nextCursor ?? null,
+            ...(filters.includeTotal ? { total_count: totalCount } : {}),
+            ...(filters.includeFacets ? { facets: facets?.facets } : {}),
+          },
         }),
         queryCount,
       ),

@@ -1,7 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { compatibilityError, success, validationCompatibilityError } from '@/lib/api/response';
+import { error, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -64,20 +64,21 @@ export const GET = withAuthContext(
     const visibleCount = registrations.length;
     const hiddenCount = Math.max(totalCount - visibleCount, 0);
 
-    return success({
-      data: registrations.map(toPublicWebhookRegistration),
-      total_count: totalCount,
-      visible_count: visibleCount,
-      hidden_count: hiddenCount,
-      truncated: hiddenCount > 0,
-      count_basis: 'webhook_registrations',
-      filters_applied: {},
-      limit,
-      meta: {
-        limit,
-        has_more: hiddenCount > 0,
-      },
-    });
+    return withSensitiveNoStore(
+      success({
+        data: registrations.map(toPublicWebhookRegistration),
+        meta: {
+          total_count: totalCount,
+          visible_count: visibleCount,
+          hidden_count: hiddenCount,
+          truncated: hiddenCount > 0,
+          count_basis: 'webhook_registrations',
+          filters_applied: {},
+          limit,
+          has_more: hiddenCount > 0,
+        },
+      }),
+    );
   },
   { permission: 'canAdmin', message: 'Webhook 設定の閲覧権限がありません' },
 );
@@ -86,27 +87,25 @@ export const POST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) {
-      return withSensitiveNoStore(validationCompatibilityError('リクエストボディが不正です'));
+      return withSensitiveNoStore(validationError('リクエストボディが不正です'));
     }
 
     const parsed = createWebhookSchema.safeParse(payload);
     if (!parsed.success) {
       return withSensitiveNoStore(
-        validationCompatibilityError('入力値が不正です', parsed.error.flatten().fieldErrors),
+        validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
       );
     }
 
     const { url, events } = parsed.data;
 
     if (hasWebhookUrlCredentials(url)) {
-      return withSensitiveNoStore(
-        validationCompatibilityError('WebhookのURLにユーザー情報は含められません'),
-      );
+      return withSensitiveNoStore(validationError('WebhookのURLにユーザー情報は含められません'));
     }
 
     if (!(await isAllowedWebhookUrl(url))) {
       return withSensitiveNoStore(
-        validationCompatibilityError('WebhookのURLはHTTPS公開エンドポイントである必要があります'),
+        validationError('WebhookのURLはHTTPS公開エンドポイントである必要があります'),
       );
     }
 
@@ -116,7 +115,7 @@ export const POST = withAuthContext(
       encryptedSecret = await encryptWebhookSecret(secret);
     } catch {
       return withSensitiveNoStore(
-        compatibilityError(
+        error(
           'WEBHOOK_SECRET_ENCRYPTION_UNAVAILABLE',
           'Webhook secret 暗号化キーが設定されていません',
           503,

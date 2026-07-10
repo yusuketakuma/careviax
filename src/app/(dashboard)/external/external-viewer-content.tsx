@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { ExternalLink, HeartHandshake, MessageSquareWarning, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,8 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { StatCard } from '@/components/ui/stat-card';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
+import { apiCursorPageSchema } from '@/lib/api/response-schemas';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { SELF_REPORT_STATUS_LABELS } from '@/lib/constants/status-labels';
 import { PageSection } from '@/components/layout/page-section';
@@ -41,6 +43,27 @@ type ExternalGrant = {
   };
 };
 
+const externalGrantSchema: z.ZodType<ExternalGrant> = z
+  .object({
+    id: z.string(),
+    patient_id: z.string(),
+    patient: z.object({ name: z.string() }).passthrough(),
+    granted_to_name: z.string(),
+    granted_to_contact_masked: z.string().nullable(),
+    scope: z.record(z.string(), z.boolean()),
+    expires_at: z.string(),
+    accessed_at: z.string().nullable(),
+    created_at: z.string(),
+    self_report_summary: z
+      .object({
+        total: z.number().int().nonnegative(),
+        open: z.number().int().nonnegative(),
+        latest_at: z.string().nullable(),
+      })
+      .strict(),
+  })
+  .passthrough();
+
 type SelfReport = {
   id: string;
   patient_id: string;
@@ -53,6 +76,21 @@ type SelfReport = {
   created_at: string;
   updated_at: string;
 };
+
+const selfReportSchema: z.ZodType<SelfReport> = z
+  .object({
+    id: z.string(),
+    patient_id: z.string(),
+    patient_name: z.string().nullable(),
+    category: z.string(),
+    subject: z.string(),
+    status: z.string(),
+    reported_by_name: z.string().nullable(),
+    requested_callback: z.boolean(),
+    created_at: z.string(),
+    updated_at: z.string(),
+  })
+  .passthrough();
 
 type CommunityActivity = {
   id: string;
@@ -86,7 +124,10 @@ export function ExternalViewerContent({
       const response = await fetch('/api/external-access', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: ExternalGrant[] }>(response, '外部共有の取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '外部共有の取得に失敗しました',
+        schema: apiCursorPageSchema(externalGrantSchema),
+      });
     },
     enabled: !!orgId,
   });
@@ -97,7 +138,10 @@ export function ExternalViewerContent({
       const response = await fetch('/api/patient-self-reports?limit=12', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: SelfReport[] }>(response, '自己申告の取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '自己申告の取得に失敗しました',
+        schema: apiCursorPageSchema(selfReportSchema),
+      });
     },
     enabled: !!orgId,
   });
@@ -143,7 +187,7 @@ export function ExternalViewerContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ status, updated_at }),
       });
-      return readApiJson<unknown>(response, '自己申告の更新に失敗しました');
+      return readApiAcknowledgement(response, '自己申告の更新に失敗しました');
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['patient-self-reports', orgId] });
@@ -171,7 +215,7 @@ export function ExternalViewerContent({
           },
         }),
       });
-      await readApiJson<unknown>(response, 'タスク作成に失敗しました');
+      await readApiAcknowledgement(response, 'タスク作成に失敗しました');
       await updateSelfReportMutation.mutateAsync({
         id: report.id,
         status: 'converted_to_task',

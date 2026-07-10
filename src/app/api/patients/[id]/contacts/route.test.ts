@@ -330,19 +330,22 @@ describe('/api/patients/[id]/contacts PUT', () => {
         },
       ],
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await response.json();
+    expect(Object.keys(json).sort()).toEqual(['data', 'meta']);
+    expect(json).toMatchObject({
       data: [
         expect.objectContaining({
           id: 'contact_1',
           phone: '03-1234-5678',
         }),
       ],
-      warnings: [],
-      metadata: {
+      meta: {
+        warnings: [],
         contact_readiness: {
           ready: true,
           detail: '電話可能な主連絡先または緊急連絡先があります。',
         },
+        duplicate_contacts: [],
         expected_updated_at: expect.any(String),
         version_basis: 'patient_updated_at',
       },
@@ -401,26 +404,24 @@ describe('/api/patients/[id]/contacts PUT', () => {
     const json = await response.json();
     expect(json).toMatchObject({
       data: [expect.objectContaining({ id: 'contact_1', name: '長男' })],
-      warnings: [
-        {
-          code: 'PATIENT_CONTACT_UNREADY',
-          severity: 'warning',
-          message: '訪問前連絡が必要ですが電話可能な連絡先が未確認です。',
-        },
-      ],
-      metadata: {
+      meta: {
+        warnings: [
+          {
+            code: 'PATIENT_CONTACT_UNREADY',
+            severity: 'warning',
+            message: '訪問前連絡が必要ですが電話可能な連絡先が未確認です。',
+          },
+        ],
         contact_readiness: {
           ready: false,
           detail: '訪問前連絡が必要ですが電話可能な連絡先が未確認です。',
         },
       },
     });
-    expect(JSON.stringify(json.warnings)).not.toMatch(
+    expect(JSON.stringify(json.meta.warnings)).not.toMatch(
       /family@example.com|東京都千代田区1-2-3|長男/,
     );
-    expect(JSON.stringify(json.metadata)).not.toMatch(
-      /family@example.com|東京都千代田区1-2-3|長男/,
-    );
+    expect(JSON.stringify(json.meta)).not.toMatch(/family@example.com|東京都千代田区1-2-3|長男/);
   });
 
   it('normalizes primary contact flags before replacing patient contacts', async () => {
@@ -667,7 +668,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     const json = await response.json();
-    expect(json.warnings).toEqual(
+    expect(json.meta.warnings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           code: 'DUPLICATE_CONTACT',
@@ -676,7 +677,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
         }),
       ]),
     );
-    expect(json.metadata.duplicate_contacts).toEqual(
+    expect(json.meta.duplicate_contacts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           code: 'DUPLICATE_CONTACT',
@@ -684,8 +685,8 @@ describe('/api/patients/[id]/contacts PUT', () => {
         }),
       ]),
     );
-    expect(JSON.stringify(json.warnings)).not.toMatch(/090-1111-1111|長男/);
-    expect(JSON.stringify(json.metadata.duplicate_contacts)).not.toMatch(/090-1111-1111|長男/);
+    expect(JSON.stringify(json.meta.warnings)).not.toMatch(/090-1111-1111|長男/);
+    expect(JSON.stringify(json.meta.duplicate_contacts)).not.toMatch(/090-1111-1111|長男/);
   });
 
   it('returns 409 for an archived patient before replacing contacts', async () => {
@@ -754,7 +755,9 @@ describe('/api/patients/[id]/contacts PUT', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await response.json();
+    expect(Object.keys(json).sort()).toEqual(['data', 'meta']);
+    expect(json).toMatchObject({
       data: [
         {
           id: 'contact_1',
@@ -764,7 +767,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
           address: '東京都千代田***',
         },
       ],
-      metadata: {
+      meta: {
         expected_updated_at: CURRENT_UPDATED_AT,
         version_basis: 'patient_updated_at',
       },

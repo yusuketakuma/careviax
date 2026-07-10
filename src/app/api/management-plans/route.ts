@@ -109,10 +109,8 @@ async function authenticatedGET(req: NextRequest) {
   const hasMore = !caseId && plans.length > MANAGEMENT_PLAN_ORG_WIDE_SAFETY_LIMIT;
   const pageRows = hasMore ? plans.slice(0, MANAGEMENT_PLAN_ORG_WIDE_SAFETY_LIMIT) : plans;
 
-  return success({
-    data: pageRows.map(toManagementPlanListItem),
-    ...(caseId ? {} : { hasMore }),
-  });
+  const data = pageRows.map(toManagementPlanListItem);
+  return caseId ? success({ data }) : success({ data, meta: { has_more: hasMore } });
 }
 
 export async function GET(req: NextRequest) {

@@ -1,0 +1,677 @@
+{
+  "version": 1,
+  "owner": "API-CONTRACT-001",
+  "debtId": "API-CONTRACT-001FZCLIENTRATCHET",
+  "reason": "Existing production readers still trust compile-time types without a runtime schema.",
+  "plannedAction": "Migrate bounded provider/consumer families to exact runtime response schemas.",
+  "entries": [
+    {
+      "path": "src/app/(dashboard)/admin/alert-rules/page.tsx",
+      "counts": {
+        "stringFallback": 3
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/analytics/analytics-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/billing-rules/page.tsx",
+      "counts": {
+        "stringFallback": 4
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/document-templates/template-body-editor.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/document-templates/template-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx",
+      "counts": {
+        "stringFallback": 22
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/external-professionals/external-professionals-content.tsx",
+      "counts": {
+        "stringFallback": 3
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/facilities/facilities-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/incidents/incidents-content.tsx",
+      "counts": {
+        "stringFallback": 4
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/institutions/institutions-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/jobs/jobs-dashboard-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/master-hub-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
+      "counts": {
+        "stringFallback": 5
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx",
+      "counts": {
+        "stringFallback": 3
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/operations-insights/operations-insights-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx",
+      "counts": {
+        "stringFallback": 9
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/performance/page.tsx",
+      "counts": {
+        "stringFallback": 4
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/realtime/page.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/service-areas/page.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/settings/settings-content.tsx",
+      "counts": {
+        "stringFallback": 4
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/shifts/shifts-content.tsx",
+      "counts": {
+        "stringFallback": 7
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/staff/staff-kpi-panel.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/uat/uat-content.tsx",
+      "counts": {
+        "dynamicOptions": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/users/users-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/admin/vehicles/vehicles-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/billing/billing-check-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx",
+      "counts": {
+        "stringFallback": 5
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/clerk-support/clerk-support-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/communications/inbound/inbound-content.tsx",
+      "counts": {
+        "objectWithoutSchema": 9
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/conferences/conferences-content.tsx",
+      "counts": {
+        "stringFallback": 6
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/external/external-viewer-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/handoff/handoff-workspace.tsx",
+      "counts": {
+        "stringFallback": 4
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/my-day/my-day-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/notifications/notifications-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/card-workspace.tsx",
+      "counts": {
+        "stringFallback": 3,
+        "objectWithoutSchema": 4
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx",
+      "counts": {
+        "stringFallback": 5
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/medications/medications-content.tsx",
+      "counts": {
+        "stringFallback": 4
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/patient-labs-card.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/patient-readiness-card.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/share/external-share-content.tsx",
+      "counts": {
+        "stringFallback": 5
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/visit-constraints-card.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/compare/compare-board.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/patients/patients-board.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/prescriptions/intake/intake-triage-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/prescriptions/prescription-inline-detail.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx",
+      "counts": {
+        "stringFallback": 3
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/reports/[id]/page.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx",
+      "counts": {
+        "stringFallback": 5
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/reports/print/print-hub-content.tsx",
+      "counts": {
+        "stringFallback": 3
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/reports/report-delivery-dashboard.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/reports/report-share-workspace.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/calendar-view.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/emergency-route/emergency-route-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx",
+      "counts": {
+        "stringFallback": 5
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx",
+      "counts": {
+        "stringFallback": 7
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/route-compare/route-compare-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/schedule-day-planner-hooks.ts",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/schedule-day-preparation.ts",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/schedule-team-board.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/select-site/select-site-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/settings/operational-policy-content.tsx",
+      "counts": {
+        "stringFallback": 3
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/views/saved-views-content.tsx",
+      "counts": {
+        "stringFallback": 3
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/visits/[id]/capture/capture-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/visits/[id]/facility-packet/facility-packet-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
+      "counts": {
+        "stringFallback": 5
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/visits/[id]/visit-record-detail.tsx",
+      "counts": {
+        "stringFallback": 6
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/visits/[id]/visit-reflected-fields-card.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/visits/evidence/evidence-gallery-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/visits/visits-today.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/(dashboard)/workflow/workflow-dashboard-content.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/app/shared/[token]/shared-viewer-content.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/components/features/comments/comment-thread.tsx",
+      "counts": {
+        "stringFallback": 3
+      }
+    },
+    {
+      "path": "src/components/features/comments/mention-input.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/components/features/dispense-workbench/dispensing-workbench.adapter.ts",
+      "counts": {
+        "stringFallback": 2,
+        "dynamicOptions": 1
+      }
+    },
+    {
+      "path": "src/components/features/medications/intervention-panel.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/components/features/notifications/notification-bell.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/components/features/patients/patient-field-revision-timeline.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/components/features/patients/patient-form.tsx",
+      "counts": {
+        "stringFallback": 6
+      }
+    },
+    {
+      "path": "src/components/features/patients/patient-history-summary.tsx",
+      "counts": {
+        "stringFallback": 2
+      }
+    },
+    {
+      "path": "src/components/features/patients/patient-structured-care-panel.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/components/features/patients/residual-medication-chart.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/components/features/visits/visit-medication-stock-observation-panel.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/components/features/workflow/cycle-transition-query.ts",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/components/layout/use-nav-badges.ts",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/components/visit-brief/patient-visit-brief-section.tsx",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/lib/offline/evidence-drafts.ts",
+      "counts": {
+        "stringFallback": 1
+      }
+    },
+    {
+      "path": "src/lib/visits/medication-stock-observation.ts",
+      "counts": {
+        "stringFallback": 1
+      }
+    }
+  ]
+}

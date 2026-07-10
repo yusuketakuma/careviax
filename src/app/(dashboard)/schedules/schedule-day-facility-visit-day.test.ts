@@ -86,7 +86,7 @@ describe('schedule day facility visit day helpers', () => {
         form: filledForm,
         fetchImpl,
       }),
-    ).resolves.toEqual({ data: { id: 'visit_day_1' } });
+    ).resolves.toBeUndefined();
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0]!;
@@ -151,6 +151,19 @@ describe('schedule day facility visit day helpers', () => {
         fetchImpl,
       }),
     ).rejects.toThrow('曜日設定が重複しています');
+  });
+
+  it('rejects a legacy successful facility visit-day save', async () => {
+    const fetchImpl = vi.fn(async () => Response.json({ message: '定期訪問日を保存しました' }));
+
+    await expect(
+      saveScheduleDayFacilityVisitDay({
+        orgId: 'org_1',
+        target,
+        form: filledForm,
+        fetchImpl,
+      }),
+    ).rejects.toThrow('訪問先グループの定期訪問日の保存に失敗しました');
   });
 
   it('notifies success, closes the dialog, and refreshes visit-day dependent queries', async () => {

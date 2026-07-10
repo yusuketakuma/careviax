@@ -2977,9 +2977,9 @@ describe('/api/prescription-intakes GET', () => {
           },
         },
       ],
-      nextCursor: 'intake_2',
+      meta: { next_cursor: 'intake_2' },
     });
-    expect(body.nextCursor).not.toBe('r0000000002');
+    expect(body.meta.next_cursor).not.toBe('r0000000002');
   });
 
   it('passes care tag filters into the paginated query', async () => {
@@ -3165,12 +3165,14 @@ describe('/api/prescription-intakes GET', () => {
     );
     expect(prescriptionIntakeCountMock).toHaveBeenCalledWith({ where: findManyArgs.where });
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor', 'totalCount']);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [{ id: 'intake_2' }],
-      hasMore: true,
-      nextCursor: 'intake_2',
-      totalCount: 2,
+      meta: {
+        has_more: true,
+        next_cursor: 'intake_2',
+        total_count: 2,
+      },
     });
     expect(body.data).toHaveLength(1);
   });
@@ -3206,20 +3208,22 @@ describe('/api/prescription-intakes GET', () => {
     const body = await response.json();
     expect(body).toMatchObject({
       data: [{ id: 'intake_2' }],
-      totalCount: 7,
-      facets: {
-        status: {
-          ready_to_dispense: 7,
-          inquiry_pending: 5,
-          intake_received: 0,
-        },
-        source_type: {
-          paper: 11,
-          fax: 3,
-          e_prescription: 0,
-          facility_batch: 0,
-          refill: 0,
-          qr_scan: 0,
+      meta: {
+        total_count: 7,
+        facets: {
+          status: {
+            ready_to_dispense: 7,
+            inquiry_pending: 5,
+            intake_received: 0,
+          },
+          source_type: {
+            paper: 11,
+            fax: 3,
+            e_prescription: 0,
+            facility_batch: 0,
+            refill: 0,
+            qr_scan: 0,
+          },
         },
       },
     });
@@ -3296,13 +3300,15 @@ describe('/api/prescription-intakes GET', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'totalCount']);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
       data: [{ id: 'intake_exact_1' }],
-      hasMore: false,
-      totalCount: 1,
+      meta: {
+        has_more: false,
+        next_cursor: null,
+        total_count: 1,
+      },
     });
-    expect(body).not.toHaveProperty('nextCursor');
     expect(body.data).toHaveLength(1);
   });
 
@@ -3430,7 +3436,7 @@ describe('/api/prescription-intakes GET', () => {
     expect(findManyArgs.select).not.toHaveProperty('original_document_url');
     expect(prescriptionIntakeCountMock).toHaveBeenCalledWith({ where: findManyArgs.where });
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'nextCursor', 'totalCount']);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toEqual({
       data: [
         {
@@ -3453,9 +3459,11 @@ describe('/api/prescription-intakes GET', () => {
           },
         },
       ],
-      hasMore: true,
-      nextCursor: 'intake_search_1',
-      totalCount: 2,
+      meta: {
+        has_more: true,
+        next_cursor: 'intake_search_1',
+        total_count: 2,
+      },
     });
     expect(body.data[0]).not.toHaveProperty('lines');
     expect(body.data[0]).not.toHaveProperty('original_document_url');
@@ -3495,7 +3503,7 @@ describe('/api/prescription-intakes GET', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(Object.keys(body)).toEqual(['data', 'hasMore', 'totalCount']);
+    expect(Object.keys(body)).toEqual(['data', 'meta']);
     expect(body).toEqual({
       data: [
         {
@@ -3516,10 +3524,12 @@ describe('/api/prescription-intakes GET', () => {
           },
         },
       ],
-      hasMore: false,
-      totalCount: 1,
+      meta: {
+        has_more: false,
+        next_cursor: null,
+        total_count: 1,
+      },
     });
-    expect(body).not.toHaveProperty('nextCursor');
   });
 
   it('checks the search rate limit scoped to org+user before querying', async () => {

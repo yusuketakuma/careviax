@@ -50,9 +50,11 @@ describe('/api/pharmacy-drug-stock-templates/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      deleted: true,
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: { id: 'template_1', name: '在宅内科 標準セット' },
+      meta: { deleted: true },
     });
     expect(prismaMock.formularyTemplate.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({

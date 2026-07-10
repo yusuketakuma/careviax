@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { readApiJson } from './client-json';
+import { readApiAcknowledgement, readApiJson } from './client-json';
 
 describe('client JSON API helpers', () => {
   it('returns typed JSON for successful responses', async () => {
@@ -23,6 +23,27 @@ describe('client JSON API helpers', () => {
     const response = new Response(JSON.stringify({ error: '権限がありません' }), { status: 403 });
 
     await expect(readApiJson(response)).rejects.toThrow('権限がありません');
+  });
+
+  it('uses the standard nested error message before legacy root fields', async () => {
+    const response = new Response(
+      JSON.stringify({
+        error: { code: 'AUTH_FORBIDDEN', message: '権限を確認してください' },
+        message: 'legacy root message',
+      }),
+      { status: 403 },
+    );
+
+    await expect(readApiJson(response)).rejects.toThrow('権限を確認してください');
+  });
+
+  it('falls back when a standard nested error message is malformed', async () => {
+    const response = new Response(
+      JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: '   ' } }),
+      { status: 500 },
+    );
+
+    await expect(readApiJson(response, '取得に失敗しました')).rejects.toThrow('取得に失敗しました');
   });
 
   it('falls back when failed JSON messages are blank', async () => {
@@ -81,6 +102,35 @@ describe('client JSON API helpers', () => {
         schema,
         fallbackMessage: 'レスポンスが不正です',
       }),
+    ).rejects.toThrow('レスポンスが不正です');
+  });
+
+  it('accepts only standard acknowledgement envelopes', async () => {
+    await expect(
+      readApiAcknowledgement(
+        new Response(JSON.stringify({ data: { id: 'row_1' }, meta: { replayed: false } }), {
+          status: 200,
+        }),
+      ),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      readApiAcknowledgement(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+        'レスポンスが不正です',
+      ),
+    ).rejects.toThrow('レスポンスが不正です');
+    await expect(
+      readApiAcknowledgement(
+        new Response(JSON.stringify({ meta: { replayed: false } }), { status: 200 }),
+        'レスポンスが不正です',
+      ),
+    ).rejects.toThrow('レスポンスが不正です');
+    await expect(
+      readApiAcknowledgement(
+        new Response(JSON.stringify({ data: { id: 'row_1' }, replayed: false }), { status: 200 }),
+        'レスポンスが不正です',
+      ),
     ).rejects.toThrow('レスポンスが不正です');
   });
 });

@@ -85,6 +85,7 @@ function buildDb<T extends Record<string, unknown> = Record<string, never>>(over
     patientMcsMessage: { findMany: vi.fn().mockResolvedValue([]) },
     partnerVisitRecord: { findMany: vi.fn().mockResolvedValue([]) },
     residualMedication: { findMany: vi.fn().mockResolvedValue([]) },
+    medicationStockSnapshot: { findMany: vi.fn().mockResolvedValue([]) },
     patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
     externalAccessGrant: { findMany: vi.fn().mockResolvedValue([]) },
     inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
@@ -4688,7 +4689,7 @@ describe('getPatientTimelineData', () => {
           patient_id: 'patient_1',
           case_id: { in: ['case_1'] },
         }),
-        orderBy: [{ created_at: 'desc' }],
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
         take: 8,
       }),
     );

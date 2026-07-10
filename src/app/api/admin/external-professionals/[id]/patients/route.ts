@@ -113,7 +113,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
           },
         };
       }),
-      metadata: {
+      meta: {
         limit,
         total_count: totalCount,
         visible_count: visibleCount,

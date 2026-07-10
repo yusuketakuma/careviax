@@ -366,8 +366,10 @@ async function authenticatedGET(req: NextRequest) {
         task.assigned_to ? (assignedUserNameById.get(task.assigned_to) ?? null) : null,
       ),
     ),
-    hasMore: page.hasMore,
-    nextCursor: page.nextCursor,
+    meta: {
+      has_more: page.hasMore,
+      next_cursor: page.nextCursor ?? null,
+    },
   });
 }
 

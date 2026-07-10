@@ -22,7 +22,7 @@ import {
   type EvidenceItem,
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -107,7 +107,7 @@ async function updateScheduleOperationalTaskStatus({
     headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({ status }),
   });
-  await readApiJson<unknown>(res, '運用タスクの更新に失敗しました');
+  await readApiAcknowledgement(res, '運用タスクの更新に失敗しました');
 }
 
 async function updateVisitScheduleStatus({
@@ -137,7 +137,7 @@ async function patchVisitSchedule({
     headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(payload),
   });
-  await readApiJson<unknown>(res, '訪問予定の更新に失敗しました');
+  await readApiAcknowledgement(res, '訪問予定の更新に失敗しました');
 }
 
 function familyName(name: string): string {

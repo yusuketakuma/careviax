@@ -100,6 +100,7 @@
     "colors:check": "node tools/scripts/check-raw-state-colors.mjs",
     "boundaries:check": "node tools/scripts/check-module-boundaries.mjs",
     "api-response-shape:check": "node tools/scripts/check-api-response-shape.mjs",
+    "client-json-schema:check": "node tools/scripts/check-client-json-schema.mjs",
     "dto-direct-prisma-return:check": "node tools/scripts/check-dto-direct-prisma-return.mjs",
     "task-types:check": "node tools/scripts/check-task-type-registry.mjs",
     "route-auth-wrapper:check": "node tools/scripts/check-route-auth-wrapper.mjs",

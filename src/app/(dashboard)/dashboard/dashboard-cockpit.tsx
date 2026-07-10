@@ -14,6 +14,7 @@ import {
 } from '@/components/features/workspace/action-rail';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { apiUnknownDataEnvelopeSchema } from '@/lib/api/response-schemas';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { cn } from '@/lib/utils';
@@ -65,6 +66,17 @@ const DASHBOARD_COMMENTS_DRILLDOWN_HREF = '/handoff?filter=comments&context=dash
 const DASHBOARD_INBOUND_DRILLDOWN_HREF = '/communications/inbound?status=needs_review';
 const DASHBOARD_CARRYOVER_HREF = '/tasks?status=open&filter=carryover&context=dashboard_home';
 
+async function readDashboardCockpitResponse<TData>(
+  response: Response,
+  fallbackMessage: string,
+): Promise<TData> {
+  const payload = await readApiJson(response, {
+    fallbackMessage,
+    schema: apiUnknownDataEnvelopeSchema,
+  });
+  return payload.data as TData;
+}
+
 export async function fetchDashboardCockpit(
   orgId: string,
   scope: DashboardCockpitScope = 'mine',
@@ -73,11 +85,10 @@ export async function fetchDashboardCockpit(
   const res = await fetch(`/api/dashboard/cockpit?${params.toString()}`, {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: DashboardCockpitResponse }>(
+  return readDashboardCockpitResponse<DashboardCockpitResponse>(
     res,
     'ダッシュボード集計の取得に失敗しました',
   );
-  return json.data;
 }
 
 async function fetchDashboardCockpitSegment<TData>(
@@ -90,8 +101,7 @@ async function fetchDashboardCockpitSegment<TData>(
   const res = await fetch(`/api/dashboard/cockpit/${segment}?${params.toString()}`, {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: TData }>(res, errorMessage);
-  return json.data;
+  return readDashboardCockpitResponse<TData>(res, errorMessage);
 }
 
 export function fetchDashboardCockpitSummary(

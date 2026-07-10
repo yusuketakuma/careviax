@@ -150,7 +150,7 @@ describe('GET /api/patients/[id]/movement-timeline', () => {
     const json = await response.json();
     expectMeasuredJsonContentLength(response, json);
     expect(json).toMatchObject({
-      movement_events: [],
+      data: { movement_events: [] },
       meta: {
         next_cursor: null,
         has_more: false,
@@ -187,7 +187,8 @@ describe('GET /api/patients/[id]/movement-timeline', () => {
       timelineLimit: 40,
     });
     const json = await response.json();
-    expect(json.movement_events).toHaveLength(2);
+    expect(Object.keys(json).sort()).toEqual(['data', 'meta']);
+    expect(json.data.movement_events).toHaveLength(2);
     expect(json.meta).toMatchObject({
       has_more: false,
       returned_count: 2,
@@ -239,7 +240,10 @@ describe('GET /api/patients/[id]/movement-timeline', () => {
 
     expect(firstResponse.status).toBe(200);
     const firstJson = await firstResponse.json();
-    expect(firstJson.movement_events.map((event: { id: string }) => event.id)).toEqual(['visit_b']);
+    expect(Object.keys(firstJson).sort()).toEqual(['data', 'meta']);
+    expect(firstJson.data.movement_events.map((event: { id: string }) => event.id)).toEqual([
+      'visit_b',
+    ]);
     expect(firstJson.meta).toMatchObject({
       has_more: true,
       returned_count: 1,
@@ -264,7 +268,7 @@ describe('GET /api/patients/[id]/movement-timeline', () => {
 
     expect(secondResponse.status).toBe(200);
     const secondJson = await secondResponse.json();
-    expect(secondJson.movement_events.map((event: { id: string }) => event.id)).toEqual([
+    expect(secondJson.data.movement_events.map((event: { id: string }) => event.id)).toEqual([
       'visit_a',
     ]);
     expect(secondJson.meta).toMatchObject({ has_more: false, returned_count: 1 });

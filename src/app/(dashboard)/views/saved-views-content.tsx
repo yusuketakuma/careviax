@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Skeleton } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
@@ -257,7 +257,7 @@ function NamedSavedViewsCard({
           filters: { conditions: currentConditions },
         }),
       });
-      await readApiJson<unknown>(res, '保存ビューの作成に失敗しました');
+      await readApiAcknowledgement(res, '保存ビューの作成に失敗しました');
     },
     onSuccess: () => {
       setNewName('');
@@ -276,7 +276,7 @@ function NamedSavedViewsCard({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ name }),
       });
-      await readApiJson<unknown>(res, '名前の変更に失敗しました');
+      await readApiAcknowledgement(res, '名前の変更に失敗しました');
     },
     onSuccess: () => {
       setRenamingId(null);
@@ -296,7 +296,7 @@ function NamedSavedViewsCard({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ is_shared: isShared }),
       });
-      await readApiJson<unknown>(res, '共有設定の変更に失敗しました');
+      await readApiAcknowledgement(res, '共有設定の変更に失敗しました');
     },
     onSuccess: () => {
       invalidate();
@@ -312,7 +312,7 @@ function NamedSavedViewsCard({
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      await readApiJson<unknown>(res, '削除に失敗しました');
+      await readApiAcknowledgement(res, '削除に失敗しました');
     },
     onSuccess: () => {
       setDeleteTarget(null);

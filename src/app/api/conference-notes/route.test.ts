@@ -1554,8 +1554,7 @@ describe('/api/conference-notes', () => {
       expect(response.status).toBe(201);
       const body = await response.json();
 
-      expect(body).toHaveProperty('sync');
-      expect(body.sync).toMatchObject({
+      expect(body.meta.sync).toMatchObject({
         tasks_created: 3,
         billing_candidate_id: 'billing_new',
         visit_proposal_id: 'proposal_new',
@@ -1705,10 +1704,14 @@ describe('/api/conference-notes', () => {
           }),
         }),
       );
-      await expect(response.json()).resolves.toMatchObject({
-        sync: expect.objectContaining({
-          visit_proposal_id: 'proposal_new',
-        }),
+      const payload = await response.json();
+      expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+      expect(payload).toMatchObject({
+        meta: {
+          sync: expect.objectContaining({
+            visit_proposal_id: 'proposal_new',
+          }),
+        },
       });
     });
 
@@ -2573,9 +2576,11 @@ describe('/api/conference-notes', () => {
         }),
       );
       await expect(response.json()).resolves.toMatchObject({
-        sync: expect.objectContaining({
-          tasks_created: 4,
-        }),
+        meta: {
+          sync: expect.objectContaining({
+            tasks_created: 4,
+          }),
+        },
       });
     });
 
@@ -2710,6 +2715,6 @@ describe('/api/conference-notes', () => {
     // findFirst found existing → create must NOT be called
     expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
     const body = await response.json();
-    expect(body.sync.visit_proposal_id).toBe('existing_proposal');
+    expect(body.meta.sync.visit_proposal_id).toBe('existing_proposal');
   });
 });

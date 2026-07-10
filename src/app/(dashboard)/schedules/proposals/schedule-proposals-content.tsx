@@ -66,7 +66,11 @@ import {
 } from '@/components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
+import {
+  type VisitScheduleProposalBillingAlert,
+  visitScheduleProposalGenerationResponseSchema,
+} from '@/types/api/visit-schedule-proposals';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -254,7 +258,11 @@ type CreateProposalResponse = {
   data: Proposal[];
   diagnostics?: ProposalGenerationDiagnostics;
 };
-type ProposalMutationResponse = { data: unknown };
+const createProposalResponseSchema = visitScheduleProposalGenerationResponseSchema<
+  Proposal,
+  VisitScheduleProposalBillingAlert,
+  ProposalGenerationDiagnostics
+>();
 type CaseSearchResponse = {
   data: CaseOption[];
   meta: {
@@ -1193,7 +1201,7 @@ export function ScheduleProposalsContent({
         throw new Error(proposalActionFailureDisplayMessage(message, false));
       }
       try {
-        return await readApiJson<ProposalMutationResponse>(response, '候補更新に失敗しました');
+        return await readApiAcknowledgement(response, '候補更新に失敗しました');
       } catch (error) {
         throw new Error(
           proposalActionFailureDisplayMessage(
@@ -1285,7 +1293,7 @@ export function ScheduleProposalsContent({
           }
 
           try {
-            await readApiJson<ProposalMutationResponse>(response, '一括更新に失敗しました');
+            await readApiAcknowledgement(response, '一括更新に失敗しました');
             return { proposal, ok: true as const };
           } catch (error) {
             return {
@@ -1429,7 +1437,10 @@ export function ScheduleProposalsContent({
           idempotency_key: createProposalGenerationIdempotencyKey(detail.id),
         }),
       });
-      return readApiJson<CreateProposalResponse>(response, '再提案の生成に失敗しました');
+      return readApiJson<CreateProposalResponse>(response, {
+        fallbackMessage: '再提案の生成に失敗しました',
+        schema: createProposalResponseSchema,
+      });
     },
     onSuccess: async (payload) => {
       setLastGenerationDiagnostics(payload.diagnostics ?? null);

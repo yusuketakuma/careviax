@@ -205,13 +205,14 @@ describe('/api/visit-records/[id]/handoff', () => {
         accessibleSchedule,
       );
       const json = await res!.json();
+      expect(Object.keys(json).sort()).toEqual(['data', 'meta']);
       expect(json.data.next_check_items).toEqual(['血圧確認']);
-      expect(json.extraction).toMatchObject({
+      expect(json.meta.extraction).toMatchObject({
         status: 'succeeded',
         retryable: false,
         source_visit_record_version: 2,
       });
-      expect(json).toMatchObject({
+      expect(json.meta).toMatchObject({
         visit_record_version: VISIT_RECORD_VERSION,
         visit_record_updated_at: VISIT_RECORD_UPDATED_AT_ISO,
         confirmation_policy: {
@@ -238,19 +239,21 @@ describe('/api/visit-records/[id]/handoff', () => {
       expectSensitiveNoStore(res!);
       await expect(res!.json()).resolves.toMatchObject({
         data: { next_check_items: ['血圧確認'] },
-        visit_record_version: VISIT_RECORD_VERSION,
-        confirmation_policy: {
-          can_confirm: false,
-          requires_override_reason: true,
-          authorized_basis: 'admin_emergency_override',
-          override_reason_max_length: 500,
-          override_reason_code_required: false,
-          override_reason_codes: expect.arrayContaining([
-            expect.objectContaining({
-              code: 'assignee_unavailable',
-              label: expect.any(String),
-            }),
-          ]),
+        meta: {
+          visit_record_version: VISIT_RECORD_VERSION,
+          confirmation_policy: {
+            can_confirm: false,
+            requires_override_reason: true,
+            authorized_basis: 'admin_emergency_override',
+            override_reason_max_length: 500,
+            override_reason_code_required: false,
+            override_reason_codes: expect.arrayContaining([
+              expect.objectContaining({
+                code: 'assignee_unavailable',
+                label: expect.any(String),
+              }),
+            ]),
+          },
         },
       });
     });
@@ -281,14 +284,16 @@ describe('/api/visit-records/[id]/handoff', () => {
         expect.objectContaining({ pharmacist_id: 'trainee_1' }),
       );
       await expect(res!.json()).resolves.toMatchObject({
-        confirmation_policy: {
-          can_confirm: false,
-          requires_override_reason: false,
-          authorized_basis: null,
-          can_request_supervision: true,
-          supervision_required: true,
-          supervision_available: true,
-          supervision_request_note_max_length: 500,
+        meta: {
+          confirmation_policy: {
+            can_confirm: false,
+            requires_override_reason: false,
+            authorized_basis: null,
+            can_request_supervision: true,
+            supervision_required: true,
+            supervision_available: true,
+            supervision_request_note_max_length: 500,
+          },
         },
       });
     });
@@ -431,14 +436,16 @@ describe('/api/visit-records/[id]/handoff', () => {
       const payload = await res!.json();
       expect(payload).toMatchObject({
         data: null,
-        extraction: {
-          status: 'failed',
-          retry_count: 2,
-          error_message: '申し送り抽出に失敗しました。時間をおいて再実行してください',
-          retryable: true,
-        },
-        confirmation_policy: {
-          requires_override_reason: false,
+        meta: {
+          extraction: {
+            status: 'failed',
+            retry_count: 2,
+            error_message: '申し送り抽出に失敗しました。時間をおいて再実行してください',
+            retryable: true,
+          },
+          confirmation_policy: {
+            requires_override_reason: false,
+          },
         },
       });
       const payloadText = JSON.stringify(payload);

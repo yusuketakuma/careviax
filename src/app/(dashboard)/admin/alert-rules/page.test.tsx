@@ -405,6 +405,33 @@ describe('AlertRulesPage', () => {
     });
   });
 
+  it('rejects a legacy successful alert-rule save without clearing the form', async () => {
+    renderPage();
+
+    await screen.findByRole('button', { name: '相互作用 の処方安全アラートルールを削除' });
+    fireEvent.change(screen.getByLabelText('表示メッセージ'), {
+      target: { value: '相互作用候補を再確認してください' },
+    });
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(global.fetch).mockImplementationOnce(
+      async () =>
+        new Response(JSON.stringify({ message: '処方安全アラートルールを登録しました' }), {
+          status: 201,
+        }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('処方安全アラートルールの保存に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('表示メッセージ') as HTMLInputElement).value).toBe(
+      '相互作用候補を再確認してください',
+    );
+  });
+
   it('gives the alert-type and severity selects a >=44px touch target at all breakpoints (WCAG)', async () => {
     renderPage();
 

@@ -51,7 +51,10 @@ import {
   type JahisParseResult,
 } from '@/lib/pharmacy/jahis-qr';
 import type { IScannerControls } from '@zxing/browser';
-import { buildQrScanDraftPayload, extractQrScanDraftSessionId } from './qr-scan-draft-payload';
+import {
+  buildQrScanDraftPayload,
+  qrScanDraftSessionIdResponseSchema,
+} from './qr-scan-draft-payload';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -376,8 +379,11 @@ export default function QRScanPage() {
         body: JSON.stringify(body),
       });
 
-      const responsePayload = await readApiJson<unknown>(res, 'PCへの送信に失敗しました');
-      setSessionId(extractQrScanDraftSessionId(responsePayload));
+      const nextSessionId = await readApiJson(res, {
+        fallbackMessage: 'PCへの送信に失敗しました',
+        schema: qrScanDraftSessionIdResponseSchema,
+      });
+      setSessionId(nextSessionId);
 
       setPhase('done');
     } catch (err) {

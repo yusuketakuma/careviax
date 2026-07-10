@@ -47,7 +47,7 @@ import { hasPermission } from '@/lib/auth/permission-matrix';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { messageFromError } from '@/lib/utils/error-message';
 import {
@@ -224,7 +224,7 @@ export function PharmacySitesContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(siteForm),
       });
-      return readApiJson<unknown>(response, '更新に失敗しました');
+      return readApiAcknowledgement(response, '更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('薬局情報を更新しました');
@@ -257,7 +257,7 @@ export function PharmacySitesContent() {
           effective_to: configForm.effective_to || null,
         }),
       });
-      return readApiJson<unknown>(response, '保存に失敗しました');
+      return readApiAcknowledgement(response, '保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success(editingConfigId ? '保険設定を更新しました' : '保険設定を登録しました');
@@ -277,7 +277,7 @@ export function PharmacySitesContent() {
         buildPharmacySiteInsuranceConfigApiPath(deleteConfig.siteId, deleteConfig.configId),
         { method: 'DELETE', headers: buildOrgHeaders(orgId) },
       );
-      return readApiJson<unknown>(response, '削除に失敗しました');
+      return readApiAcknowledgement(response, '削除に失敗しました');
     },
     onSuccess: async () => {
       toast.success('保険設定を削除しました');

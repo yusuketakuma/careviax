@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/select';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { cn } from '@/lib/utils';
 
@@ -100,7 +100,7 @@ function InterventionRow({ intervention, onOutcomeUpdate }: InterventionRowProps
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ outcome: outcomeText }),
       });
-      await readApiJson<unknown>(res, '保存に失敗しました');
+      await readApiAcknowledgement(res, '保存に失敗しました');
       onOutcomeUpdate?.(intervention.id, outcomeText);
       setEditing(false);
     } catch (error) {

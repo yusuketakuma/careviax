@@ -64,6 +64,9 @@ jobs:
       - name: API response shape check
         run: pnpm api-response-shape:check
 
+      - name: Client JSON schema check
+        run: pnpm client-json-schema:check
+
       - name: Plans active board check
         run: pnpm plans:active:check
 

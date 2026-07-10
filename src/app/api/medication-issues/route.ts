@@ -180,7 +180,13 @@ async function authenticatedGET(req: NextRequest) {
     ) {
       const page = buildCursorPage<never>([], limit, () => undefined);
       return withSensitiveNoStore(
-        success({ data: page.data, hasMore: page.hasMore, nextCursor: page.nextCursor }),
+        success({
+          data: page.data,
+          meta: {
+            has_more: page.hasMore,
+            next_cursor: page.nextCursor ?? null,
+          },
+        }),
       );
     }
 
@@ -223,7 +229,13 @@ async function authenticatedGET(req: NextRequest) {
     const page = buildCursorPage(issues, limit, (issue) => issue.id);
 
     return withSensitiveNoStore(
-      success({ data: page.data, hasMore: page.hasMore, nextCursor: page.nextCursor }),
+      success({
+        data: page.data,
+        meta: {
+          has_more: page.hasMore,
+          next_cursor: page.nextCursor ?? null,
+        },
+      }),
     );
   });
 }

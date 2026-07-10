@@ -102,15 +102,15 @@ function stubFetchWithHoliday(holiday = holidayFixture()) {
     }
 
     if (url === BUSINESS_HOLIDAYS_API_PATH && init?.method === 'POST') {
-      return new Response(JSON.stringify({ message: '休日を登録しました' }), { status: 200 });
+      return new Response(JSON.stringify({ data: holiday }), { status: 201 });
     }
 
     if (url.startsWith(`${BUSINESS_HOLIDAYS_API_PATH}/`) && init?.method === 'PATCH') {
-      return new Response(JSON.stringify({ message: '休日を更新しました' }), { status: 200 });
+      return new Response(JSON.stringify({ data: holiday }), { status: 200 });
     }
 
     if (url.startsWith(`${BUSINESS_HOLIDAYS_API_PATH}/`) && init?.method === 'DELETE') {
-      return new Response(JSON.stringify({ message: '休日を削除しました' }), { status: 200 });
+      return new Response(JSON.stringify({ data: { id: holiday.id } }), { status: 200 });
     }
 
     return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
@@ -357,6 +357,38 @@ describe('BusinessHolidaysContent', () => {
         headers: buildOrgJsonHeaders('org_1'),
       }),
     );
+  });
+
+  it('rejects legacy successful business holiday responses', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/pharmacy-sites') {
+          return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+            status: 200,
+          });
+        }
+        if (url.startsWith(`${BUSINESS_HOLIDAYS_API_PATH}?`)) {
+          return new Response(JSON.stringify({ data: [holidayFixture()] }), { status: 200 });
+        }
+        if (url === BUSINESS_HOLIDAYS_API_PATH && init?.method === 'POST') {
+          return new Response(JSON.stringify({ message: '休日を登録しました' }), { status: 201 });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+    renderContent();
+
+    await screen.findByLabelText('店舗フィルタ');
+    fireEvent.click(await screen.findByLabelText('1日'));
+    fireEvent.change(screen.getByLabelText('休日名'), { target: { value: '臨時休業' } });
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('保存に失敗しました');
+    });
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalledWith('休日を登録しました');
   });
 
   it('mirrors individual holiday required blockers into the RHF error summary', async () => {

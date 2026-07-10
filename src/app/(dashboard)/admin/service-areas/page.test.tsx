@@ -380,7 +380,16 @@ describe('ServiceAreasPage', () => {
           { status: 200 },
         );
       }
-      return new Response(JSON.stringify({}), { status: 200 });
+      if (url === '/api/service-areas' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ data: { id: 'area_new' } }), { status: 201 });
+      }
+      if (url.startsWith('/api/service-areas/') && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ data: { id: areaId } }), { status: 200 });
+      }
+      if (url.startsWith('/api/service-areas/') && init?.method === 'DELETE') {
+        return new Response(JSON.stringify({ data: { id: areaId } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
     });
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
@@ -472,6 +481,40 @@ describe('ServiceAreasPage', () => {
         headers: buildOrgJsonHeaders('org_1'),
       }),
     );
+  });
+
+  it('rejects empty successful service area responses', async () => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/pharmacy-sites') {
+          return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+            status: 200,
+          });
+        }
+        if (url === '/api/service-areas' && !init?.method) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        }
+        if (url === '/api/service-areas' && init?.method === 'POST') {
+          return new Response(JSON.stringify({}), { status: 201 });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+    renderPage();
+
+    await screen.findByRole('option', { name: '本店' });
+    fireEvent.change(screen.getByLabelText('拠点'), { target: { value: 'site_1' } });
+    fireEvent.change(screen.getByLabelText('エリア名'), { target: { value: '北多摩エリア' } });
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('訪問エリアの保存に失敗しました');
+    });
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalledWith('訪問エリアを登録しました');
   });
 
   it('update (PATCH) encodes a hostile area id via encodePathSegment and uses buildOrgJsonHeaders', async () => {

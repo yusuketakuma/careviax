@@ -15,11 +15,11 @@ import { ActionRail } from '@/components/ui/action-rail';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildCommunicationRequestResolveFollowupApiPath } from '@/lib/communications/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { fetchAllMetaCursorPages } from '@/lib/api/cursor-pagination-client';
+import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import {
   buildCommunicationRequestsHref,
   resolveCommunicationEntityLink,
@@ -198,7 +198,7 @@ export function CommunicationRequestsContent({
           ...(followup ? { followup } : {}),
         }),
       });
-      await readApiJson<unknown>(res, '対応の記録に失敗しました');
+      await readApiAcknowledgement(res, '対応の記録に失敗しました');
     },
     onSuccess: async () => {
       toast.success('対応済みにしました');
@@ -229,7 +229,7 @@ export function CommunicationRequestsContent({
       if (patientFilter) params.set('patient_id', patientFilter);
       if (relatedEntityTypeFilter) params.set('related_entity_type', relatedEntityTypeFilter);
       if (relatedEntityIdFilter) params.set('related_entity_id', relatedEntityIdFilter);
-      return fetchAllMetaCursorPages<CommunicationRequestRow>({
+      return fetchAllCursorPages<CommunicationRequestRow>({
         path: '/api/communication-requests',
         params,
         init: { headers: buildOrgHeaders(orgId) },

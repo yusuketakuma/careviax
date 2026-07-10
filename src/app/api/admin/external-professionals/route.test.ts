@@ -192,7 +192,9 @@ describe('/api/admin/external-professionals', () => {
         ],
       },
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: [
         {
           id: 'external_1',
@@ -200,19 +202,18 @@ describe('/api/admin/external-professionals', () => {
           patient_count: 2,
         },
       ],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'external_professionals',
-      filters_applied: {
-        q: '訪看',
-        profession_type: 'nurse',
-        facility_id: 'facility_1',
-        preferred_contact_method: null,
-      },
-      limit: 500,
       meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'external_professionals',
+        filters_applied: {
+          q: '訪看',
+          profession_type: 'nurse',
+          facility_id: 'facility_1',
+          preferred_contact_method: null,
+        },
         limit: 500,
         has_more: false,
       },
@@ -240,20 +241,23 @@ describe('/api/admin/external-professionals', () => {
     expect(query).not.toHaveProperty('take');
     const body = await response.json();
     expect(body.data).toHaveLength(2);
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
     expect(body).toMatchObject({
-      total_count: 2,
-      visible_count: 2,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'external_professionals',
-      filters_applied: {
-        q: null,
-        profession_type: null,
-        facility_id: null,
-        preferred_contact_method: null,
+      meta: {
+        total_count: 2,
+        visible_count: 2,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'external_professionals',
+        has_more: false,
+        filters_applied: {
+          q: null,
+          profession_type: null,
+          facility_id: null,
+          preferred_contact_method: null,
+        },
       },
     });
-    expect(body).not.toHaveProperty('meta');
     expect(externalProfessionalCountMock).not.toHaveBeenCalled();
   });
 
@@ -266,11 +270,13 @@ describe('/api/admin/external-professionals', () => {
     expect(response.status).toBe(200);
     expect(externalProfessionalFindManyMock.mock.calls[0]?.[0]).not.toHaveProperty('take');
     await expect(response.json()).resolves.toMatchObject({
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      filters_applied: {
-        q: null,
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        filters_applied: {
+          q: null,
+        },
       },
     });
     expect(externalProfessionalCountMock).not.toHaveBeenCalled();
@@ -381,14 +387,16 @@ describe('/api/admin/external-professionals', () => {
       orderBy: [{ profession_type: 'asc' }, { name: 'asc' }],
     });
     await expect(response.json()).resolves.toMatchObject({
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      filters_applied: {
-        q: null,
-        profession_type: 'nurse',
-        facility_id: 'facility_1',
-        preferred_contact_method: 'phone',
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        filters_applied: {
+          q: null,
+          profession_type: 'nurse',
+          facility_id: 'facility_1',
+          preferred_contact_method: 'phone',
+        },
       },
     });
     expect(externalProfessionalCountMock).not.toHaveBeenCalled();
@@ -415,12 +423,12 @@ describe('/api/admin/external-professionals', () => {
     );
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'external_1' }, { id: 'external_2' }],
-      total_count: 3,
-      visible_count: 2,
-      hidden_count: 1,
-      truncated: true,
-      count_basis: 'external_professionals',
       meta: {
+        total_count: 3,
+        visible_count: 2,
+        hidden_count: 1,
+        truncated: true,
+        count_basis: 'external_professionals',
         limit: 2,
         has_more: true,
       },

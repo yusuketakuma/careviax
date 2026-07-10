@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { messageFromError } from '@/lib/utils/error-message';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
@@ -66,13 +67,21 @@ type ExternalProfessionalOption = {
 
 type ExternalProfessionalOptionsResponse = {
   data: ExternalProfessionalOption[];
-  total_count?: number;
-  visible_count?: number;
-  hidden_count?: number;
-  truncated?: boolean;
-  count_basis?: 'external_professionals';
-  filters_applied?: Record<string, unknown>;
-  limit?: number;
+  meta: {
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    count_basis: 'external_professionals';
+    has_more: boolean;
+    limit?: number;
+    filters_applied: {
+      q: string | null;
+      profession_type: string | null;
+      facility_id: string | null;
+      preferred_contact_method: string | null;
+    };
+  };
 };
 
 type ExternalProfessionalDraft = {
@@ -87,11 +96,75 @@ type ExternalProfessionalDraft = {
   notes: string;
 };
 
-type ReliabilityWarning = {
-  code: string;
-  severity: 'warning';
-  message: string;
-};
+const reliabilityWarningSchema = z
+  .object({
+    code: z.string(),
+    severity: z.literal('warning'),
+    message: z.string(),
+  })
+  .strict();
+
+const externalProfessionalOptionSchema = z
+  .object({
+    id: z.string(),
+    profession_type: z.string(),
+    name: z.string(),
+    organization_name: z.string().nullable(),
+    department: z.string().nullable(),
+    phone: z.string().nullable(),
+    email: z.string().nullable(),
+    fax: z.string().nullable(),
+    address: z.string().nullable(),
+    notes: z.string().nullable(),
+  })
+  .passthrough();
+
+const externalProfessionalOptionsResponseSchema: z.ZodType<ExternalProfessionalOptionsResponse> = z
+  .object({
+    data: z.array(externalProfessionalOptionSchema),
+    meta: z
+      .object({
+        total_count: z.number().int().nonnegative(),
+        visible_count: z.number().int().nonnegative(),
+        hidden_count: z.number().int().nonnegative(),
+        truncated: z.boolean(),
+        count_basis: z.literal('external_professionals'),
+        has_more: z.boolean(),
+        limit: z.number().int().positive().optional(),
+        filters_applied: z
+          .object({
+            q: z.string().nullable(),
+            profession_type: z.string().nullable(),
+            facility_id: z.string().nullable(),
+            preferred_contact_method: z.string().nullable(),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const careTeamSaveResponseSchema = z
+  .object({
+    data: z.array(z.unknown()),
+    meta: z
+      .object({
+        case_id: z.string(),
+        warnings: z.array(reliabilityWarningSchema),
+        care_team_reliability: z
+          .object({
+            needs_confirmation: z.boolean(),
+            alert_count: z.number().int().nonnegative(),
+            detail: z.string(),
+            missing_role_labels: z.array(z.string()),
+            phone_missing_role_labels: z.array(z.string()),
+            fax_missing_role_labels: z.array(z.string()),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
 
 type CareTeamCaseOption = {
   id: string;
@@ -195,23 +268,23 @@ export function PatientCareTeamPanel({
       const response = await fetch('/api/admin/external-professionals', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<ExternalProfessionalOptionsResponse>(
-        response,
-        '他職種マスターの取得に失敗しました',
-      );
+      return readApiJson(response, {
+        fallbackMessage: '他職種マスターの取得に失敗しました',
+        schema: externalProfessionalOptionsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
   const professionalOptions = professionalOptionsResponse?.data ?? [];
   const professionalOptionsHiddenCount =
-    professionalOptionsResponse?.hidden_count ??
+    professionalOptionsResponse?.meta.hidden_count ??
     Math.max(
-      (professionalOptionsResponse?.total_count ?? professionalOptions.length) -
+      (professionalOptionsResponse?.meta.total_count ?? professionalOptions.length) -
         professionalOptions.length,
       0,
     );
   const isProfessionalOptionsTruncated = Boolean(
-    professionalOptionsResponse?.truncated || professionalOptionsHiddenCount > 0,
+    professionalOptionsResponse?.meta.truncated || professionalOptionsHiddenCount > 0,
   );
 
   const quickCreateMutation = useMutation({
@@ -263,14 +336,14 @@ export function PatientCareTeamPanel({
             })),
         }),
       });
-      return readApiJson<{ warnings?: ReliabilityWarning[] }>(
-        res,
-        '多職種連携先の保存に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: '多職種連携先の保存に失敗しました',
+        schema: careTeamSaveResponseSchema,
+      });
     },
     onSuccess: async (payload) => {
       toast.success('多職種連携先を更新しました');
-      for (const warning of payload.warnings ?? []) {
+      for (const warning of payload.meta.warnings) {
         toast.warning(warning.message);
       }
       await invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId }));
@@ -379,7 +452,7 @@ export function PatientCareTeamPanel({
         ) : null}
         {isProfessionalOptionsTruncated ? (
           <p className="rounded-md border border-state-confirm/40 bg-state-confirm/5 px-3 py-2 text-xs text-state-confirm">
-            {`他職種マスターの候補は先頭${(professionalOptionsResponse?.visible_count ?? professionalOptions.length).toLocaleString()}件のみ表示中です。他${professionalOptionsHiddenCount.toLocaleString()}件は検索条件を絞って確認してください。`}
+            {`他職種マスターの候補は先頭${(professionalOptionsResponse?.meta.visible_count ?? professionalOptions.length).toLocaleString()}件のみ表示中です。他${professionalOptionsHiddenCount.toLocaleString()}件は検索条件を絞って確認してください。`}
           </p>
         ) : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

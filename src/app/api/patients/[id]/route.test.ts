@@ -1580,14 +1580,17 @@ describe('/api/patients/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      warnings: [
-        {
-          code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
-          severity: 'warning',
-        },
-      ],
-      metadata: {
+    const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body).toMatchObject({
+      data: expect.any(Object),
+      meta: {
+        warnings: [
+          {
+            code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
+            severity: 'warning',
+          },
+        ],
         duplicate_candidates: [expect.objectContaining({ id: 'patient_other' })],
       },
     });

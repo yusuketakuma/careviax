@@ -10,7 +10,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
@@ -215,7 +215,7 @@ function FacilityPacketMemoSection({
           packet_memo: memo,
         }),
       });
-      return readApiJson<unknown>(res, '施設訪問パケットの保存に失敗しました');
+      return readApiAcknowledgement(res, '施設訪問パケットの保存に失敗しました');
     },
     onSuccess: () => {
       toast.success('施設訪問パケットを保存しました');

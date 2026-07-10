@@ -497,11 +497,17 @@ describe('schedule day planner helpers', () => {
   });
 
   it('posts the planner request with org scope and returns the generated proposals', async () => {
-    const payload = {
+    const result = {
       data: [{ id: 'proposal_1' } as Proposal],
       alerts: [alert('算定確認', 'warning')],
+      replayed: false,
     };
-    const fetchMock = vi.fn<typeof fetch>(async () => Response.json(payload));
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json({
+        data: result.data,
+        meta: { alerts: result.alerts, replayed: result.replayed },
+      }),
+    );
     const fetchImpl = fetchMock;
 
     await expect(
@@ -513,7 +519,7 @@ describe('schedule day planner helpers', () => {
         effectiveCandidateCount: 3,
         fetchImpl,
       }),
-    ).resolves.toEqual(payload);
+    ).resolves.toEqual(result);
 
     expect(fetchImpl).toHaveBeenCalledWith('/api/visit-schedule-proposals', {
       method: 'POST',
@@ -534,6 +540,23 @@ describe('schedule day planner helpers', () => {
       candidate_count: 3,
       idempotency_key: expect.stringMatching(/^schedule-day:/),
     });
+  });
+
+  it('rejects legacy root generation metadata instead of accepting a false success', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      Response.json({ data: [{ id: 'proposal_1' }], alerts: [], replayed: false }),
+    );
+
+    await expect(
+      generateScheduleDayProposals({
+        orgId: 'org_1',
+        resolvedCaseId: 'case_1',
+        plannerForm,
+        routeTravelMode: 'DRIVE',
+        effectiveCandidateCount: 3,
+        fetchImpl,
+      }),
+    ).rejects.toThrow('候補生成に失敗しました');
   });
 
   it('throws the server error message for failed planner requests', async () => {

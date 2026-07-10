@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { messageFromError } from '@/lib/utils/error-message';
 import { Skeleton } from '@/components/ui/loading';
 import { ActionRail } from '@/components/ui/action-rail';
@@ -31,19 +32,33 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
-type PackagingResponse = {
-  data: {
-    packaging_profile: {
-      default_packaging_method: PackagingMethodValue | null;
-      medication_box_color: string | null;
-      notes: string | null;
-      special_instructions: string | null;
-      cognitive_note: string | null;
-      updated_at: string;
-    } | null;
-    effective_summary: string | null;
-  };
-};
+const packagingMethodSchema = z.custom<PackagingMethodValue>(
+  (value) =>
+    typeof value === 'string' && PACKAGING_METHOD_OPTIONS.some((option) => option.value === value),
+);
+
+const packagingResponseSchema = z
+  .object({
+    data: z
+      .object({
+        packaging_profile: z
+          .object({
+            default_packaging_method: packagingMethodSchema.nullable(),
+            medication_box_color: z.string().nullable(),
+            notes: z.string().nullable(),
+            special_instructions: z.string().nullable(),
+            cognitive_note: z.string().nullable(),
+            updated_at: z.string().datetime(),
+          })
+          .strict()
+          .nullable(),
+        effective_summary: z.string().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+
+type PackagingResponse = z.infer<typeof packagingResponseSchema>;
 
 type PackagingFormState = {
   default_packaging_method: PackagingMethodValue | '';
@@ -86,7 +101,10 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
       const res = await fetch(buildPatientApiPath(patientId, '/packaging'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PackagingResponse>(res, '患者配薬設定の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '患者配薬設定の取得に失敗しました',
+        schema: packagingResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -107,7 +125,10 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
           cognitive_note: form.cognitive_note || undefined,
         }),
       });
-      return readApiJson<unknown>(res, '患者配薬設定の保存に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '患者配薬設定の保存に失敗しました',
+        schema: packagingResponseSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('患者固有の配薬設定を保存しました');

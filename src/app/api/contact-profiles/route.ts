@@ -49,7 +49,7 @@ const authenticatedGET = withAuthContext(
           subtitle: item.subtitle,
           last_contacted_at: item.last_contacted_at?.toISOString() ?? null,
         })),
-        hasMore: result.hasMore,
+        meta: { limit, has_more: result.hasMore },
       });
     }
 

@@ -420,18 +420,22 @@ describe('/api/conference-notes/[id] PATCH', () => {
         }),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: expect.objectContaining({
         note_type: 'service_manager',
         conference_type: 'service_manager',
         generated_report_id: 'report_prev',
       }),
-      sync: expect.objectContaining({
-        billing_candidate_id: 'billing_1',
-        report_draft_ids: ['report_cm_1'],
-        tasks_created: 2,
-        visit_proposal_id: 'proposal_new',
-      }),
+      meta: {
+        sync: expect.objectContaining({
+          billing_candidate_id: 'billing_1',
+          report_draft_ids: ['report_cm_1'],
+          tasks_created: 2,
+          visit_proposal_id: 'proposal_new',
+        }),
+      },
     });
   });
 

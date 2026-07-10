@@ -158,4 +158,29 @@ describe('InterventionPanel new intervention form', () => {
       expect(screen.getByText('介入結果の更新権限がありません')).toBeTruthy();
     });
   });
+
+  it('rejects a legacy successful outcome save without closing the editor', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ message: '介入結果を保存しました' }, 200),
+    );
+
+    render(
+      <InterventionPanel patientId="patient_1" initialInterventions={[buildIntervention()]} />,
+    );
+
+    const expandButton = document.querySelector(
+      'button[aria-expanded="false"]',
+    ) as HTMLButtonElement;
+    fireEvent.click(expandButton);
+    fireEvent.click(screen.getByRole('button', { name: '記録' }));
+    const outcome = screen.getByPlaceholderText('介入の結果・効果を記録...');
+    fireEvent.change(outcome, { target: { value: '症状軽快' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('保存に失敗しました')).toBeTruthy();
+    });
+    expect((outcome as HTMLTextAreaElement).value).toBe('症状軽快');
+    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+  });
 });

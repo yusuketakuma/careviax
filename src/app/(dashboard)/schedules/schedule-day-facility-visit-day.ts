@@ -1,4 +1,4 @@
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 
 type FetchLike = typeof fetch;
@@ -78,7 +78,7 @@ export async function saveScheduleDayFacilityVisitDay({
     ),
   });
 
-  return readApiJson<unknown>(res, '訪問先グループの定期訪問日の保存に失敗しました');
+  return readApiAcknowledgement(res, '訪問先グループの定期訪問日の保存に失敗しました');
 }
 
 export async function handleScheduleDayFacilityVisitDaySuccess({

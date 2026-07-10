@@ -117,9 +117,12 @@ function stubFetch() {
       });
     }
     if (url.startsWith('/api/audit-logs?')) {
-      return new Response(JSON.stringify({ data: [], summary: makeAuditLogSummary(0, 0) }), {
-        status: 200,
-      });
+      return new Response(
+        JSON.stringify({ data: [], meta: { summary: makeAuditLogSummary(0, 0) } }),
+        {
+          status: 200,
+        },
+      );
     }
     return new Response('not found', { status: 404 });
   });
@@ -163,7 +166,7 @@ function stubFetchWithLogs(count: number) {
       return new Response(
         JSON.stringify({
           data: Array.from({ length: count }, (_, i) => makeAuditLog(i)),
-          summary: makeAuditLogSummary(count, count > 0 ? 1 : 0),
+          meta: { summary: makeAuditLogSummary(count, count > 0 ? 1 : 0) },
         }),
         { status: 200 },
       );
@@ -216,6 +219,25 @@ describe('AuditLogsContent', () => {
     // 取得失敗は ErrorState(再試行導線)で示し、「ログがありません」(空)には倒さない
     expect(await screen.findByText('監査ログを取得できませんでした')).toBeTruthy();
     expect(screen.getByRole('button', { name: '再試行' })).toBeTruthy();
+    expect(screen.queryByText('ログがありません')).toBeNull();
+  });
+
+  it('rejects a legacy root audit summary instead of treating it as an empty success', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).startsWith('/api/audit-logs?')) {
+          return new Response(JSON.stringify({ data: [], summary: makeAuditLogSummary(0, 0) }), {
+            status: 200,
+          });
+        }
+        return new Response('not found', { status: 404 });
+      }),
+    );
+
+    renderContent();
+
+    expect(await screen.findByText('監査ログを取得できませんでした')).toBeTruthy();
     expect(screen.queryByText('ログがありません')).toBeNull();
   });
 
@@ -377,7 +399,7 @@ describe('AuditLogsContent', () => {
         return new Response(
           JSON.stringify({
             data: [makeAuditLog(0)],
-            summary: makeAuditLogSummary(1, 1),
+            meta: { summary: makeAuditLogSummary(1, 1) },
           }),
           { status: 200 },
         );
@@ -453,7 +475,7 @@ describe('AuditLogsContent', () => {
         return new Response(
           JSON.stringify({
             data: [standardPending],
-            summary: makeAuditLogSummary(1, 0),
+            meta: { summary: makeAuditLogSummary(1, 0) },
           }),
           { status: 200 },
         );
@@ -498,9 +520,12 @@ describe('AuditLogsContent', () => {
         });
       }
       if (url.startsWith('/api/audit-logs?')) {
-        return new Response(JSON.stringify({ data: [], summary: makeAuditLogSummary(0, 0) }), {
-          status: 200,
-        });
+        return new Response(
+          JSON.stringify({ data: [], meta: { summary: makeAuditLogSummary(0, 0) } }),
+          {
+            status: 200,
+          },
+        );
       }
       return new Response('not found', { status: 404 });
     });
@@ -523,9 +548,12 @@ describe('AuditLogsContent', () => {
         return new Response('not json', { status: 500 });
       }
       if (url.startsWith('/api/audit-logs?')) {
-        return new Response(JSON.stringify({ data: [], summary: makeAuditLogSummary(0, 0) }), {
-          status: 200,
-        });
+        return new Response(
+          JSON.stringify({ data: [], meta: { summary: makeAuditLogSummary(0, 0) } }),
+          {
+            status: 200,
+          },
+        );
       }
       return new Response('not found', { status: 404 });
     });
@@ -554,9 +582,12 @@ describe('AuditLogsContent', () => {
         });
       }
       if (url.startsWith('/api/audit-logs?')) {
-        return new Response(JSON.stringify({ data: [], summary: makeAuditLogSummary(0, 0) }), {
-          status: 200,
-        });
+        return new Response(
+          JSON.stringify({ data: [], meta: { summary: makeAuditLogSummary(0, 0) } }),
+          {
+            status: 200,
+          },
+        );
       }
       return new Response('not found', { status: 404 });
     });
@@ -587,9 +618,12 @@ describe('AuditLogsContent', () => {
         throw new Error('');
       }
       if (url.startsWith('/api/audit-logs?')) {
-        return new Response(JSON.stringify({ data: [], summary: makeAuditLogSummary(0, 0) }), {
-          status: 200,
-        });
+        return new Response(
+          JSON.stringify({ data: [], meta: { summary: makeAuditLogSummary(0, 0) } }),
+          {
+            status: 200,
+          },
+        );
       }
       return new Response('not found', { status: 404 });
     });
@@ -622,9 +656,12 @@ describe('AuditLogsContent', () => {
         return exportResponse;
       }
       if (url.startsWith('/api/audit-logs?')) {
-        return new Response(JSON.stringify({ data: [], summary: makeAuditLogSummary(0, 0) }), {
-          status: 200,
-        });
+        return new Response(
+          JSON.stringify({ data: [], meta: { summary: makeAuditLogSummary(0, 0) } }),
+          {
+            status: 200,
+          },
+        );
       }
       return new Response('not found', { status: 404 });
     });

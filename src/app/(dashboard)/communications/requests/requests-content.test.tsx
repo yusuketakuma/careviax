@@ -13,10 +13,10 @@ const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
 const usePathnameMock = vi.hoisted(() => vi.fn());
 const useSearchParamsMock = vi.hoisted(() => vi.fn());
-const fetchAllMetaCursorPagesMock = vi.hoisted(() => vi.fn());
+const fetchAllCursorPagesMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/api/cursor-pagination-client', () => ({
-  fetchAllMetaCursorPages: fetchAllMetaCursorPagesMock,
+  fetchAllCursorPages: fetchAllCursorPagesMock,
 }));
 
 vi.mock('@/lib/api/org-headers', async (importActual) => {
@@ -70,7 +70,7 @@ describe('CommunicationRequestsContent', () => {
       isError: false,
       refetch: vi.fn(),
     });
-    fetchAllMetaCursorPagesMock.mockResolvedValue({ data: [], hasMore: false });
+    fetchAllCursorPagesMock.mockResolvedValue({ data: [], hasMore: false });
   });
 
   afterEach(() => {
@@ -320,7 +320,7 @@ describe('CommunicationRequestsContent', () => {
       }) => Promise<void>;
     };
 
-    await mutationOptions.mutationFn({
+    const mutationInput: Parameters<typeof mutationOptions.mutationFn>[0] = {
       item: {
         id: hostileRequestId,
         request_type: 'tracing_report',
@@ -339,7 +339,9 @@ describe('CommunicationRequestsContent', () => {
       responderName: '',
       content: '服薬状況の確認が取れました',
       followup: '夕食後薬の飲み忘れを確認',
-    });
+    };
+
+    await mutationOptions.mutationFn(mutationInput);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -363,6 +365,11 @@ describe('CommunicationRequestsContent', () => {
       followup: '夕食後薬の飲み忘れを確認',
     });
     expect(String(init.body)).not.toContain(hostileRequestId);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: '対応済みにしました' }));
+    await expect(mutationOptions.mutationFn(mutationInput)).rejects.toThrow(
+      '対応の記録に失敗しました',
+    );
   });
 
   it('surfaces API error messages when focused follow-up resolution fails', async () => {
@@ -530,7 +537,7 @@ describe('CommunicationRequestsContent', () => {
     // queryFn を実行し、API へ渡る patient_id が生の hostile id のまま(encode/正規化されない)ことを locking。
     // (queryKey だけでなく queryFn 内の URLSearchParams も生 identity であることを保証。)
     await queryArg.queryFn();
-    const fetchArg = fetchAllMetaCursorPagesMock.mock.calls.at(-1)?.[0] as {
+    const fetchArg = fetchAllCursorPagesMock.mock.calls.at(-1)?.[0] as {
       path: string;
       params: URLSearchParams;
       init: RequestInit;

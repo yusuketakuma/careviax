@@ -6,7 +6,11 @@ import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { WORKFLOW_DASHBOARD_INVALIDATION_EVENTS } from '@/lib/realtime/workflow-invalidation-policy';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
+import {
+  createCommunicationRequestResponseSchema,
+  type CreateCommunicationRequestResponse,
+} from '@/lib/communications/response-schemas';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -102,7 +106,10 @@ export function WorkflowDashboardContent({
           content: draft.content,
         }),
       });
-      return readApiJson<unknown>(res, '緊急連絡ドラフトの起票に失敗しました');
+      return readApiJson<CreateCommunicationRequestResponse>(res, {
+        fallbackMessage: '緊急連絡ドラフトの起票に失敗しました',
+        schema: createCommunicationRequestResponseSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('緊急連絡ドラフトを起票しました');
@@ -134,7 +141,7 @@ export function WorkflowDashboardContent({
           request_due_date: format(dueDate, 'yyyy-MM-dd'),
         }),
       });
-      return readApiJson<unknown>(res, '疑義照会の起票に失敗しました');
+      await readApiAcknowledgement(res, '疑義照会の起票に失敗しました');
     },
     onSuccess: async () => {
       toast.success('疑義照会を起票しました');
@@ -184,7 +191,7 @@ export function WorkflowDashboardContent({
           ...(lineUpdate ? { line_update: lineUpdate } : {}),
         }),
       });
-      return readApiJson<unknown>(res, '疑義照会の更新に失敗しました');
+      await readApiAcknowledgement(res, '疑義照会の更新に失敗しました');
     },
     onSuccess: async (_data, variables) => {
       setInquiryEdits((prev) => {
@@ -240,7 +247,7 @@ export function WorkflowDashboardContent({
           candidate_count: 3,
         }),
       });
-      return readApiJson<unknown>(res, '再訪候補の生成に失敗しました');
+      await readApiAcknowledgement(res, '再訪候補の生成に失敗しました');
     },
     onSuccess: async () => {
       toast.success('リフィル再訪候補を生成しました');

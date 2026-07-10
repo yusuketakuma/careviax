@@ -94,7 +94,10 @@ async function authenticatedGET(req: NextRequest, { params }: RouteContext) {
       orderBy: [{ responded_at: 'desc' }, { id: 'desc' }],
     });
 
-    return success({ data: responses, request_updated_at: request.updated_at.toISOString() });
+    return success({
+      data: responses,
+      meta: { request_updated_at: request.updated_at.toISOString() },
+    });
   });
 }
 
@@ -185,7 +188,7 @@ async function authenticatedPOST(req: NextRequest, { params }: RouteContext) {
       if (existingResponse.response) {
         return success({
           data: existingResponse.response,
-          request_updated_at: existingRequest.updated_at.toISOString(),
+          meta: { request_updated_at: existingRequest.updated_at.toISOString() },
         });
       }
       return conflict('連携依頼が同時に更新されました。再読み込みしてください');
@@ -297,7 +300,7 @@ async function authenticatedPOST(req: NextRequest, { params }: RouteContext) {
     return success(
       {
         data: result.response,
-        request_updated_at: result.requestUpdatedAt.toISOString(),
+        meta: { request_updated_at: result.requestUpdatedAt.toISOString() },
       },
       result.created ? 201 : 200,
     );

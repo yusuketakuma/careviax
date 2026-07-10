@@ -26,6 +26,7 @@ describe('fetchVisitRecordsWithAttachments', () => {
               ],
             },
           ],
+          meta: { has_more: false, next_cursor: null },
         });
       }
       return new Response('unexpected detail fetch', { status: 500 });

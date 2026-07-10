@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
+    // Keep DOM-heavy suites responsive when the complete test matrix runs locally or in CI.
+    maxWorkers: 4,
     include: [
       'src/**/*.test.ts',
       'src/**/*.test.tsx',

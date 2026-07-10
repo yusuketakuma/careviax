@@ -352,6 +352,30 @@ describe('SavedViewsContent', () => {
     );
   });
 
+  it('rejects legacy successful named-view creation without clearing the draft', async () => {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const target = String(url);
+      if (target.startsWith('/api/saved-views')) {
+        if (init?.method === 'POST') {
+          return jsonResponse({ message: '保存ビューを作成しました' }, 201);
+        }
+        return jsonResponse({ data: [] });
+      }
+      return jsonResponse({ data: { work_mode: 'pharmacist' } });
+    });
+    renderPage();
+
+    const nameInput = await screen.findByTestId('named-view-name-input');
+    fireEvent.change(nameInput, { target: { value: '朝の確認' } });
+    fireEvent.click(screen.getByTestId('named-view-create'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('保存ビューの作成に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('保存ビューを作成しました');
+    expect((nameInput as HTMLInputElement).value).toBe('朝の確認');
+  });
+
   it('single-encodes saved-view mutation paths and preserves bodies/headers', async () => {
     const hostileId = 'view/1?x=y#frag';
     const encodedId = encodeURIComponent(hostileId);

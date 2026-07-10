@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { apiDataSchema } from '@/lib/api/response-schemas';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { createPatientSchema } from '@/lib/validations/patient';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -107,6 +108,11 @@ type ReferralSubmitPayload = ReferralPayload & { duplicate_acknowledged?: boolea
 // /api/referrals の固定文言。バックエンドが返す既知のコピーのみ信頼し、
 // それ以外は PHI 漏洩を避けるため固定フォールバックに倒す。
 const REFERRAL_ERROR_FALLBACK = '紹介受付に失敗しました';
+const referralSuccessResponseSchema = apiDataSchema(
+  z.object({
+    patient: z.object({ id: z.string().trim().min(1) }),
+  }),
+);
 const TRUSTED_REFERRAL_ERROR_MESSAGES = new Set<string>([
   'リクエストボディが不正です',
   '入力値が不正です',
@@ -218,9 +224,8 @@ export function ReferralForm() {
         if (res.ok) {
           let patient: { id: string } | undefined;
           try {
-            const body = (await res.json()) as { patient?: { id?: unknown } };
-            const id = body?.patient?.id;
-            if (typeof id === 'string') patient = { id };
+            const parsed = referralSuccessResponseSchema.safeParse(await res.json());
+            if (parsed.success) patient = parsed.data.data.patient;
           } catch {
             // 2xx だが JSON パース失敗: fail-closed で固定文言、遷移しない。
             toast.error(REFERRAL_ERROR_FALLBACK);

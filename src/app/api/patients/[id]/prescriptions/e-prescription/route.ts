@@ -224,8 +224,10 @@ async function authenticatedPOST(
     return success(
       {
         data: buildEPrescriptionResponseData(existingByRequestId),
-        e_prescription_id: existingByRequestId.external_prescription_id,
-        idempotent: true,
+        meta: {
+          e_prescription_id: existingByRequestId.external_prescription_id,
+          idempotent: true,
+        },
       },
       200,
     );
@@ -293,8 +295,10 @@ async function authenticatedPOST(
       return success(
         {
           data: buildEPrescriptionResponseData(existing),
-          e_prescription_id: ePrescription.prescriptionId,
-          idempotent: true,
+          meta: {
+            e_prescription_id: ePrescription.prescriptionId,
+            idempotent: true,
+          },
         },
         200,
       );
@@ -388,8 +392,10 @@ async function authenticatedPOST(
     return success(
       {
         data: buildEPrescriptionResponseData(replayed),
-        e_prescription_id: ePrescription.prescriptionId,
-        idempotent: true,
+        meta: {
+          e_prescription_id: ePrescription.prescriptionId,
+          idempotent: true,
+        },
       },
       200,
     );
@@ -453,8 +459,10 @@ async function authenticatedPOST(
         prescribed_date: issuedDateKey,
         external_prescription_id: ePrescription.prescriptionId,
       }),
-      e_prescription_id: ePrescription.prescriptionId,
-      idempotent: false,
+      meta: {
+        e_prescription_id: ePrescription.prescriptionId,
+        idempotent: false,
+      },
     },
     201,
   );

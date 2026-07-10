@@ -36,7 +36,11 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
   return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
 });
 
-import { DashboardCockpit } from './dashboard-cockpit';
+import {
+  DashboardCockpit,
+  fetchDashboardCockpit,
+  fetchDashboardCockpitSummary,
+} from './dashboard-cockpit';
 import { formatCockpitGeneratedAtMeta } from './dashboard-cockpit.helpers';
 
 function localIso(hours: number, minutes = 0) {
@@ -655,6 +659,35 @@ describe('DashboardCockpit', () => {
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(2, 'org_1');
   });
+
+  it.each([
+    {
+      reader: 'full',
+      run: fetchDashboardCockpit,
+      fallbackMessage: 'ダッシュボード集計の取得に失敗しました',
+    },
+    {
+      reader: 'summary',
+      run: fetchDashboardCockpitSummary,
+      fallbackMessage: 'ダッシュボード概要の取得に失敗しました',
+    },
+  ])(
+    'rejects mixed-root $reader responses without exposing response details',
+    async ({ run, fallbackMessage }) => {
+      const responseDetail = '患者A token=dashboard-response-secret';
+      stubJsonFetch({
+        data: buildFixture(),
+        patient_name: responseDetail,
+      });
+
+      const error = await run('org_1').catch((cause: unknown) => cause);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe(fallbackMessage);
+      expect((error as Error).message).not.toContain(responseDetail);
+      expect((error as Error).message).not.toContain('dashboard-response-secret');
+    },
+  );
 
   it('disables the team scope when the API applies mine-only dashboard access', () => {
     mockDashboardQueries({

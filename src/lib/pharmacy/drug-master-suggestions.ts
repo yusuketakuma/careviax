@@ -21,9 +21,27 @@ export const drugMasterSuggestionSchema = z.object({
 
 export type DrugMasterSuggestion = z.infer<typeof drugMasterSuggestionSchema>;
 
-const drugMasterSuggestionsResponseSchema = z.object({
-  data: z.array(drugMasterSuggestionSchema).default([]),
-});
+const drugMasterSuggestionsResponseSchema = z
+  .object({
+    data: z.array(drugMasterSuggestionSchema).default([]),
+    meta: z
+      .object({
+        has_more: z.boolean(),
+        next_cursor: z.string().trim().min(1).nullable(),
+        total_count: z.number().int().nonnegative().optional(),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.meta.has_more && !value.meta.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor is required when has_more is true',
+      });
+    }
+  });
 
 export async function fetchDrugMasterSuggestions(args: {
   query: string;

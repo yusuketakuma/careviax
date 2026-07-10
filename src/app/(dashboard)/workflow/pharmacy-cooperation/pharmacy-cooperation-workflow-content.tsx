@@ -31,8 +31,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import {
+  apiCursorPageSchema,
   apiDataSchema,
-  cursorPaginatedPageSchema,
   type CursorPaginatedPage,
 } from '@/lib/api/response-schemas';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
@@ -453,6 +453,8 @@ const messageThreadResultSchema = apiDataSchema(
   }),
 ).transform(({ data }) => data);
 
+const mutationAcknowledgementResponseSchema = apiDataSchema(z.unknown());
+
 const reportDraftResultSchema = z.object({
   message: z.string(),
   reused_existing_draft: z.boolean(),
@@ -552,8 +554,14 @@ const patientShareCasePageSchema: z.ZodType<PatientShareCasePage> = z
       Math.max((meta.total_count ?? meta.visible_count ?? data.length) - data.length, 0),
     status_counts: meta.status_counts ?? buildVisiblePatientShareCaseStatusCounts(data),
   }));
-const pharmacyVisitRequestPageSchema = cursorPaginatedPageSchema(pharmacyVisitRequestRowSchema);
-const partnerVisitRecordPageSchema = cursorPaginatedPageSchema(partnerVisitRecordRowSchema);
+const pharmacyVisitRequestPageSchema = apiCursorPageSchema(pharmacyVisitRequestRowSchema);
+const pharmacyVisitRequestResponseSchema = apiDataSchema(pharmacyVisitRequestRowSchema).transform(
+  ({ data }) => data,
+);
+const pharmacyVisitRequestDecisionResponseSchema = apiDataSchema(
+  z.object({ id: z.string(), status: z.string() }),
+).transform(({ data }) => data);
+const partnerVisitRecordPageSchema = apiCursorPageSchema(partnerVisitRecordRowSchema);
 const partnerVisitRecordResponseSchema = z.object({
   data: partnerVisitRecordRowSchema,
 });
@@ -3087,7 +3095,10 @@ export function PharmacyCooperationWorkflowContent() {
         method: 'POST',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<unknown>(response);
+      return readApiJson(response, {
+        fallbackMessage: '患者共有ケースの有効化に失敗しました',
+        schema: mutationAcknowledgementResponseSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('患者共有ケースを共有中にしました');
@@ -3134,7 +3145,10 @@ export function PharmacyCooperationWorkflowContent() {
             : {}),
         }),
       });
-      return readApiJson<unknown>(response);
+      return readApiJson(response, {
+        fallbackMessage: '患者リンクの更新に失敗しました',
+        schema: mutationAcknowledgementResponseSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('患者リンクを更新しました');
@@ -3209,7 +3223,10 @@ export function PharmacyCooperationWorkflowContent() {
           body: JSON.stringify({ reason: trimmedReason }),
         },
       );
-      return readApiJson<unknown>(response);
+      return readApiJson(response, {
+        fallbackMessage: '患者共有同意の撤回に失敗しました',
+        schema: mutationAcknowledgementResponseSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('患者共有同意を撤回しました');
@@ -3282,9 +3299,9 @@ export function PharmacyCooperationWorkflowContent() {
             : {}),
         }),
       });
-      return readApiJson<PharmacyVisitRequestRow>(response, {
+      return readApiJson(response, {
         fallbackMessage: '訪問依頼の作成に失敗しました',
-        schema: pharmacyVisitRequestRowSchema,
+        schema: pharmacyVisitRequestResponseSchema,
       });
     },
     onSuccess: async () => {
@@ -3384,7 +3401,10 @@ export function PharmacyCooperationWorkflowContent() {
           ...(declineReason ? { decline_reason: declineReason } : {}),
         }),
       });
-      return readApiJson<unknown>(response);
+      return readApiJson(response, {
+        fallbackMessage: '訪問依頼の更新に失敗しました',
+        schema: pharmacyVisitRequestDecisionResponseSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('訪問依頼を更新しました');
@@ -3402,7 +3422,10 @@ export function PharmacyCooperationWorkflowContent() {
         headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({ expected_updated_at: expectedUpdatedAt }),
       });
-      return readApiJson<unknown>(response);
+      return readApiJson(response, {
+        fallbackMessage: '協力訪問記録の提出に失敗しました',
+        schema: mutationAcknowledgementResponseSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('協力訪問記録を提出しました');
@@ -3437,7 +3460,10 @@ export function PharmacyCooperationWorkflowContent() {
           doctor_report_required: Boolean(doctorReportRequired),
         }),
       });
-      return readApiJson<unknown>(response);
+      return readApiJson(response, {
+        fallbackMessage: '協力訪問記録の更新に失敗しました',
+        schema: mutationAcknowledgementResponseSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('協力訪問記録を更新しました');

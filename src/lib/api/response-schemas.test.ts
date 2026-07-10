@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import {
-  apiDataSchema,
-  cursorPaginatedPageSchema,
-  normalizeCursorPaginatedPagePayload,
-} from './response-schemas';
+import { apiCursorPageSchema, apiDataSchema } from './response-schemas';
 
 describe('response-schemas', () => {
   it('validates the shared data envelope shape', () => {
@@ -17,77 +13,68 @@ describe('response-schemas', () => {
     expect(schema.parse({ data: { id: 'row_1' } })).toEqual({
       data: { id: 'row_1' },
     });
+    expect(schema.parse({ data: { id: 'row_1' }, meta: { replayed: false } })).toEqual({
+      data: { id: 'row_1' },
+      meta: { replayed: false },
+    });
     expect(schema.safeParse({ id: 'row_1' }).success).toBe(false);
     expect(schema.safeParse({ data: { id: 123 } }).success).toBe(false);
+    expect(schema.safeParse({ data: { id: 'row_1' }, legacy_metadata: true }).success).toBe(false);
   });
 
-  it('validates cursor page responses with explicit hasMore state', () => {
-    const schema = cursorPaginatedPageSchema(
-      z.object({
-        id: z.string(),
-      }),
-    );
+  it('validates current data/meta cursor pages and normalizes their internal shape', () => {
+    const schema = apiCursorPageSchema(z.object({ id: z.string() }));
 
-    expect(schema.safeParse({ data: [{ id: 'row_1' }] }).success).toBe(false);
-    expect(schema.parse({ data: [{ id: 'row_1' }], hasMore: false })).toEqual({
-      data: [{ id: 'row_1' }],
-      hasMore: false,
-    });
     expect(
       schema.parse({
         data: [{ id: 'row_1' }],
-        hasMore: true,
-        nextCursor: 'row_1',
+        meta: { has_more: true, next_cursor: 'cursor_1' },
       }),
     ).toEqual({
       data: [{ id: 'row_1' }],
       hasMore: true,
-      nextCursor: 'row_1',
+      nextCursor: 'cursor_1',
+    });
+    expect(schema.parse({ data: [], meta: { has_more: false, next_cursor: null } })).toEqual({
+      data: [],
+      hasMore: false,
     });
   });
 
-  it('rejects malformed cursor page responses', () => {
-    const schema = cursorPaginatedPageSchema(z.object({ id: z.string() }));
+  it('rejects legacy or internally inconsistent current cursor page envelopes', () => {
+    const schema = apiCursorPageSchema(z.object({ id: z.string() }));
 
-    expect(schema.safeParse({ data: { id: 'not-array' }, hasMore: false }).success).toBe(false);
-    expect(schema.safeParse({ data: [{ id: 'row_1' }], nextCursor: 123 }).success).toBe(false);
-    expect(schema.safeParse({ data: [{ id: 'row_1' }], hasMore: true }).success).toBe(false);
+    expect(schema.safeParse({ data: [], hasMore: false }).success).toBe(false);
     expect(
-      schema.safeParse({ data: [{ id: 'row_1' }], hasMore: true, nextCursor: '   ' }).success,
+      schema.safeParse({ data: [], meta: { has_more: true, next_cursor: null } }).success,
+    ).toBe(false);
+    expect(
+      schema.safeParse({ data: [], meta: { has_more: false, next_cursor: 'cursor_1' } }).success,
+    ).toBe(false);
+    expect(
+      schema.safeParse({
+        data: [],
+        meta: { has_more: false, next_cursor: null },
+        hasMore: false,
+      }).success,
     ).toBe(false);
   });
 
-  it('normalizes cursor page payloads while preserving metadata', () => {
-    const normalized = normalizeCursorPaginatedPagePayload(
-      {
-        data: [{ id: 'row_1' }],
-        hasMore: true,
-        nextCursor: 'row_1',
-        deliverySummary: { pending_delivery_count: 2 },
-      },
-      z.object({ id: z.string() }),
-    );
-
-    expect(normalized).toEqual({
-      page: {
-        data: [{ id: 'row_1' }],
-        hasMore: true,
-        nextCursor: 'row_1',
-      },
-      metadata: {
-        deliverySummary: { pending_delivery_count: 2 },
-      },
+  it('allows provider-specific meta only for the generic pagination client', () => {
+    const strictSchema = apiCursorPageSchema(z.object({ id: z.string() }));
+    const genericSchema = apiCursorPageSchema(z.object({ id: z.string() }), {
+      allowAdditionalMeta: true,
     });
-  });
+    const payload = {
+      data: [{ id: 'row_1' }],
+      meta: { has_more: false, next_cursor: null, limit: 100 },
+    };
 
-  it('rejects normalized cursor payloads with malformed items or missing cursors', () => {
-    const itemSchema = z.object({ id: z.string() });
-
-    expect(
-      normalizeCursorPaginatedPagePayload({ data: [{ id: 123 }], hasMore: false }, itemSchema),
-    ).toBeNull();
-    expect(
-      normalizeCursorPaginatedPagePayload({ data: [{ id: 'row_1' }], hasMore: true }, itemSchema),
-    ).toBeNull();
+    expect(strictSchema.safeParse(payload).success).toBe(false);
+    expect(genericSchema.parse(payload)).toEqual({
+      data: [{ id: 'row_1' }],
+      hasMore: false,
+    });
+    expect(genericSchema.safeParse({ ...payload, hasMore: false }).success).toBe(false);
   });
 });

@@ -206,6 +206,19 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
         }),
       }),
     );
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        id: 'visit_request_1',
+        status: 'accepted',
+        accepted_by: 'pharmacist_1',
+        accepted_at: '2026-06-19T00:00:00.000Z',
+        has_request_reason: false,
+        has_physician_instruction: false,
+        has_carry_items: false,
+        has_patient_home_notes: false,
+        has_decline_reason: false,
+      },
+    });
   });
 
   it('rejects caller-supplied actor attribution before RLS or workflow writes', async () => {

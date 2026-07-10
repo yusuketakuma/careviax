@@ -102,14 +102,18 @@ describe('/api/pharmacy-drug-stocks/history', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      site: { id: 'site_1' },
-      stock: { id: 'stock_1', drug_master_id: 'drug_1' },
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: [
         { id: 'audit_stock', action: 'pharmacy_drug_stock_updated' },
         { id: 'audit_review_match', action: 'pharmacy_drug_stock_reviewed' },
         { id: 'audit_bulk_summary_match', action: 'pharmacy_drug_stock_bulk_import_summary' },
       ],
+      meta: {
+        site: { id: 'site_1' },
+        stock: { id: 'stock_1', drug_master_id: 'drug_1' },
+      },
     });
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -194,8 +198,8 @@ describe('/api/pharmacy-drug-stocks/history', () => {
     expect(response.status).toBe(200);
     expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
-      stock: null,
       data: [],
+      meta: { site: { id: 'site_1' }, stock: null },
     });
     expect(prismaMock.auditLog.findMany).not.toHaveBeenCalled();
   });

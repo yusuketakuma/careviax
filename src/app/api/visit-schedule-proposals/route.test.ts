@@ -662,7 +662,9 @@ describe('/api/visit-schedule-proposals', () => {
           },
         },
       ],
-      hasMore: true,
+      meta: {
+        has_more: true,
+      },
     });
     const listCall = visitScheduleProposalFindManyMock.mock.calls[0]?.[0];
     expect(listCall).toMatchObject({
@@ -996,7 +998,7 @@ describe('/api/visit-schedule-proposals', () => {
     ))!;
 
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({ replayed: false });
+    await expect(response.json()).resolves.toMatchObject({ meta: { replayed: false } });
     expect(visitScheduleProposalBatchFindUniqueMock).toHaveBeenCalledWith({
       where: {
         org_id_idempotency_key: {
@@ -1055,10 +1057,11 @@ describe('/api/visit-schedule-proposals', () => {
     expect(replay.status).toBe(200);
     const body = await replay.json();
     expect(body).toMatchObject({
-      replayed: true,
       data: [expect.objectContaining({ id: 'proposal_existing' })],
+      meta: { alerts: [], replayed: true },
     });
-    expect(body).not.toHaveProperty('diagnostics');
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body.meta).not.toHaveProperty('diagnostics');
     expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
@@ -1094,10 +1097,11 @@ describe('/api/visit-schedule-proposals', () => {
     expect(replay.status).toBe(200);
     const body = await replay.json();
     expect(body).toMatchObject({
-      replayed: true,
       data: [expect.objectContaining({ id: 'proposal_existing_legacy' })],
+      meta: { alerts: [], replayed: true },
     });
-    expect(body).not.toHaveProperty('diagnostics');
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body.meta).not.toHaveProperty('diagnostics');
     expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
@@ -1229,8 +1233,8 @@ describe('/api/visit-schedule-proposals', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      replayed: true,
       data: [expect.objectContaining({ id: 'proposal_existing_after_race' })],
+      meta: { replayed: true },
     });
     expect(visitScheduleProposalBatchFindUniqueMock).toHaveBeenCalledTimes(3);
     expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
@@ -2559,78 +2563,80 @@ describe('/api/visit-schedule-proposals', () => {
     expect(response.status).toBe(201);
     const body = await response.json();
     expect(body).toMatchObject({
-      diagnostics: {
-        accepted: [
-          expect.objectContaining({
-            emergency_reserve: {
-              code: 'emergency_reserve_preserved',
-              reserve_minutes: 60,
-              remaining_slack_minutes: 180,
-            },
-          }),
-        ],
-        rejected: [
-          expect.objectContaining({
-            reason_code: 'daily_capacity',
-            availability_reason_code: 'outside_pharmacy_operating_window',
-          }),
-        ],
-        deadline_policy: [
-          expect.objectContaining({
-            code: 'deadline_raw',
-            site_id: 'site_1',
-            date_key: '2026-04-10',
-          }),
-          expect.objectContaining({
-            code: 'deadline_buffer_applied',
-            from_date_key: '2026-04-10',
-            to_date_key: '2026-04-08',
-            value: 2,
-          }),
-          expect.objectContaining({
-            code: 'locked_date_deadline_violation',
-            value: '2026-04-10',
-          }),
-          expect.objectContaining({
-            code: 'deadline_buffer_scan_exhausted',
-            date_key: '2026-04-10',
-          }),
-        ],
-        review_candidates: expect.arrayContaining([
-          expect.objectContaining({
-            code: 'review_required_candidate',
-            reason_code: 'specialty_coverage_unmatched',
-            pharmacist_id: 'user_2',
-            proposed_date: '2026-04-03',
-            missing_label_count: 1,
-          }),
-          expect.objectContaining({
-            code: 'review_required_candidate',
-            reason_code: 'medication_stock_shortage_risk',
-            pharmacist_id: 'user_2',
-            proposed_date: '2026-04-03',
-            stock_risk_levels: ['urgent', 'shortage_expected'],
-            affected_snapshot_count: 2,
-            nearest_stockout_date: '2026-04-02',
-            minimum_days_until_stockout: 0,
-          }),
-        ]),
+      meta: {
+        diagnostics: {
+          accepted: [
+            expect.objectContaining({
+              emergency_reserve: {
+                code: 'emergency_reserve_preserved',
+                reserve_minutes: 60,
+                remaining_slack_minutes: 180,
+              },
+            }),
+          ],
+          rejected: [
+            expect.objectContaining({
+              reason_code: 'daily_capacity',
+              availability_reason_code: 'outside_pharmacy_operating_window',
+            }),
+          ],
+          deadline_policy: [
+            expect.objectContaining({
+              code: 'deadline_raw',
+              site_id: 'site_1',
+              date_key: '2026-04-10',
+            }),
+            expect.objectContaining({
+              code: 'deadline_buffer_applied',
+              from_date_key: '2026-04-10',
+              to_date_key: '2026-04-08',
+              value: 2,
+            }),
+            expect.objectContaining({
+              code: 'locked_date_deadline_violation',
+              value: '2026-04-10',
+            }),
+            expect.objectContaining({
+              code: 'deadline_buffer_scan_exhausted',
+              date_key: '2026-04-10',
+            }),
+          ],
+          review_candidates: expect.arrayContaining([
+            expect.objectContaining({
+              code: 'review_required_candidate',
+              reason_code: 'specialty_coverage_unmatched',
+              pharmacist_id: 'user_2',
+              proposed_date: '2026-04-03',
+              missing_label_count: 1,
+            }),
+            expect.objectContaining({
+              code: 'review_required_candidate',
+              reason_code: 'medication_stock_shortage_risk',
+              pharmacist_id: 'user_2',
+              proposed_date: '2026-04-03',
+              stock_risk_levels: ['urgent', 'shortage_expected'],
+              affected_snapshot_count: 2,
+              nearest_stockout_date: '2026-04-02',
+              minimum_days_until_stockout: 0,
+            }),
+          ]),
+        },
       },
     });
-    expect(JSON.stringify(body.diagnostics)).not.toContain('患者A');
-    expect(JSON.stringify(body.diagnostics)).not.toContain('アムロジピン');
-    expect(JSON.stringify(body.diagnostics)).not.toContain('secret-token');
-    expect(JSON.stringify(body.diagnostics)).not.toContain('継続薬');
-    expect(JSON.stringify(body.diagnostics)).not.toContain('玄関暗証番号1234');
-    expect(JSON.stringify(body.diagnostics)).not.toContain('TPN');
-    expect(JSON.stringify(body.diagnostics)).not.toContain('stock_item_secret');
-    expect(JSON.stringify(body.diagnostics)).not.toContain('999');
-    expect(JSON.stringify(body.diagnostics)).not.toContain('tablet');
-    expect(JSON.stringify(body.diagnostics)).not.toContain('raw_shortage_reason');
-    expect(JSON.stringify(body.diagnostics)).not.toContain('hash_secret');
-    expect(JSON.stringify(body.diagnostics)).not.toContain('fingerprint_secret');
-    expect(JSON.stringify(body.diagnostics)).not.toContain('ワルファリン');
-    expect(body.diagnostics.deadline_policy[3]).not.toHaveProperty('value');
+    expect(JSON.stringify(body.meta.diagnostics)).not.toContain('患者A');
+    expect(JSON.stringify(body.meta.diagnostics)).not.toContain('アムロジピン');
+    expect(JSON.stringify(body.meta.diagnostics)).not.toContain('secret-token');
+    expect(JSON.stringify(body.meta.diagnostics)).not.toContain('継続薬');
+    expect(JSON.stringify(body.meta.diagnostics)).not.toContain('玄関暗証番号1234');
+    expect(JSON.stringify(body.meta.diagnostics)).not.toContain('TPN');
+    expect(JSON.stringify(body.meta.diagnostics)).not.toContain('stock_item_secret');
+    expect(JSON.stringify(body.meta.diagnostics)).not.toContain('999');
+    expect(JSON.stringify(body.meta.diagnostics)).not.toContain('tablet');
+    expect(JSON.stringify(body.meta.diagnostics)).not.toContain('raw_shortage_reason');
+    expect(JSON.stringify(body.meta.diagnostics)).not.toContain('hash_secret');
+    expect(JSON.stringify(body.meta.diagnostics)).not.toContain('fingerprint_secret');
+    expect(JSON.stringify(body.meta.diagnostics)).not.toContain('ワルファリン');
+    expect(body.meta.diagnostics.deadline_policy[3]).not.toHaveProperty('value');
     expect(auditLogCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -3004,12 +3010,14 @@ describe('/api/visit-schedule-proposals', () => {
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
-      alerts: expect.arrayContaining([
-        expect.objectContaining({
-          type: 'pharmacist_weekly_capacity',
-          severity: 'warning',
-        }),
-      ]),
+      meta: {
+        alerts: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'pharmacist_weekly_capacity',
+            severity: 'warning',
+          }),
+        ]),
+      },
     });
   });
 

@@ -246,6 +246,27 @@ describe('ContactProfilesContent', () => {
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith('保存に失敗しました'));
   });
 
+  it('rejects a legacy successful contact profile save', async () => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+    mockContactProfilesFetch(
+      new Response(JSON.stringify({ message: '連絡先を保存しました' }), { status: 200 }),
+    );
+
+    renderContent();
+    await screen.findByTestId('contact-delivery-target-edit');
+
+    fireEvent.change(await screen.findByLabelText('宛先'), {
+      target: { value: '山本ケアプランセンター 更新' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '送付先を保存する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('保存に失敗しました');
+    });
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalledWith('連絡先を保存しました');
+  });
+
   it('shows delivery target review details in the current workspace', async () => {
     renderContent();
 

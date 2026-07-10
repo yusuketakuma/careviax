@@ -13,6 +13,7 @@
 - `handoff-confirmation-task-inventory.ts` : PHI-minimized read-only inventory for historical unassigned `handoff_confirmation` tasks
 - `link-prisma-client.mjs` : Prisma client の postinstall 補助
 - `check-plans-active-board.mjs` : `Plans.md` の Active Plan Board v9 件数・active queue・archive/reference 境界・allowlist debt 実測値を検査
+- `check-client-json-schema.mjs` : production `readApiJson` をTypeScript ASTで分類し、runtime schema未接続のpath/category countについて新規・増加・stale baselineを拒否する
 - `perf-smoke.ts` : API performance smoke test
 - `build-phos-lambda-artifact.ts` : PH-OS Lambda artifact builder for deploy proof
 - `validate-phos-deploy-template.ts` : PH-OS CloudFormation template export + external validation report

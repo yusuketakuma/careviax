@@ -6,6 +6,11 @@ export type ApiError = {
   details?: unknown;
 };
 
+export type ApiSuccess<TData, TMeta extends object = Record<string, unknown>> = {
+  data: TData;
+  meta?: TMeta;
+};
+
 const defaultLabelKeysByCode: Partial<Record<string, string>> = {
   AUTH_UNAUTHENTICATED: 'api.error.auth.unauthenticated',
   AUTH_NO_ORG: 'api.error.auth.no_org',
@@ -15,17 +20,23 @@ const defaultLabelKeysByCode: Partial<Record<string, string>> = {
   WORKFLOW_CONFLICT: 'api.error.workflow.conflict',
 };
 
-export function success<T>(data: T, status = 200) {
-  return NextResponse.json(data, { status });
+export function success<TData, TMeta extends object = Record<string, unknown>>(
+  payload: ApiSuccess<TData, TMeta>,
+  status = 200,
+) {
+  return NextResponse.json(payload, { status });
 }
 
 const jsonPayloadEncoder = new TextEncoder();
 
-export function successWithMeasuredJsonPayload<T>(data: T, status = 200) {
-  const response = success(data, status);
+export function successWithMeasuredJsonPayload<
+  TData,
+  TMeta extends object = Record<string, unknown>,
+>(payload: ApiSuccess<TData, TMeta>, status = 200) {
+  const response = success(payload, status);
   response.headers.set(
     'Content-Length',
-    String(jsonPayloadEncoder.encode(JSON.stringify(data)).length),
+    String(jsonPayloadEncoder.encode(JSON.stringify(payload)).length),
   );
   return response;
 }
@@ -44,20 +55,6 @@ export function validationError(message: string, details?: unknown) {
  */
 export function internalError(message = 'サーバー内部でエラーが発生しました') {
   return error('INTERNAL_ERROR', message, 500);
-}
-
-export function compatibilityError(
-  code: string,
-  message: string,
-  status: number,
-  details?: unknown,
-  fieldErrors?: unknown,
-) {
-  return NextResponse.json({ error: message, code, message, details, fieldErrors }, { status });
-}
-
-export function validationCompatibilityError(message: string, details?: unknown) {
-  return compatibilityError('VALIDATION_ERROR', message, 400, details, details);
 }
 
 export function notFound(message = 'リソースが見つかりません') {

@@ -1368,13 +1368,40 @@ describe('DrugMasterContent', () => {
     const orgHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgJsonHeaders).mockReturnValue(jsonHeaders);
     vi.mocked(buildOrgHeaders).mockReturnValue(orgHeaders);
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({ data: { request: { status: 'approved' }, stock: null } }, 200),
-    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/api/pharmacy-drug-stock-templates') && init?.method === 'POST') {
+        return jsonResponse(
+          {
+            data: { id: 'template_created', name: '現在の拠点セット' },
+            meta: { site: { id: 'site_1', name: '本店' } },
+          },
+          201,
+        );
+      }
+      if (String(input).includes('__helper_template__') && init?.method === 'DELETE') {
+        return jsonResponse(
+          {
+            data: { id: 'template_1', name: '在宅内科 標準セット' },
+            meta: { deleted: true },
+          },
+          200,
+        );
+      }
+      return jsonResponse({ data: { request: { status: 'approved' }, stock: null } }, 200);
+    });
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     try {
       render(<DrugMasterContent variant="formulary" />);
+
+      fireEvent.change(screen.getByLabelText('採用品テンプレート名'), {
+        target: { value: '現在の拠点セット' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: '現在の拠点から作成' }));
+      await expect(lastMutationOptions.current!.mutationFn!()).resolves.toMatchObject({
+        data: { id: 'template_created', name: '現在の拠点セット' },
+        meta: { site: { id: 'site_1', name: '本店' } },
+      });
 
       fireEvent.click(screen.getByRole('button', { name: '承認' }));
       fireEvent.click(screen.getByRole('button', { name: '承認' }));
@@ -1413,6 +1440,19 @@ describe('DrugMasterContent', () => {
       expect(fetchMock).toHaveBeenLastCalledWith(
         '/api/pharmacy-drug-stock-templates/__helper_template__',
         expect.objectContaining({ method: 'DELETE', headers: orgHeaders }),
+      );
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: { id: 'template_1', name: '在宅内科 標準セット' },
+            deleted: true,
+          },
+          200,
+        ),
+      );
+      await expect(lastMutationOptions.current!.mutationFn!()).rejects.toThrow(
+        '採用品テンプレートの削除に失敗しました',
       );
     } finally {
       vi.unstubAllGlobals();
@@ -3028,6 +3068,42 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     }
   }
 
+  it('normalizes the current drug-master meta page and rejects legacy root cursor fields', async () => {
+    const currentRow = {
+      id: 'drug_1',
+      yj_code: '123456789012',
+      drug_name: '現行契約薬',
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [currentRow],
+          meta: { total_count: 2, has_more: true, next_cursor: '50' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ data: [currentRow], totalCount: 2, hasMore: true, nextCursor: '50' }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DrugMasterContent />);
+
+    const queryFn = capturedQueryOptions.find((config) => config.queryKey[0] === 'drug-masters')
+      ?.queryFn as ((context: { pageParam?: string }) => Promise<unknown>) | undefined;
+    await expect(queryFn?.({ pageParam: undefined })).resolves.toEqual({
+      data: [currentRow],
+      totalCount: 2,
+      hasMore: true,
+      nextCursor: '50',
+    });
+    await expect(queryFn?.({ pageParam: undefined })).rejects.toThrow(
+      '医薬品マスターの取得に失敗しました',
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it('keeps API messages from failed core read queries', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -3210,8 +3286,15 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     queuePendingFormularyRequest();
     detailDataMock.current = buildGenericDetail();
     const detailBody = { ...buildGenericDetail(), drug_name: '成功詳細薬' };
+    const stockConfigResponseBody = {
+      data: null,
+      meta: { site: { id: 'site_1', name: '本店' } },
+    };
     const stockConfigBody = { site: { id: 'site_1', name: '本店' }, data: null };
-    const stockHistoryBody = { site: { id: 'site_1', name: '本店' }, stock: null, data: [] };
+    const stockHistoryBody = {
+      data: [],
+      meta: { site: { id: 'site_1', name: '本店' }, stock: null },
+    };
     const impactBody = {
       totals: { stocked_count: 0, action_required_count: 0 },
       selected_queue: { key: 'action_required', rows: [], total_count: 0 },
@@ -3226,7 +3309,15 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
       unused_stocked: [],
       unmatched_prescribed: [],
     };
-    const requestsBody = { data: [], summary: { notification_level: 'clear' } };
+    const requestSummary = {
+      status: 'pending' as const,
+      total_count: 0,
+      overdue_count: 0,
+      overdue_days: 7,
+      oldest_pending_created_at: null,
+      notification_level: 'clear' as const,
+    };
+    const requestsBody = { data: [], meta: { summary: requestSummary } };
     const templatesBody = { data: [] };
     const genericCandidatesBody = { data: [] };
     const recommendationsBody = {
@@ -3257,7 +3348,9 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
       }
       if (url.includes('/pharmacy-drug-stock-requests')) return jsonResponse(requestsBody, 200);
       if (url.includes('/pharmacy-drug-stock-templates')) return jsonResponse(templatesBody, 200);
-      if (url.includes('/pharmacy-drug-stocks?')) return jsonResponse(stockConfigBody, 200);
+      if (url.includes('/pharmacy-drug-stocks?')) {
+        return jsonResponse(stockConfigResponseBody, 200);
+      }
       if (url.includes('/drug-masters?')) return jsonResponse(genericCandidatesBody, 200);
       if (url.includes('/drug-masters/')) return jsonResponse({ data: detailBody }, 200);
       return jsonResponse({ message: `unexpected fetch: ${url}` }, 500);
@@ -3288,7 +3381,10 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
       await expect(latestQueryFn('pharmacy-drug-stock-usage-mismatch')()).resolves.toEqual(
         usageMismatchBody,
       );
-      await expect(latestQueryFn('pharmacy-drug-stock-requests')()).resolves.toEqual(requestsBody);
+      await expect(latestQueryFn('pharmacy-drug-stock-requests')()).resolves.toEqual({
+        data: [],
+        summary: requestSummary,
+      });
       await expect(latestQueryFn('pharmacy-drug-stock-templates')()).resolves.toEqual(
         templatesBody,
       );
@@ -3299,6 +3395,230 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
         recommendationsBody,
       );
       await expect(latestQueryFn('ingredient-group', 3)()).resolves.toEqual(ingredientGroupBody);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects legacy root stock-history metadata', async () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/pharmacy-drug-stocks/history')) {
+          return jsonResponse({ site: { id: 'site_1', name: '本店' }, stock: null, data: [] });
+        }
+        return jsonResponse({ data: [] });
+      }),
+    );
+
+    try {
+      render(<DrugMasterContent variant="formulary" />);
+      fireEvent.click(screen.getByText('採用追加'));
+      const historyQuery = capturedQueryOptions
+        .filter((candidate) => candidate.queryKey[0] === 'pharmacy-drug-stock-history')
+        .at(-1);
+
+      await expect(historyQuery?.queryFn?.()).rejects.toThrow('採用品履歴の取得に失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('normalizes current request metadata and rejects legacy root request summary', async () => {
+    const summary = {
+      status: 'pending' as const,
+      total_count: 0,
+      overdue_count: 0,
+      overdue_days: 7,
+      oldest_pending_created_at: null,
+      notification_level: 'clear' as const,
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ data: [], meta: { summary } }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], summary }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<DrugMasterContent variant="formulary" />);
+      const requestQuery = capturedQueryOptions
+        .filter((candidate) => candidate.queryKey[0] === 'pharmacy-drug-stock-requests')
+        .at(-1);
+
+      await expect(requestQuery?.queryFn?.()).resolves.toEqual({ data: [], summary });
+      await expect(requestQuery?.queryFn?.()).rejects.toThrow('採用品変更申請の取得に失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('accepts the current request-create envelope and rejects legacy root metadata', async () => {
+    queuePendingFormularyRequest('other_drug');
+    const detail = buildGenericDetail();
+    detailDataMock.current = detail;
+    drugMastersPagesMock.current = [
+      { data: [detail], totalCount: 1, hasMore: false, nextCursor: undefined },
+    ];
+    const createdRequest = {
+      id: 'request_created',
+      site_id: 'site_1',
+      drug_master_id: 'drug_generic',
+      status: 'pending' as const,
+      action_type: 'adopt',
+      requested_payload: { is_stocked: true },
+      reason: '採用品追加の承認依頼',
+      created_at: '2026-05-27T00:00:00.000Z',
+    };
+    const metadata = {
+      site: { id: 'site_1', name: '本店' },
+      drug: { id: 'drug_generic', drug_name: '後発薬A', generic_name: 'イブプロフェン' },
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ data: createdRequest, meta: metadata }, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: createdRequest, ...metadata }, 201));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<DrugMasterContent variant="formulary" />);
+      act(() => {
+        (dataTablePropsMock.current?.onRowClick as (index: number) => void)(0);
+      });
+      fireEvent.click(screen.getByRole('button', { name: '変更申請' }));
+      const [requestPayload] = mutationMutateMock.mock.calls.at(-1) ?? [];
+
+      await expect(runCurrentMutation(requestPayload)).resolves.toEqual({
+        data: createdRequest,
+        meta: metadata,
+      });
+      await expect(runCurrentMutation(requestPayload)).rejects.toThrow(
+        '採用品変更申請の作成に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('normalizes current stock detail metadata and rejects legacy root site metadata', async () => {
+    const site = { id: 'site_1', name: '本店' };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ data: null, meta: { site } }))
+      .mockResolvedValueOnce(jsonResponse({ data: null, site }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<DrugMasterContent variant="formulary" />);
+      const stockQuery = capturedQueryOptions
+        .filter((candidate) => candidate.queryKey[0] === 'pharmacy-drug-stock')
+        .at(-1);
+
+      await expect(stockQuery?.queryFn?.()).resolves.toEqual({ data: null, site });
+      await expect(stockQuery?.queryFn?.()).rejects.toThrow('採用品設定の取得に失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('normalizes current stock-list metadata and rejects legacy root metadata', async () => {
+    const row = buildReviewDueStock();
+    const site = { id: 'site_1', name: '本店' };
+    const metadata = {
+      site,
+      limit: 200,
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      has_more: false,
+      count_basis: 'pharmacy_drug_stocks' as const,
+      filters_applied: {
+        site_id: 'site_1',
+        q: null,
+        review_due: true,
+        missing_reorder_point: false,
+      },
+    };
+    const legacyMetadata = {
+      limit: metadata.limit,
+      total_count: metadata.total_count,
+      visible_count: metadata.visible_count,
+      hidden_count: metadata.hidden_count,
+      has_more: metadata.has_more,
+      count_basis: metadata.count_basis,
+      filters_applied: metadata.filters_applied,
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ data: [row], meta: metadata }))
+      .mockResolvedValueOnce(jsonResponse({ data: [row], site, metadata: legacyMetadata }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<DrugMasterContent variant="formulary" />);
+      const reviewQuery = capturedQueryOptions
+        .filter(
+          (candidate) =>
+            candidate.queryKey[0] === 'pharmacy-drug-stocks' &&
+            candidate.queryKey[3] === 'review-due',
+        )
+        .at(-1);
+
+      await expect(reviewQuery?.queryFn?.()).resolves.toEqual({ data: [row] });
+      await expect(reviewQuery?.queryFn?.()).rejects.toThrow(
+        '採用薬レビュー対象の取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('normalizes current stock-save metadata and rejects legacy root metadata', async () => {
+    const detail = buildGenericDetail();
+    detailDataMock.current = detail;
+    drugMastersPagesMock.current = [
+      { data: [detail], totalCount: 1, hasMore: false, nextCursor: undefined },
+    ];
+    const site = { id: 'site_1', name: '本店' };
+    const savedStock = {
+      id: 'stock_saved',
+      site_id: 'site_1',
+      drug_master_id: 'drug_generic',
+      is_stocked: true,
+      stock_qty: null,
+      reorder_point: null,
+      preferred_generic_id: null,
+      adoption_source: 'manual',
+      adoption_note: null,
+      last_reviewed_at: null,
+      reviewed_by_id: null,
+      follow_up_status: null,
+      follow_up_reason: null,
+      follow_up_due_date: null,
+      follow_up_resolved_at: null,
+      updated_at: '2026-05-27T00:00:00.000Z',
+      preferred_generic: null,
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ data: savedStock, meta: { site } }))
+      .mockResolvedValueOnce(jsonResponse({ data: savedStock, site }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<DrugMasterContent variant="formulary" />);
+      act(() => {
+        (dataTablePropsMock.current?.onRowClick as (index: number) => void)(0);
+      });
+      fireEvent.click(screen.getByRole('button', { name: '採用品に登録' }));
+      const [stockPayload] = mutationMutateMock.mock.calls.at(-1) ?? [];
+
+      await expect(runCurrentMutation(stockPayload)).resolves.toEqual({ data: savedStock, site });
+      await expect(runCurrentMutation(stockPayload)).rejects.toThrow(
+        '採用品設定の保存に失敗しました',
+      );
     } finally {
       vi.unstubAllGlobals();
     }

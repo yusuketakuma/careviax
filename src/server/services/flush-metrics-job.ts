@@ -21,7 +21,7 @@ export async function runFlushMetricsJob<TPayload extends Record<string, unknown
 }: FlushMetricsJobOptions<TPayload>): Promise<NextResponse> {
   try {
     await flushPerformanceMetricsToCloudWatch();
-    return success(successPayload());
+    return success({ data: successPayload() });
   } catch (err) {
     logger.error(
       {

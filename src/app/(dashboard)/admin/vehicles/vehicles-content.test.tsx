@@ -124,7 +124,10 @@ function buildVehicleListMeta(visibleCount: number, totalCount = visibleCount, l
   };
 }
 
-function stubFetchWithVehicle(vehicle = vehicleFixture()) {
+function stubFetchWithVehicle(
+  vehicle = vehicleFixture(),
+  mutationOverride?: (url: string, method: string | undefined) => Response | undefined,
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method;
@@ -144,6 +147,9 @@ function stubFetchWithVehicle(vehicle = vehicleFixture()) {
         status: 200,
       });
     }
+
+    const overridden = mutationOverride?.(url, method);
+    if (overridden) return overridden;
 
     if (url === '/api/visit-vehicle-resources' && method === 'POST') {
       return new Response(JSON.stringify({ data: { ...vehicle, id: 'vehicle_new' } }), {
@@ -250,6 +256,28 @@ describe('VehiclesContent', () => {
       available: true,
       next_inspection_date: '2026-09-30',
     });
+  });
+
+  it('rejects a legacy successful vehicle save without clearing the draft', async () => {
+    stubFetchWithVehicle(vehicleFixture(), (url, method) =>
+      url === '/api/visit-vehicle-resources' && method === 'POST'
+        ? new Response(JSON.stringify({ message: '車両を登録しました' }), { status: 201 })
+        : undefined,
+    );
+    renderContent();
+
+    await screen.findByRole('button', { name: '軽バン1号 を編集' });
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    fireEvent.change(screen.getByLabelText('車両名'), {
+      target: { value: '社用車2号' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('保存に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('車両名') as HTMLInputElement).value).toBe('社用車2号');
   });
 
   it('surfaces API error messages when vehicle save fails', async () => {
@@ -392,6 +420,23 @@ describe('VehiclesContent', () => {
     expect(JSON.parse((patchCall![1] as RequestInit).body as string)).toEqual({
       available: false,
     });
+  });
+
+  it('rejects a legacy successful availability update without showing success', async () => {
+    stubFetchWithVehicle(vehicleFixture(), (url, method) =>
+      url === '/api/visit-vehicle-resources/vehicle_1' && method === 'PATCH'
+        ? new Response(JSON.stringify({ message: '車両を無効化しました' }), { status: 200 })
+        : undefined,
+    );
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '軽バン1号 を無効化' }));
+    fireEvent.click(screen.getByRole('button', { name: '無効化する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('状態変更に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('surfaces API error messages when vehicle availability update fails', async () => {

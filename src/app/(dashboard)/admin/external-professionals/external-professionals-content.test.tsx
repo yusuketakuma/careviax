@@ -150,13 +150,18 @@ function linkedPatientsResponseFixture() {
         archive: { status: 'active', archived: false, archived_at: null },
       },
     ],
-    metadata: {
+    meta: {
       limit: 20,
       total_count: 2,
       visible_count: 1,
       hidden_count: 1,
       has_more: true,
       count_basis: 'care_team_links',
+      filters_applied: {
+        external_professional_id: 'external_1',
+        archive_status: 'active',
+        assignment_scoped: false,
+      },
     },
   };
 }
@@ -176,10 +181,20 @@ function stubFetchWithProfessional(
       return new Response(
         JSON.stringify({
           data: [professional],
-          total_count: 1,
-          visible_count: 1,
-          hidden_count: 0,
-          truncated: false,
+          meta: {
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
+            truncated: false,
+            count_basis: 'external_professionals',
+            has_more: false,
+            filters_applied: {
+              q: null,
+              profession_type: null,
+              facility_id: null,
+              preferred_contact_method: null,
+            },
+          },
         }),
         { status: 200 },
       );
@@ -252,6 +267,72 @@ describe('ExternalProfessionalsContent', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/facilities?', {
       headers: buildOrgHeaders('org_1'),
     });
+  });
+
+  it('rejects legacy root list metadata instead of rendering a partial list', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/admin/external-professionals?') {
+        return new Response(
+          JSON.stringify({
+            data: [professionalFixture()],
+            total_count: 1,
+            visible_count: 1,
+            hidden_count: 0,
+            truncated: false,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/admin/facilities?') {
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    expect(await screen.findByText('他職種マスターを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('青葉 訪問看護')).toBeNull();
+  });
+
+  it('rejects unknown list filter enum values instead of trusting the static type', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/admin/external-professionals?') {
+        return new Response(
+          JSON.stringify({
+            data: [professionalFixture()],
+            meta: {
+              total_count: 1,
+              visible_count: 1,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'external_professionals',
+              has_more: false,
+              filters_applied: {
+                q: null,
+                profession_type: 'unknown_profession',
+                facility_id: null,
+                preferred_contact_method: null,
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/admin/facilities?') {
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    expect(await screen.findByText('他職種マスターを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('青葉 訪問看護')).toBeNull();
   });
 
   it('keeps list actions and search at the PH-OS touch target size', async () => {
@@ -338,10 +419,20 @@ describe('ExternalProfessionalsContent', () => {
         return new Response(
           JSON.stringify({
             data: [professionalFixture()],
-            total_count: 1,
-            visible_count: 1,
-            hidden_count: 0,
-            truncated: false,
+            meta: {
+              total_count: 1,
+              visible_count: 1,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'external_professionals',
+              has_more: false,
+              filters_applied: {
+                q: null,
+                profession_type: null,
+                facility_id: null,
+                preferred_contact_method: null,
+              },
+            },
           }),
           { status: 200 },
         );
@@ -382,10 +473,20 @@ describe('ExternalProfessionalsContent', () => {
         return new Response(
           JSON.stringify({
             data: [professionalFixture()],
-            total_count: 1,
-            visible_count: 1,
-            hidden_count: 0,
-            truncated: false,
+            meta: {
+              total_count: 1,
+              visible_count: 1,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'external_professionals',
+              has_more: false,
+              filters_applied: {
+                q: null,
+                profession_type: null,
+                facility_id: null,
+                preferred_contact_method: null,
+              },
+            },
           }),
           { status: 200 },
         );

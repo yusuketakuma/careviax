@@ -30,10 +30,12 @@ const authenticatedPOST = withAuthContext(
 
       return success(
         {
-          patient: result.patient,
-          case: result.case,
-          warnings: result.warnings,
-          metadata: result.metadata,
+          data: {
+            patient: result.patient,
+            case: result.case,
+            warnings: result.warnings,
+          },
+          meta: result.metadata,
         },
         201,
       );

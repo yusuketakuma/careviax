@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { stubJsonFetch } from '@/test/fetch-test-utils';
+import { jsonResponse, stubJsonFetch } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -276,7 +276,16 @@ describe('MedicationsContent url/header convergence', () => {
   }
 
   function stubFetch() {
-    return stubJsonFetch({ data: [] });
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+      const url = String(input);
+      return jsonResponse(
+        url.includes('/api/medication-issues')
+          ? { data: [], meta: { has_more: false, next_cursor: null } }
+          : { data: [] },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
   }
 
   beforeEach(() => {
@@ -324,6 +333,22 @@ describe('MedicationsContent url/header convergence', () => {
         'org_1',
       ]);
       expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects legacy root medication-issue cursor metadata', async () => {
+    const { queryConfigs } = renderMeds();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ data: [], hasMore: false, nextCursor: null })),
+    );
+
+    try {
+      await expect(queryConfigs.get('medication-issues')!.queryFn()).rejects.toThrow(
+        '課題の取得に失敗しました',
+      );
     } finally {
       vi.unstubAllGlobals();
     }

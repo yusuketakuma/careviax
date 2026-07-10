@@ -148,6 +148,10 @@ describe('/api/pharmacy-contracts POST', () => {
     const response = await GET(createGetRequest('?status=terminated'));
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: [],
+      meta: { has_more: false, next_cursor: null },
+    });
     expect(pharmacyContractFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ status: 'terminated' }),

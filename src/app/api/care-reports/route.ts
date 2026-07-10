@@ -615,7 +615,10 @@ async function authenticatedGET(req: NextRequest) {
             return withSensitiveNoStore(
               successWithMeasuredJsonPayload({
                 data: [],
-                hasMore: false,
+                meta: {
+                  has_more: false,
+                  next_cursor: null,
+                },
               }),
             );
           }
@@ -623,9 +626,11 @@ async function authenticatedGET(req: NextRequest) {
           return withSensitiveNoStore(
             successWithMeasuredJsonPayload({
               data: [],
-              hasMore: false,
-              nextCursor: undefined,
-              deliverySummary: buildDeliverySummary([]),
+              meta: {
+                has_more: false,
+                next_cursor: null,
+                delivery_summary: buildDeliverySummary([]),
+              },
             }),
           );
         }
@@ -731,7 +736,10 @@ async function authenticatedGET(req: NextRequest) {
                   ? { name: patientNameById.get(report.patient_id)! }
                   : null,
               })),
-              hasMore: page.hasMore,
+              meta: {
+                has_more: page.hasMore,
+                next_cursor: page.nextCursor ?? null,
+              },
             }),
           );
         }
@@ -884,10 +892,12 @@ async function authenticatedGET(req: NextRequest) {
         return withSensitiveNoStore(
           successWithMeasuredJsonPayload({
             data,
-            hasMore: canUseDbPagination ? page.hasMore : false,
-            ...(canUseDbPagination && page.nextCursor ? { nextCursor: page.nextCursor } : {}),
-            deliverySummary,
-            ...(keywordSearchMetadata ? { search: keywordSearchMetadata } : {}),
+            meta: {
+              has_more: canUseDbPagination ? page.hasMore : false,
+              next_cursor: canUseDbPagination ? (page.nextCursor ?? null) : null,
+              delivery_summary: deliverySummary,
+              ...(keywordSearchMetadata ? { search: keywordSearchMetadata } : {}),
+            },
           }),
         );
       },

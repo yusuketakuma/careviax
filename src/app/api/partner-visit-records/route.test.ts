@@ -220,7 +220,14 @@ describe('/api/partner-visit-records', () => {
     );
     expect(JSON.stringify(where.share_case.is)).toContain('"revoked_at":null');
     expect(JSON.stringify(where.share_case.is)).toContain('"valid_until":null');
-    const responseText = JSON.stringify(await response.json());
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
+      data: [expect.objectContaining({ id: 'partner_visit_record_1', status: 'submitted' })],
+      meta: { has_more: false, next_cursor: null },
+    });
+    expect(responseBody).not.toHaveProperty('hasMore');
+    expect(responseBody).not.toHaveProperty('nextCursor');
+    const responseText = JSON.stringify(responseBody);
     expect(responseText).toContain('has_record_content');
     expect(responseText).toContain('attachment_count');
     expect(responseText).not.toContain('山田花子');

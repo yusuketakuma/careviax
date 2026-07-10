@@ -15,7 +15,7 @@ describe('schedule day route order apply helpers', () => {
   });
 
   it('applies draft order through the visit schedule route client', async () => {
-    const applyRouteUpdates = vi.fn(async () => ({ ok: true }));
+    const applyRouteUpdates = vi.fn(async () => undefined);
 
     await expect(
       applyScheduleDayRouteOrderDraft({
@@ -24,7 +24,7 @@ describe('schedule day route order apply helpers', () => {
         draftScheduleIds: ['schedule_2', 'schedule_1'],
         applyRouteUpdates,
       }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toBeUndefined();
 
     expect(applyRouteUpdates).toHaveBeenCalledWith({
       orgId: 'org_1',
@@ -36,7 +36,7 @@ describe('schedule day route order apply helpers', () => {
   });
 
   it('rejects empty drafts and missing route plans before calling the route client', async () => {
-    const applyRouteUpdates = vi.fn(async () => ({ ok: true }));
+    const applyRouteUpdates = vi.fn(async () => undefined);
 
     await expect(
       applyScheduleDayRouteOrderDraft({

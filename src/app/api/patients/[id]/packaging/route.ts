@@ -115,11 +115,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   });
 
   return success({
-    data: updated,
-    effective_summary: buildPackagingInstructions({
-      method: updated.default_packaging_method ?? null,
-      detail: updated.notes ?? null,
-      medicationBoxColor: updated.medication_box_color ?? null,
-    }),
+    data: {
+      packaging_profile: updated,
+      effective_summary: buildPackagingInstructions({
+        method: updated.default_packaging_method ?? null,
+        detail: updated.notes ?? null,
+        medicationBoxColor: updated.medication_box_color ?? null,
+      }),
+    },
   });
 }

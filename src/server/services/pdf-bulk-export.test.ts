@@ -405,7 +405,6 @@ describe('pdf-bulk-export', () => {
           record_count: 2,
           metadata: {
             job_id: 'job_1',
-            file_id: storedFileId,
             requested_count: 2,
             success_count: 2,
             failed_count: 0,
@@ -418,6 +417,7 @@ describe('pdf-bulk-export', () => {
         }),
       }),
     });
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain(storedFileId);
   });
 
   it('fails jobs with blank persisted patient ids before rendering PDFs', async () => {

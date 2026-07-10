@@ -82,10 +82,12 @@ describe('POST /api/referrals', () => {
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toEqual({
-      patient: { id: 'patient_new' },
-      case: { id: 'case_new' },
-      warnings: [],
-      metadata: { duplicate_count: 0 },
+      data: {
+        patient: { id: 'patient_new' },
+        case: { id: 'case_new' },
+        warnings: [],
+      },
+      meta: { duplicate_count: 0 },
     });
     expect(createReferralIntakeMock).toHaveBeenCalledOnce();
     expect(createReferralIntakeMock).toHaveBeenNthCalledWith(
@@ -123,20 +125,22 @@ describe('POST /api/referrals', () => {
     expect(response.status).toBe(201);
     const body = await response.json();
     expect(body).toEqual({
-      patient: { id: 'patient_new' },
-      case: { id: 'case_new' },
-      warnings: [
-        {
-          code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
-          severity: 'warning',
-          message: '重複候補を確認済みとして紹介受付を登録しました。',
-        },
-      ],
-      metadata: { duplicate_count: 1 },
+      data: {
+        patient: { id: 'patient_new' },
+        case: { id: 'case_new' },
+        warnings: [
+          {
+            code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
+            severity: 'warning',
+            message: '重複候補を確認済みとして紹介受付を登録しました。',
+          },
+        ],
+      },
+      meta: { duplicate_count: 1 },
     });
-    expect(Object.keys(body).sort()).toEqual(['case', 'metadata', 'patient', 'warnings']);
-    expect(Object.keys(body.patient).sort()).toEqual(['id']);
-    expect(Object.keys(body.case).sort()).toEqual(['id']);
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(Object.keys(body.data.patient).sort()).toEqual(['id']);
+    expect(Object.keys(body.data.case).sort()).toEqual(['id']);
     expect(createReferralIntakeMock).toHaveBeenCalledOnce();
     expect(createReferralIntakeMock).toHaveBeenNthCalledWith(
       1,

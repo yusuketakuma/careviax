@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -336,7 +336,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(buildCreatePayload(createForm)),
       });
-      return readApiJson<unknown>(response, '検査値の登録に失敗しました');
+      return readApiAcknowledgement(response, '検査値の登録に失敗しました');
     },
     onSuccess: async () => {
       toast.success('検査値を登録しました');
@@ -362,7 +362,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
           body: JSON.stringify(buildEditPayload(editDrafts[labId])),
         },
       );
-      return readApiJson<unknown>(response, '検査値の更新に失敗しました');
+      return readApiAcknowledgement(response, '検査値の更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('検査値を更新しました');

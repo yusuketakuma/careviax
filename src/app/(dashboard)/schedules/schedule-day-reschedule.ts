@@ -1,4 +1,4 @@
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import type { VisitPriority } from './day-view.shared';
@@ -47,7 +47,7 @@ export async function generateScheduleDayRescheduleProposals({
     body: JSON.stringify(form),
   });
 
-  return readApiJson<unknown>(res, 'リスケ候補の生成に失敗しました');
+  return readApiAcknowledgement(res, 'リスケ候補の生成に失敗しました');
 }
 
 export async function handleScheduleDayRescheduleSuccess({

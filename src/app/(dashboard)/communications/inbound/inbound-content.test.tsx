@@ -657,9 +657,9 @@ describe('InboundCommunicationsContent', () => {
     };
     expect(stockQueryAfterDetail.enabled).toBe(true);
 
-    fireEvent.change(selector.getByRole('combobox'), {
-      target: { value: 'stock_item_1' },
-    });
+    // shadcn Select: トリガー click → option click(option はポータル描画のため screen 全体から)。
+    fireEvent.click(selector.getByLabelText('対象薬剤'));
+    fireEvent.click(screen.getByRole('option', { name: '経皮鎮痛貼付剤 / 枚' }));
     fireEvent.change(selector.getByPlaceholderText('明示入力'), {
       target: { value: '4' },
     });
@@ -1013,7 +1013,13 @@ describe('InboundCommunicationsContent', () => {
     fireEvent.click(intakeForm.getByRole('button', { name: /メール/ }));
     fireEvent.change(intakeForm.getByLabelText('患者ID'), { target: { value: 'patient_1' } });
     fireEvent.change(intakeForm.getByLabelText('送信者'), { target: { value: '訪問看護師A' } });
-    fireEvent.change(intakeForm.getByLabelText('職種'), { target: { value: 'nurse' } });
+    // shadcn(Base UI) Select: virtual click(detail=0)は highlighted item しか選択しないため、
+    // pointerDown → 実クリック(detail:1) で非 highlight の option も確実に選択する。
+    fireEvent.click(intakeForm.getByLabelText('職種'));
+    const roleOption = screen.getByRole('option', { name: '訪問看護師' });
+    fireEvent.pointerDown(roleOption);
+    fireEvent.click(roleOption, { detail: 1 });
+    expect(intakeForm.getByLabelText('職種').textContent).toContain('訪問看護師');
     fireEvent.change(intakeForm.getByLabelText('所属'), {
       target: { value: '訪問看護ステーションA' },
     });

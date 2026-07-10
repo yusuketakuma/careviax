@@ -33,7 +33,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { SkeletonRows } from '@/components/ui/loading';
 import { MonthGrid } from '@/components/ui/month-grid';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   buildBusinessHolidayApiPath,
@@ -254,7 +254,7 @@ export function BusinessHolidaysContent() {
           site_id: currentForm.site_id || undefined,
         }),
       });
-      await readApiJson<unknown>(response, '保存に失敗しました');
+      await readApiAcknowledgement(response, '保存に失敗しました');
       return { wasEditing: Boolean(currentEditingId) };
     },
     onSuccess: async ({ wasEditing }) => {
@@ -276,7 +276,7 @@ export function BusinessHolidaysContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      await readApiJson<unknown>(response, '削除に失敗しました');
+      await readApiAcknowledgement(response, '削除に失敗しました');
     },
     onSuccess: async () => {
       toast.success('休日を削除しました');

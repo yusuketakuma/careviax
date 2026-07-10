@@ -413,7 +413,10 @@ async function authenticatedPOST(req: NextRequest) {
       });
     }
 
-    return success({ data: result.data, replayed: result.replayed }, result.replayed ? 200 : 201);
+    return success(
+      { data: result.data, meta: { replayed: result.replayed } },
+      result.replayed ? 200 : 201,
+    );
   });
 }
 

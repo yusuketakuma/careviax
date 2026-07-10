@@ -14,6 +14,7 @@
 
 import { z } from 'zod';
 import type { PermissionKey } from '@/lib/auth/permission-matrix';
+import { visitScheduleProposalPaletteResponseSchema } from '@/types/api/visit-schedule-proposals';
 import {
   type SearchCategory,
   type SearchResultRow,
@@ -106,8 +107,8 @@ const patientSchema = z.object({
   }),
 });
 
-const proposalSchema = z.object({
-  data: z
+const proposalSchema = visitScheduleProposalPaletteResponseSchema(
+  z
     .array(
       z.object({
         id: z.string(),
@@ -125,41 +126,58 @@ const proposalSchema = z.object({
       }),
     )
     .max(PALETTE_RESULT_LIMIT),
-});
+);
 
-const prescriptionSchema = z.object({
-  data: z
-    .array(
-      z.object({
-        id: z.string(),
-        prescribed_date: z.string().nullish(),
-        prescriber_institution: z.object({ name: z.string().nullish() }).nullish(),
-        cycle: z
-          .object({
-            overall_status: z.string().nullish(),
-            case_: z
-              .object({ patient: z.object({ name: z.string().nullish() }).nullish() })
-              .nullish(),
-          })
-          .nullish(),
-      }),
-    )
-    .max(PALETTE_RESULT_LIMIT),
-});
+const prescriptionSchema = z
+  .object({
+    data: z
+      .array(
+        z.object({
+          id: z.string(),
+          prescribed_date: z.string().nullish(),
+          prescriber_institution: z.object({ name: z.string().nullish() }).nullish(),
+          cycle: z
+            .object({
+              overall_status: z.string().nullish(),
+              case_: z
+                .object({ patient: z.object({ name: z.string().nullish() }).nullish() })
+                .nullish(),
+            })
+            .nullish(),
+        }),
+      )
+      .max(PALETTE_RESULT_LIMIT),
+    meta: z
+      .object({
+        has_more: z.boolean(),
+        next_cursor: z.string().trim().min(1).nullable(),
+      })
+      .strict(),
+  })
+  .strict();
 
-const drugSchema = z.object({
-  data: z
-    .array(
-      z.object({
-        id: z.string(),
-        drug_name: z.string(),
-        generic_name: z.string().nullish(),
-        therapeutic_category: z.string().nullish(),
-        yj_code: z.string().nullish(),
-      }),
-    )
-    .max(PALETTE_RESULT_LIMIT),
-});
+const drugSchema = z
+  .object({
+    data: z
+      .array(
+        z.object({
+          id: z.string(),
+          drug_name: z.string(),
+          generic_name: z.string().nullish(),
+          therapeutic_category: z.string().nullish(),
+          yj_code: z.string().nullish(),
+        }),
+      )
+      .max(PALETTE_RESULT_LIMIT),
+    meta: z
+      .object({
+        has_more: z.boolean(),
+        next_cursor: z.string().trim().min(1).nullable(),
+        total_count: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict();
 
 const reportSchema = z.object({
   data: z
@@ -177,18 +195,26 @@ const reportSchema = z.object({
     .max(PALETTE_RESULT_LIMIT),
 });
 
-const contactSchema = z.object({
-  data: z
-    .array(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-        subtitle: z.string().nullish(),
-        kind: z.string().nullish(),
-      }),
-    )
-    .max(PALETTE_RESULT_LIMIT),
-});
+const contactSchema = z
+  .object({
+    data: z
+      .array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          subtitle: z.string().nullish(),
+          kind: z.string().nullish(),
+        }),
+      )
+      .max(PALETTE_RESULT_LIMIT),
+    meta: z
+      .object({
+        limit: z.number().int().min(1).max(50),
+        has_more: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
 
 type WithData = { data: unknown[] };
 const dataItems = (parsed: unknown): unknown[] => (parsed as WithData).data;

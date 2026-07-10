@@ -47,7 +47,7 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
-import type { AuditLogListRow, AuditLogsResponse } from '@/types/api/audit-logs';
+import { auditLogsResponseSchema, type AuditLogListRow } from '@/types/api/audit-logs';
 import type { AuditLogReviewReasonCode } from '@/lib/audit-logs/review';
 import {
   buildApprovedServerExportDescriptor,
@@ -163,16 +163,19 @@ export function AuditLogsContent() {
       const res = await fetch(`/api/audit-logs?${queryParams}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<AuditLogsResponse>(res, '監査ログの取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '監査ログの取得に失敗しました',
+        schema: auditLogsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
 
   const logs = data?.data ?? [];
-  const reviewDashboard = data?.summary?.review_dashboard;
-  const highRiskUnreviewedCount = data?.summary?.high_risk_unreviewed_count;
+  const reviewDashboard = data?.meta?.summary?.review_dashboard;
+  const highRiskUnreviewedCount = data?.meta?.summary?.high_risk_unreviewed_count;
   const filteredHighRiskPendingCount = reviewDashboard?.high_risk.pending_review;
-  const filteredTotalCount = reviewDashboard?.total_count ?? data?.pagination?.total;
+  const filteredTotalCount = reviewDashboard?.total_count ?? data?.meta?.pagination?.total;
   const summaryValue = (value: number | undefined) =>
     isLoading || value == null ? '集計中' : `${value}件`;
   // 表示上限に到達 = さらに古いログが存在しうる(API は total/has_more を返さない)。

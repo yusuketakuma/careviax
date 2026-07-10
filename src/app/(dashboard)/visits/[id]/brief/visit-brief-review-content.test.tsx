@@ -126,7 +126,7 @@ describe('VisitBriefReviewContent', () => {
     }
   });
 
-  it('unwraps the visit record detail data envelope in the schedule fallback', async () => {
+  it('falls back to the visit record when a successful schedule response has mixed root fields', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     let patientQueryFn: (() => Promise<unknown>) | undefined;
@@ -138,7 +138,9 @@ describe('VisitBriefReviewContent', () => {
     );
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input);
-      if (url === '/api/visit-schedules/visit_1') return jsonResponse({}, 404);
+      if (url === '/api/visit-schedules/visit_1') {
+        return jsonResponse({ data: { patient_id: 'wrong_patient' }, legacy_patient_id: true });
+      }
       if (url === '/api/visit-records/visit_1') {
         return jsonResponse({ data: { patient_id: 'patient_1' } });
       }
@@ -288,6 +290,55 @@ describe('VisitBriefReviewContent', () => {
           is_fallback: false,
         }),
       });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('rejects legacy successful visit brief confirmation payloads', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    let feedbackMutationFn:
+      | ((input: { choice: 'correct'; feedback: { rating: 'helpful' } }) => Promise<unknown>)
+      | undefined;
+
+    useMutationMock.mockImplementation(
+      (config: {
+        mutationFn: (input: {
+          choice: 'correct';
+          feedback: { rating: 'helpful' };
+        }) => Promise<unknown>;
+      }) => {
+        feedbackMutationFn = config.mutationFn;
+        return { mutate: vi.fn(), isPending: false };
+      },
+    );
+    useQueryMock.mockImplementation((config: { queryKey: unknown[] }) => {
+      if (config.queryKey[0] === 'visit-brief-review-patient') {
+        return { data: { patientId: 'patient_1' }, isPending: false, isSuccess: true, error: null };
+      }
+      if (config.queryKey[0] === 'patient-visit-brief') {
+        return {
+          data: { data: buildBrief() },
+          isPending: false,
+          isSuccess: true,
+          error: null,
+        };
+      }
+      return { data: undefined, isPending: false, isSuccess: true, error: null };
+    });
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<VisitBriefReviewContent visitId="visit_1" />);
+
+      await expect(
+        feedbackMutationFn?.({ choice: 'correct', feedback: { rating: 'helpful' } }),
+      ).rejects.toThrow('確認結果の送信に失敗しました');
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

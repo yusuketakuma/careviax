@@ -37,7 +37,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   useOrgIdMock.mockReturnValue('org_1');
   useRealtimeQueryMock.mockImplementation((config: QueryConfig) => ({
-    data: config.queryKey[2] === 'all' ? { data: [], unmatchedCount: 0 } : { data: [] },
+    data:
+      config.queryKey[2] === 'all'
+        ? { data: [], meta: { has_more: false, next_cursor: null, unmatched_count: 0 } }
+        : { data: [], meta: { has_more: false, next_cursor: null } },
     isLoading: false,
     isError: false,
     refetch: config.queryKey[2] === 'all' ? refetchAllMock : refetchUnmatchedMock,
@@ -45,6 +48,37 @@ beforeEach(() => {
 });
 
 describe('QrDraftsPage list fetchers', () => {
+  it('reads current cursor metadata and rejects the legacy root shape', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [],
+          meta: { has_more: false, next_cursor: null, unmatched_count: 2 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [],
+          hasMore: false,
+          unmatchedCount: 2,
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<QrDraftsPage />);
+
+    const allQuery = useRealtimeQueryMock.mock.calls
+      .map(([config]) => config as QueryConfig)
+      .find((config) => config.queryKey[0] === 'qr-drafts' && config.queryKey[2] === 'all');
+    if (!allQuery?.queryFn) throw new Error('QR draft all queryFn was not registered');
+
+    await expect(allQuery.queryFn()).resolves.toMatchObject({
+      meta: { has_more: false, next_cursor: null, unmatched_count: 2 },
+    });
+    await expect(allQuery.queryFn()).rejects.toThrow('QRスキャン下書きの取得に失敗しました');
+  });
+
   it('keeps API messages from failed QR draft list fetches', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
       jsonResponse({ message: 'QR下書きを表示できません' }, 403),

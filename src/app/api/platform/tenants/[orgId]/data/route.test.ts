@@ -25,6 +25,7 @@ vi.mock('@/lib/platform/break-glass', () => ({
 }));
 
 vi.mock('@/server/services/data-explorer', () => ({
+  DATA_EXPLORER_MAX_OFFSET: 999_900,
   listDataExplorerModels: listDataExplorerModelsMock,
   listDataExplorerRows: listDataExplorerRowsMock,
 }));
@@ -191,5 +192,77 @@ describe('GET /api/platform/tenants/[orgId]/data', () => {
       code: 'VALIDATION_ERROR',
       message: '指定されたモデルは参照できません',
     });
+  });
+
+  it.each([
+    ['model', '?model=Patient&model=AuditLog'],
+    ['limit', '?model=Patient&limit=10&limit=25'],
+    ['offset', '?model=Patient&offset=0&offset=25'],
+    ['search', '?model=Patient&search=one&search=two'],
+  ])('rejects duplicate %s parameters before the audited reader', async (fieldName, query) => {
+    const response = await GET(createRequest(query), routeContext());
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { [fieldName]: [`${fieldName} は1つだけ指定してください`] },
+    });
+    expect(readViaBreakGlassMock).not.toHaveBeenCalled();
+    expect(listDataExplorerModelsMock).not.toHaveBeenCalled();
+    expect(listDataExplorerRowsMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['non-integer limit', '?model=Patient&limit=1e2'],
+    ['zero limit', '?model=Patient&limit=0'],
+    ['oversized limit', '?model=Patient&limit=101'],
+    ['negative offset', '?model=Patient&offset=-1'],
+    ['oversized offset', '?model=Patient&offset=999901'],
+    ['oversized search', `?model=Patient&search=${'a'.repeat(101)}`],
+    ['oversized model', `?model=${'a'.repeat(101)}`],
+  ])('rejects %s instead of silently normalizing it', async (_label, query) => {
+    const response = await GET(createRequest(query), routeContext());
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(readViaBreakGlassMock).not.toHaveBeenCalled();
+    expect(listDataExplorerModelsMock).not.toHaveBeenCalled();
+    expect(listDataExplorerRowsMock).not.toHaveBeenCalled();
+  });
+
+  it('uses canonical pagination defaults in both audit metadata and service arguments', async () => {
+    const response = await GET(createRequest('?model=%20Patient%20&search=%20%20'), routeContext());
+
+    expect(response.status).toBe(200);
+    expect(readViaBreakGlassMock).toHaveBeenCalledWith(
+      operator,
+      session,
+      {
+        targetType: 'data_explorer',
+        targetId: 'Patient',
+        metadata: { model: 'Patient', limit: 25, offset: 0 },
+      },
+      expect.any(Function),
+    );
+    expect(listDataExplorerRowsMock).toHaveBeenCalledWith('org_1', 'Patient', {
+      limit: 25,
+      offset: 0,
+      search: undefined,
+    });
+  });
+
+  it('returns a sanitized no-store 500 for unexpected reader failures', async () => {
+    const rawError = 'raw platform data explorer model read failed';
+    listDataExplorerRowsMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(createRequest('?model=Patient'), routeContext());
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
   });
 });

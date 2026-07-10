@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
+import { z } from 'zod';
 import {
   Search,
   Download,
@@ -112,12 +113,10 @@ import type {
   DrugMasterImportLog,
   DrugMasterRow,
   FormularyChangeRequestItem,
-  FormularyChangeRequestListResponse,
   FormularyCopyPreviewResponse,
   FormularyExportPurpose,
   FormularyImpactResponse,
   FormularyRequestDecisionTarget,
-  FormularyStockSummaryRow,
   FormularyTemplateItem,
   FormularyTemplatePreviewResponse,
   FormularyUsageMismatchResponse,
@@ -135,6 +134,233 @@ import type {
 // parseReorderPointInput は既存テスト（drug-master-content.test.tsx）が本モジュールから
 // import しているため、公開 API 互換のため再エクスポートする（本体でも利用）。
 export { parseReorderPointInput };
+
+const drugMasterListPageSchema = z
+  .object({
+    data: z.array(
+      z.custom<DrugMasterRow>((value) => {
+        if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+        const row = value as Record<string, unknown>;
+        return (
+          typeof row.id === 'string' &&
+          typeof row.yj_code === 'string' &&
+          typeof row.drug_name === 'string'
+        );
+      }),
+    ),
+    meta: z
+      .object({
+        total_count: z.number().int().nonnegative(),
+        has_more: z.boolean(),
+        next_cursor: z.string().trim().min(1).nullable(),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.meta.has_more && !value.meta.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor is required when has_more is true',
+      });
+    }
+  })
+  .transform(({ data, meta }) => ({
+    data,
+    totalCount: meta.total_count,
+    hasMore: meta.has_more,
+    ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
+  }));
+
+const formularyTemplateItemSchema = z.custom<FormularyTemplateItem>((value) => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return typeof item.id === 'string' && typeof item.name === 'string';
+});
+
+const createFormularyTemplateResponseSchema = z
+  .object({
+    data: formularyTemplateItemSchema,
+    meta: z
+      .object({
+        site: z.object({ id: z.string(), name: z.string() }).strict(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const deleteFormularyTemplateResponseSchema = z
+  .object({
+    data: formularyTemplateItemSchema,
+    meta: z.object({ deleted: z.literal(true) }).strict(),
+  })
+  .strict();
+
+const pharmacyDrugStockHistoryItemSchema = z.custom<PharmacyDrugStockHistoryItem>((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return typeof item.id === 'string' && typeof item.action === 'string';
+});
+
+const pharmacyDrugStockHistoryResponseSchema = z
+  .object({
+    data: z.array(pharmacyDrugStockHistoryItemSchema),
+    meta: z
+      .object({
+        site: z.object({ id: z.string(), name: z.string() }).strict(),
+        stock: z.object({ id: z.string(), drug_master_id: z.string() }).strict().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const pharmacySiteOptionSchema = z.object({ id: z.string(), name: z.string() }).strict();
+
+const preferredGenericSummarySchema = z
+  .object({
+    id: z.string(),
+    drug_name: z.string(),
+    yj_code: z.string(),
+  })
+  .strict();
+
+const pharmacyDrugStockConfigFields = {
+  id: z.string(),
+  site_id: z.string(),
+  drug_master_id: z.string(),
+  is_stocked: z.boolean(),
+  stock_qty: z.number().nullable(),
+  reorder_point: z.number().int().nonnegative().nullable(),
+  preferred_generic_id: z.string().nullable(),
+  adoption_source: z.string().nullable(),
+  adoption_note: z.string().nullable(),
+  last_reviewed_at: z.string().nullable(),
+  reviewed_by_id: z.string().nullable(),
+  follow_up_status: z.string().nullable(),
+  follow_up_reason: z.string().nullable(),
+  follow_up_due_date: z.string().nullable(),
+  follow_up_resolved_at: z.string().nullable(),
+  updated_at: z.string(),
+  preferred_generic: preferredGenericSummarySchema.nullable(),
+};
+
+const pharmacyDrugStockConfigSchema = z.object(pharmacyDrugStockConfigFields).strict();
+
+const formularyStockSummaryRowSchema = z
+  .object({
+    ...pharmacyDrugStockConfigFields,
+    drug_master: z
+      .object({
+        id: z.string(),
+        drug_name: z.string(),
+        yj_code: z.string(),
+        drug_price: z.number().nullable(),
+        unit: z.string().nullable(),
+        is_generic: z.boolean(),
+        is_narcotic: z.boolean(),
+        is_psychotropic: z.boolean(),
+        is_high_risk: z.boolean(),
+        is_lasa_risk: z.boolean(),
+        transitional_expiry_date: z.string().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const pharmacyDrugStockDetailResponseSchema = z
+  .object({
+    data: pharmacyDrugStockConfigSchema.nullable(),
+    meta: z.object({ site: pharmacySiteOptionSchema }).strict(),
+  })
+  .strict()
+  .transform(({ data, meta }) => ({ data, site: meta.site }));
+
+const pharmacyDrugStockListResponseSchema = z
+  .object({
+    data: z.array(formularyStockSummaryRowSchema),
+    meta: z
+      .object({
+        site: pharmacySiteOptionSchema,
+        limit: z.number().int().positive(),
+        total_count: z.number().int().nonnegative(),
+        visible_count: z.number().int().nonnegative(),
+        hidden_count: z.number().int().nonnegative(),
+        has_more: z.boolean(),
+        count_basis: z.literal('pharmacy_drug_stocks'),
+        filters_applied: z
+          .object({
+            site_id: z.string(),
+            q: z.string().nullable(),
+            review_due: z.boolean(),
+            missing_reorder_point: z.boolean(),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict()
+  .transform(({ data }) => ({ data }));
+
+const savePharmacyDrugStockResponseSchema = z
+  .object({
+    data: pharmacyDrugStockConfigSchema,
+    meta: z.object({ site: pharmacySiteOptionSchema }).strict(),
+  })
+  .strict()
+  .transform(({ data, meta }) => ({ data, site: meta.site }));
+
+const formularyChangeRequestItemSchema = z.custom<FormularyChangeRequestItem>((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item.id === 'string' &&
+    typeof item.site_id === 'string' &&
+    typeof item.drug_master_id === 'string' &&
+    ['pending', 'approved', 'rejected'].includes(String(item.status)) &&
+    typeof item.action_type === 'string' &&
+    'requested_payload' in item &&
+    (item.reason === null || typeof item.reason === 'string') &&
+    typeof item.created_at === 'string'
+  );
+});
+
+const formularyChangeRequestSummarySchema = z
+  .object({
+    status: z.enum(['pending', 'approved', 'rejected']),
+    total_count: z.number().int().nonnegative(),
+    overdue_count: z.number().int().nonnegative(),
+    overdue_days: z.number().int().positive(),
+    oldest_pending_created_at: z.string().nullable(),
+    notification_level: z.enum(['clear', 'pending', 'overdue']),
+  })
+  .strict();
+
+const formularyChangeRequestListResponseSchema = z
+  .object({
+    data: z.array(formularyChangeRequestItemSchema),
+    meta: z.object({ summary: formularyChangeRequestSummarySchema }).strict(),
+  })
+  .strict()
+  .transform(({ data, meta }) => ({ data, summary: meta.summary }));
+
+const createFormularyChangeRequestResponseSchema = z
+  .object({
+    data: formularyChangeRequestItemSchema,
+    meta: z
+      .object({
+        site: z.object({ id: z.string(), name: z.string() }).strict(),
+        drug: z
+          .object({
+            id: z.string(),
+            drug_name: z.string(),
+            generic_name: z.string().nullable(),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
 
 const FORMULARY_EXPORT_SURFACE_BY_PURPOSE = {
   operations: 'pharmacy_drug_stocks_operations_csv',
@@ -305,12 +531,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildDrugMastersApiPath(pageParams.toString()), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{
-        data: DrugMasterRow[];
-        totalCount: number;
-        hasMore: boolean;
-        nextCursor?: string;
-      }>(res, '医薬品マスターの取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '医薬品マスターの取得に失敗しました',
+        schema: drugMasterListPageSchema,
+      });
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,
@@ -385,10 +609,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStocksApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PharmacyDrugStockConfig | null }>(
-        res,
-        '採用品設定の取得に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: '採用品設定の取得に失敗しました',
+        schema: pharmacyDrugStockDetailResponseSchema,
+      });
     },
     enabled: !!orgId && !!effectiveSelectedSiteId && !!selectedDrugId,
     staleTime: 300_000,
@@ -405,10 +629,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStockHistoryApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PharmacyDrugStockHistoryItem[] }>(
-        res,
-        '採用品履歴の取得に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: '採用品履歴の取得に失敗しました',
+        schema: pharmacyDrugStockHistoryResponseSchema,
+      });
     },
     enabled: !!orgId && !!effectiveSelectedSiteId && !!selectedDrugId,
     staleTime: 60_000,
@@ -425,10 +649,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStocksApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: FormularyStockSummaryRow[] }>(
-        res,
-        '採用薬レビュー対象の取得に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: '採用薬レビュー対象の取得に失敗しました',
+        schema: pharmacyDrugStockListResponseSchema,
+      });
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,
@@ -445,10 +669,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStocksApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: FormularyStockSummaryRow[] }>(
-        res,
-        '在庫下限未設定の取得に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: '在庫下限未設定の取得に失敗しました',
+        schema: pharmacyDrugStockListResponseSchema,
+      });
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,
@@ -511,10 +735,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStockRequestsApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<FormularyChangeRequestListResponse>(
-        res,
-        '採用品変更申請の取得に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: '採用品変更申請の取得に失敗しました',
+        schema: formularyChangeRequestListResponseSchema,
+      });
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,
@@ -785,10 +1009,10 @@ function DrugMasterOperationalContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
-      return readApiJson<{ site: PharmacySiteOption; data: PharmacyDrugStockConfig }>(
-        res,
-        '採用品設定の保存に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: '採用品設定の保存に失敗しました',
+        schema: savePharmacyDrugStockResponseSchema,
+      });
     },
     onSuccess: async (result) => {
       toast.success(result.data.is_stocked ? '採用品設定を保存しました' : '採用品から外しました');
@@ -823,10 +1047,10 @@ function DrugMasterOperationalContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
-      return readApiJson<{ data: FormularyChangeRequestItem }>(
-        res,
-        '採用品変更申請の作成に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: '採用品変更申請の作成に失敗しました',
+        schema: createFormularyChangeRequestResponseSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('採用品変更申請を作成しました');
@@ -1046,10 +1270,10 @@ function DrugMasterOperationalContent({
           source_site_id: effectiveSelectedSiteId,
         }),
       });
-      return readApiJson<{ data: FormularyTemplateItem }>(
-        res,
-        '採用品テンプレートの作成に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: '採用品テンプレートの作成に失敗しました',
+        schema: createFormularyTemplateResponseSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('採用品テンプレートを作成しました');
@@ -1128,10 +1352,10 @@ function DrugMasterOperationalContent({
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ deleted: boolean; data: FormularyTemplateItem }>(
-        res,
-        '採用品テンプレートの削除に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: '採用品テンプレートの削除に失敗しました',
+        schema: deleteFormularyTemplateResponseSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('採用品テンプレートを削除しました');

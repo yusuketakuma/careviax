@@ -1,8 +1,9 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { z } from 'zod';
 import {
   AlertTriangle,
   Clipboard,
@@ -24,8 +25,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiJson, type ApiJsonSchema } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { apiAcknowledgementSchema, apiDataSchema } from '@/lib/api/response-schemas';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import {
@@ -38,6 +40,7 @@ import {
 } from '@/lib/patient-mcs/dto';
 import { groupPatientMcsMessagesByDay, orderPatientMcsMessages } from '@/lib/patient-mcs/messages';
 import {
+  PatientMcsOverviewQueryError,
   createPatientMcsQueryKey,
   createPatientMcsQueryKeyPrefix,
   fetchPatientMcsOverview,
@@ -50,7 +53,83 @@ import {
 import { describePatientMcsStatus, describePatientMcsSyncResult } from '@/lib/patient-mcs/status';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import { cn } from '@/lib/utils';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
+
+const MCS_COPY_URL_FAILURE_MESSAGE =
+  'MCS URLのコピーに失敗しました。ブラウザの設定を確認してからもう一度お試しください。';
+const MCS_SYNC_FAILURE_MESSAGE =
+  'MCS 連携の同期に失敗しました。連携元URLと通信状態を確認してからもう一度お試しください。';
+const MCS_SYNC_CONFLICT_MESSAGE =
+  '連携先と現在の患者情報が一致しないため同期できませんでした。連携元URLを確認してください。';
+const MCS_CHECK_LOG_FAILURE_MESSAGE =
+  'MCS 確認ログの登録に失敗しました。入力内容を確認してからもう一度お試しください。';
+const MCS_PROFILE_FAILURE_MESSAGE =
+  'MCS 参加情報の保存に失敗しました。入力内容を確認してからもう一度お試しください。';
+const MCS_PERMISSION_FAILURE_MESSAGE =
+  'MCS 連携を実行する権限がありません。権限を確認してからもう一度お試しください。';
+const MCS_OVERVIEW_FORBIDDEN_MESSAGE =
+  'MCS 連携情報を表示する権限がありません。権限を確認してから再読み込みしてください。';
+const MCS_OVERVIEW_FAILURE_MESSAGE =
+  'MCS 連携情報を取得できませんでした。通信状態を確認してから再読み込みしてください。';
+
+class PatientMcsMutationResponseError extends Error {
+  constructor(
+    readonly status: number,
+    fallbackMessage: string,
+  ) {
+    super(fallbackMessage);
+    this.name = 'PatientMcsMutationResponseError';
+  }
+}
+
+const patientMcsSyncResponseSchema = apiDataSchema(z.unknown()).transform((payload, ctx) => {
+  try {
+    return parsePatientMcsSyncResult(payload);
+  } catch {
+    ctx.addIssue({ code: 'custom', message: 'Invalid patient MCS sync response' });
+    return z.NEVER;
+  }
+});
+
+async function readPatientMcsMutationResponse<T>(
+  response: Response,
+  fallbackMessage: string,
+  schema: ApiJsonSchema<T>,
+): Promise<T> {
+  if (!response.ok) {
+    throw new PatientMcsMutationResponseError(response.status, fallbackMessage);
+  }
+  return readApiJson(response, { fallbackMessage, schema });
+}
+
+function getPatientMcsMutationStatus(error: unknown): number | null {
+  return error instanceof PatientMcsMutationResponseError ? error.status : null;
+}
+
+function patientMcsLogContext(entityType: string, status?: number | null) {
+  return {
+    route: '/patients/:id/mcs',
+    entityType,
+    ...(status == null ? {} : { status }),
+  };
+}
+
+function getPatientMcsMutationFailureMessage(
+  error: unknown,
+  fallbackMessage: string,
+  options?: { conflictMessage?: string },
+): string {
+  const status = getPatientMcsMutationStatus(error);
+  if (status === 403) return MCS_PERMISSION_FAILURE_MESSAGE;
+  if (status === 409 && options?.conflictMessage) return options.conflictMessage;
+  return fallbackMessage;
+}
+
+function getPatientMcsOverviewFailureMessage(error: unknown): string {
+  return error instanceof PatientMcsOverviewQueryError && error.code === 'forbidden'
+    ? MCS_OVERVIEW_FORBIDDEN_MESSAGE
+    : MCS_OVERVIEW_FAILURE_MESSAGE;
+}
 
 function isOtherProfessionalRole(role: string | null) {
   if (!role) return false;
@@ -64,7 +143,11 @@ async function syncPatientMcs(patientId: string, orgId: string, sourceUrl?: stri
     body: JSON.stringify(sourceUrl ? { source_url: sourceUrl } : {}),
   });
 
-  return parsePatientMcsSyncResult(await readApiJson<unknown>(response, 'MCS 同期に失敗しました'));
+  return readPatientMcsMutationResponse(
+    response,
+    MCS_SYNC_FAILURE_MESSAGE,
+    patientMcsSyncResponseSchema,
+  );
 }
 
 async function createPatientMcsCheckLog(
@@ -86,7 +169,11 @@ async function createPatientMcsCheckLog(
     }),
   });
 
-  return readApiJson<unknown>(response, 'MCS 確認ログの登録に失敗しました');
+  return readPatientMcsMutationResponse(
+    response,
+    MCS_CHECK_LOG_FAILURE_MESSAGE,
+    apiAcknowledgementSchema,
+  );
 }
 
 async function updatePatientMcsProfile(
@@ -114,7 +201,11 @@ async function updatePatientMcsProfile(
     }),
   });
 
-  return readApiJson<unknown>(response, 'MCS 連携プロフィールの保存に失敗しました');
+  return readPatientMcsMutationResponse(
+    response,
+    MCS_PROFILE_FAILURE_MESSAGE,
+    apiAcknowledgementSchema,
+  );
 }
 
 async function copyTextToClipboard(value: string) {
@@ -333,9 +424,12 @@ function PatientMcsSyncPanel({
                     if (!mcsUrl) return;
                     copyTextToClipboard(mcsUrl)
                       .then(() => toast.success('MCS URLをコピーしました'))
-                      .catch((error: Error) =>
-                        toast.error(messageFromError(error, 'MCS URLのコピーに失敗しました')),
-                      );
+                      .catch((error: unknown) => {
+                        clientLog.warn('patient_mcs.copy_url_failed', error, {
+                          ...patientMcsLogContext('patient_mcs'),
+                        });
+                        toast.error(MCS_COPY_URL_FAILURE_MESSAGE);
+                      });
                   }}
                 >
                   <Clipboard className="mr-1.5 size-4" aria-hidden="true" />
@@ -770,7 +864,10 @@ function PatientMcsCheckLogPanel({
 }: {
   logs: PatientMcsViewCheckLog[];
   isSaving: boolean;
-  onCreate: (input: { contentType: string; summary: string; nextAction: string }) => void;
+  onCreate: (
+    input: { contentType: string; summary: string; nextAction: string },
+    onConfirmed: () => void,
+  ) => void;
 }) {
   const [contentType, setContentType] = useState('report');
   const [summary, setSummary] = useState('');
@@ -834,9 +931,10 @@ function PatientMcsCheckLogPanel({
           <Button
             type="button"
             onClick={() => {
-              onCreate({ contentType, summary, nextAction });
-              setSummary('');
-              setNextAction('');
+              onCreate({ contentType, summary, nextAction }, () => {
+                setSummary('');
+                setNextAction('');
+              });
             }}
             disabled={!canSubmit}
           >
@@ -939,6 +1037,19 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
     queryFn: () => fetchPatientMcsOverview(patientId, orgId, 30),
     enabled: orgId.length > 0,
   });
+  const lastLoggedOverviewErrorRef = useRef<unknown>(null);
+
+  useEffect(() => {
+    if (!mcsQuery.isError) {
+      lastLoggedOverviewErrorRef.current = null;
+      return;
+    }
+    if (lastLoggedOverviewErrorRef.current === mcsQuery.error) return;
+    lastLoggedOverviewErrorRef.current = mcsQuery.error;
+    clientLog.warn('patient_mcs.overview_fetch_failed', mcsQuery.error, {
+      ...patientMcsLogContext('patient_mcs'),
+    });
+  }, [mcsQuery.error, mcsQuery.isError]);
 
   const syncMutation = useMutation({
     mutationFn: (sourceUrl?: string) => syncPatientMcs(patientId, orgId, sourceUrl),
@@ -957,9 +1068,17 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
         }),
       );
     },
-    onError: async (error: Error) => {
+    onError: async (error: unknown) => {
       await queryClient.invalidateQueries({ queryKey: queryKeyPrefix });
-      toast.error(messageFromError(error, 'MCS 連携の同期に失敗しました'));
+      const status = getPatientMcsMutationStatus(error);
+      clientLog.warn('patient_mcs.sync_failed', error, {
+        ...patientMcsLogContext('patient_mcs_sync', status),
+      });
+      toast.error(
+        getPatientMcsMutationFailureMessage(error, MCS_SYNC_FAILURE_MESSAGE, {
+          conflictMessage: MCS_SYNC_CONFLICT_MESSAGE,
+        }),
+      );
     },
   });
 
@@ -970,8 +1089,12 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
       await queryClient.invalidateQueries({ queryKey: queryKeyPrefix });
       toast.success('MCS 確認ログを登録しました');
     },
-    onError: (error: Error) => {
-      toast.error(messageFromError(error, 'MCS 確認ログの登録に失敗しました'));
+    onError: (error: unknown) => {
+      const status = getPatientMcsMutationStatus(error);
+      clientLog.warn('patient_mcs.check_log_create_failed', error, {
+        ...patientMcsLogContext('patient_mcs_check_log', status),
+      });
+      toast.error(getPatientMcsMutationFailureMessage(error, MCS_CHECK_LOG_FAILURE_MESSAGE));
     },
   });
 
@@ -988,8 +1111,12 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
       await queryClient.invalidateQueries({ queryKey: queryKeyPrefix });
       toast.success('MCS 参加情報を保存しました');
     },
-    onError: (error: Error) => {
-      toast.error(messageFromError(error, 'MCS 参加情報の保存に失敗しました'));
+    onError: (error: unknown) => {
+      const status = getPatientMcsMutationStatus(error);
+      clientLog.warn('patient_mcs.profile_save_failed', error, {
+        ...patientMcsLogContext('patient_mcs_profile', status),
+      });
+      toast.error(getPatientMcsMutationFailureMessage(error, MCS_PROFILE_FAILURE_MESSAGE));
     },
   });
 
@@ -1002,7 +1129,7 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
       <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
         <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
         <div className="space-y-2">
-          <p>{mcsQuery.error.message}</p>
+          <p>{getPatientMcsOverviewFailureMessage(mcsQuery.error)}</p>
           <Button type="button" variant="outline" size="sm" onClick={() => mcsQuery.refetch()}>
             再読み込み
           </Button>
@@ -1037,7 +1164,9 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
       <PatientMcsCheckLogPanel
         logs={checkLogs}
         isSaving={checkLogMutation.isPending}
-        onCreate={(input) => checkLogMutation.mutate(input)}
+        onCreate={(input, onConfirmed) =>
+          checkLogMutation.mutate(input, { onSuccess: onConfirmed })
+        }
       />
       <PatientMcsMessagesPanel
         messages={messages}

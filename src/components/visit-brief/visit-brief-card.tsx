@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StateBadge } from '@/components/ui/state-badge';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
@@ -126,7 +126,7 @@ export function VisitBriefCard({
           is_fallback: summaryKind === 'ai' ? brief.ai_summary.is_fallback : false,
         }),
       });
-      return readApiJson<unknown>(res, 'フィードバック送信に失敗しました');
+      return readApiAcknowledgement(res, 'フィードバック送信に失敗しました');
     },
     onMutate: () => {
       setFeedbackError(null);

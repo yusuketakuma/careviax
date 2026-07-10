@@ -30,7 +30,7 @@ export const DELETE = withAuthContext(
       });
     });
 
-    return success({ deleted: true, data: template });
+    return success({ data: template, meta: { deleted: true } });
   },
   { permission: 'canAdmin' },
 );

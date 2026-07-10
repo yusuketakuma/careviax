@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, Search } from 'lucide-react';
+import { z } from 'zod';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -17,6 +18,8 @@ import { ListOpenCard } from '@/components/features/workspace/list-open-card';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
+import { careReportListResponseSchema } from '@/types/api/care-reports';
+import { prescriptionIntakeListResponseSchema } from '@/types/api/prescription-intakes';
 import { AdvancedFilterModal } from './advanced-filter-modal';
 import { type AdvancedFilterState, EMPTY_ADVANCED_FILTER } from './advanced-filter.shared';
 import {
@@ -54,6 +57,32 @@ const SEARCH_CATEGORIES: SearchCategory[] = [
 ];
 
 const SEARCH_RESULT_LIMIT = 8;
+
+const prescriptionSearchItemSchema = z.custom<PrescriptionSearchItem>((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return typeof (value as Record<string, unknown>).id === 'string';
+});
+
+const prescriptionSearchResponseSchema = prescriptionIntakeListResponseSchema(
+  prescriptionSearchItemSchema,
+);
+
+type ReportSearchWireItem = ReportSearchItem & {
+  patient?: { name?: string | null } | null;
+};
+
+const reportSearchItemSchema = z.custom<ReportSearchWireItem>((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const report = value as Record<string, unknown>;
+  return (
+    typeof report.id === 'string' &&
+    typeof report.report_type === 'string' &&
+    typeof report.status === 'string' &&
+    typeof report.created_at === 'string'
+  );
+});
+
+const reportSearchResponseSchema = careReportListResponseSchema(reportSearchItemSchema);
 
 type CategoryCounts = Partial<Record<SearchCategory, number>>;
 
@@ -418,11 +447,15 @@ export function SearchContent({
         );
         const proposalData = proposalPayload?.data ?? [];
 
-        const prescriptionPayload = await readSearchJson<{ data: PrescriptionSearchItem[] }>(
-          'prescription',
-          prescriptionRes,
-        );
-        const prescriptionData = prescriptionPayload?.data ?? [];
+        const prescriptionPayload = await readSearchJson<unknown>('prescription', prescriptionRes);
+        const parsedPrescriptionPayload =
+          prescriptionSearchResponseSchema.safeParse(prescriptionPayload);
+        if (prescriptionRes?.ok && !parsedPrescriptionPayload.success) {
+          nextFailedCategories.push('prescription');
+        }
+        const prescriptionData = parsedPrescriptionPayload.success
+          ? parsedPrescriptionPayload.data.data
+          : [];
 
         const medicationDeadlinePayload = await readSearchJson<MedicationDeadlineSearchResponse>(
           'medicationDeadline',
@@ -439,10 +472,14 @@ export function SearchContent({
         );
         const facilityData = facilityPayload?.data ?? [];
 
-        const reportPayload = await readSearchJson<{
-          data: Array<ReportSearchItem & { patient?: { name?: string | null } | null }>;
-        }>('report', reportRes);
-        const reportData = (reportPayload?.data ?? []).slice(0, SEARCH_RESULT_LIMIT);
+        const reportPayload = await readSearchJson<unknown>('report', reportRes);
+        const parsedReportPayload = reportSearchResponseSchema.safeParse(reportPayload);
+        if (reportRes?.ok && !parsedReportPayload.success) {
+          nextFailedCategories.push('report');
+        }
+        const reportData = parsedReportPayload.success
+          ? parsedReportPayload.data.data.slice(0, SEARCH_RESULT_LIMIT)
+          : [];
 
         const contactPayload = await readSearchJson<{ data: ContactSearchItem[] }>(
           'contact',

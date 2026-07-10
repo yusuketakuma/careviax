@@ -809,12 +809,14 @@ describe('/api/communication-requests', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: {
         id: 'request_existing',
         status: 'draft',
       },
-      reused_existing_draft: true,
+      meta: { reused_existing_draft: true },
     });
     expect(communicationRequestFindFirstMock).toHaveBeenCalledWith({
       where: {

@@ -85,13 +85,54 @@ describe('DispenseAuditStatsPage', () => {
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(callsBefore));
   });
 
-  it('shows true-empty only when the response carries no stats (and no error)', async () => {
+  it('rejects an empty success root instead of showing a false-empty state', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({}), { status: 200 })),
     );
     renderPage();
-    expect(await screen.findByText('データがありません')).toBeTruthy();
+    expect(await screen.findByText('サーバーエラーが発生しました')).toBeTruthy();
+    expect(screen.queryByText('データがありません')).toBeNull();
+  });
+
+  it('rejects a mixed-root stats response without exposing response details', async () => {
+    const responseDetail = '患者A token=reject-stats-response-secret';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ...okStats, patient_name: responseDetail }), {
+            status: 200,
+          }),
+      ),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('サーバーエラーが発生しました')).toBeTruthy();
+    expect(screen.queryByText('12')).toBeNull();
+    expect(document.body.textContent ?? '').not.toContain(responseDetail);
+    expect(document.body.textContent ?? '').not.toContain('reject-stats-response-secret');
+  });
+
+  it('shows a truthful empty breakdown for a valid zero aggregate', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: { total_rejected: 0, period_days: 30, breakdown: [] },
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('差戻しはありません')).toBeTruthy();
+    expect(screen.getByText('0')).toBeTruthy();
     expect(screen.queryByText('サーバーエラーが発生しました')).toBeNull();
   });
 });

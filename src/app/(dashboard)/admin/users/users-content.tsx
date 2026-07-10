@@ -35,7 +35,7 @@ import {
 import { StateBadge } from '@/components/ui/state-badge';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { USER_ACCOUNT_STATUS_ROLE } from '@/lib/constants/status-labels';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
@@ -324,7 +324,7 @@ export function UsersContent() {
           site_id: inviteForm.site_id || undefined,
         }),
       });
-      return readApiJson<unknown>(response, '招待に失敗しました');
+      return readApiAcknowledgement(response, '招待に失敗しました');
     },
     onSuccess: async () => {
       toast.success('ユーザーを招待しました');
@@ -363,7 +363,7 @@ export function UsersContent() {
           can_audit_set: detailForm.can_audit_set,
         }),
       });
-      return readApiJson<unknown>(response, '更新に失敗しました');
+      return readApiAcknowledgement(response, '更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('ユーザー情報を更新しました');
@@ -387,7 +387,7 @@ export function UsersContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(body),
       });
-      return readApiJson<unknown>(response, '操作に失敗しました');
+      return readApiAcknowledgement(response, '操作に失敗しました');
     },
     onSuccess: async () => {
       const labels: Record<string, string> = {

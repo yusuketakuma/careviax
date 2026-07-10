@@ -81,7 +81,9 @@ describe('/api/facilities/[id]/patients GET', () => {
       take: 101,
       select: expect.any(Object),
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: {
         facility_id: 'facility_1',
         facility_name: 'あおば苑',
@@ -94,7 +96,7 @@ describe('/api/facilities/[id]/patients GET', () => {
           }),
         ],
       },
-      metadata: {
+      meta: {
         limit: 100,
         total_count: 1,
         visible_count: 1,
@@ -178,7 +180,7 @@ describe('/api/facilities/[id]/patients GET', () => {
         archived_at: '2026-04-01T09:30:00.000Z',
       },
     });
-    expect(body.metadata).toMatchObject({
+    expect(body.meta).toMatchObject({
       limit: 1,
       total_count: 2,
       visible_count: 1,

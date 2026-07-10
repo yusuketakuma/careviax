@@ -154,13 +154,17 @@ describe('/api/patients/[id]/care-team', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      case_id: 'case_active',
-      cases: [
-        { id: 'case_active', status: 'active' },
-        { id: 'case_old', status: 'on_hold' },
-      ],
+    const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body).toMatchObject({
       data: [{ id: 'link_1', role: 'physician', name: '佐藤医師' }],
+      meta: {
+        case_id: 'case_active',
+        cases: [
+          { id: 'case_active', status: 'active' },
+          { id: 'case_old', status: 'on_hold' },
+        ],
+      },
     });
   });
 
@@ -398,15 +402,17 @@ describe('/api/patients/[id]/care-team', () => {
         patientId: 'patient_1',
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
-      case_id: 'case_active',
+    const body = await response.json();
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(body).toMatchObject({
       data: [
         expect.objectContaining({ id: 'link_physician' }),
         expect.objectContaining({ id: 'link_nurse' }),
         expect.objectContaining({ id: 'link_cm' }),
       ],
-      warnings: [],
-      metadata: {
+      meta: {
+        case_id: 'case_active',
+        warnings: [],
         care_team_reliability: {
           needs_confirmation: false,
           alert_count: 0,
@@ -636,16 +642,16 @@ describe('/api/patients/[id]/care-team', () => {
     expectSensitiveNoStore(response);
     const json = await response.json();
     expect(json).toMatchObject({
-      case_id: 'case_active',
       data: [expect.objectContaining({ id: 'link_physician' })],
-      warnings: [
-        {
-          code: 'CARE_TEAM_RELIABILITY_UNREADY',
-          severity: 'warning',
-          message: '緊急連絡先あり / 不足: 訪看、ケアマネ / 報告FAX未登録: 医師',
-        },
-      ],
-      metadata: {
+      meta: {
+        case_id: 'case_active',
+        warnings: [
+          {
+            code: 'CARE_TEAM_RELIABILITY_UNREADY',
+            severity: 'warning',
+            message: '緊急連絡先あり / 不足: 訪看、ケアマネ / 報告FAX未登録: 医師',
+          },
+        ],
         care_team_reliability: {
           needs_confirmation: true,
           alert_count: 1,
@@ -656,8 +662,10 @@ describe('/api/patients/[id]/care-team', () => {
         },
       },
     });
-    expect(JSON.stringify(json.warnings)).not.toMatch(/03-1111-1111|doctor@example.com|佐藤医師/);
-    expect(JSON.stringify(json.metadata)).not.toMatch(/03-1111-1111|doctor@example.com|佐藤医師/);
+    expect(JSON.stringify(json.meta.warnings)).not.toMatch(
+      /03-1111-1111|doctor@example.com|佐藤医師/,
+    );
+    expect(JSON.stringify(json.meta)).not.toMatch(/03-1111-1111|doctor@example.com|佐藤医師/);
   });
 
   it('normalizes care-team primary flags by role before replacing links', async () => {

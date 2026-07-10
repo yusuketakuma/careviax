@@ -187,12 +187,14 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     : pickDefaultCaseId(cases);
 
   return success({
-    case_id: caseId,
-    cases: cases.map((careCase) => ({
-      id: careCase.id,
-      status: careCase.status,
-    })),
     data: cases.find((careCase) => careCase.id === caseId)?.care_team_links ?? [],
+    meta: {
+      case_id: caseId,
+      cases: cases.map((careCase) => ({
+        id: careCase.id,
+        status: careCase.status,
+      })),
+    },
   });
 }
 
@@ -342,18 +344,18 @@ async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<
     });
 
     return success({
-      case_id: careCase.id,
       data,
-      warnings: reliability.needs_confirmation
-        ? [
-            {
-              code: 'CARE_TEAM_RELIABILITY_UNREADY',
-              severity: 'warning',
-              message: reliability.detail,
-            },
-          ]
-        : [],
-      metadata: {
+      meta: {
+        case_id: careCase.id,
+        warnings: reliability.needs_confirmation
+          ? [
+              {
+                code: 'CARE_TEAM_RELIABILITY_UNREADY',
+                severity: 'warning',
+                message: reliability.detail,
+              },
+            ]
+          : [],
         care_team_reliability: reliability,
       },
     });

@@ -332,8 +332,11 @@ const authenticatedGET = withAuthContext(
 
     const page = buildCursorPage(rows, limit, (row) => row.id);
     return success({
-      ...page,
       data: page.data.map(toSafeVisitRequest),
+      meta: {
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+      },
     });
   },
   {
@@ -486,7 +489,7 @@ const authenticatedPOST = withAuthContext(
     });
 
     if ('response' in result) return result.response ?? validationError('入力値が不正です');
-    return success(result.visitRequest, 201);
+    return success({ data: result.visitRequest }, 201);
   },
   {
     permission: 'canManagePatientSharing',

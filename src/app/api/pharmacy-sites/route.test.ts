@@ -116,9 +116,11 @@ describe('/api/pharmacy-sites', () => {
           supports_sterile: true,
         }),
       ],
-      summary: expect.objectContaining({
-        total_sites: 1,
-      }),
+      meta: {
+        summary: expect.objectContaining({
+          total_sites: 1,
+        }),
+      },
     });
   });
 
@@ -201,9 +203,11 @@ describe('/api/pharmacy-sites', () => {
           holiday_gap_dates: [],
         }),
       ],
-      summary: expect.objectContaining({
-        holiday_gap_sites: 0,
-      }),
+      meta: {
+        summary: expect.objectContaining({
+          holiday_gap_sites: 0,
+        }),
+      },
     });
   });
 

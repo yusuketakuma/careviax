@@ -260,6 +260,7 @@ describe('/api/patients/board', () => {
       String(new TextEncoder().encode(bodyText).length),
     );
     const json = JSON.parse(bodyText);
+    expect(Object.keys(json).sort()).toEqual(['data', 'meta']);
     expect(json.meta.facets.chip_counts.visit_today).toBe(1);
     expect(json.data[0]).toMatchObject({
       attention: 'visit_today',

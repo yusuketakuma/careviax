@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -28,7 +29,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { GuardedWorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { HandoffConfirmPanel } from '@/components/features/visits/handoff-confirm-panel';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -141,24 +142,62 @@ export type HandoffConfirmationTask = {
   created_at: string;
 };
 
-export type VisitHandoffResponse = {
-  data: VisitHandoff;
-  extraction?: unknown;
-  visit_record_version: number;
-  visit_record_updated_at?: string;
-  confirmation_policy?: {
-    can_confirm?: boolean;
-    requires_override_reason?: boolean;
-    authorized_basis?: string | null;
-    override_reason_max_length?: number;
-    override_reason_code_required?: boolean;
-    override_reason_codes?: VisitHandoffOverrideReasonOption[];
-    can_request_supervision?: boolean;
-    supervision_required?: boolean;
-    supervision_available?: boolean;
-    supervision_request_note_max_length?: number;
-  };
-};
+const visitHandoffSchema: z.ZodType<VisitHandoff> = z
+  .object({
+    next_check_items: z.array(z.string()),
+    ongoing_monitoring: z.array(z.string()),
+    decision_rationale: z.string().nullable(),
+    ai_extracted: z.boolean(),
+    ai_confidence: z.number().nullable(),
+    confirmed_by: z.string().nullable(),
+    confirmed_at: z.string().nullable(),
+    extracted_at: z.string().nullable(),
+  })
+  .strict();
+
+const visitHandoffOverrideReasonOptionSchema: z.ZodType<VisitHandoffOverrideReasonOption> = z
+  .object({
+    code: z.enum([
+      'assignee_unavailable',
+      'urgent_operational_deadline',
+      'care_continuity',
+      'supervisor_directed',
+      'data_correction',
+    ]),
+    label: z.string(),
+    description: z.string(),
+  })
+  .strict();
+
+const visitHandoffResponseSchema = z
+  .object({
+    data: visitHandoffSchema.nullable(),
+    meta: z
+      .object({
+        extraction: z.unknown().optional(),
+        visit_record_version: z.number().int().nonnegative(),
+        visit_record_updated_at: z.string().optional(),
+        confirmation_policy: z
+          .object({
+            can_confirm: z.boolean().optional(),
+            requires_override_reason: z.boolean().optional(),
+            authorized_basis: z.string().nullable().optional(),
+            override_reason_max_length: z.number().int().positive().optional(),
+            override_reason_code_required: z.boolean().optional(),
+            override_reason_codes: z.array(visitHandoffOverrideReasonOptionSchema).optional(),
+            can_request_supervision: z.boolean().optional(),
+            supervision_required: z.boolean().optional(),
+            supervision_available: z.boolean().optional(),
+            supervision_request_note_max_length: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type VisitHandoffResponse = z.infer<typeof visitHandoffResponseSchema>;
 
 export async function fetchHandoffConfirmationTasks(
   orgId: string,
@@ -214,7 +253,10 @@ export async function fetchVisitHandoff(
   const res = await fetch(`/api/visit-records/${visitRecordId}/handoff`, {
     headers: buildOrgHeaders(orgId),
   });
-  return readApiJson<VisitHandoffResponse>(res, '訪問申し送りの取得に失敗しました');
+  return readApiJson<VisitHandoffResponse>(res, {
+    fallbackMessage: '訪問申し送りの取得に失敗しました',
+    schema: visitHandoffResponseSchema,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -408,7 +450,7 @@ function TransferDialog({
           deadline: new Date(draft.deadline).toISOString(),
         }),
       });
-      return readApiJson<unknown>(res, '仕事を渡せませんでした');
+      return readApiAcknowledgement(res, '仕事を渡せませんでした');
     },
     onSuccess: () => {
       toast.success('仕事を渡しました。受領確認と根拠が記録されます。');
@@ -681,7 +723,7 @@ function HandoffMessageChannel({
           recipient_label: recipient ? `${recipient.name}(${recipient.role_label})` : '',
         }),
       });
-      return readApiJson<unknown>(res, '連絡を送れませんでした');
+      return readApiAcknowledgement(res, '連絡を送れませんでした');
     },
     onSuccess: () => {
       toast.success('連絡を送りました。');
@@ -697,7 +739,7 @@ function HandoffMessageChannel({
         method: 'PATCH',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<unknown>(res, '既読にできませんでした');
+      return readApiAcknowledgement(res, '既読にできませんでした');
     },
     onSuccess: () => onChanged(),
     onError: (err: Error) => toast.error(messageFromError(err, '既読にできませんでした')),
@@ -961,7 +1003,7 @@ function ConsultResolutionPanel({
           resolution_note: note.trim() ? note.trim() : undefined,
         }),
       });
-      return readApiJson<unknown>(res, '対応を記録できませんでした');
+      return readApiAcknowledgement(res, '対応を記録できませんでした');
     },
     onSuccess: (_data, action) => {
       toast.success(`「${RESOLUTION_ACTION_LABEL[action]}」を記録しました。`);
@@ -1074,7 +1116,7 @@ function ConsultIntake({
           recipient_label: recipient ? `${recipient.name}(${recipient.role_label})` : '',
         }),
       });
-      return readApiJson<unknown>(res, '相談を起票できませんでした');
+      return readApiAcknowledgement(res, '相談を起票できませんでした');
     },
     onSuccess: () => {
       toast.success('薬剤師に相談を送りました。');
@@ -1364,31 +1406,31 @@ function VisitHandoffConfirmationWorkspace({
             }
             onRetry={() => void visitHandoffQuery.refetch()}
           />
-        ) : visitRecordId && visitHandoffQuery.data ? (
+        ) : visitRecordId && visitHandoffQuery.data?.data ? (
           <HandoffConfirmPanel
             visitRecordId={visitRecordId}
-            expectedVisitRecordVersion={visitHandoffQuery.data.visit_record_version}
+            expectedVisitRecordVersion={visitHandoffQuery.data.meta.visit_record_version}
             handoff={visitHandoffQuery.data.data}
-            canConfirm={visitHandoffQuery.data.confirmation_policy?.can_confirm ?? false}
+            canConfirm={visitHandoffQuery.data.meta.confirmation_policy?.can_confirm ?? false}
             requiresOverrideReason={
-              visitHandoffQuery.data.confirmation_policy?.requires_override_reason ?? false
+              visitHandoffQuery.data.meta.confirmation_policy?.requires_override_reason ?? false
             }
             overrideReasonMaxLength={
-              visitHandoffQuery.data.confirmation_policy?.override_reason_max_length
+              visitHandoffQuery.data.meta.confirmation_policy?.override_reason_max_length
             }
             overrideReasonOptions={
-              visitHandoffQuery.data.confirmation_policy?.requires_override_reason
-                ? (visitHandoffQuery.data.confirmation_policy.override_reason_codes ?? [])
+              visitHandoffQuery.data.meta.confirmation_policy?.requires_override_reason
+                ? (visitHandoffQuery.data.meta.confirmation_policy.override_reason_codes ?? [])
                 : undefined
             }
             canRequestSupervision={
-              visitHandoffQuery.data.confirmation_policy?.can_request_supervision ?? false
+              visitHandoffQuery.data.meta.confirmation_policy?.can_request_supervision ?? false
             }
             supervisionConfirmTaskId={
               selectedTask?.task_type === 'handoff_supervision_review' ? selectedTask.id : null
             }
             supervisionRequestNoteMaxLength={
-              visitHandoffQuery.data.confirmation_policy?.supervision_request_note_max_length
+              visitHandoffQuery.data.meta.confirmation_policy?.supervision_request_note_max_length
             }
             onConfirmed={onConfirmed}
           />
@@ -1469,7 +1511,7 @@ export function HandoffWorkspace() {
         method: 'PATCH',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<unknown>(res, '受領確認に失敗しました');
+      return readApiAcknowledgement(res, '受領確認に失敗しました');
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['handoff-board'] });

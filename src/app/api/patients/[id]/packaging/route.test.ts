@@ -247,5 +247,17 @@ describe('/api/patients/[id]/packaging', () => {
         updated_at: true,
       },
     });
+    const payload = await response.json();
+    expect(Object.keys(payload)).toEqual(['data']);
+    expect(payload).toMatchObject({
+      data: {
+        packaging_profile: {
+          default_packaging_method: 'unit_dose',
+          notes: '朝だけ別包',
+          updated_at: '2026-03-28T11:00:00.000Z',
+        },
+        effective_summary: expect.any(String),
+      },
+    });
   });
 });

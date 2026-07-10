@@ -157,7 +157,7 @@ describe('schedule day proposal action helpers', () => {
         },
         fetchImpl,
       }),
-    ).resolves.toEqual({ data: { id: 'proposal_1' } });
+    ).resolves.toBeUndefined();
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0]!;
@@ -206,6 +206,21 @@ describe('schedule day proposal action helpers', () => {
         fetchImpl,
       }),
     ).rejects.toThrow('候補はすでに確定済みです');
+  });
+
+  it('rejects a legacy successful proposal action', async () => {
+    const fetchImpl = vi.fn(async () => Response.json({ message: '候補を更新しました' }));
+
+    await expect(
+      updateScheduleDayProposalAction({
+        orgId: 'org_1',
+        request: {
+          id: 'proposal_1',
+          payload: { action: 'approve' },
+        },
+        fetchImpl,
+      }),
+    ).rejects.toThrow('候補更新に失敗しました');
   });
 
   it.each([

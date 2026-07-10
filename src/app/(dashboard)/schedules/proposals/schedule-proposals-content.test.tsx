@@ -1240,6 +1240,45 @@ describe('ScheduleProposalsContent', () => {
     expectProposalQueryInvalidations();
   });
 
+  it('rejects a mixed-root single proposal action response before success side effects', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json({
+        data: { id: 'proposal_1' },
+        message: 'legacy root success must not be accepted',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    mockImmediateMutations();
+    mockDashboardProposals([buildProposal({ id: 'proposal_1' })]);
+
+    render(<ScheduleProposalsContent />);
+
+    const target = proposalTargetName('山田花子');
+    fireEvent.click(screen.getByRole('button', { name: `${target} を承認して患者連絡へ進める` }));
+    const confirmDialog = screen.getByRole('alertdialog', {
+      name: `${target} を承認して患者連絡へ進めますか`,
+    });
+    fireEvent.click(
+      within(confirmDialog).getByRole('button', { name: '承認して患者連絡へ進める' }),
+    );
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        'サーバー側の状態変更または入力確認により未更新です。再取得後に候補状態を確認してください。',
+      );
+    });
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(invalidateQueriesMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('alertdialog', {
+        name: `${target} を承認して患者連絡へ進めますか`,
+      }),
+    ).toBeTruthy();
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(
+      'legacy root success must not be accepted',
+    );
+  });
+
   it('confirms the exact same-name card before a single date confirmation is submitted', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
     vi.stubGlobal('fetch', fetchMock);
@@ -2285,9 +2324,9 @@ describe('ScheduleProposalsContent', () => {
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      return new Response(JSON.stringify({ message: '勤務枠が埋まりました' }), {
-        status: 409,
-        headers: { 'Content-Type': 'application/json' },
+      return Response.json({
+        data: { id: 'proposal_1' },
+        message: 'legacy root success must not be accepted',
       });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -2335,8 +2374,17 @@ describe('ScheduleProposalsContent', () => {
     const partialAlert = screen.getByTestId('proposal-bulk-partial-failure');
     expect(within(partialAlert).getByText('山田花子')).toBeTruthy();
     expect(within(partialAlert).getByText('佐藤太郎')).toBeTruthy();
-    expect(within(partialAlert).getByText(/勤務枠が埋まりました/)).toBeTruthy();
+    expect(
+      within(partialAlert).getByText(
+        (_content, element) =>
+          element?.textContent ===
+          '未更新理由: サーバー側の状態変更または入力確認により未更新です。再取得後に候補状態を確認してください。',
+      ),
+    ).toBeTruthy();
     expect(within(partialAlert).getByText(/候補はすでに更新済みです/)).toBeTruthy();
+    expect(partialAlert.textContent ?? '').not.toContain(
+      'legacy root success must not be accepted',
+    );
     expect(
       screen
         .getByRole('checkbox', { name: proposalCheckboxName('山田花子') })
@@ -2562,7 +2610,14 @@ describe('ScheduleProposalsContent', () => {
 
   it('surfaces a top-level reproposal action for change-requested details and retries generation without re-recording contact', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
-      Response.json({ data: [], diagnostics: { accepted: [], rejected: [] } }),
+      Response.json({
+        data: [],
+        meta: {
+          alerts: [],
+          diagnostics: { accepted: [], rejected: [] },
+          replayed: false,
+        },
+      }),
     );
     vi.stubGlobal('fetch', fetchMock);
     mockExecutingMutations();

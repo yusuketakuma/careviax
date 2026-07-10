@@ -179,5 +179,3 @@ writable_roots = []
 network_access = true
 exclude_tmpdir_env_var = false
 exclude_slash_tmp = false
-[tools]
-view_image = true

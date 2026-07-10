@@ -159,6 +159,7 @@ describe('/api/admin/webhooks', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(webhookRegistrationFindManyMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1' },
       orderBy: { created_at: 'desc' },
@@ -180,18 +181,18 @@ describe('/api/admin/webhooks', () => {
           url: 'https://partner.example.com/hooks/careviax',
         }),
       ],
-      total_count: 1,
-      visible_count: 1,
-      hidden_count: 0,
-      truncated: false,
-      count_basis: 'webhook_registrations',
-      filters_applied: {},
-      limit: 5,
       meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'webhook_registrations',
+        filters_applied: {},
         limit: 5,
         has_more: false,
       },
     });
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
     expect(webhookRegistrationCountMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1' },
     });
@@ -248,18 +249,18 @@ describe('/api/admin/webhooks', () => {
           url: 'https://partner.example.com/hooks/one',
         },
       ],
-      total_count: 2,
-      visible_count: 1,
-      hidden_count: 1,
-      truncated: true,
-      count_basis: 'webhook_registrations',
-      filters_applied: {},
-      limit: 1,
       meta: {
+        total_count: 2,
+        visible_count: 1,
+        hidden_count: 1,
+        truncated: true,
+        count_basis: 'webhook_registrations',
+        filters_applied: {},
         limit: 1,
         has_more: true,
       },
     });
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
     expect(body.data).toHaveLength(1);
     expect(JSON.stringify(body)).not.toContain('webhook_2');
     expect(JSON.stringify(body)).not.toContain('first-secret');
@@ -360,8 +361,7 @@ describe('/api/admin/webhooks', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(503);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      error: 'Webhook secret 暗号化キーが設定されていません',
+    await expect(response.json()).resolves.toEqual({
       code: 'WEBHOOK_SECRET_ENCRYPTION_UNAVAILABLE',
       message: 'Webhook secret 暗号化キーが設定されていません',
     });
@@ -374,8 +374,7 @@ describe('/api/admin/webhooks', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      error: 'リクエストボディが不正です',
+    await expect(response.json()).resolves.toEqual({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
     });
@@ -388,8 +387,7 @@ describe('/api/admin/webhooks', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      error: 'リクエストボディが不正です',
+    await expect(response.json()).resolves.toEqual({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
     });
@@ -397,7 +395,7 @@ describe('/api/admin/webhooks', () => {
     expect(webhookRegistrationCreateMock).not.toHaveBeenCalled();
   });
 
-  it('returns fieldErrors as a compatibility alias for schema validation failures', async () => {
+  it('returns schema validation fields under standard details only', async () => {
     const response = await POST(
       createRequest('POST', {
         url: 'not-a-url',
@@ -408,15 +406,10 @@ describe('/api/admin/webhooks', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      error: '入力値が不正です',
+    await expect(response.json()).resolves.toEqual({
       code: 'VALIDATION_ERROR',
       message: '入力値が不正です',
       details: {
-        url: expect.any(Array),
-        events: expect.any(Array),
-      },
-      fieldErrors: {
         url: expect.any(Array),
         events: expect.any(Array),
       },
@@ -436,12 +429,32 @@ describe('/api/admin/webhooks', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      error: 'WebhookのURLにユーザー情報は含められません',
+    await expect(response.json()).resolves.toEqual({
       code: 'VALIDATION_ERROR',
       message: 'WebhookのURLにユーザー情報は含められません',
     });
     expect(isAllowedWebhookUrlMock).not.toHaveBeenCalled();
+    expect(webhookRegistrationCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects webhook URLs outside the allowed HTTPS destination policy', async () => {
+    isAllowedWebhookUrlMock.mockResolvedValueOnce(false);
+
+    const response = await POST(
+      createRequest('POST', {
+        url: 'https://private.example.test/hooks/careviax',
+        events: ['patient.created'],
+      }),
+      emptyRouteContext,
+    );
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: 'WebhookのURLはHTTPS公開エンドポイントである必要があります',
+    });
     expect(webhookRegistrationCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });

@@ -251,9 +251,11 @@ const authenticatedGET = withAuthContext(
 
     return success({
       data,
-      hasMore: page.hasMore,
-      nextCursor: page.nextCursor,
-      unmatchedCount,
+      meta: {
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+        ...(unmatchedCount === undefined ? {} : { unmatched_count: unmatchedCount }),
+      },
     });
   },
   {

@@ -201,45 +201,47 @@ const authenticatedGET = withAuthContext(
 
     return success({
       data: enrichAuditLogsForReview(redactAuditLogsForResponse(logs), reviewRows),
-      summary: {
-        high_risk_unreviewed_count: highRiskUnreviewedCount,
-        review_dashboard: {
-          scope: 'filtered',
-          generated_at: new Date().toISOString(),
-          total_count: total,
-          risk_tier: {
-            high: filteredHighRiskCount,
-            standard: filteredStandardRiskCount,
-          },
-          review_state: {
-            pending: filteredPendingReviewCount,
-            reviewed: filteredReviewedCount,
-          },
-          high_risk: {
-            total: filteredHighRiskPendingCount + filteredHighRiskReviewedCount,
-            pending_review: filteredHighRiskPendingCount,
-            reviewed: filteredHighRiskReviewedCount,
-          },
-          filters: {
-            risk_tier: filters.riskTier ?? null,
-            review_state: filters.reviewState ?? null,
-            reviewed_by_used: Boolean(filters.reviewedBy),
-            target_type: filters.targetType ?? null,
-            action: filters.action ?? null,
-            date_from: filters.from?.toISOString() ?? null,
-            date_to: filters.to?.toISOString() ?? null,
-            actor_used: Boolean(filters.actor),
-            actor_pharmacy_used: Boolean(filters.actorPharmacy),
-            actor_site_used: Boolean(filters.actorSite),
-            patient_used: Boolean(filters.patient),
+      meta: {
+        summary: {
+          high_risk_unreviewed_count: highRiskUnreviewedCount,
+          review_dashboard: {
+            scope: 'filtered',
+            generated_at: new Date().toISOString(),
+            total_count: total,
+            risk_tier: {
+              high: filteredHighRiskCount,
+              standard: filteredStandardRiskCount,
+            },
+            review_state: {
+              pending: filteredPendingReviewCount,
+              reviewed: filteredReviewedCount,
+            },
+            high_risk: {
+              total: filteredHighRiskPendingCount + filteredHighRiskReviewedCount,
+              pending_review: filteredHighRiskPendingCount,
+              reviewed: filteredHighRiskReviewedCount,
+            },
+            filters: {
+              risk_tier: filters.riskTier ?? null,
+              review_state: filters.reviewState ?? null,
+              reviewed_by_used: Boolean(filters.reviewedBy),
+              target_type: filters.targetType ?? null,
+              action: filters.action ?? null,
+              date_from: filters.from?.toISOString() ?? null,
+              date_to: filters.to?.toISOString() ?? null,
+              actor_used: Boolean(filters.actor),
+              actor_pharmacy_used: Boolean(filters.actorPharmacy),
+              actor_site_used: Boolean(filters.actorSite),
+              patient_used: Boolean(filters.patient),
+            },
           },
         },
-      },
-      pagination: {
-        total,
-        page: Math.floor(skip / take) + 1,
-        limit: take,
-        totalPages: Math.ceil(total / take),
+        pagination: {
+          total,
+          page: Math.floor(skip / take) + 1,
+          limit: take,
+          totalPages: Math.ceil(total / take),
+        },
       },
     });
   },

@@ -653,7 +653,9 @@ describe('/api/visit-records GET', () => {
       }),
     );
     expect(queryRawMock).toHaveBeenCalledTimes(2);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
       data: [
         {
           id: 'visit_2',
@@ -678,8 +680,10 @@ describe('/api/visit-records GET', () => {
           },
         },
       ],
-      hasMore: true,
-      nextCursor: expect.any(String),
+      meta: {
+        has_more: true,
+        next_cursor: expect.any(String),
+      },
     });
   });
 

@@ -98,14 +98,18 @@ describe('/api/audit-logs GET', () => {
     expectNoStore(response);
     expect(findManyMock).toHaveBeenCalledOnce();
     expect(countMock).toHaveBeenCalledTimes(8);
-    await expect(response.json()).resolves.toMatchObject({
-      summary: {
-        high_risk_unreviewed_count: 0,
-        review_dashboard: {
-          scope: 'filtered',
-          total_count: 0,
-          high_risk: {
-            pending_review: 0,
+    const payload = await response.json();
+    expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
+    expect(payload).toMatchObject({
+      meta: {
+        summary: {
+          high_risk_unreviewed_count: 0,
+          review_dashboard: {
+            scope: 'filtered',
+            total_count: 0,
+            high_risk: {
+              pending_review: 0,
+            },
           },
         },
       },
@@ -207,9 +211,11 @@ describe('/api/audit-logs GET', () => {
     );
     await expect(response.json()).resolves.toMatchObject({
       data: [],
-      pagination: {
-        page: 1,
-        limit: 20,
+      meta: {
+        pagination: {
+          page: 1,
+          limit: 20,
+        },
       },
     });
   });
@@ -232,9 +238,11 @@ describe('/api/audit-logs GET', () => {
     );
     await expect(response.json()).resolves.toMatchObject({
       data: [],
-      pagination: {
-        page: 10000,
-        limit: 100,
+      meta: {
+        pagination: {
+          page: 10000,
+          limit: 100,
+        },
       },
     });
   });

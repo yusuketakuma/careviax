@@ -126,7 +126,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
 
   return success({
     data: conditions,
-    metadata: {
+    meta: {
       expected_updated_at: patient.updated_at.toISOString(),
       version_basis: 'patient_updated_at',
     },
@@ -275,7 +275,7 @@ async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<
 
   return success({
     data: result.conditions,
-    metadata: {
+    meta: {
       expected_updated_at: result.expectedUpdatedAt.toISOString(),
       version_basis: 'patient_updated_at',
     },

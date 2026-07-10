@@ -109,7 +109,7 @@ describe('schedule day facility batch helpers', () => {
         carryItemsConfirmed: false,
         fetchImpl,
       }),
-    ).resolves.toEqual({ data: { id: 'batch_1' } });
+    ).resolves.toBeUndefined();
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0]!;
@@ -208,6 +208,24 @@ describe('schedule day facility batch helpers', () => {
         fetchImpl,
       }),
     ).rejects.toThrow('施設グループが重複しています');
+  });
+
+  it('rejects a legacy successful facility batch save', async () => {
+    const fetchImpl = vi.fn(async () =>
+      Response.json({ message: '同時訪問グループを保存しました' }),
+    );
+
+    await expect(
+      saveScheduleDayFacilityBatch({
+        orgId: 'org_1',
+        groupKey: facilityGroup.key,
+        facilityTracker: [facilityGroup],
+        facilityRouteDefaults: {},
+        facilityRouteOverrides: {},
+        carryItemsConfirmed: false,
+        fetchImpl,
+      }),
+    ).rejects.toThrow('同時訪問グループの保存に失敗しました');
   });
 
   it('notifies success and refreshes facility-dependent queries after save', async () => {

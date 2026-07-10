@@ -223,7 +223,7 @@ describe('WorkflowDashboardContent', () => {
     }
   });
 
-  it('keeps API messages from failed workflow dashboard mutation responses', async () => {
+  it('keeps API errors and rejects legacy successful workflow mutation responses', async () => {
     const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal('fetch', fetchMock);
 
@@ -254,6 +254,27 @@ describe('WorkflowDashboardContent', () => {
       ).rejects.toThrow('緊急連絡ドラフトの作成権限がありません');
 
       fetchMock.mockResolvedValueOnce(
+        jsonResponse(
+          {
+            data: { id: 'request_legacy', status: 'draft' },
+            reused_existing_draft: true,
+          },
+          200,
+        ),
+      );
+      await expect(
+        mutationConfigs[0].mutationFn({
+          patient_id: 'patient_1',
+          request_type: 'emergency_physician',
+          template_key: 'emergency_physician',
+          target_name: '青葉医師',
+          target_role: 'physician',
+          subject: '緊急連絡',
+          content: '確認してください',
+        }),
+      ).rejects.toThrow('緊急連絡ドラフトの起票に失敗しました');
+
+      fetchMock.mockResolvedValueOnce(
         jsonResponse({ message: '疑義照会の起票権限がありません' }, 403),
       );
       await expect(
@@ -266,6 +287,17 @@ describe('WorkflowDashboardContent', () => {
         }),
       ).rejects.toThrow('疑義照会の起票権限がありません');
 
+      fetchMock.mockResolvedValueOnce(jsonResponse({ message: '疑義照会を起票しました' }, 201));
+      await expect(
+        mutationConfigs[1].mutationFn({
+          cycle_id: 'cycle_1',
+          issue_id: 'issue_1',
+          reason: '用量確認',
+          inquiry_to_physician: '主治医',
+          summary: '用量の変更確認',
+        }),
+      ).rejects.toThrow('疑義照会の起票に失敗しました');
+
       fetchMock.mockResolvedValueOnce(
         jsonResponse({ message: '疑義照会の更新権限がありません' }, 403),
       );
@@ -275,6 +307,14 @@ describe('WorkflowDashboardContent', () => {
           result: 'unchanged',
         }),
       ).rejects.toThrow('疑義照会の更新権限がありません');
+
+      fetchMock.mockResolvedValueOnce(jsonResponse({ message: '疑義照会を更新しました' }, 200));
+      await expect(
+        mutationConfigs[2].mutationFn({
+          inquiryId: 'inquiry_1',
+          result: 'unchanged',
+        }),
+      ).rejects.toThrow('疑義照会の更新に失敗しました');
 
       fetchMock.mockResolvedValueOnce(
         jsonResponse({ message: '再訪候補の生成権限がありません' }, 403),
@@ -286,6 +326,15 @@ describe('WorkflowDashboardContent', () => {
           next_dispense_date: '2026-06-24',
         }),
       ).rejects.toThrow('再訪候補の生成権限がありません');
+
+      fetchMock.mockResolvedValueOnce(jsonResponse({ message: '再訪候補を生成しました' }, 201));
+      await expect(
+        mutationConfigs[3].mutationFn({
+          case_id: 'case_1',
+          prescribed_date: '2026-06-01',
+          next_dispense_date: '2026-06-24',
+        }),
+      ).rejects.toThrow('再訪候補の生成に失敗しました');
     } finally {
       vi.unstubAllGlobals();
     }
