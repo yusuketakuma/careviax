@@ -106,6 +106,39 @@ describe('FacilityVisitRecordSwitcher', () => {
     expect(screen.getByLabelText('同一個人宅訪問の患者切替')).toBeTruthy();
   });
 
+  it('keeps long adjacent patient names readable in cards and navigation links', () => {
+    const longPreviousName = '佐藤山田鈴木高橋渡辺伊藤田中山本中村小林加藤吉田太郎';
+    const longNextName = '高橋渡辺伊藤田中山本中村小林加藤吉田佐藤山田鈴木花子';
+    const longNameContext = {
+      ...context,
+      patients: [
+        { ...context.patients[0], patientName: longPreviousName },
+        context.patients[1],
+        { ...context.patients[2], patientName: longNextName },
+      ],
+    };
+
+    render(
+      <FacilityVisitRecordSwitcher currentScheduleId="schedule_2" context={longNameContext} />,
+    );
+
+    const previousLink = screen.getByRole('link', { name: `前: ${longPreviousName}` });
+    const nextLink = screen.getByRole('link', { name: `次: ${longNextName}` });
+    const previousCardName = screen.getByText(
+      (_, node) => node?.tagName === 'SPAN' && node.textContent === `1. ${longPreviousName}`,
+    );
+    const previousName = screen.getByText(`前: ${longPreviousName}`);
+    const nextName = screen.getByText(`次: ${longNextName}`);
+
+    for (const patientName of [previousCardName, previousName, nextName]) {
+      expect(patientName.className).toContain('whitespace-normal');
+      expect(patientName.className).toContain('break-words');
+      expect(patientName.className).not.toContain('truncate');
+    }
+    expect(previousLink.getAttribute('href')).toBe('/visits/schedule_1/record');
+    expect(nextLink.getAttribute('href')).toBe('/visits/schedule_3/record');
+  });
+
   it('does not show stale context when the current schedule is not included', () => {
     render(<FacilityVisitRecordSwitcher currentScheduleId="missing_schedule" context={context} />);
 

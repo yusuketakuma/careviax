@@ -208,7 +208,7 @@ export function FacilityVisitRecordSwitcher({
           const content = (
             <>
               <span className="flex items-center justify-between gap-3">
-                <span className="min-w-0 truncate text-sm font-semibold">
+                <span className="min-w-0 flex-1 whitespace-normal break-words text-sm leading-5 font-semibold">
                   {patient.routeOrder != null ? `${patient.routeOrder}. ` : ''}
                   {patient.patientName}
                 </span>
@@ -265,7 +265,9 @@ export function FacilityVisitRecordSwitcher({
             className="inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-3 text-sm font-medium text-sky-900"
           >
             <ChevronLeft className="size-4 shrink-0" aria-hidden="true" />
-            <span className="min-w-0 truncate">前: {previousPatient.patientName}</span>
+            <span className="min-w-0 flex-1 whitespace-normal break-words leading-5">
+              前: {previousPatient.patientName}
+            </span>
           </Link>
         ) : (
           <div className="inline-flex min-h-11 items-center justify-center rounded-xl border border-dashed border-sky-200 bg-white/60 px-3 text-sm text-sky-900/60">
@@ -278,7 +280,9 @@ export function FacilityVisitRecordSwitcher({
             href={createFacilityVisitRecordHref(nextPatient.scheduleId, context)}
             className="inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-3 text-sm font-medium text-sky-900"
           >
-            <span className="min-w-0 truncate">次: {nextPatient.patientName}</span>
+            <span className="min-w-0 flex-1 whitespace-normal break-words leading-5">
+              次: {nextPatient.patientName}
+            </span>
             <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
           </Link>
         ) : (

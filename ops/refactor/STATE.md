@@ -43491,3 +43491,32 @@ src/components/features/dispense-workbench/dispensing-workbench.from-api.test.ts
 - remaining / next action:
   Run the full static gates and commit this focused slice. DV-07 remains Partial only for my-day and the
   facility-record switcher, each needing its own layout and responsive verification.
+
+## 2026-07-11 UI-UX-DV07-FACILITY-SWITCHER — preserve switch-target identities
+
+- current task:
+  Address facility parallel-visit patient switching, an explicit DV-07 patient-context switch point where
+  the horizontal card and previous/next links hid long patient-name suffixes.
+- files inspected / changed:
+  Inspected the switcher, context/href helper contract, focused unit test, existing 390px grouped-visit E2E
+  scenario, the UI SSOT/audit, and dirty ownership. Changed the switcher, its test, and the DV-07/progress
+  evidence.
+- bugs found / fixed:
+  Three patient-name spans used `truncate`. They now use `min-w-0 flex-1 whitespace-normal break-words
+leading-5`, preserving route-order prefixes, status badges, chevrons, links, and touch/swipe behavior.
+  Current-patient identity already had no truncation and is unchanged.
+- security / medical safety:
+  The operator can now see the complete destination patient at both the horizontal selection card and the
+  previous/next handoff controls. No visit context, record ID, href builder, unsaved-change guard, request,
+  authorization, patient data, persistence, or mutation changed. `gpt-image-2` was omitted because this is
+  an existing identity-pattern correction rather than a visual reconstruction.
+- validation:
+  `pnpm vitest run src/components/features/visits/facility-visit-record-switcher.test.tsx --reporter=dot`
+  passed 1 file / 5 tests, including long card/previous/next names, full accessible link names, hrefs, and
+  no `truncate` class. Exact ESLint, Prettier, `pnpm colors:check`, `pnpm client-phi-log:check`,
+  `pnpm frontend-contract:check`, `pnpm boundaries:check`, `pnpm typecheck`, `pnpm lint`, and
+  `git diff --check` passed. The existing 390px E2E test path uses DB fixture writes, so it was not run
+  without explicit authorization; 390px visual/swipe evidence remains `NOT_EXECUTED`.
+- remaining / next action:
+  Commit the focused implementation. DV-07 remains Partial for my-day; separately assess the active and
+  completed visit rows before claiming P1 identity coverage.
