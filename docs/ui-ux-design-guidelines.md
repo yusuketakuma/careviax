@@ -604,6 +604,17 @@ PWA + Dexie のオフライン訪問業務、および AWS 依存サービスの
 - **無限スピナー禁止**: 失敗し続ける下流呼び出しには「一時的に利用できません（自動復旧を試行中）」と再試行の見込みを提示する。
 - **事前ダウンロードはユーザー制御**: オフライン参照用データ（担当患者の直近薬歴等）の事前ダウンロードは自動で行わず、設定/ピン留めで明示的に選択させる。
 
+### 6.7 視覚的状態言語と registry 境界（2026-07-11 Phase 6）
+
+状態は一つの色やバッジへ畳み込まず、少なくとも clinical safety、処方差分、記録ライフサイクル、同期・鮮度、workflow、system/auth、file processing の**直交した domain**として扱う。処方変更は clinical warning ではなく、local save は server save ではなく、`waiting` は別の人の確認待ちであってシステム応答待ちではない（同期の待機は `info`）。詳細な設計入力と実装済/計画の区別は `docs/ui-ux-refresh/08-target-design-direction.md` を参照するが、規範は本節を正とする。
+
+- **3層の表示**: (1) 一目で分かる位置・形・role token・icon、(2) 一読で分かる常時可視の短い日本語ラベル、(3) 理由・対象・日時・取得元・次の操作・監査を示す詳細、を組み合わせる。色、icon、hover tooltip、toast のいずれか単独で患者安全・保存・権限・critical 状態を表さない。
+- **中央registryを唯一の導出元にする**: 画面は semantic state key を渡し、registry が domain、visible copy、role、icon、token、placement、persistence、ARIA、許可操作、acknowledgement、dismissibility、audit requirement、allowed/invalid transitions、component、test を決める。画面ローカルの任意 hex / utility color / icon / severity / 成功文言による状態表現を禁止する。既存の `StatusRole` / `StateBadge` / `StatusDot` は role 層の実装正本であり、domain state 自体を置換するものではない。
+- **実在性を先に証明する**: 新しい state key は API/model、TypeScript literal/discriminated union、registry、共通component、unit/E2E/a11y test を同じ slice で揃えるまで、利用者に実在する状態として表示しない。`local-only + server-saved`、`blocking + dismissible` のような矛盾した組み合わせを型と遷移規則で表現不能に寄せる。
+- **保存・同期・鮮度の分離**: `端末保存済（未送信）`、`送信待ち`、`同期中`、`サーバー保存済み`、`送信失敗`、`競合`、画面データの `stale` は異なる状態である。queue の最終同期時刻を画面データの鮮度保証として表示しない。失敗・競合・partial upload は画面内に持続し、toastだけで消さない。
+- **患者・臨床の固定表示**: 患者固有の主要画面は患者識別、業務文脈、critical safety tag、最終更新の入口を pinned zone に置く。氏名・カナ・薬剤名・用量・単位・患者識別子を復元不能な ellipsis や hover 専用情報にしない。処方差分は前後値・差分値・変更ラベルを示し、clinical alert と色・位置・操作制約を共有しない。
+- **accessibility and motion**: critical / patient context はスクロール後も失わせず、状態変化の live region は重要度に応じて選ぶ。状態部品は forced-colors、200% zoom、keyboard、screen reader、reduced-motion の検証対象とする。点滅と装飾モーションは使わない。
+
 ## 7. コンポーネント規範
 
 ### 7.1 実在部品と計画部品
@@ -1203,6 +1214,7 @@ PWA + Dexie のオフライン訪問業務、および AWS 依存サービスの
 
 ## 12. 変更履歴・経緯
 
+- **2026-07-11（UI/UX Refresh Phase 6）**: Phase 5 の静的監査（18 issue / 24 use-error risk）を入力に、状態を clinical safety / 処方差分 / record lifecycle / 同期・鮮度 / workflow / system-auth / file processing の直交domainとして扱う規範を「6.7」へ追加。3層通信、central registry、実在性を先に証明する導入規則、保存・同期・鮮度の意味分離、患者・臨床の固定表示、状態a11yを明文化した。既存の6軸role、AlertTier、同期4状態の意味や数値規範を緩和せず、未実装のstate/UIを実装済みとは扱わない。詳細な設計入力は `docs/ui-ux-refresh/08-target-design-direction.md`、専門レビュー・実シナリオ検証は未実施のまま Phase 8/9 へ引き継ぐ。
 - **2026-07-07（Dashboard disclosure policy 明文化）**: ユーザー指示により、ダッシュボード等の認証済み業務画面では、権限内で閲覧可能な個人情報・医療情報・薬剤情報・残数・MCS/電話本文・添付・訪問/処方/報告/請求の具体情報を過度に隠さず表示する方針を「2.7」へ追加。表示制限は role / assignment / case scope / consent / support session / purpose による権限制御で行い、情報密度は展開・プレビュー・Drawer・詳細導線で制御する。OS 通知、SSE payload、監査差分、server log、外部共有、CSV/PDF export、public URL は別境界として従来どおりマスク/最小化を維持する。
 - **2026-07-06（UI design generation policy 追記）**: ユーザー指示により、UI/UX の新規・再配置・大幅改善では `imagegen` の標準モデル指定を **`gpt-image-2`** とし、実装前に非 PHI の画面デザイン参照案を作る方針を「2.4.2」へ追加。生成画像は参照案・情報設計確認・モバイル/失敗状態検討に限定し、実装時は PH-OS の情報密度、状態5分離、44px、権限/PHI、監査導線へ翻訳することを明文化した。軽微な文言修正やデータ供給元変更では省略可だが、省略理由を `ops/refactor/STATE.md` に残す。数値規範の緩和なし。
 - **2026-07-04（product boundary scope 明確化）**: ユーザー明示により、active objective 達成に必要な場合は product API / DB / auth / authorization / PHI / billing / deploy / package dependency も変更対象に含める方針へ更新。従来の「DB 除く」表記を撤廃し、backend/API/DB と UI を連動して正しい product contract へ修正することを明文化した。安全ゲートは緩和しないため、migration 適用・deploy・secret rotation・production data mutation・destructive operation は current-task の明示許可を必要とする。

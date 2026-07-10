@@ -51,6 +51,26 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh Phase 6 target design direction and normative state-language boundary (DONE, 2026-07-11; documentation slice).
+  - result / scope:
+    Added the target design direction, three-level status communication, seven orthogonal state domains, Visual Status
+    Matrix, registry contract, and Phase 7/8 acceptance gates in `docs/ui-ux-refresh/08-target-design-direction.md`.
+    Integrated the normative parts into `docs/ui-ux-design-guidelines.md` §6.7 without weakening the existing six-role
+    token, 4-tier alert, offline-sync, 44px, or accessibility rules. No product code, token implementation, component,
+    API/schema, auth/authz, PHI handling, offline implementation, or runtime configuration changed.
+  - safety / design boundary:
+    The SSOT now explicitly separates clinical safety, prescription change, record lifecycle, synchronization/freshness,
+    workflow, system/auth, and file-processing state. A new state may not be shown to users until its API/model,
+    TypeScript literal, registry, common component, and tests exist in the same implementation slice. The design document
+    distinguishes existing partial implementation from planned states; it makes no compliance, user-test, or risk-removal
+    claim. `gpt-image-2` generation was omitted because this slice changes documentation only and performs no screen
+    reconstruction or visual implementation.
+  - validation / next action:
+    Exact Prettier checks and targeted `git diff --check` passed before ledger update. Phase 7 must map the registry
+    contract to real source files and decide the first low-risk executable vertical slice; high-risk patient, CDS,
+    persistence/sync, authorization, and break-glass work remains behind the reviews and acceptance gates documented in
+    Phase 5/6.
+
 - codex: UI/UX Refresh Phase 5 static audit and use-error risk register (DONE, 2026-07-11; documentation slice).
   - result / scope:
     Completed the Phase 5 documentation-only boundary required by `docs/ui-ux-refresh/PROGRESS.md`: consolidated 18
