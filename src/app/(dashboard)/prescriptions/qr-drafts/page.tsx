@@ -255,7 +255,7 @@ function QrDraftList() {
           未照合
           {unmatchedCount > 0 && (
             <span
-              className={`inline-flex size-5 items-center justify-center rounded-full text-[11px] font-semibold ${
+              className={`inline-flex size-5 items-center justify-center rounded-full text-[12px] font-semibold ${
                 filterMode === 'unmatched'
                   ? 'bg-primary-foreground text-primary'
                   : 'bg-state-confirm/10 text-state-confirm'

@@ -141,17 +141,17 @@ export function VoiceSoapAssist({
           <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
             <p className="text-xs font-medium text-foreground">デスクトップ</p>
             <p className="mt-1 text-xs text-muted-foreground">{supportMatrix.desktop}</p>
-            <p className="mt-1 text-[11px] text-muted-foreground">Chrome / Edge を推奨</p>
+            <p className="mt-1 text-[12px] text-muted-foreground">Chrome / Edge を推奨</p>
           </div>
           <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
             <p className="text-xs font-medium text-foreground">タブレット</p>
             <p className="mt-1 text-xs text-muted-foreground">{supportMatrix.tablet}</p>
-            <p className="mt-1 text-[11px] text-muted-foreground">iPad Safari / Chrome を想定</p>
+            <p className="mt-1 text-[12px] text-muted-foreground">iPad Safari / Chrome を想定</p>
           </div>
           <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
             <p className="text-xs font-medium text-foreground">モバイル/PWA</p>
             <p className="mt-1 text-xs text-muted-foreground">{supportMatrix.mobile}</p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
+            <p className="mt-1 text-[12px] text-muted-foreground">
               HTTPS 必須。初回のみマイク権限を要求し、バックグラウンド遷移時は録音を自動停止します。
             </p>
           </div>

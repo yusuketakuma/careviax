@@ -223,11 +223,11 @@ export function WeeklyScheduleControls({
               ].join(' ')}
             >
               <div className="text-xs">{format(day, 'M/d(E)', { locale: ja })}</div>
-              <div className="mt-1 text-[11px] opacity-80">
+              <div className="mt-1 text-[12px] opacity-80">
                 候補 {proposalCount} / 確定 {scheduleCount}
               </div>
               {(isBillableHistoryDate || isNextBillableDate) && (
-                <div className="mt-1 flex flex-wrap gap-1 text-[10px]">
+                <div className="mt-1 flex flex-wrap gap-1 text-[12px]">
                   {isBillableHistoryDate && (
                     <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
                       算定済

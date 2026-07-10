@@ -139,7 +139,7 @@ export function SoapStepWizard({
                 {step.key}
               </div>
               <span
-                className={`text-[10px] leading-none ${
+                className={`text-[12px] leading-none ${
                   index === currentStep ? 'font-semibold text-foreground' : 'text-muted-foreground'
                 }`}
               >

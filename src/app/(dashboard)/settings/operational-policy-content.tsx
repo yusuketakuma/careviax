@@ -474,7 +474,7 @@ function SettingsCandidateInventory() {
                     </span>
                   </div>
                   <p className="mt-2 text-xs leading-5 text-foreground">{item.recommendation}</p>
-                  <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+                  <p className="mt-2 text-[12px] leading-5 text-muted-foreground">
                     根拠: {item.evidence.join(' / ')}
                   </p>
                 </li>

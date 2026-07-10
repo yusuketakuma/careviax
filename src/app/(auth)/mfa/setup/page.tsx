@@ -275,7 +275,7 @@ export default function MfaSetupPage() {
                 >
                   {s < step ? <Check className="h-4 w-4" aria-hidden="true" /> : s}
                 </div>
-                <span className="text-center text-[11px] leading-3 text-muted-foreground sm:text-xs sm:leading-4">
+                <span className="text-center text-[12px] leading-3 text-muted-foreground sm:text-xs sm:leading-4">
                   {stepLabels[s - 1]}
                 </span>
               </div>

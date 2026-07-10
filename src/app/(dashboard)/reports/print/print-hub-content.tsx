@@ -244,7 +244,7 @@ function SheetHeader({ title, settings }: { title: string; settings: PrintOutput
     <header>
       <div className="flex items-start justify-between gap-2">
         {settings.showFacilityName ? (
-          <p className="text-[10px] leading-5 text-muted-foreground">
+          <p className="text-[12px] leading-5 text-muted-foreground">
             発行元: CareViaX薬局 / 出力日: {new Date().toLocaleDateString('ja-JP')}
           </p>
         ) : (
@@ -254,7 +254,7 @@ function SheetHeader({ title, settings }: { title: string; settings: PrintOutput
           <div
             aria-label="QRコード(プレースホルダ)"
             data-testid="print-sheet-qr"
-            className="flex size-10 shrink-0 items-center justify-center border border-dashed border-slate-400 text-[9px] text-slate-400"
+            className="flex size-10 shrink-0 items-center justify-center border border-dashed border-slate-400 text-[12px] text-slate-400"
           >
             QR
           </div>
@@ -552,7 +552,7 @@ function MedicationLabelSheet({
           {cards.map((card) => (
             <div
               key={card.lineId}
-              className="rounded border border-slate-300 p-2 text-[11px] leading-4"
+              className="rounded border border-slate-300 p-2 text-[12px] leading-4"
             >
               {settings.showPatientName && (
                 <p className="font-bold text-foreground">{card.patientName} 様</p>
@@ -562,7 +562,7 @@ function MedicationLabelSheet({
                 {card.usageLabel} / {card.slotLabel}
               </p>
               <p className="text-muted-foreground">{card.quantityLabel}</p>
-              {card.note && <p className="mt-0.5 text-[10px] text-state-blocked">{card.note}</p>}
+              {card.note && <p className="mt-0.5 text-[12px] text-state-blocked">{card.note}</p>}
             </div>
           ))}
         </div>

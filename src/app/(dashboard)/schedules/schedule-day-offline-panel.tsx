@@ -314,7 +314,7 @@ function CachedVisitBrief({ item }: { item: CachedVisitBriefCard }) {
           <div className="flex flex-wrap items-center gap-1.5">
             <h3 className="font-medium text-foreground">{item.patientName}</h3>
             {item.patientArchive?.archived ? (
-              <StateBadge role="readonly" className="text-[11px] font-bold">
+              <StateBadge role="readonly" className="text-[12px] font-bold">
                 アーカイブ中
               </StateBadge>
             ) : null}
@@ -342,7 +342,7 @@ function CachedVisitBrief({ item }: { item: CachedVisitBriefCard }) {
       )}
       {item.latestLabs.length > 0 ? (
         <div className="mt-2 rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
-          <p className="text-[11px] font-medium text-muted-foreground">最新検査値</p>
+          <p className="text-[12px] font-medium text-muted-foreground">最新検査値</p>
           <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
             {item.latestLabs.slice(0, 3).map((lab) => (
               <li key={lab}>- {lab}</li>
@@ -350,7 +350,7 @@ function CachedVisitBrief({ item }: { item: CachedVisitBriefCard }) {
           </ul>
         </div>
       ) : null}
-      <p className="mt-2 text-[11px] text-muted-foreground">
+      <p className="mt-2 text-[12px] text-muted-foreground">
         生成 {format(parseISO(item.generatedAt), 'M/d HH:mm', { locale: ja })} / 根拠{' '}
         {item.sourceRefs.join(' / ')}
       </p>

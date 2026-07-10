@@ -852,7 +852,7 @@ export function PatientForm({
               / {PATIENT_FORM_TABS.length} — {PATIENT_FORM_TABS[currentStepIndex]?.label}
             </p>
             {!patientId && currentStepIndex === 0 ? (
-              <span className="text-[11px] font-medium text-state-done">
+              <span className="text-[12px] font-medium text-state-done">
                 基本情報だけで登録できます（残りは後からでも追記できます）
               </span>
             ) : null}

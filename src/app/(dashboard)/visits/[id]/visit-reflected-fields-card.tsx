@@ -105,7 +105,7 @@ export function VisitReflectedFieldsCard({ recordId }: { recordId: string }) {
                   </Badge>
                 </div>
                 {detail && <p className="mt-1 text-xs text-muted-foreground">{detail}</p>}
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="mt-1 text-[12px] text-muted-foreground">
                   {format(new Date(item.created_at), 'M/d HH:mm')}
                   {' ・ '}
                   {item.updated_by_name ?? '—'}

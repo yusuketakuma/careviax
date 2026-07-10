@@ -99,6 +99,19 @@ function expectClinicalBodyText(text: string | RegExp) {
   expect(fontSizedElement?.style.lineHeight).toBe('1.6');
 }
 
+function expectInteractiveTargetsAtLeast44(container: HTMLElement, expectedCount: number) {
+  const interactiveElements = [
+    ...container.querySelectorAll<HTMLButtonElement | HTMLSelectElement>('button, select'),
+  ];
+
+  expect(interactiveElements).toHaveLength(expectedCount);
+  for (const element of interactiveElements) {
+    expect(element.style.minWidth).toBe('44px');
+    expect(element.style.minHeight).toBe('44px');
+    expect(element.style.boxSizing).toBe('border-box');
+  }
+}
+
 const handlers = {
   onSetCell: vi.fn(),
   onAuditOk: vi.fn(),
@@ -191,6 +204,25 @@ describe('RightPane typography floor', () => {
       }
       unmount();
     }
+  });
+});
+
+describe('RightPane pointer target contract', () => {
+  afterEach(() => {
+    act(() => {
+      useWorkbenchStore.setState({ target: null });
+    });
+  });
+
+  it('declares 44px targets on all set and set-audit controls without relying on parent CSS', () => {
+    const setWork = render(<RightPane view={setWorkView()} phase="setp" handlers={handlers} />);
+    expectInteractiveTargetsAtLeast44(setWork.container, 4);
+    setWork.unmount();
+
+    const setAudit = render(
+      <RightPane view={setAuditView('数量不足')} phase="seta" handlers={handlers} />,
+    );
+    expectInteractiveTargetsAtLeast44(setAudit.container, 6);
   });
 });
 

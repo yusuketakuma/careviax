@@ -92,7 +92,7 @@ function FeatureTile({
         </div>
         <div className="text-right">
           <p className="text-lg font-semibold text-foreground">{feature.count}</p>
-          <p className="text-[11px] text-muted-foreground">件</p>
+          <p className="text-[12px] text-muted-foreground">件</p>
         </div>
       </div>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">{feature.summary}</p>

@@ -24,7 +24,15 @@ function calendarView(): WorkbenchView {
     calBarTitle: 'セット注意',
     calBarBg: '#fff',
     calBarMeta: '1日分',
-    calDays: [{ d: '6/1', w: '月', color: '#274268', bg: '#e7edf4' }],
+    calDays: [
+      {
+        date: '2026-06-01',
+        label: '2026年6月1日',
+        w: '月',
+        color: '#274268',
+        bg: '#e7edf4',
+      },
+    ],
     calRows: [
       {
         label: '朝食後',
@@ -64,6 +72,16 @@ function calendarView(): WorkbenchView {
   } as unknown as WorkbenchView;
 }
 
+function calendarViewWithTypographyEvidence(): WorkbenchView {
+  return {
+    ...calendarView(),
+    changes: [{ type: '新規', text: '追加の服薬指示', color: '#1f9150' }],
+    changesEmpty: false,
+    setChips: [{ label: '粉砕注意', color: '#9a6a18', bg: '#fff6e6', border: '#e8c884' }],
+    photos: ['証跡写真'],
+  } as WorkbenchView;
+}
+
 function calendarViewWithGeneration(overrides: Partial<WorkbenchView>): WorkbenchView {
   return {
     ...calendarView(),
@@ -84,6 +102,25 @@ function gridHandlers(overrides: Partial<WorkbenchWriteHandlers> = {}): Workbenc
     onGenerateBatches: vi.fn(),
     ...overrides,
   } as unknown as WorkbenchWriteHandlers;
+}
+
+function expectInlineFontSizesAtLeast12(container: HTMLElement) {
+  const fontSizedElements = [...container.querySelectorAll<HTMLElement>('[style]')].filter(
+    (element) => element.style.fontSize.endsWith('px'),
+  );
+
+  expect(fontSizedElements).not.toHaveLength(0);
+  for (const element of fontSizedElements) {
+    expect(Number.parseFloat(element.style.fontSize)).toBeGreaterThanOrEqual(12);
+  }
+}
+
+function expectInteractiveTargetsAtLeast44(elements: HTMLElement[]) {
+  for (const element of elements) {
+    expect(element.style.minWidth).toBe('44px');
+    expect(element.style.minHeight).toBe('44px');
+    expect(element.style.boxSizing).toBe('border-box');
+  }
 }
 
 describe('MedicationCalendarGrid set batch generation CTA', () => {
@@ -185,5 +222,41 @@ describe('MedicationCalendarGrid', () => {
     fireEvent.click(cell);
 
     expect(onSelectCell).toHaveBeenCalledWith(0, '朝');
+  });
+
+  it('keeps populated calendar decision and audit evidence at the 12px minimum', () => {
+    const { container } = render(
+      <MedicationCalendarGrid
+        view={calendarViewWithTypographyEvidence()}
+        phase="setp"
+        handlers={gridHandlers()}
+      />,
+    );
+
+    expectInlineFontSizesAtLeast12(container);
+    expect(screen.getByText('新規').style.fontSize).toBe('12px');
+    expect(screen.getByText('追加の服薬指示').style.fontSize).toBe('14px');
+    expect(screen.getByText('粉砕注意').style.fontSize).toBe('12px');
+    expect(screen.getByText('2026年6月1日').style.fontSize).toBe('14px');
+    expect(screen.getByText('（月）').style.fontSize).toBe('12px');
+    expect(screen.getByText('証跡写真').style.fontSize).toBe('12px');
+    expect(screen.getByText('追加PTP 1錠').style.fontSize).toBe('12px');
+    expect(screen.getByText('保留：患者メモにある自由記述').style.fontSize).toBe('12px');
+  });
+
+  it('owns the 44px minimum target contract for every calendar footer action', () => {
+    render(
+      <MedicationCalendarGrid
+        view={calendarViewWithGeneration({ canGenerateBatches: true })}
+        phase="setp"
+        handlers={gridHandlers()}
+      />,
+    );
+
+    expectInteractiveTargetsAtLeast44([
+      screen.getByRole('button', { name: 'セットバッチを生成' }),
+      screen.getByRole('button', { name: '一括セット' }),
+      screen.getByRole('button', { name: '次工程へ' }),
+    ]);
   });
 });

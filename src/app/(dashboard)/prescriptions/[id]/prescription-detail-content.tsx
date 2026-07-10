@@ -143,7 +143,7 @@ const prescriptionLineColumns: ColumnDef<PrescriptionLine>[] = [
           <div>
             <span className="font-medium">{line.drug_name}</span>
             {line.drug_code && (
-              <span className="ml-1 text-[11px] text-muted-foreground">{line.drug_code}</span>
+              <span className="ml-1 text-[12px] text-muted-foreground">{line.drug_code}</span>
             )}
           </div>
           {line.dosage_form && (
@@ -205,7 +205,7 @@ const prescriptionLineColumns: ColumnDef<PrescriptionLine>[] = [
         return (
           <Badge
             variant="outline"
-            className="border-transparent bg-tag-info/10 text-tag-info text-[11px]"
+            className="border-transparent bg-tag-info/10 text-tag-info text-[12px]"
           >
             後発
           </Badge>
@@ -215,7 +215,7 @@ const prescriptionLineColumns: ColumnDef<PrescriptionLine>[] = [
         return (
           <Badge
             variant="outline"
-            className="border-transparent bg-state-done/10 text-state-done text-[11px]"
+            className="border-transparent bg-state-done/10 text-state-done text-[12px]"
           >
             一般名
           </Badge>

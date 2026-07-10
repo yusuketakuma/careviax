@@ -58,7 +58,7 @@ const TOTAL_BORDER = '1px solid var(--wb-line)';
 const auditCountInputStyle: CSSProperties = {
   width: 40,
   flex: 'none',
-  fontSize: 10.5,
+  fontSize: 12,
   color: 'var(--wb-ink)',
   background: 'var(--wb-surface)',
   border: '1px solid var(--wb-confirm-border)',
@@ -128,14 +128,14 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
           flexWrap: 'wrap',
         }}
       >
-        <span style={{ fontSize: 11, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+        <span style={{ fontSize: 12, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
           調剤区分
         </span>
         {view.cur.chips.map((c, i) => (
           <span
             key={`${c.label}-${i}`}
             style={{
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: 700,
               color: c.color,
               background: c.bg,
@@ -153,7 +153,7 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
           onClick={openCompare}
           style={{
             cursor: 'pointer',
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: 700,
             color: 'var(--wb-compare)',
             background: 'var(--wb-compare-bg)',
@@ -173,7 +173,7 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
           aria-disabled={isPending}
           style={{
             cursor: isPending ? 'not-allowed' : 'pointer',
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: 700,
             color: 'var(--wb-state-done)',
             background: 'var(--wb-done-bg)',
@@ -190,7 +190,7 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
         <span style={{ flex: 1 }} />
         <span
           style={{
-            fontSize: 10.5,
+            fontSize: 12,
             color: 'var(--wb-tag-reisho)',
             background: 'var(--wb-tag-reisho-bg)',
             border: '1px solid var(--wb-tag-reisho-border)',
@@ -203,7 +203,7 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
         </span>
         <span
           style={{
-            fontSize: 11,
+            fontSize: 12,
             color: 'var(--wb-state-confirm)',
             background: 'var(--wb-confirm-bg-warm)',
             border: '1px solid var(--wb-confirm-border)',
@@ -304,7 +304,7 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
               borderRight: TOTAL_BORDER,
               color: 'var(--wb-ink-muted)',
               fontWeight: 400,
-              fontSize: 11,
+              fontSize: 12,
             }}
           >
             計 ／ {view.totals.summary}
@@ -489,7 +489,7 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
           aria-label={`${row.secLabel} ${row.periodWarning.label}: ${row.periodWarning.detail}`}
           title={row.periodWarning.detail}
           style={{
-            fontSize: 10,
+            fontSize: 12,
             fontWeight: 700,
             color: 'var(--wb-state-confirm)',
             background: 'var(--wb-confirm-bg-pale)',
@@ -504,7 +504,7 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
       )}
       <span style={{ flex: 1 }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 10.5, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+        <span style={{ fontSize: 12, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
           調剤方法
         </span>
         <select
@@ -512,7 +512,7 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
           onChange={(e) => onMethod(e.target.value)}
           aria-label={`${row.secLabel} 調剤方法`}
           style={{
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: 700,
             color: 'var(--wb-ink)',
             background: 'var(--wb-surface)',
@@ -529,7 +529,7 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
         </select>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 10.5, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+        <span style={{ fontSize: 12, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
           服用開始日
         </span>
         <input
@@ -539,7 +539,7 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
           aria-label={`${row.secLabel} 服用開始日`}
           aria-describedby={startHelpId}
           style={{
-            fontSize: 11,
+            fontSize: 12,
             color: 'var(--wb-ink)',
             background: 'var(--wb-surface)',
             border: '1px solid var(--wb-line)',
@@ -552,7 +552,7 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
         </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 10.5, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+        <span style={{ fontSize: 12, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
           処方日数
         </span>
         <input
@@ -565,7 +565,7 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
           aria-describedby={daysHelpId}
           style={{
             width: 48,
-            fontSize: 11,
+            fontSize: 12,
             color: 'var(--wb-ink)',
             background: 'var(--wb-surface)',
             border: '1px solid var(--wb-line)',
@@ -577,7 +577,7 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
         <span id={daysHelpId} className="sr-only">
           1以上の整数で入力してください。
         </span>
-        <span style={{ fontSize: 10.5, color: 'var(--wb-ink-muted)' }}>日</span>
+        <span style={{ fontSize: 12, color: 'var(--wb-ink-muted)' }}>日</span>
       </div>
       <div
         style={{
@@ -590,12 +590,10 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
           padding: '2px 8px',
         }}
       >
-        <span style={{ fontSize: 10.5, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+        <span style={{ fontSize: 12, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
           服用終了日(自動)
         </span>
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--wb-ink)' }}>
-          {row.endDate}
-        </span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--wb-ink)' }}>{row.endDate}</span>
       </div>
     </div>
   );
@@ -646,7 +644,7 @@ function DrugRow({
           borderRight: '1px solid var(--wb-line)',
           color: 'var(--wb-state-readonly)',
           cursor: 'grab',
-          fontSize: 11,
+          fontSize: 12,
         }}
         aria-hidden="true"
       >
@@ -699,7 +697,7 @@ function DrugRow({
           justifyContent: 'center',
           borderRight: CELL_BORDER,
           color: 'var(--wb-ink-muted)',
-          fontSize: 11,
+          fontSize: 12,
         }}
       >
         {row.no}
@@ -727,7 +725,7 @@ function DrugRow({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: 700,
           }}
         >
@@ -737,7 +735,7 @@ function DrugRow({
           <span
             style={{
               flex: 'none',
-              fontSize: 9.5,
+              fontSize: 12,
               fontWeight: 700,
               color: '#fff',
               background: row.chgColor,
@@ -752,7 +750,7 @@ function DrugRow({
           <span
             style={{
               flex: 'none',
-              fontSize: 9.5,
+              fontSize: 12,
               fontWeight: 700,
               color: '#fff',
               background: row.tagColor,
@@ -773,7 +771,7 @@ function DrugRow({
           alignItems: 'center',
           padding: '3px 8px',
           borderRight: CELL_BORDER,
-          fontSize: 11.5,
+          fontSize: 12,
           color: 'var(--wb-ink-muted)',
           lineHeight: 1.2,
         }}
@@ -792,7 +790,7 @@ function DrugRow({
           alignItems: 'center',
           justifyContent: 'center',
           borderRight: CELL_BORDER,
-          fontSize: 10,
+          fontSize: 12,
           fontWeight: 700,
           color: 'var(--wb-state-confirm)',
           textAlign: 'center',
@@ -810,7 +808,7 @@ function DrugRow({
           justifyContent: 'center',
           borderRight: CELL_BORDER,
           fontWeight: 700,
-          fontSize: 11.5,
+          fontSize: 12,
           color: 'var(--wb-ink)',
         }}
       >
@@ -825,7 +823,7 @@ function DrugRow({
           justifyContent: 'center',
           borderRight: CELL_BORDER,
           fontWeight: 700,
-          fontSize: 11.5,
+          fontSize: 12,
           color: 'var(--wb-ink)',
         }}
       >
@@ -844,7 +842,7 @@ function DrugRow({
         {row.funsai && (
           <span
             style={{
-              fontSize: 9.5,
+              fontSize: 12,
               fontWeight: 700,
               color: '#fff',
               background: 'var(--wb-state-blocked)',
@@ -864,7 +862,7 @@ function DrugRow({
           alignItems: 'center',
           gap: 4,
           padding: '3px 8px',
-          fontSize: 11,
+          fontSize: 12,
           color: row.noteColor,
           lineHeight: 1.2,
         }}
@@ -883,7 +881,7 @@ function DrugRow({
               style={{
                 width: 48,
                 flex: 'none',
-                fontSize: 10.5,
+                fontSize: 12,
                 color: 'var(--wb-ink)',
                 background: row.actualQuantityDisabled
                   ? 'var(--wb-surface-muted)'
@@ -904,7 +902,7 @@ function DrugRow({
               style={{
                 flex: 'none',
                 cursor: row.quantityConfirmLocked ? 'default' : 'pointer',
-                fontSize: 10,
+                fontSize: 12,
                 fontWeight: 700,
                 color: row.quantityConfirmed ? 'var(--wb-state-done)' : 'var(--wb-state-confirm)',
                 background: row.quantityConfirmed
@@ -929,7 +927,7 @@ function DrugRow({
                 style={{
                   width: 42,
                   flex: 'none',
-                  fontSize: 10,
+                  fontSize: 12,
                   color: 'var(--wb-state-confirm)',
                   background: 'var(--wb-confirm-bg-pale)',
                   border: '1px solid var(--wb-confirm-border)',
@@ -946,7 +944,7 @@ function DrugRow({
             <span
               style={{
                 flex: 'none',
-                fontSize: 10,
+                fontSize: 12,
                 fontWeight: 700,
                 color: 'var(--wb-state-confirm)',
                 background: 'var(--wb-confirm-bg-pale)',

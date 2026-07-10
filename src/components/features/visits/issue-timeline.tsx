@@ -44,10 +44,10 @@ function IssueNode({ issue }: { issue: IssueItem }) {
       />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <StateBadge role={role} className="py-0 text-[10px] font-medium">
+          <StateBadge role={role} className="py-0 text-[12px] font-medium">
             {label}
           </StateBadge>
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-[12px] text-muted-foreground">
             {issue.identified_at.slice(0, 10)}
             {issue.resolved_at ? ` → ${issue.resolved_at.slice(0, 10)}` : ''}
           </span>

@@ -173,13 +173,13 @@ function PriorityBadge({ priority }: { priority: string }) {
   const label = PRIORITY_LABELS[priority] ?? priority;
   if (role === 'neutral') {
     return (
-      <Badge variant="outline" className="text-[11px] text-muted-foreground">
+      <Badge variant="outline" className="text-[12px] text-muted-foreground">
         {label}
       </Badge>
     );
   }
   return (
-    <StateBadge role={role} showIcon={false} className="text-[11px]">
+    <StateBadge role={role} showIcon={false} className="text-[12px]">
       {label}
     </StateBadge>
   );
@@ -421,11 +421,11 @@ export function TaskHealthBoardPanel({
                       <span>{item.label}</span>
                     </div>
                     {item.tone === 'blocked' ? (
-                      <StateBadge role="blocked" showIcon={false} className="text-[11px]">
+                      <StateBadge role="blocked" showIcon={false} className="text-[12px]">
                         要対応
                       </StateBadge>
                     ) : item.tone === 'confirm' ? (
-                      <StateBadge role="confirm" showIcon={false} className="text-[11px]">
+                      <StateBadge role="confirm" showIcon={false} className="text-[12px]">
                         確認
                       </StateBadge>
                     ) : null}
@@ -508,7 +508,7 @@ export function TaskHealthBoardPanel({
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <PriorityBadge priority={task.priority} />
-                            <Badge variant="outline" className="text-[11px]">
+                            <Badge variant="outline" className="text-[12px]">
                               {task.reason}
                             </Badge>
                           </div>

@@ -34,7 +34,7 @@ export function JahisSupplementalRecordsCard({
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <p className="font-medium text-foreground">{record.recordLabel}</p>
-              <Badge variant="outline" className="text-[11px]">
+              <Badge variant="outline" className="text-[12px]">
                 {record.recordType} / {record.lineNumber}行目
               </Badge>
             </div>

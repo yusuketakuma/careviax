@@ -1632,7 +1632,7 @@ export function ScheduleWeeklyOptimizer({
                               <p className="text-xs font-medium text-foreground">
                                 {shift?.site?.name ?? pharmacist.siteName ?? 'シフト未設定'}
                               </p>
-                              <p className="text-[11px] text-muted-foreground">
+                              <p className="text-[12px] text-muted-foreground">
                                 {shift?.available
                                   ? `${formatNullableTimeOfDay(shift.available_from) ?? '09:00'} - ${formatNullableTimeOfDay(shift.available_to) ?? '18:00'}`
                                   : '勤務シフトなし'}
@@ -1684,7 +1684,7 @@ export function ScheduleWeeklyOptimizer({
                                     <p className="truncate font-medium text-foreground">
                                       {schedule.case_.patient.name}
                                     </p>
-                                    <p className="text-[11px] text-muted-foreground">
+                                    <p className="text-[12px] text-muted-foreground">
                                       {formatNullableTimeOfDay(schedule.time_window_start) ??
                                         '時間未定'}
                                       {schedule.time_window_end

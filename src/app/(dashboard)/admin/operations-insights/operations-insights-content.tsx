@@ -53,7 +53,7 @@ function BarChart({
             className={`w-full rounded-md ${item.colorClass}`}
             style={{ height: `${Math.max((item.value / max) * 78, 2)}%` }}
           />
-          <span className="text-[11px] text-muted-foreground">{item.label}</span>
+          <span className="text-[12px] text-muted-foreground">{item.label}</span>
         </div>
       ))}
     </div>

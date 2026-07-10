@@ -819,7 +819,7 @@ function TimelineEntry({
                 {metadata.map((item) => (
                   <span
                     key={`${event.id}-${item}`}
-                    className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                    className="rounded-full bg-muted px-2 py-0.5 text-[12px] text-muted-foreground"
                   >
                     {item}
                   </span>
@@ -1060,7 +1060,7 @@ export function PatientMovementTimeline({
                     <span>{meta.label}</span>
                     <span
                       className={cn(
-                        'rounded-full px-1.5 py-0.5 text-[11px]',
+                        'rounded-full px-1.5 py-0.5 text-[12px]',
                         isActive ? meta.countClassName : 'bg-muted text-muted-foreground',
                       )}
                     >
@@ -1270,7 +1270,7 @@ export function PatientMovementTimeline({
                     {' / '}
                     {SELF_REPORT_STATUS_LABELS[item.status] ?? item.status}
                   </p>
-                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                  <div className="mt-2 flex flex-wrap gap-2 text-[12px] text-muted-foreground">
                     {item.requested_callback ? <span>折返し希望</span> : null}
                     {item.preferred_contact_time ? (
                       <span>希望時間 {item.preferred_contact_time}</span>

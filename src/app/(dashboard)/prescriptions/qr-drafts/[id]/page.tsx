@@ -338,7 +338,7 @@ function AutoBadge() {
   return (
     <Badge
       variant="outline"
-      className="border-transparent bg-tag-info/10 text-[10px] text-tag-info py-0 px-1"
+      className="border-transparent bg-tag-info/10 text-[12px] text-tag-info py-0 px-1"
     >
       自動補完
     </Badge>
@@ -347,7 +347,7 @@ function AutoBadge() {
 
 function RequiredMarker() {
   return (
-    <span className="ml-1 rounded bg-state-confirm/10 px-1 text-[10px] font-medium text-state-confirm">
+    <span className="ml-1 rounded bg-state-confirm/10 px-1 text-[12px] font-medium text-state-confirm">
       要入力
     </span>
   );
@@ -926,14 +926,14 @@ export default function QrDraftReviewPage() {
             <span className="inline-flex items-center gap-1 mr-3">
               <Badge
                 variant="outline"
-                className="border-transparent bg-tag-info/10 text-[10px] text-tag-info py-0 px-1"
+                className="border-transparent bg-tag-info/10 text-[12px] text-tag-info py-0 px-1"
               >
                 自動補完
               </Badge>
               QRから自動入力されたフィールド
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="rounded bg-state-confirm/10 px-1 text-[10px] font-medium text-state-confirm">
+              <span className="rounded bg-state-confirm/10 px-1 text-[12px] font-medium text-state-confirm">
                 要入力
               </span>
               入力が必要なフィールド

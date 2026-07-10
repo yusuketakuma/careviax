@@ -114,7 +114,7 @@ function InterventionRow({ intervention, onOutcomeUpdate }: InterventionRowProps
     <li className="rounded-md border bg-card p-3 text-sm">
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline" className={cn('text-[11px] font-medium py-0', typeColor)}>
+          <Badge variant="outline" className={cn('text-[12px] font-medium py-0', typeColor)}>
             {typeLabel}
           </Badge>
           <span className="text-xs text-muted-foreground">

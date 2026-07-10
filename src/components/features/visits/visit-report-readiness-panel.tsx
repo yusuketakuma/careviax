@@ -78,7 +78,7 @@ export function VisitReportReadinessPanel({
       <CardContent className="space-y-3 p-3 sm:space-y-4 sm:p-4 xl:p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
-            <p className="inline-flex items-center rounded-full border border-border/70 bg-muted/30 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="inline-flex items-center rounded-full border border-border/70 bg-muted/30 px-2.5 py-1 text-[12px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               {copy.eyebrow}
             </p>
             <div className="flex items-start gap-2">
@@ -169,7 +169,7 @@ export function VisitReportReadinessPanel({
                       {item.description}
                     </p>
                     {!required ? (
-                      <p className="text-[11px] font-medium text-muted-foreground">任意補足</p>
+                      <p className="text-[12px] font-medium text-muted-foreground">任意補足</p>
                     ) : null}
                   </div>
                 </div>

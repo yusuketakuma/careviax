@@ -3,96 +3,8 @@
   "defaultReason": "Existing DV-02 browser typography debt; remove or reduce this entry only in its focused remediation slice.",
   "entries": [
     {
-      "path": "src/app/(auth)/mfa/setup/page.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/app/(dashboard)/admin/capacity/capacity-content.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/app/(dashboard)/admin/master-hub-content.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/app/(dashboard)/admin/operations-insights/operations-insights-content.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/app/(dashboard)/dispense/dispense-work-queue.shared.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/app/(dashboard)/patients/[id]/patient-facility-multi-visit-card.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx",
-      "expectedCounts": { "tailwind-text": 3 }
-    },
-    {
-      "path": "src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.tsx",
-      "expectedCounts": { "tailwind-text": 3 }
-    },
-    {
-      "path": "src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx",
-      "expectedCounts": { "tailwind-text": 4 }
-    },
-    {
-      "path": "src/app/(dashboard)/prescriptions/qr-drafts/page.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/app/(dashboard)/reports/print/print-hub-content.tsx",
-      "expectedCounts": { "tailwind-text": 4 }
-    },
-    {
-      "path": "src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/app/(dashboard)/schedules/proposal-human-decision-flow.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx",
-      "expectedCounts": { "tailwind-text": 2 }
-    },
-    {
       "path": "src/app/(dashboard)/schedules/route-compare/route-compare-content.tsx",
       "expectedCounts": { "jsx-font-size": 1 }
-    },
-    {
-      "path": "src/app/(dashboard)/schedules/schedule-day-offline-panel.tsx",
-      "expectedCounts": { "tailwind-text": 3 }
-    },
-    {
-      "path": "src/app/(dashboard)/schedules/schedule-day-view.sections.tsx",
-      "expectedCounts": { "tailwind-text": 2 }
-    },
-    {
-      "path": "src/app/(dashboard)/settings/operational-policy-content.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/app/(dashboard)/tasks/task-health-board-panel.tsx",
-      "expectedCounts": { "tailwind-text": 5 }
-    },
-    {
-      "path": "src/app/(dashboard)/visits/[id]/visit-reflected-fields-card.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/app/dashboard-preview/page.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/app/shared/[token]/shared-viewer-content.tsx",
-      "expectedCounts": { "tailwind-text": 2 }
     },
     {
       "path": "src/components/features/dispense-workbench/dispensing-workbench.module.css",
@@ -107,10 +19,6 @@
       "expectedCounts": { "inline-font-size": 3 }
     },
     {
-      "path": "src/components/features/dispense-workbench/medication-calendar-grid.tsx",
-      "expectedCounts": { "inline-font-size": 14 }
-    },
-    {
       "path": "src/components/features/dispense-workbench/phase-header.tsx",
       "expectedCounts": { "inline-font-size": 1 }
     },
@@ -119,60 +27,8 @@
       "expectedCounts": { "inline-font-size": 2 }
     },
     {
-      "path": "src/components/features/dispense-workbench/prescription-grid.tsx",
-      "expectedCounts": { "inline-font-size": 33 }
-    },
-    {
-      "path": "src/components/features/medications/intervention-panel.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/components/features/patients/patient-field-revision-timeline.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/components/features/patients/patient-form.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/components/features/patients/patient-structured-care-panel.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
       "path": "src/components/features/patients/residual-medication-chart.tsx",
       "expectedCounts": { "jsx-font-size": 3 }
-    },
-    {
-      "path": "src/components/features/prescriptions/jahis-supplemental-records-card.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/components/features/visits/facility-patient-swipe-rail.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/components/features/visits/facility-visit-record-switcher.tsx",
-      "expectedCounts": { "tailwind-text": 2 }
-    },
-    {
-      "path": "src/components/features/visits/issue-timeline.tsx",
-      "expectedCounts": { "tailwind-text": 2 }
-    },
-    {
-      "path": "src/components/features/visits/soap-step-wizard.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
-    },
-    {
-      "path": "src/components/features/visits/visit-report-readiness-panel.tsx",
-      "expectedCounts": { "tailwind-text": 2 }
-    },
-    {
-      "path": "src/components/features/visits/voice-soap-assist.tsx",
-      "expectedCounts": { "tailwind-text": 3 }
-    },
-    {
-      "path": "src/components/home-care/home-care-feature-board.tsx",
-      "expectedCounts": { "tailwind-text": 1 }
     }
   ]
 }

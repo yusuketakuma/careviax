@@ -8,7 +8,7 @@ export default function DashboardPreviewPage() {
       <div className="border-b border-border bg-background/95 px-6 py-4 backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/30 px-3 py-1 text-[11px] font-medium uppercase text-muted-foreground">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/30 px-3 py-1 text-[12px] font-medium uppercase text-muted-foreground">
               <Eye className="size-3.5" aria-hidden="true" />
               Preview
             </div>

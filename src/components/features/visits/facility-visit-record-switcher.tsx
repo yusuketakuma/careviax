@@ -186,7 +186,7 @@ export function FacilityVisitRecordSwitcher({
       ) : null}
 
       <div className="mt-3 rounded-xl border border-sky-200 bg-white p-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-sky-700">
           現在の患者
         </p>
         <p className="mt-1 text-base font-semibold text-foreground">{currentPatient.patientName}</p>
@@ -215,7 +215,7 @@ export function FacilityVisitRecordSwitcher({
                 <Badge
                   variant={patient.visitRecordId ? 'default' : 'outline'}
                   className={cn(
-                    'shrink-0 bg-white text-[11px]',
+                    'shrink-0 bg-white text-[12px]',
                     patient.visitRecordId
                       ? 'border-transparent bg-state-done text-white'
                       : active

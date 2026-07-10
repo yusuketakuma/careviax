@@ -45,7 +45,7 @@ function StructuredCareRow({ item, label }: { item: PatientStructuredCareItem; l
           {item.is_active ? '実施中' : '終了'}
         </Badge>
       </div>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-[12px] text-muted-foreground">
         {item.start_date ? `開始 ${formatCareDate(item.start_date)}` : '開始日未設定'}
         {item.end_date ? ` ・ 終了 ${formatCareDate(item.end_date)}` : ''}
         {item.source && item.source !== 'patient_detail_edit'

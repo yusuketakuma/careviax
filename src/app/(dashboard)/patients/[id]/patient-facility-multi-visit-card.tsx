@@ -80,7 +80,7 @@ export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOve
       <CardHeader className="space-y-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1">
-            <p className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-1 text-[12px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Facility Multi-Visit
             </p>
             <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium text-foreground">

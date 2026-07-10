@@ -41,6 +41,12 @@ const PHASE_ROUTE: Record<Phase, string> = {
   seta: '/set-audit',
 };
 
+const calendarFooterInteractiveTargetStyle: CSSProperties = {
+  minWidth: '44px',
+  minHeight: '44px',
+  boxSizing: 'border-box',
+};
+
 export function MedicationCalendarGrid({
   view,
   phase,
@@ -71,6 +77,7 @@ export function MedicationCalendarGrid({
 
   // 主操作ボタン: gate NG 時は cursor='not-allowed' / opacity='.7' / 灰背景（view 由来）で disable 表現。
   const primaryButtonStyle: CSSProperties = {
+    font: 'inherit',
     cursor: primaryBtn.cursor,
     fontSize: 12.5,
     fontWeight: 700,
@@ -82,7 +89,7 @@ export function MedicationCalendarGrid({
     boxShadow: '0 1px 0 rgba(0,0,0,.12)',
     whiteSpace: 'nowrap',
     opacity: primaryBtn.opacity,
-    font: 'inherit',
+    ...calendarFooterInteractiveTargetStyle,
   };
 
   return (
@@ -101,7 +108,7 @@ export function MedicationCalendarGrid({
       >
         <span
           style={{
-            fontSize: 11.5,
+            fontSize: 12,
             fontWeight: 700,
             color: 'var(--wb-state-confirm)',
             whiteSpace: 'nowrap',
@@ -123,19 +130,21 @@ export function MedicationCalendarGrid({
               key={`${ch.type}-${ch.text}-${i}`}
               style={{
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 gap: 5,
-                fontSize: 11,
                 color: 'var(--wb-ink-muted)',
                 background: 'var(--wb-surface)',
                 border: '1px solid var(--wb-confirm-border-warm)',
                 borderRadius: 4,
                 padding: '2px 8px',
+                minWidth: 0,
+                maxWidth: '100%',
               }}
             >
               <span
                 style={{
-                  fontSize: 9.5,
+                  flex: 'none',
+                  fontSize: 12,
                   fontWeight: 700,
                   color: '#fff',
                   background: ch.color,
@@ -145,11 +154,20 @@ export function MedicationCalendarGrid({
               >
                 {ch.type}
               </span>
-              {ch.text}
+              <span
+                style={{
+                  minWidth: 0,
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  overflowWrap: 'anywhere',
+                }}
+              >
+                {ch.text}
+              </span>
             </span>
           ))}
           {view.changesEmpty && (
-            <span style={{ fontSize: 11, color: 'var(--wb-ink-muted)' }}>
+            <span style={{ fontSize: 12, color: 'var(--wb-ink-muted)' }}>
               今回変更なし（前回と同一処方）
             </span>
           )}
@@ -169,7 +187,7 @@ export function MedicationCalendarGrid({
           flexWrap: 'wrap',
         }}
       >
-        <span style={{ fontSize: 11, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+        <span style={{ fontSize: 12, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
           {view.calBarTitle}
         </span>
         {view.setChips.map((c, i) => (
@@ -179,7 +197,7 @@ export function MedicationCalendarGrid({
               display: 'flex',
               alignItems: 'center',
               gap: 4,
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: 700,
               color: c.color,
               background: c.bg,
@@ -199,7 +217,7 @@ export function MedicationCalendarGrid({
         <span style={{ flex: 1 }} />
         <span
           style={{
-            fontSize: 11,
+            fontSize: 12,
             color: 'var(--wb-ink-muted)',
             fontWeight: 700,
             whiteSpace: 'nowrap',
@@ -217,7 +235,7 @@ export function MedicationCalendarGrid({
             <div style={{ width: 86, flex: 'none' }} />
             {view.calDays.map((d, i) => (
               <div
-                key={`${d.d}-${i}`}
+                key={`${d.date}-${i}`}
                 style={{
                   flex: 1,
                   minWidth: 88,
@@ -233,8 +251,10 @@ export function MedicationCalendarGrid({
                   margin: '0 1px',
                 }}
               >
-                {d.d}
-                <span style={{ fontSize: 10.5, marginLeft: 3 }}>（{d.w}）</span>
+                <time dateTime={d.date} style={{ display: 'block', fontSize: 14, lineHeight: 1.5 }}>
+                  {d.label}
+                  <span style={{ fontSize: 12, marginLeft: 3 }}>（{d.w}）</span>
+                </time>
               </div>
             ))}
           </div>
@@ -280,7 +300,7 @@ export function MedicationCalendarGrid({
               alignItems: 'center',
               gap: 14,
               marginTop: 10,
-              fontSize: 10.5,
+              fontSize: 12,
               color: 'var(--wb-ink-muted)',
               flexWrap: 'wrap',
             }}
@@ -311,7 +331,7 @@ export function MedicationCalendarGrid({
           <div style={{ marginTop: 12 }}>
             <div
               style={{
-                fontSize: 11.5,
+                fontSize: 12,
                 fontWeight: 700,
                 color: 'var(--wb-ink-muted)',
                 marginBottom: 6,
@@ -354,7 +374,7 @@ export function MedicationCalendarGrid({
                   <span style={{ fontSize: 18 }} aria-hidden="true">
                     ▣
                   </span>
-                  <span style={{ fontSize: 10, fontFamily: 'Consolas, monospace' }}>{ph}</span>
+                  <span style={{ fontSize: 12, fontFamily: 'Consolas, monospace' }}>{ph}</span>
                 </div>
               ))}
             </div>
@@ -411,7 +431,7 @@ export function MedicationCalendarGrid({
         {/* 完了ゲート表示（カレンダー工程のみ）。色だけに依存しないテキスト付き */}
         <span
           style={{
-            fontSize: 11.5,
+            fontSize: 12,
             fontWeight: 700,
             color: gate.color,
             background: gate.bg,
@@ -434,6 +454,7 @@ export function MedicationCalendarGrid({
             disabled={isPending || (!view.canGenerateBatches && !view.canForceRegenerate)}
             title={view.batchGenerationBlockedReason || undefined}
             style={{
+              font: 'inherit',
               cursor:
                 isPending || (!view.canGenerateBatches && !view.canForceRegenerate)
                   ? 'not-allowed'
@@ -446,9 +467,9 @@ export function MedicationCalendarGrid({
               borderRadius: 5,
               padding: '6px 14px',
               whiteSpace: 'nowrap',
-              font: 'inherit',
               opacity:
                 isPending || (!view.canGenerateBatches && !view.canForceRegenerate) ? 0.6 : 1,
+              ...calendarFooterInteractiveTargetStyle,
             }}
           >
             {view.batchGenerationLabel}
@@ -459,6 +480,7 @@ export function MedicationCalendarGrid({
           onClick={() => bulk()}
           disabled={isPending}
           style={{
+            font: 'inherit',
             cursor: 'pointer',
             fontSize: 12,
             fontWeight: 700,
@@ -468,8 +490,8 @@ export function MedicationCalendarGrid({
             borderRadius: 5,
             padding: '6px 14px',
             whiteSpace: 'nowrap',
-            font: 'inherit',
             opacity: isPending ? 0.6 : 1,
+            ...calendarFooterInteractiveTargetStyle,
           }}
         >
           {bulkLabel}
@@ -545,7 +567,7 @@ function CalendarCellView({ cell, onSelect }: CalendarCellViewProps) {
       {cell.hasPtp && (
         <span
           style={{
-            fontSize: 9.5,
+            fontSize: 12,
             fontWeight: 700,
             color: 'var(--wb-tag-ptp)',
             background: 'var(--wb-tag-ptp-bg)',
@@ -557,7 +579,7 @@ function CalendarCellView({ cell, onSelect }: CalendarCellViewProps) {
           {cell.ptpText}
         </span>
       )}
-      <span style={{ fontSize: 9.5, color: cell.stateColor, fontWeight: 700 }}>
+      <span style={{ fontSize: 12, color: cell.stateColor, fontWeight: 700 }}>
         {cell.stateLabel}
       </span>
     </button>

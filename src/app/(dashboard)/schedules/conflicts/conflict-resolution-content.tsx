@@ -42,7 +42,7 @@ const conflictRowColumns: ColumnDef<ConflictRow>[] = [
       >
         {row.original.subject}
         {row.original.confirmed ? (
-          <StateBadge role="done" className="text-[11px]">
+          <StateBadge role="done" className="text-[12px]">
             確定
           </StateBadge>
         ) : null}

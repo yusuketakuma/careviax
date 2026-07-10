@@ -79,7 +79,7 @@ export function QueueDueDate({
       ) : null}
       {format(parseISO(dueDate), 'MM/dd HH:mm', { locale: ja })}
       {isOverdue ? (
-        <span className="text-[11px]">{showIcon ? '期限超過' : ' / 期限超過'}</span>
+        <span className="text-[12px]">{showIcon ? '期限超過' : ' / 期限超過'}</span>
       ) : null}
     </>
   );

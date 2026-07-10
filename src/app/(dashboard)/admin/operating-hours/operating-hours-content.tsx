@@ -561,7 +561,7 @@ export function OperatingHoursContent() {
                       </time>
                       {resolved ? (
                         <div
-                          className={`mt-1 text-[11px] ${
+                          className={`mt-1 text-[12px] ${
                             role === 'blocked'
                               ? 'text-state-blocked'
                               : role === 'confirm'

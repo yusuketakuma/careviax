@@ -496,7 +496,7 @@ export function SharedViewerContent({ token }: { token: string }) {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <p className="font-medium">{data.patient.name}</p>
                     {data.patient.archive?.archived ? (
-                      <StateBadge role="readonly" className="text-[11px] font-bold">
+                      <StateBadge role="readonly" className="text-[12px] font-bold">
                         アーカイブ中
                       </StateBadge>
                     ) : null}
@@ -730,7 +730,7 @@ export function SharedViewerContent({ token }: { token: string }) {
                     <p className="mt-2 whitespace-pre-line text-xs leading-5 text-muted-foreground">
                       {report.content}
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+                    <div className="mt-2 flex flex-wrap gap-3 text-[12px] text-muted-foreground">
                       <span>
                         受付{' '}
                         {format(parseISO(report.created_at), 'yyyy年M月d日 HH:mm', {

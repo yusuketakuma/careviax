@@ -500,6 +500,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
               aria-disabled={cellActionDisabled}
               title={hasSelectedCell ? undefined : '対象セルを選択してからセットしてください'}
               style={{
+                ...rightPaneInteractiveTargetStyle,
                 flex: 1,
                 cursor: cellActionCursor,
                 textAlign: 'center',
@@ -523,6 +524,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
               disabled={cellActionDisabled}
               style={{
                 ...holdButtonStyle,
+                ...rightPaneInteractiveTargetStyle,
                 cursor: cellActionCursor,
                 opacity: cellActionDisabled ? 0.72 : 1,
               }}
@@ -562,6 +564,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
               onClick={() => onToggleOut(o.name)}
               aria-pressed={o.checked}
               style={{
+                ...rightPaneInteractiveTargetStyle,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
@@ -634,6 +637,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
               onClick={() => onTogglePacket(pk.key)}
               aria-pressed={pk.checked}
               style={{
+                ...rightPaneInteractiveTargetStyle,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
@@ -799,6 +803,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
               aria-disabled={cellActionDisabled}
               title={hasSelectedCell ? undefined : '対象セルを選択してから確認してください'}
               style={{
+                ...rightPaneInteractiveTargetStyle,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
@@ -831,6 +836,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
             aria-disabled={cellActionDisabled}
             title={hasSelectedCell ? undefined : '対象セルを選択してから監査OKにしてください'}
             style={{
+              ...rightPaneInteractiveTargetStyle,
               flex: 1,
               cursor: auditButtonCursor,
               textAlign: 'center',
@@ -861,6 +867,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
                 : '対象セルを選択してから差戻してください'
             }
             style={{
+              ...rightPaneInteractiveTargetStyle,
               flex: 1,
               cursor: ngDisabled ? 'not-allowed' : 'pointer',
               textAlign: 'center',
@@ -884,6 +891,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
             title={hasSelectedCell ? undefined : '対象セルを選択してから保留してください'}
             style={{
               ...holdButtonStyle,
+              ...rightPaneInteractiveTargetStyle,
               padding: '8px 12px',
               cursor: auditButtonCursor,
               opacity: cellActionDisabled ? 0.72 : 1,
@@ -910,6 +918,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
             onChange={(e) => onNg(e.target.value)}
             disabled={ngClassificationDisabled}
             style={{
+              ...rightPaneInteractiveTargetStyle,
               flex: 1,
               fontSize: '12px',
               color: 'var(--wb-ink)',
@@ -979,6 +988,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
                 onClick={() => onReturn(rj.di, rj.tk)}
                 disabled={isPending}
                 style={{
+                  ...rightPaneInteractiveTargetStyle,
                   flex: 'none',
                   cursor: auditButtonCursor,
                   fontSize: '12px',
@@ -1095,6 +1105,13 @@ const holdButtonStyle: CSSProperties = {
   border: '1px solid var(--wb-confirm-border)',
   borderRadius: '5px',
   padding: '7px 12px',
+};
+
+/** 右ペインの臨床・監査操作は親コンテナに依存せず44px以上を保証する。 */
+const rightPaneInteractiveTargetStyle: CSSProperties = {
+  minWidth: '44px',
+  minHeight: '44px',
+  boxSizing: 'border-box',
 };
 
 export default RightPane;

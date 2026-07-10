@@ -86,7 +86,7 @@ function MasterCard({ card }: { card: MasterHubCard }) {
       </p>
       <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">{card.note}</p>
       <div className="border-l-2 border-primary/35 pl-3">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+        <p className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground">
           次にすること
         </p>
         <p className="mt-0.5 line-clamp-2 text-sm font-semibold leading-5 text-foreground">

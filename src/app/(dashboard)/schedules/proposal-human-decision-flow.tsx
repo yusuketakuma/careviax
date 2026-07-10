@@ -310,7 +310,7 @@ export function ProposalHumanDecisionFlow({
               >
                 <HumanDecisionStepIcon state={step.state} />
               </span>
-              <span className="text-[11px] font-medium">{humanDecisionStepBadge(step.state)}</span>
+              <span className="text-[12px] font-medium">{humanDecisionStepBadge(step.state)}</span>
             </div>
             <p className={cn('mt-1 font-semibold', compact ? 'text-xs' : 'text-sm')}>
               {index + 1}. {step.label}

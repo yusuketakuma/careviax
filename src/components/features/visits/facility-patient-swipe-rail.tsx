@@ -112,7 +112,7 @@ export function FacilityPatientSwipeRail({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+                    <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-sky-700">
                       {group.label}
                     </p>
                     <h4 className="mt-1 truncate text-base font-semibold text-foreground">
