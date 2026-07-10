@@ -9,11 +9,11 @@
 ## 体制（2026-07-10 最新ユーザー指示）
 
 - 現行は Codex 本体が計画、編集、validation、台帳更新、scoped commit の最終責任を持つ単一制御運用。
-- ユーザーの明示的な再有効化により、bounded な調査・影響範囲特定・計画レビュー・検証には subagent を使う。
-  subagent は原則 read-only とし、編集、統合、台帳更新、commit は Codex 本体だけが行う。
+- 2026-07-10 の最新ユーザー指示により、subagent を含む外部workerは使わず、Codex 本体だけで
+  調査、計画、編集、validation、台帳更新、scoped commitを継続する。
 - agmsg、codex2/codex3/codex4、Claude などの外部 maker/checker 運用は再開しない。
 - 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
-  bounded subagent の計画レビュー、focused/full gate で代替する。
+  直接の影響範囲確認、focused/full gate で代替する。
 - 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
 
 ## 旧体制（2026-07-04/05 履歴）
@@ -44,13 +44,59 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: Codex 本体 + bounded read-only subagent 運用（2026-07-10〜）。
-  編集・validation・commit/pushの最終責任は Codex 本体が維持する。
+- Phase C（実装ループ）: Codex 単独運用（2026-07-10〜）。
+  調査・編集・validation・commitの責任は Codex 本体が持ち、pushは明示指示時だけ行う。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex: mixed visit route reorder response-envelope convergence.
+  - commit:
+    `d6f02eb7b fix(API-CONTRACT-001DW): envelope mixed route reorder result`.
+  - current task:
+    P0 `API-CONTRACT-001DW`。`PATCH /api/visit-routes/reorder` successを legacy root
+    `{ schedule_ids, proposal_ids }` から exact `{ data: { schedule_ids, proposal_ids } }` へ移し、
+    `api-response-shape` allowlist debtを42から41へ削減する。mutation、auth、transaction、audit、
+    notification、status/error semanticsは変更しない。
+  - files inspected:
+    `Plans.md`; `docs/plans-archive.md`; this state; current Next.js route-handler guide;
+    `src/app/api/visit-routes/reorder/route.ts` and test; visit-route client and all production callers;
+    visit route plan/weekly/compare/emergency consumers and tests; response-shape checker/allowlist;
+    active dirty tree and recent commits。
+  - files changed:
+    `src/app/api/visit-routes/reorder/route.ts` and test;
+    `tools/api-response-shape-allowlist.json`; `Plans.md`; `docs/plans-archive.md`; and this state file。
+  - bugs found / fixed:
+    The mutation returned successful IDs at the response root while the current public contract requires the
+    `data` envelope. It now returns exact nested IDs, and the route test rejects any reintroduction of root
+    `schedule_ids` / `proposal_ids`. All production callers were traced and use the response only to determine
+    mutation completion and invalidate/reload state; none reads the success body, so no compatibility fallback or
+    client split was introduced.
+  - frontend/backend, security and performance:
+    This is a response-only contract correction. `canVisit`, org/assignment checks, Serializable retry,
+    optimistic `updateMany`, confirmed/locked/stale/duplicate and vehicle-duration guards, workflow audit and
+    notification, no-store, status and error bodies are unchanged. No query, transaction, render, network call,
+    payload field, PHI disclosure, log, dependency or mutation behavior was added.
+  - plan review / agents / Oracle:
+    Codex alone mapped the route, guards, tests and every production caller before editing. No subagent, agmsg,
+    Claude, external maker/checker or Oracle consultation was used.
+  - validation:
+    Focused Vitest passed 4 files / 42 tests across reorder, weekly optimizer, route compare and emergency route.
+    Exact ESLint, Prettier and `git diff --check` passed. `pnpm api-response-shape:check` passed at
+    41 allowlisted / 0 new; `route-auth-wrapper:check` and `db:query-shape:check` passed. Typegen succeeded;
+    full typecheck reported no visit-route/reorder error and remains red only on the pre-existing user-owned
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that
+    prerequisite gate is red. No DB/migration command, production operation, external send, deploy, push or
+    destructive action ran.
+  - Plans / UI / imagegen:
+    `API-CONTRACT-001DW` is recorded as a completed derived slice; parent `API-CONTRACT-001` remains Partial with
+    41 allowlisted violations. Image generation/browser screenshots were omitted because this mutation response
+    shape does not change layout, interaction, displayed fields or visual state.
+  - remaining / next action:
+    Continue `API-CONTRACT-001` with the next bounded consumer-backed route. Preserve all unowned
+    inbound/config/harness/stock-dashboard dirty files. No push was performed.
 
 - codex: visit route plan response-envelope convergence.
   - commit:
