@@ -52,6 +52,52 @@
 
 ## 直近の作業
 
+- codex: visit schedule proposal reorder response-envelope convergence.
+  - commit:
+    `206177578 fix(API-CONTRACT-001DX): envelope proposal route reorder result`.
+  - current task:
+    P0 `API-CONTRACT-001DX`。`PATCH /api/visit-schedule-proposals/reorder` successを legacy root
+    `{ case_ids, ordered_proposal_ids }` から exact `{ data: { case_ids, ordered_proposal_ids } }` へ移し、
+    `api-response-shape` allowlist debtを41から40へ削減する。mutation、auth、transaction、audit、
+    notification、status/error semanticsは変更しない。
+  - files inspected:
+    `Plans.md`; `docs/plans-archive.md`; this state; current Next.js route-handler guide;
+    proposal reorder route/test; visit-route client; schedule proposals mutation/caller/test;
+    response-shape checker/allowlist; prior mixed-reorder slice; active dirty tree and recent commits。
+  - files changed:
+    `src/app/api/visit-schedule-proposals/reorder/route.ts` and test;
+    `tools/api-response-shape-allowlist.json`; `Plans.md`; `docs/plans-archive.md`; and this state file。
+  - bugs found / fixed:
+    The successful mutation returned `case_ids` and `ordered_proposal_ids` at the response root, contrary to the
+    current public envelope contract. It now returns exact nested `data`; the route test pins the full body and
+    rejects root fields. The single production caller uses the result only for mutation completion, toast and query
+    invalidation, so no legacy fallback or split frontend contract was introduced.
+  - frontend/backend, security and performance:
+    This is a response-only contract correction. `canVisit`, org/assignment checks, Serializable retry,
+    guarded `updateMany`, finalized/status/stale/duplicate route-order checks, workflow audit/notification,
+    no-store, status and error bodies are unchanged. No query, transaction, render state, request, payload field,
+    PHI disclosure, log, dependency or mutation behavior was added.
+  - plan review / agents / Oracle:
+    Codex alone mapped the route, response, tests and every production caller before editing. No subagent, agmsg,
+    Claude, external maker/checker or Oracle consultation was used.
+  - validation:
+    Pre-change route baseline passed 1 file / 17 tests after removing unsupported Vitest 4 `--runInBand`; the first
+    command failed at CLI option parsing and did not execute tests. Post-change focused Vitest passed 2 files /
+    57 tests across the route and proposals screen. Exact ESLint, Prettier and `git diff --check` passed.
+    `pnpm api-response-shape:check` passed at 40 allowlisted / 0 new; `route-auth-wrapper:check` and
+    `db:query-shape:check` passed. Typegen succeeded; full typecheck reported no proposal-reorder error and remains
+    red only on the pre-existing user-owned
+    `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285` TS2322. Build was not run while that
+    prerequisite gate is red. No DB/migration command, production operation, external send, deploy, push or
+    destructive action ran.
+  - Plans / UI / imagegen:
+    `API-CONTRACT-001DX` is recorded as a completed derived slice; parent `API-CONTRACT-001` remains Partial with
+    40 allowlisted violations. Image generation/browser screenshots were omitted because the success response
+    nesting does not change layout, interaction, displayed fields or visual state.
+  - remaining / next action:
+    Continue `API-CONTRACT-001` with another bounded consumer-backed route. Preserve all unowned
+    inbound/config/harness/stock-dashboard dirty files. No push was performed.
+
 - codex: mixed visit route reorder response-envelope convergence.
   - commit:
     `d6f02eb7b fix(API-CONTRACT-001DW): envelope mixed route reorder result`.
