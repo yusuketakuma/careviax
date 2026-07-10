@@ -52,6 +52,53 @@
 
 ## 直近の作業
 
+- codex: visit route plan response-envelope convergence.
+  - commit:
+    `f71a05dbf fix(API-CONTRACT-001DV): envelope visit route plans`.
+  - current task:
+    P0 `API-CONTRACT-001DV`。`POST /api/visit-routes` successを legacy top-level planから
+    `{ data: VisitRoutePlan }`へ移し、全production consumerを同じwire contractへ揃えて
+    `api-response-shape` allowlist debtを43から42へ削減する。route calculation/auth/RLS/status/error
+    semanticsは変更しない。
+  - files inspected:
+    `Plans.md`; `docs/plans-archive.md`; this state; current Next.js route-handler guide;
+    `src/app/api/visit-routes/route.ts`, route/locked tests, all 3 direct production consumers
+    (route-compare, emergency-route, weekly optimizer) and their tests; `VisitRoutePlan` type;
+    `readApiJson`; response-shape checker/allowlist; recent envelope slices; active dirty tree。
+  - files changed:
+    `src/app/api/visit-routes/route.ts` and test;
+    `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx` and test;
+    `tools/api-response-shape-allowlist.json`; `Plans.md`; `docs/plans-archive.md`; and this state file。
+  - bugs found / fixed:
+    The route returned a top-level `VisitRoutePlan`, while route-compare and emergency-route already unwrapped
+    `payload.data`; those authorized flows could therefore treat a successful response as missing. Weekly optimizer
+    alone still consumed the legacy root. The route now returns exact `{ data: routePlan }`; weekly optimizer unwraps
+    `data` and rejects a legacy/malformed successful root instead of silently accepting `undefined`. Route tests pin
+    the nested success and absence of root `status`; all three consumer families now share one contract.
+  - frontend/backend, security and performance:
+    This is a response-envelope/reader alignment only. `canVisit`, org/assignment filters, active schedule/open
+    proposal selection, RLS transaction, locked schedule behavior, vehicle constraints, route engine inputs,
+    sensitive no-store, error status/body and sanitized internal-error behavior are unchanged. No new query,
+    request, render state, dependency, payload field, PHI disclosure, log, mutation or audit action was added.
+  - plan review / agents / Oracle:
+    Codex alone mapped all direct consumers and tests before editing. No subagent, agmsg, Claude, external
+    maker/checker or Oracle consultation was used.
+  - validation:
+    Focused Vitest passed 5 files / 47 tests across route, locked-order, weekly optimizer, route compare and emergency
+    route. Exact ESLint, Prettier and `git diff --check` passed. `pnpm api-response-shape:check` passed at
+    42 allowlisted / 0 new; `route-auth-wrapper:check`, `frontend-contract:check`, `db:query-shape:check` and
+    `client-phi-log:check` passed. Typegen succeeded; full typecheck reported no visit-route error but remains red on
+    user-owned inbound TS2322 plus newly appeared unowned stock dashboard TS2353/TS2741 edits. Build was not run
+    while that prerequisite gate is red. No DB/migration command, production operation, external send, deploy,
+    push or destructive action ran.
+  - Plans / UI / imagegen:
+    `API-CONTRACT-001DV` is recorded as a completed derived slice; parent `API-CONTRACT-001` remains Partial with
+    42 allowlisted violations. Image generation/browser screenshots were omitted because the visual layout,
+    interaction and displayed plan fields are unchanged; focused consumer tests verify the data path.
+  - remaining / next action:
+    Continue `API-CONTRACT-001` with the next bounded, consumer-backed route. Avoid consent-gated
+    pharmacy-visit-requests and preserve all unowned inbound/config/harness/stock dirty files. No push was performed.
+
 - codex: dashboard stock snapshot unit mismatch fail-closed guard.
   - commit:
     `68784508c fix(STOCK-001-DASHBOARD-SNAPSHOT-UNIT-GUARD): fail closed on dashboard unit mismatch`.
