@@ -51,6 +51,17 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh verification and remaining-risk evidence plan (IN_PROGRESS, 2026-07-11; documentation-only).
+  - result / scope:
+    Added `docs/ui-ux-refresh/10-verification-evidence.md` and `11-remaining-risks.md`. The verification ledger uses
+    actual package scripts and separates document formatting evidence from NOT_EXECUTED UI, E2E, accessibility,
+    responsive, offline/sync, build, standalone, and expert-review work. The risk ledger tracks P0/P1 design gates,
+    temporary mitigations, owners, and the next required evidence without asserting risk acceptance or compliance.
+  - safety / next action:
+    No source/runtime behavior changed. Preserve the single running Oracle session for the offline-sync registry adapter;
+    after its advice, either implement the reviewed behavior-preserving slice or retain the plan and move to a different
+    safe slice. Phase 9 remains incomplete until actual implementation evidence exists.
+
 - codex: UI/UX Refresh Phase 7 executable-SSOT plan (IN_PROGRESS, 2026-07-11; documentation-only pending advisory review).
   - result / scope:
     Added `docs/ui-ux-refresh/09-implementation-plan.md`, mapping the normative SSOT, role tokens, labels/mappings,
