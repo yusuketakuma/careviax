@@ -26,7 +26,7 @@ import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildTasksApiPath } from '@/lib/tasks/api-paths';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 import {
@@ -84,6 +84,37 @@ type CreateCommunicationRequestResponse = {
     status?: string;
   };
 };
+
+const FOLLOWUP_TASK_FAILURE_MESSAGE = '次回タスクの作成に失敗しました。もう一度お試しください。';
+const FOLLOWUP_TASK_CONFLICT_MESSAGE =
+  '次回タスクは既に作成されている可能性があります。タスク一覧を確認してください。';
+const REPLY_REQUEST_FAILURE_MESSAGE = '返信依頼の起票に失敗しました。もう一度お試しください。';
+const REPLY_REQUEST_CONFLICT_MESSAGE =
+  '返信依頼は既に起票されている可能性があります。連携依頼の状態を確認しています。';
+
+class ShareMutationResponseError extends Error {
+  constructor(
+    readonly status: number,
+    fallbackMessage: string,
+  ) {
+    super(fallbackMessage);
+    this.name = 'ShareMutationResponseError';
+  }
+}
+
+async function readShareMutationResponse<T>(
+  response: Response,
+  fallbackMessage: string,
+): Promise<T> {
+  if (!response.ok) {
+    throw new ShareMutationResponseError(response.status, fallbackMessage);
+  }
+  return readApiJson<T>(response, fallbackMessage);
+}
+
+function getShareMutationResponseStatus(error: unknown): number | null {
+  return error instanceof ShareMutationResponseError ? error.status : null;
+}
 
 function tryBuildPatientHref(patientId: string, suffix = ''): string | null {
   try {
@@ -364,7 +395,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
       });
-      return readApiJson<unknown>(res, '次回タスクの作成に失敗しました');
+      return readShareMutationResponse<unknown>(res, FOLLOWUP_TASK_FAILURE_MESSAGE);
     },
     onSuccess: () => {
       if (latestReply) {
@@ -372,7 +403,15 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       }
       toast.success('次回訪問の確認タスクを作成しました');
     },
-    onError: (err: Error) => toast.error(messageFromError(err, '次回タスクの作成に失敗しました')),
+    onError: (error) => {
+      const status = getShareMutationResponseStatus(error);
+      clientLog.warn('care_report.interprofessional_share_followup_task_failed', error, {
+        route: '/reports/:id/share',
+        entityType: 'care_report_followup_task',
+        status,
+      });
+      toast.error(status === 409 ? FOLLOWUP_TASK_CONFLICT_MESSAGE : FOLLOWUP_TASK_FAILURE_MESSAGE);
+    },
   });
 
   const createReplyRequestMutation = useMutation({
@@ -406,7 +445,10 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
       });
-      return readApiJson<CreateCommunicationRequestResponse>(res, '返信依頼の起票に失敗しました');
+      return readShareMutationResponse<CreateCommunicationRequestResponse>(
+        res,
+        REPLY_REQUEST_FAILURE_MESSAGE,
+      );
     },
     onSuccess: async (result?: CreateCommunicationRequestResponse) => {
       setCreatedRequestAudiences((prev) => [...prev, audience]);
@@ -422,7 +464,20 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
         queryKey: ['communication-requests', 'care_report', reportId, orgId],
       });
     },
-    onError: (err: Error) => toast.error(messageFromError(err, '返信依頼の起票に失敗しました')),
+    onError: async (error) => {
+      const status = getShareMutationResponseStatus(error);
+      clientLog.warn('care_report.interprofessional_share_reply_request_failed', error, {
+        route: '/reports/:id/share',
+        entityType: 'care_report_reply_request',
+        status,
+      });
+      if (status === 409) {
+        await requestsQuery.refetch().catch(() => undefined);
+        toast.error(REPLY_REQUEST_CONFLICT_MESSAGE);
+        return;
+      }
+      toast.error(REPLY_REQUEST_FAILURE_MESSAGE);
+    },
   });
 
   if (isBootstrappingOrg || reportQuery.isLoading) {

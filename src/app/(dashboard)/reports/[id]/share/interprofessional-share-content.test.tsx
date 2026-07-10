@@ -19,6 +19,8 @@ import { InterprofessionalShareContent } from './interprofessional-share-content
 
 setupDomTestEnv();
 
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
+
 const REPORT_UPDATED_AT_ISO = '2026-06-18T01:02:03.000Z';
 
 type ReportFixture = {
@@ -46,6 +48,10 @@ type ReportFixture = {
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 vi.mock('sonner', () => ({
@@ -200,11 +206,13 @@ function stubFetch(
     failRequests?: boolean;
     report?: typeof REPORT;
     requests?: typeof REQUESTS;
+    refetchedRequests?: typeof REQUESTS;
     requestDetail?: typeof REQUEST_DETAIL;
     failRequestPost?: Response;
     failTaskPost?: Response;
   } = {},
 ) {
+  let communicationRequestListReads = 0;
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith('/api/care-reports/')) {
@@ -228,7 +236,11 @@ function stubFetch(
       if (options.failRequests) {
         return new Response('server error', { status: 500 });
       }
-      return new Response(JSON.stringify({ data: options.requests ?? REQUESTS }), { status: 200 });
+      const requests =
+        communicationRequestListReads++ > 0
+          ? (options.refetchedRequests ?? options.requests ?? REQUESTS)
+          : (options.requests ?? REQUESTS);
+      return new Response(JSON.stringify({ data: requests }), { status: 200 });
     }
     if (
       (url === '/api/communication-requests' || url === '/api/communication-requests__sentinel') &&
@@ -592,11 +604,13 @@ describe('InterprofessionalShareContent', () => {
     expect(body.content).toContain('昼分はヘルパー訪問時の声かけ');
   });
 
-  it('keeps server messages for follow-up task failures', async () => {
+  it('keeps a 409 follow-up task failure PHI-safe and leaves retry available', async () => {
+    const rawMessage = '患者A 090-1234-5678 token=secret-task-token は既に作成済みです';
     stubFetch({
-      failTaskPost: new Response(JSON.stringify({ message: 'タスクは既に起票済みです' }), {
-        status: 409,
-      }),
+      failTaskPost: new Response(
+        JSON.stringify({ code: 'WORKFLOW_CONFLICT', message: rawMessage }),
+        { status: 409 },
+      ),
     });
     renderShare();
 
@@ -604,16 +618,39 @@ describe('InterprofessionalShareContent', () => {
       expect(screen.getByTestId('share-reply-card')).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByTestId('share-next-task-button'));
+    const button = screen.getByTestId('share-next-task-button') as HTMLButtonElement;
+    fireEvent.click(button);
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('タスクは既に起票済みです');
+      expect(toast.error).toHaveBeenCalledWith(
+        '次回タスクは既に作成されている可能性があります。タスク一覧を確認してください。',
+      );
+      expect(button.disabled).toBe(false);
     });
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'care_report.interprofessional_share_followup_task_failed',
+      expect.any(Error),
+      {
+        route: '/reports/:id/share',
+        entityType: 'care_report_followup_task',
+        status: 409,
+      },
+    );
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain(rawMessage);
+    const [, loggedError] = clientLogWarnMock.mock.calls[0] ?? [];
+    expect(loggedError).toBeInstanceOf(Error);
+    expect((loggedError as Error).message).not.toContain(rawMessage);
   });
 
-  it('falls back when reply request creation fails without a server message', async () => {
+  it('keeps a 500 reply request failure PHI-safe and leaves retry available', async () => {
+    const rawMessage = '患者A 090-1234-5678 token=secret-request-token の起票に失敗しました';
     stubFetch({
-      failRequestPost: new Response('server error', { status: 500 }),
+      failRequestPost: new Response(
+        JSON.stringify({ code: 'INTERNAL_ERROR', message: rawMessage }),
+        {
+          status: 500,
+        },
+      ),
     });
     renderShare();
 
@@ -626,11 +663,84 @@ describe('InterprofessionalShareContent', () => {
         .getAllByTestId('share-audience-card')
         .find((card) => card.getAttribute('data-audience') === 'physician')!,
     );
+    const button = await screen.findByTestId('share-create-request-button');
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        '返信依頼の起票に失敗しました。もう一度お試しください。',
+      );
+      expect((button as HTMLButtonElement).disabled).toBe(false);
+    });
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'care_report.interprofessional_share_reply_request_failed',
+      expect.any(Error),
+      {
+        route: '/reports/:id/share',
+        entityType: 'care_report_reply_request',
+        status: 500,
+      },
+    );
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain(rawMessage);
+    const [, loggedError] = clientLogWarnMock.mock.calls[0] ?? [];
+    expect(loggedError).toBeInstanceOf(Error);
+    expect((loggedError as Error).message).not.toContain(rawMessage);
+  });
+
+  it('rechecks reply requests after a 409 and marks the request as created only from fresh data', async () => {
+    const rawMessage = '患者A token=secret-conflict-token の依頼は既に起票済みです';
+    stubFetch({
+      failRequestPost: new Response(
+        JSON.stringify({ code: 'WORKFLOW_CONFLICT', message: rawMessage }),
+        { status: 409 },
+      ),
+      refetchedRequests: [
+        ...REQUESTS,
+        {
+          id: 'req_physician_conflict',
+          recipient_name: '山本 健',
+          recipient_role: 'physician',
+          status: 'sent',
+          subject: '主治医向け報告書共有',
+          requested_at: '2026-06-12T07:40:00.000Z',
+          responses: [],
+        },
+      ],
+    });
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('share-audience-card')).toHaveLength(5);
+    });
+    fireEvent.click(
+      screen
+        .getAllByTestId('share-audience-card')
+        .find((card) => card.getAttribute('data-audience') === 'physician')!,
+    );
     fireEvent.click(await screen.findByTestId('share-create-request-button'));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('返信依頼の起票に失敗しました');
+      expect(toast.error).toHaveBeenCalledWith(
+        '返信依頼は既に起票されている可能性があります。連携依頼の状態を確認しています。',
+      );
+      expect(screen.getByText('返信依頼起票済み')).toBeTruthy();
     });
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'care_report.interprofessional_share_reply_request_failed',
+      expect.any(Error),
+      {
+        route: '/reports/:id/share',
+        entityType: 'care_report_reply_request',
+        status: 409,
+      },
+    );
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain(rawMessage);
+    const [, loggedError] = clientLogWarnMock.mock.calls[0] ?? [];
+    expect(loggedError).toBeInstanceOf(Error);
+    expect((loggedError as Error).message).not.toContain(rawMessage);
+    expect((screen.getByTestId('share-create-request-button') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 
   it('communication request and task mutations consume shared API helper return values', async () => {
