@@ -52,6 +52,61 @@
 
 ## 直近の作業
 
+- codex: explicit visit stock ledger difference display.
+  - commit:
+    `81f1ec532 fix(visits): clarify stock ledger differences`.
+  - current task:
+    P1 `STOCK-001-VISIT-UI` の read-only stock panel で、snapshot が示す前回の記録残数、
+    台帳計算残数、両者の差分を実測と誤認させずに明示する。feature gate、API write、migration、
+    DB integration、環境別gate有効化は変更しない。
+  - files inspected:
+    `Plans.md`; `ops/refactor/STATE.md`; `docs/ui-ux-design-guidelines.md`; bundled Next.js route-handler /
+    server-client guides; stock panel と component test; stock snapshot/recalculation and write-unit validation;
+    route-mocked browser regression; `playwright.local.config.ts`; active dirty tree。
+  - files changed:
+    `src/components/features/visits/visit-medication-stock-observation-panel.tsx`;
+    `src/components/features/visits/visit-medication-stock-observation-panel.test.tsx`;
+    `src/modules/pharmacy/medication-stock/application/stock-snapshot.test.ts`; and
+    `tools/tests/ui-route-mocked-smoke.spec.ts`.
+  - bugs found / fixed:
+    The panel previously called an unproven prior record a physical measurement and omitted the semantic
+    difference from the ledger-calculated value. It now shows `前回の記録残数`, `台帳計算残数（参考）`
+    with a year-bearing JST calculation timestamp, and `前回記録以降の台帳差分`. The difference is finite-only,
+    rounded to four decimals, never zero-filled, and communicates increase/decrease/no-change in text. Both
+    the calculation and difference explicitly say they are not the current physical measurement. The snapshot
+    recalculation test now locks its create/update unit to the stock item unit.
+  - security/privacy risks reduced:
+    The UI no longer overstates the provenance of medical-stock records. Missing/non-finite values fail closed
+    as `算出不可`; no PHI is added to fixtures. No feature gate, API payload, DB query/write, idempotency path,
+    migration, production mutation, external send, deploy, or destructive operation changed.
+  - performance:
+    The display does constant-time local arithmetic only. It adds no query, fetch, mutation, payload, state
+    synchronization, dependency, or background work.
+  - plan review / subagent / Oracle:
+    Read-only mapper and medical-safety reviewers returned conditional GO (0.96) after requiring neutral
+    provenance language, finite-only signed differences, year-bearing JST dates, text states, and mobile
+    coverage. The independent verifier returned PASS (0.96), confirming UI/API/gate isolation and the existing
+    unit invariant. Oracle was not used per the current user instruction.
+  - validation:
+    Focused Vitest for stock snapshot, gate, page, form, panel, and route passed 6 files / 75 tests. Local
+    gate-off Playwright passed Chromium + `mobile-chromium` 2/2, retaining zero observation POSTs, 503/no-store
+    API behavior, 44px controls, and page/panel no-overflow checks. Exact-path ESLint, Prettier, and
+    `git diff --check` passed. Full typecheck/build were not rerun while the shared tree has the unrelated
+    user-owned `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285` TS2322
+    (`string | null` to `string | undefined`) gate failure; no type was weakened.
+  - gbrain:
+    `projects/careviax/decisions/2026-07-10/stock-ui-ledger-difference-language` records the safe wording,
+    invariants, review, and validation evidence without PHI or secrets.
+  - UI/imagegen:
+    The UI SSOT was followed. Image generation was omitted because this is a bounded wording/state clarification
+    inside an existing card, not a visual reconstruction; it adds no interaction and the existing browser tests
+    verify desktop/mobile layout safety.
+  - remaining / next action:
+    `STOCK-001-VISIT-UI` remains Partial. The next safe residual is a reader-side fail-closed guard for a
+    legacy/corrupt snapshot unit mismatch; normal write/recalculation paths already preserve the unit invariant.
+    Migration/real DB RLS/idempotency evidence and environment gate activation remain human gates. No push was
+    performed.
+
 - codex: visit medication stock gate-off browser/mobile regression evidence.
   - commit:
     `5cb43c754 test(visits): cover gate-off stock observations`.
