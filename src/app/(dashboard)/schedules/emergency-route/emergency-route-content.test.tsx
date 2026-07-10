@@ -216,7 +216,7 @@ function setupFetchMock() {
     if (url.startsWith('/api/visit-schedules?')) {
       return Response.json({
         data: [confirmedFirst, emergencySchedule, confirmedTail, facilityBatchSchedule],
-        hasMore: false,
+        meta: { limit: 100, has_more: false, next_cursor: null },
       });
     }
 
@@ -332,7 +332,7 @@ describe('EmergencyRouteContent', () => {
       if (url.startsWith('/api/visit-schedules?')) {
         return Response.json({
           data: [confirmedFirst, emergencySchedule, confirmedTail, facilityBatchSchedule],
-          hasMore: false,
+          meta: { limit: 100, has_more: false, next_cursor: null },
         });
       }
       if (url === '/api/visit-routes') {
@@ -388,7 +388,7 @@ describe('EmergencyRouteContent', () => {
       if (url.startsWith('/api/visit-schedules?')) {
         return Response.json({
           data: [confirmedFirst, emergencySchedule, confirmedTail, facilityBatchSchedule],
-          hasMore: false,
+          meta: { limit: 100, has_more: false, next_cursor: null },
         });
       }
       if (url === '/api/visit-routes') {

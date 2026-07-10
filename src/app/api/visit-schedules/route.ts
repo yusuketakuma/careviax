@@ -37,7 +37,14 @@ const authenticatedGET = withAuthContext(
       return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
     }
     const result = await listSchedules(prisma, ctx.orgId, parsed.data, ctx);
-    return success(result);
+    return success({
+      data: result.data,
+      meta: {
+        limit: parsed.data.limit ?? 50,
+        has_more: result.hasMore,
+        next_cursor: result.nextCursor ?? null,
+      },
+    });
   },
   {
     permission: 'canVisit',

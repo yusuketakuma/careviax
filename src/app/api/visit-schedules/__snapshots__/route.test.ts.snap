@@ -104,6 +104,10 @@ exports[`/api/visit-schedules > lists visit schedules with workload and facility
       },
     },
   ],
-  "hasMore": false,
+  "meta": {
+    "has_more": false,
+    "limit": 1,
+    "next_cursor": null,
+  },
 }
 `;

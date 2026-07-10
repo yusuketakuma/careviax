@@ -347,7 +347,14 @@ describe('/api/visit-schedules', () => {
           }),
         }),
       ],
+      meta: {
+        limit: 1,
+        has_more: false,
+        next_cursor: null,
+      },
     });
+    expect(payload).not.toHaveProperty('hasMore');
+    expect(payload).not.toHaveProperty('nextCursor');
     expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         take: 2,

@@ -12,14 +12,13 @@ describe('visit-schedule-fetch.helpers', () => {
       .mockResolvedValueOnce(
         jsonResponse({
           data: [{ id: 'schedule_1' }],
-          hasMore: true,
-          nextCursor: 'cursor_1',
+          meta: { limit: 1, has_more: true, next_cursor: 'cursor_1' },
         }),
       )
       .mockResolvedValueOnce(
         jsonResponse({
           data: [{ id: 'schedule_2' }],
-          hasMore: false,
+          meta: { limit: 1, has_more: false, next_cursor: null },
         }),
       );
 
@@ -39,7 +38,7 @@ describe('visit-schedule-fetch.helpers', () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         data: [],
-        hasMore: false,
+        meta: { limit: VISIT_SCHEDULE_PAGE_LIMIT, has_more: false, next_cursor: null },
       }),
     );
 

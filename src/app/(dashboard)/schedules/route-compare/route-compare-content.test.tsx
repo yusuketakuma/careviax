@@ -289,7 +289,7 @@ function installFetchMock() {
       if (url.startsWith('/api/visit-schedules?')) {
         return jsonResponse({
           data: [confirmedVisit, visitA, visitB, visitC, facilityVisit],
-          hasMore: false,
+          meta: { limit: 100, has_more: false, next_cursor: null },
         });
       }
       if (url.startsWith('/api/visit-schedules/day-board')) {
@@ -464,7 +464,7 @@ describe('RouteCompareContent', () => {
         if (url.startsWith('/api/visit-schedules?')) {
           return jsonResponse({
             data: [confirmedVisit, visitA, visitB, visitC, facilityVisit],
-            hasMore: false,
+            meta: { limit: 100, has_more: false, next_cursor: null },
           });
         }
         if (url.startsWith('/api/visit-schedules/day-board')) {

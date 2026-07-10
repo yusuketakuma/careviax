@@ -1,4 +1,4 @@
-import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
+import { fetchAllMetaCursorPages } from '@/lib/api/cursor-pagination-client';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 
 export const VISIT_SCHEDULE_PAGE_LIMIT = 100;
@@ -12,7 +12,7 @@ export async function fetchVisitSchedulesWindow<T>(args: {
   limit?: number;
   maxPages?: number;
 }) {
-  const payload = await fetchAllCursorPages<T>({
+  const payload = await fetchAllMetaCursorPages<T>({
     path: '/api/visit-schedules',
     params: new URLSearchParams({
       date_from: args.dateFrom,
