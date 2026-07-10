@@ -9,6 +9,7 @@ const refreshSyncStateMock = vi.hoisted(() => vi.fn());
 const markSyncedMock = vi.hoisted(() => vi.fn());
 const processSyncQueueMock = vi.hoisted(() => vi.fn());
 const syncEvidenceDraftsMock = vi.hoisted(() => vi.fn());
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({ useOrgId: useOrgIdMock }));
 
@@ -21,6 +22,10 @@ vi.mock('@/lib/stores/offline-store', () => ({
 vi.mock('@/lib/stores/sync-engine', () => ({ processSyncQueue: processSyncQueueMock }));
 
 vi.mock('@/lib/offline/evidence-drafts', () => ({ syncEvidenceDrafts: syncEvidenceDraftsMock }));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
+}));
 
 import { OfflineSyncBridge } from './offline-sync-bridge';
 
@@ -83,6 +88,48 @@ describe('OfflineSyncBridge', () => {
 
     await waitFor(() => expect(syncEvidenceDraftsMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(refreshSyncStateMock.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(markSyncedMock).not.toHaveBeenCalled();
+  });
+
+  it('records refresh failures with a coded PHI-safe event while preserving successful draining', async () => {
+    const error = new Error('患者A token=secret の同期状態を更新できません');
+    refreshSyncStateMock.mockRejectedValueOnce(error);
+
+    render(<OfflineSyncBridge />);
+
+    await waitFor(() =>
+      expect(clientLogWarnMock).toHaveBeenCalledWith('offline_sync.state_refresh_failed', error, {
+        route: '/offline-sync',
+      }),
+    );
+    expect(markSyncedMock).toHaveBeenCalled();
+  });
+
+  it('records queue drain failures without marking the queue as synced', async () => {
+    const error = new Error('患者A token=secret の訪問記録同期に失敗しました');
+    processSyncQueueMock.mockRejectedValueOnce(error);
+
+    render(<OfflineSyncBridge />);
+
+    await waitFor(() =>
+      expect(clientLogWarnMock).toHaveBeenCalledWith('offline_sync.queue_drain_failed', error, {
+        route: '/offline-sync',
+      }),
+    );
+    expect(markSyncedMock).not.toHaveBeenCalled();
+  });
+
+  it('records evidence drain failures without marking evidence as synced', async () => {
+    const error = new Error('患者A token=secret の証跡同期に失敗しました');
+    syncEvidenceDraftsMock.mockRejectedValueOnce(error);
+
+    render(<OfflineSyncBridge />);
+
+    await waitFor(() =>
+      expect(clientLogWarnMock).toHaveBeenCalledWith('offline_sync.evidence_drain_failed', error, {
+        route: '/offline-sync',
+      }),
+    );
     expect(markSyncedMock).not.toHaveBeenCalled();
   });
 

@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { clientLog } from '@/lib/utils/client-log';
 import { useOfflineStore } from '@/lib/stores/offline-store';
 import { processSyncQueue } from '@/lib/stores/sync-engine';
 import { syncEvidenceDrafts } from '@/lib/offline/evidence-drafts';
@@ -55,19 +56,19 @@ export function OfflineSyncBridge() {
     const config = { orgId, endpoints: {} };
 
     const refreshState = () => {
-      void refreshSyncState().catch(() => {
-        console.warn('[offline-sync] state refresh failed');
+      void refreshSyncState().catch((error) => {
+        clientLog.warn('offline_sync.state_refresh_failed', error, { route: '/offline-sync' });
       });
     };
 
     // 訪問記録キューと証跡ドラフトを両方ドレインし、両者が確定したら実状態を再取得する。
     const drain = () => {
-      const queueDone = processSyncQueue(config).catch(() => {
-        console.warn('[offline-sync] queue drain failed');
+      const queueDone = processSyncQueue(config).catch((error) => {
+        clientLog.warn('offline_sync.queue_drain_failed', error, { route: '/offline-sync' });
         return null;
       });
-      const evidenceDone = syncEvidenceDrafts({ orgId }).catch(() => {
-        console.warn('[offline-sync] evidence drain failed');
+      const evidenceDone = syncEvidenceDrafts({ orgId }).catch((error) => {
+        clientLog.warn('offline_sync.evidence_drain_failed', error, { route: '/offline-sync' });
         return null;
       });
       void Promise.all([queueDone, evidenceDone]).then(([queueResult, evidenceResult]) => {
