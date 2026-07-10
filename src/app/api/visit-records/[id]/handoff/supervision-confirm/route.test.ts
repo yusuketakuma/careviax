@@ -66,6 +66,14 @@ const authCtx = {
   },
 };
 
+const handoffResult = {
+  next_check_items: ['血圧確認'],
+  ongoing_monitoring: ['残薬管理'],
+  decision_rationale: '確認済み',
+  confirmed_by: 'supervisor_1',
+  confirmed_at: '2026-04-01T00:00:00.000Z',
+};
+
 function createRequest(body?: unknown) {
   return new NextRequest('http://localhost/api/visit-records/vr_1/handoff/supervision-confirm', {
     method: 'POST',
@@ -103,13 +111,7 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
         request_note_redacted: true,
       },
     });
-    confirmHandoffMock.mockResolvedValue({
-      next_check_items: ['血圧確認'],
-      ongoing_monitoring: ['残薬管理'],
-      decision_rationale: '確認済み',
-      confirmed_by: 'supervisor_1',
-      confirmed_at: '2026-04-01T00:00:00.000Z',
-    });
+    confirmHandoffMock.mockResolvedValue(handoffResult);
   });
 
   it('confirms a handoff through the assigned supervision task without raw request-note metadata', async () => {
@@ -153,7 +155,9 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
         requestedVisitRecordVersion: 2,
       },
     });
-    const bodyText = await res!.text();
+    const payload = await res!.json();
+    expect(payload).toEqual({ data: handoffResult });
+    const bodyText = JSON.stringify(payload);
     expect(bodyText).not.toContain('request_note');
     expect(bodyText).not.toContain('田中太郎');
     expect(bodyText).not.toContain('token=secret');

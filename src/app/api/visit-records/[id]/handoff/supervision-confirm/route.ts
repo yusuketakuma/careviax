@@ -152,7 +152,7 @@ async function authenticatedPOST(
         requestedVisitRecordVersion,
       },
     });
-    return withSensitiveNoStore(success(handoff));
+    return withSensitiveNoStore(success({ data: handoff }));
   } catch (cause) {
     if (cause instanceof VisitHandoffMissingDataError) {
       return withSensitiveNoStore(
