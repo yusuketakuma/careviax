@@ -51,6 +51,35 @@
 
 ## 直近の作業
 
+- codex: UI/UX Refresh Phase 5 static audit and use-error risk register (DONE, 2026-07-11; documentation slice).
+  - result / scope:
+    Completed the Phase 5 documentation-only boundary required by `docs/ui-ux-refresh/PROGRESS.md`: consolidated 18
+    evidence-backed UI/UX findings (P1 4, P2 11, P3 3) and indexed 24 use-error risks from the existing detailed
+    audit/risk notes. No product code, token, component, API, schema, auth/authz, offline implementation, or runtime
+    configuration changed. The audit explicitly keeps actual-browser, a11y, responsive, offline/sync, and expert review
+    results as not executed rather than claiming completion.
+  - files inspected / changed:
+    Inspected the Phase 0-4 refresh baseline, UI/UX SSOT, all four Phase 5 detailed notes, current commit history, and
+    the refresh progress ledger. Added `docs/ui-ux-refresh/06-ui-ux-audit.md` and
+    `docs/ui-ux-refresh/07-use-error-risk-register.md`; normalized/prettified the four existing Phase 5 evidence notes;
+    updated `docs/ui-ux-refresh/PROGRESS.md` to mark only the static audit portion DONE.
+  - safety / findings:
+    P1 findings are sub-12px medication/print typography, non-recoverable patient identifier truncation, patient-edit
+    fetch failure rendered as not-found, and a false-zero performance signal. High-severity or low-detectability
+    use-error gates are explicitly deferred for clinical-safety/security/legal/design review: patient and prescription
+    context, CDS/dose display, local/server/sync/conflict/freshness semantics, permissions, and break-glass controls.
+    No assertion of compliance, resolved residual risk, or successful user testing is made.
+  - validation:
+    `pnpm exec prettier --check docs/ui-ux-refresh/PROGRESS.md docs/ui-ux-refresh/06-ui-ux-audit.md
+docs/ui-ux-refresh/07-use-error-risk-register.md docs/ui-ux-refresh/phase5/*.md` passed; `git diff --check` passed
+    for tracked updates and `git diff --no-index --check /dev/null <each new Phase 5 document>` passed; a local link
+    target scan passed; the integration indexes exactly 18 UI findings and 24 risks. No typecheck/lint/test/build was
+    run because this is documentation-only and Phase 9 is the explicit verification phase.
+  - remaining / next action:
+    Begin Phase 6 by reconciling the current normative SSOT with the Phase 5 design gates, then define the Visual Status
+    Matrix and component/token contracts. Do not implement high-risk patient, clinical, sync, authorization, or
+    break-glass changes before their required review and acceptance criteria are established.
+
 - claude: API DTO response boundary recovery (DONE, 2026-07-11, commit `9ddb473a1`).
   - result:
     Claude 単独運用で引き取り完了。3 route を presenter 方式へ移行し、
