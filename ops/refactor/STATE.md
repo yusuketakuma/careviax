@@ -51,6 +51,41 @@
 
 ## 直近の作業
 
+- codex: visit schedule billing-preview envelope convergence.
+  - commit:
+    `38c255575 fix(API-CONTRACT-001EY): envelope billing preview`.
+  - current task / purpose / acceptance:
+    P0 / HR `API-CONTRACT-001EY`。`GET /api/visit-schedule-proposals/billing-preview` のsuccessをexact
+    `{ data: VisitScheduleBillingPreview }`へ揃える。Day planner/weekly optimizer reader、auth/tenant/reference/
+    case access/算定値/no-store不変、tests、allowlist entry除去、debt 12→11を完了条件とした。
+  - files inspected / changed:
+    Billing-preview route/full tests、billing preview service/tests、day planner hooks/tests、weekly optimizer/tests、
+    batch preview隣接contract、route catalog/rate-limit、protected GET matrix、allowlist、Plans/archive/state、active
+    dirty treeを確認。変更はGET success、2 body reader/fixtures、weekly consumer regression、allowlist、計画台帳だけ。
+    Billing calculation service、batch API、schema/migrationは変更していない。
+  - implementation / behavior / rollback:
+    Existing preview DTOをそのまま`data`配下へ移動し、2 consumerは`payload.data`を返す。Cadence、alerts、
+    recommended visit type/priority、slot count、effective revision、warnings等の値とstatus/error contractは不変。
+    Rollbackはscoped code/ledger commitのrevertで、schema、migration、persisted data、dependency、deploy設定の
+    復元は不要。
+  - security / medical / billing / privacy / human review:
+    `canVisit`、org-scoped pharmacist/site reference、case access filter、tenant RLS、billing service input/calculation、
+    PHI-safe fixed error、sensitive no-storeを変更していない。金額、算定可否、回数上限、医療DTO、PHI field/logは
+    不変。Human reviewはresponse nesting、2 reader unwrap、算定値の同一性を確認すればよい。Codex単独で実装・
+    検証し、subagent、agmsg、Claude、Oracle、外部workerは使っていない。
+  - validation:
+    Baseline focusedは4 files / 38 tests pass。Final provider/2 consumer/billing serviceは4 files / 39 tests pass。
+    Exact ESLint、Prettier、diff check、`api-response-shape:check`（11 allowlisted / 0 new）、route-auth、
+    frontend-contract、query-shape、client-PHI-logがpass。Protected GET matrixは384/384 pass。Typegenは成功し、
+    full typecheckは今回外のuser-owned `communications/inbound/inbound-content.tsx:2285` TS2322だけが継続。
+    buildはtypecheck red中のため未実施。DB/migration、production操作、外部送信、deploy、push、destructive
+    actionは実行していない。
+  - Plans / UI / imagegen / shared tree / next:
+    `API-CONTRACT-001EY`はDONE、parentは11 violationsでPartial。Production UIはdata readerだけでvisual
+    reconstructionがないためbrowser/imagegenを省略し、hook/component testsで回帰確認した。unowned
+    config/harness/inbound/auth/RLSと全untracked artifactを保持した。次は残11 allowlistを再評価し、隣接
+    visit-billing candidate read契約か、platform/consent routeの最小安全sliceを選ぶ。
+
 - codex: visit-record PATCH envelope convergence.
   - commit:
     `08f1cce91 fix(API-CONTRACT-001EX): envelope visit record updates`.
