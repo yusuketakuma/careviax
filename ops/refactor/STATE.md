@@ -39682,3 +39682,49 @@ src/lib/utils/client-log.test.ts src/lib/utils/logger.test.ts` passed 3 files / 
   policies for separately scoped contract reviews. Continue from the highest safe P1 item after
   preserving concurrent dirty work; do not bypass the patient-board cursor or full stock-equivalence
   design gates.
+
+## 2026-07-10 FE-PHI-SAFE-CLIENT-LOG-001-QR-DRAFT — QR送信失敗の表示境界
+
+- current task / plan review:
+  Close the QR draft submission screen's raw-error display path as the next independent P1 residual.
+  Read-only PHI-surface and QR safety reviewers both returned conditional GO: preserve the API, payload,
+  patient matching, success path, `role="alert"`, retry, and reset behavior; replace only the error-text
+  boundary. Oracle was not used, per the current user instruction.
+- commit:
+  `d801865c7 fix(qr): keep draft errors PHI-safe`.
+- files inspected / changed:
+  `src/app/(dashboard)/qr-scan/page.tsx` and `page.contract.test.ts`; inspected the QR draft payload
+  helper/tests, API JSON reader, client logger/tests, QR error/retry UI, UI SSOT, production Sentry
+  callsite inventory, active plan, and current dirty ownership.
+- bugs found / fixed:
+  QR draft submission catches errors from `readApiJson` and browser transport, then previously rendered
+  arbitrary `Error.message` in the send error `role="alert"`. The caught error now goes only to the
+  existing PHI-safe logger as coded `qr_scan.draft_submission_failed` with static `/qr-scan` context.
+  The alert now uses a fixed message that asks the operator to verify the QR and selected patient before
+  retrying. The `error` phase, selected-patient retry, reset path, request payload, envelope validation,
+  and successful session handling remain unchanged.
+- security / medical safety:
+  QR content can contain patient identity, insurance, prescription, and medication data. The UI can no
+  longer display server/transport error body text containing such values. No identifier, QR text, patient
+  data, response body, status, or token is sent to `clientLog`; its existing logger contract records
+  only coded context and error type. Production `Sentry.captureException` callsites remain zero.
+- performance / UI:
+  One local catch-path logging call and fixed string only; no added request, persistence, parsing,
+  polling, re-render loop, or dependency. Image generation was omitted because this is a PHI-safe error
+  output and existing accessibility-state correction, not a layout or visual reconstruction; the UI
+  SSOT was reviewed.
+- validation:
+  `pnpm vitest run 'src/app/(dashboard)/qr-scan/page.contract.test.ts'
+  'src/app/(dashboard)/qr-scan/qr-scan-draft-payload.test.ts' src/lib/utils/client-log.test.ts
+  src/lib/utils/logger.test.ts` passed 4 files / 41 tests. Exact ESLint, Prettier, `git diff --check`,
+  `pnpm client-phi-log:check`, and `pnpm frontend-contract:check` passed. Independent verifier returned
+  PASS. `NODE_OPTIONS='--max-old-space-size=8192' pnpm typecheck` completed Next route type generation
+  and then stopped only at pre-existing non-owned
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx:2285:49` `string | null` to
+  `string | undefined`; no changed-file error was reported.
+- remaining / next action:
+  `FE-PHI-SAFE-CLIENT-LOG-001` remains Partial: do not blanket-change shared `messageFromError`, route
+  authorization feedback, notification policy, or Sentry configuration without a separately reviewed
+  error-code/output contract. Reconstruct the active P1 board after concurrent API-contract work and
+  choose the next clean, implementation-ready slice; keep migration and full stock-equivalence gates
+  explicit.
