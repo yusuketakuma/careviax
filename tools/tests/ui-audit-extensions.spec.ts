@@ -303,6 +303,47 @@ test('inbound communications accessibility has no critical or serious violations
   expect(summarizeViolations(severe)).toEqual([]);
 });
 
+test('inbound intake stays keyboard reachable in forced colors and a 200%-equivalent viewport', async ({
+  context,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium');
+
+  const { page, errors } = await createInstrumentedPage(context, {
+    captureHttpErrors: false,
+  });
+  await page.setViewportSize({ width: 768, height: 512 });
+  await page.emulateMedia({ forcedColors: 'active' });
+  await openStableRoute(page, '/communications/inbound');
+
+  const workspace = page.getByTestId('inbound-communications-content');
+  const rawTextInput = page.getByLabel('受信本文');
+  await expect(workspace).toBeVisible({ timeout: 60_000 });
+  await expect(rawTextInput).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.matchMedia('(forced-colors: active)').matches))
+    .toBe(true);
+
+  await page.locator('body').press('Home');
+  let reachedRawTextInput = false;
+  for (let step = 0; step < 80; step += 1) {
+    await page.keyboard.press('Tab');
+    if (await rawTextInput.evaluate((element) => element === document.activeElement)) {
+      reachedRawTextInput = true;
+      break;
+    }
+  }
+
+  const overflowWidth = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  const inputBox = await rawTextInput.boundingBox();
+
+  expect(reachedRawTextInput).toBe(true);
+  expect(inputBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+  expect(overflowWidth).toBeLessThanOrEqual(1);
+  expect(errors).toEqual([]);
+});
+
 test('reports keeps its primary navigation reachable in forced colors and a 200%-equivalent viewport', async ({
   context,
 }, testInfo) => {
