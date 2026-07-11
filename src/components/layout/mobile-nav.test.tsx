@@ -35,6 +35,7 @@ vi.mock('@/lib/stores/ui-store', () => ({
 
 describe('MobileNav', () => {
   beforeEach(() => {
+    mockPathname = '/dashboard';
     mockSetSidebarOpen.mockClear();
   });
 
@@ -64,5 +65,17 @@ describe('MobileNav', () => {
     render(<MobileNav />);
 
     expect(screen.getByRole('link', { name: '訪問' }).getAttribute('aria-current')).toBe('page');
+  });
+
+  it('distinguishes the active route by shape and surface as well as color', () => {
+    render(<MobileNav />);
+
+    const active = screen.getByRole('link', { name: 'ホーム' });
+    const inactive = screen.getByRole('link', { name: '患者' });
+
+    expect(active.className).toContain('border-primary');
+    expect(active.className).toContain('bg-primary/5');
+    expect(inactive.className).toContain('border-transparent');
+    expect(inactive.className).not.toContain('bg-primary/5');
   });
 });

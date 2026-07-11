@@ -64,9 +64,24 @@ const MOBILE_WORKFLOW_ROUTES = [
 ] as const;
 
 const MOBILE_CHROME_TOUCH_TARGET_ROUTES = [
-  { name: 'dashboard-mobile-chrome-touch-targets', path: '/dashboard' },
-  { name: 'patients-mobile-chrome-touch-targets', path: '/patients' },
-  { name: 'reports-mobile-chrome-touch-targets', path: '/reports' },
+  {
+    name: 'dashboard-mobile-chrome-touch-targets',
+    path: '/dashboard',
+    currentPageLabel: 'ホーム',
+    activeNavLabel: 'ホーム',
+  },
+  {
+    name: 'patients-mobile-chrome-touch-targets',
+    path: '/patients',
+    currentPageLabel: '患者',
+    activeNavLabel: '患者',
+  },
+  {
+    name: 'reports-mobile-chrome-touch-targets',
+    path: '/reports',
+    currentPageLabel: '報告',
+    activeNavLabel: null,
+  },
 ] as const;
 
 const MOBILE_TOUCH_TARGET_ROUTES = [
@@ -434,6 +449,16 @@ test.describe('mobile layout flow', () => {
 
       await expect(page.getByTestId('app-header')).toBeVisible();
       await expect(page.getByTestId('mobile-bottom-nav')).toBeVisible();
+      await expect(page.getByTestId('app-header-current-page')).toHaveText(route.currentPageLabel);
+
+      if (route.activeNavLabel) {
+        const activeNav = page
+          .getByTestId('mobile-bottom-nav')
+          .getByRole('link', { name: route.activeNavLabel });
+        await expect(activeNav).toHaveAttribute('aria-current', 'page');
+        await expect(activeNav).toHaveClass(/border-primary/);
+        await expect(activeNav).toHaveClass(/bg-primary\/5/);
+      }
 
       const headerSmallTargets = await collectSmallMobileTargets(
         page,

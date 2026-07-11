@@ -45421,3 +45421,42 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   landmarks/keyboard verification, and the remaining seven-screen frontend queue are not complete. Build was not
   repeated because the existing Phase 9 ledger records the local 16 GB exit-137 limit; no build pass is claimed.
   No push, deployment, migration, production data mutation, secret rotation, or destructive operation occurred.
+- commit:
+  `b77c7bf73` (`feat(FE-SHELL-001): show safe current page context`) committed the six owned implementation,
+  regression, Plans, and single-ledger paths. Existing harness-memory and unrelated untracked local files were
+  excluded. No push was performed.
+
+## 2026-07-11 FE-SHELL-001 — non-color mobile active navigation
+
+- current task / code-scan decision:
+  Continued the same partial shell task after `b77c7bf73`. The WorkspaceActionRail already had mount-count
+  availability, Escape close, focus cycling/restoration, Japanese close naming, loading/error false-empty, and
+  ordered action/reason/evidence tests. The actionable gap was the mobile bottom nav: `aria-current` was present,
+  but its visible active state relied only on text color.
+- implementation / bugs fixed:
+  Mobile bottom navigation links now reserve a consistent top indicator edge. The active route receives a visible
+  top border and restrained primary surface, while inactive links and the menu action retain a transparent edge.
+  This makes current state differ by shape/surface as well as color without changing nav order, hrefs,
+  `activePrefixes`, click behavior, safe-area padding, or the 44px target. The focused test setup now resets its
+  pathname in `beforeEach`, fixing state leakage from the prior My Day case. The durable Playwright chrome test now
+  also asserts the PHI-safe header label and active link semantics/styles on applicable routes.
+- security / performance / accessibility:
+  No data, API, PHI, auth/authz, persistence, audit, notification, search, or navigation contract changed. The
+  update is CSS-only at runtime and adds no render state, request, listener, dependency, or bundle branch.
+  `aria-current="page"` remains the programmatic signal; border/surface provide the non-color visual signal.
+- validation:
+  Focused Vitest passed 3 files / 34 tests for mobile nav/config/active matching after the first run exposed and
+  fixed pathname test leakage. Focused ESLint and Prettier, typography and state-color guards, Playwright test
+  discovery, and `git diff --check` passed. Local mobile Chromium passed the dashboard shell case with exact
+  `ホーム` header context, `aria-current`, active border/surface, and 44px chrome targets (1 passed / 1 desktop
+  project skipped). The reused local E2E listener was stopped afterward. Stopping that dev listener during an
+  earlier write left `.next/dev/types` syntactically truncated; the generated directory was preserved under `/tmp`
+  and regenerated rather than changing source types. The default 4GB `pnpm typecheck` then exhausted its heap;
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed, as did `pnpm format:check`,
+  `pnpm frontend-contract:check`, `pnpm typography:check`, `pnpm colors:check`, `pnpm plans:active:check`, and
+  `git diff --check`. Final `pnpm lint` passed with zero errors and the same two pre-existing `_tx` / `_input`
+  warnings in `src/lib/platform/break-glass.test.ts`.
+- plans / remaining / next action:
+  `FE-SHELL-001` remains Partial with unchanged queue counts. Next audit the remaining header notification/search
+  semantics and responsive WorkspaceActionRail state matrix; do not duplicate already-proven focus/error behavior.
+  No build, migration, deployment, production data action, push, or destructive operation was performed.

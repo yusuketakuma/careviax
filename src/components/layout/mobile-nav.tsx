@@ -29,10 +29,12 @@ export function MobileNav() {
                 href={item.href}
                 onClick={() => setSidebarOpen(false)}
                 className={cn(
-                  'relative flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors',
+                  'relative flex flex-1 flex-col items-center justify-center gap-1 border-t-2 text-xs font-medium transition-colors',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   'min-h-[44px]',
-                  isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+                  isActive
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
                 )}
                 aria-current={isActive ? 'page' : undefined}
               >
@@ -59,7 +61,7 @@ export function MobileNav() {
             type="button"
             onClick={toggleSidebar}
             className={cn(
-              'flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium text-muted-foreground transition-colors',
+              'flex flex-1 flex-col items-center justify-center gap-1 border-t-2 border-transparent text-xs font-medium text-muted-foreground transition-colors',
               'hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               'min-h-[44px]',
             )}
