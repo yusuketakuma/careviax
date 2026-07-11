@@ -8,6 +8,8 @@ import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-cl
 import { jsonResponse } from '@/test/fetch-test-utils';
 import { FacilityPacketContent } from './facility-packet-content';
 
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
+
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
@@ -26,6 +28,10 @@ vi.mock('next/link', () => ({
 
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 setupDomTestEnv();
@@ -101,12 +107,13 @@ describe('FacilityPacketContent', () => {
     });
   });
 
-  it('keeps API messages from facility packet save failures', async () => {
+  it('keeps facility packet save failures PHI-safe and retains the draft', async () => {
+    const poisonMessage = '患者Aの施設パケット / 090-1234-5678 / token=secret';
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       if (input === '/api/visit-preparations/schedule_1') {
         return jsonResponse(buildFacilityPacketResponse());
       }
-      return jsonResponse({ message: '施設一括訪問の順序が同時に更新されました' }, 409);
+      return jsonResponse({ message: poisonMessage }, 409);
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -122,8 +129,19 @@ describe('FacilityPacketContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('施設一括訪問の順序が同時に更新されました');
+      expect(toast.error).toHaveBeenCalledWith('施設訪問パケットの保存に失敗しました');
     });
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+      'facility_packet.save_failed',
+      expect.any(Error),
+      {
+        route: '/visits/[id]/facility-packet',
+        entityType: 'facility_visit_packet',
+        code: 'FACILITY_VISIT_PACKET_SAVE_FAILED',
+      },
+    );
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain(poisonMessage);
+    expect((screen.getByLabelText('入館方法') as HTMLInputElement).value).toBe('正面玄関で受付');
     expect(fetchMock).toHaveBeenCalledWith('/api/facility-visit-batches', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-org-id': 'org_1' },

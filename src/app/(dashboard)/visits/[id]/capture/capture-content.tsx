@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import { readApiJson } from '@/lib/api/client-json';
 import { apiUnknownDataEnvelopeSchema } from '@/lib/api/response-schemas';
 import { Button } from '@/components/ui/button';
@@ -284,6 +284,15 @@ export function EvidenceCaptureContent({
     });
   }, [cameraActive]);
 
+  function reportCaptureSaveFailure(error: unknown) {
+    clientLog.warn('visit_capture.evidence_save_failed', error, {
+      route: '/visits/[id]/capture',
+      entityType: 'visit_evidence',
+      code: 'VISIT_EVIDENCE_CAPTURE_SAVE_FAILED',
+    });
+    toast.error('写真を保存できませんでした');
+  }
+
   async function handleShutterClick() {
     if (saving) return;
     if (shutterDisabledReason) {
@@ -300,7 +309,7 @@ export function EvidenceCaptureContent({
       // カメラ未起動 → ネイティブカメラ/ファイル選択へフォールバック
       fileInputRef.current?.click();
     } catch (error) {
-      toast.error(messageFromError(error, '写真を保存できませんでした'));
+      reportCaptureSaveFailure(error);
     } finally {
       setSaving(false);
     }
@@ -314,7 +323,7 @@ export function EvidenceCaptureContent({
     try {
       await persistCapturedImage(file, file.type || 'image/jpeg');
     } catch (error) {
-      toast.error(messageFromError(error, '写真を保存できませんでした'));
+      reportCaptureSaveFailure(error);
     } finally {
       setSaving(false);
     }
@@ -349,7 +358,12 @@ export function EvidenceCaptureContent({
       );
       toast.success('訪問終了を記録しました');
     } catch (error) {
-      toast.error(messageFromError(error, '訪問終了を記録できませんでした'));
+      clientLog.warn('visit_capture.visit_end_failed', error, {
+        route: '/visits/[id]/capture',
+        entityType: 'visit_record',
+        code: 'VISIT_CAPTURE_END_RECORD_FAILED',
+      });
+      toast.error('訪問終了を記録できませんでした');
     } finally {
       setEndingVisit(false);
     }

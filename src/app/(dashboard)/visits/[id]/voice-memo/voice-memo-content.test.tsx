@@ -13,6 +13,8 @@ import { VoiceMemoContent } from './voice-memo-content';
 
 setupDomTestEnv();
 
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
+
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
@@ -30,6 +32,10 @@ vi.mock('sonner', () => ({
     success: vi.fn(),
     warning: vi.fn(),
   },
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 function renderContent() {
@@ -199,5 +205,57 @@ describe('VoiceMemoContent', () => {
           String(input) === '/api/visit-records/record_1' && init?.method === 'PATCH',
       ),
     ).toHaveLength(1);
+  });
+
+  it('keeps visit-record append failures PHI-safe while preserving the transcript', async () => {
+    const poisonMessage = '患者Aの音声メモ / 090-1234-5678 / token=secret';
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/visit-schedules/visit_1') {
+        return new Response(JSON.stringify({ data: { visit_record: { id: 'record_1' } } }), {
+          status: 200,
+        });
+      }
+      if (url === '/api/visit-records/record_1' && init?.method !== 'PATCH') {
+        return new Response(JSON.stringify({ data: { version: 3, soap_subjective: '既存メモ' } }), {
+          status: 200,
+        });
+      }
+      if (url === '/api/visit-records/record_1' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ message: poisonMessage }), { status: 500 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    const textarea = await screen.findByTestId('voice-memo-manual-transcript');
+    fireEvent.change(textarea, {
+      target: { value: '夕食後は家族の声かけで飲めている。' },
+    });
+    fireEvent.click(screen.getByTestId('voice-memo-manual-apply-button'));
+
+    const appendButton = await screen.findByTestId('voice-memo-append-button');
+    fireEvent.click(appendButton);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenLastCalledWith('訪問記録への追記に失敗しました');
+    });
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+      'voice_memo.visit_record_append_failed',
+      expect.any(Error),
+      {
+        route: '/visits/[id]/voice-memo',
+        entityType: 'visit_record',
+        code: 'VOICE_MEMO_VISIT_RECORD_APPEND_FAILED',
+      },
+    );
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain(poisonMessage);
+    expect(screen.getByTestId('voice-memo-transcript-text').textContent).toContain(
+      '夕食後は家族の声かけで飲めている。',
+    );
+    expect((screen.getByTestId('voice-memo-append-button') as HTMLButtonElement).disabled).toBe(
+      false,
+    );
   });
 });

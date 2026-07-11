@@ -14,7 +14,7 @@ import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import {
   FACILITY_PACKET_MEMO_FIELDS,
   facilityPacketMemoDisplayItems,
@@ -223,7 +223,12 @@ function FacilityPacketMemoSection({
       onSaved();
     },
     onError: (error) => {
-      toast.error(messageFromError(error, '施設訪問パケットの保存に失敗しました'));
+      clientLog.warn('facility_packet.save_failed', error, {
+        route: '/visits/[id]/facility-packet',
+        entityType: 'facility_visit_packet',
+        code: 'FACILITY_VISIT_PACKET_SAVE_FAILED',
+      });
+      toast.error('施設訪問パケットの保存に失敗しました');
     },
   });
 

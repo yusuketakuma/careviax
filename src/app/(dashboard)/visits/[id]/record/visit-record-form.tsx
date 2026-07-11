@@ -9,7 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 import { toast } from 'sonner';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import { formatYen } from '@/lib/ui/currency-format';
 import { timeIsoToString } from '@/lib/visits/time-of-day';
 import {
@@ -137,6 +137,7 @@ import { appendVoiceTranscript } from '@/lib/voice-recognition';
 import { getVisitExecutionQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import {
   buildVisitMedicationStockObservationRequest,
+  getVisitMedicationStockSubmissionFailureMessage,
   submitVisitMedicationStockObservations,
 } from '@/lib/visits/medication-stock-observation';
 import {
@@ -1284,8 +1285,13 @@ export function VisitRecordForm({
           start: current?.start ?? null,
           end: current?.end ?? null,
         }));
+        clientLog.warn('visit_record.location_capture_failed', error, {
+          route: '/visits/[id]/record',
+          entityType: 'visit_geo_log',
+          code: 'VISIT_LOCATION_CAPTURE_FAILED',
+        });
         if (!options?.silent) {
-          toast.error(messageFromError(error, '位置情報を取得できませんでした'));
+          toast.error('位置情報を取得できませんでした');
         }
         return null;
       } finally {
@@ -1596,11 +1602,15 @@ export function VisitRecordForm({
         });
 
         if (!patchResponse.ok) {
-          const patchJson = await patchResponse.json().catch(() => null);
+          clientLog.warn('visit_record.attachment_link_failed', undefined, {
+            route: '/visits/[id]/record',
+            entityType: 'visit_attachment',
+            code: 'VISIT_ATTACHMENT_LINK_FAILED',
+            status: patchResponse.status,
+          });
           return {
             record,
-            attachmentWarning:
-              patchJson?.message ?? '訪問記録は保存しましたが、添付の紐づけに失敗しました',
+            attachmentWarning: '訪問記録は保存しましたが、添付の紐づけに失敗しました',
           };
         }
         const patchPayload = await readApiJson<{ data: SavedVisitRecord }>(
@@ -1613,12 +1623,14 @@ export function VisitRecordForm({
           attachmentWarning: null,
         };
       } catch (cause) {
+        clientLog.warn('visit_record.attachment_upload_failed', cause, {
+          route: '/visits/[id]/record',
+          entityType: 'visit_attachment',
+          code: 'VISIT_ATTACHMENT_UPLOAD_FAILED',
+        });
         return {
           record,
-          attachmentWarning:
-            cause instanceof Error
-              ? cause.message
-              : '訪問記録は保存しましたが、添付のアップロードに失敗しました',
+          attachmentWarning: '訪問記録は保存しましたが、添付のアップロードに失敗しました',
         };
       }
     },
@@ -1656,7 +1668,12 @@ export function VisitRecordForm({
       await finishSavedVisit(record, attachmentWarning, false);
     },
     onError: (err: Error) => {
-      toast.error(messageFromError(err, '保存に失敗しました'));
+      clientLog.warn('visit_record.save_failed', err, {
+        route: '/visits/[id]/record',
+        entityType: 'visit_record',
+        code: 'VISIT_RECORD_SAVE_FAILED',
+      });
+      toast.error('保存に失敗しました');
     },
   });
 
@@ -1674,8 +1691,15 @@ export function VisitRecordForm({
       request: pending.request,
     });
     if (!result.ok) {
-      setMedicationStockSubmissionState({ status: result.status, message: result.message });
-      toast.error(`訪問記録は保存しましたが、${result.message}`);
+      const failureMessage = getVisitMedicationStockSubmissionFailureMessage(result.status);
+      clientLog.warn('visit_record.medication_stock_submission_failed', undefined, {
+        route: '/visits/[id]/record',
+        entityType: 'medication_stock_observation',
+        code: 'VISIT_MEDICATION_STOCK_SUBMISSION_FAILED',
+        status: result.status,
+      });
+      setMedicationStockSubmissionState({ status: result.status, message: failureMessage });
+      toast.error(`訪問記録は保存しましたが、${failureMessage}`);
       return false;
     }
     setMedicationStockSubmissionState({ status: 'idle' });

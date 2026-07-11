@@ -32,6 +32,11 @@ const {
   toastErrorMock,
   toastSuccessMock,
   toastInfoMock,
+  toastWarningMock,
+  clientLogWarnMock,
+  captureVisitGeoPointMock,
+  getVisitLocationPermissionStateMock,
+  getVisitLocationTrackingPreferenceMock,
   fetchUrls,
   cdsAlertPanelCalls,
   medicationManagementSectionCalls,
@@ -62,6 +67,11 @@ const {
   toastErrorMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastInfoMock: vi.fn(),
+  toastWarningMock: vi.fn(),
+  clientLogWarnMock: vi.fn(),
+  captureVisitGeoPointMock: vi.fn(),
+  getVisitLocationPermissionStateMock: vi.fn(),
+  getVisitLocationTrackingPreferenceMock: vi.fn(),
   fetchUrls: [] as string[],
   cdsAlertPanelCalls: [] as Array<{ isUnavailable?: boolean; isLoading?: boolean }>,
   medicationManagementSectionCalls: [] as Array<{
@@ -100,8 +110,12 @@ vi.mock('sonner', () => ({
     error: toastErrorMock,
     success: toastSuccessMock,
     info: toastInfoMock,
-    warning: vi.fn(),
+    warning: toastWarningMock,
   },
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -171,9 +185,9 @@ vi.mock('@/lib/offline/evidence-drafts', () => ({
 }));
 
 vi.mock('@/lib/visit-location', () => ({
-  captureVisitGeoPoint: vi.fn(),
-  getVisitLocationPermissionState: vi.fn().mockResolvedValue('unavailable'),
-  getVisitLocationTrackingPreference: vi.fn().mockReturnValue(false),
+  captureVisitGeoPoint: captureVisitGeoPointMock,
+  getVisitLocationPermissionState: getVisitLocationPermissionStateMock,
+  getVisitLocationTrackingPreference: getVisitLocationTrackingPreferenceMock,
 }));
 
 vi.mock('@/components/ui/select', async () => {
@@ -404,6 +418,9 @@ function scheduleDetailResponse(overrides: Record<string, unknown> = {}) {
 describe('VisitRecordForm carry-item acknowledgement', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    captureVisitGeoPointMock.mockReset();
+    getVisitLocationPermissionStateMock.mockReset().mockResolvedValue('unavailable');
+    getVisitLocationTrackingPreferenceMock.mockReset().mockReturnValue(false);
     loadDraftMock.mockResolvedValue(null);
     saveDraftMock.mockResolvedValue(undefined);
     clearDraftMock.mockResolvedValue(undefined);
@@ -1451,6 +1468,107 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(toastSuccessMock).toHaveBeenCalledWith('訪問記録を保存しました');
   });
 
+  it('keeps a partial attachment failure PHI-safe after saving the visit record', async () => {
+    const baselineFetch = globalThis.fetch;
+    const poisonMessage = '患者Aの添付 / 090-1234-5678 / token=secret';
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/files/presigned-upload') {
+        return new Response(
+          JSON.stringify({
+            data: {
+              id: 'file_1',
+              uploadUrl: 'https://upload.example/file_1',
+              headers: { 'x-upload': '1' },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === 'https://upload.example/file_1' && init?.method === 'PUT') {
+        return new Response(null, { status: 200, headers: { etag: 'etag_1' } });
+      }
+      if (url === '/api/files/complete') {
+        return new Response(JSON.stringify({ data: { id: 'file_1' } }), { status: 200 });
+      }
+      if (url === '/api/visit-records/record_1' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ message: poisonMessage }), { status: 500 });
+      }
+      return baselineFetch(input, init);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderVisitRecordForm();
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '添付テスト追加' }));
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(toastWarningMock).toHaveBeenLastCalledWith(
+        '訪問記録は保存しましたが、添付の紐づけに失敗しました',
+      );
+    });
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'visit_record.attachment_link_failed',
+      undefined,
+      {
+        route: '/visits/[id]/record',
+        entityType: 'visit_attachment',
+        code: 'VISIT_ATTACHMENT_LINK_FAILED',
+        status: 500,
+      },
+    );
+    expect(JSON.stringify(toastWarningMock.mock.calls)).not.toContain(poisonMessage);
+    expect(routerPushMock).toHaveBeenCalledWith('/visits/record_1');
+  });
+
+  it('keeps an attachment upload failure PHI-safe after saving the visit record', async () => {
+    const baselineFetch = globalThis.fetch;
+    const poisonMessage = '患者Aの添付 / 090-1234-5678 / token=secret';
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/files/presigned-upload') {
+        return new Response(JSON.stringify({ message: poisonMessage }), { status: 500 });
+      }
+      return baselineFetch(input, init);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderVisitRecordForm();
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '添付テスト追加' }));
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(toastWarningMock).toHaveBeenLastCalledWith(
+        '訪問記録は保存しましたが、添付のアップロードに失敗しました',
+      );
+    });
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'visit_record.attachment_upload_failed',
+      expect.any(Error),
+      {
+        route: '/visits/[id]/record',
+        entityType: 'visit_attachment',
+        code: 'VISIT_ATTACHMENT_UPLOAD_FAILED',
+      },
+    );
+    expect(JSON.stringify(toastWarningMock.mock.calls)).not.toContain(poisonMessage);
+    expect(routerPushMock).toHaveBeenCalledWith('/visits/record_1');
+  });
+
   it('fails closed when medication stock drafts exist while the server capability gate is disabled', async () => {
     renderVisitRecordForm();
 
@@ -1560,7 +1678,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
       .mockResolvedValueOnce({
         ok: false,
         status: 'conflict',
-        message: '残数観測が競合しました。最新情報を確認して同じ内容で再試行してください。',
+        message: '患者Aの残数4枚 / 090-1234-5678 / token=secret',
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -1596,6 +1714,20 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     });
     expect(routerPushMock).not.toHaveBeenCalledWith('/visits/record_1');
     expect(visitRecordPostBodies).toHaveLength(1);
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      '訪問記録は保存しましたが、残数観測が競合しました。最新情報を確認して同じ内容で再試行してください。',
+    );
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'visit_record.medication_stock_submission_failed',
+      undefined,
+      {
+        route: '/visits/[id]/record',
+        entityType: 'medication_stock_observation',
+        code: 'VISIT_MEDICATION_STOCK_SUBMISSION_FAILED',
+        status: 'conflict',
+      },
+    );
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain('患者Aの残数4枚');
 
     fireEvent.submit(document.querySelector('form')!);
 
@@ -1924,9 +2056,10 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(fetchUrls.some((url) => url.includes('/labs'))).toBe(false);
   });
 
-  it('keeps server messages and falls back for visit record save error toasts', async () => {
+  it('keeps visit-record save failures PHI-safe and retains the draft', async () => {
     const baseFetch = globalThis.fetch as typeof fetch;
-    const responseMessages = ['訪問記録APIからの詳細エラー', ''];
+    const poisonMessage = '患者AのSOAP / 090-1234-5678 / token=secret';
+    const responseMessages = [poisonMessage, ''];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1949,12 +2082,24 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
       );
     });
 
+    const subjectiveInput = screen.getByLabelText('主観情報') as HTMLTextAreaElement;
+    fireEvent.change(subjectiveInput, { target: { value: '下書きを保持する' } });
     fireEvent.click(screen.getByRole('button', { name: '延期' }));
     fireEvent.submit(document.querySelector('form')!);
 
     await waitFor(() => {
-      expect(toastErrorMock).toHaveBeenLastCalledWith('訪問記録APIからの詳細エラー');
+      expect(toastErrorMock).toHaveBeenLastCalledWith('保存に失敗しました');
     });
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+      'visit_record.save_failed',
+      expect.any(Error),
+      {
+        route: '/visits/[id]/record',
+        entityType: 'visit_record',
+        code: 'VISIT_RECORD_SAVE_FAILED',
+      },
+    );
+    expect(subjectiveInput.value).toBe('下書きを保持する');
 
     toastErrorMock.mockClear();
     fireEvent.submit(document.querySelector('form')!);
@@ -1963,6 +2108,40 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
       expect(toastErrorMock).toHaveBeenLastCalledWith('保存に失敗しました');
     });
     expect(visitRecordPostBodies).toHaveLength(2);
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(poisonMessage);
+    expect(
+      JSON.stringify(clientLogWarnMock.mock.calls.map(([, , context]) => context)),
+    ).not.toContain(poisonMessage);
+  });
+
+  it('keeps visit location capture failures PHI-safe', async () => {
+    const poisonError = new Error('患者Aの自宅座標 / 090-1234-5678 / token=secret');
+    getVisitLocationTrackingPreferenceMock.mockReturnValue(true);
+    getVisitLocationPermissionStateMock.mockResolvedValue('granted');
+    captureVisitGeoPointMock.mockRejectedValue(poisonError);
+
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+    fireEvent.click(screen.getByRole('button', { name: '訪問開始を記録' }));
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenLastCalledWith('位置情報を取得できませんでした');
+    });
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'visit_record.location_capture_failed',
+      poisonError,
+      {
+        route: '/visits/[id]/record',
+        entityType: 'visit_geo_log',
+        code: 'VISIT_LOCATION_CAPTURE_FAILED',
+      },
+    );
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(poisonError.message);
   });
 
   it('does not infer visit end time from form save alone', async () => {

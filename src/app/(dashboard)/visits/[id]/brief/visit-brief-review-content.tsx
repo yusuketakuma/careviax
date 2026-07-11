@@ -15,7 +15,7 @@ import { apiUnknownDataEnvelopeSchema } from '@/lib/api/response-schemas';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import type { VisitBrief } from '@/types/visit-brief';
 import {
   buildNeedsEditFeedbackInput,
@@ -135,7 +135,12 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
       }
     },
     onError: (error) => {
-      toast.error(messageFromError(error, '確認結果の送信に失敗しました'));
+      clientLog.warn('visit_brief.feedback_submit_failed', error, {
+        route: '/visits/[id]/brief',
+        entityType: 'visit_brief_feedback',
+        code: 'VISIT_BRIEF_FEEDBACK_SUBMIT_FAILED',
+      });
+      toast.error('確認結果の送信に失敗しました');
     },
   });
 

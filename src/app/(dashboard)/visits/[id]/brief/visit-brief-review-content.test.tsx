@@ -13,6 +13,8 @@ setupDomTestEnv();
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
+const toastErrorMock = vi.hoisted(() => vi.fn());
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -40,8 +42,10 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn() },
+vi.mock('sonner', () => ({ toast: { error: toastErrorMock, success: vi.fn() } }));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 function buildBrief(): VisitBrief {
@@ -97,6 +101,41 @@ function buildBrief(): VisitBrief {
 }
 
 describe('VisitBriefReviewContent', () => {
+  it('keeps pharmacist feedback failures PHI-safe', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    let onError: ((error: unknown) => void) | undefined;
+    useMutationMock.mockImplementation((config: { onError?: (error: unknown) => void }) => {
+      onError = config.onError;
+      return { mutate: vi.fn(), isPending: false };
+    });
+    useQueryMock.mockImplementation((config: { queryKey: unknown[] }) => {
+      if (config.queryKey[0] === 'visit-brief-review-patient') {
+        return { data: { patientId: 'patient_1' }, isPending: false, isSuccess: true, error: null };
+      }
+      if (config.queryKey[0] === 'patient-visit-brief') {
+        return { data: { data: buildBrief() }, isPending: false, isSuccess: true, error: null };
+      }
+      return { data: undefined, isPending: false, isSuccess: true, error: null };
+    });
+
+    render(<VisitBriefReviewContent visitId="visit_1" />);
+
+    const poisonError = new Error('患者Aの確認結果 / 090-1234-5678 / token=secret');
+    onError?.(poisonError);
+
+    expect(toastErrorMock).toHaveBeenLastCalledWith('確認結果の送信に失敗しました');
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+      'visit_brief.feedback_submit_failed',
+      poisonError,
+      {
+        route: '/visits/[id]/brief',
+        entityType: 'visit_brief_feedback',
+        code: 'VISIT_BRIEF_FEEDBACK_SUBMIT_FAILED',
+      },
+    );
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(poisonError.message);
+  });
+
   it('unwraps the schedule detail data envelope before resolving the patient', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });

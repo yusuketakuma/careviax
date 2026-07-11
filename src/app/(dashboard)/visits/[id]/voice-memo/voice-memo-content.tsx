@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useMutation } from '@tanstack/react-query';
 import { Mic, Square } from 'lucide-react';
 import { toast } from 'sonner';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -370,7 +370,12 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
       toast.success('訪問記録のメモ(S: 患者の訴え)へ追記しました');
     },
     onError: (error) => {
-      toast.error(messageFromError(error, '訪問記録への追記に失敗しました'));
+      clientLog.warn('voice_memo.visit_record_append_failed', error, {
+        route: '/visits/[id]/voice-memo',
+        entityType: 'visit_record',
+        code: 'VOICE_MEMO_VISIT_RECORD_APPEND_FAILED',
+      });
+      toast.error('訪問記録への追記に失敗しました');
     },
   });
 

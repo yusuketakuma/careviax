@@ -17,6 +17,7 @@ const setupEvidenceAutoSyncMock = vi.hoisted(() => vi.fn());
 const syncEvidenceDraftsMock = vi.hoisted(() => vi.fn());
 const toastErrorMock = vi.hoisted(() => vi.fn());
 const toastSuccessMock = vi.hoisted(() => vi.fn());
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -51,6 +52,10 @@ vi.mock('next/link', () => ({
 
 vi.mock('sonner', () => ({
   toast: { error: toastErrorMock, success: toastSuccessMock },
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 describe('EvidenceCaptureContent', () => {
@@ -141,6 +146,38 @@ describe('EvidenceCaptureContent', () => {
     });
     expect(saveEvidenceDraftMock).not.toHaveBeenCalled();
     expect(syncEvidenceDraftsMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps evidence-save failures PHI-safe', async () => {
+    const poisonError = new Error('患者Aの証跡写真 / 090-1234-5678 / token=secret');
+    useOrgIdMock.mockReturnValue('org_1');
+    setupEvidenceAutoSyncMock.mockReturnValue(undefined);
+    saveEvidenceDraftMock.mockRejectedValue(poisonError);
+    mockCaptureQueries();
+
+    const { container } = render(<EvidenceCaptureContent visitId="visit_1" />);
+    const input = container.querySelector('input[type="file"]');
+    expect(input).toBeInstanceOf(HTMLInputElement);
+
+    fireEvent.change(input!, {
+      target: {
+        files: [new File(['photo'], 'visit-photo.jpg', { type: 'image/jpeg' })],
+      },
+    });
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenLastCalledWith('写真を保存できませんでした');
+    });
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+      'visit_capture.evidence_save_failed',
+      poisonError,
+      {
+        route: '/visits/[id]/capture',
+        entityType: 'visit_evidence',
+        code: 'VISIT_EVIDENCE_CAPTURE_SAVE_FAILED',
+      },
+    );
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(poisonError.message);
   });
 
   it('unwraps the schedule detail data envelope before resolving patient context', async () => {
@@ -319,6 +356,50 @@ describe('EvidenceCaptureContent', () => {
       expect(toastSuccessMock).toHaveBeenCalledWith('訪問終了を記録しました');
     } finally {
       vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps visit-end failures PHI-safe', async () => {
+    const poisonMessage = '患者Aの訪問終了 / 090-1234-5678 / token=secret';
+    useOrgIdMock.mockReturnValue('org_1');
+    setupEvidenceAutoSyncMock.mockReturnValue(undefined);
+    mockCaptureQueries({
+      patientContext: capturePatientContext({
+        visitRecordId: 'record_1',
+        visitRecordVersion: 3,
+        visitStartedAt: '2026-04-09T01:00:00.000Z',
+        visitEndedAt: null,
+      }),
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(
+        async () => new Response(JSON.stringify({ message: poisonMessage }), { status: 500 }),
+      ),
+    );
+
+    try {
+      render(<EvidenceCaptureContent visitId="visit_1" />);
+      fireEvent.click(screen.getByRole('button', { name: '訪問終了を記録' }));
+
+      await waitFor(() => {
+        expect(toastErrorMock).toHaveBeenLastCalledWith('訪問終了を記録できませんでした');
+      });
+      expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+        'visit_capture.visit_end_failed',
+        expect.any(Error),
+        {
+          route: '/visits/[id]/capture',
+          entityType: 'visit_record',
+          code: 'VISIT_CAPTURE_END_RECORD_FAILED',
+        },
+      );
+      expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(poisonMessage);
+      expect(
+        JSON.stringify(clientLogWarnMock.mock.calls.map(([, , context]) => context)),
+      ).not.toContain(poisonMessage);
+    } finally {
       vi.unstubAllGlobals();
     }
   });

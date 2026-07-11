@@ -78,7 +78,7 @@ import {
   findDraftReportForType,
 } from './visit-record-report-generation';
 import { buildVisitRecordPdfHref } from '@/lib/visits/navigation';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 
 type ResidualMedication = {
   id: string;
@@ -480,7 +480,12 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       if (firstId) router.push(`/reports/${firstId}`);
     },
     onError: (err: Error) => {
-      toast.error(messageFromError(err, '報告書の生成に失敗しました'));
+      clientLog.warn('visit_record.report_generation_failed', err, {
+        route: '/visits/[id]',
+        entityType: 'care_report',
+        code: 'VISIT_REPORT_GENERATION_FAILED',
+      });
+      toast.error('報告書の生成に失敗しました');
     },
   });
 
@@ -530,7 +535,12 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       router.push(`/schedules?selected=${schedule.id}`);
     },
     onError: (error: Error) => {
-      toast.error(messageFromError(error, '次回訪問予定の作成に失敗しました'));
+      clientLog.warn('visit_record.next_visit_create_failed', error, {
+        route: '/visits/[id]',
+        entityType: 'visit_schedule',
+        code: 'VISIT_NEXT_VISIT_CREATE_FAILED',
+      });
+      toast.error('次回訪問予定の作成に失敗しました');
     },
   });
 
@@ -635,7 +645,12 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       queryClient.invalidateQueries({ queryKey: ['billing-candidates'] });
     },
     onError: (error: Error) => {
-      toast.error(messageFromError(error, '請求候補の生成に失敗しました'));
+      clientLog.warn('visit_record.billing_candidates_generate_failed', error, {
+        route: '/visits/[id]',
+        entityType: 'billing_candidate',
+        code: 'VISIT_BILLING_CANDIDATES_GENERATE_FAILED',
+      });
+      toast.error('請求候補の生成に失敗しました');
     },
   });
 

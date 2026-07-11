@@ -5,14 +5,21 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
 
-const { useQueryMock, useMutationMock, useQueryClientMock, useOrgIdMock, routerPushMock } =
-  vi.hoisted(() => ({
-    useQueryMock: vi.fn(),
-    useMutationMock: vi.fn(),
-    useQueryClientMock: vi.fn(),
-    useOrgIdMock: vi.fn(),
-    routerPushMock: vi.fn(),
-  }));
+const {
+  useQueryMock,
+  useMutationMock,
+  useQueryClientMock,
+  useOrgIdMock,
+  routerPushMock,
+  clientLogWarnMock,
+} = vi.hoisted(() => ({
+  useQueryMock: vi.fn(),
+  useMutationMock: vi.fn(),
+  useQueryClientMock: vi.fn(),
+  useOrgIdMock: vi.fn(),
+  routerPushMock: vi.fn(),
+  clientLogWarnMock: vi.fn(),
+}));
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
@@ -27,6 +34,10 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/hooks/use-org-id', () => ({ useOrgId: useOrgIdMock }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
+}));
 
 // Heavy child components are stubbed: this suite only proves the fetch-error banner +
 // retry wiring on the parent, not the children's internals.
@@ -272,12 +283,21 @@ function setupQueries(options: QueryStubOptions = {}) {
   return { refetchSpies, mutationConfigs, queryConfigs };
 }
 
-function expectMutationErrorToast(config: MutationConfig, serverMessage: string, fallback: string) {
-  config.onError?.(new Error(serverMessage));
-  expect(toast.error).toHaveBeenLastCalledWith(serverMessage);
-
-  config.onError?.(new Error(''));
+function expectMutationErrorToast(
+  config: MutationConfig,
+  event: string,
+  serverMessage: string,
+  fallback: string,
+  context: { route: string; entityType: string; code: string },
+) {
+  const poisonError = new Error(serverMessage);
+  config.onError?.(poisonError);
   expect(toast.error).toHaveBeenLastCalledWith(fallback);
+  expect(clientLogWarnMock).toHaveBeenLastCalledWith(event, poisonError, context);
+  expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain(serverMessage);
+  expect(
+    JSON.stringify(clientLogWarnMock.mock.calls.map(([, , logContext]) => logContext)),
+  ).not.toContain(serverMessage);
 }
 
 describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () => {
@@ -330,7 +350,7 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
     }
   });
 
-  it('keeps server messages and falls back for mutation error toasts', () => {
+  it('keeps mutation error toasts PHI-safe while retaining coded context', () => {
     const { mutationConfigs } = setupQueries();
     render(<VisitRecordDetail recordId="record_1" />);
 
@@ -338,18 +358,36 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
     const [generateReport, createNextVisit, generateBillingCandidates] = mutationConfigs;
     expectMutationErrorToast(
       generateReport,
-      '報告書APIからの詳細エラー',
+      'visit_record.report_generation_failed',
+      '患者Aの報告書 / 090-1234-5678 / token=secret',
       '報告書の生成に失敗しました',
+      {
+        route: '/visits/[id]',
+        entityType: 'care_report',
+        code: 'VISIT_REPORT_GENERATION_FAILED',
+      },
     );
     expectMutationErrorToast(
       createNextVisit,
-      '訪問予定APIからの詳細エラー',
+      'visit_record.next_visit_create_failed',
+      '患者Aの次回訪問 / 090-1234-5678 / token=secret',
       '次回訪問予定の作成に失敗しました',
+      {
+        route: '/visits/[id]',
+        entityType: 'visit_schedule',
+        code: 'VISIT_NEXT_VISIT_CREATE_FAILED',
+      },
     );
     expectMutationErrorToast(
       generateBillingCandidates,
-      '請求候補APIからの詳細エラー',
+      'visit_record.billing_candidates_generate_failed',
+      '患者Aの請求候補 / 090-1234-5678 / token=secret',
       '請求候補の生成に失敗しました',
+      {
+        route: '/visits/[id]',
+        entityType: 'billing_candidate',
+        code: 'VISIT_BILLING_CANDIDATES_GENERATE_FAILED',
+      },
     );
   });
 
