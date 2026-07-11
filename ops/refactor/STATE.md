@@ -45460,3 +45460,28 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `FE-SHELL-001` remains Partial with unchanged queue counts. Next audit the remaining header notification/search
   semantics and responsive WorkspaceActionRail state matrix; do not duplicate already-proven focus/error behavior.
   No build, migration, deployment, production data action, push, or destructive operation was performed.
+- commit:
+  `fec3a49b5` (`fix(FE-SHELL-001): clarify active mobile route`) committed the five owned mobile-nav,
+  Playwright, Plans, and single-ledger paths. Existing harness-memory and unrelated untracked local files were
+  excluded. No push was performed.
+
+## 2026-07-11 FE-SHELL-001 — completion reconciliation
+
+- completion audit:
+  Re-ran the full focused shell surface instead of inferring completion from the two new commits. AppShell,
+  AppHeader, Sidebar, MobileNav, navigation config/matching, and WorkspaceActionRail passed 8 files / 121 tests.
+  The matrix covers current path, active nav, search, notifications, compact header, sidebar and auxiliary drawer
+  state, landmarks, keyboard shortcuts, Escape, focus cycle/return, 44px controls, loading, error, and false-empty
+  behavior. The prior shell history already provides 12px typography, `dvh`, keyboard skip links, and dynamic
+  loading of heavy globals; those foundations were not duplicated.
+- responsive evidence:
+  Local Playwright mobile Chromium passed dashboard, patients, and reports app-chrome cases: exact safe header
+  labels, applicable `aria-current`, non-color active border/surface, and no sub-44px header or bottom-nav targets.
+  Three desktop-project duplicates were intentionally skipped by the mobile-only suite. The locally owned dev
+  server process tree was stopped after the run.
+- plans / result:
+  `FE-SHELL-001` is DONE and removed from the active Frontend queue (9 -> 8). The existing AppShell, Sidebar,
+  Header, MobileNav, and WorkspaceActionRail now satisfy the active task without a parallel shell or design system.
+  Remaining frontend work belongs to the eight screen/QA entries, led by `FE-PATIENT-LIST-001`; its patient-board
+  cursor/BFF dependency must be reconciled before visual restructuring. No new runtime code was required for this
+  reconciliation step. No push, deployment, migration, production data action, or destructive cleanup occurred.
