@@ -45843,3 +45843,8 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   proposal-rail reorganization, keyboard-only selection, 200% zoom, forced-colors, and full build remain outstanding.
   Rollback is the focused component/test/ledger commit only. No push, deployment, migration, external send,
   production-data mutation, or destructive operation occurred.
+- commit:
+  `ea6f0e809` (`fix(FE-SCHEDULE-001): preserve patient identity in schedule controls`) committed the two owned
+  implementation/regression paths plus the scoped Plans, FE/BE inventory, and single-ledger evidence. The unrelated
+  `API-CONTRACT-001` whitespace hunk in `Plans.md`, harness-memory state, and unrelated untracked files were excluded.
+  No push was performed.
