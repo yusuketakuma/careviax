@@ -3,9 +3,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
-const { toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
+const { toastSuccessMock, toastErrorMock, clientLogWarnMock } = vi.hoisted(() => ({
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
+  clientLogWarnMock: vi.fn(),
 }));
 
 vi.mock('sonner', () => ({
@@ -13,6 +14,10 @@ vi.mock('sonner', () => ({
     success: toastSuccessMock,
     error: toastErrorMock,
   },
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 import { SharedViewerContent } from './shared-viewer-content';
@@ -229,9 +234,10 @@ describe('SharedViewerContent self report', () => {
     expect(body).not.toHaveProperty('idempotency_key');
   });
 
-  it('keeps the server message for shared viewer unlock failures', async () => {
+  it('uses fixed recovery copy for shared viewer unlock failures', async () => {
+    const poisonMessage = '患者 佐藤花子 / OTP=123456 / token=secret';
     vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ message: '共有リンクの閲覧期限が切れています' }), {
+      new Response(JSON.stringify({ message: poisonMessage }), {
         status: 403,
       }),
     );
@@ -241,7 +247,48 @@ describe('SharedViewerContent self report', () => {
     fireEvent.change(screen.getByLabelText('OTP'), { target: { value: '123456' } });
     fireEvent.click(screen.getByRole('button', { name: /閲覧する/ }));
 
-    expect(await screen.findByText('共有リンクの閲覧期限が切れています')).toBeTruthy();
+    expect(
+      await screen.findByText(
+        '共有情報を取得できませんでした。共有リンクとOTPを確認して、もう一度お試しください。',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(poisonMessage)).toBeNull();
+    await waitFor(() =>
+      expect(clientLogWarnMock).toHaveBeenCalledWith(
+        'external_access.viewer_load_failed',
+        expect.any(Error),
+        {
+          route: '/shared/[token]',
+          entityType: 'external_access_viewer',
+          code: 'VIEWER_LOAD_FAILED',
+        },
+      ),
+    );
+  });
+
+  it('retries the same OTP after a shared viewer unlock failure', async () => {
+    let unlockAttempts = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input) !== '/api/external-access/token_1') {
+        return new Response(JSON.stringify({ message: 'unexpected request' }), { status: 500 });
+      }
+      unlockAttempts += 1;
+      if (unlockAttempts === 1) {
+        return new Response(JSON.stringify({ message: 'temporary failure' }), { status: 503 });
+      }
+      return new Response(JSON.stringify(createSharedViewerPayload()), { status: 200 });
+    });
+    renderSharedViewerContent();
+
+    fireEvent.change(screen.getByLabelText('OTP'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /閲覧する/ }));
+    await screen.findByText(
+      '共有情報を取得できませんでした。共有リンクとOTPを確認して、もう一度お試しください。',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /閲覧する/ }));
+    await screen.findByText('山田太郎');
+    expect(unlockAttempts).toBe(2);
   });
 
   it('shows inline required errors and does not post an empty self report', async () => {
@@ -268,14 +315,29 @@ describe('SharedViewerContent self report', () => {
     expect(postCalls).toHaveLength(0);
   });
 
-  it('keeps the server message for generic self report submit failures', async () => {
-    mockSelfReportPostFailure(500, { message: '自己申告APIからの詳細エラー' });
+  it('keeps generic self report submit failures PHI-safe', async () => {
+    const poisonMessage = '患者 佐藤花子 / report=服薬忘れ / token=secret';
+    mockSelfReportPostFailure(500, { message: poisonMessage });
     renderSharedViewerContent();
 
     await unlockAndFillSelfReport();
     fireEvent.click(screen.getByRole('button', { name: '薬局へ送信' }));
 
-    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('自己申告APIからの詳細エラー'));
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith('自己申告の送信に失敗しました'),
+    );
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(poisonMessage);
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'external_access.self_report_submit_failed',
+      expect.any(Error),
+      {
+        route: '/shared/[token]',
+        entityType: 'external_access_self_report',
+        code: 'SELF_REPORT_SUBMIT_FAILED',
+        status: 500,
+      },
+    );
+    expect(JSON.stringify(clientLogWarnMock.mock.calls.at(-1)?.[2])).not.toContain(poisonMessage);
   });
 
   it('falls back when generic self report submit failures have no message', async () => {
@@ -287,6 +349,205 @@ describe('SharedViewerContent self report', () => {
 
     await waitFor(() =>
       expect(toastErrorMock).toHaveBeenCalledWith('自己申告の送信に失敗しました'),
+    );
+  });
+
+  it('keeps the self report draft and uses fixed copy when the send result is ambiguous', async () => {
+    const poisonMessage = '患者 佐藤花子 / report=服薬忘れ / token=secret';
+    let selfReportAttempts = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/external-access/token_1') {
+        return new Response(JSON.stringify(createSharedViewerPayload()), { status: 200 });
+      }
+      if (url === '/api/external-access/token_1/self-report' && init?.method === 'POST') {
+        selfReportAttempts += 1;
+        if (selfReportAttempts === 1) {
+          throw new Error(poisonMessage);
+        }
+        return new Response(JSON.stringify({ data: { accepted: true, replayed: true } }), {
+          status: 200,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled request: ${url}` }), {
+        status: 500,
+      });
+    });
+    renderSharedViewerContent();
+
+    await unlockAndFillSelfReport();
+    fireEvent.click(screen.getByRole('button', { name: '薬局へ送信' }));
+
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        '通信により送信結果を確認できません。しばらく待ってからもう一度お試しください。',
+      ),
+    );
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(poisonMessage);
+    expect((screen.getByLabelText(/報告者氏名/) as HTMLInputElement).value).toBe('家族A');
+    expect((screen.getByLabelText(/内容/) as HTMLTextAreaElement).value).toBe('夕食後を飲み忘れ');
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'external_access.self_report_submit_failed',
+      expect.any(Error),
+      {
+        route: '/shared/[token]',
+        entityType: 'external_access_self_report',
+        code: 'SELF_REPORT_SUBMIT_FAILED',
+        status: 0,
+      },
+    );
+
+    const failedPostCall = vi
+      .mocked(fetch)
+      .mock.calls.find(
+        ([input, init]) => String(input).endsWith('/self-report') && init?.method === 'POST',
+      );
+    const failedIdempotencyKey = (failedPostCall?.[1]?.headers as Record<string, string>)[
+      'Idempotency-Key'
+    ];
+    fireEvent.click(screen.getByRole('button', { name: '薬局へ送信' }));
+    await waitFor(() => expect(toastSuccessMock).toHaveBeenCalledWith('自己申告を受け付けました'));
+    const postCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        ([input, init]) => String(input).endsWith('/self-report') && init?.method === 'POST',
+      );
+    expect(postCalls).toHaveLength(2);
+    expect((postCalls[1]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+      failedIdempotencyKey,
+    );
+  });
+
+  it('treats an unreadable successful submit response as ambiguous and reuses its key', async () => {
+    const poisonResponse = '{"patient":"佐藤花子","token":"secret"';
+    let selfReportAttempts = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/external-access/token_1') {
+        return new Response(JSON.stringify(createSharedViewerPayload()), { status: 200 });
+      }
+      if (url === '/api/external-access/token_1/self-report' && init?.method === 'POST') {
+        selfReportAttempts += 1;
+        if (selfReportAttempts === 1) {
+          return new Response(poisonResponse, {
+            status: 201,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify({ data: { accepted: true, replayed: true } }), {
+          status: 200,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled request: ${url}` }), {
+        status: 500,
+      });
+    });
+    renderSharedViewerContent();
+
+    await unlockAndFillSelfReport();
+    fireEvent.click(screen.getByRole('button', { name: '薬局へ送信' }));
+
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        '通信により送信結果を確認できません。しばらく待ってからもう一度お試しください。',
+      ),
+    );
+    expect(screen.queryByText('佐藤花子')).toBeNull();
+    expect((screen.getByLabelText(/内容/) as HTMLTextAreaElement).value).toBe('夕食後を飲み忘れ');
+    await waitFor(() => {
+      const persistedDraft = window.sessionStorage.getItem(SELF_REPORT_DRAFT_STORAGE_KEY);
+      expect(persistedDraft).toContain('夕食後を飲み忘れ');
+      expect(persistedDraft).not.toContain('123456');
+    });
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'external_access.self_report_submit_failed',
+      expect.any(Error),
+      {
+        route: '/shared/[token]',
+        entityType: 'external_access_self_report',
+        code: 'SELF_REPORT_SUBMIT_FAILED',
+        status: 201,
+      },
+    );
+
+    const failedPostCall = vi
+      .mocked(fetch)
+      .mock.calls.find(
+        ([input, init]) => String(input).endsWith('/self-report') && init?.method === 'POST',
+      );
+    const failedIdempotencyKey = (failedPostCall?.[1]?.headers as Record<string, string>)[
+      'Idempotency-Key'
+    ];
+    fireEvent.click(screen.getByRole('button', { name: '薬局へ送信' }));
+    await waitFor(() => expect(toastSuccessMock).toHaveBeenCalledWith('自己申告を受け付けました'));
+    const postCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        ([input, init]) => String(input).endsWith('/self-report') && init?.method === 'POST',
+      );
+    expect(postCalls).toHaveLength(2);
+    expect((postCalls[1]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+      failedIdempotencyKey,
+    );
+  });
+
+  it('treats an unaccepted successful response as ambiguous and reuses its key', async () => {
+    let selfReportAttempts = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/external-access/token_1') {
+        return new Response(JSON.stringify(createSharedViewerPayload()), { status: 200 });
+      }
+      if (url === '/api/external-access/token_1/self-report' && init?.method === 'POST') {
+        selfReportAttempts += 1;
+        if (selfReportAttempts === 1) {
+          return new Response(JSON.stringify({ data: { accepted: false, replayed: false } }), {
+            status: 201,
+          });
+        }
+        return new Response(JSON.stringify({ data: { accepted: true, replayed: true } }), {
+          status: 200,
+        });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled request: ${url}` }), {
+        status: 500,
+      });
+    });
+    renderSharedViewerContent();
+
+    await unlockAndFillSelfReport();
+    fireEvent.click(screen.getByRole('button', { name: '薬局へ送信' }));
+
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        '通信により送信結果を確認できません。しばらく待ってからもう一度お試しください。',
+      ),
+    );
+    expect((screen.getByLabelText(/内容/) as HTMLTextAreaElement).value).toBe('夕食後を飲み忘れ');
+    await waitFor(() => {
+      const persistedDraft = window.sessionStorage.getItem(SELF_REPORT_DRAFT_STORAGE_KEY);
+      expect(persistedDraft).toContain('夕食後を飲み忘れ');
+      expect(persistedDraft).not.toContain('123456');
+    });
+
+    const failedPostCall = vi
+      .mocked(fetch)
+      .mock.calls.find(
+        ([input, init]) => String(input).endsWith('/self-report') && init?.method === 'POST',
+      );
+    const failedIdempotencyKey = (failedPostCall?.[1]?.headers as Record<string, string>)[
+      'Idempotency-Key'
+    ];
+    fireEvent.click(screen.getByRole('button', { name: '薬局へ送信' }));
+    await waitFor(() => expect(toastSuccessMock).toHaveBeenCalledWith('自己申告を受け付けました'));
+    const postCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        ([input, init]) => String(input).endsWith('/self-report') && init?.method === 'POST',
+      );
+    expect(postCalls).toHaveLength(2);
+    expect((postCalls[1]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+      failedIdempotencyKey,
     );
   });
 

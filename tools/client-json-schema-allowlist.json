@@ -567,7 +567,7 @@
     {
       "path": "src/app/shared/[token]/shared-viewer-content.tsx",
       "counts": {
-        "stringFallback": 2
+        "stringFallback": 1
       }
     },
     {

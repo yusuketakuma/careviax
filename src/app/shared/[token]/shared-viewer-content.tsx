@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { z } from 'zod';
 import {
   CalendarClock,
   FileText,
@@ -24,7 +25,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 
 type ExternalPayload = {
   patient: {
@@ -132,7 +133,15 @@ type SelfReportSubmitPayload = {
 
 type SelfReportSubmitError = Error & {
   status?: number;
+  outcomeUnknown?: boolean;
 };
+
+const selfReportSubmitResponseSchema = z.object({
+  data: z.object({
+    accepted: z.literal(true),
+    replayed: z.boolean(),
+  }),
+});
 
 type SelfReportFieldErrors = Partial<{
   reporterName: string;
@@ -329,6 +338,15 @@ export function SharedViewerContent({ token }: { token: string }) {
     },
   });
 
+  useEffect(() => {
+    if (!viewerQuery.error) return;
+    clientLog.warn('external_access.viewer_load_failed', viewerQuery.error, {
+      route: '/shared/[token]',
+      entityType: 'external_access_viewer',
+      code: 'VIEWER_LOAD_FAILED',
+    });
+  }, [viewerQuery.error]);
+
   const selfReportMutation = useMutation({
     mutationFn: async () => {
       const body: SelfReportSubmitPayload = {
@@ -348,26 +366,32 @@ export function SharedViewerContent({ token }: { token: string }) {
         };
       }
 
-      const response = await fetch(`/api/external-access/${token}/self-report`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Idempotency-Key': selfReportSubmissionRef.current.idempotencyKey,
-          'x-otp': activeOtp,
-        },
-        body: JSON.stringify(body),
-      });
+      let response: Response;
+      try {
+        response = await fetch(`/api/external-access/${token}/self-report`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': selfReportSubmissionRef.current.idempotencyKey,
+            'x-otp': activeOtp,
+          },
+          body: JSON.stringify(body),
+        });
+      } catch {
+        const submitError = new Error('SELF_REPORT_SUBMIT_FAILED') as SelfReportSubmitError;
+        submitError.status = 0;
+        throw submitError;
+      }
 
       try {
-        return await readApiJson<{ data: { accepted: boolean; replayed: boolean } }>(
-          response,
-          '自己申告の送信に失敗しました',
-        );
-      } catch (error) {
-        const submitError = new Error(
-          messageFromError(error, '自己申告の送信に失敗しました'),
-        ) as SelfReportSubmitError;
+        return await readApiJson(response, {
+          fallbackMessage: '自己申告の送信に失敗しました',
+          schema: selfReportSubmitResponseSchema,
+        });
+      } catch {
+        const submitError = new Error('SELF_REPORT_SUBMIT_FAILED') as SelfReportSubmitError;
         submitError.status = response.status;
+        submitError.outcomeUnknown = response.ok;
         throw submitError;
       }
     },
@@ -381,6 +405,12 @@ export function SharedViewerContent({ token }: { token: string }) {
     },
     onError: (error: Error) => {
       const submitError = error as SelfReportSubmitError;
+      clientLog.warn('external_access.self_report_submit_failed', error, {
+        route: '/shared/[token]',
+        entityType: 'external_access_self_report',
+        code: 'SELF_REPORT_SUBMIT_FAILED',
+        ...(submitError.status != null ? { status: submitError.status } : {}),
+      });
       if (submitError.status === 409) {
         toast.error('同じ送信内容は受付済みの可能性があります。画面を更新して確認してください');
         return;
@@ -389,7 +419,13 @@ export function SharedViewerContent({ token }: { token: string }) {
         toast.error('送信回数が多すぎます。しばらく待ってから再試行してください');
         return;
       }
-      toast.error(messageFromError(error, '自己申告の送信に失敗しました'));
+      if (submitError.status === 0 || submitError.outcomeUnknown) {
+        toast.error(
+          '通信により送信結果を確認できません。しばらく待ってからもう一度お試しください。',
+        );
+        return;
+      }
+      toast.error('自己申告の送信に失敗しました');
     },
   });
 
@@ -401,7 +437,12 @@ export function SharedViewerContent({ token }: { token: string }) {
       return;
     }
 
-    setActiveOtp(otpInput.trim());
+    const nextOtp = otpInput.trim();
+    if (nextOtp === activeOtp) {
+      void viewerQuery.refetch();
+      return;
+    }
+    setActiveOtp(nextOtp);
   }
 
   function clearSelfReportError(field: keyof SelfReportFieldErrors) {
@@ -476,8 +517,11 @@ export function SharedViewerContent({ token }: { token: string }) {
           </div>
 
           {viewerQuery.error instanceof Error ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              {viewerQuery.error.message}
+            <div
+              role="alert"
+              className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            >
+              共有情報を取得できませんでした。共有リンクとOTPを確認して、もう一度お試しください。
             </div>
           ) : null}
         </CardContent>
