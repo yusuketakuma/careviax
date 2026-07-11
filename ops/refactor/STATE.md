@@ -46051,3 +46051,20 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `4ef6d47bb` (`fix(API-CONTRACT-001): validate patient readiness payloads`) committed only the owned consumer,
   regression, schema ratchet, Plans, FE/BE inventory, and single-ledger paths. Concurrent schedule/UI-audit work,
   harness-memory state, and unrelated untracked files were excluded. No push was performed.
+
+## 2026-07-11 FE-PATIENT-DETAIL-001 / FE-QA-001 — patient detail main accessibility evidence
+
+- current task / scope:
+  Extended the authenticated patient-detail audit from mobile action reachability and the isolated movement fixture
+  to the complete visible `main` region of the live card workspace. The test opens the first available patient through
+  the patient-board route, waits for the card workspace and tablist, and runs axe without excluding patient summary,
+  readiness, safety, command, profile, or action-rail content. `gpt-image-2` was omitted because this is test-only
+  accessibility evidence and introduces no visual or structural product change.
+- validation / remaining / commit:
+  Authenticated Chromium passed 1/1 with zero critical or serious axe violations and no instrumented page/console
+  errors. Exact ESLint/Prettier, 8 GB aggregate typecheck, frontend contract, client PHI-log, raw-state colors,
+  module-boundary, and diff checks passed. `FE-PATIENT-DETAIL-001` remains Partial for heading-order proof, the full
+  state matrix, broader island decomposition, and manual screen-reader/zoom review. `FE-QA-001` remains Partial for
+  the other four screens plus offline/conflict and PHI-output fixtures. Commit `99488c7eb` contains only the owned
+  Playwright audit. No product/API/DB/schema/migration/auth/authz/PHI/audit behavior, push, deployment, external send,
+  production-data mutation, or destructive operation occurred.
