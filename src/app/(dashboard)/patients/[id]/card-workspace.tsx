@@ -4152,9 +4152,14 @@ function CommandTimelineExcerptPanel({
       </div>
 
       {isLoading ? (
-        <p role="status" className="mt-3 text-sm text-muted-foreground">
-          履歴抜粋を確認しています。
-        </p>
+        <SegmentLoading
+          label="履歴抜粋を確認しています"
+          description={`直近${COMMAND_TIMELINE_EXCERPT_LIMIT}件の履歴を準備しています。`}
+          rows={COMMAND_TIMELINE_EXCERPT_LIMIT}
+          cols={2}
+          size="compact"
+          className="mt-3"
+        />
       ) : null}
 
       {error ? (
@@ -4310,9 +4315,14 @@ function CaseRiskActionsPanel({
       ) : null}
 
       {isLoading ? (
-        <p role="status" className="mt-3 text-sm text-muted-foreground">
-          横断リスクを確認しています。
-        </p>
+        <SegmentLoading
+          label="横断リスクを確認しています"
+          description="停止・至急・確認の件数と次アクションを準備しています。"
+          rows={3}
+          cols={3}
+          size="compact"
+          className="mt-3"
+        />
       ) : null}
 
       {error ? (
@@ -4578,9 +4588,14 @@ function RiskTaskResolutionPanel({
       ) : null}
 
       {isLoading ? (
-        <p role="status" className="mt-3 text-sm text-muted-foreground">
-          リスクタスクを確認しています。
-        </p>
+        <SegmentLoading
+          label="リスクタスクを確認しています"
+          description="免除可能なタスクと監査対象を準備しています。"
+          rows={2}
+          cols={2}
+          size="compact"
+          className="mt-3"
+        />
       ) : null}
 
       {error ? (

@@ -45596,6 +45596,24 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   regression, and single-ledger paths. Concurrent Plans/report work, harness-memory state, and unrelated untracked
   files were excluded. No push was performed.
 
+## 2026-07-11 FE-PATIENT-DETAIL-001 — Command initial loading states partial
+
+- scan / implementation:
+  The follow-up Command-state scan found three initial reads rendered as text-only status paragraphs: movement
+  excerpt, case-risk summary/actions, and waivable risk tasks. Replaced only those initial states with the shared
+  compact `SegmentLoading`, using section-specific labels/descriptions and row/column shapes. Mutation progress and
+  background-refresh messages remain lightweight text because action controls and incremental refreshes must not
+  masquerade as a new full data skeleton. No endpoint, query key, retry, error, empty, mutation, audit, patient data,
+  or authorization behavior changed. Image generation was omitted because this applies the existing loading SSOT
+  component without changing page structure.
+- validation / remaining:
+  Focused `card-workspace.test.tsx` passed 96 tests, including three named status regions with shaped skeletons.
+  Exact ESLint, Prettier, and diff checks passed. The repository typecheck remains externally blocked by the same
+  concurrent unowned report `ErrorState size` errors recorded in the preceding slice; no new typecheck claim is made.
+  `FE-PATIENT-DETAIL-001` remains Partial for broader responsive, keyboard/zoom, state-matrix, and remaining island
+  evidence. Concurrent Plans/report work was preserved. No push, build, deployment, migration, production data
+  mutation, or destructive operation occurred.
+
 ## 2026-07-11 API-CONTRACT-001 — navigation badge runtime envelope
 
 - current task / evidence:

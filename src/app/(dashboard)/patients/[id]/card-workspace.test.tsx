@@ -368,6 +368,7 @@ function mockPatientQuery(
     riskTaskWaiverError?: Error;
     caseRiskCockpit?: CaseRiskCockpitResponse;
     caseRiskCockpitError?: Error;
+    caseRiskCockpitLoading?: boolean;
   } = {},
 ) {
   const faxMutate = vi.fn();
@@ -933,9 +934,12 @@ function mockPatientQuery(
 
     if (queryKey[0] === 'case-risk-cockpit') {
       return {
-        data: options.caseRiskCockpitError ? undefined : options.caseRiskCockpit,
-        isLoading: false,
-        isFetching: false,
+        data:
+          options.caseRiskCockpitError || options.caseRiskCockpitLoading
+            ? undefined
+            : options.caseRiskCockpit,
+        isLoading: Boolean(options.caseRiskCockpitLoading),
+        isFetching: Boolean(options.caseRiskCockpitLoading),
         isError: Boolean(options.caseRiskCockpitError),
         error: options.caseRiskCockpitError ?? null,
         refetch: vi.fn(),
@@ -1800,6 +1804,30 @@ describe('CardWorkspace', () => {
       'Case Risk Cockpit API error',
     );
     expect(within(panel).getByRole('button', { name: '再試行' }).className).toContain('min-h-11');
+  });
+
+  it('uses shaped shared loading states for the Command timeline and risk segments', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientOverrides: { cases: [buildActivePatientCase()] },
+        movementTimelineLoading: true,
+        caseRiskCockpitLoading: true,
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    for (const label of [
+      '履歴抜粋を確認しています',
+      '横断リスクを確認しています',
+      'リスクタスクを確認しています',
+    ]) {
+      const status = screen.getByRole('status', { name: label });
+      expect(status.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
+    }
   });
 
   it('does not mix a no-case state with an empty-risk state', () => {
