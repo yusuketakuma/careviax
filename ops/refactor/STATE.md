@@ -46255,3 +46255,8 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   ApiError/request_id/no-store work. No visual change or image generation was applicable. Full build was not rerun
   for the active same-worktree preview and known local memory constraint. No DB/migration/auth/authz/audit change,
   browser action, push, deploy, external send, production-data mutation, or destructive operation occurred.
+- commit:
+  `4db560ec3` (`fix(API-CONTRACT-001): harden labs and medication calendar`) committed the two adjacent owned
+  consumers, regressions, schema ratchet, Plans, FE/BE inventory, and single-ledger evidence. Concurrent visit-record
+  and route-mocked browser work, harness-memory state, and unrelated untracked files were excluded. No push was
+  performed.
