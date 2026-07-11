@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { messageFromError } from '@/lib/utils/error-message';
 import { Skeleton } from '@/components/ui/loading';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +27,7 @@ import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
 import { buildVisitHref } from '@/lib/visits/navigation';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
@@ -48,6 +50,26 @@ type LabRecord = {
 type LabsResponse = {
   data: LabRecord[];
 };
+
+const nullableTextSchema = z.string().nullable();
+
+const labRecordSchema = z.object({
+  id: z.string().min(1),
+  analyte_code: z.enum(LAB_ANALYTE_CODES),
+  measured_at: z.string().datetime(),
+  value_numeric: z.number().finite().nullable(),
+  value_text: nullableTextSchema,
+  unit: nullableTextSchema,
+  abnormal_flag: nullableTextSchema,
+  reference_low: z.number().finite().nullable(),
+  reference_high: z.number().finite().nullable(),
+  source_type: z.enum(['manual', 'visit_record', 'import']),
+  source_visit_record_id: nullableTextSchema,
+  note: nullableTextSchema,
+  created_at: z.string().datetime(),
+});
+
+const labsResponseSchema = z.object({ data: z.array(labRecordSchema) }).strict();
 
 type LabCreateForm = {
   analyte_code: string;
@@ -324,7 +346,10 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
       const response = await fetch(`${buildPatientApiPath(patientId, '/labs')}?limit=30`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<LabsResponse>(response, '検査値一覧の取得に失敗しました');
+      return readApiJson<LabsResponse>(response, {
+        fallbackMessage: '検査値一覧の取得に失敗しました',
+        schema: labsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

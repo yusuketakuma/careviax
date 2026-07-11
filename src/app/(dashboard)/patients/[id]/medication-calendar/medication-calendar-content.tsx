@@ -13,6 +13,7 @@ import {
   addMonths,
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { z } from 'zod';
 import {
   AlertTriangle,
   CalendarX,
@@ -24,7 +25,7 @@ import {
 import { Button, buttonVariants } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/loading';
-import { readApiJson } from '@/lib/api/client-json';
+import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -47,6 +48,15 @@ type MedicationProfile = {
   end_date: string | null;
 };
 
+const medicationCalendarProfileSchema = z.object({
+  id: z.string().min(1),
+  drug_name: z.string().min(1),
+  dose: z.string().nullable(),
+  frequency: z.string().nullable(),
+  start_date: z.string().datetime().nullable(),
+  end_date: z.string().datetime().nullable(),
+});
+
 // --- Constants ---
 
 const SLOT_LABELS: Record<TimeSlot, string> = {
@@ -67,6 +77,9 @@ const SLOT_COLORS: Record<TimeSlot, string> = {
 
 const SLOTS: TimeSlot[] = ['morning', 'noon', 'evening', 'bedtime'];
 const EMPTY_PROFILES: MedicationProfile[] = [];
+const MEDICATION_CALENDAR_PAGE_LIMIT = 100;
+const MEDICATION_CALENDAR_MAX_PAGES = 2;
+const MEDICATION_CALENDAR_FETCH_ERROR = '服薬中薬剤の取得に失敗しました';
 const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'] as const;
 const DOW_LONG_LABELS = [
   '日曜日',
@@ -174,15 +187,6 @@ export function hasAnyMedicationSlot(day: { slots: Partial<Record<TimeSlot, stri
   return SLOTS.some((slot) => (day.slots[slot]?.length ?? 0) > 0);
 }
 
-function buildCurrentMedicationProfilesPath(patientId: string) {
-  const params = new URLSearchParams({
-    patient_id: patientId,
-    is_current: 'true',
-    limit: '200',
-  });
-  return `/api/medication-profiles?${params.toString()}`;
-}
-
 function buildMedicationCalendarPdfHref(patientId: string, month: Date) {
   const params = new URLSearchParams({
     month: format(month, 'yyyy-MM'),
@@ -229,11 +233,17 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
   const medicationQuery = useQuery({
     queryKey: ['medication-calendar', orgId, patientId],
     queryFn: async () => {
-      const response = await fetch(buildCurrentMedicationProfilesPath(patientId), {
-        headers: buildOrgHeaders(orgId),
+      const page = await fetchAllCursorPages<MedicationProfile>({
+        path: '/api/medication-profiles',
+        params: new URLSearchParams({ patient_id: patientId, is_current: 'true' }),
+        init: { headers: buildOrgHeaders(orgId) },
+        limit: MEDICATION_CALENDAR_PAGE_LIMIT,
+        maxPages: MEDICATION_CALENDAR_MAX_PAGES,
+        errorMessage: MEDICATION_CALENDAR_FETCH_ERROR,
+        itemSchema: medicationCalendarProfileSchema,
       });
-
-      return readApiJson<{ data: MedicationProfile[] }>(response, '服薬中薬剤の取得に失敗しました');
+      if (page.hasMore) throw new Error(MEDICATION_CALENDAR_FETCH_ERROR);
+      return { data: page.data };
     },
     enabled: !!orgId,
   });

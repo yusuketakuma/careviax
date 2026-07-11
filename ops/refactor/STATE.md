@@ -46207,3 +46207,51 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   focused control-flow regression, Plans reconciliation, and single-ledger evidence. Concurrent patient detail,
   visit-record, route-mocked browser, API inventory, harness-memory, and unrelated untracked work were excluded. No
   push was performed.
+
+## 2026-07-11 API-CONTRACT-001FZLABSSTRICT — patient labs GET runtime schema
+
+- current task / root cause:
+  The patient labs card cast successful GET payloads directly to `LabsResponse`, while the route serializes full
+  `PatientLabObservation` Prisma rows. Malformed analyte codes, timestamps, values, or source types could enter the
+  clinical display, and unconsumed org/patient/display/update columns entered the client query cache. GET already
+  enforces `canVisit`, assignment/org scope, bounded reads, and sensitive no-store; create/update already use strict
+  acknowledgements and writable/source-visit guards. No provider, DB, authorization, or audit change was needed.
+- implementation / contract:
+  Added strict root/data validation plus a consumed-row schema using the shared provider analyte enum. It validates
+  IDs, ISO timestamps, finite nullable values/reference ranges, nullable text, and source types. The row schema strips
+  unconsumed Prisma columns before query caching while preserving the provider response for compatibility. Existing
+  display, create/update payloads, paths, persistence, auth/authz, and audit behavior are unchanged.
+- validation / ratchet / remaining:
+  Focused component/route Vitest passed 2 files / 41 tests. Regressions cover provider-row minimization, unknown/mixed
+  roots, unsupported analytes/source types, invalid timestamps/value types, missing consumed fields, path encoding,
+  mutation acknowledgements, assignment/source-visit scope, and sensitive no-store. Exact ESLint/Prettier, client
+  JSON schema, client PHI-log/display, frontend contract, module boundary, API response shape, 8 GB aggregate
+  typecheck, and diff checks passed. The live ratchet moved from 115 schema-backed / 260 allowlisted calls / 104 files
+  to 116 / 259 / 103. `API-CONTRACT-001` remains Partial. No visual change or image generation was applicable. Full
+  build was not rerun because the same-worktree port 3012 preview is active and Next build/dev artifacts must not
+  race; the existing local 16 GB exit-137 build constraint remains. No DB/migration/auth/authz/audit change, browser
+  action, push, deploy, external send, production-data mutation, or destructive operation occurred.
+
+## 2026-07-11 API-CONTRACT-001FZMEDCALSTRICT — medication calendar typed cursor aggregation
+
+- current task / root cause:
+  The medication calendar requested one `limit=200` page from the cursor-paginated medication-profile API, ignored
+  `meta.has_more`, and cast profile rows without runtime validation. More than 200 current profiles could therefore be
+  presented as a complete calendar despite truncation, while malformed dates or profile fields could drive schedule
+  generation. The provider already enforces `canVisit`, patient assignment/org scope, strict filters, bounded cursor
+  reads, and sensitive no-store. No provider, DB, authorization, or audit change was needed.
+- implementation / contract:
+  Replaced the one-page cast with the shared typed cursor fetcher, a consumed profile schema, 100-row pages, and two
+  pages matching the established 200-profile cap. Both pages are aggregated; provider-only fields are stripped. If a
+  third page exists, cursor/meta is malformed, or a row fails validation, the query uses fixed recovery copy instead
+  of rendering a partial calendar. Calendar generation, PDF links, query identity, and UI layout are unchanged.
+- validation / ratchet / remaining:
+  Focused calendar/cursor/provider Vitest passed 4 files / 47 tests. Regressions cover two-page aggregation, provider
+  field minimization, 200-cap fail-closed behavior, malformed cursor metadata/profile rows, encoded query/PDF paths,
+  fixed recovery copy, and provider authorization/no-store/pagination. Exact ESLint/Prettier, client JSON schema,
+  client PHI-log/display, frontend contract, module boundary, API response shape, 8 GB aggregate typecheck, and diff
+  checks passed. Removing this schema-less call moved the ratchet from 116 schema-backed / 259 allowlisted calls /
+  103 files to 116 / 258 / 102. `API-CONTRACT-001` remains Partial for other readers and shared
+  ApiError/request_id/no-store work. No visual change or image generation was applicable. Full build was not rerun
+  for the active same-worktree preview and known local memory constraint. No DB/migration/auth/authz/audit change,
+  browser action, push, deploy, external send, production-data mutation, or destructive operation occurred.

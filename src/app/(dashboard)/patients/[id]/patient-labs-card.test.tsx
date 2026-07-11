@@ -285,18 +285,35 @@ describe('PatientLabsCard', () => {
 
   it('encodes the patient id only in the GET URL while preserving raw query identity', async () => {
     const hostilePatientId = 'patient/a b?x=1#frag';
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: [
+          {
+            ...baseLab,
+            org_id: 'org_1',
+            display_id: 'plab0000000001',
+            patient_id: hostilePatientId,
+            updated_at: '2026-04-10T09:45:00.000Z',
+          },
+        ],
+      }),
+    );
     const { queryOptions } = setupComponent({ patientId: hostilePatientId });
 
     const query = queryOptions.at(-1);
     expect(query?.queryKey).toEqual(['patient-labs', 'org_1', hostilePatientId]);
 
-    await query?.queryFn();
+    const payload = await query?.queryFn();
 
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/patients/${encodeURIComponent(hostilePatientId)}/labs?limit=30`,
       { headers: buildOrgHeaders('org_1') },
     );
     expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('/api/patients/patient/a b');
+    expect(payload).toEqual({ data: [baseLab] });
+    expect(payload).not.toHaveProperty('data.0.org_id');
+    expect(payload).not.toHaveProperty('data.0.patient_id');
+    expect(payload).not.toHaveProperty('data.0.updated_at');
   });
 
   it('surfaces API error messages when lab reads fail', async () => {
@@ -307,6 +324,59 @@ describe('PatientLabsCard', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/labs?limit=30', {
       headers: buildOrgHeaders('org_1'),
     });
+  });
+
+  it.each([
+    {
+      name: 'unknown root field',
+      payload: { data: [baseLab], patient_name: '伊藤 キヨ' },
+    },
+    {
+      name: 'mixed legacy root',
+      payload: { data: [baseLab], labs: [baseLab] },
+    },
+    {
+      name: 'unsupported analyte code',
+      payload: { data: [{ ...baseLab, analyte_code: 'unknown_lab' }] },
+    },
+    {
+      name: 'invalid measured timestamp',
+      payload: { data: [{ ...baseLab, measured_at: '2026/04/10 09:30' }] },
+    },
+    {
+      name: 'numeric value encoded as text',
+      payload: { data: [{ ...baseLab, value_numeric: '42.1' }] },
+    },
+    {
+      name: 'unsupported source type',
+      payload: { data: [{ ...baseLab, source_type: 'external' }] },
+    },
+    {
+      name: 'missing consumed timestamp',
+      payload: {
+        data: [
+          {
+            id: baseLab.id,
+            analyte_code: baseLab.analyte_code,
+            measured_at: baseLab.measured_at,
+            value_numeric: baseLab.value_numeric,
+            value_text: baseLab.value_text,
+            unit: baseLab.unit,
+            abnormal_flag: baseLab.abnormal_flag,
+            reference_low: baseLab.reference_low,
+            reference_high: baseLab.reference_high,
+            source_type: baseLab.source_type,
+            source_visit_record_id: baseLab.source_visit_record_id,
+            note: baseLab.note,
+          },
+        ],
+      },
+    },
+  ])('rejects malformed successful lab payloads: $name', async ({ payload }) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(payload));
+    const { queryOptions } = setupComponent();
+
+    await expect(queryOptions.at(-1)?.queryFn()).rejects.toThrow('検査値一覧の取得に失敗しました');
   });
 
   it('encodes POST paths and keeps raw cache invalidation identity', async () => {

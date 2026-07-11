@@ -26,6 +26,32 @@ import { MedicationCalendarContent } from './medication-calendar-content';
 
 setupDomTestEnv();
 
+const PROVIDER_PROFILE = {
+  id: 'profile_1',
+  org_id: 'org_1',
+  patient_id: 'patient_1',
+  drug_master_id: null,
+  drug_name: 'アムロジピン錠5mg',
+  dose: '1錠',
+  frequency: '毎朝食後',
+  start_date: '2026-04-01T00:00:00.000Z',
+  end_date: null,
+  prescriber: null,
+  is_current: true,
+  source: 'manual',
+  created_at: '2026-04-01T00:00:00.000Z',
+  updated_at: '2026-04-01T00:00:00.000Z',
+};
+
+const CONSUMED_PROFILE = {
+  id: 'profile_1',
+  drug_name: 'アムロジピン錠5mg',
+  dose: '1錠',
+  frequency: '毎朝食後',
+  start_date: '2026-04-01T00:00:00.000Z',
+  end_date: null,
+};
+
 describe('MedicationCalendarContent states', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -107,7 +133,12 @@ describe('MedicationCalendarContent states', () => {
   });
 
   it('encodes the medication profile query and calendar PDF href at URL boundaries', async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ data: [] }));
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        data: [],
+        meta: { limit: 100, has_more: false, next_cursor: null },
+      }),
+    );
     vi.stubGlobal('fetch', fetchMock);
     vi.mocked(buildPatientApiPath).mockReturnValueOnce(
       '/api/patients/__helper_patient_1__/medication-calendar/pdf',
@@ -122,7 +153,7 @@ describe('MedicationCalendarContent states', () => {
     await capturedQueryFn?.();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/medication-profiles?patient_id=patient_1%3Fx%3D1%23frag&is_current=true&limit=200',
+      '/api/medication-profiles?patient_id=patient_1%3Fx%3D1%23frag&is_current=true&limit=100',
       { headers: { 'x-org-id': 'org_1' } },
     );
     expect(buildPatientApiPath).toHaveBeenCalledWith(
@@ -137,14 +168,14 @@ describe('MedicationCalendarContent states', () => {
     );
     expect(pdfHref).not.toContain('patient_1?x=1#frag');
     expect(fetchMock).not.toHaveBeenCalledWith(
-      '/api/medication-profiles?patient_id=patient_1?x=1#frag&is_current=true&limit=200',
+      '/api/medication-profiles?patient_id=patient_1?x=1#frag&is_current=true&limit=100',
       expect.anything(),
     );
 
     vi.unstubAllGlobals();
   });
 
-  it('keeps the API message when medication profile lookup fetch fails', async () => {
+  it('uses fixed recovery copy when medication profile lookup fetch fails', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
       jsonResponse({ message: '服薬中薬剤を表示できません' }, 403),
     );
@@ -157,12 +188,156 @@ describe('MedicationCalendarContent states', () => {
 
     render(<MedicationCalendarContent patientId="patient_1" />);
 
-    await expect(capturedQueryFn?.()).rejects.toThrow('服薬中薬剤を表示できません');
+    await expect(capturedQueryFn?.()).rejects.toThrow('服薬中薬剤の取得に失敗しました');
+    await expect(capturedQueryFn?.()).rejects.not.toThrow('服薬中薬剤を表示できません');
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/medication-profiles?patient_id=patient_1&is_current=true&limit=200',
+      '/api/medication-profiles?patient_id=patient_1&is_current=true&limit=100',
       { headers: { 'x-org-id': 'org_1' } },
     );
 
     vi.unstubAllGlobals();
+  });
+
+  it('aggregates cursor pages and strips unconsumed medication profile fields', async () => {
+    const secondProviderProfile = {
+      ...PROVIDER_PROFILE,
+      id: 'profile_2',
+      drug_name: 'フロセミド錠20mg',
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [PROVIDER_PROFILE],
+          meta: { limit: 100, has_more: true, next_cursor: 'profile_1' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [secondProviderProfile],
+          meta: { limit: 100, has_more: false, next_cursor: null },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    let capturedQueryFn: (() => Promise<unknown>) | undefined;
+    useQueryMock.mockImplementation((options) => {
+      capturedQueryFn = options.queryFn;
+      return { isLoading: false, error: null, data: { data: [] } };
+    });
+
+    try {
+      render(<MedicationCalendarContent patientId="patient_1" />);
+      const payload = await capturedQueryFn?.();
+
+      expect(payload).toEqual({
+        data: [
+          CONSUMED_PROFILE,
+          { ...CONSUMED_PROFILE, id: 'profile_2', drug_name: 'フロセミド錠20mg' },
+        ],
+      });
+      expect(payload).not.toHaveProperty('data.0.org_id');
+      expect(payload).not.toHaveProperty('data.0.patient_id');
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        '/api/medication-profiles?patient_id=patient_1&is_current=true&limit=100',
+        { headers: { 'x-org-id': 'org_1' } },
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        '/api/medication-profiles?patient_id=patient_1&is_current=true&limit=100&cursor=profile_1',
+        { headers: { 'x-org-id': 'org_1' } },
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('fails closed instead of rendering a truncated calendar after the 200-profile cap', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [PROVIDER_PROFILE],
+          meta: { limit: 100, has_more: true, next_cursor: 'profile_1' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ ...PROVIDER_PROFILE, id: 'profile_2' }],
+          meta: { limit: 100, has_more: true, next_cursor: 'profile_2' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    let capturedQueryFn: (() => Promise<unknown>) | undefined;
+    useQueryMock.mockImplementation((options) => {
+      capturedQueryFn = options.queryFn;
+      return { isLoading: false, error: null, data: { data: [] } };
+    });
+
+    try {
+      render(<MedicationCalendarContent patientId="patient_1" />);
+      await expect(capturedQueryFn?.()).rejects.toThrow('服薬中薬剤の取得に失敗しました');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    {
+      name: 'missing cursor metadata',
+      payload: { data: [PROVIDER_PROFILE] },
+    },
+    {
+      name: 'has-more without a cursor',
+      payload: {
+        data: [PROVIDER_PROFILE],
+        meta: { limit: 100, has_more: true, next_cursor: null },
+      },
+    },
+    {
+      name: 'invalid profile date',
+      payload: {
+        data: [{ ...PROVIDER_PROFILE, start_date: '2026-04-01' }],
+        meta: { limit: 100, has_more: false, next_cursor: null },
+      },
+    },
+    {
+      name: 'missing drug name',
+      payload: {
+        data: [
+          {
+            id: PROVIDER_PROFILE.id,
+            dose: PROVIDER_PROFILE.dose,
+            frequency: PROVIDER_PROFILE.frequency,
+            start_date: PROVIDER_PROFILE.start_date,
+            end_date: PROVIDER_PROFILE.end_date,
+          },
+        ],
+        meta: { limit: 100, has_more: false, next_cursor: null },
+      },
+    },
+    {
+      name: 'numeric dose',
+      payload: {
+        data: [{ ...PROVIDER_PROFILE, dose: 1 }],
+        meta: { limit: 100, has_more: false, next_cursor: null },
+      },
+    },
+  ])('rejects malformed successful medication profile pages: $name', async ({ payload }) => {
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(payload));
+    vi.stubGlobal('fetch', fetchMock);
+    let capturedQueryFn: (() => Promise<unknown>) | undefined;
+    useQueryMock.mockImplementation((options) => {
+      capturedQueryFn = options.queryFn;
+      return { isLoading: false, error: null, data: { data: [] } };
+    });
+
+    try {
+      render(<MedicationCalendarContent patientId="patient_1" />);
+      await expect(capturedQueryFn?.()).rejects.toThrow('服薬中薬剤の取得に失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

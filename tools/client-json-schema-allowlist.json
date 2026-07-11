@@ -289,12 +289,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/medications/medications-content.tsx",
       "counts": {
         "stringFallback": 4
@@ -302,12 +296,6 @@
     },
     {
       "path": "src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
-      "path": "src/app/(dashboard)/patients/[id]/patient-labs-card.tsx",
       "counts": {
         "stringFallback": 1
       }
