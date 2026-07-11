@@ -46174,3 +46174,7 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   query work, and real-data payload budget. Full build was not rerun because the same-worktree port 3012 preview is
   active and Next build/dev artifacts must not race. No push, deployment, migration, external send, production-data
   mutation, or destructive operation occurred.
+- commit:
+  `47586a637` (`fix(FE-PATIENT-LIST-001): align patient detail links`) committed only the patient-board component,
+  unit/browser regressions, Plans reconciliation, and single-ledger evidence. Harness-memory state and unrelated
+  untracked files were excluded. No push was performed.
