@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { labelForPath, labelForSegment } from './route-labels';
+import { labelForPath, labelForSegment, labelForShellPath } from './route-labels';
 
 describe('route labels', () => {
   it('labels admin sub-pages explicitly for recent-history navigation', () => {
@@ -42,5 +42,14 @@ describe('route labels', () => {
     expect(labelForPath('/audit')).toBe('調剤鑑査');
     expect(labelForPath('/set')).toBe('セット');
     expect(labelForPath('/set-audit')).toBe('セット監査');
+  });
+
+  it('provides PHI-safe shared-shell labels without exposing unknown path segments', () => {
+    expect(labelForShellPath('/dashboard')).toBe('ホーム');
+    expect(labelForShellPath('/statistics')).toBe('統計');
+    expect(labelForShellPath('/offline-sync')).toBe('オフライン同期');
+    expect(labelForShellPath('/patients/patient-secret-123')).toBe('患者');
+    expect(labelForShellPath('/unknown/patient-secret-123')).toBe('詳細');
+    expect(labelForShellPath('/')).toBe('ホーム');
   });
 });

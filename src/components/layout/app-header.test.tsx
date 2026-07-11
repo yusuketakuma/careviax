@@ -15,6 +15,7 @@ const mockSetWorkspaceRailOpen = vi.fn();
 const toastErrorMock = vi.hoisted(() => vi.fn());
 let mockOnline = true;
 let mockLastSyncedAt: string | null = '2026-06-11T09:42:00';
+let mockPathname = '/dashboard';
 
 vi.mock('next/link', () => ({
   default: ({
@@ -29,7 +30,7 @@ vi.mock('next/link', () => ({
 }));
 
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/dashboard',
+  usePathname: () => mockPathname,
   useRouter: () => ({ push: mockRouterPush }),
 }));
 
@@ -114,6 +115,7 @@ describe('AppHeader', () => {
   beforeEach(() => {
     mockOnline = true;
     mockLastSyncedAt = '2026-06-11T09:42:00';
+    mockPathname = '/dashboard';
     mockRouterPush.mockClear();
     mockOpenPalette.mockClear();
     mockSetSidebarOpen.mockClear();
@@ -139,6 +141,7 @@ describe('AppHeader', () => {
     const brand = screen.getByTestId('app-header-brand');
     expect(brand.getAttribute('href')).toBe('/dashboard');
     expect(brand.textContent).toContain('PH-OS');
+    expect(screen.getByTestId('app-header-current-page').textContent).toBe('ホーム');
 
     const search = screen.getByTestId('app-header-search');
     // 検索ボックスのコピーは active カテゴリ由来(現在は薬剤のみ active、PHI カテゴリは deferred)。
@@ -226,6 +229,16 @@ describe('AppHeader', () => {
     expect(screen.getByTestId('app-header-sync-status').className).toContain('max-[480px]:!hidden');
     expect(screen.getByTestId('app-header-sync-status').className).toContain('md:inline');
     expect(screen.getByRole('link', { name: '設定' }).className).toContain('hidden');
+    expect(screen.getByTestId('app-header-current-page').className).toContain('truncate');
+  });
+
+  it('updates the current-page context without exposing a dynamic patient identifier', () => {
+    mockPathname = '/patients/patient-secret-123';
+    render(<AppHeader />);
+
+    const currentPage = screen.getByTestId('app-header-current-page');
+    expect(currentPage.textContent).toBe('患者');
+    expect(currentPage.textContent).not.toContain('patient-secret-123');
   });
 
   it('shows 外来モード on the trigger when careMode is outpatient', () => {

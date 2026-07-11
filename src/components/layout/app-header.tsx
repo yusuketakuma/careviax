@@ -2,6 +2,7 @@
 
 import { useCallback, useSyncExternalStore } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   ChevronDown,
@@ -36,6 +37,7 @@ import { useAuthStore } from '@/lib/stores/auth-store';
 import { useOfflineStore } from '@/lib/stores/offline-store';
 import { useUIStore, type CareMode } from '@/lib/stores/ui-store';
 import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
+import { labelForShellPath } from '@/lib/navigation/route-labels';
 
 const CARE_MODE_LABELS: Record<string, string> = {
   home_visit: '在宅モード',
@@ -115,6 +117,7 @@ function HeaderOfflineDrafts() {
 }
 
 export function AppHeader() {
+  const pathname = usePathname();
   const openPalette = useCommandPaletteStore((state) => state.openPalette);
   const orgId = useOrgId();
   const {
@@ -129,6 +132,7 @@ export function AppHeader() {
   const currentUserName = useAuthStore((state) => state.currentUser.name);
   const currentUserRole = useAuthStore((state) => state.currentUser.role);
   const modeLabel = CARE_MODE_LABELS[careMode] ?? CARE_MODE_LABELS.home_visit;
+  const currentPageLabel = labelForShellPath(pathname);
 
   const handleCareModeSelect = useCallback(
     (mode: CareMode) => {
@@ -194,6 +198,14 @@ export function AppHeader() {
             在宅薬局Ops
           </span>
         </Link>
+
+        <span
+          className="min-w-0 max-w-28 flex-1 truncate text-sm font-semibold text-foreground sm:max-w-40 md:flex-none lg:max-w-48"
+          data-testid="app-header-current-page"
+          title={currentPageLabel}
+        >
+          {currentPageLabel}
+        </span>
 
         {/* モード切替ドロップダウン */}
         <div className="flex shrink-0 items-center gap-1.5">

@@ -30,6 +30,8 @@ export const PATH_LABELS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /^\/handoff(\/.*)?$/, label: '申し送り' },
   { pattern: /^\/external(\/.*)?$/, label: '外部連携' },
   { pattern: /^\/notifications(\/.*)?$/, label: '通知' },
+  { pattern: /^\/offline-sync(\/.*)?$/, label: 'オフライン同期' },
+  { pattern: /^\/statistics(\/.*)?$/, label: '統計' },
   { pattern: /^\/admin\/alert-rules(\/.*)?$/, label: '処方安全アラート' },
   { pattern: /^\/admin\/audit-logs(\/.*)?$/, label: '監査ログ' },
   { pattern: /^\/admin\/billing-rules(\/.*)?$/, label: '請求ルール' },
@@ -62,6 +64,7 @@ export const PATH_LABELS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /^\/admin\/users(\/.*)?$/, label: 'ユーザー' },
   { pattern: /^\/admin(\/.*)?$/, label: '管理' },
   { pattern: /^\/settings$/, label: 'ユーザー設定' },
+  { pattern: /^\/select-site$/, label: '薬局切替' },
   { pattern: /^\/referrals\/new$/, label: '紹介受付' },
 ];
 
@@ -140,6 +143,21 @@ const SEGMENT_LABELS: Record<string, string> = {
 
 export function labelForPath(pathname: string) {
   return PATH_LABELS.find((item) => item.pattern.test(pathname))?.label ?? pathname;
+}
+
+/**
+ * Shared-shell label that never exposes an unknown pathname or dynamic identifier.
+ * The shell is visible across patient and visit routes, so its fallback must remain generic.
+ */
+export function labelForShellPath(pathname: string): string {
+  const knownLabel = PATH_LABELS.find((item) => item.pattern.test(pathname))?.label;
+  if (knownLabel) return knownLabel;
+
+  const segments = pathname.split('/').filter(Boolean);
+  const lastSegment = segments.at(-1);
+  if (!lastSegment) return 'ホーム';
+
+  return labelForSegment(lastSegment, segments.at(-2));
 }
 
 export function labelForSegment(segment: string, previous?: string): string {

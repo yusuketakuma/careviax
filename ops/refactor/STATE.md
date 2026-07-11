@@ -45379,3 +45379,45 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `3cac1c125` (`fix(frontend): harden failure recovery`) committed the 96 owned implementation, regression,
   executable-guard, Plans, and single-ledger paths. Existing harness-memory state and unrelated untracked local
   skill/extract/index files were intentionally excluded. No push was performed.
+
+## 2026-07-11 FE-SHELL-001 — PHI-safe current-page context
+
+- current task / history decision:
+  Reconstructed the active tree from Git history, `Plans.md`, this ledger, the UI/UX SSOT, and the current
+  Next.js 16 local navigation / `usePathname` / accessibility guides. Recent shell commits already covered
+  readable 12px minimums, dynamic loading of heavy globals, keyboard navigation, and mobile `dvh`; this slice
+  therefore did not recreate those foundations. `FE-SHELL-001` was selected as the highest active frontend
+  queue item that did not depend on an unfinished DB/BFF contract.
+- implementation / bugs fixed:
+  The shared header exposed mode, search, sync, notifications, and drawers but no current-page context. This was
+  especially weak on compact widths where the PH-OS brand is intentionally hidden. `AppHeader` now derives one
+  desktop/mobile current-page label from `usePathname`. The existing route-label registry was extended for
+  statistics, offline sync, and site selection, while the new shell resolver converts every unknown or dynamic
+  path to a generic semantic label instead of rendering the raw pathname. Existing page headings, navigation
+  targets, active-item rules, fetches, permissions, search, notifications, and drawer behavior are unchanged.
+- security / privacy / medical safety:
+  The shell fallback never renders a raw URL segment. Unit and component regressions prove a synthetic patient
+  identifier is omitted from both a known dynamic patient route and an unknown route. No patient/medical data,
+  auth/authz, organization header, RLS, audit, persistence, billing, or clinical contract changed.
+- UI / image generation / performance:
+  Read `docs/ui-ux-design-guidelines.md` and used a PHI-free `gpt-image-2` UI reference for one shared desktop /
+  mobile shell. It reinforced a text-visible current location, one shell system, restrained density, and 44px
+  mobile targets; the generated bitmap remains preview-only under the Codex generated-images directory and is
+  not a product asset. The implementation adds one local pathname lookup and label match only; it adds no API
+  request, polling, state subscription, dependency, or new design system.
+- validation:
+  Focused Vitest passed 4 files / 43 tests for AppHeader, route labels, sidebar, and mobile nav. `pnpm typecheck`,
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`, focused ESLint/Prettier, `pnpm lint`
+  (0 errors; the two existing `_tx` / `_input` warnings remain in `src/lib/platform/break-glass.test.ts`),
+  `pnpm format:check`, `pnpm frontend-contract:check`, `pnpm typography:check`, `pnpm colors:check`,
+  `pnpm client-phi-display:check`, `pnpm client-phi-log:check`, `pnpm boundaries:check`,
+  `pnpm plans:active:check`, and `git diff --check` passed. Local Playwright mobile Chromium passed the dashboard
+  app-chrome 44px target case (1 passed / 1 non-mobile project skipped). Final `pnpm test` passed 1482 files /
+  15339 tests (3 files / 13 tests skipped).
+- plans / remaining / next action:
+  `FE-SHELL-001` moved from Not started to Partial without changing queue counts. Continue with the same shell,
+  next auditing Sidebar / header active-current semantics and the WorkspaceActionRail desktop/mobile state matrix;
+  keep notification/search/data and permission contracts unchanged. Responsive screenshot breadth, complete
+  landmarks/keyboard verification, and the remaining seven-screen frontend queue are not complete. Build was not
+  repeated because the existing Phase 9 ledger records the local 16 GB exit-137 limit; no build pass is claimed.
+  No push, deployment, migration, production data mutation, secret rotation, or destructive operation occurred.
