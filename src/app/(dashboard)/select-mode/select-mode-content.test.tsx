@@ -14,6 +14,7 @@ const { pushMock, setWorkModeMock, fetchMock } = vi.hoisted(() => ({
   setWorkModeMock: vi.fn(),
   fetchMock: vi.fn(),
 }));
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
@@ -31,6 +32,10 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
 vi.mock('@/lib/stores/ui-store', () => ({
   useUIStore: (selector: (state: { setWorkMode: typeof setWorkModeMock }) => unknown) =>
     selector({ setWorkMode: setWorkModeMock }),
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 import { SelectModeContent, WORK_MODE_OPTIONS } from './select-mode-content';
@@ -116,5 +121,46 @@ describe('SelectModeContent', () => {
       '/clerk-support',
       '/admin',
     ]);
+  });
+
+  it('keeps a PHI-safe inline retry state when saving the selected mode fails', async () => {
+    const rawServerDetail = 'synthetic-user-detail-token=secret';
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: rawServerDetail }, 500));
+
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: '管理画面へ' }));
+
+    expect(await screen.findByText('モードを切り替えられません')).toBeTruthy();
+    expect(
+      screen.getByText(
+        /選択したモードを保存できませんでした。\s*通信状態を確認して再試行してください。/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(rawServerDetail)).toBeNull();
+    expect(screen.getByRole('button', { name: '管理モードを再試行' })).toBeTruthy();
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'work_mode.preference_update_failed',
+      expect.any(Error),
+      {
+        route: '/select-mode',
+        entityType: 'user_preference',
+        code: 'WORK_MODE_UPDATE_FAILED',
+      },
+    );
+    expect(
+      JSON.stringify(clientLogWarnMock.mock.calls.map(([, , context]) => context)),
+    ).not.toContain(rawServerDetail);
+    expect(setWorkModeMock).not.toHaveBeenCalled();
+    expect(pushMock).not.toHaveBeenCalled();
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({}));
+    fireEvent.click(screen.getByRole('button', { name: '管理モードを再試行' }));
+
+    await waitFor(() => {
+      expect(setWorkModeMock).toHaveBeenCalledWith('management');
+      expect(pushMock).toHaveBeenCalledWith('/admin');
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

@@ -99,7 +99,6 @@ type PrescriptionsTableProps = {
   items: PrescriptionIntakeRow[];
   isLoading: boolean;
   isError?: boolean;
-  errorMessage?: string;
   onRetry?: () => void;
   selectedId: string | null;
   onRowClick: (index: number) => void;
@@ -155,7 +154,10 @@ const PRESCRIPTION_TABLE_COLUMNS: ColumnDef<PrescriptionIntakeRow>[] = [
     header: '処方医',
     enableSorting: false,
     cell: ({ row }) => (
-      <span className="block max-w-[100px] truncate text-xs text-muted-foreground">
+      <span
+        data-testid="prescription-prescriber"
+        className="block max-w-48 [overflow-wrap:anywhere] text-xs text-muted-foreground"
+      >
         {row.original.prescriber_name ?? '—'}
       </span>
     ),
@@ -184,7 +186,6 @@ export function PrescriptionsTable({
   items,
   isLoading,
   isError = false,
-  errorMessage,
   onRetry,
   selectedId,
   onRowClick,
@@ -204,7 +205,6 @@ export function PrescriptionsTable({
           variant="server"
           title="処方受付一覧を表示できません"
           description="処方受付データの取得に失敗しました。空の一覧として扱わず、通信状況を確認して再読み込みしてください。"
-          detail={errorMessage}
           onRetry={onRetry}
           retryLabel="再読み込み"
           headingLevel={3}

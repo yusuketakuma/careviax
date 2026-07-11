@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { FilePlus, FileText, Keyboard, Search, X } from 'lucide-react';
 import Link from 'next/link';
@@ -20,6 +20,7 @@ import {
   type ShortcutDefinition,
 } from '@/components/features/keyboard/use-keyboard-shortcuts';
 import { cn } from '@/lib/utils';
+import { clientLog } from '@/lib/utils/client-log';
 import { useSelectableQueueState } from '../dispense/dispense-work-queue.shared';
 import { PrescriptionsTable, type PrescriptionIntakeRow } from './prescriptions-table';
 import { PrescriptionInlineDetail } from './prescription-inline-detail';
@@ -205,6 +206,15 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
     invalidateOn: REALTIME_INVALIDATE_EVENTS,
   });
 
+  useEffect(() => {
+    if (!error) return;
+    clientLog.warn('prescription_intakes.list_load_failed', error, {
+      route: '/prescriptions',
+      entityType: 'prescription_intake_list',
+      code: 'PRESCRIPTION_INTAKE_LIST_LOAD_FAILED',
+    });
+  }, [error]);
+
   const loadedItems = useMemo(() => data?.pages.flatMap((page) => page.data) ?? [], [data]);
   const totalMatchingCount = data?.pages[0]?.totalCount ?? loadedItems.length;
 
@@ -267,7 +277,6 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
 
   const inquiryCount = statusFacetCounts['inquiry_pending'] ?? 0;
   const readyCount = statusFacetCounts['ready_to_dispense'] ?? 0;
-  const intakeErrorMessage = error instanceof Error ? error.message : undefined;
   const isSearchActive = searchQuery.length > 0;
 
   return (
@@ -410,7 +419,6 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
               items={loadedItems}
               isLoading={!orgId || isLoading}
               isError={isError}
-              errorMessage={intakeErrorMessage}
               onRetry={handleRetryIntakes}
               selectedId={selectedId}
               onRowClick={handleRowClick}

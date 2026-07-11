@@ -1,14 +1,15 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useUIStore } from '@/lib/stores/ui-store';
 import { cn } from '@/lib/utils';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 
 /**
  * p0_03「使い方を選ぶ」: 今日の入口(薬剤師 / 事務サポート / 管理)を選ぶ。
@@ -68,6 +69,7 @@ export function SelectModeContent() {
   const orgId = useOrgId();
   const router = useRouter();
   const setWorkMode = useUIStore((state) => state.setWorkMode);
+  const [failedOption, setFailedOption] = useState<WorkModeOption | null>(null);
 
   const selectMutation = useMutation({
     mutationFn: async (option: WorkModeOption) => {
@@ -82,12 +84,20 @@ export function SelectModeContent() {
       }
       return option;
     },
+    onMutate: () => {
+      setFailedOption(null);
+    },
     onSuccess: (option) => {
       setWorkMode(option.mode);
       router.push(option.landingHref);
     },
-    onError: (error) => {
-      toast.error(messageFromError(error, 'モードの切り替えに失敗しました'));
+    onError: (error, option) => {
+      clientLog.warn('work_mode.preference_update_failed', error, {
+        route: '/select-mode',
+        entityType: 'user_preference',
+        code: 'WORK_MODE_UPDATE_FAILED',
+      });
+      setFailedOption(option);
     },
   });
 
@@ -102,6 +112,18 @@ export function SelectModeContent() {
           選んだモードに合わせて、最初に見る作業と通知の優先順を切り替えます。
         </p>
       </div>
+
+      {failedOption ? (
+        <ErrorState
+          variant="server"
+          title="モードを切り替えられません"
+          cause="選択したモードを保存できませんでした。"
+          nextAction="通信状態を確認して再試行してください。"
+          onRetry={() => selectMutation.mutate(failedOption)}
+          retryLabel={`${failedOption.title}を再試行`}
+          className="text-left"
+        />
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {WORK_MODE_OPTIONS.map((option) => (

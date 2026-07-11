@@ -14,9 +14,10 @@ import {
 
 setupDomTestEnv();
 
-const { useRealtimeQueryMock, refetchMock } = vi.hoisted(() => ({
+const { useRealtimeQueryMock, refetchMock, clientLogWarnMock } = vi.hoisted(() => ({
   useRealtimeQueryMock: vi.fn(),
   refetchMock: vi.fn(),
+  clientLogWarnMock: vi.fn(),
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -25,6 +26,10 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 
 vi.mock('@/lib/hooks/use-realtime-query', () => ({
   useRealtimeQuery: useRealtimeQueryMock,
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 import { IntakeTriageContent, formatReceivedAt } from './intake-triage-content';
@@ -208,6 +213,7 @@ describe('IntakeTriageContent', () => {
     vi.setSystemTime(new Date(2026, 5, 11, 9, 42));
     useRealtimeQueryMock.mockReset();
     refetchMock.mockClear();
+    clientLogWarnMock.mockClear();
   });
 
   afterEach(() => {
@@ -355,6 +361,69 @@ describe('IntakeTriageContent', () => {
     fireEvent.click(screen.getByRole('button', { name: /オンライン/ }));
     expect(getDesktopDataRows()).toHaveLength(1);
     expect(screen.getAllByText('受入判断待ち')).toHaveLength(2);
+  });
+
+  it('keeps long issuers and prescription labels readable without truncation-only recovery', () => {
+    const longIssuer = '医療法人地域連携医療会在宅医療総合クリニック中央診療所';
+    const longContent = '定期処方・服用時点変更・相互作用確認が必要な処方内容';
+    const rxNumber = 'RX-2026-INTAKE-LONG-IDENTIFIER-0001';
+    const fixture = buildTriageFixture();
+    fixture.rows[0] = buildRow({
+      intake_id: 'intake_long_display',
+      issuer: longIssuer,
+      content_label: longContent,
+      rx_number: rxNumber,
+    });
+    mockQueries({ triage: fixture, cockpit: buildCockpitFixture() });
+
+    render(<IntakeTriageContent />);
+
+    const issuerCells = screen.getAllByTestId('intake-issuer');
+    const issuerCell = issuerCells.find((cell) => cell.textContent === longIssuer);
+    expect(issuerCell).toBeTruthy();
+    expect(issuerCell?.className).toContain('[overflow-wrap:anywhere]');
+    expect(issuerCell?.className).not.toContain('truncate');
+    expect(issuerCell?.getAttribute('title')).toBeNull();
+
+    const fullContentLabel = `佐々木 ハル 様 — ${longContent} ${rxNumber}`;
+    const contentCells = screen.getAllByTestId('intake-content');
+    const contentCell = contentCells.find((cell) => cell.textContent === fullContentLabel);
+    expect(contentCell).toBeTruthy();
+    expect(contentCell?.className).toContain('[overflow-wrap:anywhere]');
+    expect(contentCell?.className).not.toContain('truncate');
+    expect(contentCell?.getAttribute('title')).toBeNull();
+  });
+
+  it('keeps triage load failures PHI-safe and provides an in-place retry', () => {
+    const poisonError = new Error('患者 佐藤花子 / FAX 03-1111-1111 / token=secret');
+    useRealtimeQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
+      const isCockpit = options.queryKey[0] === 'dashboard';
+      return {
+        data: isCockpit ? buildCockpitFixture() : null,
+        isLoading: false,
+        isError: !isCockpit,
+        error: isCockpit ? null : poisonError,
+        refetch: refetchMock,
+      };
+    });
+
+    render(<IntakeTriageContent />);
+
+    expect(screen.getByText('取込キューを表示できません')).toBeTruthy();
+    expect(screen.getByText('取込キューの取得に失敗しました。再試行してください。')).toBeTruthy();
+    expect(screen.queryByText(poisonError.message)).toBeNull();
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'prescription_intake.triage_load_failed',
+      poisonError,
+      {
+        route: '/prescriptions/intake',
+        entityType: 'prescription_intake_triage',
+        code: 'TRIAGE_LOAD_FAILED',
+      },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('uses the current set audit label for entered prescriptions moving to set work', () => {

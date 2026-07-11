@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Lock, MessageSquare, TriangleAlert } from 'lucide-react';
@@ -18,6 +18,7 @@ import { apiUnknownDataEnvelopeSchema } from '@/lib/api/response-schemas';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { cn } from '@/lib/utils';
+import { clientLog } from '@/lib/utils/client-log';
 import type {
   CockpitCommentItem,
   CockpitInboundItem,
@@ -989,7 +990,7 @@ function DashboardDetailsLoading({
   );
 }
 
-function DashboardDetailsError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+function DashboardDetailsError({ onRetry }: { onRetry: () => void }) {
   return (
     <section
       className="rounded-lg border border-border/70 bg-card p-4"
@@ -999,7 +1000,6 @@ function DashboardDetailsError({ error, onRetry }: { error: unknown; onRetry: ()
         title="対応詳細を表示できません"
         cause="監査キューと今日の訪問明細だけ取得に失敗しました。"
         nextAction="概要は表示したまま、詳細セクションだけ再試行できます。"
-        detail={error instanceof Error ? error.message : undefined}
         onRetry={onRetry}
         retryLabel="再試行"
         metadata={{ route: '/api/dashboard/cockpit/details' }}
@@ -1029,7 +1029,7 @@ function TeamCapacityLoading() {
   );
 }
 
-function TeamCapacityError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+function TeamCapacityError({ onRetry }: { onRetry: () => void }) {
   return (
     <section
       className="rounded-lg border border-border/70 bg-card p-4"
@@ -1039,7 +1039,6 @@ function TeamCapacityError({ error, onRetry }: { error: unknown; onRetry: () => 
         title="チーム状況を表示できません"
         cause="担当者の余白だけ取得に失敗しました。"
         nextAction="工程状況は表示したまま、チーム状況だけ再試行できます。"
-        detail={error instanceof Error ? error.message : undefined}
         onRetry={onRetry}
         retryLabel="再試行"
         metadata={{ route: '/api/dashboard/cockpit/team' }}
@@ -1089,14 +1088,12 @@ function TeamConversationPanel({
   hiddenCount,
   isLoading,
   isError,
-  error,
   onRetry,
 }: {
   comments: CockpitCommentItem[];
   hiddenCount: number;
   isLoading: boolean;
   isError: boolean;
-  error: unknown;
   onRetry: () => void;
 }) {
   if (isLoading) {
@@ -1130,7 +1127,6 @@ function TeamConversationPanel({
           title="チームの会話を表示できません"
           cause="コメントだけ取得に失敗しました。"
           nextAction="次にやることと止まっている理由は表示したまま、チームの会話だけ再試行できます。"
-          detail={error instanceof Error ? error.message : undefined}
           onRetry={onRetry}
           retryLabel="再試行"
           metadata={{ route: '/api/dashboard/cockpit/comments' }}
@@ -1255,7 +1251,6 @@ function InboundFeedPanel({
   needsReviewCount,
   isLoading,
   isError,
-  error,
   onRetry,
 }: {
   items: CockpitInboundItem[];
@@ -1263,7 +1258,6 @@ function InboundFeedPanel({
   needsReviewCount: number;
   isLoading: boolean;
   isError: boolean;
-  error: unknown;
   onRetry: () => void;
 }) {
   if (isLoading) {
@@ -1297,7 +1291,6 @@ function InboundFeedPanel({
           title="他職種受信を表示できません"
           cause="MCS・電話・FAX・メールの受信情報だけ取得に失敗しました。"
           nextAction="監査・訪問・工程状況は表示したまま、受信情報だけ再試行できます。"
-          detail={error instanceof Error ? error.message : undefined}
           onRetry={onRetry}
           retryLabel="再試行"
           metadata={{ route: '/api/dashboard/cockpit/inbound' }}
@@ -1531,6 +1524,80 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
   const inboundInitialError = !inboundReady && inboundQuery.isError;
   const inboundInitialLoading =
     !inboundReady && (inboundQuery.isLoading || summary != null) && !inboundInitialError;
+  const lastLoggedInitialErrorRef = useRef<
+    Record<'summary' | 'details' | 'team' | 'comments' | 'inbound', unknown>
+  >({
+    summary: null,
+    details: null,
+    team: null,
+    comments: null,
+    inbound: null,
+  });
+
+  useEffect(() => {
+    const failures = [
+      {
+        key: 'summary',
+        data: summary,
+        error: summaryQuery.error,
+        event: 'dashboard_cockpit.summary_load_failed',
+        code: 'DASHBOARD_COCKPIT_SUMMARY_LOAD_FAILED',
+      },
+      {
+        key: 'details',
+        data: details,
+        error: detailsQuery.error,
+        event: 'dashboard_cockpit.details_load_failed',
+        code: 'DASHBOARD_COCKPIT_DETAILS_LOAD_FAILED',
+      },
+      {
+        key: 'team',
+        data: team,
+        error: teamQuery.error,
+        event: 'dashboard_cockpit.team_load_failed',
+        code: 'DASHBOARD_COCKPIT_TEAM_LOAD_FAILED',
+      },
+      {
+        key: 'comments',
+        data: comments,
+        error: commentsQuery.error,
+        event: 'dashboard_cockpit.comments_load_failed',
+        code: 'DASHBOARD_COCKPIT_COMMENTS_LOAD_FAILED',
+      },
+      {
+        key: 'inbound',
+        data: inbound,
+        error: inboundQuery.error,
+        event: 'dashboard_cockpit.inbound_load_failed',
+        code: 'DASHBOARD_COCKPIT_INBOUND_LOAD_FAILED',
+      },
+    ] as const;
+
+    for (const failure of failures) {
+      if (!failure.error || failure.data != null) {
+        lastLoggedInitialErrorRef.current[failure.key] = null;
+        continue;
+      }
+      if (lastLoggedInitialErrorRef.current[failure.key] === failure.error) continue;
+      lastLoggedInitialErrorRef.current[failure.key] = failure.error;
+      clientLog.warn(failure.event, failure.error, {
+        route: '/dashboard',
+        entityType: 'dashboard_cockpit',
+        code: failure.code,
+      });
+    }
+  }, [
+    comments,
+    commentsQuery.error,
+    details,
+    detailsQuery.error,
+    inbound,
+    inboundQuery.error,
+    summary,
+    summaryQuery.error,
+    team,
+    teamQuery.error,
+  ]);
 
   return (
     <section aria-label="運用コックピット" data-testid="dashboard-cockpit">
@@ -1581,7 +1648,6 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
               title="ダッシュボードを表示できません"
               cause="運用コックピットの集計取得に失敗しました。"
               nextAction="再試行して、概要から読み込み直してください。"
-              detail={summaryQuery.error instanceof Error ? summaryQuery.error.message : undefined}
               onRetry={() => void summaryQuery.refetch()}
               retryLabel="再試行"
               metadata={{ route: '/api/dashboard/cockpit/summary' }}
@@ -1629,10 +1695,7 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
                     />
                   </>
                 ) : detailsInitialError ? (
-                  <DashboardDetailsError
-                    error={detailsQuery.error}
-                    onRetry={() => void detailsQuery.refetch()}
-                  />
+                  <DashboardDetailsError onRetry={() => void detailsQuery.refetch()} />
                 ) : detailsInitialLoading ? (
                   <DashboardDetailsLoading
                     auditCount={summary.audit_pending_count}
@@ -1647,10 +1710,7 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
                       suggestion={viewModel.teamHandoffSuggestion}
                     />
                   ) : teamInitialError ? (
-                    <TeamCapacityError
-                      error={teamQuery.error}
-                      onRetry={() => void teamQuery.refetch()}
-                    />
+                    <TeamCapacityError onRetry={() => void teamQuery.refetch()} />
                   ) : teamInitialLoading ? (
                     <TeamCapacityLoading />
                   ) : null}
@@ -1675,7 +1735,6 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
                       needsReviewCount={viewModel.inboundNeedsReviewCount}
                       isLoading={inboundInitialLoading}
                       isError={inboundInitialError}
-                      error={inboundQuery.error}
                       onRetry={() => void inboundQuery.refetch()}
                     />
                     <TeamConversationPanel
@@ -1683,7 +1742,6 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
                       hiddenCount={viewModel.commentsHiddenCount}
                       isLoading={commentsInitialLoading}
                       isError={commentsInitialError}
-                      error={commentsQuery.error}
                       onRetry={() => void commentsQuery.refetch()}
                     />
                   </WorkspaceActionRail>

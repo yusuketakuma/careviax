@@ -1,7 +1,7 @@
 import { type Metadata } from 'next';
 import { Suspense } from 'react';
-import { Loading } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { IntakeTriageLoading } from './intake-triage-loading';
 import { IntakeTriageContent } from './intake-triage-content';
 
 export const metadata: Metadata = {
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export default function PrescriptionIntakeTriagePage() {
   return (
     <PageScaffold variant="bare">
-      <Suspense fallback={<Loading label="処方取込を読み込み中..." />}>
+      <Suspense fallback={<IntakeTriageLoading />}>
         <IntakeTriageContent />
       </Suspense>
     </PageScaffold>

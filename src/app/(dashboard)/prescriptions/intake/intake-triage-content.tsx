@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -27,6 +27,7 @@ import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { cn } from '@/lib/utils';
+import { clientLog } from '@/lib/utils/client-log';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import {
   INTAKE_ACTION_PRESENTATIONS,
@@ -110,7 +111,10 @@ function LaneCell({ row }: { row: IntakeTriageRow }) {
 
 function IssuerCell({ row }: { row: IntakeTriageRow }) {
   return (
-    <span className="block w-32 max-w-32 truncate whitespace-nowrap text-sm text-foreground">
+    <span
+      data-testid="intake-issuer"
+      className="block max-w-52 [overflow-wrap:anywhere] text-sm text-foreground"
+    >
       {row.issuer ?? '—'}
     </span>
   );
@@ -121,8 +125,8 @@ function ContentCell({ row }: { row: IntakeTriageRow }) {
 
   return (
     <span
-      className="block max-w-[360px] truncate text-sm font-medium text-foreground"
-      title={contentLabel}
+      data-testid="intake-content"
+      className="block max-w-[360px] [overflow-wrap:anywhere] text-sm font-medium text-foreground"
     >
       {contentLabel}
     </span>
@@ -348,6 +352,16 @@ export function IntakeTriageContent() {
   const queueColumns = buildQueueColumns(now, primaryRowId);
 
   const duplicateNotices = data?.duplicate_notices ?? [];
+
+  useEffect(() => {
+    if (!triageQuery.error) return;
+    clientLog.warn('prescription_intake.triage_load_failed', triageQuery.error, {
+      route: '/prescriptions/intake',
+      entityType: 'prescription_intake_triage',
+      code: 'TRIAGE_LOAD_FAILED',
+    });
+  }, [triageQuery.error]);
+
   const evidence: EvidenceItem[] = [
     {
       id: 'fax-documents',
@@ -397,7 +411,6 @@ export function IntakeTriageContent() {
               variant="server"
               title="取込キューを表示できません"
               description="取込キューの取得に失敗しました。再試行してください。"
-              detail={triageQuery.error instanceof Error ? triageQuery.error.message : undefined}
               onRetry={() => void triageQuery.refetch()}
             />
           </div>

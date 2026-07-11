@@ -33,12 +33,12 @@ describe('PrescriptionIntakeTriagePage', () => {
     expect(screen.getByTestId('intake-triage-content')).toBeTruthy();
   });
 
-  it('uses a screen-specific loading status for the route shell fallback', () => {
+  it('uses the triage-shaped loading status for the route shell fallback', () => {
     intakeTriageContentMockState.suspend = true;
 
     render(<PrescriptionIntakeTriagePage />);
 
-    expect(screen.getByRole('status', { name: '処方取込を読み込み中...' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: '処方取込トリアージを読み込み中' })).toBeTruthy();
     expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
     expect(screen.queryByTestId('intake-triage-content')).toBeNull();
   });

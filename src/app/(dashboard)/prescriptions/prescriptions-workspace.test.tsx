@@ -16,6 +16,7 @@ const useInfiniteQueryMock = vi.hoisted(() => vi.fn());
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRealtimeEventsMock = vi.hoisted(() => vi.fn());
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -29,6 +30,10 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
 
 vi.mock('@/lib/hooks/use-realtime-events', () => ({
   useRealtimeEvents: useRealtimeEventsMock,
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -55,13 +60,11 @@ vi.mock('./prescriptions-table', () => ({
     items,
     isLoading,
     isError,
-    errorMessage,
     onRetry,
   }: {
     items: Array<{ id: string }>;
     isLoading: boolean;
     isError?: boolean;
-    errorMessage?: string;
     onRetry?: () => void;
   }) => (
     <div
@@ -69,7 +72,6 @@ vi.mock('./prescriptions-table', () => ({
       data-loading={String(isLoading)}
       data-error={String(isError)}
     >
-      {errorMessage ? <span>{errorMessage}</span> : null}
       {onRetry ? (
         <button type="button" onClick={onRetry}>
           再読み込み
@@ -165,6 +167,7 @@ describe('PrescriptionsWorkspace', () => {
     vi.clearAllMocks();
     vi.stubGlobal('fetch', fetchMock);
     useOrgIdMock.mockReturnValue('org_1');
+    clientLogWarnMock.mockClear();
     useQueryClientMock.mockReturnValue({ invalidateQueries: invalidateQueriesMock });
     useRealtimeEventsMock.mockReturnValue({ connected: true });
     useInfiniteQueryMock.mockReturnValue({
@@ -465,12 +468,13 @@ describe('PrescriptionsWorkspace', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('passes prescription intake query failures as an error state with retry instead of an empty table', () => {
+  it('passes prescription intake query failures as a PHI-safe error state with retry instead of an empty table', () => {
+    const poisonError = new Error('患者 佐藤花子 / FAX 03-1111-1111 / token=secret');
     useInfiniteQueryMock.mockReturnValue({
       data: undefined,
       isLoading: false,
       isError: true,
-      error: new Error('処方受付一覧の取得に失敗しました'),
+      error: poisonError,
       refetch: refetchMock,
       fetchNextPage: fetchNextPageMock,
       hasNextPage: false,
@@ -481,8 +485,17 @@ describe('PrescriptionsWorkspace', () => {
 
     const table = screen.getByTestId('prescriptions-table');
     expect(table.getAttribute('data-error')).toBe('true');
-    expect(table.textContent).toContain('処方受付一覧の取得に失敗しました');
+    expect(table.textContent).not.toContain(poisonError.message);
     expect(table.textContent).not.toContain('該当する処方受付がありません');
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'prescription_intakes.list_load_failed',
+      poisonError,
+      {
+        route: '/prescriptions',
+        entityType: 'prescription_intake_list',
+        code: 'PRESCRIPTION_INTAKE_LIST_LOAD_FAILED',
+      },
+    );
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
 

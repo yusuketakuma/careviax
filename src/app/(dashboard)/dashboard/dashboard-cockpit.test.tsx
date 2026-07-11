@@ -18,7 +18,8 @@ import type {
 
 setupDomTestEnv();
 
-const { useRealtimeQueryMock, refetchMock } = vi.hoisted(() => ({
+const { clientLogWarnMock, useRealtimeQueryMock, refetchMock } = vi.hoisted(() => ({
+  clientLogWarnMock: vi.fn(),
   useRealtimeQueryMock: vi.fn(),
   refetchMock: vi.fn(),
 }));
@@ -29,6 +30,10 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 
 vi.mock('@/lib/hooks/use-realtime-query', () => ({
   useRealtimeQuery: useRealtimeQueryMock,
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 vi.mock('@/lib/api/org-headers', async (importActual) => {
@@ -478,6 +483,8 @@ function mockDashboardQueries({
     if (segment === 'inbound') return states.inbound;
     return successQuery(fixture);
   });
+
+  return states;
 }
 
 function queryConfigFor(
@@ -501,6 +508,7 @@ describe('DashboardCockpit', () => {
     useUIStore.setState({ workspaceRailOpen: true });
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 12, 9, 42));
+    clientLogWarnMock.mockClear();
     refetchMock.mockClear();
     mockDashboardQueries();
   });
@@ -1020,21 +1028,67 @@ describe('DashboardCockpit', () => {
   });
 
   it('shows the error state with retry when the cockpit fetch fails', () => {
+    const poisonError = new Error('田中 一郎 様の保険者番号 1234-5678');
     mockDashboardQueries({
       summary: {
         data: undefined,
         isLoading: false,
         isError: true,
-        error: new Error('boom'),
+        error: poisonError,
       },
     });
 
     render(<DashboardCockpit />);
 
     expect(screen.getByText('ダッシュボードを表示できません')).toBeTruthy();
+    expect(screen.queryByText(poisonError.message)).toBeNull();
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'dashboard_cockpit.summary_load_failed',
+      poisonError,
+      {
+        route: '/dashboard',
+        entityType: 'dashboard_cockpit',
+        code: 'DASHBOARD_COCKPIT_SUMMARY_LOAD_FAILED',
+      },
+    );
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetchMock).toHaveBeenCalled();
   });
+
+  it('logs a persistent initial segment failure once until that segment recovers', () => {
+    const summaryError = new Error('synthetic summary failure');
+    const states = mockDashboardQueries({
+      summary: {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: summaryError,
+      },
+    });
+    const { rerender } = render(<DashboardCockpit />);
+    const summaryLogCount = () =>
+      clientLogWarnMock.mock.calls.filter(
+        ([event]) => event === 'dashboard_cockpit.summary_load_failed',
+      ).length;
+
+    expect(summaryLogCount()).toBe(1);
+
+    states.details = successQuery(buildDetailsFixture(buildFixture()));
+    rerender(<DashboardCockpit />);
+    expect(summaryLogCount()).toBe(1);
+
+    states.summary = successQuery(buildSummaryFixture(buildFixture()));
+    rerender(<DashboardCockpit />);
+
+    states.summary = {
+      ...states.summary,
+      data: undefined,
+      isError: true,
+      error: summaryError,
+    };
+    rerender(<DashboardCockpit />);
+    expect(summaryLogCount()).toBe(2);
+  }, 15_000);
 
   it('keeps stale cockpit data visible and shows a retry warning when a background refetch fails', () => {
     mockDashboardQueries({
@@ -1056,18 +1110,20 @@ describe('DashboardCockpit', () => {
       screen.getByText('最新化に失敗しました。表示中の情報は前回取得時点のものです。'),
     ).toBeTruthy();
     expect(screen.queryByText('ダッシュボードを表示できません')).toBeNull();
+    expect(clientLogWarnMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetchMock).toHaveBeenCalledTimes(5);
   });
 
   it('keeps summary sections visible when details fail before the first payload arrives', () => {
+    const poisonError = new Error('田中 一郎 様の処方内容');
     mockDashboardQueries({
       details: {
         data: undefined,
         isLoading: false,
         isError: true,
-        error: new Error('details down'),
+        error: poisonError,
       },
     });
 
@@ -1076,6 +1132,16 @@ describe('DashboardCockpit', () => {
     expect(screen.getByTestId('dashboard-condition-banner')).toBeTruthy();
     expect(screen.getByTestId('dashboard-process-now')).toBeTruthy();
     expect(screen.getByText('対応詳細を表示できません')).toBeTruthy();
+    expect(screen.queryByText(poisonError.message)).toBeNull();
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'dashboard_cockpit.details_load_failed',
+      poisonError,
+      {
+        route: '/dashboard',
+        entityType: 'dashboard_cockpit',
+        code: 'DASHBOARD_COCKPIT_DETAILS_LOAD_FAILED',
+      },
+    );
     expect(
       screen.queryByText('いま期限・待ち解除で対応が必要な処方サイクルはありません。'),
     ).toBeNull();
@@ -1085,12 +1151,13 @@ describe('DashboardCockpit', () => {
   });
 
   it('keeps process status visible when team capacity fails before the first payload arrives', () => {
+    const poisonError = new Error('田中 一郎 様の勤務状況');
     mockDashboardQueries({
       team: {
         data: undefined,
         isLoading: false,
         isError: true,
-        error: new Error('team down'),
+        error: poisonError,
       },
     });
 
@@ -1099,15 +1166,26 @@ describe('DashboardCockpit', () => {
     expect(screen.getByTestId('dashboard-process-now')).toBeTruthy();
     expect(screen.getByText('チーム状況を表示できません')).toBeTruthy();
     expect(screen.queryByTestId('dashboard-team-capacity')).toBeNull();
+    expect(screen.queryByText(poisonError.message)).toBeNull();
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'dashboard_cockpit.team_load_failed',
+      poisonError,
+      {
+        route: '/dashboard',
+        entityType: 'dashboard_cockpit',
+        code: 'DASHBOARD_COCKPIT_TEAM_LOAD_FAILED',
+      },
+    );
   });
 
   it('keeps the action rail visible when the conversation feed fails before the first payload arrives', () => {
+    const poisonError = new Error('田中 一郎 様の申し送り内容');
     mockDashboardQueries({
       comments: {
         data: undefined,
         isLoading: false,
         isError: true,
-        error: new Error('comments down'),
+        error: poisonError,
       },
     });
 
@@ -1115,6 +1193,45 @@ describe('DashboardCockpit', () => {
 
     expect(screen.getByTestId('next-action-panel')).toBeTruthy();
     expect(screen.getByText('チームの会話を表示できません')).toBeTruthy();
+    expect(screen.queryByText(poisonError.message)).toBeNull();
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'dashboard_cockpit.comments_load_failed',
+      poisonError,
+      {
+        route: '/dashboard',
+        entityType: 'dashboard_cockpit',
+        code: 'DASHBOARD_COCKPIT_COMMENTS_LOAD_FAILED',
+      },
+    );
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the action rail visible when the inbound feed fails without rendering the error payload', () => {
+    const poisonError = new Error('田中 一郎 様の受信内容');
+    mockDashboardQueries({
+      inbound: {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: poisonError,
+      },
+    });
+
+    render(<DashboardCockpit />);
+
+    expect(screen.getByTestId('next-action-panel')).toBeTruthy();
+    expect(screen.getByText('他職種受信を表示できません')).toBeTruthy();
+    expect(screen.queryByText(poisonError.message)).toBeNull();
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'dashboard_cockpit.inbound_load_failed',
+      poisonError,
+      {
+        route: '/dashboard',
+        entityType: 'dashboard_cockpit',
+        code: 'DASHBOARD_COCKPIT_INBOUND_LOAD_FAILED',
+      },
+    );
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetchMock).toHaveBeenCalledTimes(1);
   });

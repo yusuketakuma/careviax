@@ -1,6 +1,6 @@
 'use client';
 
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -37,7 +37,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import { cn } from '@/lib/utils';
 import type { PatientMedicationStockSummaryResponse } from '@/types/medication-stock';
 import { toast } from 'sonner';
@@ -958,7 +958,12 @@ export function InboundCommunicationsContent() {
       ]);
     },
     onError: (error) => {
-      toast.error(messageFromError(error, '受信情報を登録できませんでした'));
+      clientLog.warn('inbound_communication.intake_create_failed', error, {
+        route: '/communications/inbound',
+        entityType: 'inbound_communication',
+        code: 'INBOUND_INTAKE_CREATE_FAILED',
+      });
+      toast.error('受信情報を登録できませんでした');
     },
   });
 
@@ -981,7 +986,12 @@ export function InboundCommunicationsContent() {
       ]);
     },
     onError: (error) => {
-      toast.error(messageFromError(error, '薬剤師確認タスクを作成できませんでした'));
+      clientLog.warn('inbound_communication.pharmacist_task_create_failed', error, {
+        route: '/communications/inbound',
+        entityType: 'inbound_signal_task',
+        code: 'INBOUND_SIGNAL_TASK_CREATE_FAILED',
+      });
+      toast.error('薬剤師確認タスクを作成できませんでした');
     },
   });
 
@@ -1013,7 +1023,12 @@ export function InboundCommunicationsContent() {
       ]);
     },
     onError: (error) => {
-      toast.error(messageFromError(error, '受信シグナルのレビュー状態を更新できませんでした'));
+      clientLog.warn('inbound_communication.signal_review_failed', error, {
+        route: '/communications/inbound',
+        entityType: 'inbound_signal',
+        code: 'INBOUND_SIGNAL_REVIEW_FAILED',
+      });
+      toast.error('受信シグナルのレビュー状態を更新できませんでした');
     },
   });
 
@@ -1072,6 +1087,25 @@ export function InboundCommunicationsContent() {
     enabled: !!orgId && !!stockSummaryPatientId,
     retry: false,
   });
+
+  useEffect(() => {
+    if (!selectedDetailRequested || !detailQuery.isError || !detailQuery.error) return;
+    clientLog.warn('inbound_communication.detail_load_failed', detailQuery.error, {
+      route: '/communications/inbound',
+      entityType: 'inbound_communication_detail',
+      code: 'INBOUND_DETAIL_LOAD_FAILED',
+    });
+  }, [detailQuery.error, detailQuery.isError, selectedDetailRequested]);
+
+  useEffect(() => {
+    if (!stockSummaryPatientId || !stockSummaryQuery.isError || !stockSummaryQuery.error) return;
+    clientLog.warn('inbound_communication.stock_summary_load_failed', stockSummaryQuery.error, {
+      route: '/communications/inbound',
+      entityType: 'patient_medication_stock_summary',
+      code: 'INBOUND_STOCK_SUMMARY_LOAD_FAILED',
+    });
+  }, [stockSummaryPatientId, stockSummaryQuery.error, stockSummaryQuery.isError]);
+
   const stockApplyMutation = useMutation({
     mutationFn: async (input: StockApplyMutationInput) => {
       const response = await fetch(`/api/communications/inbound/signals/${input.signalId}`, {
@@ -1111,7 +1145,12 @@ export function InboundCommunicationsContent() {
       ]);
     },
     onError: (error) => {
-      toast.error(messageFromError(error, '残数台帳へ反映できませんでした'));
+      clientLog.warn('inbound_communication.stock_apply_failed', error, {
+        route: '/communications/inbound',
+        entityType: 'medication_stock_observation',
+        code: 'INBOUND_STOCK_APPLY_FAILED',
+      });
+      toast.error('残数台帳へ反映できませんでした');
     },
   });
   const sourceMappingMutation = useMutation({
@@ -1133,7 +1172,12 @@ export function InboundCommunicationsContent() {
       setSourceMappingForm(EMPTY_SOURCE_MAPPING_FORM);
     },
     onError: (error) => {
-      toast.error(messageFromError(error, '出所mappingを保存できませんでした'));
+      clientLog.warn('inbound_communication.source_mapping_save_failed', error, {
+        route: '/communications/inbound',
+        entityType: 'inbound_source_mapping',
+        code: 'INBOUND_SOURCE_MAPPING_SAVE_FAILED',
+      });
+      toast.error('出所mappingを保存できませんでした');
     },
   });
   const selectedSignalCandidates = useMemo(() => {
@@ -1657,7 +1701,7 @@ export function InboundCommunicationsContent() {
                         variant="server"
                         size="inline"
                         title="受信詳細を表示できません"
-                        cause={messageFromError(detailQuery.error, '詳細取得に失敗しました')}
+                        cause="詳細取得に失敗しました。"
                         nextAction="権限、患者/ケース担当範囲、通信状態を確認して再試行してください。"
                         onRetry={() => void detailQuery.refetch()}
                         retryLabel="詳細を再取得"
@@ -2253,10 +2297,7 @@ export function InboundCommunicationsContent() {
                                         variant="server"
                                         size="inline"
                                         title="残数管理候補を取得できません"
-                                        cause={messageFromError(
-                                          stockSummaryQuery.error,
-                                          '残数管理候補の取得に失敗しました',
-                                        )}
+                                        cause="残数管理候補の取得に失敗しました。"
                                         nextAction="権限、患者担当範囲、通信状態を確認して再試行してください。"
                                         onRetry={() => void stockSummaryQuery.refetch()}
                                         retryLabel="候補を再取得"

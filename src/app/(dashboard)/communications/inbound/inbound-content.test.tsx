@@ -11,6 +11,7 @@ const invalidateQueriesMock = vi.hoisted(() => vi.fn());
 const mutateMock = vi.hoisted(() => vi.fn());
 const toastSuccessMock = vi.hoisted(() => vi.fn());
 const toastErrorMock = vi.hoisted(() => vi.fn());
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -29,6 +30,10 @@ vi.mock('sonner', () => ({
     success: toastSuccessMock,
     error: toastErrorMock,
   },
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 import { InboundCommunicationsContent } from './inbound-content';
@@ -374,6 +379,216 @@ describe('InboundCommunicationsContent', () => {
         headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
       }),
     );
+  });
+
+  it('keeps a failed audited-detail payload out of the DOM and logs only static context', () => {
+    const poisonError = new Error('佐藤花子 様 / 090-1234-5678 / token=secret');
+    const refetchMock = vi.fn();
+    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
+      if (options.queryKey[0] === 'communications-inbound-detail') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          isFetching: false,
+          error: poisonError,
+          refetch: refetchMock,
+        };
+      }
+
+      if (options.queryKey[0] === 'communications-inbound-signals') {
+        return {
+          data: buildSignalData(),
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          refetch: vi.fn(),
+        };
+      }
+
+      if (options.queryKey[0] === 'patient-medication-stock-summary') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          refetch: vi.fn(),
+        };
+      }
+
+      return {
+        data: buildInboxData(),
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        refetch: vi.fn(),
+      };
+    });
+
+    render(<InboundCommunicationsContent />);
+    fireEvent.click(screen.getByRole('button', { name: '原文を監査付きで表示' }));
+
+    expect(screen.getByText('受信詳細を表示できません')).toBeTruthy();
+    expect(screen.getByText(/詳細取得に失敗しました。/)).toBeTruthy();
+    expect(screen.queryByText(poisonError.message)).toBeNull();
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'inbound_communication.detail_load_failed',
+      poisonError,
+      {
+        route: '/communications/inbound',
+        entityType: 'inbound_communication_detail',
+        code: 'INBOUND_DETAIL_LOAD_FAILED',
+      },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '詳細を再取得' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a failed stock-summary payload out of the DOM and logs only static context', () => {
+    const signalData = buildSignalData();
+    signalData.data.items[0].signal.review_status = 'accepted';
+    signalData.data.items[0].signal.stock_review!.has_medication_identity = true;
+    const poisonError = new Error('佐藤花子 様の残数 4枚 / token=secret');
+    const refetchMock = vi.fn();
+    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
+      if (options.queryKey[0] === 'communications-inbound-detail') {
+        return {
+          data: buildDetailData(),
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          refetch: vi.fn(),
+        };
+      }
+
+      if (options.queryKey[0] === 'communications-inbound-signals') {
+        return {
+          data: signalData,
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          refetch: vi.fn(),
+        };
+      }
+
+      if (options.queryKey[0] === 'patient-medication-stock-summary') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          isFetching: false,
+          error: poisonError,
+          refetch: refetchMock,
+        };
+      }
+
+      return {
+        data: buildInboxData(),
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        refetch: vi.fn(),
+      };
+    });
+
+    render(<InboundCommunicationsContent />);
+    fireEvent.click(screen.getByRole('button', { name: '原文を監査付きで表示' }));
+
+    expect(screen.getByText('残数管理候補を取得できません')).toBeTruthy();
+    expect(screen.getByText(/残数管理候補の取得に失敗しました。/)).toBeTruthy();
+    expect(screen.queryByText(poisonError.message)).toBeNull();
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'inbound_communication.stock_summary_load_failed',
+      poisonError,
+      {
+        route: '/communications/inbound',
+        entityType: 'patient_medication_stock_summary',
+        code: 'INBOUND_STOCK_SUMMARY_LOAD_FAILED',
+      },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '候補を再取得' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps all inbound mutation failures PHI-safe with static recovery copy', () => {
+    const poisonError = new Error('佐藤花子 様 / 090-1234-5678 / token=secret');
+
+    render(<InboundCommunicationsContent />);
+
+    const mutationOptions = useMutationMock.mock.calls.map(
+      ([options]) => options as { onError?: (error: unknown) => void },
+    );
+    const failures = [
+      {
+        index: 0,
+        event: 'inbound_communication.intake_create_failed',
+        message: '受信情報を登録できませんでした',
+        context: {
+          route: '/communications/inbound',
+          entityType: 'inbound_communication',
+          code: 'INBOUND_INTAKE_CREATE_FAILED',
+        },
+      },
+      {
+        index: 1,
+        event: 'inbound_communication.pharmacist_task_create_failed',
+        message: '薬剤師確認タスクを作成できませんでした',
+        context: {
+          route: '/communications/inbound',
+          entityType: 'inbound_signal_task',
+          code: 'INBOUND_SIGNAL_TASK_CREATE_FAILED',
+        },
+      },
+      {
+        index: 2,
+        event: 'inbound_communication.signal_review_failed',
+        message: '受信シグナルのレビュー状態を更新できませんでした',
+        context: {
+          route: '/communications/inbound',
+          entityType: 'inbound_signal',
+          code: 'INBOUND_SIGNAL_REVIEW_FAILED',
+        },
+      },
+      {
+        index: 3,
+        event: 'inbound_communication.stock_apply_failed',
+        message: '残数台帳へ反映できませんでした',
+        context: {
+          route: '/communications/inbound',
+          entityType: 'medication_stock_observation',
+          code: 'INBOUND_STOCK_APPLY_FAILED',
+        },
+      },
+      {
+        index: 4,
+        event: 'inbound_communication.source_mapping_save_failed',
+        message: '出所mappingを保存できませんでした',
+        context: {
+          route: '/communications/inbound',
+          entityType: 'inbound_source_mapping',
+          code: 'INBOUND_SOURCE_MAPPING_SAVE_FAILED',
+        },
+      },
+    ];
+
+    for (const failure of failures) {
+      const onError = mutationOptions[failure.index]?.onError;
+      expect(onError).toEqual(expect.any(Function));
+      onError?.(poisonError);
+      expect(toastErrorMock).toHaveBeenLastCalledWith(failure.message);
+      expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+        failure.event,
+        poisonError,
+        failure.context,
+      );
+    }
+
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(poisonError.message);
+    expect(
+      JSON.stringify(clientLogWarnMock.mock.calls.map(([, , context]) => context)),
+    ).not.toContain(poisonError.message);
   });
 
   it('shows source mapping only after audited detail and submits the new source-mapping payload', async () => {

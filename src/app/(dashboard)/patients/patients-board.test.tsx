@@ -14,9 +14,10 @@ import type {
 
 setupDomTestEnv();
 
-const { useRealtimeQueryMock, refetchMock } = vi.hoisted(() => ({
+const { useRealtimeQueryMock, refetchMock, clientLogWarnMock } = vi.hoisted(() => ({
   useRealtimeQueryMock: vi.fn(),
   refetchMock: vi.fn(),
+  clientLogWarnMock: vi.fn(),
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -25,6 +26,10 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 
 vi.mock('@/lib/hooks/use-realtime-query', () => ({
   useRealtimeQuery: useRealtimeQueryMock,
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 vi.mock('@/lib/patient/navigation', async (importActual) => {
@@ -264,6 +269,7 @@ describe('PatientsBoard', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 12, 9, 42));
     refetchMock.mockClear();
+    clientLogWarnMock.mockClear();
     useRealtimeQueryMock.mockReturnValue({
       data: buildFixture(),
       isLoading: false,
@@ -441,6 +447,48 @@ describe('PatientsBoard', () => {
     await waitFor(() => expect(screen.getAllByTestId('patient-board-card')).toHaveLength(65));
     expect(screen.queryByTestId('patients-board-visible-count-note')).toBeNull();
     expect(screen.queryByRole('button', { name: 'さらに読み込む' })).toBeNull();
+  });
+
+  it('keeps next-page failures PHI-safe and leaves an explicit retry path', async () => {
+    vi.useRealTimers();
+    const poisonError = new Error('患者 佐藤花子 / FAX 03-1111-1111 / token=secret');
+    const data = buildFixture({
+      meta: {
+        has_more: true,
+        next_cursor: 'cursor_2',
+      },
+    });
+    const fetchMock = vi.fn(async () => {
+      throw poisonError;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useRealtimeQueryMock.mockReturnValue({
+      data,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+
+    render(<PatientsBoard />);
+    fireEvent.click(screen.getByRole('button', { name: 'さらに読み込む' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('患者一覧の追加取得に失敗しました。もう一度お試しください。'),
+      ).toBeTruthy();
+    });
+    expect(screen.queryByText(poisonError.message)).toBeNull();
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'patients.board_next_page_load_failed',
+      poisonError,
+      {
+        route: '/patients',
+        entityType: 'patient_board',
+        code: 'PATIENT_BOARD_NEXT_PAGE_LOAD_FAILED',
+      },
+    );
+    expect(screen.getByRole('button', { name: 'さらに読み込む' })).toBeTruthy();
   });
 
   it('renders patient cards with hazard tags, next visit, process dots and step shortcuts', () => {
@@ -885,19 +933,29 @@ describe('PatientsBoard', () => {
   });
 
   it('shows a full error state only when the initial load fails with no cached data', () => {
+    const poisonError = new Error('患者 佐藤花子 / FAX 03-1111-1111 / token=secret');
     useRealtimeQueryMock.mockReturnValue({
       data: undefined,
       isLoading: false,
       isFetching: false,
       isError: true,
       isLoadingError: true,
-      error: new Error('load failed'),
+      error: poisonError,
       refetch: refetchMock,
     });
 
     render(<PatientsBoard />);
 
     expect(screen.getByText('患者一覧を表示できません')).toBeTruthy();
+    expect(
+      screen.getByText('患者カードの集計取得に失敗しました。再試行してください。'),
+    ).toBeTruthy();
+    expect(screen.queryByText(poisonError.message)).toBeNull();
+    expect(clientLogWarnMock).toHaveBeenCalledWith('patients.board_load_failed', poisonError, {
+      route: '/patients',
+      entityType: 'patient_board',
+      code: 'PATIENT_BOARD_LOAD_FAILED',
+    });
     expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
   });
 

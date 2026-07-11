@@ -1,6 +1,6 @@
 'use client';
 
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -40,6 +40,7 @@ import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import { cn } from '@/lib/utils';
+import { clientLog } from '@/lib/utils/client-log';
 import type {
   PatientAttentionKey,
   PatientBoardCard,
@@ -767,6 +768,15 @@ export function PatientsBoard() {
     ],
   });
 
+  useEffect(() => {
+    if (!boardQuery.error || boardQuery.data) return;
+    clientLog.warn('patients.board_load_failed', boardQuery.error, {
+      route: '/patients',
+      entityType: 'patient_board',
+      code: 'PATIENT_BOARD_LOAD_FAILED',
+    });
+  }, [boardQuery.data, boardQuery.error]);
+
   const boardPageFilterKey = `${scope}|${chip}|${sort}|${deferredSearchQuery}`;
   const [prevBoardPageFilterKey, setPrevBoardPageFilterKey] = useState(boardPageFilterKey);
   if (prevBoardPageFilterKey !== boardPageFilterKey) {
@@ -808,7 +818,12 @@ export function PatientsBoard() {
       });
       setExtraPages((pages) => [...pages, page]);
     } catch (error) {
-      setNextPageError(error instanceof Error ? error.message : '患者一覧の追加取得に失敗しました');
+      clientLog.warn('patients.board_next_page_load_failed', error, {
+        route: '/patients',
+        entityType: 'patient_board',
+        code: 'PATIENT_BOARD_NEXT_PAGE_LOAD_FAILED',
+      });
+      setNextPageError('患者一覧の追加取得に失敗しました。もう一度お試しください。');
     } finally {
       setIsLoadingNextPage(false);
     }
@@ -1069,7 +1084,6 @@ export function PatientsBoard() {
               variant="server"
               title="患者一覧を表示できません"
               description="患者カードの集計取得に失敗しました。再試行してください。"
-              detail={boardQuery.error instanceof Error ? boardQuery.error.message : undefined}
               onRetry={() => void boardQuery.refetch()}
             />
           </div>

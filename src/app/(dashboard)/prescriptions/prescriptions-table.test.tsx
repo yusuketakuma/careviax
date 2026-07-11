@@ -93,7 +93,6 @@ describe('PrescriptionsTable', () => {
         items={[]}
         isLoading={false}
         isError
-        errorMessage="処方受付一覧の取得に失敗しました"
         onRetry={handleRetry}
         selectedId={null}
         onRowClick={vi.fn()}
@@ -101,7 +100,11 @@ describe('PrescriptionsTable', () => {
     );
 
     expect(screen.getByRole('heading', { name: '処方受付一覧を表示できません' })).toBeTruthy();
-    expect(screen.getByText('処方受付一覧の取得に失敗しました')).toBeTruthy();
+    expect(
+      screen.getByText(
+        '処方受付データの取得に失敗しました。空の一覧として扱わず、通信状況を確認して再読み込みしてください。',
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText('該当する処方受付がありません')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
@@ -125,7 +128,6 @@ describe('PrescriptionsTable', () => {
         items={[buildRow()]}
         isLoading={false}
         isError
-        errorMessage="再取得に失敗しました"
         selectedId="intake_1"
         onRowClick={vi.fn()}
       />,
@@ -190,5 +192,27 @@ describe('PrescriptionsTable', () => {
     handleRowClick.mockClear();
     fireEvent.keyDown(desktopSelectedOption, { key: ' ', code: 'Space' });
     expect(handleRowClick).toHaveBeenCalledWith(1);
+  });
+
+  it('keeps long prescriber names readable without truncate-only recovery', () => {
+    const prescriberName = '地域連携在宅医療総合クリニック処方担当薬剤師連携窓口';
+
+    render(
+      <PrescriptionsTable
+        items={[buildRow({ prescriber_name: prescriberName })]}
+        isLoading={false}
+        selectedId="intake_1"
+        onRowClick={vi.fn()}
+      />,
+    );
+
+    const cells = screen.getAllByTestId('prescription-prescriber');
+    expect(cells).toHaveLength(2);
+    for (const cell of cells) {
+      expect(cell.textContent).toBe(prescriberName);
+      expect(cell.className).toContain('[overflow-wrap:anywhere]');
+      expect(cell.className).not.toContain('truncate');
+      expect(cell.getAttribute('title')).toBeNull();
+    }
   });
 });

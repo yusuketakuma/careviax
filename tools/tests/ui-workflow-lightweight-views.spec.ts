@@ -5,6 +5,8 @@ import type { WorkflowDashboardResponse } from '@/types/api/workflow-dashboard';
 
 type WorkflowView = 'phase' | 'realtime' | 'performance';
 
+const RAW_PERFORMANCE_SERVER_DETAIL = 'route-mock-performance-detail-token=secret';
+
 const WORKFLOW_DATA: WorkflowDashboardResponse['data'] = {
   after_hours_readiness: {
     emergency_capable_shift_count: 0,
@@ -212,6 +214,21 @@ async function installCommonRouteMocks(page: Page) {
   await page.route(apiPathPattern('/api/notifications'), (route) =>
     fulfillJson(route, { data: [] }),
   );
+  await page.route(apiPathPattern('/api/admin/staff-metrics'), (route) =>
+    fulfillJson(route, {
+      data: {
+        items: [],
+        month: '2026-06',
+        summary: {
+          avg_monthly_visits: 0,
+          avg_report_submission_rate: 0,
+          overloaded_count: 0,
+          total_staff: 0,
+          underutilized_count: 0,
+        },
+      },
+    }),
+  );
   await page.route(apiPathPattern('/api/dispense-audits'), (route) =>
     fulfillJson(route, { data: { count: 0 } }),
   );
@@ -294,6 +311,19 @@ async function installPerformanceRouteMocks(page: Page) {
   );
 }
 
+async function installPerformanceFailureRouteMocks(page: Page) {
+  for (const pathname of [
+    '/api/dashboard/workflow',
+    '/api/visit-schedules',
+    '/api/visit-schedule-proposals',
+    '/api/admin/performance-metrics',
+  ]) {
+    await page.route(apiPathPattern(pathname), (route) =>
+      fulfillJson(route, { message: RAW_PERFORMANCE_SERVER_DETAIL }, 500),
+    );
+  }
+}
+
 async function expectWorkflowView(requests: URL[], view: WorkflowView) {
   await expect
     .poll(
@@ -374,8 +404,42 @@ test.describe('workflow lightweight dashboard views', () => {
     await expect(page.getByRole('heading', { name: '運用パフォーマンス' })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByText('API P95')).toBeVisible();
+    await expect(page.getByLabel('今すぐ見る要対応シグナル').getByText('API P95')).toBeVisible();
     await expectWorkflowView(workflowRequests, 'performance');
     expect(errors).toEqual([]);
+  });
+
+  test('admin performance keeps failed source signals unavailable rather than showing false zero', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Single chromium smoke covers the failure-state signal contract.',
+    );
+
+    const { page, errors } = await createInstrumentedPage(context, {
+      captureHttpErrors: false,
+    });
+    await installCommonRouteMocks(page);
+    await installPerformanceFailureRouteMocks(page);
+
+    await openStableRoute(page, '/admin/performance');
+
+    const signals = page.getByLabel('今すぐ見る要対応シグナル');
+    await expect(signals).toBeVisible();
+    await expect(page.getByText('サーバーエラーが発生しました').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(signals.locator('p.mt-2.text-3xl')).toHaveText(['—', '—', '—ms', '—', '—']);
+    await expect(signals.getByText('0', { exact: true })).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText(RAW_PERFORMANCE_SERVER_DETAIL);
+
+    expect(
+      errors.filter(
+        (error) =>
+          error !==
+          'console:Failed to load resource: the server responded with a status of 500 (Internal Server Error)',
+      ),
+    ).toEqual([]);
   });
 });
