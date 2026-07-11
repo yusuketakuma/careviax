@@ -45903,3 +45903,23 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `aaf0fc7e9` (`fix(FE-SCHEDULE-001): keep status recovery visible`) committed the two owned implementation/regression
   paths plus the scoped Plans, FE/BE inventory, and single-ledger evidence. Concurrent UI-audit test work,
   harness-memory state, and unrelated untracked files were excluded. No push was performed.
+
+## 2026-07-11 FE-QA-001 / FE-REPORT-001 — forced-colors, keyboard, and zoom-proxy evidence
+
+- current task / scope:
+  Extended the authenticated Chromium audit for `/reports` without changing product code. The bounded case enables
+  `forced-colors: active`, uses a 768x512 effective viewport as an automated proxy for the layout pressure of 200%
+  browser zoom, and reaches the existing template-management link with Tab navigation only. `gpt-image-2` was omitted
+  because this is test-only accessibility evidence for the existing visual design, not visual reconstruction.
+- evidence / safety:
+  The test confirms the forced-colors media query, keyboard reachability, the existing 44px action target, and no
+  document-level horizontal overflow. It performs no mutation, external send, navigation activation, production-data
+  change, API/DB/schema/auth/authz/audit change, deployment, or destructive operation. The first default-config attempt
+  timed out waiting for its build server before opening a page; a wrapper invocation then passed its grep after `--`
+  and began the full file, so it was interrupted. Neither is counted as product validation. The corrected local config
+  on the existing port 3012 server ran the intended case only and passed 1/1 in 2.6 seconds.
+- validation / remaining:
+  Exact ESLint and Prettier, 8 GB aggregate `pnpm typecheck`, frontend contract, raw-state colors, module-boundary, and
+  focused diff checks passed. `FE-QA-001` and `FE-REPORT-001` remain Partial: manual browser 200% zoom, forced-colors
+  visual comparison, screen-reader review, keyboard-only report mutation/recovery journeys, offline/conflict and PHI
+  output fixtures, the other six frontend screens, full build, and standalone runtime remain outstanding.
