@@ -45979,3 +45979,20 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   200% zoom, forced-colors, broader timeline/rail reorganization, full build, and standalone runtime. Commit
   `3d3ca82cf` contains only the owned Playwright fixture and browser regression. No API/DB/schema/migration/auth/authz/
   audit behavior, push, deployment, external send, production-data mutation, or destructive operation occurred.
+
+## 2026-07-11 FE-SCHEDULE-001 — forced-colors and zoom-proxy status-control evidence
+
+- current task / evidence:
+  Extended the populated schedule Gantt route-mock with a read-only Chromium accessibility case. It enables
+  `forced-colors: active`, constrains the viewport to 768x512 as an automated proxy for 200% browser-zoom layout
+  pressure, reaches the first patient-specific status combobox using Tab only, and verifies its 44px target and zero
+  document-level horizontal overflow. No option is selected and no mutation is issued. `gpt-image-2` was omitted
+  because this is test-only accessibility evidence for the established schedule layout.
+- validation / remaining / commit:
+  The complete schedule Gantt describe passed 4/4: PHI-safe exact retry, forced-colors/keyboard/zoom proxy, tablet
+  portrait, and tablet landscape. Exact ESLint and Prettier, 8 GB aggregate typecheck, frontend contract, client
+  PHI-log, raw-state colors, module-boundary, and diff checks passed. `FE-SCHEDULE-001` remains Partial for proposal
+  state coverage, manual browser 200% zoom, manual screen-reader review, broader timeline/rail reorganization, full
+  build, and standalone runtime. Commit `39260b3a5` contains only the owned Playwright evidence. No API/DB/schema/
+  migration/auth/authz/audit behavior, push, deployment, external send, production-data mutation, or destructive
+  operation occurred.
