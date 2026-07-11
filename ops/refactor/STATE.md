@@ -46144,3 +46144,7 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   because the same-worktree port 3012 preview is active and Next build/dev artifacts must not race; the existing local
   16 GB exit-137 build constraint also remains. No DB/migration/auth/authz/audit change, browser action, push, deploy,
   external send, production-data mutation, or destructive operation occurred.
+- commit:
+  `5aa5ca123` (`fix(API-CONTRACT-001): validate visit constraints payloads`) committed only the owned consumer,
+  regression, schema ratchet, Plans, FE/BE inventory, and single-ledger paths. Concurrent patient-board work,
+  harness-memory state, and unrelated untracked files were excluded. No push was performed.
