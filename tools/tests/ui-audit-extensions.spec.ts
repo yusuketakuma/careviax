@@ -280,6 +280,49 @@ test('reports accessibility has no critical or serious violations', async ({
   expect(summarizeViolations(severe)).toEqual([]);
 });
 
+test('reports keeps its primary navigation reachable in forced colors and a 200%-equivalent viewport', async ({
+  context,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium');
+
+  const { page, errors } = await createInstrumentedPage(context, {
+    captureHttpErrors: false,
+  });
+  await page.setViewportSize({ width: 768, height: 512 });
+  await page.emulateMedia({ forcedColors: 'active' });
+  await openStableRoute(page, '/reports');
+
+  const workspace = page.getByTestId('report-share-workspace');
+  const templateLink = page.getByTestId('report-edit-templates');
+  await expect(workspace).toBeVisible({ timeout: 60_000 });
+  await expect(templateLink).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.matchMedia('(forced-colors: active)').matches))
+    .toBe(true);
+
+  await page.locator('body').press('Home');
+  let reachedTemplateLink = false;
+  for (let step = 0; step < 40; step += 1) {
+    await page.keyboard.press('Tab');
+    if (await templateLink.evaluate((element) => element === document.activeElement)) {
+      reachedTemplateLink = true;
+      break;
+    }
+  }
+
+  const overflowWidth = await page.evaluate(() => {
+    const root = document.documentElement;
+    return root.scrollWidth - root.clientWidth;
+  });
+  const linkBox = await templateLink.boundingBox();
+
+  await writeScreenshot(page, 'reports-forced-colors-zoom-proxy');
+  expect(reachedTemplateLink).toBe(true);
+  expect(linkBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+  expect(overflowWidth).toBeLessThanOrEqual(1);
+  expect(errors).toEqual([]);
+});
+
 test('prescription intake accessibility has no critical or serious violations', async ({
   context,
 }, testInfo) => {
