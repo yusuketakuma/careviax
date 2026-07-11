@@ -45488,3 +45488,23 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
 - commit:
   `e1fa9261f` (`docs(FE-SHELL-001): record shell completion`) committed the owned Plans and single-ledger closure.
   Existing harness-memory and unrelated untracked local files were excluded. No push was performed.
+
+## 2026-07-11 local preview recovery — dashboard E2E database migration drift
+
+- incident / root cause:
+  The Codex right-pane preview reached `/dashboard`, but the cockpit `details` and `inbound` segments returned 500.
+  Browser evidence showed summary/team/comments still rendered, while both failing paths shared
+  `InboundCommunicationEvent` reads. Read-only `prisma migrate status` proved the dedicated local
+  `localhost:5433/ph_os_e2e` database was seven migrations behind, including the inbound communication schema.
+- controlled recovery:
+  Did not use `pnpm db:e2e:prepare` because its P3005/P3009 fallback can reset the E2E database. Ran only
+  `prisma migrate deploy` with both `DATABASE_URL` and `DIRECT_URL` pinned to the dedicated local `ph_os_e2e`
+  target. All seven pending migrations applied successfully; no reset, production/staging connection, source-code
+  change, or destructive cleanup was used. Started `pnpm dev:e2e:local` in persistent tmux session
+  `careviax-preview` so preview availability survives Codex turn boundaries.
+- verification / remaining:
+  Reauthenticated through the existing `PLAYWRIGHT=1` local demo path. Browser network proof then showed 200 for
+  cockpit summary/details/team/comments/inbound and notifications, with zero console errors; the full cockpit
+  detail UI replaced the prior recovery state. This proves local preview recovery only. It is not staging/live
+  migration evidence and does not satisfy the human-gated visit-observation DB integration tasks. Server remains
+  available on `localhost:3012`; stop it with `tmux kill-session -t careviax-preview` when no longer needed.
