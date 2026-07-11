@@ -45954,3 +45954,28 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   focused diff checks passed. `FE-QA-001` and `FE-REPORT-001` remain Partial: manual browser 200% zoom, forced-colors
   visual comparison, screen-reader review, keyboard-only report mutation/recovery journeys, offline/conflict and PHI
   output fixtures, the other six frontend screens, full build, and standalone runtime remain outstanding.
+
+## 2026-07-11 FE-SCHEDULE-001 — route-mocked status recovery and stale fixture repair
+
+- current task / root cause:
+  Added browser evidence for the persistent visit-status failure recovery introduced by `aaf0fc7e9`. Investigation
+  first exposed an older failure in the same Gantt suite: the route-mock day-board fixture predated the required
+  `inbound_schedule_requests` / `inbound_schedule_request_counts` contract added in `d33735fc6`. The resulting
+  `undefined.total_count` TypeError crashed `/schedules` before any status control rendered, and the pre-existing
+  tablet portrait test reproduced the same crash. Trace evidence identified `inboundScheduleRequestCounts` as the
+  exact consumer. The fixture, not production code, was the contract-drift root cause.
+- implementation / browser evidence:
+  Updated the fixture with an empty inbound-request collection and its zero counted-list metadata. Added a populated
+  Chromium scenario that changes the shared Select from `ready` to `in_progress`, returns a PHI-like 500 response,
+  verifies fixed persistent recovery copy without the raw message, focuses the recovery action, retries with Enter,
+  and proves both PATCH bodies are exactly `{ schedule_status: 'in_progress', expected_schedule_status: 'ready' }`.
+  This uses only route mocks and creates no real schedule write. `gpt-image-2` was omitted because this is test-only
+  recovery evidence for an existing component and introduces no visual reconstruction.
+- validation / remaining / commit:
+  The corrected Gantt describe passed 3/3: failure recovery, tablet portrait overflow, and tablet landscape labels /
+  overlap stacks. Exact ESLint and Prettier, 8 GB aggregate typecheck, frontend contract, client PHI-log, raw-state
+  colors, module-boundary, and diff checks passed. Initial runs against the stale fixture and then its actual combobox
+  role failed and are not counted as passing evidence. `FE-SCHEDULE-001` remains Partial for proposal states,
+  200% zoom, forced-colors, broader timeline/rail reorganization, full build, and standalone runtime. Commit
+  `3d3ca82cf` contains only the owned Playwright fixture and browser regression. No API/DB/schema/migration/auth/authz/
+  audit behavior, push, deployment, external send, production-data mutation, or destructive operation occurred.
