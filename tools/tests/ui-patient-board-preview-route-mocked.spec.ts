@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { attachLocalSession, openStableRoute } from './helpers/local-auth';
 
@@ -142,5 +143,60 @@ test.describe('patient board selected preview', () => {
       scrollWidth: document.documentElement.scrollWidth,
     }));
     expect(viewportMetrics.scrollWidth).toBeLessThanOrEqual(viewportMetrics.clientWidth + 1);
+  });
+
+  test('keeps the populated patient board accessible in forced colors and a 200%-equivalent viewport', async ({
+    context,
+  }) => {
+    await attachLocalSession(context);
+    const page = await context.newPage();
+    await page.route('**/api/patients/board?**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(BOARD_RESPONSE),
+      });
+    });
+
+    await page.setViewportSize({ width: 768, height: 512 });
+    await openStableRoute(page, '/patients');
+    await expect(page.getByTestId('patients-board-grid')).toBeVisible();
+
+    const axeResults = await new AxeBuilder({ page }).include('main').analyze();
+    const severeViolations = axeResults.violations.filter((violation) =>
+      ['critical', 'serious'].includes(violation.impact ?? ''),
+    );
+    expect(
+      severeViolations.map((violation) => ({
+        id: violation.id,
+        impact: violation.impact,
+        targets: violation.nodes.flatMap((node) => node.target.map(String)),
+      })),
+    ).toEqual([]);
+
+    await page.emulateMedia({ forcedColors: 'active' });
+    await expect
+      .poll(() => page.evaluate(() => window.matchMedia('(forced-colors: active)').matches))
+      .toBe(true);
+
+    const previewButton = page.getByRole('button', { name: 'テスト患者Aをプレビュー' });
+    let reachedPreviewButton = false;
+    await page.locator('body').press('Home');
+    for (let step = 0; step < 80; step += 1) {
+      await page.keyboard.press('Tab');
+      if (await previewButton.evaluate((element) => element === document.activeElement)) {
+        reachedPreviewButton = true;
+        break;
+      }
+    }
+
+    const previewButtonBox = await previewButton.boundingBox();
+    const overflowWidth = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+
+    expect(reachedPreviewButton).toBe(true);
+    expect(previewButtonBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(overflowWidth).toBeLessThanOrEqual(1);
   });
 });

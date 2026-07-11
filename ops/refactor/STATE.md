@@ -46297,3 +46297,23 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   the remaining offline/conflict/PHI-output state matrix; `FE-VISIT-001` remains Partial for broader conflict and
   manual screen-reader/zoom review. No push, deploy, external send, production-data mutation, migration application,
   or destructive operation occurred.
+
+## 2026-07-11 FE-PATIENT-LIST-001 / FE-QA-001 — populated patient-board accessibility evidence
+
+- current task / scope:
+  Extended the fixed patient-board route-mock introduced around the selected-preview work to cover the populated main
+  workspace without changing product behavior. The case uses the existing two-card DTO and authenticated local
+  session, audits the visible `main`, enables `forced-colors: active`, constrains the viewport to 768x512 as the
+  established 200%-equivalent proxy, reaches the first patient preview action using Tab only, verifies its 44px
+  target, and rejects document-level horizontal overflow. The existing desktop preview/mobile sheet identity and
+  detail-root assertions remain in the same focused suite. `gpt-image-2` was omitted because this is test-only
+  accessibility evidence and introduces no visual reconstruction.
+- validation / remaining:
+  Focused route-mocked Chromium passed 2/2: desktop/mobile selected-preview navigation plus populated patient-board
+  axe critical/serious 0, forced-colors, keyboard reachability, 44px action height, and 200%-equivalent overflow.
+  Exact ESLint/Prettier, 8 GB aggregate typecheck, frontend contract, client PHI-log, raw-state colors,
+  module-boundary, and diff checks passed. All seven FE-QA target screens now have responsive/axe/keyboard-or-zoom
+  browser evidence. `FE-QA-001` remains Partial for the cross-screen offline/conflict/PHI-output fixture matrix and
+  manual assistive-technology review. `FE-PATIENT-LIST-001` remains Partial for the bounded patient-board query/BFF and
+  real-data payload budget tracked by `PERF-DB-PATIENT-BOARD-CURSOR`. No product/API/DB/auth/authz/PHI/audit behavior,
+  push, deploy, external send, production-data mutation, migration application, or destructive operation occurred.
