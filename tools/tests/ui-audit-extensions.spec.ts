@@ -644,6 +644,30 @@ test.describe('ARIA and keyboard contracts', () => {
     expect(errors).toEqual([]);
   });
 
+  test('patient detail workspace has no critical or serious accessibility violations', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context, {
+      captureHttpErrors: false,
+    });
+    await openFirstPatientDetail(page);
+
+    const workspace = page.getByTestId('card-workspace');
+    await expect(workspace).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('patient-detail-tablist')).toBeVisible();
+
+    const results = await analyzeMainAccessibility(page);
+    const severe = results.violations.filter((violation) =>
+      ['critical', 'serious'].includes(violation.impact ?? ''),
+    );
+
+    await writeScreenshot(page, 'patient-detail-a11y');
+    expect(errors).toEqual([]);
+    expect(summarizeViolations(severe)).toEqual([]);
+  });
+
   test('patient movement fixture has no critical or serious accessibility violations', async ({
     context,
   }, testInfo) => {
