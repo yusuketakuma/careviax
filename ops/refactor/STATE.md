@@ -46096,3 +46096,23 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `bb92f4433` (`fix(API-CONTRACT-001): validate workflow preview payloads`) committed only the owned consumer,
   regression, schema ratchet, Plans, FE/BE inventory, and single-ledger paths. Harness-memory state and unrelated
   untracked files were excluded. No push was performed.
+
+## 2026-07-11 FE-INBOUND-001 / FE-QA-001 — inbound accessibility evidence
+
+- current task / scope:
+  Added authenticated browser coverage for the `/communications/inbound` main workspace without opening audited raw
+  detail or submitting intake data. The normal-color audit waits for the current inbox/intake/review workspace and
+  scans the complete visible `main`. A second Chromium case enables `forced-colors: active`, constrains the effective
+  viewport to 768x512, reaches the raw-intake textarea using Tab only, verifies its target height, and confirms zero
+  document-level horizontal overflow. `gpt-image-2` was omitted because this is test-only accessibility evidence and
+  introduces no visual reconstruction.
+- validation / remaining / commits:
+  Inbound Chromium passed 2/2: main axe critical/serious 0 and forced-colors/keyboard/200%-equivalent reachability.
+  Exact ESLint/Prettier, 8 GB aggregate typecheck, frontend contract, client PHI-log, raw-state colors,
+  module-boundary, and diff checks passed. Existing component coverage continues to prove raw text omission, audited
+  detail gating, review lifecycle, PHI-safe failures, and forbidden/empty separation; this browser slice does not claim
+  those server-side controls anew. `FE-INBOUND-001` remains Partial for broader detail/review state-matrix and manual
+  screen-reader/zoom evidence. `FE-QA-001` remains Partial for the other three screens plus offline/conflict and PHI
+  output fixtures. Commits `b8b0af5f8` and `753a7d414` contain only the owned Playwright audits. No product/API/DB/
+  schema/migration/auth/authz/PHI/audit behavior, push, deployment, external send, production-data mutation, or
+  destructive operation occurred.
