@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -82,7 +82,7 @@ import {
 } from '@/lib/reports/care-report-send-validation';
 import { inferCareReportTargetRole } from '@/lib/reports/care-report-target-role';
 import { cn } from '@/lib/utils';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 
 // --- Types ---
 
@@ -98,6 +98,38 @@ type DeliveryRecord = {
 
 const REPORT_EDIT_DISCARD_MESSAGE = '未保存の報告書編集があります。破棄して表示に戻りますか？';
 const REPORT_EDIT_SAVING_DESCRIPTION_ID = 'report-edit-saving-description';
+
+type ReportActionFailure = 'confirm' | 'send' | 'bulk-send';
+
+const REPORT_ACTION_FAILURES = {
+  confirm: {
+    event: 'care_report.confirm_draft_failed',
+    code: 'confirm',
+    title: '薬剤師確認の結果を確認できませんでした',
+    description:
+      '報告書を再読み込みして現在の状態を確認してください。確認操作は自動で再実行していません。',
+    retryLabel: '報告書を再読み込み',
+  },
+  send: {
+    event: 'care_report.send_failed',
+    code: 'send',
+    title: '送付の結果を確認できませんでした',
+    description:
+      '元の送付要求を同じ識別子で確認します。完了済みなら結果を返し、未到達の場合のみ元の送付として処理します。別の送付要求は作成しません。',
+    retryLabel: '同じ送付要求を確認',
+  },
+  'bulk-send': {
+    event: 'care_report.bulk_send_failed',
+    code: 'bulk-send',
+    title: '一括送付の結果を確認できませんでした',
+    description:
+      '元の一括送付要求を同じ識別子で確認します。完了済みなら結果を返し、未到達の場合のみ元の一括送付として処理します。別の送付要求は作成しません。',
+    retryLabel: '同じ一括送付要求を確認',
+  },
+} satisfies Record<
+  ReportActionFailure,
+  { event: string; code: string; title: string; description: string; retryLabel: string }
+>;
 
 type CareReport = {
   id: string;
@@ -156,12 +188,26 @@ type SendRequestData = SendFormData & {
   safety_ack: true;
 };
 
+type SendMutationInput = {
+  request: SendRequestData;
+  idempotencyKey: string;
+};
+
 // p0_28: 一括送付。共有先(複数)をまとめて送付する。
 type BulkSendRequestData = {
   recipients: SendFormData[];
   expected_updated_at: string;
   safety_ack: true;
 };
+
+type BulkSendMutationInput = {
+  request: BulkSendRequestData;
+  idempotencyKey: string;
+};
+
+type FailedReportSendAttempt =
+  | { action: 'send'; input: SendMutationInput }
+  | { action: 'bulk-send'; input: BulkSendMutationInput };
 
 // 共有先の送付候補(処方元医療機関 / 他職種マスター / 患者ケアチーム)
 type ShareTarget = {
@@ -290,6 +336,37 @@ function ReportDetailLoadingState() {
         <span className="sr-only">報告書詳細を読み込み中</span>
       </div>
     </PageScaffold>
+  );
+}
+
+function ReportActionFailureState({
+  action,
+  headingLevel,
+  onRefresh,
+  isRefreshing = false,
+}: {
+  action: ReportActionFailure;
+  headingLevel: 2 | 3 | 4;
+  onRefresh: () => void;
+  isRefreshing?: boolean;
+}) {
+  const failure = REPORT_ACTION_FAILURES[action];
+
+  return (
+    <ErrorState
+      variant="server"
+      size="inline"
+      headingLevel={headingLevel}
+      title={failure.title}
+      description={failure.description}
+      onRetry={onRefresh}
+      retryLabel={isRefreshing ? '確認中...' : failure.retryLabel}
+      retryVariant="outline"
+      retrySize="sm"
+      retryDisabled={isRefreshing}
+      live="assertive"
+      className="items-start px-3 py-4 text-left"
+    />
   );
 }
 
@@ -564,6 +641,10 @@ export default function ReportDetailPage() {
   });
   const [sendSafetyAck, setSendSafetyAck] = useState(false);
   const [sendFormErrors, setSendFormErrors] = useState<SendFormErrors>({});
+  const [actionFailure, setActionFailure] = useState<ReportActionFailure | null>(null);
+  const failedSendAttemptRef = useRef<FailedReportSendAttempt | null>(null);
+  const reconciliationInFlightRef = useRef(false);
+  const [isReconcilingReportAction, setIsReconcilingReportAction] = useState(false);
 
   // p0_28: 報告書コンポーザー(共有先の複数選択 + 送付前チェック)
   const [composerOpen, setComposerOpen] = useState(false);
@@ -629,25 +710,38 @@ export default function ReportDetailPage() {
       return readApiAcknowledgement(res, '薬剤師確認の保存に失敗しました');
     },
     onSuccess: () => {
+      setActionFailure(null);
       toast.success('薬剤師確認済みにしました');
       queryClient.invalidateQueries({ queryKey: ['care-report', id, orgId] });
       queryClient.invalidateQueries({ queryKey: ['care-reports'] });
     },
-    onError: (err: Error) => toast.error(messageFromError(err, '薬剤師確認の保存に失敗しました')),
+    onError: (error) => {
+      const failure = REPORT_ACTION_FAILURES.confirm;
+      clientLog.warn(failure.event, error, {
+        route: '/reports/:id',
+        entityType: 'care_report',
+        code: failure.code,
+      });
+      setActionFailure('confirm');
+    },
   });
 
   const sendMutation = useMutation({
-    mutationFn: async (formData: SendRequestData) => {
+    mutationFn: async ({ request, idempotencyKey }: SendMutationInput) => {
       const res = await fetch(buildCareReportApiPath(id, '/send'), {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId, {
-          'Idempotency-Key': createClientIdempotencyKey('care-report-send'),
+          'Idempotency-Key': idempotencyKey,
         }),
-        body: JSON.stringify(formData),
+        body: JSON.stringify(request),
       });
       return readApiAcknowledgement(res, '送付に失敗しました');
     },
     onSuccess: () => {
+      reconciliationInFlightRef.current = false;
+      setIsReconcilingReportAction(false);
+      failedSendAttemptRef.current = null;
+      setActionFailure(null);
       toast.success('報告書を送付しました');
       if (requestedSendDialogKey) {
         setDismissedSendDialogKey(requestedSendDialogKey);
@@ -664,22 +758,37 @@ export default function ReportDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['care-report', id, orgId] });
       queryClient.invalidateQueries({ queryKey: ['care-reports'] });
     },
-    onError: (err: Error) => toast.error(messageFromError(err, '送付に失敗しました')),
+    onError: (error, input) => {
+      reconciliationInFlightRef.current = false;
+      setIsReconcilingReportAction(false);
+      const failure = REPORT_ACTION_FAILURES.send;
+      failedSendAttemptRef.current = { action: 'send', input };
+      clientLog.warn(failure.event, error, {
+        route: '/reports/:id',
+        entityType: 'care_report',
+        code: failure.code,
+      });
+      setActionFailure('send');
+    },
   });
 
   // p0_28: 一括送付。選択した共有先すべてに送付する。
   const bulkSendMutation = useMutation({
-    mutationFn: async (requestData: BulkSendRequestData) => {
+    mutationFn: async ({ request, idempotencyKey }: BulkSendMutationInput) => {
       const res = await fetch(buildCareReportApiPath(id, '/send'), {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId, {
-          'Idempotency-Key': createClientIdempotencyKey('care-report-send'),
+          'Idempotency-Key': idempotencyKey,
         }),
-        body: JSON.stringify(requestData),
+        body: JSON.stringify(request),
       });
       return readApiAcknowledgement(res, '一括送付に失敗しました');
     },
     onSuccess: () => {
+      reconciliationInFlightRef.current = false;
+      setIsReconcilingReportAction(false);
+      failedSendAttemptRef.current = null;
+      setActionFailure(null);
       toast.success('報告書を共有先へ送付しました');
       setComposerOpen(false);
       setSelectedTargetIds([]);
@@ -687,10 +796,92 @@ export default function ReportDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['care-report', id, orgId] });
       queryClient.invalidateQueries({ queryKey: ['care-reports'] });
     },
-    onError: (err: Error) => toast.error(messageFromError(err, '一括送付に失敗しました')),
+    onError: (error, input) => {
+      reconciliationInFlightRef.current = false;
+      setIsReconcilingReportAction(false);
+      const failure = REPORT_ACTION_FAILURES['bulk-send'];
+      failedSendAttemptRef.current = { action: 'bulk-send', input };
+      clientLog.warn(failure.event, error, {
+        route: '/reports/:id',
+        entityType: 'care_report',
+        code: failure.code,
+      });
+      setActionFailure('bulk-send');
+    },
   });
 
+  const reportActionPending =
+    isReconcilingReportAction ||
+    confirmDraftMutation.isPending ||
+    sendMutation.isPending ||
+    bulkSendMutation.isPending;
+  const reportActionBlocked = reportActionPending || actionFailure !== null;
+
+  async function reconcileReportAction() {
+    if (reconciliationInFlightRef.current || reportActionPending) return;
+    const failedSendAttempt = failedSendAttemptRef.current;
+    if (actionFailure === 'send') {
+      if (failedSendAttempt?.action === 'send') {
+        reconciliationInFlightRef.current = true;
+        setIsReconcilingReportAction(true);
+        sendMutation.mutate(failedSendAttempt.input);
+      } else {
+        clientLog.warn('care_report.idempotency_reconciliation_unavailable', undefined, {
+          route: '/reports/:id',
+          entityType: 'care_report',
+          code: 'send',
+        });
+      }
+      return;
+    }
+    if (actionFailure === 'bulk-send') {
+      if (failedSendAttempt?.action === 'bulk-send') {
+        reconciliationInFlightRef.current = true;
+        setIsReconcilingReportAction(true);
+        bulkSendMutation.mutate(failedSendAttempt.input);
+      } else {
+        clientLog.warn('care_report.idempotency_reconciliation_unavailable', undefined, {
+          route: '/reports/:id',
+          entityType: 'care_report',
+          code: 'bulk-send',
+        });
+      }
+      return;
+    }
+
+    reconciliationInFlightRef.current = true;
+    setIsReconcilingReportAction(true);
+    try {
+      const result = await refetch();
+      if (result.error) {
+        clientLog.warn('care_report.action_status_refresh_failed', result.error, {
+          route: '/reports/:id',
+          entityType: 'care_report',
+          code: 'status-refresh',
+        });
+        return;
+      }
+      setActionFailure(null);
+    } catch (error) {
+      clientLog.warn('care_report.action_status_refresh_failed', error, {
+        route: '/reports/:id',
+        entityType: 'care_report',
+        code: 'status-refresh',
+      });
+    } finally {
+      reconciliationInFlightRef.current = false;
+      setIsReconcilingReportAction(false);
+    }
+  }
+
+  function handleConfirmDraft() {
+    if (reportActionBlocked) return;
+    setActionFailure(null);
+    confirmDraftMutation.mutate();
+  }
+
   function handleSend() {
+    if (reportActionBlocked) return;
     if (!report) {
       toast.error('報告書を読み込んでから送付してください');
       return;
@@ -718,14 +909,19 @@ export default function ReportDetailPage() {
       return;
     }
     if (!validation.ok) return;
+    setActionFailure(null);
     sendMutation.mutate({
-      ...validation.recipient,
-      expected_updated_at: report.updated_at,
-      safety_ack: true,
+      request: {
+        ...validation.recipient,
+        expected_updated_at: report.updated_at,
+        safety_ack: true,
+      },
+      idempotencyKey: createClientIdempotencyKey('care-report-send'),
     });
   }
 
   function handleBulkSend(targets: ShareTarget[]) {
+    if (reportActionBlocked) return;
     if (!report) {
       toast.error('報告書を読み込んでから送付してください');
       return;
@@ -746,15 +942,19 @@ export default function ReportDetailPage() {
       toast.error('送付前チェックをすべて確認してください');
       return;
     }
+    setActionFailure(null);
     bulkSendMutation.mutate({
-      recipients: selectedTargets.map((target) => ({
-        channel: target.channel,
-        recipient_name: target.recipient_name,
-        recipient_contact: target.recipient_contact,
-        recipient_role: target.recipient_role,
-      })),
-      expected_updated_at: report.updated_at,
-      safety_ack: true,
+      request: {
+        recipients: selectedTargets.map((target) => ({
+          channel: target.channel,
+          recipient_name: target.recipient_name,
+          recipient_contact: target.recipient_contact,
+          recipient_role: target.recipient_role,
+        })),
+        expected_updated_at: report.updated_at,
+        safety_ack: true,
+      },
+      idempotencyKey: createClientIdempotencyKey('care-report-send'),
     });
   }
 
@@ -762,7 +962,7 @@ export default function ReportDetailPage() {
     return <ReportDetailLoadingState />;
   }
 
-  if (error) {
+  if (error && (!report || !actionFailure)) {
     return (
       <PageScaffold>
         <WorkflowBackLink href="/reports" label="報告書一覧へ戻る" className="mb-3" />
@@ -892,6 +1092,9 @@ export default function ReportDetailPage() {
   const effectiveSendForm =
     isQuerySendDialogOpen && requestedSendForm ? requestedSendForm : sendForm;
   const isSendDialogOpen = sendDialogOpen || shouldOpenSendDialogFromQuery;
+  const showDeliveryFailureOutsideActionSurface =
+    (actionFailure === 'send' && !isSendDialogOpen) ||
+    (actionFailure === 'bulk-send' && !composerOpen);
   const recipientNameForConfirmation = effectiveSendForm.recipient_name.trim() || '未入力';
   const recipientContactForConfirmation = effectiveSendForm.recipient_contact.trim() || '未入力';
   const channelLabel = CHANNEL_LABELS[effectiveSendForm.channel] ?? effectiveSendForm.channel;
@@ -1052,7 +1255,7 @@ export default function ReportDetailPage() {
     canUseExternalShare &&
     selectedShareTargets.length > 0 &&
     allPreSendChecksDone &&
-    !bulkSendMutation.isPending;
+    !reportActionBlocked;
   const shareTargetsLoading =
     externalProfessionalSuggestionsQuery.isLoading ||
     externalProfessionalSuggestionsQuery.isFetching;
@@ -1088,7 +1291,7 @@ export default function ReportDetailPage() {
           <Button
             variant="outline"
             size="sm"
-            disabled={shareTargetsLoading}
+            disabled={shareTargetsLoading || reportActionBlocked}
             onClick={() => {
               // 既定で全候補を選択し、共有先の取りこぼしを防ぐ。
               setSelectedTargetIds(shareTargetIds);
@@ -1107,6 +1310,7 @@ export default function ReportDetailPage() {
         ) : null}
         <Button
           size="sm"
+          disabled={reportActionBlocked}
           onClick={() => {
             if (prescriberInstitutionSuggestion) {
               applyInstitutionSuggestion();
@@ -1402,6 +1606,14 @@ export default function ReportDetailPage() {
                       {composerChecksError}
                     </p>
                   ) : null}
+                  {actionFailure === 'bulk-send' ? (
+                    <ReportActionFailureState
+                      action="bulk-send"
+                      headingLevel={4}
+                      onRefresh={() => void reconcileReportAction()}
+                      isRefreshing={isReconcilingReportAction}
+                    />
+                  ) : null}
                   <Button
                     className="w-full min-h-[44px] sm:min-h-11"
                     onClick={() => handleBulkSend(shareTargets)}
@@ -1509,19 +1721,30 @@ export default function ReportDetailPage() {
 
             {/* p1_04: 下書きは AI 下書きレビュー(5見出し+宛先別プレビュー+薬剤師確認)を先に出す */}
             {report.status === 'draft' && !isEditingReport && canEditReport ? (
-              <ReportAiDraftReview
-                content={
-                  hasPhysicianContent || hasCareManagerContent || hasAudienceContent
-                    ? (report.content as
-                        | PhysicianReportContent
-                        | CareManagerReportContent
-                        | AudienceReportContent)
-                    : null
-                }
-                reportType={report.report_type}
-                confirmPending={confirmDraftMutation.isPending}
-                onConfirm={() => confirmDraftMutation.mutate()}
-              />
+              <>
+                {actionFailure === 'confirm' ? (
+                  <ReportActionFailureState
+                    action="confirm"
+                    headingLevel={2}
+                    onRefresh={() => void reconcileReportAction()}
+                    isRefreshing={isReconcilingReportAction}
+                  />
+                ) : null}
+                <ReportAiDraftReview
+                  content={
+                    hasPhysicianContent || hasCareManagerContent || hasAudienceContent
+                      ? (report.content as
+                          | PhysicianReportContent
+                          | CareManagerReportContent
+                          | AudienceReportContent)
+                      : null
+                  }
+                  reportType={report.report_type}
+                  confirmPending={reportActionPending}
+                  confirmDisabled={actionFailure !== null}
+                  onConfirm={handleConfirmDraft}
+                />
+              </>
             ) : null}
             {report.status === 'draft' && !canEditReport ? (
               <Alert className="border-transparent bg-state-confirm/10 text-state-confirm">
@@ -1584,6 +1807,15 @@ export default function ReportDetailPage() {
                 </AlertDescription>
               </Alert>
             )}
+
+            {showDeliveryFailureOutsideActionSurface && actionFailure ? (
+              <ReportActionFailureState
+                action={actionFailure}
+                headingLevel={2}
+                onRefresh={() => void reconcileReportAction()}
+                isRefreshing={isReconcilingReportAction}
+              />
+            ) : null}
 
             {/* Delivery history */}
             <Card>
@@ -1656,6 +1888,15 @@ export default function ReportDetailPage() {
             <DialogHeader>
               <DialogTitle>{isRetryableReport ? '報告書を再送' : '報告書を送付'}</DialogTitle>
             </DialogHeader>
+
+            {actionFailure === 'send' ? (
+              <ReportActionFailureState
+                action="send"
+                headingLevel={3}
+                onRefresh={() => void reconcileReportAction()}
+                isRefreshing={isReconcilingReportAction}
+              />
+            ) : null}
 
             <div className="space-y-4 py-2">
               <Alert className="border-transparent bg-state-confirm/10 text-state-confirm">
@@ -1925,11 +2166,11 @@ export default function ReportDetailPage() {
               <Button
                 variant="outline"
                 onClick={() => setSendDialogOpen(false)}
-                disabled={sendMutation.isPending}
+                disabled={reportActionPending}
               >
                 キャンセル
               </Button>
-              <Button onClick={handleSend} disabled={sendMutation.isPending}>
+              <Button onClick={handleSend} disabled={reportActionBlocked}>
                 <Send className="mr-1.5 size-3.5" aria-hidden="true" />
                 {sendMutation.isPending
                   ? isRetryableReport

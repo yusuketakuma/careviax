@@ -6,6 +6,7 @@ export type StateAction = {
   label: string;
   href?: string;
   onClick?: () => void;
+  disabled?: boolean;
   variant?: 'default' | 'outline' | 'secondary' | 'ghost' | 'destructive' | 'link';
   size?: 'default' | 'sm' | 'lg';
 };
@@ -23,6 +24,14 @@ export function StateActionButton({
   const size = action.size ?? defaultSize;
 
   if (action.href) {
+    if (action.disabled) {
+      return (
+        <Button type="button" variant={variant} size={size} disabled>
+          {action.label}
+        </Button>
+      );
+    }
+
     return (
       <Button asChild type="button" variant={variant} size={size}>
         <Link href={action.href}>{action.label}</Link>
@@ -31,7 +40,13 @@ export function StateActionButton({
   }
 
   return (
-    <Button type="button" variant={variant} size={size} onClick={action.onClick}>
+    <Button
+      type="button"
+      variant={variant}
+      size={size}
+      onClick={action.onClick}
+      disabled={action.disabled}
+    >
       {action.label}
     </Button>
   );

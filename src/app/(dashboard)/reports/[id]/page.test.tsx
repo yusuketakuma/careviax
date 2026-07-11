@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -14,6 +14,8 @@ const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
 const sendMutateMock = vi.hoisted(() => vi.fn());
 const getReportDetailShortcutLinksMock = vi.hoisted(() => vi.fn());
+const clientLogWarnMock = vi.hoisted(() => vi.fn());
+const reportRefetchMock = vi.hoisted(() => vi.fn());
 const buildOrgHeadersMock = vi.hoisted(() =>
   vi.fn((orgId: string, extra?: Record<string, string>) => ({ 'x-org-id': orgId, ...extra })),
 );
@@ -44,6 +46,10 @@ vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
   useMutation: useMutationMock,
   useQueryClient: useQueryClientMock,
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 vi.mock('sonner', () => ({
@@ -203,8 +209,13 @@ type QueryConfig = {
 
 type MutationConfig<TInput = unknown> = {
   mutationFn?: (input?: TInput) => Promise<unknown>;
-  onError?: (error: unknown) => void;
+  onSuccess?: () => void;
+  onError?: (error: unknown, input?: TInput) => void;
 };
+
+function sendMutationInput<T>(request: T) {
+  return { request, idempotencyKey: 'care-report-send:test-key' };
+}
 
 function mockReport() {
   return {
@@ -246,6 +257,7 @@ function mockReport() {
 describe('ReportDetailPage send safety dialog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    reportRefetchMock.mockResolvedValue({ error: null });
     useOrgIdMock.mockReturnValue('org_1');
     useParamsMock.mockReturnValue({ id: 'report_1' });
     useSearchParamsMock.mockReturnValue(new URLSearchParams());
@@ -272,6 +284,8 @@ describe('ReportDetailPage send safety dialog', () => {
       return {
         data: { data: mockReport() },
         isLoading: false,
+        error: null,
+        refetch: reportRefetchMock,
       };
     });
   });
@@ -427,12 +441,15 @@ describe('ReportDetailPage send safety dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '送付する' }));
 
     expect(sendMutateMock).toHaveBeenCalledWith({
-      channel: 'email',
-      recipient_name: '山田 太郎',
-      recipient_contact: 'doctor@example.com',
-      recipient_role: 'physician',
-      expected_updated_at: '2026-05-12T00:00:00.000Z',
-      safety_ack: true,
+      request: {
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        expected_updated_at: '2026-05-12T00:00:00.000Z',
+        safety_ack: true,
+      },
+      idempotencyKey: expect.any(String),
     });
   });
 
@@ -510,12 +527,15 @@ describe('ReportDetailPage send safety dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '送付する' }));
 
     expect(sendMutateMock).toHaveBeenCalledWith({
-      channel: 'email',
-      recipient_name: '鈴木 医師',
-      recipient_contact: 'doctor2@example.com',
-      recipient_role: 'physician',
-      expected_updated_at: '2026-05-12T00:00:00.000Z',
-      safety_ack: true,
+      request: {
+        channel: 'email',
+        recipient_name: '鈴木 医師',
+        recipient_contact: 'doctor2@example.com',
+        recipient_role: 'physician',
+        expected_updated_at: '2026-05-12T00:00:00.000Z',
+        safety_ack: true,
+      },
+      idempotencyKey: expect.any(String),
     });
   });
 
@@ -554,12 +574,15 @@ describe('ReportDetailPage send safety dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '再送する' }));
 
     expect(sendMutateMock).toHaveBeenCalledWith({
-      channel: 'email',
-      recipient_name: '山田 太郎',
-      recipient_contact: 'doctor@example.com',
-      recipient_role: 'physician',
-      expected_updated_at: '2026-05-12T00:00:00.000Z',
-      safety_ack: true,
+      request: {
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        expected_updated_at: '2026-05-12T00:00:00.000Z',
+        safety_ack: true,
+      },
+      idempotencyKey: expect.any(String),
     });
   });
 
@@ -612,12 +635,15 @@ describe('ReportDetailPage send safety dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '再送する' }));
 
     expect(sendMutateMock).toHaveBeenCalledWith({
-      channel: 'fax',
-      recipient_name: '山田 太郎',
-      recipient_contact: '03-1111-2222',
-      recipient_role: 'physician',
-      expected_updated_at: '2026-05-12T00:00:00.000Z',
-      safety_ack: true,
+      request: {
+        channel: 'fax',
+        recipient_name: '山田 太郎',
+        recipient_contact: '03-1111-2222',
+        recipient_role: 'physician',
+        expected_updated_at: '2026-05-12T00:00:00.000Z',
+        safety_ack: true,
+      },
+      idempotencyKey: expect.any(String),
     });
   });
 
@@ -899,26 +925,30 @@ describe('ReportDetailPage send safety dialog', () => {
 
     render(<ReportDetailPage />);
 
-    await mutationConfigs[1]?.mutationFn?.({
-      channel: 'email',
-      recipient_name: '山田 太郎',
-      recipient_contact: 'doctor@example.com',
-      recipient_role: 'physician',
-      expected_updated_at: '2026-05-12T00:00:00.000Z',
-      safety_ack: true,
-    });
-    await mutationConfigs[2]?.mutationFn?.({
-      recipients: [
-        {
-          channel: 'fax',
-          recipient_name: '青葉内科',
-          recipient_contact: '03-1111-1111',
-          recipient_role: 'physician',
-        },
-      ],
-      expected_updated_at: '2026-05-12T00:00:00.000Z',
-      safety_ack: true,
-    });
+    await mutationConfigs[1]?.mutationFn?.(
+      sendMutationInput({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        expected_updated_at: '2026-05-12T00:00:00.000Z',
+        safety_ack: true,
+      }),
+    );
+    await mutationConfigs[2]?.mutationFn?.(
+      sendMutationInput({
+        recipients: [
+          {
+            channel: 'fax',
+            recipient_name: '青葉内科',
+            recipient_contact: '03-1111-1111',
+            recipient_role: 'physician',
+          },
+        ],
+        expected_updated_at: '2026-05-12T00:00:00.000Z',
+        safety_ack: true,
+      }),
+    );
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -1139,8 +1169,8 @@ describe('ReportDetailPage send safety dialog', () => {
 
     render(<ReportDetailPage />);
 
-    await mutationConfigs[1]?.mutationFn?.(singleBody);
-    await mutationConfigs[2]?.mutationFn?.(bulkBody);
+    await mutationConfigs[1]?.mutationFn?.(sendMutationInput(singleBody));
+    await mutationConfigs[2]?.mutationFn?.(sendMutationInput(bulkBody));
 
     for (const call of fetchMock.mock.calls) {
       const url = String(call[0]);
@@ -1237,28 +1267,32 @@ describe('ReportDetailPage send safety dialog', () => {
 
     await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow('確認保存は競合しています');
     await expect(
-      mutationConfigs[1]?.mutationFn?.({
-        channel: 'email',
-        recipient_name: '山田 太郎',
-        recipient_contact: 'doctor@example.com',
-        recipient_role: 'physician',
-        expected_updated_at: '2026-05-12T00:00:00.000Z',
-        safety_ack: true,
-      }),
+      mutationConfigs[1]?.mutationFn?.(
+        sendMutationInput({
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          expected_updated_at: '2026-05-12T00:00:00.000Z',
+          safety_ack: true,
+        }),
+      ),
     ).rejects.toThrow('送付先が無効です');
     await expect(
-      mutationConfigs[2]?.mutationFn?.({
-        recipients: [
-          {
-            channel: 'fax',
-            recipient_name: '青葉内科',
-            recipient_contact: '03-1111-1111',
-            recipient_role: 'physician',
-          },
-        ],
-        expected_updated_at: '2026-05-12T00:00:00.000Z',
-        safety_ack: true,
-      }),
+      mutationConfigs[2]?.mutationFn?.(
+        sendMutationInput({
+          recipients: [
+            {
+              channel: 'fax',
+              recipient_name: '青葉内科',
+              recipient_contact: '03-1111-1111',
+              recipient_role: 'physician',
+            },
+          ],
+          expected_updated_at: '2026-05-12T00:00:00.000Z',
+          safety_ack: true,
+        }),
+      ),
     ).rejects.toThrow('一括送付は締切済みです');
   });
 
@@ -1288,32 +1322,90 @@ describe('ReportDetailPage send safety dialog', () => {
       '薬剤師確認の保存に失敗しました',
     );
     await expect(
-      mutationConfigs[1]?.mutationFn?.({
-        channel: 'email',
-        recipient_name: '山田 太郎',
-        recipient_contact: 'doctor@example.com',
-        recipient_role: 'physician',
-        expected_updated_at: '2026-05-12T00:00:00.000Z',
-        safety_ack: true,
-      }),
+      mutationConfigs[1]?.mutationFn?.(
+        sendMutationInput({
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          expected_updated_at: '2026-05-12T00:00:00.000Z',
+          safety_ack: true,
+        }),
+      ),
     ).rejects.toThrow('送付に失敗しました');
     await expect(
-      mutationConfigs[2]?.mutationFn?.({
-        recipients: [
-          {
-            channel: 'fax',
-            recipient_name: '青葉内科',
-            recipient_contact: '03-1111-1111',
-            recipient_role: 'physician',
-          },
-        ],
-        expected_updated_at: '2026-05-12T00:00:00.000Z',
-        safety_ack: true,
-      }),
+      mutationConfigs[2]?.mutationFn?.(
+        sendMutationInput({
+          recipients: [
+            {
+              channel: 'fax',
+              recipient_name: '青葉内科',
+              recipient_contact: '03-1111-1111',
+              recipient_role: 'physician',
+            },
+          ],
+          expected_updated_at: '2026-05-12T00:00:00.000Z',
+          safety_ack: true,
+        }),
+      ),
     ).rejects.toThrow('一括送付に失敗しました');
   });
 
-  it('keeps report mutation server messages and uses operation fallbacks for non-Error failures', () => {
+  it('keeps pharmacist confirmation failures PHI-safe and refreshes state without another write', async () => {
+    const mutationConfigs: Array<MutationConfig> = [];
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: sendMutateMock,
+        isPending: false,
+      };
+    });
+    useQueryMock.mockImplementation((options: QueryConfig) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      return {
+        data: { data: { ...mockReport(), status: 'draft' } },
+        isLoading: false,
+        error: null,
+        refetch: reportRefetchMock,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    const poisonMessage = '患者 佐藤花子 / FAX 03-1111-1111 / token=secret';
+    act(() => {
+      mutationConfigs[0]?.onError?.(new Error(poisonMessage));
+    });
+
+    const title = '薬剤師確認の結果を確認できませんでした';
+    const actionFailure = screen.getByText(title).closest('[role="alert"]');
+    expect(actionFailure?.textContent).toContain('確認操作は自動で再実行していません。');
+    expect(actionFailure?.textContent).not.toContain(poisonMessage);
+    expect(screen.queryByText(poisonMessage)).toBeNull();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'care_report.confirm_draft_failed',
+      expect.any(Error),
+      { route: '/reports/:id', entityType: 'care_report', code: 'confirm' },
+    );
+    const confirmButton = screen.getByRole('button', { name: '薬剤師確認済みにする' });
+    expect((confirmButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(confirmButton);
+    expect(sendMutateMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '報告書を再読み込み' }));
+    await waitFor(() => expect(reportRefetchMock).toHaveBeenCalledTimes(1));
+    expect(sendMutateMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByText(title)).toBeNull());
+    expect(
+      (screen.getByRole('button', { name: '薬剤師確認済みにする' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it('keeps direct-send failures PHI-safe and confirms the same keyed request without a new send', async () => {
     const mutationConfigs: Array<MutationConfig> = [];
     useMutationMock.mockImplementation((config: MutationConfig) => {
       mutationConfigs.push(config);
@@ -1325,19 +1417,176 @@ describe('ReportDetailPage send safety dialog', () => {
 
     render(<ReportDetailPage />);
 
-    mutationConfigs[0]?.onError?.(new Error('確認保存は競合しています'));
-    mutationConfigs[1]?.onError?.(new Error('送付先が無効です'));
-    mutationConfigs[2]?.onError?.(new Error('一括送付は締切済みです'));
-    expect(toast.error).toHaveBeenCalledWith('確認保存は競合しています');
-    expect(toast.error).toHaveBeenCalledWith('送付先が無効です');
-    expect(toast.error).toHaveBeenCalledWith('一括送付は締切済みです');
+    fireEvent.click(screen.getByRole('button', { name: '送付' }));
+    fireEvent.change(screen.getByPlaceholderText('例: 山田 太郎 先生'), {
+      target: { value: '山田 太郎' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('メールアドレスまたはFAX番号'), {
+      target: { value: 'doctor@example.com' },
+    });
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: '患者、訪問日、報告書種別、送付先氏名、連絡先、送付チャネルを確認しました',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '送付する' }));
+    const failedSendInput = sendMutateMock.mock.calls[0]?.[0];
+    expect(failedSendInput).toEqual({
+      request: {
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        expected_updated_at: '2026-05-12T00:00:00.000Z',
+        safety_ack: true,
+      },
+      idempotencyKey: expect.stringMatching(/^care-report-send:/),
+    });
 
-    mutationConfigs[0]?.onError?.('confirm-failure');
-    mutationConfigs[1]?.onError?.('send-failure');
-    mutationConfigs[2]?.onError?.('bulk-send-failure');
-    expect(toast.error).toHaveBeenCalledWith('薬剤師確認の保存に失敗しました');
-    expect(toast.error).toHaveBeenCalledWith('送付に失敗しました');
-    expect(toast.error).toHaveBeenCalledWith('一括送付に失敗しました');
+    const sendPoisonMessage = '患者 佐藤花子 / recipient@example.com / token=secret';
+    act(() => {
+      mutationConfigs[1]?.onError?.(new Error(sendPoisonMessage), failedSendInput);
+    });
+
+    const sendTitle = '送付の結果を確認できませんでした';
+    const sendFailure = screen.getByText(sendTitle).closest('[role="alert"]');
+    expect(sendFailure?.textContent).toContain('別の送付要求は作成しません。');
+    expect(sendFailure?.textContent).not.toContain(sendPoisonMessage);
+    expect(screen.queryByText(sendPoisonMessage)).toBeNull();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(clientLogWarnMock).toHaveBeenCalledWith('care_report.send_failed', expect.any(Error), {
+      route: '/reports/:id',
+      entityType: 'care_report',
+      code: 'send',
+    });
+    const directSendButton = screen.getByRole('button', { name: '送付する' });
+    expect((directSendButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(directSendButton);
+    expect(sendMutateMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '同じ送付要求を確認' }));
+    expect(reportRefetchMock).not.toHaveBeenCalled();
+    expect(sendMutateMock).toHaveBeenCalledTimes(2);
+    expect(sendMutateMock).toHaveBeenLastCalledWith(failedSendInput);
+    const reconciliationButton = screen.getByRole('button', { name: '確認中...' });
+    expect((reconciliationButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(reconciliationButton);
+    expect(sendMutateMock).toHaveBeenCalledTimes(2);
+    act(() => {
+      mutationConfigs[1]?.onSuccess?.();
+    });
+    await waitFor(() => expect(screen.queryByText(sendTitle)).toBeNull());
+    expect(screen.queryByRole('dialog', { name: '報告書を送付' })).toBeNull();
+  });
+
+  it('keeps bulk-send failures PHI-safe and confirms the same keyed request without a new send', async () => {
+    const mutationConfigs: Array<MutationConfig> = [];
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: sendMutateMock,
+        isPending: false,
+      };
+    });
+    useQueryMock.mockImplementation((options: QueryConfig) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'professional_1',
+                name: '鈴木 医師',
+                profession_type: 'physician',
+                organization_name: '青葉内科',
+                email: 'doctor@example.com',
+                fax: null,
+                phone: '03-0000-0000',
+              },
+            ],
+          },
+          isLoading: false,
+        };
+      }
+      return {
+        data: { data: mockReport() },
+        isLoading: false,
+        error: null,
+        refetch: reportRefetchMock,
+      };
+    });
+
+    render(<ReportDetailPage />);
+    fireEvent.click(screen.getByRole('button', { name: '共有を作成' }));
+    for (const label of [
+      '薬剤師確認済み',
+      '宛先が設定済み',
+      '添付資料あり',
+      '患者情報の出しすぎなし',
+    ]) {
+      fireEvent.click(screen.getByLabelText(label));
+    }
+
+    const bulkSubmitButton = screen.getByRole('button', {
+      name: '選択した共有先1件へ一括送付',
+    });
+    expect((bulkSubmitButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(bulkSubmitButton);
+    const failedBulkInput = sendMutateMock.mock.calls[0]?.[0];
+    expect(failedBulkInput).toEqual({
+      request: {
+        recipients: [
+          {
+            channel: 'email',
+            recipient_name: '鈴木 医師',
+            recipient_contact: 'doctor@example.com',
+            recipient_role: 'physician',
+          },
+        ],
+        expected_updated_at: '2026-05-12T00:00:00.000Z',
+        safety_ack: true,
+      },
+      idempotencyKey: expect.stringMatching(/^care-report-send:/),
+    });
+
+    const bulkPoisonMessage = '患者 佐藤花子 / FAX 03-2222-2222 / token=secret';
+    act(() => {
+      mutationConfigs[2]?.onError?.(new Error(bulkPoisonMessage), failedBulkInput);
+    });
+
+    const bulkTitle = '一括送付の結果を確認できませんでした';
+    const bulkFailure = screen.getByText(bulkTitle).closest('[role="alert"]');
+    expect(bulkFailure?.textContent).toContain('別の送付要求は作成しません。');
+    expect(bulkFailure?.textContent).not.toContain(bulkPoisonMessage);
+    expect(screen.queryByText(bulkPoisonMessage)).toBeNull();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'care_report.bulk_send_failed',
+      expect.any(Error),
+      { route: '/reports/:id', entityType: 'care_report', code: 'bulk-send' },
+    );
+    expect((bulkSubmitButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(bulkSubmitButton);
+    expect(sendMutateMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '同じ一括送付要求を確認' }));
+    expect(reportRefetchMock).not.toHaveBeenCalled();
+    expect(sendMutateMock).toHaveBeenCalledTimes(2);
+    expect(sendMutateMock).toHaveBeenLastCalledWith(failedBulkInput);
+
+    act(() => {
+      mutationConfigs[2]?.onError?.(new Error('同一要求は処理中です'), failedBulkInput);
+    });
+    expect(screen.getByText(bulkTitle)).toBeTruthy();
+    expect((bulkSubmitButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '同じ一括送付要求を確認' }));
+    expect(sendMutateMock).toHaveBeenCalledTimes(3);
+    expect(sendMutateMock).toHaveBeenLastCalledWith(failedBulkInput);
+    act(() => {
+      mutationConfigs[2]?.onSuccess?.();
+    });
+    await waitFor(() => expect(screen.queryByText(bulkTitle)).toBeNull());
+    expect(screen.queryByRole('button', { name: '選択した共有先1件へ一括送付' })).toBeNull();
   });
 
   it.each(['.', '..'])(
@@ -1382,21 +1631,25 @@ describe('ReportDetailPage send safety dialog', () => {
       await expect(detailQuery?.queryFn?.()).rejects.toThrow(RangeError);
       await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(RangeError);
       await expect(
-        mutationConfigs[1]?.mutationFn?.({
-          channel: 'email',
-          recipient_name: '山田 太郎',
-          recipient_contact: 'doctor@example.com',
-          recipient_role: 'physician',
-          expected_updated_at: '2026-05-12T00:00:00.000Z',
-          safety_ack: true,
-        }),
+        mutationConfigs[1]?.mutationFn?.(
+          sendMutationInput({
+            channel: 'email',
+            recipient_name: '山田 太郎',
+            recipient_contact: 'doctor@example.com',
+            recipient_role: 'physician',
+            expected_updated_at: '2026-05-12T00:00:00.000Z',
+            safety_ack: true,
+          }),
+        ),
       ).rejects.toThrow(RangeError);
       await expect(
-        mutationConfigs[2]?.mutationFn?.({
-          recipients: [],
-          expected_updated_at: '2026-05-12T00:00:00.000Z',
-          safety_ack: true,
-        }),
+        mutationConfigs[2]?.mutationFn?.(
+          sendMutationInput({
+            recipients: [],
+            expected_updated_at: '2026-05-12T00:00:00.000Z',
+            safety_ack: true,
+          }),
+        ),
       ).rejects.toThrow(RangeError);
       expect(fetchMock).not.toHaveBeenCalled();
     },

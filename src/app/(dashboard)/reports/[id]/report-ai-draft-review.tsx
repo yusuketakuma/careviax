@@ -95,6 +95,7 @@ type ReportAiDraftReviewProps = {
   content: AiDraftContent | null;
   reportType: string;
   confirmPending: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
 };
 
@@ -102,6 +103,7 @@ export function ReportAiDraftReview({
   content,
   reportType,
   confirmPending,
+  confirmDisabled = false,
   onConfirm,
 }: ReportAiDraftReviewProps) {
   const sections = buildAiDraftSections(content);
@@ -165,7 +167,7 @@ export function ReportAiDraftReview({
         <Button
           type="button"
           className="mt-5 min-h-11 w-full"
-          disabled={confirmPending}
+          disabled={confirmPending || confirmDisabled}
           onClick={onConfirm}
         >
           {confirmPending ? '確認中...' : '薬剤師確認済みにする'}

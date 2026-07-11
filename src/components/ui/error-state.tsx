@@ -38,6 +38,8 @@ type ErrorStateProps = {
   retryVariant?: StateAction['variant'];
   /** onRetry から描画する主アクションのボタン size。既定は ErrorState の default。 */
   retrySize?: StateAction['size'];
+  /** retry 中など、同じ失敗操作を並列に開始してはいけない間は再試行を無効化する。 */
+  retryDisabled?: boolean;
   size?: 'inline' | 'page';
   headingLevel?: StateHeadingLevel;
   live?: ErrorStateLive;
@@ -103,6 +105,7 @@ export function ErrorState({
   retryLabel = '再試行',
   retryVariant,
   retrySize,
+  retryDisabled = false,
   size = 'inline',
   headingLevel,
   live = 'polite',
@@ -128,6 +131,7 @@ export function ErrorState({
         onClick: onRetry,
         ...(retryVariant ? { variant: retryVariant } : {}),
         ...(retrySize ? { size: retrySize } : {}),
+        ...(retryDisabled ? { disabled: true } : {}),
       }
     : undefined;
   const resolvedAction = action ?? retryAction;

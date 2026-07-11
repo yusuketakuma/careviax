@@ -117,6 +117,16 @@ describe('ErrorState', () => {
     expect(button.className).toContain('sm:h-7');
   });
 
+  it('can disable a retry while the same recovery action is already in flight', () => {
+    const onRetry = vi.fn();
+    render(<ErrorState title="取得失敗" onRetry={onRetry} retryDisabled />);
+
+    const button = screen.getByRole('button', { name: '再試行' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
   it('uses the shared button styling for link actions', () => {
     render(
       <ErrorState
