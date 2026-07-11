@@ -1,3 +1,4 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
@@ -460,7 +461,8 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
 export const GET: typeof authenticatedGET = async (req, routeContext) => {
   try {
     return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     return withSensitiveNoStore(internalError());
   }
 };

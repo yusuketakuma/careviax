@@ -46178,3 +46178,27 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `47586a637` (`fix(FE-PATIENT-LIST-001): align patient detail links`) committed only the patient-board component,
   unit/browser regressions, Plans reconciliation, and single-ledger evidence. Harness-memory state and unrelated
   untracked files were excluded. No push was performed.
+
+## 2026-07-11 ROUTE-CTRLFLOW-RETHROW-001 — preserve Next.js route control flow
+
+- current task / root cause:
+  Ten API route files wrapped authenticated or sensitive reads in broad `catch` blocks that converted every thrown
+  value to a sanitized no-store 500. Next.js 16.2.9 documents that framework control-flow errors such as
+  `redirect()` and `notFound()` must be passed to `unstable_rethrow` before application fallback handling; without
+  that first step these wrappers could swallow framework behavior. The affected surface contains 12 public handler
+  wrappers across patient duplicate/detail reads, dispense-task detail, admin capacity/data explorer, management-plan
+  detail, QR draft list/create/detail/discard, and the medication-set workspace.
+- implementation / safety:
+  Added `unstable_rethrow(err)` as the first statement in each confirmed fallback catch while preserving the existing
+  sensitive no-store `internalError()` response for ordinary failures. A focused source-contract regression fixes the
+  exact ten-route inventory and expected protected-catch count, preventing empty catches or fallback-before-rethrow
+  drift. No response envelope, DB query/mutation, auth/authz, tenant scope, PHI display/logging, audit, or performance
+  behavior changed. `gpt-image-2` was omitted because this is a nonvisual route-control correction.
+- validation / remaining:
+  Focused Vitest passed 11 files / 122 tests, including the new 10-case control-flow contract and existing sanitized
+  500 route regressions. Exact Prettier and ESLint passed for all 11 owned files. The 8 GB aggregate `pnpm typecheck`
+  passed, including Next route type generation and service-worker types. Full build was not rerun because the
+  same-worktree port 3012 preview is active and Next build/dev artifacts must not race; the known local 16 GB exit-137
+  build constraint also remains. `ROUTE-CTRLFLOW-RETHROW-001` is removed from the active implementation queue and
+  retained in the completed-derived list. No push, deploy, migration, external send, production-data mutation, or
+  destructive operation occurred.

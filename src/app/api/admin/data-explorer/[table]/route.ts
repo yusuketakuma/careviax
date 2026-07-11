@@ -1,3 +1,4 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext, type AuthRouteContext } from '@/lib/auth/context';
@@ -69,7 +70,8 @@ async function dataExplorerGET(
 export async function GET(req: NextRequest, routeContext: AuthRouteContext<{ table: string }>) {
   try {
     return withSensitiveNoStore(await dataExplorerGET(req, routeContext));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     return withSensitiveNoStore(internalError());
   }
 }

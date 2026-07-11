@@ -1,3 +1,4 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { internalError, success } from '@/lib/api/response';
@@ -18,7 +19,8 @@ async function handleGET(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     return withSensitiveNoStore(await handleGET(req));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     return withSensitiveNoStore(internalError());
   }
 }
