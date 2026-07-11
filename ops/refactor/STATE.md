@@ -45128,7 +45128,9 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   Phase 9 evidence and is not a source-level pass.
 - memory / review / next action:
   Initial gbrain recall was classified in `.agent-loop/MEMORY_REVIEW.md`; proposed LOOP_POLICY §27 records the
-  PHI-safe recovery and same-key reconciliation rule pending Claude peer review. Next: commit this ledger-only
-  boundary, send Claude the compact PATCH_REVIEW request, record the actual verdict in REVIEW_LOG/VERIFY_LOG,
-  write redacted gbrain GateResult/ReviewFinding/LoopRun records, then continue only with unblocked work. No push,
-  deployment, migration, data mutation, or destructive cleanup has been performed.
+  PHI-safe recovery and same-key reconciliation rule pending Claude peer review. Redacted writeback completed for
+  `projects/careviax/gates/2026-07-11/codex-dirty-20260711-8dd4e6380` (GateResult) and
+  `projects/careviax/reviews/2026-07-11/report-retry-same-key-concurrency` (ReviewFinding); the two records are
+  linked as gate evidence. The compact PATCH_REVIEW request has been sent to Claude. Next: drain and record the
+  actual peer verdict in REVIEW_LOG, write the final redacted LoopRun, then continue only with unblocked work. No
+  push, deployment, migration, data mutation, or destructive cleanup has been performed.
