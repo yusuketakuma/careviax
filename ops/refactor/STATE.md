@@ -45375,3 +45375,7 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   bounded client slice because the current Phase 9 ledger already records the local 16 GB exit-137 resource limit;
   no build pass is claimed. No push, deployment, migration, production data mutation, secret rotation, or destructive
   operation was performed.
+- commit:
+  `3cac1c125` (`fix(frontend): harden failure recovery`) committed the 96 owned implementation, regression,
+  executable-guard, Plans, and single-ledger paths. Existing harness-memory state and unrelated untracked local
+  skill/extract/index files were intentionally excluded. No push was performed.

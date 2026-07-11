@@ -236,11 +236,11 @@
 - `SEC-EVENT-PATH-PII-SANITIZE-001`: AuditLog target/dedup pathのemail、電話、OTP、credential/opaque tokenをredactし、実在static routeの可読性とtoken-parent境界をtestで固定（commit `d084dccc8`）。
 - `PUSH-SUB-ATOMICITY-001`: push subscription POST/DELETE を `withOrgContext` 内の tx mutation に寄せ、RLS context 未適用の base Prisma write を除去（commit `db63de58a`）。
 - `PLAN-ARCHIVE-001`: 2026-07-09 実行済み。旧 v8/v3 board、Detailed Status Evidence Archive、長大な REFERENCE/PARTIAL 詳細仕様、旧 `cc:WIP` プログラム背景を `docs/plans-archive.md` へ無削除で移管し、active 入口を v9 board に一本化した。
-- `FE-FALSE-EMPTY-USERS-SITES-001`: pharmacy-sites 読み取り失敗を空のサイト選択肢として表示せず、固定回復文言・手動再試行・必須サイト操作の fail-close・PHI-safe regressionで固定（2026-07-11、未コミット検証済み）。
+- `FE-FALSE-EMPTY-USERS-SITES-001`: pharmacy-sites 読み取り失敗を空のサイト選択肢として表示せず、固定回復文言・手動再試行・必須サイト操作の fail-close・PHI-safe regressionで固定（commit `3cac1c125`）。
 - `FE-PLATFORM-ERROR-BOUNDARY-001`: `/platform/error.tsx` を追加し、専用復帰リンク・手動再試行・PHI-safe telemetryを shared boundary test で固定（commit `2af50e888`）。
-- `FE-FALSE-EMPTY-002`: @mention と社用車候補の初回読取失敗を固定回復文言・手動再試行・選択保護へ収束。提案/週次の既存 board error、非表示バッジ（false-zero化なし）を再確認し、未参照 planner hook と schema allowlist 2件を削除（2026-07-11、未コミット検証済み）。
-- `FE-ADMIN-ERROR-BOUNDARY-001`: 既存 admin segment boundary の dashboard 復帰・手動再試行・raw detail 非表示・PHI-safe coded telemetryを shared boundary regressionで固定（2026-07-11、未コミット検証済み）。
-- `FE-PHI-SAFE-CLIENT-LOG-001`: 73 client UI files / 224 `messageFromError` callsites を fixed recovery copy 優先へ収束し、direct `Error.message` 表示、raw Sentry exception、offline retry log を guard/testで固定。全体15337 tests、type/lint/static guards、route-mocked browser回帰を通過（2026-07-11）。
+- `FE-FALSE-EMPTY-002`: @mention と社用車候補の初回読取失敗を固定回復文言・手動再試行・選択保護へ収束。提案/週次の既存 board error、非表示バッジ（false-zero化なし）を再確認し、未参照 planner hook と schema allowlist 2件を削除（commit `3cac1c125`）。
+- `FE-ADMIN-ERROR-BOUNDARY-001`: 既存 admin segment boundary の dashboard 復帰・手動再試行・raw detail 非表示・PHI-safe coded telemetryを shared boundary regressionで固定（commit `3cac1c125`）。
+- `FE-PHI-SAFE-CLIENT-LOG-001`: 73 client UI files / 224 `messageFromError` callsites を fixed recovery copy 優先へ収束し、direct `Error.message` 表示、raw Sentry exception、offline retry log を guard/testで固定。全体15337 tests、type/lint/static guards、route-mocked browser回帰を通過（commit `3cac1c125`）。
 - `STOCK-VISIT-CONTEXT-SCHEMA-001`: `MedicationStockObservationContext` sidecar の最小設計と migration（repo 配置済み）。
 - `STOCK-VISIT-IDEMPOTENCY-001`: visit observation の idempotent replay / 409 conflict を API/service test で固定済み。
 - `STOCK-VISIT-ROUTE-CONTRACT-001`: `POST /api/visit-records/:id/medication-stock-observations` と route auth/rate limit/catalog/display-id/boundary 整合（commit `af38c8e42`）。
