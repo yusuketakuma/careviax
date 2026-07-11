@@ -45731,3 +45731,33 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `7c6e39cd9` (`fix(FE-REPORT-001): persist delivery follow-up recovery`) committed the three owned delivery UI,
   regression, and plan paths. The single-ledger evidence had already entered the concurrently advanced HEAD and this
   line records the resulting implementation hash. Pre-existing local files were excluded. No push was performed.
+
+## 2026-07-11 FE-REPORT-001 — interprofessional share mutation ownership
+
+- current task / root cause:
+  Compared the remaining report AI review, share, and print paths. Report confirm/send/bulk-send already retain
+  persistent action failures, and print fails closed around preview/print audit. Interprofessional share still used
+  toast-only mutation failures. More importantly, reply-request and follow-up-task success handlers read the current
+  audience/reply from render closures; switching the preview while a request was pending could mark the newly selected
+  audience or reply as completed instead of the submitted target.
+- implementation / safety:
+  Reply requests now capture audience plus the fully built request payload as mutation variables. Follow-up tasks
+  capture audience, response ID, and the fully built task payload. Success state is attributed from those immutable
+  submitted variables, and retry replays the same payload. Persistent PHI-safe `ErrorState` is shown only for the
+  affected audience. A 409 reply conflict retains the existing server refetch and does not offer duplicate retry; a
+  409 task conflict directs the user to verify the task list without retry, while ordinary failures offer exact retry.
+  API paths/methods/bodies, authorization, dedupe keys, request invalidation, client telemetry, external-share/raw-text
+  boundaries, DB, and audit behavior are unchanged. Image generation was omitted because this is state ownership and
+  existing error-component composition, not visual reconstruction.
+- validation / plans / remaining:
+  Focused interprofessional-share Vitest passed 1 file / 31 tests, including a deferred-request race proving a pending
+  physician request is not attributed to visiting nurse after preview switching, PHI-like raw error omission, 409
+  duplicate handling, and byte-identical retry bodies. Focused ESLint/Prettier, 8 GB `pnpm typecheck`, client PHI-log,
+  frontend contract, module boundary, raw state colors, active Plans, and diff checks passed. `FE-REPORT-001` remains
+  Partial; its active Plans row already covers share and persistent recovery without a status transition. A concurrent
+  `FE-SCHEDULE-001` edit owns the current `Plans.md` worktree diff, so no mixed Plans hunk was staged. Browser share
+  failure/race, mobile, keyboard/zoom/forced-colors, screenshot, and full build remain unverified.
+- commit:
+  `333002b30` (`fix(FE-REPORT-001): pin interprofessional share mutations`) committed only the two owned share UI and
+  regression files. Concurrent Plans/schedule changes and pre-existing local files were excluded. No push was
+  performed.
