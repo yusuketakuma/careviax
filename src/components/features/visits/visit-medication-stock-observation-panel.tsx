@@ -388,28 +388,32 @@ function MedicationStockItemCard({
         </div>
       ) : null}
 
-      <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <div className="rounded-md bg-muted/40 p-2">
-          <dt className="text-xs text-muted-foreground">前回の記録残数</dt>
-          <dd className="font-medium tabular-nums text-foreground">
-            {snapshot
-              ? `${formatQuantity(snapshot.last_observed_quantity, item.unit)} / ${formatDateTime(
-                  snapshot.last_observed_at,
-                )}`
-              : snapshotUnitMismatch
-                ? '確認不可'
-                : '未確認'}
-          </dd>
+          <dl>
+            <dt className="text-xs text-muted-foreground">前回の記録残数</dt>
+            <dd className="font-medium tabular-nums text-foreground">
+              {snapshot
+                ? `${formatQuantity(snapshot.last_observed_quantity, item.unit)} / ${formatDateTime(
+                    snapshot.last_observed_at,
+                  )}`
+                : snapshotUnitMismatch
+                  ? '確認不可'
+                  : '未確認'}
+            </dd>
+          </dl>
         </div>
         <div className="rounded-md bg-muted/40 p-2">
-          <dt className="text-xs text-muted-foreground">台帳計算残数（参考）</dt>
-          <dd className="font-medium tabular-nums text-foreground">
-            {snapshot
-              ? formatQuantity(snapshot.current_quantity, item.unit)
-              : snapshotUnitMismatch
-                ? '確認不可'
-                : 'snapshot未作成'}
-          </dd>
+          <dl>
+            <dt className="text-xs text-muted-foreground">台帳計算残数（参考）</dt>
+            <dd className="font-medium tabular-nums text-foreground">
+              {snapshot
+                ? formatQuantity(snapshot.current_quantity, item.unit)
+                : snapshotUnitMismatch
+                  ? '確認不可'
+                  : 'snapshot未作成'}
+            </dd>
+          </dl>
           <p className="mt-1 text-xs text-muted-foreground">
             算出日時:{' '}
             <span className="tabular-nums">
@@ -418,45 +422,51 @@ function MedicationStockItemCard({
           </p>
         </div>
         <div className="rounded-md bg-muted/40 p-2">
-          <dt className="text-xs text-muted-foreground">前回記録以降の台帳差分</dt>
-          <dd className="font-medium tabular-nums text-foreground">
-            {snapshot
-              ? formatStockLedgerDifference(
-                  snapshot.current_quantity,
-                  snapshot.last_observed_quantity,
-                  item.unit,
-                )
-              : '算出不可'}
-          </dd>
+          <dl>
+            <dt className="text-xs text-muted-foreground">前回記録以降の台帳差分</dt>
+            <dd className="font-medium tabular-nums text-foreground">
+              {snapshot
+                ? formatStockLedgerDifference(
+                    snapshot.current_quantity,
+                    snapshot.last_observed_quantity,
+                    item.unit,
+                  )
+                : '算出不可'}
+            </dd>
+          </dl>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             台帳計算残数 − 前回の記録残数。今回の実測ではありません。
           </p>
         </div>
         <div className="rounded-md bg-muted/40 p-2">
-          <dt className="text-xs text-muted-foreground">推定使用量</dt>
-          <dd className="font-medium tabular-nums text-foreground">
-            {snapshot
-              ? formatDailyUsage(snapshot.estimated_daily_usage, item.unit)
-              : snapshotUnitMismatch
-                ? '確認不可'
-                : '不明'}
-          </dd>
+          <dl>
+            <dt className="text-xs text-muted-foreground">推定使用量</dt>
+            <dd className="font-medium tabular-nums text-foreground">
+              {snapshot
+                ? formatDailyUsage(snapshot.estimated_daily_usage, item.unit)
+                : snapshotUnitMismatch
+                  ? '確認不可'
+                  : '不明'}
+            </dd>
+          </dl>
         </div>
         <div className="rounded-md bg-muted/40 p-2">
-          <dt className="text-xs text-muted-foreground">推定切れ日</dt>
-          <dd className="font-medium tabular-nums text-foreground">
-            {snapshot
-              ? `${formatDate(snapshot.estimated_stockout_date)}${
-                  snapshot.days_until_stockout != null
-                    ? ` / あと${snapshot.days_until_stockout}日`
-                    : ''
-                }`
-              : snapshotUnitMismatch
-                ? '確認不可'
-                : '推定不可'}
-          </dd>
+          <dl>
+            <dt className="text-xs text-muted-foreground">推定切れ日</dt>
+            <dd className="font-medium tabular-nums text-foreground">
+              {snapshot
+                ? `${formatDate(snapshot.estimated_stockout_date)}${
+                    snapshot.days_until_stockout != null
+                      ? ` / あと${snapshot.days_until_stockout}日`
+                      : ''
+                  }`
+                : snapshotUnitMismatch
+                  ? '確認不可'
+                  : '推定不可'}
+            </dd>
+          </dl>
         </div>
-      </dl>
+      </div>
 
       <div className="mt-3 space-y-3 rounded-md border border-border/80 bg-muted/20 p-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">

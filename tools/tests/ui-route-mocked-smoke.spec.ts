@@ -2233,14 +2233,16 @@ async function installOfflineVisitRecordRouteMocks(
   await page.route(apiPathPattern(`/api/visit-schedules/${OFFLINE_SCHEDULE_ID}`), async (route) => {
     scheduleRequests.push(captureRouteRequest(route));
     await fulfillJson(route, {
-      id: OFFLINE_SCHEDULE_ID,
-      patient_id: OFFLINE_PATIENT_ID,
-      cycle_id: null,
-      scheduled_date: '2026-04-28T00:00:00.000Z',
-      schedule_status: 'ready',
-      visit_type: 'regular',
-      carry_items_status: 'ready',
-      recurrence_rule: null,
+      data: {
+        id: OFFLINE_SCHEDULE_ID,
+        patient_id: OFFLINE_PATIENT_ID,
+        cycle_id: null,
+        scheduled_date: '2026-04-28T00:00:00.000Z',
+        schedule_status: 'ready',
+        visit_type: 'regular',
+        carry_items_status: 'ready',
+        recurrence_rule: null,
+      },
     });
   });
 
@@ -4198,6 +4200,55 @@ test.describe('visit record route-mocked offline save smoke', () => {
     await attachLocalSession(context);
   });
 
+  test('keeps the visit record form accessible in forced colors and a 200%-equivalent viewport', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context, {
+      captureHttpErrors: false,
+    });
+    await page.setViewportSize({ width: 768, height: 512 });
+    const { visitRecordRequests } = await installOfflineVisitRecordRouteMocks(page);
+    await installVisitMedicationStockGateOffRouteMocks(page);
+
+    await openStableRoute(page, `/visits/${OFFLINE_SCHEDULE_ID}/record`);
+
+    const subjectiveInput = page.getByLabel('主観情報');
+    await expect(subjectiveInput).toBeVisible({ timeout: 15_000 });
+    const axeResults = await new AxeBuilder({ page }).include('main').analyze();
+    const severeViolations = axeResults.violations.filter((violation) =>
+      ['critical', 'serious'].includes(violation.impact ?? ''),
+    );
+    expect(summarizeAxeViolations(severeViolations)).toEqual([]);
+
+    await page.emulateMedia({ forcedColors: 'active' });
+    await expect
+      .poll(() => page.evaluate(() => window.matchMedia('(forced-colors: active)').matches))
+      .toBe(true);
+
+    await page.locator('body').press('Home');
+    let reachedSubjectiveInput = false;
+    for (let step = 0; step < 80; step += 1) {
+      await page.keyboard.press('Tab');
+      if (await subjectiveInput.evaluate((element) => element === document.activeElement)) {
+        reachedSubjectiveInput = true;
+        break;
+      }
+    }
+
+    const overflowWidth = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    const inputBox = await subjectiveInput.boundingBox();
+
+    expect(reachedSubjectiveInput).toBe(true);
+    expect(inputBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(overflowWidth).toBeLessThanOrEqual(1);
+    expect(visitRecordRequests).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
   test('stores offline SOAP save in encrypted IndexedDB draft and sync queue without POSTing', async ({
     context,
   }, testInfo) => {
@@ -4212,6 +4263,7 @@ test.describe('visit record route-mocked offline save smoke', () => {
     });
     const { preparationRequests, scheduleRequests, visitRecordRequests } =
       await installOfflineVisitRecordRouteMocks(page);
+    await installVisitMedicationStockGateOffRouteMocks(page);
 
     await openStableRoute(page, `/visits/${OFFLINE_SCHEDULE_ID}/record`);
     await seedOfflineEncryptionKey(page);
@@ -4242,11 +4294,11 @@ test.describe('visit record route-mocked offline save smoke', () => {
 
     await page.getByLabel('主観情報').fill(soap.subjective);
     await page.getByLabel('客観情報').fill(soap.objective);
-    await page.getByLabel('薬学的評価').fill(soap.assessment);
+    await page.getByRole('textbox', { name: '薬学的評価', exact: true }).fill(soap.assessment);
     await page.getByLabel('計画・介入').fill(soap.plan);
     await page.getByRole('combobox', { name: /訪問結果/ }).click();
     await page.getByRole('option', { name: '延期' }).click();
-    const saveButton = page.getByRole('button', { name: '保存', exact: true });
+    const saveButton = page.getByRole('button', { name: '訪問完了', exact: true });
     await expect(saveButton).toHaveAttribute('type', 'submit');
     await saveButton.click();
 

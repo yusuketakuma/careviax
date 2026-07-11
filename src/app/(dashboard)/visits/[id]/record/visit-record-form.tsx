@@ -2776,80 +2776,62 @@ export function VisitRecordForm({
                           </Button>
                         ) : null}
                       </div>
-                      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-                        <div>
-                          <dt className="text-xs text-muted-foreground">今回徴収</dt>
-                          <dd className="font-medium text-foreground">
-                            {formatVisitBillingAmount(
-                              billingCollectionContext.current_collection_amount,
-                            )}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-muted-foreground">前回未収分</dt>
-                          <dd className="font-medium text-foreground">
-                            {formatVisitBillingAmount(
-                              billingCollectionContext.previous_unpaid_amount,
-                            )}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-muted-foreground">合計徴収額</dt>
-                          <dd className="font-medium text-foreground">
-                            {formatVisitBillingAmount(
-                              billingCollectionContext.total_collection_amount,
-                            )}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-muted-foreground">支払者</dt>
-                          <dd className="font-medium text-foreground">
-                            {[
-                              billingCollectionContext.payer_name,
-                              billingCollectionContext.payer_relation,
-                            ]
-                              .filter(Boolean)
-                              .join(' / ') || '未記録'}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-muted-foreground">集金方法</dt>
-                          <dd className="font-medium text-foreground">
-                            {billingCollectionContext.collection_method_label ?? '未記録'}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-muted-foreground">領収証</dt>
-                          <dd className="font-medium text-foreground">
-                            {[
-                              billingCollectionContext.receipt_issue_label,
-                              billingCollectionContext.receipt_issue_status_label,
-                              billingCollectionContext.receipt_number,
-                            ]
-                              .filter(Boolean)
-                              .join(' / ') || '未記録'}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-muted-foreground">次回集金予定</dt>
-                          <dd className="font-medium text-foreground">
-                            {formatVisitBillingDateTime(
-                              billingCollectionContext.scheduled_collection_at,
-                            )}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-muted-foreground">入金済み</dt>
-                          <dd className="font-medium text-foreground">
-                            {formatVisitBillingAmount(billingCollectionContext.collected_amount)}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-muted-foreground">集金記録者</dt>
-                          <dd className="font-medium text-foreground">
-                            {billingCollectionContext.collector_user_id ? '記録済み' : '未記録'}
-                          </dd>
-                        </div>
+                      <dl className="mt-3 grid grid-cols-[minmax(7rem,auto)_1fr] gap-x-3 gap-y-2 text-sm">
+                        <dt className="text-xs text-muted-foreground">今回徴収</dt>
+                        <dd className="font-medium text-foreground">
+                          {formatVisitBillingAmount(
+                            billingCollectionContext.current_collection_amount,
+                          )}
+                        </dd>
+                        <dt className="text-xs text-muted-foreground">前回未収分</dt>
+                        <dd className="font-medium text-foreground">
+                          {formatVisitBillingAmount(
+                            billingCollectionContext.previous_unpaid_amount,
+                          )}
+                        </dd>
+                        <dt className="text-xs text-muted-foreground">合計徴収額</dt>
+                        <dd className="font-medium text-foreground">
+                          {formatVisitBillingAmount(
+                            billingCollectionContext.total_collection_amount,
+                          )}
+                        </dd>
+                        <dt className="text-xs text-muted-foreground">支払者</dt>
+                        <dd className="font-medium text-foreground">
+                          {[
+                            billingCollectionContext.payer_name,
+                            billingCollectionContext.payer_relation,
+                          ]
+                            .filter(Boolean)
+                            .join(' / ') || '未記録'}
+                        </dd>
+                        <dt className="text-xs text-muted-foreground">集金方法</dt>
+                        <dd className="font-medium text-foreground">
+                          {billingCollectionContext.collection_method_label ?? '未記録'}
+                        </dd>
+                        <dt className="text-xs text-muted-foreground">領収証</dt>
+                        <dd className="font-medium text-foreground">
+                          {[
+                            billingCollectionContext.receipt_issue_label,
+                            billingCollectionContext.receipt_issue_status_label,
+                            billingCollectionContext.receipt_number,
+                          ]
+                            .filter(Boolean)
+                            .join(' / ') || '未記録'}
+                        </dd>
+                        <dt className="text-xs text-muted-foreground">次回集金予定</dt>
+                        <dd className="font-medium text-foreground">
+                          {formatVisitBillingDateTime(
+                            billingCollectionContext.scheduled_collection_at,
+                          )}
+                        </dd>
+                        <dt className="text-xs text-muted-foreground">入金済み</dt>
+                        <dd className="font-medium text-foreground">
+                          {formatVisitBillingAmount(billingCollectionContext.collected_amount)}
+                        </dd>
+                        <dt className="text-xs text-muted-foreground">集金記録者</dt>
+                        <dd className="font-medium text-foreground">
+                          {billingCollectionContext.collector_user_id ? '記録済み' : '未記録'}
+                        </dd>
                       </dl>
                     </div>
                   ) : null}

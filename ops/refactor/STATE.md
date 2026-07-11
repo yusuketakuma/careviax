@@ -46260,3 +46260,40 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   consumers, regressions, schema ratchet, Plans, FE/BE inventory, and single-ledger evidence. Concurrent visit-record
   and route-mocked browser work, harness-memory state, and unrelated untracked files were excluded. No push was
   performed.
+
+## 2026-07-11 FE-VISIT-001 / FE-QA-001 — visit record accessibility and offline-save evidence
+
+- current task / root causes:
+  Reconciled the existing dispense browser matrix, then added bounded authenticated browser evidence for the visit
+  record. The visit fixture still returned the pre-`8749ab318` raw schedule object instead of the current `data`
+  envelope, an exact `薬学的評価` textbox locator had become ambiguous after the evidence acknowledgement was added,
+  and supporting medication-stock/header reads were not route-mocked. Once the form loaded, axe exposed a serious
+  `definition-list` violation in the medication-stock snapshot cards: the shared `dl` contained card `div` and
+  explanatory `p` children instead of direct definition terms/descriptions. A separate collection summary used the
+  same invalid wrapper pattern. The old offline test also treated desktop `一時保存` as the submit action, although
+  that button intentionally performs only the local draft snapshot; `訪問完了` is the form submit that enters the
+  offline encrypted draft and sync-queue branch.
+- implementation / UI and safety:
+  Each medication-stock snapshot card now owns a valid `dl > dt + dd`, preserving its visual card grouping and keeping
+  explanatory copy outside the definition list. The conditional billing/collection summary now uses direct ordered
+  terms and descriptions. The route fixture follows the current schedule envelope, installs fixed supporting GET
+  mocks, uses exact role locators, and submits through `訪問完了`. The new Chromium case audits visible `main`, enables
+  forced colors, uses a 768x512 200%-equivalent viewport, reaches the subjective field by Tab, checks its 44px target,
+  and rejects document overflow and visit-record POSTs. The offline case proves the SOAP values are encrypted in both
+  IndexedDB draft and sync queue and that no real POST occurs. No clinical value, API provider, DB, auth/authz, PHI,
+  audit, migration, or production write behavior changed. `gpt-image-2` was omitted because this was semantic markup
+  and test-fixture repair with no visual reconstruction.
+- validation / remaining:
+  Focused medication-stock Vitest passed 1 file / 11 tests. Focused route-mocked Chromium passed 2/2 for main axe
+  critical/serious 0, forced-colors/keyboard/200%-equivalent reachability, and encrypted offline queueing without POST.
+  Exact ESLint/Prettier, 8 GB aggregate typecheck, frontend contract, client PHI-log, raw-state colors,
+  module-boundary, and diff checks passed. The first default Playwright invocation attempted its configured build and
+  timed out at the 60-second web-server gate; a mistakenly separated CLI `--` then started unrelated cases and was
+  stopped after exposing only out-of-scope failures. The authoritative local-config rerun used the existing port 3012
+  server and passed. The pre-fix focused runs correctly failed on the stale envelope, ambiguous locator, invalid
+  definition list, and wrong save-action expectation. Existing dispense coverage was rechecked at 6 passes with 6
+  intentional opposite-project skips, covering normal axe, desktop/mobile/tablet controls, offline banner,
+  forced-colors keyboard flow, and the zoom proxy. `FE-QA-001` remains Partial for patient-list browser evidence and
+  the remaining offline/conflict/PHI-output state matrix; `FE-VISIT-001` remains Partial for broader conflict and
+  manual screen-reader/zoom review. No push, deploy, external send, production-data mutation, migration application,
+  or destructive operation occurred.
