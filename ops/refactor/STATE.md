@@ -45591,6 +45591,10 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   safety-priority ordering with a simple pre-derivation `take`; continue with an exact DB projection/design or another
   independent frontend slice. No push, deployment, migration, production data mutation, or destructive operation
   occurred.
+- commit:
+  `1d204a7fd` (`fix(FE-PATIENT-DETAIL-001): align risk waiver controls`) committed the three owned implementation,
+  regression, and single-ledger paths. Concurrent Plans/report work, harness-memory state, and unrelated untracked
+  files were excluded. No push was performed.
 
 ## 2026-07-11 API-CONTRACT-001 — navigation badge runtime envelope
 
