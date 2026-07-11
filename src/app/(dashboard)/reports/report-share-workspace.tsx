@@ -466,7 +466,10 @@ function WaitingReplyRow({ reply }: { reply: ReportWaitingReply }) {
       data-testid="report-waiting-reply"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex shrink-0 items-center rounded-full bg-state-waiting/10 px-2 py-0.5 text-xs font-bold tabular-nums text-state-waiting">
+        <span
+          className="inline-flex shrink-0 items-center rounded-full bg-state-waiting/10 px-2 py-0.5 text-xs font-bold tabular-nums text-state-waiting"
+          data-testid="report-waiting-days"
+        >
           {waitingBadgeLabel(reply.waiting_days)}
         </span>
         <p className="min-w-0 flex-1 text-sm font-bold leading-5 text-foreground">{reply.title}</p>
@@ -501,7 +504,7 @@ function WaitingBoxesSection({ data }: { data: ReportsTodayWorkspaceResponse }) 
           <h3 id="report-waiting-heading" className="text-base font-bold text-foreground">
             返信待ち
           </h3>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-muted-foreground" data-testid="report-waiting-count">
             {formatWorkspaceCountLabel(data.count_metadata?.waiting, data.waiting_replies.length)}
           </span>
         </div>
@@ -890,7 +893,7 @@ export function ReportShareWorkspace() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-xl font-bold text-foreground">報告・共有</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground" data-testid="report-workspace-header-meta">
             {buildHeaderMeta(now, data?.counts ?? null, data?.count_metadata ?? null)}
           </p>
         </div>

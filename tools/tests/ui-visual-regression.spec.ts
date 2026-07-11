@@ -50,6 +50,12 @@ test.describe('limited visual comparison', () => {
     await expect(workspace).toHaveScreenshot('report-share-workspace.png', {
       animations: 'disabled',
       caret: 'hide',
+      mask: [
+        page.getByTestId('report-workspace-header-meta'),
+        page.getByTestId('report-waiting-count'),
+        page.getByTestId('report-waiting-days'),
+      ],
+      maskColor: '#d1d5db',
     });
   });
 
@@ -64,6 +70,8 @@ test.describe('limited visual comparison', () => {
     await expect(waitingBox).toHaveScreenshot('report-waiting-box.png', {
       animations: 'disabled',
       caret: 'hide',
+      mask: [page.getByTestId('report-waiting-count'), page.getByTestId('report-waiting-days')],
+      maskColor: '#d1d5db',
     });
   });
 });
