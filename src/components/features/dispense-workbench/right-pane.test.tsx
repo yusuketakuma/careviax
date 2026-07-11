@@ -226,6 +226,43 @@ describe('RightPane pointer target contract', () => {
   });
 });
 
+describe('RightPane scroll-region keyboard contract', () => {
+  afterEach(() => {
+    act(() => {
+      useWorkbenchStore.setState({ target: null });
+    });
+  });
+
+  it('names every overflow region and lets keyboard users focus it', () => {
+    const grid = render(<RightPane view={gridView()} phase="dispense" handlers={handlers} />);
+    const patientNotes = screen.getByRole('region', { name: '患者の備考・申し送り' });
+    expect(patientNotes.tabIndex).toBe(0);
+    expect(patientNotes.style.overflowY).toBe('auto');
+    patientNotes.focus();
+    expect(document.activeElement).toBe(patientNotes);
+    grid.unmount();
+
+    const setWork = render(<RightPane view={setWorkView()} phase="setp" handlers={handlers} />);
+    for (const name of ['次にセットする薬剤一覧', 'カレンダーその他薬の同梱確認']) {
+      const region = screen.getByRole('region', { name });
+      expect(region.tabIndex).toBe(0);
+      expect(region.style.overflowY).toBe('auto');
+      region.focus();
+      expect(document.activeElement).toBe(region);
+    }
+    setWork.unmount();
+
+    render(<RightPane view={setAuditView('数量不足')} phase="seta" handlers={handlers} />);
+    for (const name of ['セット監査の期待薬剤一覧', 'リスク確認順一覧']) {
+      const region = screen.getByRole('region', { name });
+      expect(region.tabIndex).toBe(0);
+      expect(region.style.overflowY).toBe('auto');
+      region.focus();
+      expect(document.activeElement).toBe(region);
+    }
+  });
+});
+
 describe('RightPane set audit NG controls', () => {
   afterEach(() => {
     act(() => {

@@ -636,7 +636,10 @@ export interface ProgressView {
   label: string;
   /** '75%' */
   pct: string;
+  /** Progress-fill color (non-text indicator). */
   color: string;
+  /** AA-compliant text color for the fraction on the workbench footer surface. */
+  textColor: string;
   /** '3 / 4' */
   fraction: string;
 }

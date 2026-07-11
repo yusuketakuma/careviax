@@ -10,7 +10,8 @@
  * action（closeCompare）を直接呼ぶ。view は useWorkbenchView(phase) 由来。
  * 本ダイアログは表示専用で phase 非依存のため phase は受領のみ（出し分けに使わない）。
  *
- * a11y: role="dialog" + aria-modal。Escape で閉じ、開いたら閉じるボタンへフォーカス。
+ * a11y: role="dialog" + aria-modal。Escape で閉じ、開いたら閉じるボタンへフォーカスし、
+ * Tab を内部にトラップ、閉じたら起点の比較ボタンへフォーカスを戻す。
  * オーバーレイ素地クリックでのみ dismiss（hold-reason-dialog と同方式に統一）。
  */
 
@@ -29,11 +30,26 @@ interface PrescriptionCompareDialogProps {
 export function PrescriptionCompareDialog({ view }: PrescriptionCompareDialogProps) {
   const closeCompare = useWorkbenchStore((s) => s.closeCompare);
 
+  const cardRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
 
-  // 開いたら閉じるボタンへフォーカス（キーボード操作の起点を明示）
+  // 開いたら閉じるボタンへフォーカスし、閉じる際に起点へ戻す。
+  // 実ワークベンチでは compareOpen が true の間だけ本コンポーネントをマウントするため、
+  // cleanup は Escape / 閉じる / overlay dismiss の全てで実行される。
   useLayoutEffect(() => {
-    if (view.compareOpen) closeButtonRef.current?.focus();
+    if (!view.compareOpen) return;
+
+    const activeElement = document.activeElement;
+    openerRef.current =
+      activeElement instanceof HTMLElement && activeElement !== document.body
+        ? activeElement
+        : null;
+    closeButtonRef.current?.focus();
+
+    return () => {
+      if (openerRef.current?.isConnected) openerRef.current.focus();
+    };
   }, [view.compareOpen]);
 
   useLayoutEffect(() => {
@@ -53,10 +69,25 @@ export function PrescriptionCompareDialog({ view }: PrescriptionCompareDialogPro
 
   const { cur, cmpCount, compareSections } = view;
 
-  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      closeCompare();
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Tab') return;
+
+    const card = cardRef.current;
+    if (!card) return;
+    const focusable = card.querySelectorAll<HTMLElement>(
+      '[tabindex]:not([tabindex="-1"]):not([disabled]), input:not([disabled]), textarea:not([disabled]), button:not([disabled])',
+    );
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
     }
   };
 
@@ -70,6 +101,7 @@ export function PrescriptionCompareDialog({ view }: PrescriptionCompareDialogPro
       }}
     >
       <div
+        ref={cardRef}
         role="dialog"
         aria-modal="true"
         aria-label={`前回処方との比較 — ${cur.name} 様`}

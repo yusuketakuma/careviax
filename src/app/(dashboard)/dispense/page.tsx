@@ -8,12 +8,15 @@ export const metadata: Metadata = {
 
 /**
  * /dispense。レセコン風の調剤ワークベンチ（段階1・モックデータ駆動）を全面マウントする。
- * PageScaffold variant="bare" + 外側 padding/min-h の中和で、ワークベンチ自身の
- * .rootInShell（ヘッダ高 3.5rem 控除の 100vh レイアウト）をそのまま使う。
+ * PageScaffoldの実効コンテンツ高をworkbenchへ渡し、可変ヘッダ/バナーと固定下部ナビを避ける。
  */
 export default function DispensePage() {
   return (
-    <PageScaffold variant="bare" className="min-h-0 bg-transparent p-0 sm:p-0 lg:p-0 xl:p-0">
+    <PageScaffold
+      variant="bare"
+      className="h-full min-h-0 bg-transparent p-0 sm:p-0 lg:p-0 xl:p-0"
+      stackClassName="h-full space-y-0"
+    >
       <h1 className="sr-only">調剤</h1>
       <DispensingWorkbench phase="dispense" />
     </PageScaffold>

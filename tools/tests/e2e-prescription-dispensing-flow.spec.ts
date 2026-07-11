@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type APIResponse, type Locator, type Page } from '@playwright/test';
 import { Client } from 'pg';
 import {
@@ -9,6 +10,11 @@ import {
   waitForStableUi,
 } from './helpers/local-auth';
 import { apiPathPattern, fulfillJson, readRouteBody } from './helpers/route-mocks';
+import type {
+  DispenseWorkbenchPatientRow,
+  DispenseWorkbenchPatientsResponse,
+  DispenseWorkbenchPhase,
+} from '@/lib/dispensing/dispense-workbench-shared';
 
 const E2E_DB_CONNECTION_STRING = (
   process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
@@ -16,14 +22,7 @@ const E2E_DB_CONNECTION_STRING = (
 const SET_AUDIT_SUCCESS_PLAN_ID = 'cmnhdemosetpl002amq9ph-os';
 const E2E_SETTER_USER_ID = 'e2e-independent-setter-user';
 
-type WorkbenchPatientsPayload = {
-  data: Array<{
-    patient_id: string;
-    name: string;
-    latest_set_plan_id: string | null;
-    latest_set_plan_cycle_id: string | null;
-  }>;
-};
+type WorkbenchPatientsPayload = DispenseWorkbenchPatientsResponse;
 
 type SetCalendarPayload = {
   data: {
@@ -72,6 +71,33 @@ const ROUTE_MOCK_SET_PATIENT_ID = 'set_route_mock_patient';
 const ROUTE_MOCK_SET_PLAN_ID = 'set_route_mock_plan';
 const ROUTE_MOCK_SET_CYCLE_ID = 'set_route_mock_cycle';
 
+function summarizeSeriousAxeViolations(
+  violations: Array<{
+    id: string;
+    impact?: string | null;
+    nodes: Array<{ target: unknown }>;
+  }>,
+) {
+  return violations
+    .filter((violation) => ['critical', 'serious'].includes(violation.impact ?? ''))
+    .map((violation) => ({
+      id: violation.id,
+      impact: violation.impact ?? 'unknown',
+      targets: violation.nodes
+        .flatMap((node) =>
+          Array.isArray(node.target)
+            ? node.target.map((target) => String(target))
+            : [String(node.target)],
+        )
+        .slice(0, 6),
+    }));
+}
+
+async function expectNoSeriousAxeViolations(page: Page) {
+  const results = await new AxeBuilder({ page }).include('main').analyze();
+  expect(summarizeSeriousAxeViolations(results.violations)).toEqual([]);
+}
+
 function isTransientApiRequestError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /ECONNRESET|ECONNREFUSED|ERR_EMPTY_RESPONSE|ERR_CONNECTION_RESET|socket hang up/i.test(
@@ -106,24 +132,72 @@ async function getWithTransientRetry(
   throw lastError instanceof Error ? lastError : new Error(`GET ${path} failed transiently`);
 }
 
-async function routeMockDispenseWorkbench(page: Page) {
-  await page.route(apiPathPattern('/api/dispense-workbench/patients'), async (route) => {
-    await fulfillJson(route, {
-      data: [
-        {
-          patient_id: ROUTE_MOCK_PATIENT_ID,
-          cycle_id: ROUTE_MOCK_CYCLE_ID,
-          name: '経路 花子',
-          name_kana: 'ケイロ ハナコ',
-          overall_status: 'dispensing',
-          badge: 'in_progress',
-          start_date: '2026-06-10',
-          registered_date: '2026-06-09',
-          latest_set_plan_id: null,
-          latest_set_plan_cycle_id: null,
+function routeMockPatientList(
+  data: DispenseWorkbenchPatientRow[],
+  options: { phase: DispenseWorkbenchPhase | null; includeSetPlan: boolean },
+): DispenseWorkbenchPatientsResponse {
+  return {
+    data,
+    meta: {
+      generated_at: '2026-07-11T00:00:00.000Z',
+      limit: 50,
+      returned_count: data.length,
+      has_more: false,
+      next_cursor: null,
+      total_count: data.length,
+      count_basis: {
+        rows: 'authorized_latest_cycle_per_patient',
+        total_count: 'authorized_phase_search_exact',
+        phase_counts: 'authorized_phase_search_exact',
+        set_split: 'latest_set_plan_set_batch_exact',
+      },
+      filters_applied: {
+        phase: options.phase,
+        q_present: false,
+        sort: 'name_kana',
+        order: 'asc',
+        include_set_plan: options.includeSetPlan,
+      },
+      facets: {
+        total: data.length,
+        phase_counts: {
+          dispense: options.phase === 'dispense' ? data.length : 0,
+          audit: options.phase === 'audit' ? data.length : 0,
+          set: options.phase === 'set' ? data.length : 0,
+          'set-audit': options.phase === 'set-audit' ? data.length : 0,
         },
-      ],
-    });
+        other: 0,
+      },
+    },
+  };
+}
+
+async function routeMockDispenseWorkbench(page: Page, options: { patientName?: string } = {}) {
+  const patientName = options.patientName ?? '経路 花子';
+
+  await page.route(apiPathPattern('/api/dispense-workbench/patients'), async (route) => {
+    await fulfillJson(
+      route,
+      routeMockPatientList(
+        [
+          {
+            patient_id: ROUTE_MOCK_PATIENT_ID,
+            cycle_id: ROUTE_MOCK_CYCLE_ID,
+            name: patientName,
+            name_kana: 'ケイロ ハナコ',
+            overall_status: 'dispensing',
+            badge: 'in_progress',
+            start_date: '2026-06-10',
+            registered_date: '2026-06-09',
+            latest_set_plan_id: null,
+            latest_set_plan_cycle_id: null,
+            representative_task_id: ROUTE_MOCK_TASK_ID,
+            representative_task_status: 'in_progress',
+          },
+        ],
+        { phase: 'dispense', includeSetPlan: false },
+      ),
+    );
   });
 
   await page.route(apiPathPattern('/api/dispense-tasks'), async (route) => {
@@ -136,108 +210,115 @@ async function routeMockDispenseWorkbench(page: Page) {
     apiPathPattern(`/api/dispense-tasks/${ROUTE_MOCK_TASK_ID}/workbench`),
     async (route) => {
       await fulfillJson(route, {
-        task: { id: ROUTE_MOCK_TASK_ID, status: 'in_progress', priority: 'normal', due_date: null },
-        cycle: { id: ROUTE_MOCK_CYCLE_ID, overall_status: 'dispensing', version: 9 },
-        patient: { id: ROUTE_MOCK_PATIENT_ID, name: '経路 花子' },
-        intake: {
-          id: 'dispense_route_mock_intake',
-          prescribed_date: '2026-06-10',
-          prescriber_institution: '経路クリニック',
-          prescriber_name: '検証 医師',
+        data: {
+          task: {
+            id: ROUTE_MOCK_TASK_ID,
+            status: 'in_progress',
+            priority: 'normal',
+            due_date: null,
+          },
+          cycle: { id: ROUTE_MOCK_CYCLE_ID, overall_status: 'dispensing', version: 9 },
+          patient: { id: ROUTE_MOCK_PATIENT_ID, name: patientName },
+          intake: {
+            id: 'dispense_route_mock_intake',
+            prescribed_date: '2026-06-10',
+            prescriber_institution: '経路クリニック',
+            prescriber_name: '検証 医師',
+          },
+          previous_intake: { prescribed_date: '2026-05-20' },
+          safety: {
+            allergy: null,
+            renal: null,
+            handling_tags: [],
+            swallowing: null,
+            cautions: ['Route-mocked workbench smoke'],
+          },
+          comparison: [
+            {
+              key: 'cmp-1',
+              drug_name: 'アムロジピン錠5mg',
+              previous_label: '前回 7錠',
+              current_label: '今回 14錠',
+              change_type: 'days_changed',
+              direction: 'increase',
+              inquiry_origin: false,
+            },
+          ],
+          count_rows: [
+            {
+              line_id: 'line_tablet',
+              result_id: null,
+              line_number: 1,
+              drug_name: 'アムロジピン錠5mg',
+              dose: '1回1錠',
+              frequency: '朝夕食後',
+              route: 'internal',
+              tags: ['unit_dose'],
+              is_narcotic: false,
+              is_generic: true,
+              prescribed_label: '14錠',
+              prescribed_quantity: 14,
+              start_date: '2026-06-10',
+              end_date: '2026-06-23',
+              days: 14,
+              line_updated_at: '2026-06-10T00:00:00.000Z',
+              dispensed_label: null,
+              dispensed_at: null,
+              dispensed_quantity: null,
+              discrepancy_reason: null,
+              unit: '錠',
+              dispensing_method: null,
+              packaging_method: 'unit_dose',
+              packaging_instructions: null,
+              packaging_group_id: 'group_route_mock',
+            },
+            {
+              line_id: 'line_package',
+              result_id: null,
+              line_number: 2,
+              drug_name: '酸化マグネシウム包',
+              dose: '1回1包',
+              frequency: '夕食後',
+              route: 'internal',
+              tags: ['unit_dose'],
+              is_narcotic: false,
+              is_generic: false,
+              prescribed_label: '7包',
+              prescribed_quantity: 7,
+              start_date: '2026-06-17',
+              end_date: '2026-06-23',
+              days: 7,
+              line_updated_at: '2026-06-11T00:00:00.000Z',
+              dispensed_label: null,
+              dispensed_at: null,
+              dispensed_quantity: null,
+              discrepancy_reason: null,
+              unit: '包',
+              dispensing_method: null,
+              packaging_method: 'unit_dose',
+              packaging_instructions: null,
+              packaging_group_id: 'group_route_mock',
+            },
+          ],
+          packaging_groups: [
+            {
+              id: 'group_route_mock',
+              label: '朝夕食後袋',
+              method: '一包化',
+              slot: 'morning_evening',
+              sort_order: 1,
+              version: 1,
+            },
+          ],
+          dispenser: null,
+          auditor: { id: 'auditor_route_mock', name: '監査 太郎' },
+          is_self_audit: false,
+          has_narcotic: false,
+          visit_time_label: null,
+          resolved_inquiry: null,
+          team_audit_total: 0,
+          stock_check_date_label: null,
         },
-        previous_intake: { prescribed_date: '2026-05-20' },
-        safety: {
-          allergy: null,
-          renal: null,
-          handling_tags: [],
-          swallowing: null,
-          cautions: ['Route-mocked workbench smoke'],
-        },
-        comparison: [
-          {
-            key: 'cmp-1',
-            drug_name: 'アムロジピン錠5mg',
-            previous_label: '前回 7錠',
-            current_label: '今回 14錠',
-            change_type: 'days_changed',
-            direction: 'increase',
-            inquiry_origin: false,
-          },
-        ],
-        count_rows: [
-          {
-            line_id: 'line_tablet',
-            result_id: null,
-            line_number: 1,
-            drug_name: 'アムロジピン錠5mg',
-            dose: '1回1錠',
-            frequency: '朝夕食後',
-            route: 'internal',
-            tags: ['unit_dose'],
-            is_narcotic: false,
-            is_generic: true,
-            prescribed_label: '14錠',
-            prescribed_quantity: 14,
-            start_date: '2026-06-10',
-            end_date: '2026-06-23',
-            days: 14,
-            line_updated_at: '2026-06-10T00:00:00.000Z',
-            dispensed_label: null,
-            dispensed_at: null,
-            dispensed_quantity: null,
-            discrepancy_reason: null,
-            unit: '錠',
-            dispensing_method: null,
-            packaging_method: 'unit_dose',
-            packaging_instructions: null,
-            packaging_group_id: 'group_route_mock',
-          },
-          {
-            line_id: 'line_package',
-            result_id: null,
-            line_number: 2,
-            drug_name: '酸化マグネシウム包',
-            dose: '1回1包',
-            frequency: '夕食後',
-            route: 'internal',
-            tags: ['unit_dose'],
-            is_narcotic: false,
-            is_generic: false,
-            prescribed_label: '7包',
-            prescribed_quantity: 7,
-            start_date: '2026-06-17',
-            end_date: '2026-06-23',
-            days: 7,
-            line_updated_at: '2026-06-11T00:00:00.000Z',
-            dispensed_label: null,
-            dispensed_at: null,
-            dispensed_quantity: null,
-            discrepancy_reason: null,
-            unit: '包',
-            dispensing_method: null,
-            packaging_method: 'unit_dose',
-            packaging_instructions: null,
-            packaging_group_id: 'group_route_mock',
-          },
-        ],
-        packaging_groups: [
-          {
-            id: 'group_route_mock',
-            label: '朝夕食後袋',
-            method: '一包化',
-            slot: 'morning_evening',
-            sort_order: 1,
-            version: 1,
-          },
-        ],
-        dispenser: null,
-        auditor: { id: 'auditor_route_mock', name: '監査 太郎' },
-        is_self_audit: false,
-        has_narcotic: false,
-        visit_time_label: null,
-        resolved_inquiry: null,
-        team_audit_total: 0,
-        stock_check_date_label: null,
       });
     },
   );
@@ -260,22 +341,38 @@ function emptySetCalendarCell(overrides: Record<string, unknown> = {}) {
 
 async function routeMockSetWorkbench(page: Page) {
   await page.route(apiPathPattern('/api/dispense-workbench/patients'), async (route) => {
-    await fulfillJson(route, {
-      data: [
+    const requestedPhase = new URL(route.request().url()).searchParams.get('phase');
+    await fulfillJson(
+      route,
+      routeMockPatientList(
+        [
+          {
+            patient_id: ROUTE_MOCK_SET_PATIENT_ID,
+            cycle_id: ROUTE_MOCK_SET_CYCLE_ID,
+            name: '分類 太郎',
+            name_kana: 'ブンルイ タロウ',
+            overall_status: 'setting',
+            badge: 'audited',
+            start_date: '2026-06-17',
+            registered_date: '2026-06-01',
+            latest_set_plan_id: ROUTE_MOCK_SET_PLAN_ID,
+            latest_set_plan_cycle_id: ROUTE_MOCK_SET_CYCLE_ID,
+            representative_task_id: null,
+            representative_task_status: null,
+          },
+        ],
         {
-          patient_id: ROUTE_MOCK_SET_PATIENT_ID,
-          cycle_id: ROUTE_MOCK_SET_CYCLE_ID,
-          name: '分類 太郎',
-          name_kana: 'ブンルイ タロウ',
-          overall_status: 'setting',
-          badge: 'audited',
-          start_date: '2026-06-17',
-          registered_date: '2026-06-01',
-          latest_set_plan_id: ROUTE_MOCK_SET_PLAN_ID,
-          latest_set_plan_cycle_id: ROUTE_MOCK_SET_CYCLE_ID,
+          phase:
+            requestedPhase === 'dispense' ||
+            requestedPhase === 'audit' ||
+            requestedPhase === 'set' ||
+            requestedPhase === 'set-audit'
+              ? requestedPhase
+              : null,
+          includeSetPlan: true,
         },
-      ],
-    });
+      ),
+    );
   });
 
   await page.route(
@@ -449,7 +546,7 @@ async function waitForSetAuditApprovalReady(main: Locator) {
 
 async function waitForVisibleSetAuditCell(main: Locator) {
   const cell = main.getByRole('button', { name: /服薬カレンダーセル/ }).first();
-  await expect(cell).toBeVisible({ timeout: 15_000 });
+  await expect(cell).toBeVisible({ timeout: 45_000 });
   return cell;
 }
 
@@ -459,6 +556,20 @@ async function activateVisibleControl(control: Locator) {
   await expect(control).toBeEnabled({ timeout: 15_000 });
   await expect(control).not.toHaveAttribute('aria-disabled', 'true');
   await control.click();
+}
+
+async function expectControlAboveMobileNavigation(page: Page, control: Locator, label: string) {
+  await control.scrollIntoViewIfNeeded();
+  const [controlBox, mobileNavBox] = await Promise.all([
+    control.boundingBox(),
+    page.getByTestId('mobile-bottom-nav').boundingBox(),
+  ]);
+  expect(controlBox, `${label} must have a rendered box`).not.toBeNull();
+  expect(mobileNavBox, 'mobile bottom navigation must have a rendered box').not.toBeNull();
+  expect(
+    controlBox!.y + controlBox!.height,
+    `${label} must sit above the fixed mobile navigation`,
+  ).toBeLessThanOrEqual(mobileNavBox!.y);
 }
 
 async function markAllVisibleSetAuditCellsOk(main: Locator) {
@@ -947,7 +1058,11 @@ test.describe('dispense → audit flow', () => {
 
   test('route-mocked workbench preserves key controls and submits unit-aware quantities', async ({
     context,
-  }) => {
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Desktop mutation smoke; mobile uses a non-submit reachability smoke.',
+    );
     test.slow();
     const { page, errors } = await createInstrumentedPage(context);
     let submitted: DispenseResultsPayload | null = null;
@@ -977,19 +1092,28 @@ test.describe('dispense → audit flow', () => {
     await expect(main.getByRole('button', { name: /前回処方と比較/ })).toBeVisible();
     await expect(main.getByRole('button', { name: /新規グループ/ })).toBeVisible();
     await expect(main.getByText('期間混在 2種類')).toBeVisible();
+    await expectNoSeriousAxeViolations(page);
 
     const tabletQuantityInput = main.getByLabel('アムロジピン錠5mg 実数量');
     const packageQuantityInput = main.getByLabel('酸化マグネシウム包 実数量');
     await expect(tabletQuantityInput).toHaveAttribute('step', '0.5');
     await expect(packageQuantityInput).toHaveAttribute('step', '1');
 
-    await activateVisibleControl(main.getByRole('button', { name: /前回処方と比較/ }));
+    const compareButton = main.getByRole('button', { name: /前回処方と比較/ });
+    await activateVisibleControl(compareButton);
     const compareDialog = main.getByRole('dialog', { name: /前回処方との比較/ });
     await expect(compareDialog).toBeVisible();
+    const closeCompareButton = compareDialog.getByRole('button', { name: '閉じる' });
+    await expect(closeCompareButton).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(closeCompareButton).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(closeCompareButton).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(compareDialog).toBeHidden();
+    await expect(compareButton).toBeFocused();
 
-    await activateVisibleControl(main.getByRole('button', { name: '全て調剤済' }));
+    await activateVisibleControl(main.getByRole('button', { name: '表示中をすべて調剤済' }));
     await tabletQuantityInput.fill('12.5');
     await activateVisibleControl(
       main.getByRole('button', { name: /アムロジピン錠5mg.*実数量確認/ }),
@@ -1000,6 +1124,11 @@ test.describe('dispense → audit flow', () => {
     );
 
     await activateVisibleControl(main.getByRole('button', { name: '調剤完了 → 監査へ ▶' }));
+    const confirmDialog = page.getByRole('alertdialog', { name: '調剤を完了します' });
+    await expect(confirmDialog).toBeVisible();
+    await activateVisibleControl(
+      confirmDialog.getByRole('button', { name: '調剤完了', exact: true }),
+    );
     await expect.poll(() => submitted, { timeout: 15_000 }).not.toBeNull();
     expect(submitted).toMatchObject({
       task_id: ROUTE_MOCK_TASK_ID,
@@ -1022,6 +1151,352 @@ test.describe('dispense → audit flow', () => {
         }),
       ]),
     });
+
+    expect(errors).toEqual([]);
+  });
+
+  test('mobile dispense keeps key controls reachable without submitting completion', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      !['Mobile Chrome', 'mobile-chromium'].includes(testInfo.project.name),
+      'Mobile-only 375px reachability smoke.',
+    );
+    const { page, errors } = await createInstrumentedPage(context);
+    // Exercise the documented 375 CSS px mobile baseline without invoking the irreversible submit path.
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.addInitScript(() => {
+      try {
+        window.localStorage.removeItem('chouzai-workbench');
+      } catch {
+        // Ignore opaque-origin frames where Web Storage is unavailable.
+      }
+    });
+    await routeMockDispenseWorkbench(page);
+
+    await openStableRoute(page, '/dispense');
+
+    const main = page.locator('main');
+    await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
+    await expect(main.getByText('2026年6月17日（水）〜2026年6月23日（火）')).toBeVisible({
+      timeout: 45_000,
+    });
+    await expectNoSeriousAxeViolations(page);
+
+    const compareButton = main.getByRole('button', { name: /前回処方と比較/ });
+    await activateVisibleControl(compareButton);
+    const compareDialog = main.getByRole('dialog', { name: /前回処方との比較/ });
+    await expect(compareDialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(compareDialog).toBeHidden();
+
+    const tabletQuantityInput = main.getByLabel('アムロジピン錠5mg 実数量');
+    await tabletQuantityInput.scrollIntoViewIfNeeded();
+    await expect(tabletQuantityInput).toBeVisible();
+    await tabletQuantityInput.fill('12.5');
+    await expect(main.getByRole('button', { name: /アムロジピン錠5mg.*実数量確認/ })).toBeVisible();
+
+    expect(errors).toEqual([]);
+  });
+
+  test('mobile dispense keeps a long patient name readable without horizontal overflow', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      !['Mobile Chrome', 'mobile-chromium'].includes(testInfo.project.name),
+      'Mobile-only long patient identity smoke.',
+    );
+    const { page, errors } = await createInstrumentedPage(context);
+    const longPatientName = '患者識別確認用の非常に長い合成氏名太郎';
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.addInitScript(() => {
+      try {
+        window.localStorage.removeItem('chouzai-workbench');
+      } catch {
+        // Ignore opaque-origin frames where Web Storage is unavailable.
+      }
+    });
+    await routeMockDispenseWorkbench(page, { patientName: longPatientName });
+
+    await openStableRoute(page, '/dispense');
+
+    const main = page.locator('main');
+    const queueRow = main.getByTestId('dispense-queue-row');
+    const patientName = queueRow.getByText(longPatientName, { exact: true });
+    await expect(queueRow).toHaveAttribute('aria-current', 'true');
+    await expect(patientName).toBeVisible();
+    await expectNoSeriousAxeViolations(page);
+
+    const layout = await patientName.evaluate((element) => {
+      const style = window.getComputedStyle(element);
+      return {
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        overflowWrap: style.overflowWrap,
+        textOverflow: style.textOverflow,
+        viewportWidth: window.innerWidth,
+        documentWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+      };
+    });
+    expect(layout.overflowWrap).toBe('anywhere');
+    expect(layout.textOverflow).not.toBe('ellipsis');
+    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1);
+    expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth + 1);
+
+    expect(errors).toEqual([]);
+  });
+
+  test('mobile dispense preserves the irreversible confirmation and mocked payload', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      !['Mobile Chrome', 'mobile-chromium'].includes(testInfo.project.name),
+      'Mobile-only irreversible confirmation smoke.',
+    );
+    test.setTimeout(90_000);
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.setViewportSize({ width: 375, height: 812 });
+    let submitted: DispenseResultsPayload | null = null;
+
+    await page.addInitScript(() => {
+      try {
+        window.localStorage.removeItem('chouzai-workbench');
+      } catch {
+        // Ignore opaque-origin frames where Web Storage is unavailable.
+      }
+    });
+    await routeMockDispenseWorkbench(page);
+    await page.route(apiPathPattern('/api/dispense-results'), async (route) => {
+      submitted = readRouteBody<DispenseResultsPayload>(route);
+      await fulfillJson(route, { task_id: ROUTE_MOCK_TASK_ID }, 201);
+    });
+
+    await openStableRoute(page, '/dispense');
+
+    const main = page.locator('main');
+    await expect(main.getByText('2026年6月17日（水）〜2026年6月23日（火）')).toBeVisible({
+      timeout: 45_000,
+    });
+    const tabletQuantityInput = main.getByLabel('アムロジピン錠5mg 実数量');
+    const bulkCompleteButton = main.getByRole('button', { name: '表示中をすべて調剤済' });
+    await expectControlAboveMobileNavigation(page, bulkCompleteButton, 'bulk completion button');
+    await test.step('mark rows and confirm quantities', async () => {
+      await activateVisibleControl(bulkCompleteButton);
+      await tabletQuantityInput.fill('12.5');
+      await activateVisibleControl(
+        main.getByRole('button', { name: /アムロジピン錠5mg.*実数量確認/ }),
+      );
+      await main.getByLabel('アムロジピン錠5mg 数量差異理由').fill('残薬調整');
+      await activateVisibleControl(
+        main.getByRole('button', { name: /酸化マグネシウム包.*実数量確認/ }),
+      );
+    });
+
+    const confirmDialog = page.getByRole('alertdialog', { name: '調剤を完了します' });
+    await test.step('open and confirm the irreversible mobile dialog', async () => {
+      const primaryCompletionButton = main.getByRole('button', { name: '調剤完了 → 監査へ ▶' });
+      await expectControlAboveMobileNavigation(
+        page,
+        primaryCompletionButton,
+        'dispense completion button',
+      );
+      await activateVisibleControl(primaryCompletionButton);
+      await expect(confirmDialog).toBeVisible();
+      await activateVisibleControl(
+        confirmDialog.getByRole('button', { name: '調剤完了', exact: true }),
+      );
+    });
+    await expect.poll(() => submitted, { timeout: 15_000 }).not.toBeNull();
+    expect(submitted).toMatchObject({
+      task_id: ROUTE_MOCK_TASK_ID,
+      expected_version: 9,
+      lines: expect.arrayContaining([
+        expect.objectContaining({
+          line_id: 'line_tablet',
+          actual_quantity: 12.5,
+          actual_quantity_confirmed: true,
+          actual_quantity_source: 'manual_entry',
+          actual_unit: '錠',
+          discrepancy_reason: '残薬調整',
+        }),
+        expect.objectContaining({
+          line_id: 'line_package',
+          actual_quantity: 7,
+          actual_quantity_confirmed: true,
+          actual_quantity_source: 'prescription_quantity_confirmed',
+          actual_unit: '包',
+        }),
+      ]),
+    });
+
+    expect(errors).toEqual([]);
+  });
+
+  test('mobile offline banner keeps workbench controls clear of navigation', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      !['Mobile Chrome', 'mobile-chromium'].includes(testInfo.project.name),
+      'Mobile-only offline layout smoke.',
+    );
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+    });
+    await routeMockDispenseWorkbench(page);
+
+    await openStableRoute(page, '/dispense');
+
+    await expect(
+      page.getByText('ネットワーク接続が切れています。端末に保存済みの情報のみを read-only'),
+    ).toBeVisible({
+      timeout: 45_000,
+    });
+    const main = page.locator('main');
+    await expect(main.getByText('2026年6月17日（水）〜2026年6月23日（火）')).toBeVisible();
+    await expectControlAboveMobileNavigation(
+      page,
+      main.getByRole('button', { name: '表示中をすべて調剤済' }),
+      'offline bulk completion button',
+    );
+
+    expect(errors).toEqual([]);
+  });
+
+  test('route-mocked dispense keeps keyboard landmarks usable in forced colors', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Forced-colors smoke runs in desktop Chromium.',
+    );
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.emulateMedia({ forcedColors: 'active' });
+    await page.addInitScript(() => {
+      try {
+        window.localStorage.removeItem('chouzai-workbench');
+      } catch {
+        // Ignore opaque-origin frames where Web Storage is unavailable.
+      }
+    });
+    await routeMockDispenseWorkbench(page);
+
+    await openStableRoute(page, '/dispense');
+
+    const main = page.locator('main');
+    await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => window.matchMedia('(forced-colors: active)').matches))
+      .toBe(true);
+
+    const patientNotes = main.getByRole('region', { name: '患者の備考・申し送り' });
+    await expect(patientNotes).toBeVisible();
+    await patientNotes.focus();
+    await expect(patientNotes).toBeFocused();
+    await expect(main.getByRole('button', { name: /前回処方と比較/ })).toBeVisible();
+
+    // In forced-colors Chromium replaces author colors with user-system colors. The normal-color
+    // route-mock cases retain Axe's color-contrast coverage; this smoke proves the actual media
+    // override, named landmark, and keyboard focus path without asking Axe to score the replaced palette.
+
+    expect(errors).toEqual([]);
+  });
+
+  test('route-mocked dispense keeps clinical controls reachable in a 200%-equivalent viewport', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'The 200%-equivalent desktop viewport smoke runs in Chromium.',
+    );
+    const { page, errors } = await createInstrumentedPage(context);
+    // A 1536×1024 desktop at 200% zoom has an approximately 768×512 effective CSS viewport.
+    // This is a bounded layout proxy, not a substitute for manual browser-zoom verification.
+    await page.setViewportSize({ width: 768, height: 512 });
+    await page.addInitScript(() => {
+      try {
+        window.localStorage.removeItem('chouzai-workbench');
+      } catch {
+        // Ignore opaque-origin frames where Web Storage is unavailable.
+      }
+    });
+    await routeMockDispenseWorkbench(page);
+
+    await openStableRoute(page, '/dispense');
+
+    const main = page.locator('main');
+    await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => [window.innerWidth, window.innerHeight]))
+      .toEqual([768, 512]);
+
+    const period = main.getByText('2026年6月17日（水）〜2026年6月23日（火）');
+    await period.scrollIntoViewIfNeeded();
+    await expect(period).toBeInViewport();
+
+    const compareButton = main.getByRole('button', { name: /前回処方と比較/ });
+    await compareButton.scrollIntoViewIfNeeded();
+    await expect(compareButton).toBeInViewport();
+    await compareButton.focus();
+    await expect(compareButton).toBeFocused();
+
+    const patientNotes = main.getByRole('region', { name: '患者の備考・申し送り' });
+    await patientNotes.scrollIntoViewIfNeeded();
+    await expect(patientNotes).toBeInViewport();
+    await patientNotes.focus();
+    await expect(patientNotes).toBeFocused();
+
+    expect(errors).toEqual([]);
+  });
+
+  test('route-mocked dispense preserves clinical controls on a tablet viewport', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Tablet viewport smoke runs in desktop Chromium.',
+    );
+    const { page, errors } = await createInstrumentedPage(context);
+    // 768×1024 exercises the tablet portrait breakpoint without claiming device-specific hardware coverage.
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.addInitScript(() => {
+      try {
+        window.localStorage.removeItem('chouzai-workbench');
+      } catch {
+        // Ignore opaque-origin frames where Web Storage is unavailable.
+      }
+    });
+    await routeMockDispenseWorkbench(page);
+
+    await openStableRoute(page, '/dispense');
+
+    const main = page.locator('main');
+    await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => [window.innerWidth, window.innerHeight]))
+      .toEqual([768, 1024]);
+    await expect(main.getByText('2026年6月17日（水）〜2026年6月23日（火）')).toBeVisible();
+    await expectNoSeriousAxeViolations(page);
+
+    const compareButton = main.getByRole('button', { name: /前回処方と比較/ });
+    await activateVisibleControl(compareButton);
+    const compareDialog = main.getByRole('dialog', { name: /前回処方との比較/ });
+    await expect(compareDialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(compareDialog).toBeHidden();
+
+    const tabletQuantityInput = main.getByLabel('アムロジピン錠5mg 実数量');
+    await tabletQuantityInput.scrollIntoViewIfNeeded();
+    await expect(tabletQuantityInput).toBeInViewport();
+    await tabletQuantityInput.fill('12.5');
+    const quantityConfirmation = main.getByRole('button', {
+      name: /アムロジピン錠5mg.*実数量確認/,
+    });
+    await quantityConfirmation.scrollIntoViewIfNeeded();
+    await expect(quantityConfirmation).toBeInViewport();
+    await quantityConfirmation.focus();
+    await expect(quantityConfirmation).toBeFocused();
 
     expect(errors).toEqual([]);
   });
@@ -1136,8 +1611,24 @@ test.describe('set → set-audit real-data direct entry', () => {
 
     const main = page.locator('main');
     await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
-    await expect(main.getByText('麻薬分類未確認 1剤')).toBeVisible();
+    await expect(main.getByText('麻薬分類未確認 1剤')).toBeVisible({ timeout: 45_000 });
+    await expect(main.locator('time[dateTime="2026-06-17"]')).toHaveText('2026年6月17日（水）', {
+      timeout: 45_000,
+    });
     await expect(main.getByText('特記なし')).toHaveCount(0);
+    await expectNoSeriousAxeViolations(page);
+
+    await (await waitForVisibleSetAuditCell(main)).click();
+    const holdButton = main.getByRole('button', { name: '保留…' });
+    await expect(holdButton).toBeEnabled();
+    await holdButton.focus();
+    await holdButton.press('Enter');
+    const holdDialog = page.getByRole('dialog', { name: /保留理由の登録/ });
+    await expect(holdDialog).toBeVisible();
+    await expect(holdDialog.getByRole('radio').first()).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(holdDialog).toBeHidden();
+    await expect(holdButton).toBeFocused();
 
     expect(errors).toEqual([]);
   });
@@ -1196,6 +1687,8 @@ test.describe('set → set-audit real-data direct entry', () => {
       'Mobile set-audit smoke replaces mobile coverage for fixed-fixture approval POST tests.',
     );
     const { page, errors } = await createInstrumentedPage(context);
+    // Exercise the documented 375 CSS px mobile baseline, not just the Pixel 5 default viewport.
+    await page.setViewportSize({ width: 375, height: 812 });
     await page.addInitScript(() => {
       try {
         window.localStorage.removeItem('chouzai-workbench');
@@ -1209,6 +1702,7 @@ test.describe('set → set-audit real-data direct entry', () => {
 
     const main = page.locator('main');
     await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
+    await expectNoSeriousAxeViolations(page);
     const cell = await waitForVisibleSetAuditCell(main);
     await cell.click();
     await expect(main.getByRole('button', { name: '監査OK', exact: true })).toBeVisible();

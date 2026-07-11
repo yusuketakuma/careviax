@@ -59,7 +59,13 @@ function calendarView(): WorkbenchView {
     calLegend: [{ label: '保留', bg: '#fff6e6', bd: '#e8c884' }],
     photoTitle: '作業証跡',
     photos: [],
-    progress: { label: '進捗', pct: '50%', color: '#2f6fd6', fraction: '1 / 2' },
+    progress: {
+      label: '進捗',
+      pct: '50%',
+      color: '#2f6fd6',
+      textColor: '#1f5ab8',
+      fraction: '1 / 2',
+    },
     gate: { ok: true, text: '完了可能', color: '#1f9150', bg: '#eef8f0', border: '#9ed6ad' },
     primary: {
       label: '次工程へ',

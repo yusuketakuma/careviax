@@ -425,7 +425,7 @@ export function MedicationCalendarGrid({
             }}
           />
         </div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: progress.color }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: progress.textColor }}>
           {progress.fraction}
         </div>
         {/* 完了ゲート表示（カレンダー工程のみ）。色だけに依存しないテキスト付き */}

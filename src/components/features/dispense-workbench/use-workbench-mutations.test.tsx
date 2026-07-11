@@ -13,6 +13,7 @@ const {
   loadWorkbenchAsyncMock,
   loadCalendarWriteContextAsyncMock,
   toastErrorMock,
+  clientLogWarnMock,
 } = vi.hoisted(() => ({
   mutateCellMock: vi.fn(),
   assignLinesToGroupMock: vi.fn(),
@@ -22,6 +23,7 @@ const {
   loadWorkbenchAsyncMock: vi.fn(),
   loadCalendarWriteContextAsyncMock: vi.fn(),
   toastErrorMock: vi.fn(),
+  clientLogWarnMock: vi.fn(),
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -32,6 +34,10 @@ vi.mock('sonner', () => ({
   toast: {
     error: toastErrorMock,
   },
+}));
+
+vi.mock('@/lib/utils/client-log', () => ({
+  clientLog: { warn: clientLogWarnMock },
 }));
 
 vi.mock('./dispensing-workbench.adapter', () => ({
@@ -54,7 +60,7 @@ vi.mock('./dispensing-workbench.adapter', () => ({
   updatePrescriptionLines: updatePrescriptionLinesMock,
 }));
 
-import { WorkbenchConflictError } from './dispensing-workbench.write-types';
+import { WorkbenchConflictError, WorkbenchWriteError } from './dispensing-workbench.write-types';
 import { useWorkbenchStore } from './dispensing-workbench.store';
 import {
   calendarQueryKey,
@@ -83,7 +89,7 @@ describe('useWorkbenchMutations recovery', () => {
     });
   });
 
-  it('refetches the active calendar query and surfaces server conflict detail', async () => {
+  it('refetches the active calendar query with a fixed conflict message', async () => {
     const queryClient = createTestQueryClient();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const refetchSpy = vi.spyOn(queryClient, 'refetchQueries');
@@ -106,9 +112,19 @@ describe('useWorkbenchMutations recovery', () => {
 
     await waitFor(() => {
       expect(toastErrorMock).toHaveBeenCalledWith(
-        '他のユーザーによって更新されました。最新データを取得してから再試行してください 最新の状態を再読み込みします。',
+        'セルの更新に失敗しました。他の操作と競合しました。最新の状態を再読み込みします。',
       );
     });
+    expect(clientLogWarnMock).toHaveBeenCalledWith(
+      'dispense_workbench.write_conflict',
+      expect.any(WorkbenchConflictError),
+      {
+        route: '/dispense-workbench',
+        entityType: 'dispense_workbench_write',
+        code: 'WORKFLOW_CONFLICT',
+        status: 409,
+      },
+    );
     const queryKey = calendarQueryKey('org_1', 'plan_1');
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey });
     expect(refetchSpy).toHaveBeenCalledWith({ queryKey, type: 'active' });
@@ -118,6 +134,75 @@ describe('useWorkbenchMutations recovery', () => {
     reportWorkbenchError(new Error(''), '保存に失敗しました');
 
     expect(toastErrorMock).toHaveBeenCalledWith('保存に失敗しました');
+  });
+
+  it('never exposes raw workbench error values in toast text or client-log context', () => {
+    const poisonMessage = '患者 佐藤花子 / アムロジピン錠5mg / token=secret';
+
+    reportWorkbenchError(
+      new WorkbenchConflictError({ message: poisonMessage }),
+      'セルの更新に失敗しました',
+    );
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'セルの更新に失敗しました。他の操作と競合しました。最新の状態を再読み込みします。',
+    );
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(poisonMessage);
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+      'dispense_workbench.write_conflict',
+      expect.any(WorkbenchConflictError),
+      {
+        route: '/dispense-workbench',
+        entityType: 'dispense_workbench_write',
+        code: 'WORKFLOW_CONFLICT',
+        status: 409,
+      },
+    );
+    expect(JSON.stringify(clientLogWarnMock.mock.calls.at(-1)?.[2])).not.toContain(poisonMessage);
+
+    reportWorkbenchError(new WorkbenchWriteError(poisonMessage, 422), '明細の保存に失敗しました');
+    expect(toastErrorMock).toHaveBeenLastCalledWith('明細の保存に失敗しました');
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(poisonMessage);
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+      'dispense_workbench.write_failed',
+      expect.any(WorkbenchWriteError),
+      {
+        route: '/dispense-workbench',
+        entityType: 'dispense_workbench_write',
+        code: 'WRITE_FAILED',
+        status: 422,
+      },
+    );
+    expect(JSON.stringify(clientLogWarnMock.mock.calls.at(-1)?.[2])).not.toContain(poisonMessage);
+
+    reportWorkbenchError(new Error(poisonMessage), '保留の保存に失敗しました');
+    expect(toastErrorMock).toHaveBeenLastCalledWith('保留の保存に失敗しました');
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(poisonMessage);
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+      'dispense_workbench.write_failed',
+      expect.any(Error),
+      {
+        route: '/dispense-workbench',
+        entityType: 'dispense_workbench_write',
+        code: 'UNEXPECTED_WRITE_FAILURE',
+      },
+    );
+    expect(JSON.stringify(clientLogWarnMock.mock.calls.at(-1)?.[2])).not.toContain(poisonMessage);
+
+    reportWorkbenchError(new WorkbenchWriteError(poisonMessage, 0), '調剤完了の登録に失敗しました');
+    expect(toastErrorMock).toHaveBeenLastCalledWith(
+      '通信により操作結果を確認できません。最新の状態を確認してから、必要な場合のみ操作をやり直してください。',
+    );
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain(poisonMessage);
+    expect(clientLogWarnMock).toHaveBeenLastCalledWith(
+      'dispense_workbench.write_failed',
+      expect.any(WorkbenchWriteError),
+      {
+        route: '/dispense-workbench',
+        entityType: 'dispense_workbench_write',
+        code: 'WRITE_FAILED',
+        status: 0,
+      },
+    );
   });
 
   it('rehydrates calendar store state directly after a cell conflict', async () => {
@@ -238,7 +323,7 @@ describe('useWorkbenchMutations recovery', () => {
 
     await waitFor(() => {
       expect(toastErrorMock).toHaveBeenCalledWith(
-        '処方明細のグループ割当が他の操作で更新されています 最新の状態を再読み込みします。',
+        'グループ割当の保存に失敗しました。他の操作と競合しました。最新の状態を再読み込みします。',
       );
     });
     const queryKey = workbenchQueryKey('org_1', 'patient_1');

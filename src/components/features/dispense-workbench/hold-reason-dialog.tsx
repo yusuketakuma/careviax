@@ -11,10 +11,18 @@
  * CSS Module クラス（.modalOverlay / .modalCard / .modalHeaderHold）＋ inline style で再現する。
  *
  * a11y: role="dialog" + aria-modal、ラジオは role="radiogroup"/role="radio" でキーボード可、
- * Escape でキャンセル、開いたら最初の理由へフォーカス、Tab を内部にトラップ。
+ * Escape でキャンセル、開いたら最初の理由へフォーカス、閉じたら起点へフォーカスを戻し、
+ * Tab を内部にトラップ。
  */
 
-import { useCallback, useEffect, useRef, type CSSProperties, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 
 import { useWorkbenchStore } from './dispensing-workbench.store';
 import styles from './dispensing-workbench.module.css';
@@ -58,6 +66,7 @@ export function HoldReasonDialog({ view, phase, handlers }: HoldReasonDialogProp
 
   const cardRef = useRef<HTMLDivElement>(null);
   const firstReasonRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
 
   const onCancel = useCallback(() => cancelHold(), [cancelHold]);
   const onSave = useCallback(() => {
@@ -66,39 +75,59 @@ export function HoldReasonDialog({ view, phase, handlers }: HoldReasonDialogProp
     else storeSaveHold(phase);
   }, [view.holdReady, handlers, storeSaveHold, phase]);
 
-  // 開いたら最初の保留理由へフォーカス（キーボード操作の起点を明示）
-  useEffect(() => {
-    if (view.holdOpen) firstReasonRef.current?.focus();
+  // 開いたら最初の保留理由へフォーカスし、閉じる際に起点へ戻す。
+  // 実ワークベンチでは holdOpen が true の間だけ本コンポーネントをマウントするため、
+  // cleanup は Escape / キャンセル / 保存の全てで実行される。
+  useLayoutEffect(() => {
+    if (!view.holdOpen) return;
+
+    const activeElement = document.activeElement;
+    openerRef.current =
+      activeElement instanceof HTMLElement && activeElement !== document.body
+        ? activeElement
+        : null;
+    firstReasonRef.current?.focus();
+
+    return () => {
+      if (openerRef.current?.isConnected) openerRef.current.focus();
+    };
   }, [view.holdOpen]);
 
-  // Escape でキャンセル + Tab を内部にトラップ（aria-modal の挙動を補完）
-  const onKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLDivElement>) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onCancel();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-      const card = cardRef.current;
-      if (!card) return;
-      const focusable = card.querySelectorAll<HTMLElement>(
-        '[tabindex]:not([tabindex="-1"]):not([disabled]), input:not([disabled]), textarea:not([disabled]), button:not([disabled])',
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      if (e.shiftKey && active === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    },
-    [onCancel],
-  );
+  // ラジオ等の内部フォーカス位置に関わらず Escape を確実に受ける。
+  // capture で受けるため、子の個別キーハンドラやブラウザ実装差に左右されない。
+  useEffect(() => {
+    if (!view.holdOpen) return;
+
+    const onDocumentKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      onCancel();
+    };
+
+    document.addEventListener('keydown', onDocumentKeyDown, { capture: true });
+    return () => document.removeEventListener('keydown', onDocumentKeyDown, { capture: true });
+  }, [onCancel, view.holdOpen]);
+
+  // Tab を内部にトラップ（aria-modal の挙動を補完）
+  const onKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab') return;
+    const card = cardRef.current;
+    if (!card) return;
+    const focusable = card.querySelectorAll<HTMLElement>(
+      '[tabindex]:not([tabindex="-1"]):not([disabled]), input:not([disabled]), textarea:not([disabled]), button:not([disabled])',
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }, []);
 
   if (!view.holdOpen) return null;
 

@@ -11,7 +11,11 @@ export const metadata: Metadata = {
  */
 export default function SetAuditPage() {
   return (
-    <PageScaffold variant="bare" className="min-h-0 bg-transparent p-0 sm:p-0 lg:p-0 xl:p-0">
+    <PageScaffold
+      variant="bare"
+      className="h-full min-h-0 bg-transparent p-0 sm:p-0 lg:p-0 xl:p-0"
+      stackClassName="h-full space-y-0"
+    >
       <h1 className="sr-only">セット監査</h1>
       <DispensingWorkbench phase="seta" />
     </PageScaffold>

@@ -18,7 +18,7 @@
  * 更新は store action を直接呼ぶ（ハンドラを引き回さない＝契約ドリフト防止）。
  *
  * デスクトップ専用（min-width:1540px）。AppShell 配下マウント時は .rootInShell で
- * ヘッダ高 3.5rem を控除（計画 §3 単一変更点）。
+ * 親flexが計算した実効コンテンツ高を継承し、可変ヘッダ/バナーと共存する。
  */
 
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
@@ -217,7 +217,7 @@ export function buildForceRegenConfirm(
 export interface DispensingWorkbenchProps {
   /** ルートから注入される工程。 */
   phase: Phase;
-  /** AppShell（共通ヘッダ）配下にマウントするか。true で .rootInShell（高さ 3.5rem 控除）。 */
+  /** AppShell配下にマウントするか。trueでは.rootInShellが親の実効コンテンツ高を継承する。 */
   inShell?: boolean;
 }
 

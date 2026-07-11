@@ -61,18 +61,23 @@
    *  - state solid（fill 兼 ink、theme 安定 dark）/ state-tint（淡背景・枠、固定 light）。
    *  - data-plane surface/text/line（行・セル・地・文字・罫線、theme 安定 light）。
    */
-  /* dot/progress=明（小指標・非文字 3:1）、strong=primary ボタン塗り（白ラベル AA 4.5:1 に足る暗さ・
-     theme 安定）、border=枠。hue は工程識別を維持。 */
+  /* dot/progress=明（非文字 fill 3:1）、ink=footer上の進捗数値（AA 4.5:1）、
+     strong=primary ボタン塗り（白ラベル AA 4.5:1 に足る暗さ・theme 安定）、border=枠。
+     hue は工程識別を維持。 */
   --wb-phase-disp: #2f80ed;
+  --wb-phase-disp-ink: #245aad;
   --wb-phase-disp-strong: oklch(0.45 0.15 252);
   --wb-phase-disp-border: #245aad;
   --wb-phase-audit: #27ae60;
+  --wb-phase-audit-ink: #1e7040;
   --wb-phase-audit-strong: oklch(0.45 0.12 152);
   --wb-phase-audit-border: #218040;
   --wb-phase-setp: #b07cd6;
+  --wb-phase-setp-ink: #7c43ab;
   --wb-phase-setp-strong: oklch(0.46 0.15 300);
   --wb-phase-setp-border: #7c43ab;
   --wb-phase-seta: #d6905a;
+  --wb-phase-seta-ink: #8a4b1a;
   --wb-phase-seta-strong: oklch(0.47 0.1 55);
   --wb-phase-seta-border: #a9632c;
 
@@ -86,7 +91,7 @@
   --wb-tag-gaiyo: #b75a28;
   --wb-tag-gaiyo-bg: #fdeee6;
   --wb-tag-gaiyo-border: #f3cbb3;
-  --wb-tag-reisho: #2a7d8f;
+  --wb-tag-reisho: #1f6676;
   --wb-tag-reisho-bg: #e4f3f5;
   --wb-tag-reisho-border: #bce0e5;
   --wb-tag-shoni: #a04a6a;
@@ -198,9 +203,18 @@
   --wb-status-offline: var(--background);
 }
 
-/* AppShell 配下にマウントする場合のヘッダ控除高（計画 §3・単一変更点） */
+/* AppShell配下では、PageScaffoldが渡す実効コンテンツ高をそのまま使う。
+   ヘッダ/ネットワークバナーの可変高も親flexレイアウトで控除済みとなる。 */
 .rootInShell {
-  height: calc(100dvh - 3.5rem);
+  height: 100%;
+}
+
+/* AppShellの通常padding（h-16）に加え、safe area分だけ作業面を短くして
+   固定下部ナビが不可逆操作のpointer eventを奪わないようにする。 */
+@media (max-width: 767px) {
+  .rootInShell {
+    height: calc(100% - env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* スクロールバー（13px・設計プロト helmet）。CSS Module スコープ内に閉じる */
@@ -406,6 +420,13 @@
   flex-direction: column;
   background: var(--muted);
   border-left: 1px solid var(--border);
+}
+
+/* スクロール領域はキーボードでも読み進められるよう明示的にフォーカスを受け取り、
+   高密度画面でも見失わない 3px の可視フォーカスを表示する。 */
+.scrollRegion:focus-visible {
+  outline: 3px solid var(--wb-ink);
+  outline-offset: 2px;
 }
 
 /* ===== ステータスバー（23px・標準 primary のフラット塗り）===== */

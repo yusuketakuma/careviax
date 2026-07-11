@@ -372,7 +372,7 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
             }}
           />
         </div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: view.progress.color }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: view.progress.textColor }}>
           {view.progress.fraction}
         </div>
         <span style={{ flex: 1 }} />

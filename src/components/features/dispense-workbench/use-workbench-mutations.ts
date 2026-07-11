@@ -29,7 +29,7 @@ import {
 import { toast } from 'sonner';
 
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { messageFromError } from '@/lib/utils/error-message';
+import { clientLog } from '@/lib/utils/client-log';
 import {
   isRealDataEnabled,
   loadPatientsAsync,
@@ -74,30 +74,34 @@ export function calendarQueryKey(orgId: string, planId: string): QueryKey {
 
 /**
  * 409/失敗を toast に振り分ける共通ハンドラ。
- * - WorkbenchConflictError: 競合 toast（再取得で解決を促す）。
- * - WorkbenchWriteError: API の message をそのまま表示。
- * - その他: 既定メッセージ。
+ * API の message/details は患者、処方、送付先などを含み得るため、表示・clientLog context には使わない。
+ * - WorkbenchConflictError: 固定競合 toast（再取得で解決を促す）。
+ * - その他: 呼び出し元が定める固定メッセージ。
  */
 export function reportWorkbenchError(error: unknown, fallback = '保存に失敗しました'): void {
   if (error instanceof WorkbenchConflictError) {
-    toast.error(`${conflictMessage(error.details)} 最新の状態を再読み込みします。`);
+    clientLog.warn('dispense_workbench.write_conflict', error, {
+      route: '/dispense-workbench',
+      entityType: 'dispense_workbench_write',
+      code: 'WORKFLOW_CONFLICT',
+      status: error.status,
+    });
+    toast.error(`${fallback}。他の操作と競合しました。最新の状態を再読み込みします。`);
     return;
   }
-  if (error instanceof WorkbenchWriteError) {
-    toast.error(error.message || fallback);
+  clientLog.warn('dispense_workbench.write_failed', error, {
+    route: '/dispense-workbench',
+    entityType: 'dispense_workbench_write',
+    code: error instanceof WorkbenchWriteError ? 'WRITE_FAILED' : 'UNEXPECTED_WRITE_FAILURE',
+    ...(error instanceof WorkbenchWriteError ? { status: error.status } : {}),
+  });
+  if (error instanceof WorkbenchWriteError && error.status === 0) {
+    toast.error(
+      '通信により操作結果を確認できません。最新の状態を確認してから、必要な場合のみ操作をやり直してください。',
+    );
     return;
   }
-  toast.error(messageFromError(error, fallback));
-}
-
-function conflictMessage(details: unknown): string {
-  if (typeof details !== 'object' || details === null) {
-    return '他の操作と競合しました。';
-  }
-  const payload = details as { message?: unknown };
-  return typeof payload.message === 'string' && payload.message
-    ? payload.message
-    : '他の操作と競合しました。';
+  toast.error(fallback);
 }
 
 function recoverActiveQuery(queryClient: QueryClient, queryKey: QueryKey): void {

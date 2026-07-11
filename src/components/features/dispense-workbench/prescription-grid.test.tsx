@@ -80,7 +80,13 @@ function gridView(): WorkbenchView {
       summary: '',
     },
     checkHead: '',
-    progress: { label: '進捗', pct: '0%', color: '#2f6fd6', fraction: '0 / 1' },
+    progress: {
+      label: '進捗',
+      pct: '0%',
+      color: '#2f6fd6',
+      textColor: '#1f5ab8',
+      fraction: '0 / 1',
+    },
     primary: {
       label: '保存',
       bg: '#2f6fd6',

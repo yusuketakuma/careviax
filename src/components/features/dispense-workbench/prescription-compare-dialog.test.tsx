@@ -25,7 +25,15 @@ function compareView(compareOpen: boolean): WorkbenchView {
 
 function CompareDialogHarness() {
   const compareOpen = useWorkbenchStore((state) => state.compareOpen);
-  return <PrescriptionCompareDialog view={compareView(compareOpen)} phase="dispense" />;
+  const openCompare = useWorkbenchStore((state) => state.openCompare);
+  return (
+    <>
+      <button type="button" onClick={openCompare}>
+        比較を開く
+      </button>
+      <PrescriptionCompareDialog view={compareView(compareOpen)} phase="dispense" />
+    </>
+  );
 }
 
 describe('PrescriptionCompareDialog', () => {
@@ -50,6 +58,39 @@ describe('PrescriptionCompareDialog', () => {
       expect(screen.queryByRole('dialog', { name: /前回処方との比較/ })).toBeNull();
     });
     expect(useWorkbenchStore.getState().compareOpen).toBe(false);
+  });
+
+  it('returns focus to the comparison trigger after Escape closes the dialog', async () => {
+    render(<CompareDialogHarness />);
+
+    const trigger = screen.getByRole('button', { name: '比較を開く' });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const closeButton = await screen.findByRole('button', { name: '閉じる' });
+    expect(document.activeElement).toBe(closeButton);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /前回処方との比較/ })).toBeNull();
+    });
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('keeps Tab and Shift+Tab within the comparison dialog', async () => {
+    render(<CompareDialogHarness />);
+
+    fireEvent.click(screen.getByRole('button', { name: '比較を開く' }));
+
+    const closeButton = await screen.findByRole('button', { name: '閉じる' });
+    expect(document.activeElement).toBe(closeButton);
+
+    fireEvent.keyDown(closeButton, { key: 'Tab' });
+    expect(document.activeElement).toBe(closeButton);
+
+    fireEvent.keyDown(closeButton, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(closeButton);
   });
 
   it('keeps comparison counts and supplemental medication text at the 12px minimum', () => {

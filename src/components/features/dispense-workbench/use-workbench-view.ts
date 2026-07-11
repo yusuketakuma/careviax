@@ -1021,6 +1021,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       label: '調剤ピッキング進捗',
       pct: pct + '%',
       color: 'var(--wb-phase-disp)',
+      textColor: 'var(--wb-phase-disp-ink)',
       fraction: prog.done + ' / ' + prog.total,
     };
     bulkLabel = '表示中をすべて調剤済';
@@ -1040,6 +1041,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       label: '調剤監査 進捗',
       pct: pct + '%',
       color: 'var(--wb-phase-audit)',
+      textColor: 'var(--wb-phase-audit-ink)',
       fraction: prog.audit + ' / ' + prog.total,
     };
     bulkLabel = '調剤済みをすべて監査OK';
@@ -1067,6 +1069,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
         label: 'セット進捗',
         pct: pct + '%',
         color: 'var(--wb-phase-setp)',
+        textColor: 'var(--wb-phase-setp-ink)',
         fraction: dnC + ' / ' + totC,
       };
       bulkLabel = '表示中セルをすべてセット済';
@@ -1079,6 +1082,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
         label: 'セット監査 進捗',
         pct: pct + '%',
         color: 'var(--wb-phase-seta)',
+        textColor: 'var(--wb-phase-seta-ink)',
         fraction: dnC + ' / ' + totC,
       };
       bulkLabel = '表示中セルをすべて監査OK';

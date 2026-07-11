@@ -269,6 +269,20 @@ describe('workbench color-token AA contrast (A-prime, theme-stable)', () => {
       `--wb-outside-med on --wb-surface = ${outside.toFixed(2)}:1`,
     ).toBeGreaterThanOrEqual(4.5);
   });
+
+  it('category tags and progress fractions use dedicated AA inks on their actual tints', () => {
+    const pairs: [string, string][] = [
+      ['--wb-tag-reisho', '--wb-tag-reisho-bg'],
+      ['--wb-phase-disp-ink', '--wb-surface-muted'],
+      ['--wb-phase-audit-ink', '--wb-surface-muted'],
+      ['--wb-phase-setp-ink', '--wb-surface-muted'],
+      ['--wb-phase-seta-ink', '--wb-surface-muted'],
+    ];
+    for (const [ink, surface] of pairs) {
+      const ratio = contrast(tokenValue(ink), tokenValue(surface));
+      expect(ratio, `${ink} on ${surface} = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
 });
 
 /** module.css の :global(.dark) .root ブロックから token の dark 値を取り出す。 */

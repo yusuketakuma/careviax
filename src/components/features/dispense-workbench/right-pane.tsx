@@ -266,6 +266,10 @@ function GridInfo({ view }: { view: WorkbenchView }) {
         <SectionHeading color="var(--wb-state-confirm)" label="備考・申し送り" />
         <div
           data-testid="calendar-outside-meds-confirmation"
+          className={styles.scrollRegion}
+          role="region"
+          aria-label="患者の備考・申し送り"
+          tabIndex={0}
           style={{
             flex: 1,
             minHeight: 0,
@@ -369,6 +373,10 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
             )}
           </div>
           <div
+            className={styles.scrollRegion}
+            role="region"
+            aria-label="次にセットする薬剤一覧"
+            tabIndex={0}
             style={{
               marginTop: '7px',
               display: 'flex',
@@ -547,6 +555,10 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
       >
         <SectionHeading color="var(--wb-tag-gaiyo)" label="カレンダーその他薬（同梱確認）" />
         <div
+          className={styles.scrollRegion}
+          role="region"
+          aria-label="カレンダーその他薬の同梱確認"
+          tabIndex={0}
           style={{
             flex: 1,
             minHeight: 0,
@@ -743,6 +755,10 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
             )}
           </div>
           <div
+            className={styles.scrollRegion}
+            role="region"
+            aria-label="セット監査の期待薬剤一覧"
+            tabIndex={0}
             style={{
               marginTop: '6px',
               display: 'flex',
@@ -1034,6 +1050,10 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
       >
         <SectionHeading color="var(--wb-state-blocked)" label="リスク確認順（上位を先に）" />
         <div
+          className={styles.scrollRegion}
+          role="region"
+          aria-label="リスク確認順一覧"
+          tabIndex={0}
           style={{
             flex: 1,
             minHeight: 0,
