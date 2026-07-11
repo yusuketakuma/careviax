@@ -9,6 +9,7 @@ import { AlertTriangle, CheckCircle2, ListTodo, MessageCircle, Send, Share2 } fr
 import { toast } from 'sonner';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Skeleton } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
@@ -88,6 +89,17 @@ const FOLLOWUP_TASK_CONFLICT_MESSAGE =
 const REPLY_REQUEST_FAILURE_MESSAGE = '返信依頼の起票に失敗しました。もう一度お試しください。';
 const REPLY_REQUEST_CONFLICT_MESSAGE =
   '返信依頼は既に起票されている可能性があります。連携依頼の状態を確認しています。';
+
+type FollowupTaskMutationInput = {
+  audience: ShareAudienceKey;
+  responseId: string;
+  payload: ReturnType<typeof buildNextCheckTaskInput>;
+};
+
+type ReplyRequestMutationInput = {
+  audience: ShareAudienceKey;
+  payload: ReturnType<typeof buildShareCommunicationRequestInput>;
+};
 
 class ShareMutationResponseError extends Error {
   constructor(
@@ -373,32 +385,16 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   ].filter((label): label is string => Boolean(label));
 
   const createTaskMutation = useMutation({
-    mutationFn: async () => {
-      if (!canCreateFollowupTask) {
-        throw new Error('運用タスクの作成権限がありません');
-      }
-      if (!report || !latestReply || !replyRequest) {
-        throw new Error('タスク化できる返信がありません');
-      }
-      const input = buildNextCheckTaskInput({
-        audience,
-        patientId: report.patient_id,
-        patientName: report.patient_summary?.name ?? null,
-        reportId: report.id,
-        requestId: replyRequest.id,
-        response: latestReply,
-      });
+    mutationFn: async (input: FollowupTaskMutationInput) => {
       const res = await fetch(buildTasksApiPath(), {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify(input),
+        body: JSON.stringify(input.payload),
       });
       return readShareMutationResponse<unknown>(res, FOLLOWUP_TASK_FAILURE_MESSAGE);
     },
-    onSuccess: () => {
-      if (latestReply) {
-        setCreatedResponseIds((prev) => [...prev, latestReply.id]);
-      }
+    onSuccess: (_result, input) => {
+      setCreatedResponseIds((prev) => [...prev, input.responseId]);
       toast.success('次回訪問の確認タスクを作成しました');
     },
     onError: (error) => {
@@ -413,35 +409,11 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   });
 
   const createReplyRequestMutation = useMutation({
-    mutationFn: async () => {
-      if (!report || !patientId) {
-        throw new Error('報告書または患者情報を取得できませんでした');
-      }
-      if (!selectedAudienceCard?.recipientName) {
-        throw new Error('共有相手が未登録です');
-      }
-      if (requestsQuery.isLoading || requestsQuery.isError) {
-        throw new Error('返信状況を確認してから起票してください');
-      }
-      if (hasActiveAudienceRequest || requestCreated) {
-        throw new Error('この相手への返信依頼は既に起票されています');
-      }
-      const input = buildShareCommunicationRequestInput({
-        audience,
-        patientId,
-        caseId: report.case_id,
-        patientName: report.patient_summary?.name ?? null,
-        reportId: report.id,
-        reportType: report.report_type,
-        reportUpdatedAt: report.updated_at,
-        recipientName: selectedAudienceCard.recipientName,
-        recipientOrganizationName: selectedAudienceCard.recipientOrganizationName,
-        sections,
-      });
+    mutationFn: async (input: ReplyRequestMutationInput) => {
       const res = await fetch(buildCommunicationRequestsApiPath(), {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify(input),
+        body: JSON.stringify(input.payload),
       });
       return readShareMutationResponse<CreateCommunicationRequestResponse>(
         res,
@@ -449,11 +421,11 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
         createCommunicationRequestResponseSchema,
       );
     },
-    onSuccess: async (result: CreateCommunicationRequestResponse) => {
-      setCreatedRequestAudiences((prev) => [...prev, audience]);
+    onSuccess: async (result: CreateCommunicationRequestResponse, input) => {
+      setCreatedRequestAudiences((prev) => [...prev, input.audience]);
       setCreatedRequestIdsByAudience((prev) => ({
         ...prev,
-        [audience]: result.data.id,
+        [input.audience]: result.data.id,
       }));
       toast.success('返信依頼を起票しました');
       await queryClient.invalidateQueries({
@@ -475,6 +447,44 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       toast.error(REPLY_REQUEST_FAILURE_MESSAGE);
     },
   });
+
+  const createFollowupTask = () => {
+    if (!canCreateFollowupTask) return;
+    if (!report || !latestReply || !replyRequest) return;
+    createTaskMutation.mutate({
+      audience,
+      responseId: latestReply.id,
+      payload: buildNextCheckTaskInput({
+        audience,
+        patientId: report.patient_id,
+        patientName: report.patient_summary?.name ?? null,
+        reportId: report.id,
+        requestId: replyRequest.id,
+        response: latestReply,
+      }),
+    });
+  };
+
+  const createReplyRequest = () => {
+    if (!report || !patientId || !selectedAudienceCard?.recipientName) return;
+    if (requestsQuery.isLoading || requestsQuery.isError) return;
+    if (hasActiveAudienceRequest || requestCreated) return;
+    createReplyRequestMutation.mutate({
+      audience,
+      payload: buildShareCommunicationRequestInput({
+        audience,
+        patientId,
+        caseId: report.case_id,
+        patientName: report.patient_summary?.name ?? null,
+        reportId: report.id,
+        reportType: report.report_type,
+        reportUpdatedAt: report.updated_at,
+        recipientName: selectedAudienceCard.recipientName,
+        recipientOrganizationName: selectedAudienceCard.recipientOrganizationName,
+        sections,
+      }),
+    });
+  };
 
   if (isBootstrappingOrg || reportQuery.isLoading) {
     return <InterprofessionalShareLoadingState />;
@@ -753,7 +763,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
                 hasActiveAudienceRequest ||
                 requestCreated
               }
-              onClick={() => createReplyRequestMutation.mutate()}
+              onClick={createReplyRequest}
             >
               {hasActiveAudienceRequest || requestCreated ? (
                 <>
@@ -776,6 +786,21 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
                     ? 'この相手への返信依頼は既に連携依頼キューにあります。'
                     : '選択中の相手に、表示中の共有内容を確認してもらう返信待ち依頼を作成します。'}
             </p>
+            {createReplyRequestMutation.isError &&
+            createReplyRequestMutation.variables?.audience === audience &&
+            getShareMutationResponseStatus(createReplyRequestMutation.error) !== 409 ? (
+              <ErrorState
+                className="mt-3"
+                title="返信依頼を起票できませんでした"
+                cause="選択した共有相手への返信依頼は完了していません。"
+                nextAction="連携依頼の状態を確認して、同じ依頼をもう一度起票してください。"
+                onRetry={() =>
+                  createReplyRequestMutation.mutate(createReplyRequestMutation.variables)
+                }
+                retryLabel="返信依頼を再試行"
+                headingLevel={3}
+              />
+            ) : null}
             {replyRequestQueueHref ? (
               <Link
                 href={replyRequestQueueHref}
@@ -800,7 +825,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
                 createTaskMutation.isPending ||
                 taskCreated
               }
-              onClick={() => createTaskMutation.mutate()}
+              onClick={createFollowupTask}
             >
               {taskCreated ? (
                 <>
@@ -819,6 +844,29 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
                 ? '返信内容を次回訪問の確認タスク(運用タスク)として登録します。登録後はダッシュボードのタスク一覧に表示されます。'
                 : '運用タスクの作成権限がないため、返信内容は閲覧のみできます。'}
             </p>
+            {createTaskMutation.isError && createTaskMutation.variables?.audience === audience ? (
+              <ErrorState
+                className="mt-3"
+                title={
+                  getShareMutationResponseStatus(createTaskMutation.error) === 409
+                    ? '次回タスクの作成状態を確認してください'
+                    : '次回タスクを作成できませんでした'
+                }
+                cause="確認中の返信を次回訪問のタスクに登録できたか確認できていません。"
+                nextAction={
+                  getShareMutationResponseStatus(createTaskMutation.error) === 409
+                    ? 'タスク一覧で重複がないか確認してから操作してください。'
+                    : 'タスク一覧を確認して、同じ返信からもう一度作成してください。'
+                }
+                onRetry={
+                  getShareMutationResponseStatus(createTaskMutation.error) === 409
+                    ? undefined
+                    : () => createTaskMutation.mutate(createTaskMutation.variables)
+                }
+                retryLabel="次回タスク作成を再試行"
+                headingLevel={3}
+              />
+            ) : null}
           </section>
         </div>
       </div>

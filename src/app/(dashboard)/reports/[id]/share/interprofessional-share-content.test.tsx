@@ -209,6 +209,7 @@ function stubFetch(
     refetchedRequests?: typeof REQUESTS;
     requestDetail?: typeof REQUEST_DETAIL;
     failRequestPost?: Response;
+    requestPostPromise?: Promise<Response>;
     failTaskPost?: Response;
   } = {},
 ) {
@@ -246,8 +247,11 @@ function stubFetch(
       (url === '/api/communication-requests' || url === '/api/communication-requests__sentinel') &&
       init?.method === 'POST'
     ) {
+      if (options.requestPostPromise) {
+        return options.requestPostPromise;
+      }
       if (options.failRequestPost) {
-        return options.failRequestPost;
+        return options.failRequestPost.clone();
       }
       return new Response(JSON.stringify({ data: { id: 'req_new', status: 'sent' } }), {
         status: 201,
@@ -260,7 +264,7 @@ function stubFetch(
     }
     if ((url === '/api/tasks' || url === '/api/tasks__sentinel') && init?.method === 'POST') {
       if (options.failTaskPost) {
-        return options.failTaskPost;
+        return options.failTaskPost.clone();
       }
       return new Response(JSON.stringify({ data: { id: 'task_1' } }), { status: 201 });
     }
@@ -604,6 +608,49 @@ describe('InterprofessionalShareContent', () => {
     expect(body.content).toContain('昼分はヘルパー訪問時の声かけ');
   });
 
+  it('attributes a pending reply request to the submitted audience after the preview changes', async () => {
+    let resolveRequest: ((response: Response) => void) | undefined;
+    const requestPostPromise = new Promise<Response>((resolve) => {
+      resolveRequest = resolve;
+    });
+    stubFetch({ requestPostPromise });
+    renderShare();
+
+    const audienceCard = (key: string) =>
+      screen
+        .getAllByTestId('share-audience-card')
+        .find((card) => card.getAttribute('data-audience') === key)!;
+
+    await waitFor(() => expect(screen.getAllByTestId('share-audience-card')).toHaveLength(5));
+    fireEvent.click(audienceCard('physician'));
+    fireEvent.click(await screen.findByTestId('share-create-request-button'));
+    fireEvent.click(audienceCard('visiting_nurse'));
+
+    resolveRequest?.(
+      new Response(JSON.stringify({ data: { id: 'req_physician_new', status: 'sent' } }), {
+        status: 201,
+      }),
+    );
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('返信依頼を起票しました');
+    });
+
+    expect(screen.getByText('訪問看護からの返信')).toBeTruthy();
+    expect(screen.getByTestId('share-create-request-button').textContent).toContain(
+      '返信依頼を起票',
+    );
+    expect(screen.getByTestId('share-create-request-button').textContent).not.toContain(
+      '返信依頼起票済み',
+    );
+
+    fireEvent.click(audienceCard('physician'));
+    await waitFor(() => {
+      expect(screen.getByTestId('share-create-request-button').textContent).toContain(
+        '返信依頼起票済み',
+      );
+    });
+  });
+
   it('rejects a legacy-root 2xx reply-request response and leaves retry available', async () => {
     stubFetch({
       failRequestPost: new Response(
@@ -646,7 +693,7 @@ describe('InterprofessionalShareContent', () => {
     );
   });
 
-  it('keeps a 409 follow-up task failure PHI-safe and leaves retry available', async () => {
+  it('keeps a 409 follow-up task failure PHI-safe and directs duplicate verification', async () => {
     const rawMessage = '患者A 090-1234-5678 token=secret-task-token は既に作成済みです';
     stubFetch({
       failTaskPost: new Response(
@@ -682,6 +729,9 @@ describe('InterprofessionalShareContent', () => {
     const [, loggedError] = clientLogWarnMock.mock.calls[0] ?? [];
     expect(loggedError).toBeInstanceOf(Error);
     expect((loggedError as Error).message).not.toContain(rawMessage);
+    expect(screen.getByText('次回タスクの作成状態を確認してください')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '次回タスク作成を再試行' })).toBeNull();
+    expect(document.body.textContent).not.toContain(rawMessage);
   });
 
   it('keeps a 500 reply request failure PHI-safe and leaves retry available', async () => {
@@ -727,6 +777,28 @@ describe('InterprofessionalShareContent', () => {
     const [, loggedError] = clientLogWarnMock.mock.calls[0] ?? [];
     expect(loggedError).toBeInstanceOf(Error);
     expect((loggedError as Error).message).not.toContain(rawMessage);
+    expect(screen.getByText('返信依頼を起票できませんでした')).toBeTruthy();
+    expect(document.body.textContent).not.toContain(rawMessage);
+
+    fireEvent.click(screen.getByRole('button', { name: '返信依頼を再試行' }));
+    await waitFor(() => {
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.filter(
+            ([input, init]) =>
+              String(input) === '/api/communication-requests' && init?.method === 'POST',
+          ),
+      ).toHaveLength(2);
+    });
+    const requestBodies = vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        ([input, init]) =>
+          String(input) === '/api/communication-requests' && init?.method === 'POST',
+      )
+      .map(([, init]) => init?.body);
+    expect(requestBodies[1]).toBe(requestBodies[0]);
   });
 
   it('rechecks reply requests after a 409 and marks the request as created only from fresh data', async () => {
