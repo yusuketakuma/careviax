@@ -45789,3 +45789,24 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `edc034205` (`fix(FE-REPORT-001): reject invalid draft confirmation`) committed the four owned provider, UI, and
   regression files. Concurrent Plans/schedule changes and pre-existing local files were excluded. No push was
   performed.
+
+## 2026-07-11 FE-QA-001 / FE-REPORT-001 — reports mobile runtime evidence
+
+- browser verification / finding:
+  Reused the existing local E2E server on port 3012 with `PLAYWRIGHT_REUSE_SERVER=1` and the Pixel 5 Chromium project.
+  The first correctly authenticated layout run exposed an E2E contract drift: `/reports` renders the SSOT-required
+  unique `h1` "報告・共有", while the mobile route inventory still expected heading level 2. The product heading was
+  correct, so only the test inventory moved to level 1. An earlier invocation omitted the reuse safety flag and was
+  rejected before session creation or page interaction; it is not claimed as product evidence.
+- validation / result:
+  The corrected four-test report subset passed: mobile-first grouping and CTA visibility, compact workflow navigation,
+  all report-workspace controls at least 44px, and all today-drafts controls at least 44px. The layout test also checks
+  document horizontal overflow and instrumented browser/network errors. Focused ESLint, Prettier, and diff check passed.
+  Screenshots were written by the existing test helper using local synthetic E2E data; no source UI, API, DB,
+  migration, external send, or production data was changed.
+- plans / remaining / commit:
+  `FE-QA-001` remains Not started at the parent level because seven-screen state fixtures, keyboard, zoom,
+  forced-colors, offline/conflict, and PHI output snapshots remain. `FE-REPORT-001` remains Partial. Concurrent
+  `FE-SCHEDULE-001` owns the current Plans diff, so no mixed hunk was staged. Commit `7ee7c6b79`
+  (`test(FE-QA-001): align reports mobile heading contract`) contains only the owned E2E inventory correction. No push
+  was performed.
