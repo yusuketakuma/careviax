@@ -258,6 +258,28 @@ test('patients accessibility has no critical or serious violations', async ({
   expect(summarizeViolations(severe)).toEqual([]);
 });
 
+test('reports accessibility has no critical or serious violations', async ({
+  context,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium');
+
+  const { page, errors } = await createInstrumentedPage(context, {
+    captureHttpErrors: false,
+  });
+  await openStableRoute(page, '/reports');
+  await expect(page.getByTestId('report-share-workspace')).toBeVisible({ timeout: 60_000 });
+
+  const results = await analyzeMainAccessibility(page);
+  const severe = results.violations.filter((violation) =>
+    ['critical', 'serious'].includes(violation.impact ?? ''),
+  );
+
+  await writeScreenshot(page, 'reports-a11y');
+  await expect(page.locator('main')).toBeVisible();
+  expect(errors).toEqual([]);
+  expect(summarizeViolations(severe)).toEqual([]);
+});
+
 test('prescription intake accessibility has no critical or serious violations', async ({
   context,
 }, testInfo) => {
