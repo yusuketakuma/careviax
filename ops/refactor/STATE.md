@@ -45811,6 +45811,35 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   (`test(FE-QA-001): align reports mobile heading contract`) contains only the owned E2E inventory correction. No push
   was performed.
 
+## 2026-07-11 FE-QA-001 / FE-REPORT-001 — stable visual and accessibility evidence
+
+- visual regression diagnosis / repair:
+  The report workspace and waiting-section baselines initially failed against the current desktop layout. Visual
+  inspection of expected and actual images proved an intentional, already-landed product change rather than clipping:
+  the current action-first workspace puts uncreated drafts and inbound candidates before workflow context and reserves
+  a right action rail, narrowing the waiting column. The old baseline still represented the prior full-width ordering.
+  The test was also inherently date-sensitive because header date/counts and waiting-day badges came from the live
+  local fixture. Added test IDs and masks only for those dynamic metadata values; patient rows, titles, actions,
+  containers, spacing, and density remain visible comparison surfaces. Baselines were regenerated to the current
+  layout with neutral gray masks, then rerun normally and passed 2/2.
+- accessibility evidence:
+  Added the missing `/reports` main-region axe audit alongside dashboard, patients, and prescription intake. The
+  authenticated Chromium run passed with zero critical or serious violations and no instrumented console errors.
+  A synthetic local screenshot was captured by the existing helper. This is automated axe evidence only, not a claim
+  of complete WCAG conformance or pharmacist usability review.
+- validation / plans / remaining:
+  Report workspace Vitest passed 1 file / 29 tests. Focused ESLint/Prettier, 8 GB typecheck, frontend contract, raw
+  state colors, active Plans, and diff checks passed. Visual regression passed once in snapshot-update mode and again
+  2/2 without update; report axe passed 1/1. `FE-QA-001` should move from Not started to Partial, but a separate
+  unstaged `Plans.md` formatting hunk remains in the shared tree, so the status transition is deferred rather than
+  mixed. Forced-colors, 200% zoom, keyboard-only report journey, share failure browser fixture, offline/conflict, PHI
+  output snapshots, and full build remain.
+- commits:
+  `88283675b` (`test(FE-QA-001): refresh reports visual baselines`) committed the report test hooks, deterministic
+  masks, and two current baselines. `30ce94b01` (`test(FE-QA-001): add reports accessibility audit`) committed the
+  report axe coverage. Concurrent schedule/Plans work and pre-existing local files were excluded. No push was
+  performed.
+
 ## 2026-07-11 FE-SCHEDULE-001 — shared status control and patient identity visibility
 
 - current task / audit evidence:
