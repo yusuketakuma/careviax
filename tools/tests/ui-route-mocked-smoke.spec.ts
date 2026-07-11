@@ -3222,6 +3222,32 @@ test.describe('schedule day route-mocked Gantt smoke', () => {
     expect(errors).toEqual([]);
   });
 
+  test('has no critical or serious accessibility violations in the populated schedule workspace', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await installScheduleDayGanttRouteMocks(page);
+    await openStableRoute(page, `/schedules?view=list&tab=confirmed&date=${GANTT_DATE}`);
+
+    const workspace = page.getByTestId('schedule-team-board');
+    await expect(workspace).toBeVisible({ timeout: 30_000 });
+    await expect(
+      workspace.getByRole('combobox', {
+        name: 'ガントE2E 同時A様のステータスを変更',
+      }),
+    ).toBeVisible();
+
+    const axeResults = await new AxeBuilder({ page }).include('main').analyze();
+    const severeViolations = axeResults.violations.filter((violation) =>
+      ['critical', 'serious'].includes(violation.impact ?? ''),
+    );
+
+    expect(summarizeAxeViolations(severeViolations)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
   test('keeps tablet portrait Gantt overflow inside the scroll region', async ({
     context,
   }, testInfo) => {

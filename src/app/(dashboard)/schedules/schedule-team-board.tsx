@@ -265,7 +265,7 @@ const BLOCK_KIND_CLASSES: Record<BoardBlock['kind'], string> = {
   travel:
     'bg-[repeating-linear-gradient(45deg,var(--color-muted),var(--color-muted)_4px,var(--color-border)_4px,var(--color-border)_8px)] text-transparent',
   break: 'border border-dashed border-border bg-muted/40 text-muted-foreground',
-  idle: 'border border-dashed border-state-done/50 bg-state-done/10 text-state-done',
+  idle: 'border border-dashed border-state-done/50 bg-state-done/10 text-foreground',
 };
 
 const SCHEDULE_STATUS_OPTIONS: Array<{ value: ScheduleStatus; label: string }> = [
@@ -296,7 +296,7 @@ const SCHEDULE_STATUS_CLASSES: Record<ScheduleStatus, string> = {
   ready: 'bg-tag-info text-white',
   departed: 'bg-tag-info text-white',
   in_progress: 'bg-tag-info text-white',
-  completed: 'bg-state-done text-white',
+  completed: 'border border-state-done/50 bg-state-done/10 text-foreground',
   postponed: 'bg-state-confirm text-white',
   rescheduled: 'bg-state-confirm text-white',
   no_show: 'bg-state-blocked text-white',
@@ -383,7 +383,10 @@ function PatientOperationalSummaryBadges({
         {badges.map((badge) => (
           <span
             key={badge.key}
-            className={cn('shrink-0 rounded bg-white/20 px-1 py-0.5 text-xs leading-4', className)}
+            className={cn(
+              'shrink-0 rounded bg-background/90 px-1 py-0.5 text-xs leading-4 text-foreground',
+              className,
+            )}
           >
             {badge.label}
           </span>
@@ -448,12 +451,12 @@ function GanttBlock({ block }: { block: BoardBlock }) {
     >
       {block.locked ? <Lock className="size-3 shrink-0" aria-hidden="true" /> : null}
       {block.kind === 'visit' ? (
-        <span className="shrink-0 rounded bg-white/20 px-1 py-0.5 text-xs leading-4">
+        <span className="shrink-0 rounded bg-background/90 px-1 py-0.5 text-xs leading-4 text-foreground">
           {isAggregateVisit ? '施設一括' : scheduleStatusLabel(block.status)}
         </span>
       ) : null}
       {block.patientArchive?.archived ? (
-        <span className="shrink-0 rounded bg-white/20 px-1 py-0.5 text-xs leading-4">
+        <span className="shrink-0 rounded bg-background/90 px-1 py-0.5 text-xs leading-4 text-foreground">
           アーカイブ中
         </span>
       ) : null}
@@ -864,7 +867,7 @@ function ScheduleDaySummaryStrip({
               <dd className={cn('mt-1 text-xl font-bold tabular-nums', toneClass.value)}>
                 {item.value}
               </dd>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</p>
+              <dd className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</dd>
             </div>
           );
         })}
@@ -1219,9 +1222,11 @@ function PreparationSummaryChip({
       className={cn(
         'inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 font-semibold leading-4',
         compact ? 'h-5 shrink-0 text-xs' : 'mt-1 text-xs',
-        ready
-          ? 'border-state-done/30 bg-state-done/10 text-state-done'
-          : 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+        compact
+          ? 'border-border bg-background/90 text-foreground'
+          : ready
+            ? 'border-state-done/30 bg-state-done/10 text-state-done'
+            : 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
       )}
       aria-label={preparationSummaryAriaLabel(summary)}
     >
