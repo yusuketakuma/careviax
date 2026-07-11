@@ -45997,6 +45997,32 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   migration/auth/authz/audit behavior, push, deployment, external send, production-data mutation, or destructive
   operation occurred.
 
+## 2026-07-11 FE-SCHEDULE-001 / FE-QA-001 — populated schedule accessibility repair
+
+- current task / root cause:
+  Added a normal-color main-region axe audit to the populated schedule Gantt fixture. The new audit initially found
+  two serious defects rather than being allowlisted or disabled. First, the summary `<dl>` grouped `dt`/`dd` entries
+  with a direct `<p>` detail, violating the definition-list content model. Second, completion/idle blocks and compact
+  chips reused `state-done` or white text on composited same-hue/white translucent backgrounds. The semantic token is
+  specified as AA text on a card surface, not as a guaranteed solid fill/overlay pair, so those combinations failed
+  color contrast in the actual rendered Gantt.
+- implementation / UI safety:
+  Converted the summary detail to a second `dd`. Completion and idle blocks now carry state through the border and
+  restrained tint while using the normal foreground. Compact status, archive, operational-safety, and preparation
+  chips use the established surface foreground/background pair so contrast no longer depends on the parent block's
+  color. Status meanings, visible labels, patient identity, preparation semantics, layout, Select behavior, routes,
+  queries, API/DB/schema, auth/authz, PHI, audit, and persistence are unchanged. `gpt-image-2` was omitted under the UI
+  SSOT because this is a constrained semantic-markup/contrast repair using existing tokens, not visual reconstruction.
+- validation / visual evidence / remaining:
+  Focused schedule Vitest passed 1 file / 35 tests. The populated Gantt Playwright describe passed 5/5, including
+  main axe critical/serious 0, PHI-safe exact retry, forced-colors/keyboard/zoom proxy, and both tablet orientations.
+  Exact ESLint/Prettier, 8 GB aggregate typecheck, frontend contract, client PHI-log, raw-state colors,
+  module-boundary, and diff checks passed. Tablet screenshots were inspected: information density, patient labels,
+  status distinction, controls, and overflow behavior remain intact. `FE-SCHEDULE-001` remains Partial for proposal
+  states, manual screen-reader/200% zoom, broader timeline/rail work, full build, and standalone runtime. Commit
+  `f596b9bf1` contains the component repair and axe regression only. No push, deployment, migration, external send,
+  production-data mutation, or destructive operation occurred.
+
 ## 2026-07-11 API-CONTRACT-001FZREADINESSSTRICT — patient readiness GET runtime schema
 
 - current task / root cause:
