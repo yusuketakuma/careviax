@@ -45899,3 +45899,7 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   retry, 200% zoom, forced-colors, populated responsive runtime, proposal state matrix, and full build remain
   outstanding under the Partial parent task. No API/DB/schema/migration/auth/authz/audit change, push, deploy,
   external send, production-data mutation, or destructive operation occurred.
+- commit:
+  `aaf0fc7e9` (`fix(FE-SCHEDULE-001): keep status recovery visible`) committed the two owned implementation/regression
+  paths plus the scoped Plans, FE/BE inventory, and single-ledger evidence. Concurrent UI-audit test work,
+  harness-memory state, and unrelated untracked files were excluded. No push was performed.
