@@ -337,12 +337,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/visit-constraints-card.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/patients/compare/compare-board.tsx",
       "counts": {
         "stringFallback": 1

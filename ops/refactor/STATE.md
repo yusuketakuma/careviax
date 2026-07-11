@@ -46116,3 +46116,31 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   output fixtures. Commits `b8b0af5f8` and `753a7d414` contain only the owned Playwright audits. No product/API/DB/
   schema/migration/auth/authz/PHI/audit behavior, push, deployment, external send, production-data mutation, or
   destructive operation occurred.
+
+## 2026-07-11 API-CONTRACT-001FZCONSTRAINTSSTRICT — patient visit constraints GET runtime schema
+
+- current task / root cause:
+  The visit-constraints GET reader cast successful payloads directly to `VisitConstraintsResponse`, while the route
+  serializes broad `PatientSchedulePreference` and primary `Residence` Prisma rows. A malformed 2xx could populate
+  visit times, family-presence requirements, buffer, and coordinates, and unused tenant/patient identifiers and the
+  residence address entered the client query cache despite not being consumed. GET already enforces `canVisit`,
+  assignment/org scope, and sensitive no-store; PUT already validates input, requires a writable patient, uses scoped
+  transaction persistence, and returns a strict acknowledgement. No provider, DB, authorization, or audit change was
+  needed.
+- implementation / contract:
+  Added strict root/data runtime validation and required schemas for every consumed scheduling and residence field.
+  It validates weekday, provider ISO timestamp, visit-buffer, finite latitude, and finite longitude bounds. The row
+  schemas intentionally strip unconsumed Prisma columns, including IDs, org/patient identifiers, and residence
+  address, before query caching while preserving the provider response for compatibility. Existing form behavior,
+  write payload, mutation acknowledgement, API paths, persistence, auth/authz, and audit behavior are unchanged.
+- validation / ratchet / remaining:
+  Focused component/route Vitest passed 2 files / 34 tests. Regressions cover valid provider-shaped row minimization,
+  unknown root/data fields, invalid weekday/time/buffer/coordinate, missing consumed fields, encoded identifiers, dot
+  segments, safe save recovery, write validation, assignment, and sensitive no-store. Exact ESLint/Prettier, client
+  JSON schema, client PHI-log/display, frontend contract, module boundary, API response shape, 8 GB aggregate
+  typecheck, and diff checks passed. The live ratchet moved from 114 schema-backed / 261 allowlisted calls / 105 files
+  to 115 / 260 / 104. `API-CONTRACT-001` remains Partial for other frontend readers and shared
+  ApiError/request_id/no-store work. No visual change or image generation was applicable. Full build was not rerun
+  because the same-worktree port 3012 preview is active and Next build/dev artifacts must not race; the existing local
+  16 GB exit-137 build constraint also remains. No DB/migration/auth/authz/audit change, browser action, push, deploy,
+  external send, production-data mutation, or destructive operation occurred.

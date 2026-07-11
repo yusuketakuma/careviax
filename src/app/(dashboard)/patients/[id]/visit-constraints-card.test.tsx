@@ -45,13 +45,16 @@ type CapturedConfig = {
 const VISIT_CONSTRAINTS_RESPONSE = {
   data: {
     scheduling_preference: {
+      id: 'preference_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
       preferred_weekdays: [1, 3],
-      preferred_time_from: '2026-06-01T09:00:00.000-08:00',
-      preferred_time_to: '2026-06-01T11:00:00.000-0800',
-      phone_contact_from: '2026-06-01T13:00:00.000-08:00',
-      phone_contact_to: '2026-06-01T16:00:00.000-0800',
-      facility_time_from: '2026-06-01T08:30:00.000-08:00',
-      facility_time_to: '2026-06-01T12:30:00.000-0800',
+      preferred_time_from: '2026-06-01T09:00:00.000Z',
+      preferred_time_to: '2026-06-01T11:00:00.000Z',
+      phone_contact_from: '2026-06-01T13:00:00.000Z',
+      phone_contact_to: '2026-06-01T16:00:00.000Z',
+      facility_time_from: '2026-06-01T08:30:00.000Z',
+      facility_time_to: '2026-06-01T12:30:00.000Z',
       family_presence_required: true,
       visit_buffer_minutes: 15,
       preferred_contact_name: '山田花子',
@@ -59,6 +62,10 @@ const VISIT_CONSTRAINTS_RESPONSE = {
       notes: '玄関で電話',
     },
     residence: {
+      id: 'residence_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      address: '東京都内のテスト住所',
       lat: 35.1,
       lng: 139.1,
       geocode_status: 'verified',
@@ -88,7 +95,13 @@ function captureConfigs() {
 function okFetch() {
   return vi
     .fn<typeof fetch>()
-    .mockImplementation(() => Promise.resolve(jsonResponse({ data: { id: 'pref_1' } })));
+    .mockImplementation((_input, init) =>
+      Promise.resolve(
+        jsonResponse(
+          init?.method === 'PUT' ? { data: { id: 'pref_1' } } : VISIT_CONSTRAINTS_RESPONSE,
+        ),
+      ),
+    );
 }
 
 afterEach(() => {
@@ -154,7 +167,7 @@ describe('VisitConstraintsCard', () => {
     render(<VisitConstraintsCard patientId={hostileId} orgId="org_1" />);
 
     expect(queryConfigs[0]?.queryKey).toEqual(['visit-constraints', 'org_1', hostileId]);
-    await queryConfigs[0]?.queryFn?.();
+    const payload = await queryConfigs[0]?.queryFn?.();
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/visit-constraints`);
@@ -162,6 +175,91 @@ describe('VisitConstraintsCard', () => {
     expect(url).not.toContain('#z');
     expect(url).not.toContain('%25');
     expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    expect(payload).not.toHaveProperty('data.scheduling_preference.id');
+    expect(payload).not.toHaveProperty('data.scheduling_preference.org_id');
+    expect(payload).not.toHaveProperty('data.residence.address');
+    expect(payload).not.toHaveProperty('data.residence.patient_id');
+  });
+
+  it.each([
+    {
+      name: 'unknown root field',
+      payload: { ...VISIT_CONSTRAINTS_RESPONSE, patient_name: '伊藤 キヨ' },
+    },
+    {
+      name: 'unknown data field',
+      payload: {
+        data: { ...VISIT_CONSTRAINTS_RESPONSE.data, archived_at: '2026-06-01T00:00:00.000Z' },
+      },
+    },
+    {
+      name: 'invalid weekday',
+      payload: {
+        data: {
+          ...VISIT_CONSTRAINTS_RESPONSE.data,
+          scheduling_preference: {
+            ...VISIT_CONSTRAINTS_RESPONSE.data.scheduling_preference,
+            preferred_weekdays: [7],
+          },
+        },
+      },
+    },
+    {
+      name: 'non-provider time format',
+      payload: {
+        data: {
+          ...VISIT_CONSTRAINTS_RESPONSE.data,
+          scheduling_preference: {
+            ...VISIT_CONSTRAINTS_RESPONSE.data.scheduling_preference,
+            preferred_time_from: '09:00',
+          },
+        },
+      },
+    },
+    {
+      name: 'out-of-range visit buffer',
+      payload: {
+        data: {
+          ...VISIT_CONSTRAINTS_RESPONSE.data,
+          scheduling_preference: {
+            ...VISIT_CONSTRAINTS_RESPONSE.data.scheduling_preference,
+            visit_buffer_minutes: 241,
+          },
+        },
+      },
+    },
+    {
+      name: 'out-of-range latitude',
+      payload: {
+        data: {
+          ...VISIT_CONSTRAINTS_RESPONSE.data,
+          residence: { ...VISIT_CONSTRAINTS_RESPONSE.data.residence, lat: 91 },
+        },
+      },
+    },
+    {
+      name: 'missing consumed residence field',
+      payload: {
+        data: {
+          ...VISIT_CONSTRAINTS_RESPONSE.data,
+          residence: {
+            lat: 35.1,
+            lng: 139.1,
+            geocode_status: 'verified',
+            geocode_source: 'manual',
+            geocode_accuracy: 'rooftop',
+          },
+        },
+      },
+    },
+  ])('rejects malformed successful visit-constraint payloads: $name', async ({ payload }) => {
+    const { queryConfigs } = captureConfigs();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(payload));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<VisitConstraintsCard patientId="patient_1" orgId="org_1" />);
+
+    await expect(queryConfigs[0]?.queryFn?.()).rejects.toThrow('訪問条件の取得に失敗しました');
   });
 
   it('surfaces API error messages when visit constraints fail to load', async () => {

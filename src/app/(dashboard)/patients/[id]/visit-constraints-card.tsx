@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { messageFromError } from '@/lib/utils/error-message';
 import { Skeleton } from '@/components/ui/loading';
 import { ActionRail } from '@/components/ui/action-rail';
@@ -48,6 +49,44 @@ type VisitConstraintsResponse = {
     } | null;
   };
 };
+
+const nullableTextSchema = z.string().nullable();
+const nullableDateTimeSchema = z.string().datetime().nullable();
+
+const visitSchedulingPreferenceSchema = z.object({
+  preferred_weekdays: z.array(z.number().int().min(0).max(6)).max(7).nullable(),
+  preferred_time_from: nullableDateTimeSchema,
+  preferred_time_to: nullableDateTimeSchema,
+  phone_contact_from: nullableDateTimeSchema,
+  phone_contact_to: nullableDateTimeSchema,
+  facility_time_from: nullableDateTimeSchema,
+  facility_time_to: nullableDateTimeSchema,
+  family_presence_required: z.boolean(),
+  visit_buffer_minutes: z.number().int().min(0).max(240).nullable(),
+  preferred_contact_name: nullableTextSchema,
+  preferred_contact_phone: nullableTextSchema,
+  notes: nullableTextSchema,
+});
+
+const visitResidenceSchema = z.object({
+  lat: z.number().finite().min(-90).max(90).nullable(),
+  lng: z.number().finite().min(-180).max(180).nullable(),
+  geocode_status: nullableTextSchema,
+  geocode_source: nullableTextSchema,
+  geocode_accuracy: nullableTextSchema,
+  geocoded_at: nullableDateTimeSchema,
+});
+
+const visitConstraintsResponseSchema = z
+  .object({
+    data: z
+      .object({
+        scheduling_preference: visitSchedulingPreferenceSchema.nullable(),
+        residence: visitResidenceSchema.nullable(),
+      })
+      .strict(),
+  })
+  .strict();
 
 type VisitConstraintsFormState = {
   preferred_weekdays: number[];
@@ -150,7 +189,10 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
       const res = await fetch(buildPatientApiPath(patientId, '/visit-constraints'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<VisitConstraintsResponse>(res, '訪問条件の取得に失敗しました');
+      return readApiJson<VisitConstraintsResponse>(res, {
+        fallbackMessage: '訪問条件の取得に失敗しました',
+        schema: visitConstraintsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
