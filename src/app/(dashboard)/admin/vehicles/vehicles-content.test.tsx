@@ -280,7 +280,7 @@ describe('VehiclesContent', () => {
     expect((screen.getByLabelText('車両名') as HTMLInputElement).value).toBe('社用車2号');
   });
 
-  it('surfaces API error messages when vehicle save fails', async () => {
+  it('uses safe recovery copy when vehicle save fails', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method;
@@ -316,7 +316,8 @@ describe('VehiclesContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('車両コードが重複しています');
+      expect(toast.error).toHaveBeenCalledWith('保存に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('車両コードが重複しています');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/visit-vehicle-resources',
@@ -439,7 +440,7 @@ describe('VehiclesContent', () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
-  it('surfaces API error messages when vehicle availability update fails', async () => {
+  it('uses safe recovery copy when vehicle availability update fails', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method;
@@ -471,7 +472,8 @@ describe('VehiclesContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '無効化する' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('稼働中の訪問予定がある車両です');
+      expect(toast.error).toHaveBeenCalledWith('状態変更に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('稼働中の訪問予定がある車両です');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/visit-vehicle-resources/vehicle_1',
@@ -489,9 +491,8 @@ describe('VehiclesContent', () => {
     fireEvent.click(await screen.findByRole('button', { name: '軽バン1号 を編集' }));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith('Path segment cannot be a dot segment'),
-    );
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('保存に失敗しました'));
+    expect(toast.error).not.toHaveBeenCalledWith('Path segment cannot be a dot segment');
     expect(fetchMock.mock.calls).not.toEqual(
       expect.arrayContaining([
         expect.arrayContaining([

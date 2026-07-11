@@ -286,7 +286,8 @@ describe('VisitMedicationStockObservationPanel', () => {
     renderPanel();
 
     expect(await screen.findByText('残数管理情報を取得できませんでした')).toBeTruthy();
-    expect(screen.getByText('患者の残数管理情報の閲覧権限がありません')).toBeTruthy();
+    expect(screen.getByText('通信状態を確認して再試行してください。')).toBeTruthy();
+    expect(screen.queryByText('患者の残数管理情報の閲覧権限がありません')).toBeNull();
     expect(screen.queryByText('残数管理台帳に表示できる薬剤はまだありません。')).toBeNull();
   });
 

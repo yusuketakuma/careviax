@@ -1061,7 +1061,7 @@ describe('ScheduleTeamBoard', () => {
     expect(taskStatusMutation?.onError).toBeTypeOf('function');
     expect(vehicleMutation?.onError).toBeTypeOf('function');
 
-    // Propagate thrown Error messages to the toast instead of silently swallowing failures.
+    // Surface operation-specific recovery copy instead of silently swallowing failures or rendering raw detail.
     statusMutation!.onError!(new Error('訪問予定の更新に失敗しました'));
     expect(toastErrorMock).toHaveBeenLastCalledWith('訪問予定の更新に失敗しました');
 
@@ -1069,7 +1069,8 @@ describe('ScheduleTeamBoard', () => {
     expect(toastErrorMock).toHaveBeenLastCalledWith('運用タスクの更新に失敗しました');
 
     vehicleMutation!.onError!(new Error('boom'));
-    expect(toastErrorMock).toHaveBeenLastCalledWith('boom');
+    expect(toastErrorMock).toHaveBeenLastCalledWith('車両の割り当てに失敗しました');
+    expect(toastErrorMock).not.toHaveBeenLastCalledWith('boom');
 
     // Non-Error values use the fallback message.
     vehicleMutation!.onError!('not-an-error');

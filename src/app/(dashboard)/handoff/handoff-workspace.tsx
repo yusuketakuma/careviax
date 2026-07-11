@@ -1343,7 +1343,6 @@ function VisitHandoffConfirmationWorkspace({
           variant="server"
           title="訪問申し送り確認を表示できません"
           description="確認待ちタスクの取得に失敗しました。"
-          detail={error.message}
         />
       </section>
     );
@@ -1401,9 +1400,6 @@ function VisitHandoffConfirmationWorkspace({
             variant="server"
             title="申し送りを表示できません"
             description="訪問記録の申し送り確認データを取得できませんでした。"
-            detail={
-              visitHandoffQuery.error instanceof Error ? visitHandoffQuery.error.message : undefined
-            }
             onRetry={() => void visitHandoffQuery.refetch()}
           />
         ) : visitRecordId && visitHandoffQuery.data?.data ? (
@@ -1582,7 +1578,6 @@ export function HandoffWorkspace() {
               variant="server"
               title="ハンドオフを表示できません"
               description="ハンドオフボードの取得に失敗しました。再試行してください。"
-              detail={boardQuery.error instanceof Error ? boardQuery.error.message : undefined}
               onRetry={() => void boardQuery.refetch()}
             />
           </div>

@@ -245,7 +245,7 @@ describe('ConflictResolutionContent', () => {
     expect(toast.success).toHaveBeenCalledWith('担当を薬剤師Bへ変更しました');
   });
 
-  it('does not show adopted state when Plan A persistence fails', async () => {
+  it('uses safe recovery copy and does not show adopted state when Plan A persistence fails', async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -262,7 +262,8 @@ describe('ConflictResolutionContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '案Aを採用する' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith(
+      expect(toast.error).toHaveBeenCalledWith('訪問予定の順路更新に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith(
         'route_order の反映対象が同時に更新されました。再読み込みしてください',
       );
     });

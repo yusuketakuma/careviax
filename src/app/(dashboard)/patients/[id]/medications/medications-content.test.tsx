@@ -151,7 +151,7 @@ describe('MedicationsContent', () => {
     expect(screen.getByRole('dialog', { name: '薬学的課題を更新' })).toBeTruthy();
   }, 15_000);
 
-  it('renders a submit failure as a clean assertive alert, not a raw String(error)', () => {
+  it('renders a submit failure as a safe assertive alert, not a raw String(error)', () => {
     // Regression: the add-medication dialog rendered {String(mutation.error)} which leaks the
     // "Error: " prefix and was not a live region. The failure must announce assertively (WCAG
     // 4.1.3) and show only the message — a direct response to the user's 登録 action.
@@ -180,9 +180,10 @@ describe('MedicationsContent', () => {
 
     const alert = screen.getByRole('alert');
     expect(alert.getAttribute('aria-live')).toBe('assertive');
-    expect(alert.textContent).toBe('登録に失敗しました: 重複した処方です');
+    expect(alert.textContent).toBe('登録に失敗しました');
     // a raw String(new Error(msg)) renders "Error: msg" — prove that prefix is gone
     expect(alert.textContent).not.toContain('Error:');
+    expect(alert.textContent).not.toContain('重複した処方です');
   });
 
   it('falls back for add-medication submit failures with empty Error messages', () => {

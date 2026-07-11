@@ -100,9 +100,7 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
         </CardHeader>
         <CardContent>
           <p role="status" aria-live="polite" className="text-sm text-destructive">
-            {previewQuery.error instanceof Error
-              ? previewQuery.error.message
-              : 'ワークフロープレビューの取得に失敗しました'}
+            ワークフロープレビューの取得に失敗しました。再試行してください。
           </p>
         </CardContent>
       </Card>

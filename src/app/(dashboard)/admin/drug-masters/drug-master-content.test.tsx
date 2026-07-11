@@ -479,7 +479,9 @@ vi.mock('@tanstack/react-query', () => ({
         data: staleQueryDataByKey.get(failedKey),
         isLoading: false,
         isError: true,
-        error: new Error('医薬品マスターの取得に失敗しました'),
+        error: new Error(
+          `GET /api/${failedKey}?patient=田中一郎&storage_key=s3://phi-bucket/raw&token=secret&provider_error=stack`,
+        ),
         refetch,
         fetchNextPage: fetchNextDrugMastersMock,
         hasNextPage: false,
@@ -961,8 +963,9 @@ describe('DrugMasterContent', () => {
     }
   });
 
-  it('surfaces official import preview API error payloads', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ error: 'source URL未設定' }, 500));
+  it('uses safe recovery copy for official import preview API errors', async () => {
+    const rawErrorMessage = 'source URL未設定';
+    const fetchMock = vi.fn(async () => jsonResponse({ error: rawErrorMessage }, 500));
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     try {
@@ -972,8 +975,9 @@ describe('DrugMasterContent', () => {
       fireEvent.click(screen.getByRole('button', { name: '差分確認' }));
 
       const alert = await screen.findByRole('alert');
-      expect(alert.textContent).toContain('source URL未設定');
-      expect(toastErrorMock).toHaveBeenCalledWith('source URL未設定');
+      expect(alert.textContent).toContain('一般名/後発更新の差分確認に失敗しました');
+      expect(alert.textContent).not.toContain(rawErrorMessage);
+      expect(toastErrorMock).toHaveBeenCalledWith('一般名/後発更新の差分確認に失敗しました');
     } finally {
       vi.unstubAllGlobals();
     }
@@ -3645,6 +3649,16 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
 
     expect(screen.getByText('医薬品詳細を取得できませんでした')).toBeTruthy();
     expectUnsafeBackendDetailNotRendered();
+  });
+
+  it('passes fixed recovery copy to the core table instead of the raw query error', () => {
+    queryErrorKeys.add('drug-masters');
+
+    render(<DrugMasterContent />);
+
+    expect(dataTablePropsMock.current?.errorMessage).toBe('医薬品マスターの取得に失敗しました');
+    expect(JSON.stringify(dataTablePropsMock.current)).not.toContain('田中一郎');
+    expect(JSON.stringify(dataTablePropsMock.current)).not.toContain('token=secret');
   });
 
   it('uses an announced skeleton while the stock config panel loads', () => {

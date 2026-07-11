@@ -168,7 +168,7 @@ describe('ExternalViewerContent', () => {
     });
   });
 
-  it('surfaces API error messages when self-report status update fails', async () => {
+  it('uses safe recovery copy when self-report status update fails', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/patient-self-reports/report_1' && init?.method === 'PATCH') {
@@ -205,10 +205,11 @@ describe('ExternalViewerContent', () => {
     expect(caughtError).toBeInstanceOf(Error);
     expect((caughtError as Error).message).toBe('自己申告は既に処理済みです');
     updateMutation.onError?.(caughtError as Error);
-    expect(toastErrorMock).toHaveBeenCalledWith('自己申告は既に処理済みです');
+    expect(toastErrorMock).toHaveBeenCalledWith('自己申告の更新に失敗しました');
+    expect(toastErrorMock).not.toHaveBeenCalledWith('自己申告は既に処理済みです');
   });
 
-  it('surfaces API error messages when self-report task creation fails', async () => {
+  it('uses safe recovery copy when self-report task creation fails', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/tasks' && init?.method === 'POST') {
@@ -255,7 +256,8 @@ describe('ExternalViewerContent', () => {
     expect(caughtError).toBeInstanceOf(Error);
     expect((caughtError as Error).message).toBe('同じ自己申告のタスクが既に存在します');
     createTaskMutation.onError?.(caughtError as Error);
-    expect(toastErrorMock).toHaveBeenCalledWith('同じ自己申告のタスクが既に存在します');
+    expect(toastErrorMock).toHaveBeenCalledWith('タスク作成に失敗しました');
+    expect(toastErrorMock).not.toHaveBeenCalledWith('同じ自己申告のタスクが既に存在します');
   });
 
   it('rejects legacy successful self-report mutations before applying follow-up state', async () => {
@@ -313,7 +315,7 @@ describe('ExternalViewerContent', () => {
     expect(updateMutateAsync).not.toHaveBeenCalled();
   });
 
-  it('keeps server messages and falls back for self-report mutation error toasts', () => {
+  it('uses safe recovery copy for self-report mutation error toasts', () => {
     const mutationConfigs: Array<{ onError?: (error: Error) => void }> = [];
     const baseMutation = useMutationMock.getMockImplementation();
     useMutationMock.mockImplementation((config: { onError?: (error: Error) => void }) => {
@@ -346,7 +348,8 @@ describe('ExternalViewerContent', () => {
 
     for (const { config, serverMessage, fallback } of cases) {
       config?.onError?.(new Error(serverMessage));
-      expect(toastErrorMock).toHaveBeenLastCalledWith(serverMessage);
+      expect(toastErrorMock).toHaveBeenLastCalledWith(fallback);
+      expect(toastErrorMock).not.toHaveBeenLastCalledWith(serverMessage);
       config?.onError?.(new Error(''));
       expect(toastErrorMock).toHaveBeenLastCalledWith(fallback);
     }

@@ -624,6 +624,33 @@ describe('ScheduleProposalsContent', () => {
     ).toBeTruthy();
   });
 
+  it('shows vehicle-resource recovery instead of an empty reproposal selector when loading fails', () => {
+    const detail = buildProposalDetail();
+    const refetch = vi.fn();
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return { data: { data: [detail] }, isLoading: false, connected: true };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return { data: { data: detail }, isLoading: false, connected: true };
+      }
+      return { data: undefined, isLoading: false, connected: true };
+    });
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-vehicle-resources') {
+        return { data: undefined, isLoading: false, isError: true, refetch };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<ScheduleProposalsContent initialDetailId="proposal_1" />);
+
+    expect(screen.getByLabelText('社用車').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('社用車候補を表示できません')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '候補を再読み込み' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
   it('shows an error state instead of an empty proposal workspace when proposal loading fails', () => {
     const refetch = vi.fn();
     useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {

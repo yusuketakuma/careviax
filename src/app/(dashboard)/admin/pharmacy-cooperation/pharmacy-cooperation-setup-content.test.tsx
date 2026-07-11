@@ -577,7 +577,8 @@ describe('PharmacyCooperationSetupContent', () => {
     fireEvent.click(screen.getByRole('button', { name: /契約書保存/ }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('署名付きアップロードURLの取得に失敗しました');
+      expect(toast.error).toHaveBeenCalledWith('契約書の保存に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('署名付きアップロードURLの取得に失敗しました');
     });
     expect(
       vi

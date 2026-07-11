@@ -277,6 +277,24 @@ describe('ScheduleWeeklyOptimizer', () => {
     expect(screen.getByText('未指定なら自動割当')).toBeTruthy();
   });
 
+  it('shows vehicle-resource recovery instead of an empty weekly selector when loading fails', () => {
+    const refetch = vi.fn();
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'cases') return { data: { data: [] }, isLoading: false };
+      if (queryKey[0] === 'visit-vehicle-resources') {
+        return { data: undefined, isLoading: false, isError: true, refetch };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<ScheduleWeeklyOptimizer />);
+
+    expect(screen.getByLabelText('社用車').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('社用車候補を表示できません')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '候補を再読み込み' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
   it('warns when the vehicle resource selector hides additional options', () => {
     useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       if (queryKey[0] === 'cases' && queryKey[1] === 'weekly-optimizer') {

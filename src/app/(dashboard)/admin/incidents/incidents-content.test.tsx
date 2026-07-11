@@ -248,7 +248,7 @@ describe('IncidentsContent', () => {
     });
   });
 
-  it('keeps server memo save messages', async () => {
+  it('uses safe recovery copy for incident memo save errors', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -264,7 +264,8 @@ describe('IncidentsContent', () => {
     fireEvent.submit(screen.getByTestId('incident-memo-form'));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('同時更新されています');
+      expect(toast.error).toHaveBeenCalledWith('再発防止メモの保存に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('同時更新されています');
     });
   });
 

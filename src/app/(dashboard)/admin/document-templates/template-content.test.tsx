@@ -372,7 +372,7 @@ describe('DocumentTemplateContent', () => {
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
-  it('keeps server save error envelopes when template creation fails', async () => {
+  it('uses safe recovery copy when template creation fails', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -398,7 +398,8 @@ describe('DocumentTemplateContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '登録する' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('文書テンプレートの作成権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('テンプレートの保存に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('文書テンプレートの作成権限がありません');
     });
   });
 
@@ -429,7 +430,7 @@ describe('DocumentTemplateContent', () => {
     );
   });
 
-  it('keeps server delete error messages when template deletion fails', async () => {
+  it('uses safe recovery copy when template deletion fails', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -477,7 +478,8 @@ describe('DocumentTemplateContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('文書テンプレートの削除権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('テンプレートの削除に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('文書テンプレートの削除権限がありません');
     });
   });
 
@@ -754,7 +756,8 @@ describe('DocumentTemplateContent', () => {
     fireEvent.click(editButton);
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('文書テンプレートが見つかりません');
+      expect(toast.error).toHaveBeenCalledWith('文書テンプレート本文の取得に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('文書テンプレートが見つかりません');
     });
     expect(screen.queryByRole('button', { name: '更新する' })).toBeNull();
     expect(screen.getByRole('button', { name: '登録する' })).toBeTruthy();

@@ -236,7 +236,7 @@ describe('OperatingHoursContent', () => {
     expect(sunday).toMatchObject({ is_open: false, open_time: null, close_time: null });
   });
 
-  it('surfaces stale save conflicts and blocks another submit with the stale version', async () => {
+  it('uses safe stale-save recovery copy and blocks another submit with the stale version', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/pharmacy-sites') {
@@ -280,14 +280,13 @@ describe('OperatingHoursContent', () => {
     await waitFor(() => expect((saveButton as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(saveButton);
 
+    expect(await screen.findByText('営業時間設定の保存に失敗しました')).toBeTruthy();
+    expect(toast.error).toHaveBeenCalledWith('営業時間設定の保存に失敗しました');
     expect(
-      await screen.findByText(
+      screen.queryByText(
         '営業時間設定が他の操作で更新されています。画面を再読み込みしてから保存してください',
       ),
-    ).toBeTruthy();
-    expect(toast.error).toHaveBeenCalledWith(
-      '営業時間設定が他の操作で更新されています。画面を再読み込みしてから保存してください',
-    );
+    ).toBeNull();
     expect(screen.getByRole('button', { name: '画面を再読み込み' })).toBeTruthy();
     expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true);
 

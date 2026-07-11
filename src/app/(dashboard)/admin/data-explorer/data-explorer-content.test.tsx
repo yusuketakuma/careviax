@@ -365,7 +365,7 @@ describe('DataExplorerContent', () => {
     expect(resetButton.getAttribute('aria-describedby')).toBe(reason.id);
   });
 
-  it('surfaces API error messages when row save fails', async () => {
+  it('uses safe recovery copy when a row save fails', async () => {
     runMutationFnsMock.current = true;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -384,7 +384,8 @@ describe('DataExplorerContent', () => {
     fireEvent.click(screen.getByRole('button', { name: /保存/ }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('許可されていない列が含まれています');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('更新に失敗しました');
+      expect(vi.mocked(toast.error)).not.toHaveBeenCalledWith('許可されていない列が含まれています');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/admin/data-explorer/patients/patient_1',

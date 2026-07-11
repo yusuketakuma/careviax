@@ -832,7 +832,7 @@ describe('HandoffWorkspace', () => {
     });
   });
 
-  it('keeps server messages when transfer creation fails', async () => {
+  it('uses safe recovery copy when transfer creation fails', async () => {
     useAuthStore.getState().setCurrentUser({ id: 'user_1' });
     stubFetch(BOARD, {
       itemPostFailure: new Response(JSON.stringify({ message: 'この仕事は既に渡されています' }), {
@@ -864,7 +864,8 @@ describe('HandoffWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: '渡す(責任を移す)' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('この仕事は既に渡されています');
+      expect(toast.error).toHaveBeenCalledWith('仕事を渡せませんでした');
+      expect(toast.error).not.toHaveBeenCalledWith('この仕事は既に渡されています');
     });
   });
 
@@ -888,7 +889,7 @@ describe('HandoffWorkspace', () => {
     );
   });
 
-  it('keeps error envelopes and non-JSON fallbacks when transfer creation fails', async () => {
+  it('uses the same safe recovery copy for error envelopes and non-JSON transfer failures', async () => {
     useAuthStore.getState().setCurrentUser({ id: 'user_1' });
     stubFetch(BOARD, {
       itemPostFailure: jsonResponse({ error: '宛先ユーザーが見つかりません' }, 400),
@@ -901,7 +902,8 @@ describe('HandoffWorkspace', () => {
     await submitCompleteTransferDraft();
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('宛先ユーザーが見つかりません');
+      expect(toast.error).toHaveBeenCalledWith('仕事を渡せませんでした');
+      expect(toast.error).not.toHaveBeenCalledWith('宛先ユーザーが見つかりません');
     });
 
     firstRender.unmount();
@@ -922,7 +924,7 @@ describe('HandoffWorkspace', () => {
     });
   });
 
-  it('keeps server messages and fallbacks for message and consult creation failures', async () => {
+  it('uses safe recovery copy for message and consult creation failures', async () => {
     useAuthStore.getState().setCurrentUser({ id: 'user_1', role: 'clerk' });
     stubFetch(BOARD, {
       itemPostFailure: (body) => {
@@ -949,7 +951,8 @@ describe('HandoffWorkspace', () => {
     fireEvent.click(screen.getByTestId('handoff-message-send'));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('この宛先へ連絡する権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('連絡を送れませんでした');
+      expect(toast.error).not.toHaveBeenCalledWith('この宛先へ連絡する権限がありません');
     });
 
     fireEvent.click(screen.getByLabelText('相談先の薬剤師'));
@@ -1048,42 +1051,46 @@ describe('HandoffWorkspace', () => {
   it.each([
     [{ message: '申し送り項目が見つかりません' }, '申し送り項目が見つかりません'],
     [{ error: '申し送りの既読権限がありません' }, '申し送りの既読権限がありません'],
-  ])('keeps server receipt confirmation errors from %j', async (payload, expectedMessage) => {
-    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
-    const board: HandoffBoardResponse = {
-      ...BOARD,
-      items: [
-        buildItem({
-          id: 'item_in',
-          content: '疑義照会の判断をお願いします',
-          created_by: 'user_2',
-          created_by_name: '鈴木 一郎',
-          recipient_user_id: 'user_1',
-          recipient_label: '山田さん(薬剤師)',
-          lifecycle_status: 'proposed',
-          rationale: '判断が必要なため',
-          direction: 'incoming',
-        }),
-      ],
-      summary: { outgoing_count: 0, incoming_count: 1 },
-    };
-    stubFetch(board, {
-      itemReadFailure: jsonResponse(payload, 403),
-    });
-    renderWorkspace();
+  ])(
+    'uses safe recovery copy for receipt confirmation errors from %j',
+    async (payload, expectedMessage) => {
+      useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+      const board: HandoffBoardResponse = {
+        ...BOARD,
+        items: [
+          buildItem({
+            id: 'item_in',
+            content: '疑義照会の判断をお願いします',
+            created_by: 'user_2',
+            created_by_name: '鈴木 一郎',
+            recipient_user_id: 'user_1',
+            recipient_label: '山田さん(薬剤師)',
+            lifecycle_status: 'proposed',
+            rationale: '判断が必要なため',
+            direction: 'incoming',
+          }),
+        ],
+        summary: { outgoing_count: 0, incoming_count: 1 },
+      };
+      stubFetch(board, {
+        itemReadFailure: jsonResponse(payload, 403),
+      });
+      renderWorkspace();
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: '受領確認' })).toBeTruthy();
-    });
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: '受領確認' })).toBeTruthy();
+      });
 
-    fireEvent.click(screen.getByRole('button', { name: '受領確認' }));
+      fireEvent.click(screen.getByRole('button', { name: '受領確認' }));
 
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith(expectedMessage);
-    });
-  });
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('受領確認に失敗しました');
+        expect(toast.error).not.toHaveBeenCalledWith(expectedMessage);
+      });
+    },
+  );
 
-  it('keeps server messages when message read confirmation fails', async () => {
+  it('uses safe recovery copy when message read confirmation fails', async () => {
     useAuthStore.getState().setCurrentUser({ id: 'user_1' });
     const board: HandoffBoardResponse = {
       ...BOARD,
@@ -1114,7 +1121,8 @@ describe('HandoffWorkspace', () => {
     fireEvent.click(screen.getByTestId('handoff-message-confirm'));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('連絡の既読権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('既読にできませんでした');
+      expect(toast.error).not.toHaveBeenCalledWith('連絡の既読権限がありません');
     });
   });
 
@@ -1332,7 +1340,7 @@ describe('HandoffWorkspace', () => {
     expect(screen.getByTestId('handoff-consult-resolution-readonly')).toBeTruthy();
   });
 
-  it('keeps server messages when pharmacist consultation resolution fails', async () => {
+  it('uses safe recovery copy when pharmacist consultation resolution fails', async () => {
     useAuthStore.getState().setCurrentUser({ id: 'user_1', role: 'pharmacist' });
     const board: HandoffBoardResponse = {
       ...BOARD,
@@ -1365,7 +1373,8 @@ describe('HandoffWorkspace', () => {
     fireEvent.click(screen.getByTestId('handoff-consult-action-acknowledged'));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith(
+      expect(toast.error).toHaveBeenCalledWith('対応を記録できませんでした');
+      expect(toast.error).not.toHaveBeenCalledWith(
         'この相談は他のユーザーによって更新されています。再読み込みしてください',
       );
     });

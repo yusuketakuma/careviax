@@ -668,7 +668,7 @@ export function singleProposalActionResultLabel(action: SingleProposalConfirmAct
   return action === 'approve' ? '患者連絡待ち' : '訪問予定確定';
 }
 
-const SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES = new Set([
+const SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES = [
   'この候補は承認できません',
   'この候補は却下できません',
   '勤務枠が埋まりました',
@@ -676,15 +676,33 @@ const SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES = new Set([
   '訪問候補が見つかりません',
   '確定済み訪問の変更は管理者承認後に進めてください',
   '確定済み訪問の変更は承認後に新候補を確定してください',
-]);
+] as const;
 
-export function proposalActionFailureDisplayMessage(message: string, reachedServer: boolean) {
+type SafeProposalActionFailureMessage =
+  | (typeof SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES)[number]
+  | '通信が完了しませんでした。接続を確認して再試行してください。'
+  | 'サーバー側の状態変更または入力確認により未更新です。再取得後に候補状態を確認してください。';
+
+const SAFE_PROPOSAL_ACTION_FAILURE_MESSAGE_SET: ReadonlySet<string> = new Set(
+  SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES,
+);
+
+function isSafeProposalActionFailureMessage(
+  message: string,
+): message is (typeof SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES)[number] {
+  return SAFE_PROPOSAL_ACTION_FAILURE_MESSAGE_SET.has(message);
+}
+
+export function proposalActionFailureDisplayMessage(
+  message: string,
+  reachedServer: boolean,
+): SafeProposalActionFailureMessage {
   if (!reachedServer) {
     return '通信が完了しませんでした。接続を確認して再試行してください。';
   }
 
   const trimmedMessage = message.trim();
-  if (SAFE_PROPOSAL_ACTION_FAILURE_MESSAGES.has(trimmedMessage)) {
+  if (isSafeProposalActionFailureMessage(trimmedMessage)) {
     return trimmedMessage;
   }
 

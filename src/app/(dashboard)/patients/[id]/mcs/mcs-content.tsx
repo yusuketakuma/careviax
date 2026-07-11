@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
@@ -67,10 +68,19 @@ const MCS_PROFILE_FAILURE_MESSAGE =
   'MCS 参加情報の保存に失敗しました。入力内容を確認してからもう一度お試しください。';
 const MCS_PERMISSION_FAILURE_MESSAGE =
   'MCS 連携を実行する権限がありません。権限を確認してからもう一度お試しください。';
-const MCS_OVERVIEW_FORBIDDEN_MESSAGE =
-  'MCS 連携情報を表示する権限がありません。権限を確認してから再読み込みしてください。';
-const MCS_OVERVIEW_FAILURE_MESSAGE =
-  'MCS 連携情報を取得できませんでした。通信状態を確認してから再読み込みしてください。';
+const MCS_OVERVIEW_ERROR_TITLE = 'MCS 連携情報を表示できません';
+const MCS_OVERVIEW_FAILURES = {
+  forbidden: {
+    variant: 'forbidden',
+    cause: 'MCS 連携情報を表示する権限がありません。',
+    nextAction: '権限を確認してから再読み込みしてください。',
+  },
+  failed: {
+    variant: 'server',
+    cause: 'MCS 連携情報を取得できませんでした。',
+    nextAction: '通信状態を確認してから再読み込みしてください。',
+  },
+} as const;
 
 class PatientMcsMutationResponseError extends Error {
   constructor(
@@ -125,10 +135,10 @@ function getPatientMcsMutationFailureMessage(
   return fallbackMessage;
 }
 
-function getPatientMcsOverviewFailureMessage(error: unknown): string {
+function getPatientMcsOverviewFailureState(error: unknown) {
   return error instanceof PatientMcsOverviewQueryError && error.code === 'forbidden'
-    ? MCS_OVERVIEW_FORBIDDEN_MESSAGE
-    : MCS_OVERVIEW_FAILURE_MESSAGE;
+    ? MCS_OVERVIEW_FAILURES.forbidden
+    : MCS_OVERVIEW_FAILURES.failed;
 }
 
 function isOtherProfessionalRole(role: string | null) {
@@ -1124,17 +1134,23 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
     return <PatientMcsOverviewLoadingState />;
   }
 
-  if (mcsQuery.isError) {
+  const overviewFailure = mcsQuery.isError
+    ? getPatientMcsOverviewFailureState(mcsQuery.error)
+    : null;
+
+  if (overviewFailure) {
     return (
-      <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-        <div className="space-y-2">
-          <p>{getPatientMcsOverviewFailureMessage(mcsQuery.error)}</p>
-          <Button type="button" variant="outline" size="sm" onClick={() => mcsQuery.refetch()}>
-            再読み込み
-          </Button>
-        </div>
-      </div>
+      <ErrorState
+        variant={overviewFailure.variant}
+        title={MCS_OVERVIEW_ERROR_TITLE}
+        cause={overviewFailure.cause}
+        nextAction={overviewFailure.nextAction}
+        onRetry={() => void mcsQuery.refetch()}
+        retryLabel="再読み込み"
+        retryVariant="outline"
+        retrySize="sm"
+        live="assertive"
+      />
     );
   }
 

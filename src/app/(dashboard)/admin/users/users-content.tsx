@@ -32,6 +32,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -159,6 +160,9 @@ const VISIT_LIMITS = {
 
 const VISIT_CONSTRAINT_DISABLED_HELP_ID = 'detail-visit-constraints-role-help';
 const DETAIL_SAVE_BLOCKER_ID = 'detail-user-save-blocker';
+const FILTER_SITE_LIST_ERROR_DESCRIPTION_ID = 'user-filter-site-list-error-description';
+const INVITE_SITE_LIST_ERROR_DESCRIPTION_ID = 'invite-user-site-list-error-description';
+const DETAIL_SITE_LIST_ERROR_DESCRIPTION_ID = 'detail-user-site-list-error-description';
 
 type VisitLimitKey = keyof typeof VISIT_LIMITS;
 
@@ -234,13 +238,55 @@ function getVisitLimitErrors(form: DetailForm | null, enabled: boolean) {
 function getDetailSaveBlocker(
   form: DetailForm | null,
   siteRequired: boolean,
+  siteOptionsUnavailable: boolean,
   visitLimitError?: string,
 ) {
   if (!form) return null;
   if (!form.name.trim()) return '氏名を入力してください。';
   if (!form.name_kana.trim()) return 'フリガナを入力してください。';
+  if (siteRequired && siteOptionsUnavailable) {
+    return '店舗一覧を取得できないため、再読み込みしてから保存してください。';
+  }
   if (siteRequired && !form.site_id) return '所属店舗を選択してください。';
   return visitLimitError ?? null;
+}
+
+function SiteListRecovery({
+  descriptionId,
+  onRetry,
+  className,
+}: {
+  descriptionId: string;
+  onRetry: () => void;
+  className?: string;
+}) {
+  return (
+    <SegmentError
+      title="店舗一覧を取得できませんでした"
+      cause="店舗の候補を確認できないため、空の一覧として扱わず、店舗の絞り込みや所属店舗の変更は行えません。"
+      nextAction="通信状態と権限を確認して、店舗一覧を再読み込みしてください。"
+      detail={
+        <span id={descriptionId}>
+          店舗が必須の招待・変更は、一覧を取得できるまで保存できません。
+        </span>
+      }
+      onRetry={onRetry}
+      retryLabel="店舗一覧を再読み込み"
+      className={className}
+    />
+  );
+}
+
+function SiteListStale({ onRetry, className }: { onRetry: () => void; className?: string }) {
+  return (
+    <SegmentStaleBanner
+      title="前回取得した店舗一覧を表示中"
+      description="最新の店舗一覧を取得できませんでした。表示中の候補が古い可能性があります。"
+      onRetry={onRetry}
+      retryLabel="店舗一覧を再読み込み"
+      className={className}
+    />
+  );
 }
 
 function buildDetailForm(user: UserItem): DetailForm {
@@ -306,6 +352,11 @@ export function UsersContent() {
 
   const users = useMemo(() => data?.data ?? [], [data]);
   const sites = useMemo(() => sitesQuery.data?.data ?? [], [sitesQuery.data]);
+  // 店舗取得失敗を「候補が0件」と誤認させない。役割・所属店舗は運用権限に直結するため、
+  // 初回失敗だけは再読み込みで確認できるまで候補選択と店舗必須の保存を止める。前回取得済みの
+  // 候補があれば、最新化失敗は stale として明示し、既存の有効な選択・保存を妨げない。
+  const siteOptionsUnavailable = sitesQuery.isError && !sitesQuery.data;
+  const siteOptionsStale = sitesQuery.isError && !!sitesQuery.data;
   const credentialOptions = useMemo(
     () =>
       Array.from(new Set(users.flatMap((user) => user.credential_types))).sort((left, right) =>
@@ -577,7 +628,12 @@ export function UsersContent() {
     visitLimitErrors.max_weekly_visits ??
     visitLimitErrors.max_travel_minutes ??
     undefined;
-  const detailSaveBlocker = getDetailSaveBlocker(detailForm, siteRequired, firstVisitLimitError);
+  const detailSaveBlocker = getDetailSaveBlocker(
+    detailForm,
+    siteRequired,
+    siteOptionsUnavailable,
+    firstVisitLimitError,
+  );
 
   function openDetail(user: UserItem) {
     setDetailUser(user);
@@ -686,7 +742,14 @@ export function UsersContent() {
               </Field>
               <Field label="所属店舗" htmlFor="user-filter-site">
                 <Select value={siteFilter} onValueChange={(value) => setSiteFilter(value ?? 'all')}>
-                  <SelectTrigger id="user-filter-site" className="min-h-[44px] sm:min-h-[44px]">
+                  <SelectTrigger
+                    id="user-filter-site"
+                    className="min-h-[44px] sm:min-h-[44px]"
+                    disabled={siteOptionsUnavailable}
+                    aria-describedby={
+                      siteOptionsUnavailable ? FILTER_SITE_LIST_ERROR_DESCRIPTION_ID : undefined
+                    }
+                  >
                     <SelectValue>
                       {siteFilter === 'all'
                         ? 'すべて'
@@ -705,6 +768,18 @@ export function UsersContent() {
                   </SelectContent>
                 </Select>
               </Field>
+              {siteOptionsUnavailable ? (
+                <div className="md:col-span-2 xl:col-span-4">
+                  <SiteListRecovery
+                    descriptionId={FILTER_SITE_LIST_ERROR_DESCRIPTION_ID}
+                    onRetry={() => void sitesQuery.refetch()}
+                  />
+                </div>
+              ) : siteOptionsStale ? (
+                <div className="md:col-span-2 xl:col-span-4">
+                  <SiteListStale onRetry={() => void sitesQuery.refetch()} />
+                </div>
+              ) : null}
               <Field label="状態" htmlFor="user-filter-status">
                 <Select
                   value={statusFilter}
@@ -842,7 +917,13 @@ export function UsersContent() {
                   }))
                 }
               >
-                <SelectTrigger id="invite-user-site">
+                <SelectTrigger
+                  id="invite-user-site"
+                  disabled={siteOptionsUnavailable}
+                  aria-describedby={
+                    siteOptionsUnavailable ? INVITE_SITE_LIST_ERROR_DESCRIPTION_ID : undefined
+                  }
+                >
                   <SelectValue placeholder="選択してください" />
                 </SelectTrigger>
                 <SelectContent>
@@ -855,6 +936,14 @@ export function UsersContent() {
                 </SelectContent>
               </Select>
             </Field>
+            {siteOptionsUnavailable ? (
+              <SiteListRecovery
+                descriptionId={INVITE_SITE_LIST_ERROR_DESCRIPTION_ID}
+                onRetry={() => void sitesQuery.refetch()}
+              />
+            ) : siteOptionsStale ? (
+              <SiteListStale onRetry={() => void sitesQuery.refetch()} />
+            ) : null}
             <div className="flex justify-end gap-2 pt-4">
               <Button variant="outline" onClick={() => setShowInvite(false)}>
                 キャンセル
@@ -866,7 +955,8 @@ export function UsersContent() {
                   !inviteForm.name ||
                   !inviteForm.name_kana ||
                   !inviteForm.email ||
-                  (roleRequiresSite(inviteForm.role) && !inviteForm.site_id)
+                  (roleRequiresSite(inviteForm.role) &&
+                    (!inviteForm.site_id || siteOptionsUnavailable))
                 }
               >
                 {inviteMutation.isPending ? '招待中...' : '招待する'}
@@ -981,7 +1071,13 @@ export function UsersContent() {
                       )
                     }
                   >
-                    <SelectTrigger id="detail-user-site">
+                    <SelectTrigger
+                      id="detail-user-site"
+                      disabled={siteOptionsUnavailable}
+                      aria-describedby={
+                        siteOptionsUnavailable ? DETAIL_SITE_LIST_ERROR_DESCRIPTION_ID : undefined
+                      }
+                    >
                       <SelectValue placeholder="選択してください" />
                     </SelectTrigger>
                     <SelectContent>
@@ -994,6 +1090,18 @@ export function UsersContent() {
                     </SelectContent>
                   </Select>
                 </Field>
+                {siteOptionsUnavailable ? (
+                  <div className="md:col-span-2">
+                    <SiteListRecovery
+                      descriptionId={DETAIL_SITE_LIST_ERROR_DESCRIPTION_ID}
+                      onRetry={() => void sitesQuery.refetch()}
+                    />
+                  </div>
+                ) : siteOptionsStale ? (
+                  <div className="md:col-span-2">
+                    <SiteListStale onRetry={() => void sitesQuery.refetch()} />
+                  </div>
+                ) : null}
               </div>
 
               <div className="space-y-3 rounded-lg border p-4">

@@ -106,6 +106,7 @@
     "task-types:check": "node tools/scripts/check-task-type-registry.mjs",
     "route-auth-wrapper:check": "node tools/scripts/check-route-auth-wrapper.mjs",
     "client-phi-log:check": "node tools/scripts/check-client-phi-log.mjs",
+    "client-phi-display:check": "node tools/scripts/check-client-phi-display.mjs",
     "rls-policy-contract:check": "vitest run src/tools/rls-policy-contract.test.ts --reporter=dot --testTimeout=30000",
     "eventbridge-schedules:check": "node tools/scripts/check-eventbridge-schedule-drift.mjs",
     "hooks:install": "git config core.hooksPath tools/git-hooks"

@@ -510,7 +510,6 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
               variant="server"
               title="薬の安全チェックを表示できません"
               description="服薬課題の取得に失敗しました。再試行してください。"
-              detail={issuesQuery.error instanceof Error ? issuesQuery.error.message : undefined}
               onRetry={() => void issuesQuery.refetch()}
             />
           </div>

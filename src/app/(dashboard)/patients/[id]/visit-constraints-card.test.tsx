@@ -219,7 +219,7 @@ describe('VisitConstraintsCard', () => {
     });
   });
 
-  it('surfaces API error messages when visit constraints fail to save', async () => {
+  it('uses safe recovery copy when visit constraints fail to save', async () => {
     const { mutationConfigs } = captureConfigs();
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -238,7 +238,8 @@ describe('VisitConstraintsCard', () => {
       headers: buildOrgJsonHeaders('org_1'),
       body: expect.any(String),
     });
-    expect(toast.error).toHaveBeenCalledWith('訪問条件の更新権限がありません');
+    expect(toast.error).toHaveBeenCalledWith('訪問条件の保存に失敗しました');
+    expect(toast.error).not.toHaveBeenCalledWith('訪問条件の更新権限がありません');
   });
 
   it('rejects a legacy successful visit-constraint save', async () => {

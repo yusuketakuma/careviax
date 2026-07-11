@@ -417,7 +417,7 @@ describe('PartnerCooperationBillingContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '発行する' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('月次ドキュメントの更新に失敗しました');
+      expect(toast.error).toHaveBeenCalledWith('薬局間月次ドキュメントの更新に失敗しました');
     });
     expect(toast.success).not.toHaveBeenCalledWith('請求書を更新しました');
   });

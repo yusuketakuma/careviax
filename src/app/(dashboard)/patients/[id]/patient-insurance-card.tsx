@@ -736,7 +736,7 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
           </div>
         ) : insuranceQuery.error instanceof Error ? (
           <p role="status" aria-live="polite" className="text-sm text-destructive">
-            {insuranceQuery.error.message}
+            保険情報の取得に失敗しました。再試行してください。
           </p>
         ) : (
           <>

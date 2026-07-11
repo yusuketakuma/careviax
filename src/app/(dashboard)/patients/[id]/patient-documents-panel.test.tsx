@@ -524,8 +524,9 @@ describe('FirstVisitDocumentsPanel', () => {
       fireEvent.submit(screen.getByRole('button', { name: '保存' }).closest('form')!);
 
       await waitFor(() =>
-        expect(errorSpy).toHaveBeenCalledWith('Path segment cannot be a dot segment'),
+        expect(errorSpy).toHaveBeenCalledWith('初回訪問文書の更新に失敗しました'),
       );
+      expect(errorSpy).not.toHaveBeenCalledWith('Path segment cannot be a dot segment');
       expect(fetchMock).not.toHaveBeenCalled();
     },
   );
@@ -592,7 +593,7 @@ describe('FirstVisitDocumentsPanel', () => {
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
-  it('keeps the server message when first-visit document creation fails', async () => {
+  it('uses safe recovery copy when first-visit document creation fails', async () => {
     const queryClient = createTestQueryClient();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const successSpy = vi.spyOn(toast, 'success').mockReturnValue('1' as never);
@@ -653,7 +654,8 @@ describe('FirstVisitDocumentsPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '未作成書類を作成' }));
 
-    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith('書類作成APIからの詳細エラー'));
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith('初回訪問書類の作成に失敗しました'));
+    expect(errorSpy).not.toHaveBeenCalledWith('書類作成APIからの詳細エラー');
     expect(successSpy).not.toHaveBeenCalled();
     expect(invalidateSpy).not.toHaveBeenCalled();
   });

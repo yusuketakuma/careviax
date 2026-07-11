@@ -114,7 +114,7 @@ describe('InterventionPanel new intervention form', () => {
     }
   });
 
-  it('keeps API messages from failed intervention creation responses', async () => {
+  it('uses safe recovery copy for failed intervention creation responses', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({ message: '介入記録の作成権限がありません' }, 403),
     );
@@ -131,11 +131,12 @@ describe('InterventionPanel new intervention form', () => {
     fireEvent.click(screen.getByRole('button', { name: '追加' }));
 
     await waitFor(() => {
-      expect(screen.getByText('介入記録の作成権限がありません')).toBeTruthy();
+      expect(screen.getByText('作成に失敗しました')).toBeTruthy();
     });
+    expect(screen.queryByText('介入記録の作成権限がありません')).toBeNull();
   });
 
-  it('keeps API messages from failed intervention outcome save responses', async () => {
+  it('uses safe recovery copy for failed intervention outcome save responses', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({ message: '介入結果の更新権限がありません' }, 403),
     );
@@ -155,8 +156,9 @@ describe('InterventionPanel new intervention form', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
-      expect(screen.getByText('介入結果の更新権限がありません')).toBeTruthy();
+      expect(screen.getByText('保存に失敗しました')).toBeTruthy();
     });
+    expect(screen.queryByText('介入結果の更新権限がありません')).toBeNull();
   });
 
   it('rejects a legacy successful outcome save without closing the editor', async () => {

@@ -56,6 +56,40 @@ describe('MentionInput', () => {
     });
     expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
   });
+
+  it('shows a PHI-safe recovery instead of an empty mention list when staff loading fails', async () => {
+    const rawDetail = 'patient:患者A token=mention-staff-secret';
+    fetchMock
+      .mockRejectedValueOnce(new Error(rawDetail))
+      .mockResolvedValueOnce(jsonResponse({ data: [{ id: 'staff_1', name: '田中' }] }));
+
+    renderWithQueryClient(
+      <MentionInput
+        value=""
+        onChange={() => undefined}
+        mentions={[]}
+        onMentionsChange={() => undefined}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: '@', selectionStart: 1 },
+    });
+
+    expect(screen.getByText('メンション候補を表示できません')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain(
+      'スタッフ候補を取得できませんでした。',
+    );
+    expect(screen.queryByText(rawDetail)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '候補を再読み込み' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: /田中/ })).toBeTruthy());
+    expect(screen.queryByText('メンション候補を表示できません')).toBeNull();
+  });
 });
 
 type StaffMember = { id: string; name: string };

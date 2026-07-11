@@ -660,14 +660,16 @@ describe('ConferencesContent', () => {
     vi.unstubAllGlobals();
   });
 
-  it('keeps conference mutation server error messages', () => {
+  it('uses safe recovery copy for conference mutation errors', () => {
     render(<ConferencesContent initialFocus="notes" />);
 
     mutationConfigs[2]?.onError?.(new Error('既にタスク化されています'));
     mutationConfigs[3]?.onError?.(new Error('報告書種別が無効です'));
 
-    expect(toast.error).toHaveBeenCalledWith('既にタスク化されています');
-    expect(toast.error).toHaveBeenCalledWith('報告書種別が無効です');
+    expect(toast.error).toHaveBeenCalledWith('タスク化に失敗しました');
+    expect(toast.error).toHaveBeenCalledWith('報告書生成に失敗しました');
+    expect(toast.error).not.toHaveBeenCalledWith('既にタスク化されています');
+    expect(toast.error).not.toHaveBeenCalledWith('報告書種別が無効です');
   });
 
   it('keeps conference mutation server error messages from API responses', async () => {

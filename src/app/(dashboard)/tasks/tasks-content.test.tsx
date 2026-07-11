@@ -876,7 +876,7 @@ describe('TasksContent', () => {
     );
   });
 
-  it('surfaces API errors and rejects legacy successful work request responses', async () => {
+  it('uses safe recovery copy and rejects legacy successful work request responses', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -906,7 +906,8 @@ describe('TasksContent', () => {
       headers: buildOrgJsonHeaders('org_1'),
       body: expect.any(String),
     });
-    expect(toast.error).toHaveBeenCalledWith('業務依頼の作成権限がありません');
+    expect(toast.error).toHaveBeenCalledWith('業務依頼の作成に失敗しました');
+    expect(toast.error).not.toHaveBeenCalledWith('業務依頼の作成権限がありません');
 
     await expect(createRequestOptions.mutationFn()).rejects.toThrow('業務依頼の作成に失敗しました');
   });

@@ -250,7 +250,7 @@ describe('PatientPackagingCard', () => {
     }
   });
 
-  it('surfaces API error messages when packaging settings fail to save', async () => {
+  it('uses safe recovery copy when packaging settings fail to save', async () => {
     const { mutationConfigs } = captureConfigs();
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -270,7 +270,8 @@ describe('PatientPackagingCard', () => {
         headers: buildOrgJsonHeaders('org_1'),
         body: expect.any(String),
       });
-      expect(toast.error).toHaveBeenCalledWith('配薬設定の更新権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('患者配薬設定の保存に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('配薬設定の更新権限がありません');
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

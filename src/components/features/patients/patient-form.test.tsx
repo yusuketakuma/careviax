@@ -705,13 +705,12 @@ describe('PatientForm', () => {
     expect(toast.error).toHaveBeenCalledWith('資格確認に失敗しました');
   });
 
-  it('surfaces qualification check failures near the insurance field instead of treating them as empty', async () => {
+  it('uses safe qualification-check recovery copy instead of treating failures as empty', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({ data: [], isLoading: false });
     const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({ message: 'オンライン資格確認はまだ有効化されていません' }, 501),
-    );
+    const rawErrorMessage = 'オンライン資格確認はまだ有効化されていません';
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: rawErrorMessage }, 501));
 
     render(
       <PatientForm
@@ -729,9 +728,8 @@ describe('PatientForm', () => {
     fireEvent.click(screen.getByRole('button', { name: '資格確認' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert').textContent).toContain(
-        'オンライン資格確認はまだ有効化されていません',
-      );
+      expect(screen.getByRole('alert').textContent).toContain('資格確認に失敗しました');
+      expect(screen.getByRole('alert').textContent).not.toContain(rawErrorMessage);
     });
   });
 

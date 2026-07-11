@@ -1,4 +1,4 @@
-import { messageFromError } from '@/lib/utils/error-message';
+import { messageFromError, type FixedRecoveryCopy } from '@/lib/utils/error-message';
 
 type PrescriptionLineDraft = {
   drug_name: string;
@@ -43,7 +43,10 @@ export class PrescriptionSubmitError extends Error {
   }
 }
 
-export function formatPrescriptionSubmitError(error: unknown, fallbackMessage: string): string {
+export function formatPrescriptionSubmitError<const Fallback extends string>(
+  error: unknown,
+  fallbackMessage: FixedRecoveryCopy<Fallback>,
+): string {
   if (error instanceof PrescriptionSubmitError && error.blockedLines.length > 0) {
     return [
       error.message,
@@ -60,9 +63,9 @@ export function formatPrescriptionSubmitError(error: unknown, fallbackMessage: s
   return messageFromError(error, fallbackMessage);
 }
 
-export async function parsePrescriptionSubmitError(
+export async function parsePrescriptionSubmitError<const Fallback extends string>(
   response: Response,
-  fallbackMessage: string,
+  fallbackMessage: FixedRecoveryCopy<Fallback>,
 ): Promise<PrescriptionSubmitError> {
   const body = (await response.json().catch(() => null)) as PrescriptionApiErrorBody | null;
   return new PrescriptionSubmitError(

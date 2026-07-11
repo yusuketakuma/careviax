@@ -400,7 +400,7 @@ describe('PatientCareTeamPanel', () => {
     }
   });
 
-  it('surfaces API error messages when quick-create master registration fails', async () => {
+  it('uses safe recovery copy when quick-create master registration fails', async () => {
     const { mutationConfigs } = captureConfigs();
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -420,7 +420,8 @@ describe('PatientCareTeamPanel', () => {
         headers: buildOrgJsonHeaders('org_1'),
         body: expect.any(String),
       });
-      expect(toast.error).toHaveBeenCalledWith('他職種マスターの登録権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('他職種マスターの登録に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('他職種マスターの登録権限がありません');
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
@@ -488,7 +489,7 @@ describe('PatientCareTeamPanel', () => {
     }
   });
 
-  it('surfaces API error messages when care-team save fails', async () => {
+  it('uses safe recovery copy when care-team save fails', async () => {
     const { mutationConfigs } = captureConfigs();
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -508,7 +509,8 @@ describe('PatientCareTeamPanel', () => {
         headers: buildOrgJsonHeaders('org_1'),
         body: expect.any(String),
       });
-      expect(toast.error).toHaveBeenCalledWith('多職種連携先の更新権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('多職種連携先の保存に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('多職種連携先の更新権限がありません');
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

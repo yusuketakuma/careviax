@@ -24,6 +24,9 @@ const roleRequiresSiteOverrideMock = vi.hoisted(() => ({
 const queryErrorKeysMock = vi.hoisted(() => new Set<string>());
 const queryFnRunKeysMock = vi.hoisted(() => new Set<string>());
 const queryRefetchMock = vi.hoisted(() => vi.fn());
+const siteQueryDataOnErrorMock = vi.hoisted(() => ({
+  current: null as null | { data: Array<{ id: string; name: string }> },
+}));
 const adminUsersResponseMock = vi.hoisted(() => ({
   current: null as null | {
     data: unknown[];
@@ -159,10 +162,16 @@ vi.mock('@tanstack/react-query', () => ({
     }
 
     if (key === 'pharmacy-sites') {
+      const isError = queryErrorKeysMock.has('pharmacy-sites');
       return {
-        data: { data: [{ id: 'site_1', name: '本店' }] },
+        data: isError
+          ? siteQueryDataOnErrorMock.current
+          : { data: [{ id: 'site_1', name: '本店' }] },
         isLoading: false,
-        isError: false,
+        isError,
+        error: isError
+          ? new Error('patient_name=山田太郎 storage_key=private/provider_error token=secret')
+          : null,
         refetch: queryRefetchMock,
       };
     }
@@ -265,6 +274,7 @@ describe('UsersContent', () => {
     roleRequiresSiteOverrideMock.current = null;
     queryErrorKeysMock.clear();
     queryFnRunKeysMock.clear();
+    siteQueryDataOnErrorMock.current = null;
     adminUsersResponseMock.current = null;
     Object.assign(user, defaultUser);
     vi.unstubAllGlobals();
@@ -455,15 +465,16 @@ describe('UsersContent', () => {
     expect(mutationMutateMock).not.toHaveBeenCalled();
   });
 
-  it('surfaces API error messages when user invite fails', async () => {
+  it('uses fixed recovery copy instead of API detail when user invite fails', async () => {
     runMutationFnsMock.current = true;
     roleRequiresSiteOverrideMock.current = () => false;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === PHARMACISTS_API_PATH && init?.method === 'POST') {
-        return new Response(JSON.stringify({ message: 'メールアドレスは既に招待済みです' }), {
-          status: 409,
-        });
+        return new Response(
+          JSON.stringify({ message: '患者 山田太郎 090-1234-5678 token=invite-secret' }),
+          { status: 409 },
+        );
       }
       return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
     });
@@ -480,8 +491,10 @@ describe('UsersContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '招待する' }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('メールアドレスは既に招待済みです');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('招待に失敗しました');
     });
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain('invite-secret');
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain('山田太郎');
     expect(fetchMock).toHaveBeenCalledWith(
       PHARMACISTS_API_PATH,
       expect.objectContaining({
@@ -520,14 +533,15 @@ describe('UsersContent', () => {
     expect(vi.mocked(toast.success)).not.toHaveBeenCalledWith('ユーザーを招待しました');
   });
 
-  it('surfaces API error messages when user detail update fails', async () => {
+  it('uses fixed recovery copy instead of API detail when user detail update fails', async () => {
     runMutationFnsMock.current = true;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/pharmacists/user_1' && init?.method === 'PATCH') {
-        return new Response(JSON.stringify({ message: 'このロールには所属店舗が必要です' }), {
-          status: 400,
-        });
+        return new Response(
+          JSON.stringify({ message: '患者 佐藤花子 storage_key=private/user token=update-secret' }),
+          { status: 400 },
+        );
       }
       return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
     });
@@ -540,8 +554,10 @@ describe('UsersContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '変更を保存' }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('このロールには所属店舗が必要です');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('更新に失敗しました');
     });
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain('update-secret');
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain('佐藤花子');
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/pharmacists/user_1',
       expect.objectContaining({
@@ -551,14 +567,15 @@ describe('UsersContent', () => {
     );
   });
 
-  it('surfaces API error messages when user account action fails', async () => {
+  it('uses fixed recovery copy instead of API detail when user account action fails', async () => {
     runMutationFnsMock.current = true;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/pharmacists/user_1' && init?.method === 'PATCH') {
-        return new Response(JSON.stringify({ message: 'オーナー権限の停止はできません' }), {
-          status: 403,
-        });
+        return new Response(
+          JSON.stringify({ message: '患者 鈴木一郎 address=private token=action-secret' }),
+          { status: 403 },
+        );
       }
       return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
     });
@@ -571,8 +588,10 @@ describe('UsersContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '実行' }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('オーナー権限の停止はできません');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('操作に失敗しました');
     });
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain('action-secret');
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).not.toContain('鈴木一郎');
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/pharmacists/user_1',
       expect.objectContaining({
@@ -618,6 +637,90 @@ describe('UsersContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
 
     expect(queryRefetchMock).toHaveBeenCalled();
+  });
+
+  it('shows a retryable site-list failure instead of a false-empty selector and blocks site-required writes', () => {
+    queryErrorKeysMock.add('pharmacy-sites');
+
+    render(<UsersContent />);
+
+    fireEvent.click(screen.getByText('詳細フィルタ', { selector: 'summary' }));
+
+    const filterSite = screen.getByLabelText('所属店舗', {
+      selector: '#user-filter-site',
+    }) as HTMLButtonElement;
+    expect(filterSite.disabled).toBe(true);
+    expect(filterSite.getAttribute('aria-describedby')).toBe(
+      'user-filter-site-list-error-description',
+    );
+    expect(screen.getByRole('heading', { name: '店舗一覧を取得できませんでした' })).toBeTruthy();
+    expect(screen.getByText(/店舗の候補を確認できないため、空の一覧として扱わず/)).toBeTruthy();
+    expect(
+      screen.getByText(/通信状態と権限を確認して、店舗一覧を再読み込みしてください/),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toContain('patient_name=山田太郎');
+    expect(document.body.textContent).not.toContain('storage_key=private');
+    expect(document.body.textContent).not.toContain('token=secret');
+
+    fireEvent.click(screen.getByRole('button', { name: '店舗一覧を再読み込み' }));
+    expect(queryRefetchMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'ユーザーを招待' }));
+    const inviteSite = screen.getByLabelText('所属店舗', {
+      selector: '#invite-user-site',
+    }) as HTMLButtonElement;
+    expect(inviteSite.disabled).toBe(true);
+    expect(inviteSite.getAttribute('aria-describedby')).toBe(
+      'invite-user-site-list-error-description',
+    );
+    expect((screen.getByRole('button', { name: '招待する' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎の詳細を開く' }));
+
+    const detailSite = screen.getByLabelText('所属店舗', {
+      selector: '#detail-user-site',
+    }) as HTMLButtonElement;
+    expect(detailSite.disabled).toBe(true);
+    expect(detailSite.getAttribute('aria-describedby')).toBe(
+      'detail-user-site-list-error-description',
+    );
+    expect(
+      screen.getByText('店舗一覧を取得できないため、再読み込みしてから保存してください。'),
+    ).toBeTruthy();
+    expect((screen.getByRole('button', { name: '変更を保存' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
+  it('keeps cached site options usable and marks them stale when a background refresh fails', () => {
+    queryErrorKeysMock.add('pharmacy-sites');
+    siteQueryDataOnErrorMock.current = { data: [{ id: 'site_1', name: '本店' }] };
+
+    render(<UsersContent />);
+
+    fireEvent.click(screen.getByText('詳細フィルタ', { selector: 'summary' }));
+
+    const filterSite = screen.getByLabelText('所属店舗', {
+      selector: '#user-filter-site',
+    }) as HTMLButtonElement;
+    expect(filterSite.disabled).toBe(false);
+    expect(screen.getByText('前回取得した店舗一覧を表示中')).toBeTruthy();
+    expect(screen.queryByText('店舗一覧を取得できませんでした')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '店舗一覧を再読み込み' }));
+    expect(queryRefetchMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎の詳細を開く' }));
+    const detailSite = screen.getByLabelText('所属店舗', {
+      selector: '#detail-user-site',
+    }) as HTMLButtonElement;
+    expect(detailSite.disabled).toBe(false);
+    expect((screen.getByRole('button', { name: '変更を保存' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
   });
 
   it('shows hidden user counts when the staff master list is truncated', () => {

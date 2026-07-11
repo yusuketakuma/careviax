@@ -104,6 +104,9 @@ function findOccurrences() {
           occurrences.push({ path: file, line: call.line, text: normalizeSnippet(call.text) });
         }
       }
+      for (const call of findSentryCalls(source)) {
+        occurrences.push({ path: file, line: call.line, text: normalizeSnippet(call.text) });
+      }
     }
   }
   return occurrences;
@@ -156,6 +159,33 @@ function findConsoleCalls(source) {
       text: source.slice(match.index, endIndex + 1),
     });
   }
+  return calls;
+}
+
+function findSentryCalls(source) {
+  const calls = [];
+  const captureExceptionPattern = /\b(?:Sentry\.)?captureException\s*\(/g;
+  for (const match of source.matchAll(captureExceptionPattern)) {
+    const parenIndex = source.indexOf('(', match.index);
+    const endIndex = findCallEnd(source, parenIndex);
+    calls.push({
+      line: source.slice(0, match.index).split(/\r?\n/).length,
+      text: source.slice(match.index, endIndex + 1),
+    });
+  }
+
+  const captureMessagePattern = /\b(?:Sentry\.)?captureMessage\s*\(/g;
+  for (const match of source.matchAll(captureMessagePattern)) {
+    const parenIndex = source.indexOf('(', match.index);
+    const endIndex = findCallEnd(source, parenIndex);
+    const argsText = source.slice(parenIndex + 1, endIndex);
+    if (!consoleCallHasUnsafeErrorArgument(argsText)) continue;
+    calls.push({
+      line: source.slice(0, match.index).split(/\r?\n/).length,
+      text: source.slice(match.index, endIndex + 1),
+    });
+  }
+
   return calls;
 }
 
@@ -257,7 +287,7 @@ const staleEntries = entries.filter((entry) => entry.actualCount !== entry.expec
 if (unclassified.length > 0 || staleEntries.length > 0) {
   console.error('Client PHI-log check failed.');
   if (unclassified.length > 0) {
-    console.error('\nRaw error objects / stacks passed to console:');
+    console.error('\nRaw error objects / stacks passed to console or Sentry:');
     for (const item of unclassified) {
       console.error(`- ${item.path}:${item.line} (${item.reason})`);
       console.error(`  ${item.text}`);

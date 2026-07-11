@@ -449,13 +449,13 @@ describe('RouteCompareContent', () => {
     );
   });
 
-  it('keeps partial route failures visible and disables only the failed scenario', async () => {
+  it('keeps safe partial route failures visible and disables only the failed scenario', async () => {
     failTimePreferenceRoute = true;
     renderRouteCompareContent();
 
     expect(await screen.findAllByText(/移動23分/)).not.toHaveLength(0);
     const scenarioB = screen.getByLabelText('案B 希望時間優先');
-    expect(within(scenarioB).getByText(/採用不可: 経路計算に失敗しました/)).not.toBeNull();
+    expect(within(scenarioB).getByText(/採用不可: ルート計算の取得に失敗しました/)).not.toBeNull();
     expect(
       (within(scenarioB).getByRole('button', { name: 'この案を使う' }) as HTMLButtonElement)
         .disabled,
@@ -508,13 +508,13 @@ describe('RouteCompareContent', () => {
     await waitFor(() =>
       expect(fetchCalls.filter((call) => call.url === '/api/visit-routes')).toHaveLength(3),
     );
-    await screen.findAllByText(/採用不可: 経路計算に失敗しました/);
+    await screen.findAllByText(/採用不可: ルート計算の取得に失敗しました/);
 
     expect(screen.queryByTestId('route-recommended-detail')).toBeNull();
     expect(screen.queryByText('ルート最適化詳細')).toBeNull();
     for (const label of ['案A 移動少なめ', '案B 希望時間優先', '案C 緊急余力優先']) {
       const scenario = screen.getByLabelText(label);
-      expect(within(scenario).getByText(/採用不可: 経路計算に失敗しました/)).not.toBeNull();
+      expect(within(scenario).getByText(/採用不可: ルート計算の取得に失敗しました/)).not.toBeNull();
       expect(
         (within(scenario).getByRole('button', { name: 'この案を使う' }) as HTMLButtonElement)
           .disabled,

@@ -965,11 +965,7 @@ export function VisitMedicationStockObservationPanel({
             size="inline"
             live="polite"
             title="残数管理情報を取得できませんでした"
-            description={
-              stockQuery.error instanceof Error
-                ? stockQuery.error.message
-                : '通信状態を確認して再試行してください。'
-            }
+            description="通信状態を確認して再試行してください。"
             onRetry={() => void stockQuery.refetch()}
             retryLabel="残数情報を再取得"
             retryVariant="outline"

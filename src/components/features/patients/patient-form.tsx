@@ -25,7 +25,7 @@ import { PHARMACISTS_API_PATH } from '@/lib/pharmacists/api-paths';
 import { buildOrgMembersApiPath } from '@/lib/org-members/api-paths';
 import { createPatientSchema, type CreatePatientInput } from '@/lib/validations/patient';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { messageFromError } from '@/lib/utils/error-message';
+import { messageFromError, type FixedRecoveryCopy } from '@/lib/utils/error-message';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -214,7 +214,10 @@ function formatOptionLabelMap(labelMap: Record<string, string>) {
   return Object.entries(labelMap).map(([value, label]) => ({ value, label }));
 }
 
-function queryErrorMessage(errorValue: unknown, fallback: string) {
+function queryErrorMessage<const Fallback extends string>(
+  errorValue: unknown,
+  fallback: FixedRecoveryCopy<Fallback>,
+) {
   return messageFromError(errorValue, fallback);
 }
 

@@ -658,7 +658,7 @@ describe('ExternalShareContent', () => {
     );
   });
 
-  it('keeps server messages and falls back for patient-share mutation toasts', () => {
+  it('uses safe recovery copy for patient-share mutation toasts', () => {
     const mutationConfigs: MutationConfig[] = [];
     useOrgIdMock.mockReturnValue('org_1');
     useMutationMock.mockImplementation((config: MutationConfig) => {
@@ -680,10 +680,12 @@ describe('ExternalShareContent', () => {
 
     render(<ExternalShareContent patientId="patient_1" />);
 
-    mutationConfigs[1]?.onError?.(new Error('次回タスクは既に起票済みです'));
+    const rawTaskErrorMessage = '次回タスクは既に起票済みです';
+    mutationConfigs[1]?.onError?.(new Error(rawTaskErrorMessage));
     mutationConfigs[2]?.onError?.('reply-request-failure');
 
-    expect(toast.error).toHaveBeenCalledWith('次回タスクは既に起票済みです');
+    expect(toast.error).toHaveBeenCalledWith('次回タスクの作成に失敗しました');
+    expect(toast.error).not.toHaveBeenCalledWith(rawTaskErrorMessage);
     expect(toast.error).toHaveBeenCalledWith('返信依頼の起票に失敗しました');
   });
 

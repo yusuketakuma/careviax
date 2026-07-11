@@ -89,7 +89,7 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
         </CardHeader>
         <CardContent>
           <p role="status" aria-live="polite" className="text-sm text-destructive">
-            {readinessQuery.error.message}
+            患者の準備状況の取得に失敗しました。再試行してください。
           </p>
         </CardContent>
       </Card>

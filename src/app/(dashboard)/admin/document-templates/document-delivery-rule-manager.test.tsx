@@ -337,7 +337,7 @@ describe('DocumentDeliveryRuleManager', () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
-  it('keeps server save error envelopes when delivery rule creation fails', async () => {
+  it('uses safe recovery copy when delivery rule creation fails', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -364,11 +364,12 @@ describe('DocumentDeliveryRuleManager', () => {
     fireEvent.click(await screen.findByRole('button', { name: '登録する' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('文書送達ルールの作成権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('文書送達ルールの保存に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('文書送達ルールの作成権限がありません');
     });
   });
 
-  it('keeps server delete messages when delivery rule deletion fails', async () => {
+  it('uses safe recovery copy when delivery rule deletion fails', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -409,7 +410,8 @@ describe('DocumentDeliveryRuleManager', () => {
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('文書送達ルールの削除権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('文書送達ルールの削除に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('文書送達ルールの削除権限がありません');
     });
   });
 

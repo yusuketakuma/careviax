@@ -19,7 +19,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { messageFromError } from '@/lib/utils/error-message';
+import { messageFromError, SafeClientMessageError } from '@/lib/utils/error-message';
 import {
   VisitProposalDiagnosticsCard,
   type ProposalGenerationDiagnosticsCardData,
@@ -50,6 +50,7 @@ import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
+import { SegmentError } from '@/components/ui/segment-state';
 import {
   Select,
   SelectContent,
@@ -720,6 +721,15 @@ function bulkActionFailureDisplayMessage(failure: BulkActionFailure) {
   return proposalActionFailureDisplayMessage(failure.message, failure.reachedServer);
 }
 
+function safeProposalActionFailureMessage(
+  error: unknown,
+  fallback: string,
+  reachedServer: boolean,
+) {
+  const rawMessage = error instanceof Error && error.message ? error.message : fallback;
+  return proposalActionFailureDisplayMessage(rawMessage, reachedServer);
+}
+
 export function ScheduleProposalsContent({
   initialStatus,
   initialCaseId,
@@ -1197,17 +1207,15 @@ export function ScheduleProposalsContent({
           body: JSON.stringify(payload),
         });
       } catch (error) {
-        const message = messageFromError(error, '候補更新に失敗しました');
-        throw new Error(proposalActionFailureDisplayMessage(message, false));
+        throw SafeClientMessageError.fromReviewed(
+          safeProposalActionFailureMessage(error, '候補更新に失敗しました', false),
+        );
       }
       try {
         return await readApiAcknowledgement(response, '候補更新に失敗しました');
       } catch (error) {
-        throw new Error(
-          proposalActionFailureDisplayMessage(
-            messageFromError(error, '候補更新に失敗しました'),
-            true,
-          ),
+        throw SafeClientMessageError.fromReviewed(
+          safeProposalActionFailureMessage(error, '候補更新に失敗しました', true),
         );
       }
     },
@@ -1287,7 +1295,7 @@ export function ScheduleProposalsContent({
             return {
               proposal,
               ok: false as const,
-              message: messageFromError(error, '一括更新に失敗しました'),
+              message: safeProposalActionFailureMessage(error, '一括更新に失敗しました', false),
               reachedServer: false,
             } satisfies BulkActionFailure;
           }
@@ -1299,7 +1307,7 @@ export function ScheduleProposalsContent({
             return {
               proposal,
               ok: false as const,
-              message: messageFromError(error, '一括更新に失敗しました'),
+              message: safeProposalActionFailureMessage(error, '一括更新に失敗しました', true),
               reachedServer: true,
             } satisfies BulkActionFailure;
           }
@@ -1674,6 +1682,8 @@ export function ScheduleProposalsContent({
       : null;
   const caseSearchResults = casesQuery.data?.data ?? [];
   const vehicleResourceOptions = vehicleResourcesQuery.data?.data ?? [];
+  const vehicleResourcesUnavailable =
+    vehicleResourcesQuery.isError && vehicleResourcesQuery.data == null;
   const vehicleResourceHiddenCount = vehicleResourcesQuery.data?.meta?.hidden_count ?? 0;
   const selectedReproposalVehicle = vehicleResourceOptions.find(
     (vehicle) => vehicle.id === reproposalForm.vehicle_resource_id,
@@ -3434,6 +3444,12 @@ export function ScheduleProposalsContent({
                         <SelectTrigger
                           id="reproposal-vehicle-resource"
                           className="min-h-[44px] sm:h-11 sm:min-h-[44px]"
+                          disabled={vehicleResourcesUnavailable}
+                          aria-describedby={
+                            vehicleResourcesUnavailable
+                              ? 'reproposal-vehicle-resource-error'
+                              : undefined
+                          }
                         >
                           <SelectValue placeholder="自動割当" />
                         </SelectTrigger>
@@ -3455,6 +3471,19 @@ export function ScheduleProposalsContent({
                             ? '社用車候補を読み込み中'
                             : '未指定の場合は患者希望時間とルート条件から自動割当します'}
                       </p>
+                      {vehicleResourcesUnavailable ? (
+                        <div id="reproposal-vehicle-resource-error">
+                          <SegmentError
+                            title="社用車候補を表示できません"
+                            cause="社用車候補を取得できませんでした。"
+                            nextAction="通信状態を確認してから候補を再読み込みしてください。"
+                            onRetry={() => void vehicleResourcesQuery.refetch()}
+                            retryLabel="候補を再読み込み"
+                            headingLevel={3}
+                            className="p-4"
+                          />
+                        </div>
+                      ) : null}
                       {vehicleResourceHiddenCount > 0 ? (
                         <p className="text-xs text-state-confirm">
                           社用車候補が他{vehicleResourceHiddenCount}

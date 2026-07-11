@@ -321,7 +321,7 @@ describe('BusinessHolidaysContent', () => {
     });
   });
 
-  it('surfaces API error messages when business holiday save fails', async () => {
+  it('uses safe recovery copy when business holiday save fails', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/pharmacy-sites') {
@@ -348,7 +348,8 @@ describe('BusinessHolidaysContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '登録する' }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('同じ休日設定が既に存在します');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('保存に失敗しました');
+      expect(vi.mocked(toast.error)).not.toHaveBeenCalledWith('同じ休日設定が既に存在します');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       BUSINESS_HOLIDAYS_API_PATH,
@@ -522,7 +523,7 @@ describe('BusinessHolidaysContent', () => {
     expect(buildBusinessHolidayApiPath).toHaveBeenCalledWith('a/b c');
   });
 
-  it('surfaces API error messages when business holiday delete fails', async () => {
+  it('uses safe recovery copy when business holiday delete fails', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/pharmacy-sites') {
@@ -551,7 +552,8 @@ describe('BusinessHolidaysContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('利用中の休日設定は削除できません');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('削除に失敗しました');
+      expect(vi.mocked(toast.error)).not.toHaveBeenCalledWith('利用中の休日設定は削除できません');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/business-holidays/holiday_1',

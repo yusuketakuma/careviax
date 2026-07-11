@@ -426,7 +426,7 @@ describe('OperationalPolicyContent', () => {
     }
   });
 
-  it('surfaces API error messages when operational policy updates fail', async () => {
+  it('uses safe recovery copy when operational policy updates fail', async () => {
     const { mutationConfigs } = renderWithCapturedQueries();
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -444,7 +444,8 @@ describe('OperationalPolicyContent', () => {
         headers: buildOrgJsonHeaders('org_1'),
         body: JSON.stringify({ quiet_hours: false }),
       });
-      expect(toast.error).toHaveBeenCalledWith('運用ポリシーの更新権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('運用ポリシーの更新に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('運用ポリシーの更新権限がありません');
     } finally {
       vi.unstubAllGlobals();
     }

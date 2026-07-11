@@ -78,12 +78,8 @@ export default function PasswordChangePage() {
       }
 
       setSuccess(true);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'パスワードの変更に失敗しました。現在のパスワードを確認してください。',
-      );
+    } catch {
+      setError('パスワードの変更に失敗しました。現在のパスワードを確認してください。');
     } finally {
       setIsLoading(false);
     }

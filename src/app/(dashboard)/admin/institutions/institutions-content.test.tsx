@@ -335,7 +335,7 @@ describe('InstitutionsContent', () => {
     expect((screen.getByLabelText('医療機関名') as HTMLInputElement).value).toBe('連携クリニック');
   });
 
-  it('surfaces API error messages when institution save fails', async () => {
+  it('uses safe recovery copy when institution save fails', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.startsWith('/api/prescriber-institutions?') && !init?.method) {
@@ -359,7 +359,8 @@ describe('InstitutionsContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('医療機関コードが重複しています');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('保存に失敗しました');
+      expect(vi.mocked(toast.error)).not.toHaveBeenCalledWith('医療機関コードが重複しています');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/prescriber-institutions',
@@ -459,7 +460,7 @@ describe('InstitutionsContent', () => {
     expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
   });
 
-  it('surfaces API error messages when institution delete fails', async () => {
+  it('uses safe recovery copy when institution delete fails', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.startsWith('/api/prescriber-institutions?') && !init?.method) {
@@ -479,7 +480,10 @@ describe('InstitutionsContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('処方実績がある医療機関は削除できません');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('削除に失敗しました');
+      expect(vi.mocked(toast.error)).not.toHaveBeenCalledWith(
+        '処方実績がある医療機関は削除できません',
+      );
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/prescriber-institutions/institution_1',

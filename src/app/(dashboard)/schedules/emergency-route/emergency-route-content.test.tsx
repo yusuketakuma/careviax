@@ -380,7 +380,7 @@ describe('EmergencyRouteContent', () => {
     expect(reorderBodies).toHaveLength(0);
   });
 
-  it('keeps route-engine server messages when emergency route recalculation fails', async () => {
+  it('uses safe recovery copy when emergency route recalculation fails', async () => {
     const routeBodies: unknown[] = [];
     const reorderBodies: unknown[] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -411,7 +411,8 @@ describe('EmergencyRouteContent', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'ルートを再計算' }));
 
     await waitFor(() => expect(routeBodies.length).toBeGreaterThan(0));
-    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('座標未設定: 緊急患者'));
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith('ルート再計算に失敗しました'));
+    expect(toastErrorMock).not.toHaveBeenCalledWith('座標未設定: 緊急患者');
     expect(reorderBodies).toHaveLength(0);
   });
 });

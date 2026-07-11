@@ -516,7 +516,6 @@ function DrugMasterOperationalContent({
     data,
     isLoading,
     isError: isDrugMasterError,
-    error: drugMasterError,
     refetch: refetchDrugMasters,
     fetchNextPage: fetchNextDrugMasters,
     hasNextPage: hasMoreDrugMasters,
@@ -1845,13 +1844,7 @@ function DrugMasterOperationalContent({
         caption="医薬品マスター一覧"
         onRowClick={(index) => openDrugDetail(drugs[index]?.id ?? null)}
         selectedRowIndex={selectedRowIndex}
-        errorMessage={
-          isDrugMasterError
-            ? drugMasterError instanceof Error
-              ? drugMasterError.message
-              : '医薬品マスターの取得に失敗しました'
-            : undefined
-        }
+        errorMessage={isDrugMasterError ? '医薬品マスターの取得に失敗しました' : undefined}
         onRetry={() => void refetchDrugMasters()}
       />
 

@@ -548,7 +548,7 @@ describe('ExternalProfessionalsContent', () => {
     expect(JSON.parse(init.body as string)).not.toHaveProperty('facility_id');
   });
 
-  it('preserves server messages from external professional save errors', async () => {
+  it('uses safe recovery copy for external professional save errors', async () => {
     stubFetchWithProfessional(professionalFixture(), linkedPatientsResponseFixture(), {
       PATCH: new Response(JSON.stringify({ message: '他職種が見つかりません' }), { status: 404 }),
     });
@@ -557,7 +557,8 @@ describe('ExternalProfessionalsContent', () => {
     fireEvent.click(await screen.findByRole('button', { name: '青葉 訪問看護 を編集' }));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('他職種が見つかりません'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('保存に失敗しました'));
+    expect(toast.error).not.toHaveBeenCalledWith('他職種が見つかりません');
   });
 
   it('uses the external professional save fallback for non-JSON errors', async () => {
@@ -672,9 +673,8 @@ describe('ExternalProfessionalsContent', () => {
     fireEvent.click(await screen.findByRole('button', { name: '青葉 訪問看護 を編集' }));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith('Path segment cannot be a dot segment'),
-    );
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('保存に失敗しました'));
+    expect(toast.error).not.toHaveBeenCalledWith('Path segment cannot be a dot segment');
     expect(fetchMock.mock.calls).not.toEqual(
       expect.arrayContaining([
         expect.arrayContaining([

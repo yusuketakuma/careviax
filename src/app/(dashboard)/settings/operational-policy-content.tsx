@@ -627,7 +627,6 @@ export function OperationalPolicyContent() {
               variant="server"
               title="設定を表示できません"
               description="運用ポリシーの取得に失敗しました。再試行してください。"
-              detail={policyQuery.error instanceof Error ? policyQuery.error.message : undefined}
               onRetry={() => void policyQuery.refetch()}
             />
           </div>

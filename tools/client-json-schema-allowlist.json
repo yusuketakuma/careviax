@@ -469,12 +469,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/schedules/schedule-day-planner-hooks.ts",
-      "counts": {
-        "stringFallback": 2
-      }
-    },
-    {
       "path": "src/app/(dashboard)/schedules/schedule-day-preparation.ts",
       "counts": {
         "stringFallback": 1

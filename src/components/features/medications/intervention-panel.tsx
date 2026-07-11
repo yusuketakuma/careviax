@@ -26,6 +26,7 @@ import { LoadingButton } from '@/components/ui/loading-button';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { cn } from '@/lib/utils';
+import { messageFromError } from '@/lib/utils/error-message';
 
 type InterventionType =
   | 'dose_adjustment'
@@ -104,7 +105,7 @@ function InterventionRow({ intervention, onOutcomeUpdate }: InterventionRowProps
       onOutcomeUpdate?.(intervention.id, outcomeText);
       setEditing(false);
     } catch (error) {
-      setSaveError(error instanceof Error && error.message ? error.message : '保存に失敗しました');
+      setSaveError(messageFromError(error, '保存に失敗しました'));
     } finally {
       setSaving(false);
     }
@@ -262,7 +263,7 @@ function NewInterventionForm({ patientId, issueId, onCreated }: NewInterventionF
       // performedAt は元実装同様リセットしない(直近入力値を保持)。
       reset({ type: 'other', description: '', performedAt: getValues('performedAt') });
     } catch (error) {
-      setApiError(error instanceof Error && error.message ? error.message : '作成に失敗しました');
+      setApiError(messageFromError(error, '作成に失敗しました'));
     } finally {
       setSaving(false);
     }

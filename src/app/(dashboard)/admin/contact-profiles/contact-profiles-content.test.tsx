@@ -214,7 +214,7 @@ describe('ContactProfilesContent', () => {
     );
   });
 
-  it('preserves server messages from contact profile save errors', async () => {
+  it('uses safe recovery copy for contact profile save errors', async () => {
     mockContactProfilesFetch(
       new Response(JSON.stringify({ message: '連携先が見つかりません' }), { status: 404 }),
     );
@@ -227,9 +227,8 @@ describe('ContactProfilesContent', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '送付先を保存する' }));
 
-    await waitFor(() =>
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('連携先が見つかりません'),
-    );
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith('保存に失敗しました'));
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalledWith('連携先が見つかりません');
   });
 
   it('uses the contact profile save fallback for non-JSON errors', async () => {

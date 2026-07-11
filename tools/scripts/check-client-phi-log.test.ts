@@ -115,6 +115,27 @@ describe('check-client-phi-log', () => {
     expect(() => runCheck(root)).toThrow(/\.stack/);
   });
 
+  it('rejects a raw exception passed to Sentry', () => {
+    const root = createFixtureRepo({
+      'src/features/a.tsx': `Sentry.captureException(error);`,
+    });
+    expect(() => runCheck(root)).toThrow(/Sentry\.captureException\(error\)/);
+  });
+
+  it('rejects raw Error.message passed to Sentry.captureMessage', () => {
+    const root = createFixtureRepo({
+      'src/features/a.tsx': `Sentry.captureMessage(error.message);`,
+    });
+    expect(() => runCheck(root)).toThrow(/Sentry\.captureMessage\(error\.message\)/);
+  });
+
+  it('allows coded Sentry messages', () => {
+    const root = createFixtureRepo({
+      'src/features/a.tsx': `Sentry.captureMessage('offline_sync.failed');`,
+    });
+    expect(runCheck(root)).toContain('Client PHI-log check passed');
+  });
+
   it('does not flag error identifiers nested inside a helper call', () => {
     const root = createFixtureRepo({
       'src/features/a.ts': `console.warn('[x]', messageFromError(error, 'fallback'));`,

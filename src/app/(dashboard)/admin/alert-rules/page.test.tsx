@@ -424,7 +424,8 @@ describe('AlertRulesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '登録する' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('処方安全アラートルールの保存に失敗しました');
+      expect(toast.error).toHaveBeenCalledWith('保存に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('処方安全アラートルールを登録しました');
     });
     expect(toast.success).not.toHaveBeenCalled();
     expect((screen.getByLabelText('表示メッセージ') as HTMLInputElement).value).toBe(

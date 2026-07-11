@@ -1728,18 +1728,22 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
     }
   });
 
-  it('keeps server messages and falls back for prescription history mutation error toasts', () => {
+  it('uses safe recovery copy for prescription history mutation error toasts', () => {
     const { mutationConfigs } = renderHistory();
     expect(mutationConfigs).toHaveLength(2);
     const [markOriginalCollected, resolveDrugMaster] = mutationConfigs;
 
-    markOriginalCollected.onError?.(new Error('原本回収APIからの詳細エラー'));
-    expect(toast.error).toHaveBeenLastCalledWith('原本回収APIからの詳細エラー');
+    const originalCollectionRawError = '原本回収APIからの詳細エラー';
+    markOriginalCollected.onError?.(new Error(originalCollectionRawError));
+    expect(toast.error).toHaveBeenLastCalledWith('原本回収の記録に失敗しました');
+    expect(toast.error).not.toHaveBeenLastCalledWith(originalCollectionRawError);
     markOriginalCollected.onError?.(new Error(''));
     expect(toast.error).toHaveBeenLastCalledWith('原本回収の記録に失敗しました');
 
-    resolveDrugMaster.onError?.(new Error('医薬品マスターAPIからの詳細エラー'));
-    expect(toast.error).toHaveBeenLastCalledWith('医薬品マスターAPIからの詳細エラー');
+    const drugMasterRawError = '医薬品マスターAPIからの詳細エラー';
+    resolveDrugMaster.onError?.(new Error(drugMasterRawError));
+    expect(toast.error).toHaveBeenLastCalledWith('医薬品マスター確定に失敗しました');
+    expect(toast.error).not.toHaveBeenLastCalledWith(drugMasterRawError);
     resolveDrugMaster.onError?.(new Error(''));
     expect(toast.error).toHaveBeenLastCalledWith('医薬品マスター確定に失敗しました');
   });

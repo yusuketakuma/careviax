@@ -258,7 +258,7 @@ describe('NotificationsContent', () => {
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
-  it('surfaces API error messages when marking notifications read fails', async () => {
+  it('uses safe recovery copy when marking notifications read fails', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -287,7 +287,8 @@ describe('NotificationsContent', () => {
       headers: { 'Content-Type': 'application/json', 'x-test-json-org-id': 'org_1' },
       body: JSON.stringify({ ids: ['notification_1'] }),
     });
-    expect(toast.error).toHaveBeenCalledWith('通知の既読化権限がありません');
+    expect(toast.error).toHaveBeenCalledWith('既読化に失敗しました');
+    expect(toast.error).not.toHaveBeenCalledWith('通知の既読化権限がありません');
   });
 
   it('rejects legacy, empty, and non-JSON successful mark-read responses', async () => {

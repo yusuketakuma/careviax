@@ -495,8 +495,11 @@ describe('AuditLogsContent', () => {
 
     const alerts = await screen.findAllByRole('alert');
     expect(
-      alerts.some((alert) => alert.textContent?.includes('監査ログレビューを更新できませんでした')),
+      alerts.some((alert) => alert.textContent?.includes('監査ログレビューの更新に失敗しました')),
     ).toBe(true);
+    expect(
+      alerts.some((alert) => alert.textContent?.includes('監査ログレビューを更新できませんでした')),
+    ).toBe(false);
     const retryButton = screen.getAllByRole('button', {
       name: /通常.*target_1をレビュー済みにする/,
     })[0];
@@ -510,7 +513,7 @@ describe('AuditLogsContent', () => {
     });
   });
 
-  it('uses the server message from a failed audit export response', async () => {
+  it('uses safe recovery copy from a failed audit export response', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.startsWith('/api/audit-logs/export?')) {
@@ -537,7 +540,8 @@ describe('AuditLogsContent', () => {
     fireEvent.click(screen.getByRole('button', { name: 'JSON出力' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('監査ログの出力権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('監査ログのエクスポートに失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('監査ログの出力権限がありません');
     });
   });
 

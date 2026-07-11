@@ -12,9 +12,9 @@ import { logger } from '@/lib/utils/logger';
  * SafeLogContext path, which extracts only `error_name` from allowlisted
  * standard Error types. It never emits error.message or error.stack.
  *
- * Boundaries that need full Sentry exceptions should call `Sentry.captureException`
- * separately so the global beforeSend/sanitizeSentryEvent redaction path applies.
- * Console output for captured errors should go through this helper.
+ * Do not pass raw exceptions to `Sentry.captureException`: exception messages
+ * and stacks can contain PHI that generic event redaction cannot reliably
+ * classify. Record a coded event through this helper instead.
  */
 
 /** Accepts only context values safe for console/Sentry. Free text is redacted by logger. */

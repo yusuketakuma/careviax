@@ -143,7 +143,7 @@ describe('SelectSiteContent', () => {
     });
   });
 
-  it('surfaces API error messages when site switching fails', async () => {
+  it('uses safe recovery copy when site switching fails', async () => {
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
     vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelHeaders);
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -162,7 +162,8 @@ describe('SelectSiteContent', () => {
     fireEvent.click(within(cards[1]).getByRole('button', { name: 'この薬局を使う' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('この薬局を選択する権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('薬局の切り替えに失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('この薬局を選択する権限がありません');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/me/site',

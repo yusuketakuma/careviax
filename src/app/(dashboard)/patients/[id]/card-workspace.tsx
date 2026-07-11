@@ -1275,7 +1275,7 @@ function PatientShareCaseCreatePanel({
       ]);
     },
     onError: (error: Error) => {
-      const message = error.message || '患者共有ケースの作成に失敗しました';
+      const message = messageFromError(error, '患者共有ケースの作成に失敗しました');
       setCreateError(message);
       toast.error(message);
     },
@@ -1570,9 +1570,7 @@ function PatientCardDocumentsPanel({
       <SectionCard id="patient-documents" data-testid="patient-card-documents-panel">
         <h3 className="text-base font-semibold text-foreground">初回訪問文書・交付記録</h3>
         <p className="mt-2 text-sm text-destructive">
-          {documentsQuery.error instanceof Error
-            ? documentsQuery.error.message
-            : '文書情報の取得に失敗しました'}
+          文書情報の取得に失敗しました。再試行してください。
         </p>
       </SectionCard>
     );
@@ -2775,11 +2773,7 @@ function PrescriptionDocumentQuickForm({
             nextDocumentUrl = await onUpload(file);
             setDocumentUrl(nextDocumentUrl);
           } catch (error) {
-            setLocalError(
-              error instanceof Error
-                ? error.message
-                : '処方せん画像/PDFのアップロードに失敗しました',
-            );
+            setLocalError(messageFromError(error, '処方せん画像/PDFのアップロードに失敗しました'));
             return;
           } finally {
             setUploading(false);
@@ -5344,7 +5338,6 @@ export function CardWorkspace({
         variant="server"
         title="患者情報を表示できません"
         description="患者情報の取得に失敗しました。再試行してください。"
-        detail={error instanceof Error ? error.message : undefined}
         onRetry={() => void refetchPatient()}
       />
     ) : (

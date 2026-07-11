@@ -348,7 +348,7 @@ describe('FacilitiesContent', () => {
     });
   });
 
-  it('surfaces API error messages when facility save fails', async () => {
+  it('uses safe recovery copy when facility save fails', async () => {
     const facility = facilityFixture();
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -373,7 +373,8 @@ describe('FacilitiesContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('施設名が重複しています');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('保存に失敗しました');
+      expect(vi.mocked(toast.error)).not.toHaveBeenCalledWith('施設名が重複しています');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/admin/facilities',
@@ -384,7 +385,7 @@ describe('FacilitiesContent', () => {
     );
   });
 
-  it('surfaces API error messages when facility delete fails', async () => {
+  it('uses safe recovery copy when facility delete fails', async () => {
     const facility = { ...facilityFixture(), patient_count: 0 };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -405,7 +406,8 @@ describe('FacilitiesContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('入居患者がいる施設は削除できません');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('削除に失敗しました');
+      expect(vi.mocked(toast.error)).not.toHaveBeenCalledWith('入居患者がいる施設は削除できません');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/admin/facilities/facility_1',
@@ -557,7 +559,7 @@ describe('FacilitiesContent', () => {
     });
   });
 
-  it('surfaces API error messages when facility unit save fails', async () => {
+  it('uses safe recovery copy when facility unit save fails', async () => {
     const facility = facilityFixture();
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -586,7 +588,8 @@ describe('FacilitiesContent', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ユニットを保存' }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('ユニット名が重複しています');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('ユニット保存に失敗しました');
+      expect(vi.mocked(toast.error)).not.toHaveBeenCalledWith('ユニット名が重複しています');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/admin/facilities/facility_1/units',
@@ -597,7 +600,7 @@ describe('FacilitiesContent', () => {
     );
   });
 
-  it('surfaces API error messages when facility unit delete fails', async () => {
+  it('uses safe recovery copy when facility unit delete fails', async () => {
     const facility = facilityFixture();
     const removableUnit = { ...unitFixture(), patient_count: 0 };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -623,7 +626,10 @@ describe('FacilitiesContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('入居患者がいるユニットは削除できません');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('ユニット削除に失敗しました');
+      expect(vi.mocked(toast.error)).not.toHaveBeenCalledWith(
+        '入居患者がいるユニットは削除できません',
+      );
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/admin/facilities/facility_1/units/unit_1',

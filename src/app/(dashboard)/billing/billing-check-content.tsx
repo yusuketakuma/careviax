@@ -393,7 +393,6 @@ export function BillingCheckContent() {
               variant="server"
               title="算定チェックを表示できません"
               description="疑義と自動チェックの集計取得に失敗しました。再試行してください。"
-              detail={checkQuery.error instanceof Error ? checkQuery.error.message : undefined}
               onRetry={() => void checkQuery.refetch()}
             />
           </div>

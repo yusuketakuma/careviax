@@ -1629,14 +1629,15 @@ describe('CardWorkspace', () => {
     vi.unstubAllGlobals();
   });
 
-  it('keeps risk task sync failures visible inside the Command tab', () => {
+  it('uses safe risk-task sync recovery copy inside the Command tab', () => {
+    const rawErrorMessage = 'ケースリスクタスク同期APIからの詳細エラー';
     mockPatientQuery(
       buildWorkspace(),
       null,
       {},
       {
         patientOverrides: { cases: [buildActivePatientCase()] },
-        riskTaskSyncError: new Error('ケースリスクタスク同期APIからの詳細エラー'),
+        riskTaskSyncError: new Error(rawErrorMessage),
       },
     );
 
@@ -1644,8 +1645,9 @@ describe('CardWorkspace', () => {
 
     const panel = screen.getByTestId('case-risk-task-sync-panel');
     expect(within(panel).getByRole('alert').textContent).toContain(
-      'ケースリスクタスク同期APIからの詳細エラー',
+      'リスクタスク同期に失敗しました',
     );
+    expect(within(panel).getByRole('alert').textContent).not.toContain(rawErrorMessage);
     expect(within(panel).queryByText('同期済み')).toBeNull();
   });
 
@@ -1768,7 +1770,10 @@ describe('CardWorkspace', () => {
         'タスク化済みの未解決リスクはありません。必要な場合は上の同期を実行してください。',
       ),
     ).toBeTruthy();
-    expect(within(panel).getByRole('alert').textContent).toContain('免除APIからの詳細エラー');
+    expect(within(panel).getByRole('alert').textContent).toContain(
+      'リスクタスク免除に失敗しました',
+    );
+    expect(within(panel).getByRole('alert').textContent).not.toContain('免除APIからの詳細エラー');
   });
 
   it('keeps the Case Risk Cockpit fetch failure retry target at the PH-OS 44px size', () => {
@@ -1785,7 +1790,12 @@ describe('CardWorkspace', () => {
     render(<CardWorkspace patientId="patient_1" />);
 
     const panel = screen.getByTestId('case-risk-task-resolution-panel');
-    expect(within(panel).getByRole('alert').textContent).toContain('Case Risk Cockpit API error');
+    expect(within(panel).getByRole('alert').textContent).toContain(
+      'リスク状態の取得に失敗しました',
+    );
+    expect(within(panel).getByRole('alert').textContent).not.toContain(
+      'Case Risk Cockpit API error',
+    );
     expect(within(panel).getByRole('button', { name: '再試行' }).className).toContain('min-h-11');
   });
 
@@ -2248,7 +2258,7 @@ describe('CardWorkspace', () => {
       {
         patientDocuments: {
           data: undefined,
-          error: new Error('文書情報の取得に失敗しました'),
+          error: new Error('文書APIの詳細 patient_name=田中 token=secret'),
         },
       },
     );
@@ -2260,7 +2270,12 @@ describe('CardWorkspace', () => {
     expect(
       within(documentsPanel).getByRole('heading', { name: '初回訪問文書・交付記録' }),
     ).toBeTruthy();
-    expect(within(documentsPanel).getByText('文書情報の取得に失敗しました')).toBeTruthy();
+    expect(
+      within(documentsPanel).getByText('文書情報の取得に失敗しました。再試行してください。'),
+    ).toBeTruthy();
+    expect(
+      within(documentsPanel).queryByText('文書APIの詳細 patient_name=田中 token=secret'),
+    ).toBeNull();
     expect(within(documentsPanel).queryByRole('link', { name: '印刷プレビュー' })).toBeNull();
     expect(within(documentsPanel).queryByText('契約書')).toBeNull();
   });
@@ -2317,7 +2332,9 @@ describe('CardWorkspace', () => {
     expect(
       within(documentsPanel).getByRole('heading', { name: '初回訪問文書・交付記録' }),
     ).toBeTruthy();
-    expect(within(documentsPanel).getByText('文書情報の取得に失敗しました')).toBeTruthy();
+    expect(
+      within(documentsPanel).getByText('文書情報の取得に失敗しました。再試行してください。'),
+    ).toBeTruthy();
     expect(within(documentsPanel).queryByRole('link', { name: '印刷プレビュー' })).toBeNull();
     expect(within(documentsPanel).queryByText('契約書')).toBeNull();
   });
@@ -2853,7 +2870,7 @@ describe('CardWorkspace', () => {
     expect(faxMutate).toHaveBeenCalledWith('intake_0500');
   });
 
-  it('keeps server messages and falls back for prescription home-operation mutation error toasts', () => {
+  it('uses safe recovery copy for prescription home-operation mutation error toasts', () => {
     mockPatientQuery(buildWorkspace());
     const baseMutation = useMutationMock.getMockImplementation();
     const mutationConfigs: Array<{ onError?: (error: Error) => void }> = [];
@@ -2892,7 +2909,8 @@ describe('CardWorkspace', () => {
 
     for (const { config, serverMessage, fallback } of cases) {
       config?.onError?.(new Error(serverMessage));
-      expect(toast.error).toHaveBeenLastCalledWith(serverMessage);
+      expect(toast.error).toHaveBeenLastCalledWith(fallback);
+      expect(toast.error).not.toHaveBeenLastCalledWith(serverMessage);
       config?.onError?.(new Error(''));
       expect(toast.error).toHaveBeenLastCalledWith(fallback);
     }
@@ -3615,7 +3633,7 @@ describe('CardWorkspace', () => {
     });
   });
 
-  it('keeps server messages and falls back for billing home-operation mutation error toasts', () => {
+  it('uses safe recovery copy for billing home-operation mutation error toasts', () => {
     mockPatientQuery(buildWorkspace());
     const baseMutation = useMutationMock.getMockImplementation();
     const mutationConfigs: Array<{ onError?: (error: Error) => void }> = [];
@@ -3649,7 +3667,8 @@ describe('CardWorkspace', () => {
 
     for (const { config, serverMessage, fallback } of cases) {
       config?.onError?.(new Error(serverMessage));
-      expect(toast.error).toHaveBeenLastCalledWith(serverMessage);
+      expect(toast.error).toHaveBeenLastCalledWith(fallback);
+      expect(toast.error).not.toHaveBeenLastCalledWith(serverMessage);
       config?.onError?.(new Error(''));
       expect(toast.error).toHaveBeenLastCalledWith(fallback);
     }
@@ -3860,7 +3879,7 @@ describe('CardWorkspace', () => {
     });
   });
 
-  it('keeps server messages and falls back for communication home-operation mutation error toasts', () => {
+  it('uses safe recovery copy for communication home-operation mutation error toasts', () => {
     mockPatientQuery(buildWorkspace());
     const baseMutation = useMutationMock.getMockImplementation();
     const mutationConfigs: Array<{ onError?: (error: Error) => void }> = [];
@@ -3894,7 +3913,8 @@ describe('CardWorkspace', () => {
 
     for (const { config, serverMessage, fallback } of cases) {
       config?.onError?.(new Error(serverMessage));
-      expect(toast.error).toHaveBeenLastCalledWith(serverMessage);
+      expect(toast.error).toHaveBeenLastCalledWith(fallback);
+      expect(toast.error).not.toHaveBeenLastCalledWith(serverMessage);
       config?.onError?.(new Error(''));
       expect(toast.error).toHaveBeenLastCalledWith(fallback);
     }
@@ -4832,9 +4852,12 @@ describe('CardWorkspace', () => {
         render(<CardWorkspace patientId="patient_1" />);
         triggerPrescriptionUpload();
 
-        // the helper completes all 3 fetches, then encodePathSegment(dotId) throws building the download URL;
-        // PrescriptionDocumentQuickForm catches it and surfaces the exact RangeError message (fail-closed proof).
-        expect(await screen.findByText('Path segment cannot be a dot segment')).toBeTruthy();
+        // The helper completes all 3 fetches, then encodePathSegment(dotId) throws building the download URL.
+        // The UI remains fail-closed without exposing the raw validation detail.
+        expect(
+          await screen.findByText('処方せん画像/PDFのアップロードに失敗しました'),
+        ).toBeTruthy();
+        expect(screen.queryByText('Path segment cannot be a dot segment')).toBeNull();
         expect(fetchMock).toHaveBeenCalledTimes(3);
         expect(prescriptionDocumentMutate).not.toHaveBeenCalled();
         for (const call of fetchMock.mock.calls) {

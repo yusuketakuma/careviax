@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { PropsWithChildren } from 'react';
+import { toast } from 'sonner';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createJsonFetchMock } from '@/test/fetch-test-utils';
@@ -103,5 +104,88 @@ describe('BreakGlassPanel', () => {
     expect(await screen.findByText('アクティブなブレークグラスセッション')).toBeTruthy();
     expect(screen.getByRole('button', { name: /セッションを終了/ })).toBeTruthy();
     expect(screen.queryByText('ブレークグラスアクセスを起動')).toBeNull();
+  });
+
+  it('uses fixed recovery copy when revoking a break-glass session fails', async () => {
+    const rawError = 'session patient_name=田中 token=secret';
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {
+              sessions: [
+                {
+                  id: 'bg_1',
+                  target_org_id: 'org_1',
+                  reason: '障害調査のため確認します',
+                  reference_ticket: 'SUP-1',
+                  scope: 'read_only',
+                  status: 'active',
+                  granted_at: new Date().toISOString(),
+                  expires_at: new Date(Date.now() + 25 * 60 * 1000).toISOString(),
+                  revoked_at: null,
+                },
+              ],
+            },
+          }),
+          { headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: rawError }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<BreakGlassPanel orgId="org_1" tenantName="さくら薬局" />, {
+      wrapper: createQueryClientWrapper(),
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /セッションを終了/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '終了する' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('セッション終了に失敗しました');
+    });
+    expect(screen.queryByText(rawError)).toBeNull();
+  });
+
+  it('uses fixed recovery copy when break-glass activation fails', async () => {
+    const rawError = 'activation patient_name=田中 token=secret';
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { sessions: [] } }), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: rawError }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<BreakGlassPanel orgId="org_1" tenantName="さくら薬局" />, {
+      wrapper: createQueryClientWrapper(),
+    });
+
+    await screen.findByText('ブレークグラスアクセスを起動');
+    fireEvent.change(screen.getByLabelText(/アクセス理由/), {
+      target: { value: '障害調査のため確認します' },
+    });
+    fireEvent.change(screen.getByLabelText(/パスワード/), { target: { value: 'password' } });
+    fireEvent.change(screen.getByLabelText(/MFAコード/), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'アクセスを起動' }));
+    fireEvent.click(await screen.findByRole('button', { name: '起動する' }));
+
+    expect(
+      await screen.findByText('アクセス起動に失敗しました。認証情報と権限を確認してください。'),
+    ).toBeTruthy();
+    expect(screen.queryByText(rawError)).toBeNull();
   });
 });

@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/select';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
-import { PlatformApiError, platformFetchJson } from '../../platform-fetch';
+import { platformFetchJson } from '../../platform-fetch';
 import { PLATFORM_TENANTS_QUERY_KEY } from '../../tenant-directory-content';
 import {
   BREAK_GLASS_SESSIONS_QUERY_KEY,
@@ -62,10 +62,8 @@ function ActiveSessionCard({
       queryClient.invalidateQueries({ queryKey: PLATFORM_TENANTS_QUERY_KEY });
       toast.success('ブレークグラスセッションを終了しました');
     },
-    onError: (err) => {
-      const message =
-        err instanceof PlatformApiError ? err.message : 'セッション終了に失敗しました';
-      toast.error(message);
+    onError: () => {
+      toast.error('セッション終了に失敗しました');
     },
   });
 
@@ -154,9 +152,8 @@ export function BreakGlassPanel({ orgId, tenantName }: { orgId: string; tenantNa
       setMfaCode('');
       setFormError(null);
     },
-    onError: (err) => {
-      const message = err instanceof PlatformApiError ? err.message : 'アクセス起動に失敗しました';
-      setFormError(message);
+    onError: () => {
+      setFormError('アクセス起動に失敗しました。認証情報と権限を確認してください。');
     },
   });
 

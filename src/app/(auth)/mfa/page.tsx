@@ -131,13 +131,11 @@ export default function MfaPage() {
       }
 
       router.push('/dashboard');
-    } catch (err) {
+    } catch {
       setSubmitError(
-        err instanceof Error
-          ? err.message
-          : mode === 'recovery'
-            ? 'リカバリーコードが正しくありません。'
-            : '認証コードが正しくありません。もう一度お試しください。',
+        mode === 'recovery'
+          ? 'リカバリーコードが正しくありません。'
+          : '認証コードが正しくありません。もう一度お試しください。',
       );
       setDigits(['', '', '', '', '', '']);
       setRecoveryCode('');

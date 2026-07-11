@@ -129,7 +129,7 @@ describe('HandoffConfirmPanel', () => {
     });
   });
 
-  it('keeps server messages when handoff confirmation fails', async () => {
+  it('uses safe recovery copy when handoff confirmation fails', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(
@@ -144,7 +144,8 @@ describe('HandoffConfirmPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '確認' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('申し送りは既に確定されています');
+      expect(toast.error).toHaveBeenCalledWith('申し送りの確定に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('申し送りは既に確定されています');
     });
   });
 
@@ -310,7 +311,7 @@ describe('HandoffConfirmPanel', () => {
     });
   });
 
-  it('keeps server messages when supervision request fails', async () => {
+  it('uses safe recovery copy when supervision request fails', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(
@@ -325,7 +326,8 @@ describe('HandoffConfirmPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '上長確認を依頼' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('上長確認の依頼先が見つかりません');
+      expect(toast.error).toHaveBeenCalledWith('上長確認の依頼に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('上長確認の依頼先が見つかりません');
     });
   });
 

@@ -463,7 +463,7 @@ describe('schedule create/edit drawer helpers', () => {
     });
   });
 
-  it('shows the standard API message when proposal save returns a code/message envelope', async () => {
+  it('uses safe recovery copy when proposal save returns a code/message envelope', async () => {
     const message = '同一ケース・同一日付の訪問予定が既に存在します。既存予定を確認してください';
     const fetchMock = vi.fn<typeof fetch>(async () =>
       Response.json(
@@ -477,11 +477,12 @@ describe('schedule create/edit drawer helpers', () => {
     fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith(message);
+      expect(toast.error).toHaveBeenCalledWith('予定の保存に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith(message);
     });
   });
 
-  it('prefers the standard API message when legacy error and message are both present', async () => {
+  it('uses safe recovery copy when legacy error and message are both present', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
       Response.json(
         {
@@ -499,12 +500,13 @@ describe('schedule create/edit drawer helpers', () => {
     fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('standard workflow conflict message');
+      expect(toast.error).toHaveBeenCalledWith('予定の保存に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('standard workflow conflict message');
     });
     expect(toast.error).not.toHaveBeenCalledWith('legacy compatibility message');
   });
 
-  it('keeps legacy error-envelope compatibility when proposal save fails', async () => {
+  it('uses safe recovery copy when legacy error envelopes proposal save failure', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
       Response.json({ error: 'legacy compatibility message' }, { status: 400 }),
     );
@@ -514,7 +516,8 @@ describe('schedule create/edit drawer helpers', () => {
     fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('legacy compatibility message');
+      expect(toast.error).toHaveBeenCalledWith('予定の保存に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('legacy compatibility message');
     });
   });
 

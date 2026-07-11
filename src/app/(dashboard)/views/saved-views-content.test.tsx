@@ -233,7 +233,7 @@ describe('SavedViewsContent', () => {
     });
   });
 
-  it('surfaces API error messages when saving current conditions fails', async () => {
+  it('uses safe recovery copy when saving current conditions fails', async () => {
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
       const target = String(url);
       if (target.startsWith('/api/saved-views')) {
@@ -250,7 +250,8 @@ describe('SavedViewsContent', () => {
     fireEvent.click(saveButton);
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('保存済み条件の更新権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('絞り込み条件の保存に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('保存済み条件の更新権限がありません');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/me/preferences',
@@ -345,7 +346,7 @@ describe('SavedViewsContent', () => {
     });
   });
 
-  it('surfaces API error messages when named saved-view creation fails', async () => {
+  it('uses safe recovery copy when named saved-view creation fails', async () => {
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
       const target = String(url);
       if (target.startsWith('/api/saved-views')) {
@@ -364,7 +365,8 @@ describe('SavedViewsContent', () => {
     fireEvent.click(screen.getByTestId('named-view-create'));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('同じ名前の保存ビューが既に存在します');
+      expect(toast.error).toHaveBeenCalledWith('保存ビューの作成に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('同じ名前の保存ビューが既に存在します');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/saved-views',

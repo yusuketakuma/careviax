@@ -1035,11 +1035,12 @@ describe('ReportShareWorkspace', () => {
     expect((updatedCareManagerButtons[0] as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('keeps server messages when draft generation fails', async () => {
+  it('uses safe recovery copy when draft generation fails', async () => {
+    const rawErrorMessage = '訪問記録が更新されています';
     stubFetch(
       TODAY_WORKSPACE,
       'rep_generated',
-      new Response(JSON.stringify({ message: '訪問記録が更新されています' }), { status: 409 }),
+      new Response(JSON.stringify({ message: rawErrorMessage }), { status: 409 }),
     );
     renderWorkspace();
 
@@ -1052,7 +1053,8 @@ describe('ReportShareWorkspace', () => {
     );
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('訪問記録が更新されています');
+      expect(toast.error).toHaveBeenCalledWith('下書きの作成に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith(rawErrorMessage);
     });
   });
 

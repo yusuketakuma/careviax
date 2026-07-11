@@ -45134,3 +45134,244 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   linked as gate evidence. The compact PATCH_REVIEW request has been sent to Claude. Next: drain and record the
   actual peer verdict in REVIEW_LOG, write the final redacted LoopRun, then continue only with unblocked work. No
   push, deployment, migration, data mutation, or destructive cleanup has been performed.
+
+## 2026-07-11 UI-UX-FE-FALSE-EMPTY-USERS-SITES-001 — retain site-list failure as recovery, not empty options
+
+- current task:
+  Close the unstarted admin-users/sites false-empty slice after reviewing the current recovery commits and the
+  UI/UX refresh ledger: a failed `/api/pharmacy-sites` request must not be presented as an empty set of site
+  choices while administrators filter staff, invite a site-bound member, or update a member record.
+- files inspected / changed:
+  Inspected the latest recovery commits, `users-content.tsx`, its unit test, `/api/pharmacists` and
+  `/api/pharmacy-sites` contracts, `SegmentError`/`ErrorState`, the local Playwright auth and route-mock helpers,
+  the UI SSOT error/empty rules, and the active tree. Changed only
+  `src/app/(dashboard)/admin/users/users-content.tsx`, its focused test, added
+  `tools/tests/ui-admin-users-site-error-route-mocked.spec.ts`, and this ledger.
+- bugs found / fixed:
+  `sitesQuery.data?.data ?? []` silently collapsed a failed pharmacy-site lookup into an empty selector. The site
+  filter, invite form, and detail form could therefore look as if there were simply no choices. A failed lookup now
+  renders the existing `SegmentError` with fixed cause/next-action copy and a manual retry. Site selectors are
+  disabled with programmatic reason text; a site-required invite or detail save remains disabled until the lookup
+  succeeds. Existing user rows, form drafts, request paths, request bodies, role semantics, and a legitimately
+  empty successful list remain unchanged.
+- security / medical safety:
+  The browser and unit regressions inject a synthetic patient-like/server-detail marker and prove it is absent from
+  the DOM. This change does not alter authentication, authorization, RLS, organization headers, audit writes,
+  Cognito, API behavior, persistence, or actual staff mutations. The E2E fixture intercepts all user/site reads and
+  never permits a write request.
+- performance:
+  No polling, automatic retry, cache policy, query key, or extra network request was added. The only recovery is
+  the existing explicit TanStack Query `refetch` action requested by the operator.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this composes the existing `SegmentError` recovery
+  primitive inside established admin forms; it is bounded failure-state work, not visual reconstruction or new
+  information architecture.
+- validation:
+  Focused `pnpm vitest run src/app/(dashboard)/admin/users/users-content.test.tsx --reporter=dot
+--testTimeout=30000` passed 1 file / 17 tests. It proves fixed recovery copy, raw-detail omission, retry,
+  disabled filter/invite/detail site controls, and blocks site-required writes. Local route-mock browser proof
+  `pnpm test:e2e:local tools/tests/ui-admin-users-site-error-route-mocked.spec.ts` passed 1 Chromium case with 1
+  intentional mobile duplicate skip; it used only a read-only demo-user lookup and intercepted all user/site API
+  responses. `pnpm format:check`, scoped ESLint, `pnpm typecheck`,
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`, `pnpm boundaries:check`,
+  `pnpm frontend-contract:check`, `pnpm typography:check`, `pnpm client-phi-log:check` (1 pre-existing allowlisted
+  raw-error console call), and `git diff --check` passed. The default-heap no-unused command exhausted its 4GB Node
+  heap; the documented 8GB rerun passed, so this is recorded as a local resource constraint rather than a source
+  failure. Final `pnpm test` passed 1482 files / 15321 tests (3 files / 13 tests skipped). A final heading-level
+  correction preserves the existing h1-to-h2 hierarchy and was revalidated by focused unit, route-mock E2E,
+  typecheck, and that full test gate.
+- remaining / next action:
+  This closes only the admin users/sites false-empty recovery. The broader Phase 9 build/standalone, visual
+  regression, full E2E, manual zoom/screen-reader, offline/conflict, specialist review, and NF-07
+  status-specific auth/network recovery gates remain incomplete. No commit, push, migration, deployment, data
+  mutation, or destructive cleanup was performed.
+
+## 2026-07-11 UI-UX-NF06-MCS-COMMON-ERROR-STATE — classify MCS overview recovery
+
+- current task:
+  Close the remaining NF-06 hand-built MCS overview failure presentation without changing the MCS read, sync,
+  check-log, profile, patient, or organization contracts.
+- files inspected / changed:
+  Inspected `mcs-content.tsx`, its focused test, the MCS query's existing `forbidden`/`failed` error contract,
+  `ErrorState`, the UI SSOT state/error rules, and the active dirty tree. Changed only
+  `src/app/(dashboard)/patients/[id]/mcs/mcs-content.tsx`, its focused test, and this ledger.
+- bugs found / fixed:
+  The overview query's hand-built destructive box used the same warning presentation for an actual server failure
+  and a known 403-style MCS visibility denial. It already preserved a fixed message and manual refetch, but bypassed
+  the common error-state structure. The screen now uses `ErrorState` with a fixed title, structured cause and next
+  action, an assertive live region, and the existing manual refetch. A `forbidden` query error uses the shared
+  readonly permission treatment; every other overview failure remains a server-error treatment. No cached data,
+  query key, fetch behavior, mutation, form, request, authorization enforcement, or audit behavior changed.
+- security / medical safety:
+  The existing poison-detail regression now also proves the common alert contains neither synthetic patient,
+  URL, nor token-like server text. Client logging remains the existing static route/entity context; no raw error is
+  added to the UI or client-log metadata. This changes no MCS data, patient selection, RLS, organization headers,
+  permissions, persistence, or clinical decision logic.
+- performance:
+  No polling, automatic retry, cache policy, query key, or new request was added. The only retry remains the
+  operator's explicit `refetch` action.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this replaces a bounded hand-built recovery block with
+  the established `ErrorState` primitive; it is not a visual reconstruction or new information architecture.
+- validation:
+  Focused `pnpm vitest run src/app/(dashboard)/patients/[id]/mcs/mcs-content.test.tsx --reporter=dot
+--testTimeout=30000` passed 1 file / 16 tests. It covers server and forbidden recovery variants, fixed
+  cause/next-action copy, alert semantics, raw-detail omission, retry, and static safe logging. `pnpm typecheck`,
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`, scoped ESLint, `pnpm format:check`,
+  `pnpm client-phi-log:check` (1 pre-existing allowlisted raw-error console call), `pnpm boundaries:check`,
+  `pnpm frontend-contract:check`, `pnpm colors:check`, `pnpm typography:check`, and `git diff --check` passed.
+  Final `pnpm test` passed 1482 files / 15322 tests (3 files / 13 tests skipped).
+- remaining / next action:
+  This closes only the MCS overview presentation within NF-06; other hand-built recovery surfaces and the broader
+  Phase 7/8 rollout remain partial. Phase 9 build/standalone, schema-ready visual regression, full E2E, manual
+  zoom/screen-reader, offline/conflict, specialist review, and NF-07 status-specific auth/network recovery remain
+  incomplete. No commit, push, migration, deployment, data mutation, or destructive cleanup was performed.
+
+## 2026-07-11 Plans reconciliation and FE-FALSE-EMPTY-002 mention recovery
+
+- current task / state restoration:
+  Restored from live `Plans.md`, this ledger, Git, recent commits, package scripts, and the active dirty tree. The
+  existing admin-users/sites and MCS recovery changes were preserved without source edits; their focused tests passed
+  34/34 in the current tree. Initial available capabilities confirmed: filesystem read/edit/search/listing, shell/Git,
+  test/typecheck/lint/build commands, local Playwright/browser tooling, screenshots, local DB/migration scripts, and
+  independent command parallelism. Browser, screenshots, DB migration, and build were not invoked for this bounded
+  component/ledger slice.
+- plans reconciliation:
+  `FE-FALSE-EMPTY-USERS-SITES-001` was implementation-complete in the dirty tree and verified by its ledger evidence;
+  `FE-PLATFORM-ERROR-BOUNDARY-001` was already complete at commit `2af50e888` with a shared-boundary regression test.
+  Both were removed from the Frontend queue, recorded in the completed-derived section, and the checked queue count
+  moved 11 -> 9. `FE-FALSE-EMPTY-002` now accurately records PARTIAL state and its remaining child scopes.
+- implementation:
+  `MentionInput` no longer renders an initial failed staff lookup as indistinguishable from no @mention candidates.
+  When the dropdown is requested and no cached candidates exist, it renders the existing compact `SegmentError` with
+  fixed recovery copy and explicit `refetch`; a successful retry restores the normal candidate list. Existing cached
+  candidates remain usable, and query key, API path/headers, mention insertion/pruning, persistence, authorization,
+  audit, and PHI data contracts are unchanged. `gpt-image-2` was omitted because this is a bounded existing
+  error-state composition, not visual reconstruction or new information architecture.
+- validation:
+  `pnpm vitest run src/components/features/comments/mention-input.test.tsx --reporter=dot --testTimeout=30000`
+  passed 1 file / 6 tests; the new regression proves fixed recovery text, raw patient-like/token-like error omission,
+  manual retry, and candidate restoration. Focused ESLint, Prettier, `pnpm client-phi-log:check`, `pnpm typecheck`,
+  `pnpm plans:active:check`, and `git diff --check` passed. Earlier baseline `pnpm lint`, `pnpm format:check`, and
+  `pnpm typecheck` also passed. Build, browser route-mock, DB/migration, and full-suite evidence remain
+  NOT_EXECUTED for this slice.
+- remaining / next action:
+  Re-scan the remaining `FE-FALSE-EMPTY-002` schedule resource and navigation-badge paths; keep this task PARTIAL
+  until each read-failure path is explicitly classified and regression-tested. Do not stage or commit pre-existing
+  dirty source/test/harness files.
+
+## 2026-07-11 FE-FALSE-EMPTY-002 closure and admin boundary verification
+
+- implementation / code-scan result:
+  The planner hook named by the active task had no production importers; only its unit test and a two-call
+  schema-less allowlist entry remained. Removed the unreachable hook, its isolated test, and that allowlist debt.
+  The real schedule-proposal and weekly-optimizer vehicle selectors did have an initial-query false-empty: a failed
+  vehicle-resource read left only the normal auto-assignment option. Both now retain cached data when present; with no
+  data they disable manual selection, associate a fixed `SegmentError` with the control, and provide explicit retry.
+  No scheduling payload, stored vehicle assignment, auto-allocation, API/header/query-key, authorization, audit,
+  PHI, or medical/billing behavior changed. `gpt-image-2` was omitted because this is an existing error-state
+  composition rather than a new visual pattern.
+- plans reconciliation:
+  `FE-FALSE-EMPTY-002` is DONE: @mention and both real vehicle-resource readers have failure/retry coverage; weekly
+  and proposal board reads already use their own error boundaries; nav badges intentionally return `undefined` and
+  hide rather than fabricate a zero. The Implementation queue count moved 47 -> 45 after this task and the
+  independently verified `FE-ADMIN-ERROR-BOUNDARY-001` were moved to completed-derived evidence. The admin boundary
+  was already implemented; its missing regression now proves dashboard recovery, retry, raw-detail omission, and
+  coded telemetry.
+- validation:
+  `pnpm vitest run` for proposal, weekly optimizer, mention input, and shared route boundary passed 4 files / 67
+  tests (proposal/weekly/mention subset: 64; boundary: 3). Focused ESLint and Prettier passed. `pnpm format:check`,
+  `pnpm typecheck`, `pnpm plans:active:check`, `pnpm client-json-schema:check` (110 schema-backed, 265 allowlisted,
+  zero new debt), and `git diff --check` passed. The first focused run failed only because this test environment has
+  no `toBeDisabled` matcher; tests were corrected to assert the actual disabled attribute and then passed.
+- remaining / next action:
+  The active queue still contains 45 implementation items and 9 frontend items; P0/P1 privacy, migration, legal,
+  production, and AWS items retain their human gates. Next safe scan should select the highest-priority non-gated
+  item after confirming ownership and current failure evidence. Build, full test suite, browser/screenshot, DB
+  migration, and live AWS verification were not run for these bounded slices; no commit, push, migration, deploy,
+  production data action, or destructive operation was performed.
+
+## 2026-07-11 FE-PHI-SAFE-CLIENT-LOG-001 — client-visible raw-error migration in progress
+
+- current task / scope:
+  Replace raw `Error.message` rendering through the shared `messageFromError` helper with caller-provided recovery
+  copy, preserving only explicitly local, reviewed recovery strings. This is a client display/test-contract change;
+  it does not modify API payloads, fetch paths, org headers, authorization, RLS, persistence, audit writes, billing
+  calculations, or clinical decisions.
+- evidence and implementation so far:
+  `readApiJson` can construct an Error from a response `message`/`error` field, so the prior helper could surface
+  arbitrary provider/server detail in toasts and inline alerts. `messageFromError` now falls back by default;
+  `SafeClientMessageError` is available only for code that has already reduced a value to reviewed local copy.
+  Proposal-action failure messages remain allowlisted through `proposalActionFailureDisplayMessage` before display.
+  The first migration batches updated focused regressions for drug masters, patient qualification/card operations,
+  report sharing, handoff/consult receipt actions, audit export/review, facilities/units, contact profiles,
+  operating hours, site selection, and route planning. Each updated regression asserts both the operation-specific
+  fallback and omission of the synthetic raw server detail.
+- validation:
+  Focused suites passed: first batch 6 files / 308 tests; second batch 7 files / 61 tests; proposal plus related
+  representative tests passed 4 files / 94 tests before the migration batches. `pnpm typecheck` and
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed after the shared helper change.
+  A full `pnpm test` was intentionally interrupted after it established that at least 41 files / 76 tests still
+  encoded the superseded raw-message behavior; this is migration evidence, not a passing full-suite result. No
+  full-suite, build, browser, screenshot, DB/migration, or live AWS validation is claimed for this in-progress
+  P1 slice.
+- UI / safety:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2: this changes existing recovery copy and regression assertions,
+  not visual reconstruction or information architecture. The migration deliberately retains fixed retry/refresh
+  affordances and static client telemetry; raw error objects are not added to DOM, toast, or client-log context.
+- remaining / next action:
+  Continue the scoped migration through remaining `messageFromError` UI callers and their direct regressions, then
+  rerun the full suite, lint, typecheck, formatting, client PHI-log/schema guards, and Plans check. Keep
+  `FE-PHI-SAFE-CLIENT-LOG-001` PARTIAL until the complete error-display callsite inventory, Sentry/offline retry
+  audit, and all applicable gates are recorded. Do not stage or commit unrelated pre-existing dirty files.
+
+## 2026-07-11 FE-PHI-SAFE-CLIENT-LOG-001 — fixed client recovery copy and regression guards complete
+
+- current task / history decision:
+  Reviewed the recent recovery/accessibility commits, the live Plans queue, the active dirty tree, UI/UX SSOT,
+  Next.js 16 local error/client/testing guides, and the in-progress migration evidence. Selected the existing P1
+  client-visible raw-error slice instead of starting a separate shell or layout redesign. The audited production
+  surface contains 73 UI files and 224 `messageFromError` callsites.
+- implementation / bugs fixed:
+  `messageFromError` now renders caller-provided fixed recovery copy by default and accepts a non-fallback message
+  only through `SafeClientMessageError.fromReviewed`. Both APIs reject a general `string` fallback at compile time,
+  so accidentally passing provider/server text cannot silently regain display access. The existing proposal-action
+  allowlist remains the sole production reviewed-message exception. Auth, admin, patient, report, handoff,
+  scheduling, billing, notification, and visit regressions were migrated from raw API/Error text to operation-specific
+  recovery copy. A final widened scan found and fixed the core drug-master `DataTable` passing
+  `drugMasterError.message` directly. Admin-user invite/update/account-action regressions now prove synthetic
+  patient/token detail remains absent.
+- security / observability / offline audit:
+  Added `client-phi-display:check` plus executable fixture tests for visible error props, state setters, toasts, JSX,
+  optional chaining, named query errors, and unsafe fallbacks outside/inside `messageFromError`. Extended
+  `client-phi-log:check` to reject raw `captureException` and raw Error text sent to Sentry; the production inventory
+  has no direct `captureException` callsite. Offline bridge/page retries use coded `clientLog` events, while automatic
+  sync console fallbacks persist only fixed allowlisted/generic strings; focused poison-detail tests passed. No API,
+  request body, fetch path, org header, auth/authz, RLS, persistence, audit write, billing calculation, clinical
+  decision, queue/retry/idempotency, or PHI disclosure policy changed.
+- UI / image generation / performance:
+  The change preserves existing error, retry, stale, disabled-reason, form-draft, and success behavior while removing
+  unsafe detail from visible recovery copy. `gpt-image-2` was omitted under UI SSOT section 2.4.2 because this is a
+  bounded existing-state/copy and static-guard correction, not visual reconstruction or information architecture.
+  No polling, network request, render loop, dependency, or bundle path was added; the new checks run only in
+  validation tooling.
+- validation:
+  Final `pnpm test` passed 1482 files / 15337 tests (3 files / 13 tests skipped). Focused client display/log/offline
+  suites passed 7 files / 101 tests; helper/proposal/guard suites passed 5 files / 103 tests; drug-master/guard passed
+  2 files / 113 tests. `pnpm typecheck` and
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed. `pnpm lint` passed with zero errors and
+  two pre-existing `_tx`/`_input` warnings in `src/lib/platform/break-glass.test.ts`. `pnpm format:check`,
+  `pnpm client-phi-log:check` (one existing allowlisted server console call), `pnpm client-phi-display:check`
+  (zero direct display paths), `pnpm frontend-contract:check`, `pnpm boundaries:check`,
+  `pnpm client-json-schema:check` (110 schema-backed / 265 allowlisted / zero new debt), `pnpm colors:check`,
+  `pnpm typography:check`, `pnpm plans:active:check`, and `git diff --check` passed. The first route-mocked browser
+  attempt failed only because the reuse-only server was absent (`ERR_CONNECTION_REFUSED`); after starting
+  `pnpm dev:e2e:local`, the admin-users/site recovery case passed 1 Chromium test with 1 intentional mobile skip,
+  and the dev server was stopped.
+- plans / remaining / next action:
+  `FE-PHI-SAFE-CLIENT-LOG-001` is DONE and moved out of the active Implementation queue (45 -> 44). The broader
+  Phase 9 build/standalone, schema-ready visual regression, complete multi-route E2E, manual zoom/screen-reader,
+  offline/conflict scenario, and specialist review gates remain incomplete. `pnpm build` was not repeated for this
+  bounded client slice because the current Phase 9 ledger already records the local 16 GB exit-137 resource limit;
+  no build pass is claimed. No push, deployment, migration, production data mutation, secret rotation, or destructive
+  operation was performed.

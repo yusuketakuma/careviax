@@ -141,9 +141,6 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
               variant="server"
               title="今だれが見ているかを表示できません"
               description="患者情報の取得に失敗しました。再試行してください。"
-              detail={
-                overviewQuery.error instanceof Error ? overviewQuery.error.message : undefined
-              }
               onRetry={() => void overviewQuery.refetch()}
             />
           </div>

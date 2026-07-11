@@ -297,7 +297,7 @@ export function OperatingHoursContent() {
     },
     onError: (error) => {
       if (error instanceof OperatingHoursSaveError && error.status === 409) {
-        setSaveConflictMessage(error.message);
+        setSaveConflictMessage('営業時間設定の保存に失敗しました');
       }
       toast.error(messageFromError(error, '営業時間設定の保存に失敗しました'));
     },

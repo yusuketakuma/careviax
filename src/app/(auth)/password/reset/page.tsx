@@ -111,12 +111,8 @@ export default function PasswordResetPage() {
         throw new Error(payload?.message ?? 'メールの送信に失敗しました');
       }
       setStep(2);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'メールの送信に失敗しました。メールアドレスを確認してください。',
-      );
+    } catch {
+      setError('メールの送信に失敗しました。メールアドレスを確認してください。');
     } finally {
       setIsLoading(false);
     }
@@ -156,12 +152,8 @@ export default function PasswordResetPage() {
         throw new Error(payload?.message ?? 'パスワードのリセットに失敗しました');
       }
       setSuccess(true);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'パスワードのリセットに失敗しました。確認コードを確認してください。',
-      );
+    } catch {
+      setError('パスワードのリセットに失敗しました。確認コードを確認してください。');
     } finally {
       setIsLoading(false);
     }

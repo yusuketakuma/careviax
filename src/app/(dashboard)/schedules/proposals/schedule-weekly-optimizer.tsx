@@ -40,6 +40,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
+import { SegmentError } from '@/components/ui/segment-state';
 import {
   Select,
   SelectContent,
@@ -646,6 +647,8 @@ export function ScheduleWeeklyOptimizer({
     () => vehicleResourcesQuery.data?.data ?? EMPTY_VEHICLE_RESOURCES,
     [vehicleResourcesQuery.data],
   );
+  const vehicleResourcesUnavailable =
+    vehicleResourcesQuery.isError && vehicleResourcesQuery.data == null;
   const vehicleResourceHiddenCount = vehicleResourcesQuery.data?.meta?.hidden_count ?? 0;
   const selectedPlannerVehicle =
     vehicleResources.find((vehicle) => vehicle.id === plannerSettings.vehicle_resource_id) ?? null;
@@ -1402,7 +1405,14 @@ export function ScheduleWeeklyOptimizer({
                   });
                 }}
               >
-                <SelectTrigger id="weekly-vehicle-resource" className="w-[14rem]">
+                <SelectTrigger
+                  id="weekly-vehicle-resource"
+                  className="w-[14rem]"
+                  disabled={vehicleResourcesUnavailable}
+                  aria-describedby={
+                    vehicleResourcesUnavailable ? 'weekly-vehicle-resource-error' : undefined
+                  }
+                >
                   <Car className="mr-2 size-4 text-muted-foreground" />
                   <SelectValue placeholder="自動割当" />
                 </SelectTrigger>
@@ -1424,6 +1434,19 @@ export function ScheduleWeeklyOptimizer({
                     ? '社用車候補を読み込み中'
                     : '未指定なら自動割当'}
               </p>
+              {vehicleResourcesUnavailable ? (
+                <div id="weekly-vehicle-resource-error" className="max-w-[20rem]">
+                  <SegmentError
+                    title="社用車候補を表示できません"
+                    cause="社用車候補を取得できませんでした。"
+                    nextAction="通信状態を確認してから候補を再読み込みしてください。"
+                    onRetry={() => void vehicleResourcesQuery.refetch()}
+                    retryLabel="候補を再読み込み"
+                    headingLevel={3}
+                    className="p-4"
+                  />
+                </div>
+              ) : null}
               {vehicleResourceHiddenCount > 0 ? (
                 <p className="max-w-[14rem] text-xs text-state-confirm">
                   社用車候補が他{vehicleResourceHiddenCount}
@@ -1836,7 +1859,9 @@ export function ScheduleWeeklyOptimizer({
           routeDiffCount={selectedCellRouteDraft.diffCount}
           routeLoading={routePreviewQuery.isLoading}
           routeError={
-            routePreviewQuery.error instanceof Error ? routePreviewQuery.error.message : null
+            routePreviewQuery.isError
+              ? '経路プレビューの取得に失敗しました。再試行してください。'
+              : null
           }
           onApplyRoute={() => setRouteApplyConfirmOpen(true)}
           applyRouteDisabled={

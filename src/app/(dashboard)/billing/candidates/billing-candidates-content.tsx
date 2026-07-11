@@ -389,34 +389,26 @@ export function BillingCandidatesContent({
   const billingMonthStr = format(currentMonth, 'yyyy-MM-dd');
   const billingMonthLabel = format(currentMonth, 'yyyy年M月', { locale: ja });
 
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-    refetch,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useInfiniteQuery({
-    queryKey: ['billing-candidates', orgId, billingMonthStr, patientIdFilter, billingDomain],
-    queryFn: async ({ pageParam }) => {
-      const params = new URLSearchParams({
-        billing_month: billingMonthStr,
-        billing_domain: billingDomain,
-        limit: '50',
-      });
-      if (patientIdFilter) params.set('patient_id', patientIdFilter);
-      if (pageParam) params.set('cursor', pageParam);
-      const res = await fetch(`/api/billing-candidates?${params}`, {
-        headers: buildOrgHeaders(orgId),
-      });
-      return readApiJson<BillingCandidatesResponse>(res, '請求候補の取得に失敗しました');
-    },
-    getNextPageParam: (lastPage) => lastPage.meta.next_cursor ?? undefined,
-    initialPageParam: undefined as string | undefined,
-    enabled: !!orgId,
-  });
+  const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useInfiniteQuery({
+      queryKey: ['billing-candidates', orgId, billingMonthStr, patientIdFilter, billingDomain],
+      queryFn: async ({ pageParam }) => {
+        const params = new URLSearchParams({
+          billing_month: billingMonthStr,
+          billing_domain: billingDomain,
+          limit: '50',
+        });
+        if (patientIdFilter) params.set('patient_id', patientIdFilter);
+        if (pageParam) params.set('cursor', pageParam);
+        const res = await fetch(`/api/billing-candidates?${params}`, {
+          headers: buildOrgHeaders(orgId),
+        });
+        return readApiJson<BillingCandidatesResponse>(res, '請求候補の取得に失敗しました');
+      },
+      getNextPageParam: (lastPage) => lastPage.meta.next_cursor ?? undefined,
+      initialPageParam: undefined as string | undefined,
+      enabled: !!orgId,
+    });
 
   const exportPreviewQuery = useQuery({
     queryKey: [
@@ -1197,13 +1189,7 @@ export function BillingCandidatesContent({
             },
           ],
         }}
-        errorMessage={
-          isError
-            ? error instanceof Error
-              ? error.message
-              : '請求候補の取得に失敗しました'
-            : undefined
-        }
+        errorMessage={isError ? '請求候補の取得に失敗しました' : undefined}
         onRetry={() => void refetch()}
         renderExpandedRow={(row) => {
           const candidate = row.original;

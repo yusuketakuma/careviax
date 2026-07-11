@@ -376,7 +376,7 @@ describe('QrDraftReviewPage case lookup error handling', () => {
     ).not.toContain('case_id=case_2');
   });
 
-  it('keeps the discard toast title and falls back for empty discard error descriptions', () => {
+  it('keeps the discard toast title with safe recovery descriptions', () => {
     render(<QrDraftReviewPage />);
 
     const discardMutation = mutationConfigs.find((config) =>
@@ -384,9 +384,13 @@ describe('QrDraftReviewPage case lookup error handling', () => {
     );
     expect(discardMutation).toBeTruthy();
 
-    discardMutation?.onError?.(new Error('下書きは既に破棄されています'));
+    const rawErrorMessage = '下書きは既に破棄されています';
+    discardMutation?.onError?.(new Error(rawErrorMessage));
     expect(toast.error).toHaveBeenLastCalledWith('破棄エラー', {
-      description: '下書きは既に破棄されています',
+      description: '破棄に失敗しました',
+    });
+    expect(toast.error).not.toHaveBeenLastCalledWith('破棄エラー', {
+      description: rawErrorMessage,
     });
 
     discardMutation?.onError?.(new Error(''));

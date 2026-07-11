@@ -707,16 +707,22 @@ describe('PatientMcsContent', () => {
   it.each([
     [
       new Error('患者A 090-1234-5678 https://mcs.example.test/patient/1 token=query-secret'),
-      'MCS 連携情報を取得できませんでした。通信状態を確認してから再読み込みしてください。',
+      {
+        cause: 'MCS 連携情報を取得できませんでした。',
+        nextAction: '通信状態を確認してから再読み込みしてください。',
+      },
     ],
     [
       new PatientMcsOverviewQueryError(
         'forbidden',
         '患者A https://mcs.example.test/patient/1 token=forbidden-secret',
       ),
-      'MCS 連携情報を表示する権限がありません。権限を確認してから再読み込みしてください。',
+      {
+        cause: 'MCS 連携情報を表示する権限がありません。',
+        nextAction: '権限を確認してから再読み込みしてください。',
+      },
     ],
-  ])('keeps overview error output PHI-safe and retryable', async (error, expectedMessage) => {
+  ])('keeps overview error output PHI-safe and retryable', async (error, expected) => {
     const refetch = vi.fn();
     useOrgIdMock.mockReturnValue('org_1');
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
@@ -731,7 +737,12 @@ describe('PatientMcsContent', () => {
 
     render(<PatientMcsContent patientId="patient_1" />);
 
-    expect(screen.getByText(expectedMessage)).toBeTruthy();
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain(expected.cause);
+    expect(alert.textContent).toContain(expected.nextAction);
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'MCS 連携情報を表示できません' }),
+    ).toBeTruthy();
     expect(screen.queryByText(error.message)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetch).toHaveBeenCalledTimes(1);

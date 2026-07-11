@@ -111,7 +111,7 @@ describe('TemplateBodyEditor render hierarchy', () => {
     expect(String(vi.mocked(global.fetch).mock.calls.at(-1)?.[0])).not.toContain('%25');
   });
 
-  it('keeps server save error messages', async () => {
+  it('uses safe recovery copy for server save error messages', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -138,8 +138,9 @@ describe('TemplateBodyEditor render hierarchy', () => {
     fireEvent.click(screen.getByRole('button', { name: '本文を保存する' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('テンプレートが更新されています');
+      expect(toast.error).toHaveBeenCalledWith('文面の保存に失敗しました');
     });
+    expect(screen.queryByText('テンプレートが更新されています')).toBeNull();
   });
 
   it('keeps body editing disabled when template detail loading fails', async () => {
@@ -154,7 +155,8 @@ describe('TemplateBodyEditor render hierarchy', () => {
     );
     renderEditor();
 
-    expect(await screen.findByText('文書テンプレートが見つかりません')).toBeTruthy();
+    expect(await screen.findByText('文面の取得に失敗しました')).toBeTruthy();
+    expect(screen.queryByText('文書テンプレートが見つかりません')).toBeNull();
     expect(screen.queryByDisplayValue('本文')).toBeNull();
     expect(screen.queryByDisplayValue(/本日の訪問では/)).toBeNull();
     expect((screen.getByLabelText('テンプレート文面') as HTMLTextAreaElement).disabled).toBe(true);
@@ -163,7 +165,7 @@ describe('TemplateBodyEditor render hierarchy', () => {
     ).toBe(true);
   });
 
-  it('keeps server save error envelopes', async () => {
+  it('uses safe recovery copy for server save error envelopes', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -190,8 +192,9 @@ describe('TemplateBodyEditor render hierarchy', () => {
     fireEvent.click(screen.getByRole('button', { name: '本文を保存する' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('文書テンプレートの更新権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('文面の保存に失敗しました');
     });
+    expect(screen.queryByText('文書テンプレートの更新権限がありません')).toBeNull();
   });
 
   it('falls back to the save message when PATCH fails without a message', async () => {

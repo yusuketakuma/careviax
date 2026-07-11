@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { SegmentError } from '@/components/ui/segment-state';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
@@ -56,7 +57,7 @@ export function MentionInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const { data: staffData } = useQuery<{ data: StaffMember[] }>({
+  const staffQuery = useQuery<{ data: StaffMember[] }>({
     queryKey: ['staff-for-mentions', orgId],
     queryFn: async () => {
       const res = await fetch(buildPharmacistsApiPath(), {
@@ -68,7 +69,7 @@ export function MentionInput({
     staleTime: 5 * 60 * 1000,
   });
 
-  const staffList: StaffMember[] = staffData?.data ?? [];
+  const staffList: StaffMember[] = staffQuery.data?.data ?? [];
 
   const filteredStaff = searchQuery
     ? staffList.filter((s) => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -184,7 +185,22 @@ export function MentionInput({
         rows={3}
         className="resize-none text-sm"
       />
-      {showDropdown && filteredStaff.length > 0 && (
+      {showDropdown && staffQuery.isError && staffList.length === 0 ? (
+        <div
+          ref={dropdownRef}
+          className="absolute bottom-full left-0 z-50 mb-1 w-80 max-w-full bg-popover"
+        >
+          <SegmentError
+            title="メンション候補を表示できません"
+            cause="スタッフ候補を取得できませんでした。"
+            nextAction="通信状態を確認してから候補を再読み込みしてください。"
+            onRetry={() => void staffQuery.refetch()}
+            retryLabel="候補を再読み込み"
+            headingLevel={3}
+            className="p-4"
+          />
+        </div>
+      ) : showDropdown && filteredStaff.length > 0 ? (
         <div
           ref={dropdownRef}
           className="absolute bottom-full left-0 z-50 mb-1 max-h-40 w-56 overflow-y-auto rounded-md border border-border bg-popover shadow-md"
@@ -208,7 +224,7 @@ export function MentionInput({
             </button>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

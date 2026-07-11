@@ -444,7 +444,7 @@ describe('ServiceAreasPage', () => {
     });
   });
 
-  it('surfaces API error messages when service area save fails', async () => {
+  it('uses safe recovery copy when service area save fails', async () => {
     vi.mocked(toast.error).mockClear();
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -472,7 +472,8 @@ describe('ServiceAreasPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '登録する' }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('同じ訪問エリアが既に存在します');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('訪問エリアの保存に失敗しました');
+      expect(vi.mocked(toast.error)).not.toHaveBeenCalledWith('同じ訪問エリアが既に存在します');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/service-areas',
@@ -565,7 +566,7 @@ describe('ServiceAreasPage', () => {
     expect(buildServiceAreaApiPath).toHaveBeenCalledWith('a/b c');
   });
 
-  it('surfaces API error messages when service area delete fails', async () => {
+  it('uses safe recovery copy when service area delete fails', async () => {
     vi.mocked(toast.error).mockClear();
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -615,7 +616,8 @@ describe('ServiceAreasPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('利用中の訪問エリアは削除できません');
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith('訪問エリアの削除に失敗しました');
+      expect(vi.mocked(toast.error)).not.toHaveBeenCalledWith('利用中の訪問エリアは削除できません');
     });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/service-areas/area_1',

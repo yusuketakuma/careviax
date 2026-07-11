@@ -255,13 +255,16 @@ describe('SettingsContent polling policy', () => {
     );
   });
 
-  it('keeps save mutation error messages', () => {
+  it('uses safe recovery copy for save mutation errors', () => {
     render(<SettingsContent />);
 
     const saveMutationOptions = useMutationMock.mock.calls[0][0];
     saveMutationOptions.onError(new Error('セッションタイムアウトは30以下で入力してください'));
 
-    expect(toast.error).toHaveBeenCalledWith('セッションタイムアウトは30以下で入力してください');
+    expect(toast.error).toHaveBeenCalledWith('設定の保存に失敗しました');
+    expect(toast.error).not.toHaveBeenCalledWith(
+      'セッションタイムアウトは30以下で入力してください',
+    );
   });
 
   it('falls back to the save message when mutation failure has no message', () => {

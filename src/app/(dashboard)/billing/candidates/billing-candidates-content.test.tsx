@@ -205,7 +205,7 @@ describe('BillingCandidatesContent', () => {
     expect(targetRow?.className).toContain('ring-primary');
   });
 
-  it('keeps API messages from failed billing candidate list fetches', async () => {
+  it('uses safe recovery copy for failed billing candidate list fetches', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.startsWith('/api/billing-candidates?')) {
@@ -233,7 +233,8 @@ describe('BillingCandidatesContent', () => {
 
     renderBillingCandidatesContent();
 
-    expect(await screen.findByText('請求候補を表示できません')).toBeTruthy();
+    expect(await screen.findByText('請求候補の取得に失敗しました')).toBeTruthy();
+    expect(screen.queryByText('請求候補を表示できません')).toBeNull();
     const listRequest = fetchMock.mock.calls.find(([input]) =>
       String(input).startsWith('/api/billing-candidates?'),
     );
@@ -819,7 +820,7 @@ describe('BillingCandidatesContent', () => {
     });
   });
 
-  it('keeps API messages from billing candidate mutations', async () => {
+  it('uses safe recovery copy for billing candidate mutations', async () => {
     const originalFetch = vi.mocked(fetch).getMockImplementation();
     expect(originalFetch).toBeTruthy();
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -837,7 +838,8 @@ describe('BillingCandidatesContent', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '医療・介護候補生成' }));
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('請求候補の作成権限がありません');
+      expect(toast.error).toHaveBeenCalledWith('請求候補の生成に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith('請求候補の作成権限がありません');
     });
 
     const table = await screen.findByRole('table', { name: '月次請求候補一覧' });
@@ -847,7 +849,10 @@ describe('BillingCandidatesContent', () => {
     if (!candidateRow) throw new Error('candidate row is required');
     fireEvent.click(within(candidateRow).getByRole('button', { name: '確定' }));
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('請求候補が他のユーザーによって更新されています');
+      expect(toast.error).toHaveBeenCalledWith('請求候補の更新に失敗しました');
+      expect(toast.error).not.toHaveBeenCalledWith(
+        '請求候補が他のユーザーによって更新されています',
+      );
     });
   });
 });
