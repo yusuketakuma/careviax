@@ -45608,11 +45608,12 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   component without changing page structure.
 - validation / remaining:
   Focused `card-workspace.test.tsx` passed 96 tests, including three named status regions with shaped skeletons.
-  Exact ESLint, Prettier, and diff checks passed. The repository typecheck remains externally blocked by the same
-  concurrent unowned report `ErrorState size` errors recorded in the preceding slice; no new typecheck claim is made.
-  `FE-PATIENT-DETAIL-001` remains Partial for broader responsive, keyboard/zoom, state-matrix, and remaining island
-  evidence. Concurrent Plans/report work was preserved. No push, build, deployment, migration, production data
-  mutation, or destructive operation occurred.
+  Exact ESLint, Prettier, and diff checks passed. The concurrent report slice then landed independently as
+  `aacf5969a` / `b105fb756`; after its unowned intermediate errors cleared,
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` passed all Next route generation, application TypeScript,
+  and service-worker TypeScript stages. `FE-PATIENT-DETAIL-001` remains Partial for broader responsive,
+  keyboard/zoom, state-matrix, and remaining island evidence. Concurrent Plans/report work was preserved. No push,
+  build, deployment, migration, production data mutation, or destructive operation occurred.
 
 ## 2026-07-11 API-CONTRACT-001 — navigation badge runtime envelope
 
