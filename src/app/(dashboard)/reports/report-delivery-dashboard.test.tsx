@@ -394,6 +394,34 @@ describe('ReportDeliveryDashboard', () => {
     expect(toastPayload).not.toContain('token-super-secret');
   });
 
+  it('keeps reminder failure recovery visible and retries the exact targeted operation', () => {
+    const mutate = vi.fn();
+    const variables = {
+      deliveryIds: ['delivery_1'],
+      snoozeUntil: '2026-04-13T00:00:00.000Z',
+    };
+    primeDashboard();
+    useMutationMock.mockReturnValue({
+      mutate,
+      isPending: false,
+      isError: true,
+      variables,
+    });
+
+    render(<ReportDeliveryDashboard />);
+
+    expect(screen.getByText('送達フォローを更新できませんでした')).toBeTruthy();
+    expect(
+      screen.getByText((text) =>
+        text.includes('リマインド起票または再通知の延期は完了していません。'),
+      ),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toContain('患者A 090-1234-5678');
+
+    fireEvent.click(screen.getByRole('button', { name: '送達フォローを再試行' }));
+    expect(mutate).toHaveBeenCalledWith(variables);
+  });
+
   it('passes a targeted snooze payload when an overdue row is deferred', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-10T00:00:00.000Z'));

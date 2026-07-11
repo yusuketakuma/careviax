@@ -277,6 +277,17 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                 <CardTitle className="text-base">未確認報告のフォロー</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                {reminderMutation.isError ? (
+                  <ErrorState
+                    variant="server"
+                    title="送達フォローを更新できませんでした"
+                    cause="リマインド起票または再通知の延期は完了していません。"
+                    nextAction="最新の送達状況を確認して、同じ操作をもう一度実行してください。"
+                    onRetry={() => reminderMutation.mutate(reminderMutation.variables ?? {})}
+                    retryLabel="送達フォローを再試行"
+                    headingLevel={3}
+                  />
+                ) : null}
                 <div className="flex items-end gap-3">
                   <div className="flex-1 space-y-1.5">
                     <p className="text-xs font-medium text-muted-foreground">超過日数</p>
