@@ -46202,3 +46202,8 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   build constraint also remains. `ROUTE-CTRLFLOW-RETHROW-001` is removed from the active implementation queue and
   retained in the completed-derived list. No push, deploy, migration, external send, production-data mutation, or
   destructive operation occurred.
+- commit:
+  `6ca77d6d6` (`fix(ROUTE-CTRLFLOW-RETHROW-001): preserve Next control flow`) committed only the ten route files,
+  focused control-flow regression, Plans reconciliation, and single-ledger evidence. Concurrent patient detail,
+  visit-record, route-mocked browser, API inventory, harness-memory, and unrelated untracked work were excluded. No
+  push was performed.
