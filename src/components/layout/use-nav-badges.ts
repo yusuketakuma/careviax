@@ -1,8 +1,10 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { z } from 'zod';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { apiDataSchema } from '@/lib/api/response-schemas';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildNavBadgesApiPath } from '@/lib/nav-badges/api-paths';
 
@@ -11,12 +13,14 @@ const NAV_BADGE_REFETCH_INTERVAL_MS = 60_000;
 /** href → 件数。undefined はバッジ非表示(0 件 or 取得失敗)。 */
 export type NavBadgeCounts = Record<string, number | undefined>;
 
-type NavBadgeApiPayload = {
-  data?: {
-    audit?: number;
-    handoff?: number;
-  };
-};
+const navBadgeApiPayloadSchema = apiDataSchema(
+  z
+    .object({
+      audit: z.number().int().nonnegative().optional(),
+      handoff: z.number().int().nonnegative().optional(),
+    })
+    .strict(),
+);
 
 type HandoffBoardItemSummary = {
   created_by?: string | null;
@@ -55,10 +59,10 @@ export function useNavBadges(): NavBadgeCounts {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('ナビゲーションバッジ件数の取得に失敗しました');
-      const payload = await readApiJson<NavBadgeApiPayload>(
-        res,
-        'ナビゲーションバッジ件数の取得に失敗しました',
-      );
+      const payload = await readApiJson(res, {
+        fallbackMessage: 'ナビゲーションバッジ件数の取得に失敗しました',
+        schema: navBadgeApiPayloadSchema,
+      });
       return payload.data ?? {};
     },
     enabled: Boolean(orgId),

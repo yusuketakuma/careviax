@@ -130,4 +130,20 @@ describe('useNavBadges', () => {
     });
     expect(result.current).toEqual({ '/audit': undefined, '/handoff': undefined });
   });
+
+  it.each([
+    { data: { audit: '6', handoff: 3 } },
+    { data: { audit: -1, handoff: 3 } },
+    { data: { audit: 6.5, handoff: 3 } },
+    { data: { audit: 6, handoff: 3, patient_name: '山田太郎' } },
+  ])('hides badges when the success payload violates the runtime contract', async (payload) => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(payload));
+
+    const { result } = renderHook(() => useNavBadges(), { wrapper: createQueryWrapper() });
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledOnce();
+    });
+    expect(result.current).toEqual({ '/audit': undefined, '/handoff': undefined });
+  });
 });

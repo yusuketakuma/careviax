@@ -45551,3 +45551,27 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `ea65ee168` (`feat(FE-PATIENT-LIST-001): add selected patient preview`) committed the five owned implementation,
   regression, plan, and single-ledger paths. Existing harness-memory and unrelated untracked local files were
   excluded. No push was performed.
+
+## 2026-07-11 API-CONTRACT-001 — navigation badge runtime envelope
+
+- current task / evidence:
+  Reconciled the P0 API-contract residual after the frontend shell and patient-preview commits. The shared
+  navigation badge hook polls on authenticated surfaces but still trusted a compile-time cast, so malformed
+  successful JSON could enter the query cache. The provider already returns the standard `{ data }` envelope and
+  sensitive no-store headers; no provider, auth, RLS, DB, or request-shape change was required.
+- implementation / safety:
+  Added an exact runtime schema for optional non-negative integer `audit` and `handoff` counts and passed it to
+  `readApiJson`. Strings, negative/fractional counts, unknown data keys, invalid roots, and malformed envelopes now
+  fail closed. The existing low-noise behavior remains: failed badge reads render no badge instead of fabricating
+  zero, retrying, logging raw response data, or blocking the operational surface. Removed the migrated reader from
+  the schema-less allowlist (111 schema-backed / 264 allowlisted across 108 files).
+- validation:
+  Focused Vitest passed 2 files / 25 tests, including invalid string, negative, fractional, and PHI-like excess-key
+  payloads. `pnpm client-json-schema:check`, focused ESLint, focused Prettier, the 8 GB aggregate `pnpm typecheck`,
+  `pnpm api-response-shape:check`, `pnpm client-phi-log:check`, `pnpm boundaries:check`,
+  `pnpm plans:active:check`, and `git diff --check` passed. No browser, build, DB/migration, external-send, deploy,
+  or production-data action was needed for this contract-only slice.
+- remaining / next action:
+  `API-CONTRACT-001` remains Partial. Continue bounded provider/consumer runtime-schema migrations and the shared
+  ApiError/request_id/no-store ratchets; do not claim parent completion from exact-root zero alone. Existing
+  harness-memory and unrelated untracked local files remain excluded. No push was performed.

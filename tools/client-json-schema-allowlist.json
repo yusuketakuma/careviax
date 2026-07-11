@@ -638,12 +638,6 @@
       }
     },
     {
-      "path": "src/components/layout/use-nav-badges.ts",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/components/visit-brief/patient-visit-brief-section.tsx",
       "counts": {
         "stringFallback": 1
