@@ -1701,6 +1701,9 @@ describe('CardWorkspace', () => {
     fireEvent.change(within(panel).getByLabelText('免除理由'), {
       target: { value: '薬剤師確認済みのため今回免除' },
     });
+    const reasonCodeSelect = within(panel).getByRole('combobox', { name: '理由分類' });
+    expect(reasonCodeSelect.tagName).toBe('BUTTON');
+    expect(reasonCodeSelect.textContent).toContain('薬剤師判断で免除');
     expect(submit.hasAttribute('disabled')).toBe(false);
     fireEvent.click(submit);
 

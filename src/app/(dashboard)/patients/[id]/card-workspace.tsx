@@ -30,6 +30,13 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -277,6 +284,7 @@ function buildPatientCompareHref(patientId: string) {
 const SSR_PATIENT_OVERVIEW_STALE_TIME_MS = 30_000;
 const PATIENT_TIMELINE_INITIAL_LIMIT = 5;
 const PATIENT_TIMELINE_FULL_LIMIT = 40;
+const COMMAND_TIMELINE_EXCERPT_LIMIT = 3;
 
 type PatientDetailTab =
   | 'command'
@@ -4120,14 +4128,15 @@ function CommandTimelineExcerptPanel({
   error: boolean;
   onRetry: () => void;
 }) {
-  const excerpt = events.slice(0, 3);
+  const excerpt = events.slice(0, COMMAND_TIMELINE_EXCERPT_LIMIT);
   return (
     <SectionCard aria-label="Command 履歴抜粋" data-testid="command-timeline-excerpt-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <h3 className="text-sm font-semibold text-foreground">履歴抜粋</h3>
           <p className="text-sm text-muted-foreground">
-            訪問、報告、請求、共有の直近履歴を最大5件だけ確認します。
+            訪問、報告、請求、共有の直近履歴を最大{COMMAND_TIMELINE_EXCERPT_LIMIT}
+            件だけ確認します。
           </p>
         </div>
         <Link
@@ -4653,23 +4662,35 @@ function RiskTaskResolutionPanel({
                   <div className="mt-3 grid gap-3">
                     <div className="space-y-1.5">
                       <Label htmlFor={reasonCodeId}>理由分類</Label>
-                      <select
-                        id={reasonCodeId}
-                        className="min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      <Select
                         value={reasonCode}
-                        onChange={(event) =>
-                          onReasonCodeChange(
-                            taskId,
-                            event.currentTarget.value as RiskTaskWaiverReasonCode,
-                          )
-                        }
+                        onValueChange={(value) => {
+                          if (value !== null) {
+                            onReasonCodeChange(taskId, value as RiskTaskWaiverReasonCode);
+                          }
+                        }}
                       >
-                        {RISK_TASK_WAIVER_REASON_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger id={reasonCodeId} className="min-h-11 w-full sm:min-h-11">
+                          <SelectValue>
+                            {(value) =>
+                              RISK_TASK_WAIVER_REASON_OPTIONS.find(
+                                (option) => option.value === value,
+                              )?.label ?? value
+                            }
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RISK_TASK_WAIVER_REASON_OPTIONS.map((option) => (
+                            <SelectItem
+                              key={option.value}
+                              value={option.value}
+                              className="min-h-11"
+                            >
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor={reasonId}>免除理由</Label>

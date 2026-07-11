@@ -45552,6 +45552,46 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   regression, plan, and single-ledger paths. Existing harness-memory and unrelated untracked local files were
   excluded. No push was performed.
 
+## 2026-07-11 FE-PATIENT-DETAIL-001 — Command risk-control convergence partial
+
+- current task / scan decision:
+  Reconciled the patient-detail Command island against the active UI/UX SSOT and its existing case-risk API
+  contracts. The screen already connects next action, blockers, evidence, timeline, task sync, and audited task
+  waiver to real endpoints, so this is ALIGNED/PARTIAL rather than a missing backend. The actionable drift was a
+  screen-local native `<select>` inside the high-risk waiver flow and copy claiming five timeline items while the
+  implementation intentionally renders three. The redesign skill was limited to existing-stack convergence; image
+  generation was omitted because no screen structure or visual pattern was reconstructed.
+- implementation / behavior:
+  Replaced the waiver reason native control with the shared Base UI `Select`, including an explicit closed-state
+  Japanese label, full-width 44px trigger, and 44px options. The selected reason code continues through the same
+  case-scoped mutation payload; endpoint, authorization, validation, audit, state transition, and persistence are
+  unchanged. Added one `COMMAND_TIMELINE_EXCERPT_LIMIT` constant so the three-row slice and its visible explanation
+  cannot drift independently. No API, DB, migration, auth/authz, tenant, PHI projection, billing, or write behavior
+  changed.
+- validation / runtime evidence:
+  Focused `card-workspace.test.tsx` passed 95 tests, including the shared Select trigger/default label, fixed safe
+  error copy, 44px retry, case-scoped waiver payload, and audit-preserving mutation expectations. Exact ESLint,
+  Prettier, frontend-contract, typography, state-color, client PHI-display/log, module-boundary, active-plan, and
+  diff checks passed. Authenticated local browser evidence on `/patients/ui_demo_patient_1` showed the patient
+  identity, Command hierarchy, real next action/risk regions, and corrected "最大3件" copy. The available fixture
+  had no waivable task after risk loading, so the Select's live option interaction remains component-tested rather
+  than browser-proven.
+- typecheck / shared-tree constraint:
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` generated Next route types, then stopped only on concurrent,
+  unowned report-workspace changes at `report-share-workspace.tsx:308,395` passing unsupported `size` props to
+  `ErrorState`. Those report files and their accompanying `Plans.md` in-progress edit were preserved and not fixed,
+  staged, or attributed to this slice. `FE-PATIENT-DETAIL-001` remains Partial; the existing Plans row already
+  describes this Command/Movement/rail scope, so no conflicting Plans edit was added. Build was not rerun because
+  typecheck is externally blocked and the existing Phase 9 ledger records the local 16 GB exit-137 limit.
+- performance recon / next action:
+  Re-measured the preceding patient-board dependency before attempting a risky query rewrite. The first compiled
+  request completed in 6.1s with 5.4s attributed to Next compilation and 681ms to application code; subsequent warm
+  authenticated requests completed in 375ms and 47ms (44ms application code). The broad deep-relation shape remains
+  valid technical debt, but the earlier persistent 20s assumption was not reproduced. Do not replace exact
+  safety-priority ordering with a simple pre-derivation `take`; continue with an exact DB projection/design or another
+  independent frontend slice. No push, deployment, migration, production data mutation, or destructive operation
+  occurred.
+
 ## 2026-07-11 API-CONTRACT-001 — navigation badge runtime envelope
 
 - current task / evidence:
