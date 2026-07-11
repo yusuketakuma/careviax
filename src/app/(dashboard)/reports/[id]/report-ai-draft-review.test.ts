@@ -1,6 +1,14 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment jsdom
+
+import { render, screen } from '@testing-library/react';
+import { createElement } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 import type { PhysicianReportContent } from '@/types/care-report-content';
-import { buildAiDraftSections } from './report-ai-draft-review';
+import {
+  AI_DRAFT_AUDIENCES,
+  buildAiDraftSections,
+  ReportAiDraftReview,
+} from './report-ai-draft-review';
 
 const PHYSICIAN_CONTENT = {
   patient: { name: '田中 一郎', birth_date: '1949-05-01', gender: 'male' },
@@ -56,5 +64,29 @@ describe('buildAiDraftSections', () => {
     expect(sections).toHaveLength(5);
     expect(new Set(sections.map((section) => section.body)).size).toBe(1);
     expect(sections[0].body).toContain('未入力');
+  });
+});
+
+describe('ReportAiDraftReview', () => {
+  it('fails closed when structured content is unavailable', () => {
+    const onConfirm = vi.fn();
+    render(
+      createElement(ReportAiDraftReview, {
+        content: null,
+        reportType: 'physician_report',
+        confirmPending: false,
+        onConfirm,
+      }),
+    );
+
+    expect(screen.getByText('下書き本文を確認できません')).toBeTruthy();
+    const confirmButton = screen.getByRole('button', { name: '薬剤師確認済みにする' });
+    expect((confirmButton as HTMLButtonElement).disabled).toBe(true);
+    expect(confirmButton.getAttribute('aria-describedby')).toBe('ai-draft-confirm-disabled-reason');
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('includes the supported family audience in the canonical preview list', () => {
+    expect(AI_DRAFT_AUDIENCES).toContainEqual({ key: 'family_share', label: '家族向け' });
   });
 });

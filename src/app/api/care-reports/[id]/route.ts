@@ -29,6 +29,10 @@ import {
 import { buildCareTeamContactChannelReadiness } from '@/lib/patient/care-team-contact';
 import { inferCareReportTargetRole } from '@/lib/reports/care-report-target-role';
 import { resolveDocumentDeliveryRule } from '@/lib/reports/document-delivery-rules';
+import {
+  isPrintableCareReportContent,
+  isPrintableCareReportType,
+} from '@/lib/reports/care-report-print-audit-contract';
 import { canAccessCareReportSource } from '@/server/services/care-report-access';
 import { buildCareReportActionPermissions } from '@/server/services/care-report-output-policy';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -317,6 +321,7 @@ async function authenticatedPATCH(
       patient_id: true,
       case_id: true,
       visit_record_id: true,
+      report_type: true,
       content: true,
       updated_at: true,
       finalized_at: true,
@@ -349,6 +354,15 @@ async function authenticatedPATCH(
   const isDraftConfirmTransition = updateData.status === 'confirmed' && isEditableDraft;
   if (isDraftConfirmTransition && !canConfirmCareReportClinicalJudgement(ctx.role)) {
     return sensitiveResponse(await forbiddenResponse('この報告書を確認する権限がありません'));
+  }
+  if (
+    isDraftConfirmTransition &&
+    (!isPrintableCareReportType(existing.report_type) ||
+      !isPrintableCareReportContent(existing.report_type, existing.content))
+  ) {
+    return sensitiveResponse(
+      conflict('報告書本文を確認できません。下書きを編集してから再試行してください'),
+    );
   }
   if (updateData.status && updateData.status !== 'draft' && !isDraftConfirmTransition) {
     return sensitiveResponse(conflict('報告書の送信状態は送信APIからのみ更新できます'));

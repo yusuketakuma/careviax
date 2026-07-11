@@ -70,6 +70,36 @@ import { GET, PATCH } from './route';
 const REPORT_UPDATED_AT = new Date('2026-03-30T00:10:00.000Z');
 const REPORT_UPDATED_AT_ISO = REPORT_UPDATED_AT.toISOString();
 
+function physicianReportContent() {
+  return {
+    patient: { name: '患者A', birth_date: '1940-01-01', gender: 'female' },
+    report_date: '2026-03-30',
+    visit_date: '2026-03-29',
+    pharmacist_name: '薬剤師A',
+    prescriber: { name: '医師A', institution: '医療機関A' },
+    prescriptions: [],
+    medication_management: {
+      compliance_summary: '服薬状況を確認済み',
+      adherence_score: 4,
+      self_management: '一部介助',
+      calendar_used: true,
+    },
+    adverse_events: { has_events: false, events: [] },
+    functional_assessment: {
+      sleep: '変化なし',
+      cognition: '変化なし',
+      diet_oral: '変化なし',
+      mobility: '変化なし',
+      excretion: '変化なし',
+    },
+    residual_medications: [],
+    assessment: '薬学的評価',
+    plan: '継続確認',
+    physician_communication: '確認依頼',
+    warnings: [],
+  };
+}
+
 function createRequest(body?: unknown) {
   const effectiveBody =
     body !== undefined &&
@@ -852,7 +882,7 @@ describe('care-reports/[id] route', () => {
       visit_record_id: 'visit_record_1',
       report_type: 'physician_report',
       status: 'draft',
-      content: {},
+      content: physicianReportContent(),
       template_id: null,
       pdf_url: null,
       created_by: 'user_1',
@@ -896,6 +926,36 @@ describe('care-reports/[id] route', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: { status: 'confirmed' },
     });
+  });
+
+  it('rejects confirming a draft whose content does not match its report type', async () => {
+    careReportFindFirstMock.mockResolvedValueOnce({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      report_type: 'physician_report',
+      status: 'draft',
+      content: {},
+      updated_at: REPORT_UPDATED_AT,
+      finalized_at: null,
+      locked_at: null,
+      voided_at: null,
+    });
+
+    const response = await PATCH(createRequest({ status: 'confirmed' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '報告書本文を確認できません。下書きを編集してから再試行してください',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects pharmacist trainee pharmacological confirmation without changing the report', async () => {

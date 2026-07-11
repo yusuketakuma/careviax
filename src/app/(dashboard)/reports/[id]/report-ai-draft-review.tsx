@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
 import { cn } from '@/lib/utils';
 import type {
   CareManagerReportContent,
@@ -89,6 +90,7 @@ export const AI_DRAFT_AUDIENCES = [
   { key: 'care_manager_report', label: 'ケアマネ向け' },
   { key: 'nurse_share', label: '訪問看護向け' },
   { key: 'facility_handoff', label: '施設向け' },
+  { key: 'family_share', label: '家族向け' },
 ] as const;
 
 type ReportAiDraftReviewProps = {
@@ -120,6 +122,15 @@ export function ReportAiDraftReview({
         <h2 id="ai-draft-heading" className="text-base font-bold text-foreground">
           AI下書き(薬剤師が確認して確定)
         </h2>
+        {!content ? (
+          <ErrorState
+            className="mt-3"
+            title="下書き本文を確認できません"
+            cause="報告書種別に対応する構造化本文がありません。"
+            nextAction="編集画面で本文を確認・保存してから、薬剤師確認を行ってください。"
+            headingLevel={3}
+          />
+        ) : null}
         <div className="mt-3 space-y-3">
           {sections.map((section) => (
             <article
@@ -167,11 +178,17 @@ export function ReportAiDraftReview({
         <Button
           type="button"
           className="mt-5 min-h-11 w-full"
-          disabled={confirmPending || confirmDisabled}
+          disabled={confirmPending || confirmDisabled || !content}
+          aria-describedby={!content ? 'ai-draft-confirm-disabled-reason' : undefined}
           onClick={onConfirm}
         >
           {confirmPending ? '確認中...' : '薬剤師確認済みにする'}
         </Button>
+        {!content ? (
+          <p id="ai-draft-confirm-disabled-reason" className="mt-2 text-xs text-muted-foreground">
+            構造化本文を確認できるまで、薬剤師確認は実行できません。
+          </p>
+        ) : null}
       </aside>
     </div>
   );
