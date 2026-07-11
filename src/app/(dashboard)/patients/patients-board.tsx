@@ -10,6 +10,7 @@ import {
   GitCompare,
   MessageSquareWarning,
   PauseCircle,
+  PanelRightOpen,
   Search,
   UserPlus,
   type LucideIcon,
@@ -17,6 +18,7 @@ import {
 import { buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import {
@@ -443,16 +445,32 @@ function PausedDots() {
   );
 }
 
-function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date }) {
+function PatientBoardCardItem({
+  card,
+  now,
+  selected,
+  onSelect,
+  onOpenMobilePreview,
+}: {
+  card: PatientBoardCard;
+  now: Date;
+  selected: boolean;
+  onSelect: () => void;
+  onOpenMobilePreview: () => void;
+}) {
   const presentation = ATTENTION_PRESENTATIONS[card.attention];
   const { tags, hiddenCount: hiddenSafetyTagCount } = selectVisibleSafetyTags(card.safety_tags);
   const operationSummary = card.operation_summary ?? [];
 
   return (
     <article
-      className="phos-patient-card-motion relative flex flex-col gap-2 overflow-hidden rounded-lg border border-border/70 bg-card p-4 pl-5"
+      className={cn(
+        'phos-patient-card-motion relative flex flex-col gap-2 overflow-hidden rounded-lg border border-border/70 bg-card p-4 pl-5',
+        selected && 'ring-2 ring-ring ring-offset-2 ring-offset-background',
+      )}
       data-testid="patient-board-card"
       data-attention={card.attention}
+      data-selected={selected || undefined}
     >
       <span
         aria-hidden="true"
@@ -558,6 +576,31 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
       </p>
 
       <div className="mt-auto flex flex-wrap gap-2 pt-1">
+        <button
+          type="button"
+          onClick={onSelect}
+          className={cn(
+            buttonVariants({ variant: selected ? 'secondary' : 'outline', size: 'sm' }),
+            '!h-auto !min-h-[44px] hidden xl:inline-flex',
+          )}
+          aria-pressed={selected}
+          aria-label={`${card.name}を右プレビュー`}
+        >
+          <PanelRightOpen className="size-4" aria-hidden="true" />
+          {selected ? '選択中' : 'プレビュー'}
+        </button>
+        <button
+          type="button"
+          onClick={onOpenMobilePreview}
+          className={cn(
+            buttonVariants({ variant: 'outline', size: 'sm' }),
+            '!h-auto !min-h-[44px] xl:hidden',
+          )}
+          aria-label={`${card.name}をプレビュー`}
+        >
+          <PanelRightOpen className="size-4" aria-hidden="true" />
+          プレビュー
+        </button>
         <Link
           href={card.link_href}
           className={cn(
@@ -579,7 +622,19 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
   );
 }
 
-function PatientBoardCompactList({ cards, now }: { cards: PatientBoardCard[]; now: Date }) {
+function PatientBoardCompactList({
+  cards,
+  now,
+  selectedPatientId,
+  onSelect,
+  onOpenMobilePreview,
+}: {
+  cards: PatientBoardCard[];
+  now: Date;
+  selectedPatientId: string | null;
+  onSelect: (card: PatientBoardCard) => void;
+  onOpenMobilePreview: (card: PatientBoardCard) => void;
+}) {
   return (
     <div
       className="overflow-hidden rounded-lg border border-border/70 bg-card"
@@ -598,23 +653,46 @@ function PatientBoardCompactList({ cards, now }: { cards: PatientBoardCard[]; no
       </div>
       <ul role="list" className="divide-y divide-border/70">
         {cards.map((card) => (
-          <PatientBoardCompactListRow key={card.patient_id} card={card} now={now} />
+          <PatientBoardCompactListRow
+            key={card.patient_id}
+            card={card}
+            now={now}
+            selected={card.patient_id === selectedPatientId}
+            onSelect={() => onSelect(card)}
+            onOpenMobilePreview={() => onOpenMobilePreview(card)}
+          />
         ))}
       </ul>
     </div>
   );
 }
 
-function PatientBoardCompactListRow({ card, now }: { card: PatientBoardCard; now: Date }) {
+function PatientBoardCompactListRow({
+  card,
+  now,
+  selected,
+  onSelect,
+  onOpenMobilePreview,
+}: {
+  card: PatientBoardCard;
+  now: Date;
+  selected: boolean;
+  onSelect: () => void;
+  onOpenMobilePreview: () => void;
+}) {
   const presentation = ATTENTION_PRESENTATIONS[card.attention];
   const { tags, hiddenCount: hiddenSafetyTagCount } = selectVisibleSafetyTags(card.safety_tags);
   const foundationSummary = card.foundation_summary;
 
   return (
     <li
-      className="grid gap-2 px-3 py-3 lg:grid-cols-[minmax(190px,1.25fr)_minmax(120px,0.72fr)_minmax(150px,0.95fr)_minmax(150px,0.95fr)_minmax(150px,0.95fr)_minmax(180px,1fr)] lg:items-center lg:gap-3"
+      className={cn(
+        'grid gap-2 px-3 py-3 lg:grid-cols-[minmax(190px,1.25fr)_minmax(120px,0.72fr)_minmax(150px,0.95fr)_minmax(150px,0.95fr)_minmax(150px,0.95fr)_minmax(180px,1fr)] lg:items-center lg:gap-3',
+        selected && 'border-l-4 border-l-primary bg-primary/5',
+      )}
       data-testid="patient-board-list-row"
       data-attention={card.attention}
+      data-selected={selected || undefined}
     >
       <div className="min-w-0">
         <Link
@@ -685,6 +763,29 @@ function PatientBoardCompactListRow({ card, now }: { card: PatientBoardCard; now
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onSelect}
+          className={cn(
+            buttonVariants({ variant: selected ? 'secondary' : 'outline', size: 'sm' }),
+            '!h-auto !min-h-[44px] hidden xl:inline-flex',
+          )}
+          aria-pressed={selected}
+          aria-label={`${card.name}を右プレビュー`}
+        >
+          {selected ? '選択中' : 'プレビュー'}
+        </button>
+        <button
+          type="button"
+          onClick={onOpenMobilePreview}
+          className={cn(
+            buttonVariants({ variant: 'outline', size: 'sm' }),
+            '!h-auto !min-h-[44px] xl:hidden',
+          )}
+          aria-label={`${card.name}をプレビュー`}
+        >
+          プレビュー
+        </button>
         <Link
           href={card.link_href}
           className={cn(
@@ -703,6 +804,94 @@ function PatientBoardCompactListRow({ card, now }: { card: PatientBoardCard; now
         </Link>
       </div>
     </li>
+  );
+}
+
+function PatientBoardSelectedPreview({ card, now }: { card: PatientBoardCard; now: Date }) {
+  const presentation = ATTENTION_PRESENTATIONS[card.attention];
+  const { tags, hiddenCount } = selectVisibleSafetyTags(card.safety_tags);
+
+  return (
+    <section
+      className="space-y-4 rounded-lg border border-border/70 bg-card p-4"
+      aria-label={`${card.name} 様の選択プレビュー`}
+      data-testid="patient-board-selected-preview"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-primary">選択中</p>
+          <h2 className="break-words text-lg font-bold text-foreground">{card.name}</h2>
+          <p className="text-sm text-muted-foreground">
+            {card.age != null ? `${card.age}歳・` : ''}
+            {card.residence_label}
+          </p>
+        </div>
+        <span
+          className={cn(
+            'inline-flex shrink-0 rounded-full px-2 py-1 text-xs font-semibold',
+            presentation.badgeClass,
+          )}
+        >
+          {presentation.label}
+        </span>
+      </div>
+
+      <dl className="space-y-3 text-sm">
+        <div>
+          <dt className="text-xs font-medium text-muted-foreground">次回訪問</dt>
+          <dd className="mt-1 font-semibold text-foreground">{formatNextVisitLabel(card, now)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium text-muted-foreground">現在の状態</dt>
+          <dd className={cn('mt-1 leading-5', STATUS_TONE_CLASSES[card.status_tone])}>
+            {card.status_text}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium text-muted-foreground">安全タグ</dt>
+          <dd className="mt-1 flex flex-wrap gap-1">
+            {tags.length > 0 ? (
+              <>
+                {tags.map((tag) => (
+                  <SafetyTagBadge key={tag} tag={tag} />
+                ))}
+                {hiddenCount > 0 ? (
+                  <span className="text-xs text-muted-foreground">ほか{hiddenCount}件</span>
+                ) : null}
+              </>
+            ) : (
+              <span className="text-sm text-muted-foreground">安全タグなし</span>
+            )}
+          </dd>
+        </div>
+        {card.foundation_summary ? (
+          <div>
+            <dt className="text-xs font-medium text-muted-foreground">情報基盤</dt>
+            <dd className="mt-1 text-foreground">
+              <span className="font-semibold">{card.foundation_summary.label}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                {card.foundation_summary.items.join(' / ')}
+              </span>
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+
+      <div className="grid gap-2">
+        <Link
+          href={card.link_href}
+          className={cn(buttonVariants({ variant: 'default' }), 'min-h-[44px]')}
+        >
+          → {card.link_label}
+        </Link>
+        <Link
+          href={card.foundation_href ?? buildPatientHref(card.patient_id)}
+          className={cn(buttonVariants({ variant: 'outline' }), 'min-h-[44px]')}
+        >
+          患者詳細
+        </Link>
+      </div>
+    </section>
   );
 }
 
@@ -738,6 +927,8 @@ export function PatientsBoard() {
   const [extraPages, setExtraPages] = useState<PatientBoardPageResponse[]>([]);
   const [isLoadingNextPage, setIsLoadingNextPage] = useState(false);
   const [nextPageError, setNextPageError] = useState<string | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const isBootstrappingOrg = !orgId;
 
   const foundationIssue = getFoundationIssueForChip(chip);
@@ -804,6 +995,7 @@ export function PatientsBoard() {
 
   const visibleCards = data?.cards ?? [];
   const displayedCards = visibleCards;
+  const selectedCard = visibleCards.find((card) => card.patient_id === selectedPatientId) ?? null;
   const hasMoreCardsToShow = Boolean(data?.has_more && data.next_cursor);
   async function loadNextPage() {
     if (!data?.next_cursor || isLoadingNextPage || !orgId) return;
@@ -1089,55 +1281,115 @@ export function PatientsBoard() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="min-w-0">
-              {visibleCards.length === 0 ? (
-                <div className="phos-patient-empty-state rounded-lg border border-border/70 bg-card px-4 py-6">
-                  <p className="text-sm font-medium text-foreground">
-                    条件に一致する患者がいません
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    検索語またはフィルタを解除してください。患者安全タグや警告は条件を戻すと再表示されます。
-                  </p>
-                </div>
-              ) : viewMode === 'list' ? (
-                <PatientBoardCompactList cards={displayedCards} now={now} />
-              ) : (
-                <div
-                  className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
-                  data-testid="patients-board-grid"
-                >
-                  {displayedCards.map((card) => (
-                    <PatientBoardCardItem key={card.patient_id} card={card} now={now} />
-                  ))}
-                </div>
-              )}
-              {hasMoreCardsToShow ? (
-                <div className="mt-4 flex flex-col items-center gap-2">
-                  <p
-                    className="text-xs text-muted-foreground"
-                    data-testid="patients-board-visible-count-note"
-                  >
-                    全{data.filtered_total}名中 {displayedCards.length}名を表示
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => void loadNextPage()}
-                    disabled={isLoadingNextPage}
-                    className={cn(
-                      buttonVariants({ variant: 'outline', size: 'sm' }),
-                      'min-h-[44px]',
-                    )}
-                  >
-                    {isLoadingNextPage ? '読み込み中' : 'さらに読み込む'}
-                  </button>
-                  {nextPageError ? (
-                    <p className="text-xs text-state-blocked" role="alert">
-                      {nextPageError}
+            <div className="min-w-0 xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start xl:gap-4">
+              <div className="min-w-0">
+                {visibleCards.length === 0 ? (
+                  <div className="phos-patient-empty-state rounded-lg border border-border/70 bg-card px-4 py-6">
+                    <p className="text-sm font-medium text-foreground">
+                      条件に一致する患者がいません
                     </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      検索語またはフィルタを解除してください。患者安全タグや警告は条件を戻すと再表示されます。
+                    </p>
+                  </div>
+                ) : viewMode === 'list' ? (
+                  <PatientBoardCompactList
+                    cards={displayedCards}
+                    now={now}
+                    selectedPatientId={selectedCard?.patient_id ?? null}
+                    onSelect={(card) => setSelectedPatientId(card.patient_id)}
+                    onOpenMobilePreview={(card) => {
+                      setSelectedPatientId(card.patient_id);
+                      setMobilePreviewOpen(true);
+                    }}
+                  />
+                ) : (
+                  <div
+                    className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3"
+                    data-testid="patients-board-grid"
+                  >
+                    {displayedCards.map((card) => (
+                      <PatientBoardCardItem
+                        key={card.patient_id}
+                        card={card}
+                        now={now}
+                        selected={card.patient_id === selectedCard?.patient_id}
+                        onSelect={() => setSelectedPatientId(card.patient_id)}
+                        onOpenMobilePreview={() => {
+                          setSelectedPatientId(card.patient_id);
+                          setMobilePreviewOpen(true);
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+                {hasMoreCardsToShow ? (
+                  <div className="mt-4 flex flex-col items-center gap-2">
+                    <p
+                      className="text-xs text-muted-foreground"
+                      data-testid="patients-board-visible-count-note"
+                    >
+                      全{data.filtered_total}名中 {displayedCards.length}名を表示
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void loadNextPage()}
+                      disabled={isLoadingNextPage}
+                      className={cn(
+                        buttonVariants({ variant: 'outline', size: 'sm' }),
+                        'min-h-[44px]',
+                      )}
+                    >
+                      {isLoadingNextPage ? '読み込み中' : 'さらに読み込む'}
+                    </button>
+                    {nextPageError ? (
+                      <p className="text-xs text-state-blocked" role="alert">
+                        {nextPageError}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+              <aside className="sticky top-20 hidden xl:block" aria-label="選択患者プレビュー">
+                {selectedCard ? (
+                  <PatientBoardSelectedPreview card={selectedCard} now={now} />
+                ) : (
+                  <section
+                    className="rounded-lg border border-dashed border-border bg-muted/20 p-5 text-center"
+                    data-testid="patient-board-preview-placeholder"
+                  >
+                    <PanelRightOpen
+                      className="mx-auto size-5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <h2 className="mt-2 text-sm font-semibold text-foreground">患者プレビュー</h2>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      一覧の「プレビュー」を選ぶと、現在取得済みの要約をここで確認できます。
+                    </p>
+                  </section>
+                )}
+              </aside>
+            </div>
+            <Sheet
+              open={mobilePreviewOpen && Boolean(selectedCard)}
+              onOpenChange={setMobilePreviewOpen}
+            >
+              <SheetContent
+                side="bottom"
+                className="max-h-[85dvh] overflow-y-auto p-0 xl:hidden"
+                aria-label="選択患者プレビュー"
+                closeLabel="患者プレビューを閉じる"
+              >
+                <SheetHeader className="border-b border-border/70 px-4 py-3">
+                  <SheetTitle>患者プレビュー</SheetTitle>
+                </SheetHeader>
+                <div className="p-4">
+                  {selectedCard ? (
+                    <PatientBoardSelectedPreview card={selectedCard} now={now} />
                   ) : null}
                 </div>
-              ) : null}
-            </div>
+              </SheetContent>
+            </Sheet>
             <WorkspaceActionRail
               nextAction={buildNextAction(data)}
               blockedReasons={blockedReasons}

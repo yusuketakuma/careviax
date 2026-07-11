@@ -45508,3 +45508,42 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   detail UI replaced the prior recovery state. This proves local preview recovery only. It is not staging/live
   migration evidence and does not satisfy the human-gated visit-observation DB integration tasks. Server remains
   available on `localhost:3012`; stop it with `tmux kill-session -t careviax-preview` when no longer needed.
+
+## 2026-07-11 FE-PATIENT-LIST-001 — selected patient preview partial
+
+- current task / code-scan decision:
+  Compared the active plan with the existing patient board before restructuring it. The API already exposes a
+  signed, filter-bound continuation cursor, but the main route still loads broad patient relations and derives the
+  bounded card page in memory. A real local `/api/patients/board?scope=mine&limit=60` request remained pending for
+  more than 20 seconds. Therefore `PERF-DB-PATIENT-BOARD-CURSOR` remains the blocking data-performance task; this
+  slice is limited to a connected preview over the existing bounded card DTO.
+- implementation / bugs fixed:
+  Added explicit selected state to both card and compact-list modes, a desktop sticky right preview, and a mobile
+  bottom sheet. The preview reuses the card's existing identity, residence, attention, visit, safety, foundation,
+  operation, and patient-detail link fields; it does not invent badges or perform another request. Patient names
+  wrap instead of truncating in the preview. Empty selection remains an explicit placeholder, and mobile opening
+  is user-triggered rather than automatic.
+- design / security / accessibility / performance:
+  Used the PHI-free image reference at
+  `/Users/yusuke/.codex/generated_images/019f5102-3a7c-7c20-becf-74338d1dd843/exec-a34f6e51-9f58-4555-80d8-2306786f73d5.png`
+  as preview-only hierarchy guidance; no generated asset enters the product. The implementation follows the
+  UI/UX SSOT's left/list/right disclosure structure and keeps authorized operational detail visible. It changes no
+  API, auth/authz, PHI logging, persistence, audit, or write path and adds no network request. Buttons retain 44px
+  targets, selection uses programmatic and non-color signals, the sheet has a named dialog/close control, and the
+  layout avoids horizontal overflow at 390px.
+- validation:
+  Focused Vitest passed 27 patient-board component tests and then 61 patient-board/API tests. Scoped ESLint,
+  Prettier, and `git diff --check` passed. The PHI-free route-mocked Chromium test passed desktop selection/detail
+  navigation plus the 390px bottom sheet, 44px close target, second-patient selection, and no horizontal overflow.
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit --pretty false` and the service-worker tsconfig
+  typecheck passed. The aggregate typecheck wrapper was terminated with signal 143 after the main compiler run,
+  so its two constituent compilers were verified independently. The stricter 8 GB `pnpm typecheck:no-unused`
+  also passed. Full lint completed with zero errors and the two existing `_tx` / `_input` warnings in
+  `src/lib/platform/break-glass.test.ts`. Format, frontend contract, typography, state-color, client PHI-display,
+  client PHI-log, module-boundary, active-plan, and diff checks passed. Build was not repeated because the existing
+  Phase 9 ledger records the local 16 GB exit-137 limit; no build pass is claimed.
+- plans / remaining / next action:
+  `FE-PATIENT-LIST-001` moves to Partial without changing the eight-item frontend queue. Next complete the listed
+  patient-board query redesign as cursor-bounded DB work before expanding summary and priority signals. The local
+  preview server remains in tmux session `careviax-preview`. No push, deployment,
+  migration, production data mutation, secret rotation, or destructive operation occurred in this slice.

@@ -349,6 +349,34 @@ describe('PatientsBoard', () => {
     expect(search.className).toContain('min-h-[44px]');
   });
 
+  it('shows an explicit selected preview on desktop and reuses it in the mobile sheet', () => {
+    render(<PatientsBoard />);
+
+    expect(screen.getByTestId('patient-board-preview-placeholder')).toBeTruthy();
+    expect(screen.queryByTestId('patient-board-selected-preview')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '田中 一郎を右プレビュー' }));
+
+    const desktopPreview = screen.getByTestId('patient-board-selected-preview');
+    expect(
+      within(desktopPreview).getByRole('heading', { name: '田中 一郎', hidden: true }),
+    ).toBeTruthy();
+    expect(within(desktopPreview).getByText('麻薬監査 期限12:00 — 持参薬が未確定')).toBeTruthy();
+    expect(
+      within(desktopPreview).getByRole('link', { name: '患者詳細' }).getAttribute('href'),
+    ).toBe('/patients/pt_tanaka#patient-foundation');
+
+    fireEvent.click(screen.getByRole('button', { name: '佐々木 ハルをプレビュー' }));
+
+    expect(screen.getByRole('button', { name: '患者プレビューを閉じる' })).toBeTruthy();
+    const mobileDialog = screen.getByRole('dialog', { name: '患者プレビュー' });
+    const mobilePreview = within(mobileDialog).getByTestId('patient-board-selected-preview');
+    expect(within(mobilePreview).getByRole('heading', { name: '佐々木 ハル' })).toBeTruthy();
+    expect(
+      within(mobilePreview).getByText('照会回答が届きました(09:31) — 調剤を再開できます'),
+    ).toBeTruthy();
+  });
+
   it('uses patient-board scoped realtime invalidation for the board query', () => {
     render(<PatientsBoard />);
 
