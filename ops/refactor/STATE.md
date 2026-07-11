@@ -45761,3 +45761,31 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `333002b30` (`fix(FE-REPORT-001): pin interprofessional share mutations`) committed only the two owned share UI and
   regression files. Concurrent Plans/schedule changes and pre-existing local files were excluded. No push was
   performed.
+
+## 2026-07-11 FE-REPORT-001 — fail-closed pharmacist draft confirmation
+
+- current task / patient-safety defect:
+  Incremental AI-review/provider inspection found that a draft with `{}` or report-type-mismatched content could be
+  PATCHed directly to `confirmed`, producing a `care_report_confirmed` pharmacological-judgement audit entry. The UI
+  rendered five "未入力" placeholders but left the confirmation action enabled. `family_share` is a supported report
+  type and printable audience contract but was also missing from the canonical audience preview list.
+- implementation / FE-BE alignment:
+  The PATCH route now selects `report_type` and reuses the existing print-audit report-type/content validator before a
+  `draft -> confirmed` transition. Unsupported or structurally invalid content returns a sensitive no-store 409 before
+  transaction claim or audit write. The AI review presents a fixed recovery state and disables confirmation when no
+  validated structured content was supplied by the parent, with an associated disabled reason. The canonical audience
+  list now includes family. Existing valid confirmation, role authorization, optimistic updated-at claim, audit shape,
+  editable fields, send/finalize/print APIs, DB schema, and migrations are unchanged. Image generation was omitted
+  because this is fail-closed state control and one canonical list correction, not visual reconstruction.
+- validation / plans / remaining:
+  Focused route, AI-review, and report-detail Vitest passed 3 files / 76 tests. Regressions prove valid confirmation and
+  audit still succeed, invalid content returns 409 with zero transaction/update/audit side effects, missing content
+  disables the UI action, and family audience is registered. Focused ESLint/Prettier, 8 GB `pnpm typecheck`, API shape,
+  client PHI-log, frontend contract, module boundary, raw state colors, active Plans, and diff checks passed.
+  `FE-REPORT-001` remains Partial. A concurrent `FE-SCHEDULE-001` slice still owns `Plans.md`, so no mixed Plans hunk
+  was staged; the existing report row already covers AI draft review. Browser invalid-content fixture, mobile/a11y,
+  screenshot, full build, and user/pharmacist review remain unverified.
+- commit:
+  `edc034205` (`fix(FE-REPORT-001): reject invalid draft confirmation`) committed the four owned provider, UI, and
+  regression files. Concurrent Plans/schedule changes and pre-existing local files were excluded. No push was
+  performed.
