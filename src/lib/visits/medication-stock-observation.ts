@@ -1,6 +1,5 @@
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { messageFromError } from '@/lib/utils/error-message';
 import { isValidDateKey } from '@/lib/validations/date-key';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 import { buildVisitMedicationStockObservationsApiPath } from '@/lib/visits/api-paths';
@@ -12,13 +11,27 @@ import type {
   VisitMedicationStockObservationSourcePreset,
 } from '@/types/medication-stock';
 
+export type VisitMedicationStockSubmissionFailureStatus = 'error' | 'conflict' | 'unavailable';
+
 export type VisitMedicationStockSubmissionResult =
   | { ok: true; data: VisitMedicationStockObservationResponse }
   | {
       ok: false;
-      status: 'error' | 'conflict' | 'unavailable';
-      message: string;
+      status: VisitMedicationStockSubmissionFailureStatus;
     };
+
+const VISIT_MEDICATION_STOCK_SUBMISSION_FAILURE_MESSAGES = {
+  conflict: '残数観測が競合しました。最新情報を確認して同じ内容で再試行してください。',
+  unavailable:
+    '残数観測サービスを利用できません。入力内容を保持しています。通信状態を確認して再試行してください。',
+  error: '残数観測を登録できませんでした。入力内容を保持しています。',
+} as const satisfies Record<VisitMedicationStockSubmissionFailureStatus, string>;
+
+export function getVisitMedicationStockSubmissionFailureMessage(
+  status: VisitMedicationStockSubmissionFailureStatus,
+): string {
+  return VISIT_MEDICATION_STOCK_SUBMISSION_FAILURE_MESSAGES[status];
+}
 
 const SOURCE_PRESET_FIELDS = {
   pharmacist_counted: {
@@ -215,15 +228,10 @@ export async function submitVisitMedicationStockObservations(input: {
       },
     );
     if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as { message?: unknown } | null;
       return {
         ok: false,
         status:
           response.status === 409 ? 'conflict' : response.status === 503 ? 'unavailable' : 'error',
-        message:
-          typeof payload?.message === 'string'
-            ? payload.message
-            : '残数観測を登録できませんでした。入力内容を保持しています。',
       };
     }
     return {
@@ -233,14 +241,10 @@ export async function submitVisitMedicationStockObservations(input: {
         '残数観測の登録結果を確認できませんでした',
       ),
     };
-  } catch (error) {
+  } catch {
     return {
       ok: false,
       status: 'error',
-      message: messageFromError(
-        error,
-        '残数観測を登録できませんでした。入力内容を保持しています。',
-      ),
     };
   }
 }

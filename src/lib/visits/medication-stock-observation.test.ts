@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildVisitMedicationStockObservationRequest,
+  getVisitMedicationStockSubmissionFailureMessage,
   submitVisitMedicationStockObservations,
   validateVisitMedicationStockObservationDrafts,
 } from './medication-stock-observation';
@@ -194,10 +195,42 @@ describe('visit medication stock observation request builder', () => {
   });
 
   it.each([
-    [409, 'conflict'],
-    [503, 'unavailable'],
-    [500, 'error'],
-  ] as const)('maps HTTP %i to persistent submission state %s', async (status, expectedStatus) => {
+    [409, 'conflict', '残数観測が競合しました。最新情報を確認して同じ内容で再試行してください。'],
+    [
+      503,
+      'unavailable',
+      '残数観測サービスを利用できません。入力内容を保持しています。通信状態を確認して再試行してください。',
+    ],
+    [500, 'error', '残数観測を登録できませんでした。入力内容を保持しています。'],
+  ] as const)(
+    'maps HTTP %i to a PHI-safe persistent submission state %s',
+    async (status, expectedStatus, expectedMessage) => {
+      const result = await submitVisitMedicationStockObservations({
+        visitRecordId: 'record_1',
+        orgId: 'org_1',
+        idempotencyKey: 'visit-stock-request-1',
+        request: { observed_at: observedAt.toISOString(), observations: [] },
+        fetchImpl: vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(
+            new Response(
+              JSON.stringify({ message: '患者Aの残数4枚 / 090-1234-5678 / token=secret' }),
+              { status },
+            ),
+          ),
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        status: expectedStatus,
+      });
+      expect(getVisitMedicationStockSubmissionFailureMessage(expectedStatus)).toBe(expectedMessage);
+      expect(JSON.stringify(result)).not.toContain('患者A');
+      expect(JSON.stringify(result)).not.toContain('token=secret');
+    },
+  );
+
+  it('normalizes transport exceptions without retaining their message', async () => {
     const result = await submitVisitMedicationStockObservations({
       visitRecordId: 'record_1',
       orgId: 'org_1',
@@ -205,15 +238,13 @@ describe('visit medication stock observation request builder', () => {
       request: { observed_at: observedAt.toISOString(), observations: [] },
       fetchImpl: vi
         .fn<typeof fetch>()
-        .mockResolvedValue(
-          new Response(JSON.stringify({ message: '入力内容を保持しています' }), { status }),
-        ),
+        .mockRejectedValue(new Error('患者Aの残数4枚 / 090-1234-5678 / token=secret')),
     });
 
-    expect(result).toEqual({
-      ok: false,
-      status: expectedStatus,
-      message: '入力内容を保持しています',
-    });
+    expect(result).toEqual({ ok: false, status: 'error' });
+    expect(getVisitMedicationStockSubmissionFailureMessage('error')).toBe(
+      '残数観測を登録できませんでした。入力内容を保持しています。',
+    );
+    expect(JSON.stringify(result)).not.toContain('token=secret');
   });
 });
