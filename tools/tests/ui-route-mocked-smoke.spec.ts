@@ -464,6 +464,13 @@ function buildGanttDayBoardResponse() {
       limit: 0,
       hidden_operational_task_count: 0,
     },
+    inbound_schedule_requests: [],
+    inbound_schedule_request_counts: {
+      total_count: 0,
+      visible_count: 0,
+      hidden_count: 0,
+      limit: 0,
+    },
     operational_tasks: [],
   };
 }
@@ -3107,6 +3114,71 @@ test.describe('schedule proposals route-mocked bulk safety smoke', () => {
 test.describe('schedule day route-mocked Gantt smoke', () => {
   test.beforeEach(async ({ context }) => {
     await attachRouteMockSession(context);
+  });
+
+  test('keeps a failed visit status update visible and retries the exact payload', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context, {
+      captureHttpErrors: false,
+    });
+    await installScheduleDayGanttRouteMocks(page);
+
+    const patchRequests: CapturedRouteRequest[] = [];
+    await page.route(
+      apiPathPattern('/api/visit-schedules/gantt_route_mock_same_start_1'),
+      async (route) => {
+        patchRequests.push(captureRouteRequest(route));
+        await fulfillJson(
+          route,
+          {
+            code: 'INTERNAL_ERROR',
+            message: '患者 ガントE2E 同時A token=secret schedule=gantt_route_mock_same_start_1',
+          },
+          500,
+        );
+      },
+    );
+
+    await openStableRoute(page, `/schedules?view=list&tab=confirmed&date=${GANTT_DATE}`);
+
+    const statusTrigger = page.getByRole('combobox', {
+      name: 'ガントE2E 同時A様のステータスを変更',
+    });
+    await expect(statusTrigger).toBeVisible({ timeout: 30_000 });
+    await statusTrigger.click();
+    await page.getByRole('option', { name: '訪問中' }).click();
+
+    const recovery = page.getByText('訪問ステータスを更新できません').first();
+    await expect(recovery).toBeVisible();
+    await expect(page.getByText('訪問ステータスの更新は完了していません。')).toBeVisible();
+    await expect(page.getByText('通信状態を確認して再試行してください。')).toBeVisible();
+    await expect(page.getByText(/token=secret/)).toHaveCount(0);
+    await expect(page.getByText(/schedule=gantt_route_mock_same_start_1/)).toHaveCount(0);
+
+    await page.getByRole('button', { name: '再試行' }).focus();
+    await expect(page.getByRole('button', { name: '再試行' })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => patchRequests.length).toBe(2);
+    expect(patchRequests.map((request) => request.body)).toEqual([
+      {
+        schedule_status: 'in_progress',
+        expected_schedule_status: 'ready',
+      },
+      {
+        schedule_status: 'in_progress',
+        expected_schedule_status: 'ready',
+      },
+    ]);
+
+    const unexpectedErrors = errors.filter(
+      (message) =>
+        message !==
+        'console:Failed to load resource: the server responded with a status of 500 (Internal Server Error)',
+    );
+    expect(unexpectedErrors).toEqual([]);
   });
 
   test('keeps tablet portrait Gantt overflow inside the scroll region', async ({
