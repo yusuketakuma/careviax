@@ -854,6 +854,33 @@ describe('ScheduleTeamBoard', () => {
     expect(boardRefetch).toHaveBeenCalledOnce();
   });
 
+  it('keeps a PHI-safe visit status failure visible and retries the exact mutation payload', () => {
+    const retryPayload = {
+      scheduleId: 'visit_1',
+      status: 'in_progress' as const,
+      expectedStatus: 'planned' as const,
+    };
+    const retryMutate = vi.fn();
+    useMutationMock.mockReturnValueOnce({
+      mutate: retryMutate,
+      isPending: false,
+      isError: true,
+      error: new Error('患者: 伊藤 キヨ token=secret schedule=visit_1'),
+      variables: retryPayload,
+    });
+    mockQueries();
+
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    expect(screen.getByText('訪問ステータスを更新できません')).toBeTruthy();
+    expect(screen.getByText(/訪問ステータスの更新は完了していません。/)).toBeTruthy();
+    expect(screen.getByText(/通信状態を確認して再試行してください。/)).toBeTruthy();
+    expect(document.body.textContent).not.toContain('伊藤 キヨ token=secret');
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(retryMutate).toHaveBeenCalledWith(retryPayload);
+  });
+
   it('encodes dynamic PATCH ids and preserves raw mutation payloads', async () => {
     const mutationConfigs: MutationConfig[] = [];
     const orgJsonHeaders = {

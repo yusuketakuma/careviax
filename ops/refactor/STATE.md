@@ -45877,3 +45877,25 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   implementation/regression paths plus the scoped Plans, FE/BE inventory, and single-ledger evidence. The unrelated
   `API-CONTRACT-001` whitespace hunk in `Plans.md`, harness-memory state, and unrelated untracked files were excluded.
   No push was performed.
+
+## 2026-07-11 FE-SCHEDULE-001 — persistent visit-status mutation recovery
+
+- current task / root cause:
+  The adjacent visit-status mutation still reported failures only through a transient toast. Once it disappeared, the
+  schedule board no longer stated that the update was incomplete or offered recovery, creating a false-completion risk
+  for an operational status change. This was a frontend failure-state gap; the existing optimistic request contract,
+  authorization, persistence, and audit behavior did not require provider changes. `gpt-image-2` was omitted because
+  this composes the existing `SegmentError` in the existing board flow and introduces no visual reconstruction.
+- implementation / safety:
+  A failed visit-status mutation now leaves fixed PHI-safe cause/next-action copy above the affected board and offers
+  an explicit retry. Retry replays React Query's retained `{ scheduleId, status, expectedStatus }` variables exactly;
+  raw server error text is never rendered. The existing toast remains supplemental. Success invalidation, inline
+  options, loading disablement, endpoint/body, optimistic conflict guard, org/assignment authorization, DB, audit,
+  tasks, proposals, and patient data are unchanged.
+- validation / remaining:
+  Focused Vitest passed 1 file / 35 tests, including persistent failure visibility, omission of a PHI-like raw error,
+  and exact retry variables. Exact ESLint, Prettier, raw-state colors, client PHI-log, frontend contract,
+  module-boundary, 8 GB aggregate `pnpm typecheck`, and diff checks passed. Browser failure injection, keyboard-only
+  retry, 200% zoom, forced-colors, populated responsive runtime, proposal state matrix, and full build remain
+  outstanding under the Partial parent task. No API/DB/schema/migration/auth/authz/audit change, push, deploy,
+  external send, production-data mutation, or destructive operation occurred.

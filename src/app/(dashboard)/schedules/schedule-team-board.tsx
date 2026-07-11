@@ -2064,6 +2064,15 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
               ) : null}
               <div className="min-w-0 space-y-4">
                 <ScheduleDaySummaryStrip board={board} dateLabel={dateLabel} />
+                {statusMutation.isError && statusMutation.variables ? (
+                  <SegmentError
+                    title="訪問ステータスを更新できません"
+                    cause="訪問ステータスの更新は完了していません。"
+                    nextAction="通信状態を確認して再試行してください。"
+                    onRetry={() => statusMutation.mutate(statusMutation.variables)}
+                    retryLabel="再試行"
+                  />
+                ) : null}
                 <TeamGanttCard
                   board={board}
                   cockpit={cockpit}
