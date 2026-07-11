@@ -46,13 +46,25 @@ _Memories that map directly to a non-negotiable rule for this run; copy into LOO
 - **§10 Fail-closed client API reads** — ImplementationDecision: `readApiJson(res, { schema })`
   fail-closes malformed 2xx; `fallbackMessage` stays a static literal (no PHI in error text).
 
+### 2026-07-11 mutual-review bootstrap classification
+
+| memory_id                                                                                        | type                   | confidence / evidence | current application                                                                                      |
+| ------------------------------------------------------------------------------------------------ | ---------------------- | --------------------- | -------------------------------------------------------------------------------------------------------- |
+| `projects/careviax/implementation-decision/medication-stock-visit-observation-api-v1-2026-07-08` | ImplementationDecision | high / tested         | ApplyNow: retain controlled status mapping and idempotency/tenant contract when a client helper changes. |
+| `projects/careviax/implementation-decision/medication-stock-inbound-apply-contract-2026-07-08`   | ImplementationDecision | high / tested         | ApplyNow: fixed recovery copy and static client-log metadata, never raw external/server detail.          |
+| `projects/careviax/gates/2026-07-10/stock-001-visit-ui-gate-off`                                 | GateResult             | high / gate_verified  | ApplyNow: treat local route mocks as synthetic, no-write browser evidence; record their limits.          |
+
+- These recalled memories support proposed LOOP_POLICY §27 for this run. They do not authorize changes
+  to API authorization, audit behavior, persistence, or real clinical writes.
+
 ## Consider
 
 _Memories relevant but situational; weighed against this run's objective during planning._
 
-| memory_id                                                         | type         | note                                                                                                                                                            |
-| ----------------------------------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `projects/careviax/duplicates/pharmacy-cooperation-api-contracts` | DuplicateMap | consolidate a response schema to shared `src/lib/.../api-contracts.ts` only at **3+** converging screens; keep local below threshold (LOOP_POLICY ## Consider). |
+| memory_id                                                                     | type                   | note                                                                                                                                                            |
+| ----------------------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `projects/careviax/duplicates/pharmacy-cooperation-api-contracts`             | DuplicateMap           | consolidate a response schema to shared `src/lib/.../api-contracts.ts` only at **3+** converging screens; keep local below threshold (LOOP_POLICY ## Consider). |
+| `careviax/implementation-decision/patient-overview-bounded-select-2026-07-08` | ImplementationDecision | Revisit only for a future patient-overview performance/API slice; no relationship to this bounded recovery work.                                                |
 
 ## Ignore
 
@@ -68,6 +80,9 @@ _Memories retrieved but out of scope / superseded; recorded so they are not re-e
   consolidation heuristic but promotion to a permanent rule needs 2+ independent runs + §13 gate +
   explicit human approval (PROMOTION_QUEUE.md). Stays a candidate; the underlying high-confidence
   FailurePattern/FixPattern/Decision are applied directly via §9/§10 instead.
+- `projects/careviax/implementation-decision/medication-stock-prescription-supply-v1-2026-07-08`
+  and `phos-aws-backup-assurance-health-hardening` — retrieved but unrelated to the current UI recovery,
+  report, and workbench accessibility commits.
 
 ## BlockedContext
 
@@ -77,3 +92,6 @@ _Memories whose application is gated by an external dependency; reference the bl
   be enforced as ApplyNow until configured (LOOP_POLICY ## BlockedContext, `cc:blocked`).
 - _gbrain-embeddings_ — **RESOLVED 2026-06-20** (local `ollama:mxbai-embed-large`, 1024d, no
   external egress); semantic `gbrain query`/`search` available. No longer blocking.
+- `projects/careviax/implementation-decision/medication-stock-visit-observation-context-sidecar-v1-2026-07-08`
+  remains migration/human-gated and is not applied by this client-only slice. Phase 9 clean-build resource,
+  manual zoom/screen-reader, visual-regression, and specialist-review evidence remain separately blocked.

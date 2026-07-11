@@ -145,7 +145,7 @@
 - **Priority**: P1
 - **Verification**: 長名（10 文字姓名 + 長カナ）の fixture で mobile390/ワークベンチ左ペインのスクリーンショット確認 + patient-pinned-header の unit test に長名ケース追加。
 - **Evidence**: `src/components/ui/patient-pinned-header.tsx:114-115` / `src/components/features/dispense-workbench/patient-list-panel.tsx:172-183` / `src/app/(dashboard)/patients/patients-board.tsx:624` / `src/app/(dashboard)/my-day/my-day-content.tsx:633,669` / `src/components/features/visits/facility-visit-record-switcher.tsx:268,281`
-- **Partial remediation (2026-07-11)**: 共通 `PatientPinnedHeader` の氏名とカナを `truncate` から折返しへ変更し、モバイルでは患者識別クラスタを全幅に確保した。規範SSOTにも患者識別子をellipsisのみで隠さないルールを追加。長名・長カナのcomponent testでクラス契約とDOM内の全文を確認した。調剤ワークベンチ患者キューも氏名行を `overflowWrap: 'anywhere'` の折返しへ変更し、長名fixtureで省略スタイル不使用と既存の患者選択をcomponent testで確認した。`PLAYWRIGHT=1` + local `ph_os_e2e` の読取り専用デモセッション、mock workbench、1680px幅で合成長名を描画し、左ペインに全文が複数行で表示される screenshot と accessibility tree を確認した。患者ボードのリスト行も `truncate` を `break-words` へ変更し、合成長名が2行に折返され、患者詳細リンク・安全タグ・工程操作を保持する1680px screenshotとcomponent testで確認した。施設連続記録の横スクロール患者カード・前後切替リンクも `truncate` から折返しへ変更し、長名の全文・href・swipe契約をcomponent testで確認した。既存の390px E2EはDB fixture書込みを伴うため未実行。my-day の未完了／完了訪問行も患者名を折返しへ変更し、長名fixtureのcomponent testと、390px・合成APIのlocal browser mockで全文3行表示、既存の訪問記録href、状態・時刻、横スクロールなし、page/console errorなし、書込みrequestなしを確認した。DV-07 は実装経路を是正済みだが、施設切替の390px実画面/swipe、full E2E/build/a11y/200% zoom/clinical review は未実行のため Partial を維持する。
+- **Partial remediation (2026-07-11)**: 共通 `PatientPinnedHeader` の氏名とカナを `truncate` から折返しへ変更し、モバイルでは患者識別クラスタを全幅に確保した。規範SSOTにも患者識別子をellipsisのみで隠さないルールを追加。長名・長カナのcomponent testでクラス契約とDOM内の全文を確認した。調剤ワークベンチ患者キューも氏名行を `overflowWrap: 'anywhere'` の折返しへ変更し、長名fixtureで省略スタイル不使用と既存の患者選択をcomponent testで確認した。`PLAYWRIGHT=1` + local `ph_os_e2e` の読取り専用デモセッション、mock workbench、1680px幅で合成長名を描画し、左ペインに全文が複数行で表示される screenshot と accessibility tree を確認した。さらに375×812 CSS pxのroute-mockでは、長い合成氏名を選択状態のまま描画し、実際の`overflow-wrap: anywhere`、非ellipsis、氏名要素と文書全体の横方向溢れなし、Axe critical/serious 0、console errorなしを確認した。患者ボードのリスト行も `truncate` を `break-words` へ変更し、合成長名が2行に折返され、患者詳細リンク・安全タグ・工程操作を保持する1680px screenshotとcomponent testで確認した。施設連続記録の横スクロール患者カード・前後切替リンクも `truncate` から折返しへ変更し、長名の全文・href・swipe契約をcomponent testで確認した。既存の390px E2EはDB fixture書込みを伴うため未実行。my-day の未完了／完了訪問行も患者名を折返しへ変更し、長名fixtureのcomponent testと、390px・合成APIのlocal browser mockで全文3行表示、既存の訪問記録href、状態・時刻、横スクロールなし、page/console errorなし、書込みrequestなしを確認した。DV-07 は実装経路を是正済みだが、施設切替の390px実画面/swipe、full E2E/build/a11y/200% zoom/clinical review は未実行のため Partial を維持する。
 
 ---
 
@@ -164,6 +164,7 @@
 - **Priority**: P2
 - **Verification**: 長い医療機関名 fixture での表示確認 + キーボード/タッチで全文到達可能なことの手動検証（axe/E2E スモークに追加）。
 - **Evidence**: `src/app/(dashboard)/prescriptions/intake/intake-triage-content.tsx:86-88,111-116,119-130` / `src/app/(dashboard)/prescriptions/prescriptions-table.tsx:158`
+- **Implementation update (2026-07-11)**: `IssuerCell`、`ContentCell`、既存処方一覧の処方医セルから `truncate` / hover-only `title` を除去し、既存DataTableの列内で `overflow-wrap: anywhere` による全文折返しへ変更した。長い発行元・処方内容・Rx番号・処方医名のfixtureが全文DOM、非truncate、title非依存を固定する。取込キューと処方一覧の取得失敗もraw `Error.message` を表示せず、固定の原因+再試行copyとPHI-safe `clientLog` eventに収束した。focused Vitest 3 files / 27 tests、format、lint（既存warning 2件のみ）、typecheck、no-unused、module boundary、client PHI-log、client JSON schema、frontend contract、colors、typography、API response-shape、diff-checkはPASS。route-mock E2E、実機、手動screen reader/200% zoom、visual regression、clinical reviewは未実施のため、DV-08のPhase 9 evidenceはPartialのままとする。`gpt-image-2`は既存DataTable内の安全な折返し・固定error copyであり、新規画面構成や視覚的再構築ではないため省略した。
 
 ---
 
@@ -173,3 +174,18 @@
 - **`discharged` の CASE/PATIENT_STATUS 二重意味**: `status-labels.ts:326-341` にコメントで意図明記済みの文書化された差（ssot-discovery §4.5）。報告しない。
 - **cycle-workspace 内の full/short 2 系ラベル自体**: 狭幅 UI 用短縮形の存在は正当。問題は短縮形の状態間衝突と画面間揺れのみ（DV-06）。
 - **薬価 `toFixed(1)` の末尾ゼロ**: §7.8 の末尾ゼロ禁止は用量表記が対象。薬価（¥8.0/錠）は価格表記であり違反とみなさない。
+
+---
+
+## DV-02 verification update（2026-07-11）
+
+- `pnpm typography:check` はallowlist 0件・drift 0を維持した。
+- route-mockのlocal browser検証で、desktop調剤の数量確認・患者確認ダイアログ・送信payload、desktop/mobileセットの麻薬分類チップと完全和式日付、375 CSS px mobile調剤の比較/数量controlsとset-auditの監査controls到達性（送信なし）を確認した。
+- 通常配色の`main` Axe検査はcritical/serious 0となった。検出された冷所タグ/工程進捗数値のコントラストと右ペインのスクロール領域フォーカスを是正し、Chromium forced-colorsでは媒体適用・患者備考領域のキーボードフォーカス・比較操作を確認した。
+- 768×512の200%-equivalent viewportでは、完全和式日付・比較操作・患者備考領域をscroll/focusして到達できた。これは実browser zoomの代替ではない。
+- 375×812 mobileでは固定下部ナビがbulk完了操作を覆う実UI不具合を検出し、workbenchが固定のヘッダ/ナビ高ではなくAppShellの実効残余コンテンツ高を継承し、safe areaのみを局所控除する構造へ是正した。ボタン下端が固定ナビ上端より上にあることを座標で確認し、不可逆の患者確認ダイアログとmock payloadまで通過した。
+- オフラインread-onlyバナー表示時にも固定値控除ではなくAppShellの残余高さを継承し、bulk完了操作が固定ナビより上にあることを座標で確認した。
+- 768×1024 CSS pxのtablet相当route-mockでも、患者コンテキスト、完全和式日付、比較ダイアログ、実数量入力・確認を非送信で確認し、通常配色の`main` Axe critical/serious 0を維持した。これはtablet実機・手動読上げ・visual regressionの代替ではない。
+- 前回処方比較ダイアログは、開いたら閉じる操作へfocusし、Tab/Shift+Tabを内部にtrapし、Escape閉鎖後は起点の比較ボタンへfocusを戻す。component testとdesktop route-mockでこのkeyboard lifecycleを確認し、キーボード連続操作の起点喪失と背後要素への逸脱を防ぐ。
+- 保留理由モーダルは、ラジオにfocusがある実ブラウザ状態でEscapeが効かない不具合を検出し、document captureで閉鎖を受けて起点の保留ボタンへfocusを戻すよう是正した。chromium/mobile-chromium route-mockで最初の理由へのfocus、Escape閉鎖、focus復帰を確認し、保留の実保存は行っていない。
+- これは固定fixtureとroute interceptionによる限定証跡である。手動200% zoom、スクリーンリーダー、実DB書込、offline保存/復旧/競合、visual regressionは未実施として残す。

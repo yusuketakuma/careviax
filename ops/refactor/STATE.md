@@ -43890,3 +43890,1245 @@ tools/scripts/check-typography-minimum.test.ts --reporter=dot` passed 5 files / 
   a11y (forced-colors / 200% zoom / screen reader), E2E (local ph_os_e2e ECONNREFUSED), visual regression,
   and clinical/legal/security expert review remain NOT_EXECUTED. Phase 8 DV-02 is statically complete; the
   visual/a11y/clinical gates for Phase 9 are the next work.
+
+## 2026-07-11 UI-UX-PHASE9-WORKBENCH-ROUTE-MOCK-E2E — restore targeted browser evidence
+
+- current task:
+  Restore non-mutating browser evidence for the completed DV-02 workbench slice and make its route-mock
+  E2E fixtures match the current BFF contract without changing production workflow, data, or write paths.
+- files inspected / changed:
+  Inspected `playwright.local.config.ts`, the local auth helper, route-mock helpers, the targeted dispense/
+  set E2E cases, the current patient-list and workbench adapter/API contracts, UI SSOT §§2.4/3.4/7.8/8.2,
+  current validation state, and the active UI/UX evidence records. Changed only
+  `tools/tests/e2e-prescription-dispensing-flow.spec.ts` plus the Phase 5/9 evidence, risk, progress, and
+  this ledger.
+- bugs found / fixed:
+  The E2E fixture had fallen behind the patient-list BFF: it omitted `meta`, representative task identity,
+  and the detail response `data` envelope. It also expected the retired bulk-action label and skipped the
+  required irreversible primary-action confirmation dialog. The route-mock helper now returns the typed
+  `DispenseWorkbenchPatientsResponse` contract, and the test exercises the current confirmation gate.
+  Set/calendar fixture waits now tolerate first-load client chunk compilation; the mobile set-audit smoke
+  explicitly uses the 375×812 CSS-pixel baseline.
+- security / medical safety:
+  The local session helper performed only the permitted local `SELECT` that resolves the demo user. All
+  displayed workbench data and the dispense-result POST were Playwright route fixtures; no real workbench
+  API mutation, database write, patient record mutation, or external request was made. The desktop test
+  now verifies the patient-specific irreversible confirmation gate before the mocked dispense payload.
+- performance:
+  Production code and runtime behavior are unchanged. The E2E fixture has bounded, targeted readiness
+  waits instead of false-empty assertions during local dev chunk compilation.
+- validation:
+  Started `pnpm dev:e2e:local` on port 3012, then ran the targeted route-mock cases. Chromium dispense
+  quantity confirmation → confirmation dialog → mocked `/api/dispense-results` payload passed. Chromium
+  and mobile-chromium set classification/full-date cases passed. The mobile set-audit non-submit smoke
+  passed at 375×812 CSS px. `pnpm format:check -- tools/tests/e2e-prescription-dispensing-flow.spec.ts`,
+  `pnpm typecheck`, `pnpm lint`, and the filtered Playwright test listing passed; ESLint exited 0 with the
+  two pre-existing no-unused warnings in `src/lib/platform/break-glass.test.ts`. `git diff --check` passed.
+  A broad cross-project invocation was stopped while its non-required mobile dispense-submit case waited
+  beyond the bounded 375px non-submit smoke; it is not counted as a pass.
+- remaining / next action:
+  Targeted browser evidence is now partial, not full visual/a11y acceptance. Still run the full mobile
+  irreversible-submit path in a bounded fixture, 200% zoom, forced-colors, screen-reader, visual-regression,
+  offline/conflict, and clinical/legal/security review. `pnpm build` remains blocked by the prior shared-
+  environment OOM result. No commit was made by this slice.
+
+## 2026-07-11 UI-UX-PHASE9-MOBILE-DISPENSE-SMOKE — bound mobile browser coverage
+
+- current task:
+  Keep the desktop irreversible dispense payload test authoritative while adding a bounded, non-mutating
+  375px mobile smoke for the same workbench controls.
+- files inspected / changed:
+  Inspected the targeted E2E case, current mobile route-mock evidence, and the active Phase 5/9 records.
+  Changed the E2E project scope, added the 375px mobile dispense smoke, and updated the evidence/risk/
+  progress records and this ledger.
+- bugs found / fixed:
+  The desktop-specific irreversible test was also scheduled for mobile-chromium, where it can wait far
+  beyond the intended mobile evidence scope. It is now explicitly chromium-only. A dedicated mobile test
+  proves full Japanese date visibility, prior-prescription comparison dialog, actual-quantity input, and
+  quantity-confirmation control reachability without triggering the irreversible mutation.
+- security / medical safety:
+  No real write occurs in either mobile smoke. The browser uses the local demo-session `SELECT` plus fixed
+  route responses only; no patient or production data is sent. The separate desktop test retains the
+  confirmation-dialog and mocked-payload proof for the irreversible action.
+- performance:
+  The E2E matrix avoids a long-running cross-device mutation case and completes the intended mobile smoke
+  in seconds. Production code is unchanged.
+- validation:
+  With `pnpm dev:e2e:local` on port 3012, the filtered chromium/mobile-chromium Playwright run passed
+  2 tests and intentionally skipped the two opposite-project cases: desktop mocked dispense submit and
+  375px mobile dispense reachability. The earlier 375px mobile set-audit smoke remains passed.
+- remaining / next action:
+  Mobile irreversible-submit completion remains intentionally unproven; retain it as a dedicated future
+  scenario with an explicit bounded fixture. Continue with 200% zoom, forced-colors, screen-reader,
+  visual-regression, offline/conflict, and specialist review. No commit was made by this slice.
+
+## 2026-07-11 UI-UX-PHASE9-WORKBENCH-A11Y-CONTRAST-AND-FORCED-COLORS — close route-mock critical/serious findings
+
+- current task:
+  Extend the restored workbench route-mock evidence with bounded automated accessibility checks, correct
+  every critical/serious issue that those checks expose, and preserve the established non-mutating fixture
+  boundary.
+- files inspected / changed:
+  Inspected the dispense/set/set-audit Playwright fixtures, Axe results, right-pane overflow regions,
+  workbench palette/progress view types and consumers, color-token contracts, UI SSOT §§2.4/3.4/7.8/8.2,
+  and the active evidence/risk records. Changed `dispensing-workbench.module.css`,
+  `dispensing-workbench.types.ts`, `use-workbench-view.ts`, `prescription-grid.tsx`,
+  `medication-calendar-grid.tsx`, `right-pane.tsx`, their focused tests, the route-mock E2E test, and the
+  active UI/UX evidence records.
+- bugs found / fixed:
+  Axe found two real normal-color contrast failures: the cold-storage tag text and the footer progress
+  fractions were below AA on their actual pale surfaces. The tag ink is now AA-safe and phase fill colors
+  are separated from dedicated AA footer-text inks. Axe then found a serious keyboard defect: a scrollable
+  set-audit risk list could not receive focus. All five right-pane overflow regions now have a named
+  `region`, `tabIndex={0}`, and a visible focus outline; regression tests assert that the named region is
+  the actual `overflowY: auto` element. The new Chromium forced-colors smoke verifies the media query,
+  named patient-notes landmark, keyboard focus, and comparison control. Axe color contrast remains on the
+  normal-color route-mock cases because Chromium replaces author colors with user system colors in
+  forced-colors mode.
+- security / medical safety:
+  The browser still uses only the local demo-session `SELECT` and fixed Playwright route responses.
+  No real workbench API mutation, database write, patient record mutation, external request, authz
+  boundary, PHI disclosure boundary, audit event, or persistence behavior changed. The desktop irreversible
+  dispense case remains mocked behind its existing patient-specific confirmation dialog.
+- performance:
+  No production I/O, query, cache, state loop, dependency, or mutation was added. The added browser checks
+  are bounded route-mock tests; phase text-color selection is a constant-time view-model mapping.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2: this is a constrained contrast/keyboard/forced-colors
+  correction in the established dense workbench, not visual reconstruction or new information architecture.
+- validation:
+  Focused `pnpm vitest run src/components/features/dispense-workbench/workbench-color-tokens.test.ts
+src/components/features/dispense-workbench/right-pane.test.tsx
+src/components/features/dispense-workbench/use-workbench-view.test.ts
+src/components/features/dispense-workbench/prescription-grid.test.tsx
+src/components/features/dispense-workbench/medication-calendar-grid.test.tsx --reporter=dot` passed
+  5 files / 61 tests. The final filtered `playwright.local.config.ts` run across chromium and
+  mobile-chromium passed 6 tests with 4 intentional opposite-project skips: desktop mocked dispense submit,
+  375×812 mobile dispense/set-audit non-submit reachability, desktop/mobile set date/classification,
+  normal-color `main` Axe critical/serious 0, and Chromium forced-colors keyboard smoke.
+  `pnpm typecheck`, `pnpm lint`, `pnpm typography:check` (0 allowlisted occurrences / 0 drift), and
+  `pnpm format:check` passed. `git diff --check` is rerun after this ledger entry.
+- remaining / next action:
+  This is partial automated evidence, not full accessibility or visual acceptance. Still obtain 200% zoom,
+  forced-colors visual, screen-reader, visual-regression, mobile irreversible-submit, real-write/full E2E,
+  offline/conflict, and clinical/legal/security specialist evidence. `pnpm build` remains blocked by the
+  prior shared-environment OOM result. No commit was made by this slice.
+
+## 2026-07-11 UI-UX-PHASE9-WORKBENCH-200PCT-EFFECTIVE-VIEWPORT — bounded zoom-layout proxy
+
+- current task:
+  Add an honest, bounded effective-viewport proxy for the Phase 9 200% zoom risk without claiming that
+  Playwright viewport sizing is identical to a user-controlled browser zoom.
+- files inspected / changed:
+  Inspected the local Playwright project viewport model, current workbench route-mock cases, UI SSOT
+  §3.4/§8.2, and active Phase 9 evidence/risk records. Changed the route-mock E2E test and active UI/UX
+  evidence/risk/progress records only.
+- bugs found / fixed:
+  The prior evidence had 375px mobile reachability but no bounded low-height desktop-effective viewport
+  proof. A chromium-only test now uses 768×512 CSS pixels (the effective viewport of a 1536×1024 desktop
+  at approximately 200%), verifies the viewport, and scrolls/focuses the full Japanese period, comparison
+  control, and named patient-notes region. This is explicitly named and documented as a layout proxy, not
+  as manual browser-zoom proof.
+- security / medical safety:
+  The test uses the existing local demo-session `SELECT` plus fixed route responses. It triggers no
+  dispense write, database mutation, external request, authorization change, PHI disclosure, audit event,
+  or persistence behavior.
+- performance:
+  Production code is unchanged. The bounded Chromium route-mock case completed in seconds and uses no
+  additional dependency or runtime work.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is browser evidence for an established
+  workbench rather than visual reconstruction or a new user-facing composition.
+- validation:
+  The final filtered `playwright.local.config.ts` run across chromium and mobile-chromium passed 7 tests
+  with 5 intentional opposite-project skips: desktop mocked dispense submit, 375×812 mobile dispense and
+  set-audit non-submit reachability, desktop/mobile set date/classification, normal-color `main` Axe
+  critical/serious 0, Chromium forced-colors keyboard smoke, and the 768×512 effective-viewport smoke.
+  `pnpm typecheck`, `pnpm lint`, and `pnpm typography:check` (0 allowlisted occurrences / 0 drift) passed.
+  `pnpm format:check` and `git diff --check` are rerun after this ledger entry.
+- remaining / next action:
+  Manual browser 200% zoom, forced-colors visual comparison, screen-reader, visual-regression, mobile
+  irreversible-submit, real-write/full E2E, offline/conflict, and clinical/legal/security specialist
+  validation remain unexecuted. `pnpm build` remains blocked by the prior shared-environment OOM result.
+  No commit was made by this slice.
+
+## 2026-07-11 UI-UX-PHASE9-MOBILE-IRREVERSIBLE-CONTROL-OVERLAY — restore reachable dispense completion
+
+- current task:
+  Verify the 375px irreversible dispense confirmation path with fixed route responses, then correct any
+  real layout obstruction that prevents the clinical completion control from receiving pointer input.
+- files inspected / changed:
+  Inspected the mobile route-mock call log, AppShell mobile navigation and content-height contract,
+  workbench `rootInShell` dimensions, mobile nav geometry, UI SSOT §§2.4/3.4/7.8/8.2, and active evidence.
+  Changed `dispensing-workbench.module.css`, the route-mock E2E test, and the active evidence/risk/progress
+  records.
+- bugs found / fixed:
+  At 375×812 CSS px, the fixed `MobileNav` intercepted pointer events for the workbench's
+  「表示中をすべて調剤済」 control. `rootInShell` subtracted only the 3.5rem header while AppShell also
+  reserved a fixed 4rem bottom nav. The mobile override now subtracts both the nav and
+  `env(safe-area-inset-bottom)`, placing the workbench footer above the overlay. The regression test checks
+  that the bulk-completion button's bottom edge is not below the mobile-nav top edge, then exercises row
+  completion, quantity confirmations, the irreversible patient confirmation dialog, and mocked payload.
+- security / medical safety:
+  The browser uses only the local demo-session `SELECT` and fixed Playwright responses. The intercepted
+  `/api/dispense-results` request is fulfilled by the test; no real database write, patient mutation,
+  external request, authz change, PHI disclosure, or audit event occurs. The actual confirmation gate is
+  retained and now proven reachable on mobile.
+- performance:
+  The CSS height calculation is constant and adds no runtime I/O, query, state loop, dependency, or
+  rendering work. The mobile route-mock confirmation flow completes in seconds.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a constrained safe-area/interaction
+  correction in the established workbench, not a visual reconstruction or new information architecture.
+- validation:
+  Focused workbench Vitest passed 5 files / 61 tests. The final filtered `playwright.local.config.ts` run
+  across chromium and mobile-chromium passed 8 tests with 6 intentional opposite-project skips, including
+  desktop and 375×812 mobile mocked dispense confirmation/payload, desktop/mobile set date/classification,
+  375×812 mobile set-audit reachability, normal-color `main` Axe critical/serious 0, forced-colors keyboard
+  smoke, and the 768×512 effective-viewport proxy. `pnpm typecheck`, `pnpm lint`, and
+  `pnpm typography:check` (0 allowlisted occurrences / 0 drift) passed. `pnpm format:check` and
+  `git diff --check` are rerun after this ledger entry.
+- remaining / next action:
+  The route-mock mobile irreversible path is complete. Manual browser 200% zoom, forced-colors visual
+  comparison, screen-reader, visual-regression, real-write/full E2E, offline/conflict, and
+  clinical/legal/security specialist validation remain unexecuted. `pnpm build` remains blocked by the
+  prior shared-environment OOM result. No commit was made by this slice.
+
+## 2026-07-11 UI-UX-PHASE9-WORKBENCH-OFFLINE-BANNER-RESIDUAL-HEIGHT — preserve mobile action reachability
+
+- current task:
+  Make the 375×812 workbench footer robust to AppShell's variable network-status banner after proving the
+  mobile irreversible route-mock path.
+- files inspected / changed:
+  Inspected AppShell/PageScaffold height propagation, `MobileNav` geometry, the workbench root dimensions,
+  all four workbench route mounts, the focused route-mock cases, UI SSOT §§2.4/3.4/7.8/8.2, and active
+  evidence/risk records. Changed the four route `PageScaffold` mounts, workbench root CSS/comments, the
+  route-mock E2E test, and the active UI/UX evidence/progress/risk records.
+- bugs found / fixed:
+  The initial mobile fix subtracted fixed header and nav values. It passed while online but an offline
+  network-status banner changed the effective content height and put the bulk-completion control underneath
+  the fixed nav again. `PageScaffold` now establishes a full-height content chain for dispense, audit, set,
+  and set-audit; `rootInShell` inherits that actual residual AppShell flex height and subtracts only the
+  safe-area inset on mobile. The regression cases assert both the online irreversible controls and the
+  offline-banner bulk-completion control have bottom edges above `mobile-bottom-nav` before interaction.
+- security / medical safety:
+  The tests use the local demo-session `SELECT` plus fixed Playwright routes only. The irreversible payload
+  is intercepted and fulfilled by the test. No database write, patient mutation, production request, authz
+  change, PHI disclosure change, audit event, or persistence behavior occurred. The actual patient-specific
+  irreversible confirmation remains present and is now reachable in the covered mobile path.
+- performance:
+  The layout follows the parent flex result instead of maintaining a duplicated fixed-height calculation.
+  It adds no request, query, dependency, state loop, or persisted-data work.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a constrained mobile interaction and
+  accessibility correction within the established workbench, not visual reconstruction or a new information
+  architecture.
+- validation:
+  The final filtered route-mock Playwright run across chromium and mobile-chromium passed 9 tests with
+  7 intentional opposite-project skips: desktop and 375×812 mobile mocked dispense confirmation/payload,
+  online/offline mobile-nav geometry, desktop/mobile set date/classification, 375×812 set-audit reachability,
+  normal-color `main` Axe critical/serious 0, forced-colors keyboard smoke, and the 768×512 effective-
+  viewport proxy. Focused workbench Vitest passed 5 files / 61 tests. `pnpm typecheck`, `pnpm lint` (exit 0;
+  two pre-existing no-unused warnings in `src/lib/platform/break-glass.test.ts`), `pnpm typography:check`
+  (0 allowlisted occurrences / 0 drift), `pnpm colors:check` (19 identity-color allowlisted lines / 0 drift),
+  `pnpm boundaries:check`, `pnpm frontend-contract:check`, `pnpm client-phi-log:check` (1 allowlisted raw-
+  error console call), and `pnpm format:check` passed before this ledger append.
+- remaining / next action:
+  This supplies bounded layout and automated a11y evidence, not full acceptance. Manual browser 200% zoom,
+  forced-colors visual comparison, screen-reader, visual regression, real-write/full E2E, offline
+  persistence/recovery/conflict, and clinical/legal/security specialist validation remain unexecuted.
+  `pnpm build` remains blocked by the prior shared-environment OOM result. Re-run format/diff after this
+  ledger append; no commit was made by this slice.
+
+## 2026-07-11 UI-UX-PHASE9-WORKBENCH-TABLET-ROUTE-MOCK — establish bounded tablet evidence
+
+- current task:
+  Add the missing tablet-sized browser evidence for the workbench without widening the route-mock test into a
+  real write, device-specific claim, or full visual-regression baseline.
+- files inspected / changed:
+  Inspected the current dispense route-mock fixture, existing desktop/mobile/forced-colors/zoom cases, the
+  Playwright project matrix, UI SSOT §§2.4/3.4/7.8/8.2, and the active evidence/risk/progress records.
+  Changed the targeted E2E test and the active Phase 5/9 evidence, risk, and progress documents only.
+- bugs found / fixed:
+  No new production defect was found. The Phase 9 matrix had desktop, 375×812 mobile, forced-colors, and a
+  low-height zoom proxy but no tablet-sized control evidence. A Chromium-only 768×1024 CSS-viewport test now
+  checks the exact viewport, patient context, full Japanese period, comparison dialog open/close, actual-
+  quantity input, visible quantity-confirmation control, keyboard focus, normal-color Axe critical/serious
+  findings, and console errors without opening the irreversible completion action.
+- security / medical safety:
+  The case uses the local demo-session `SELECT` and fixed Playwright routes only. It sends no dispense-result
+  request and performs no database write, patient mutation, external request, authorization change, PHI
+  disclosure change, audit event, or persistence operation.
+- performance:
+  Production code is unchanged. The additional bounded Chromium route-mock case completes in seconds and
+  adds no production I/O, dependency, query, cache, or state-loop work.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a browser-evidence addition for the
+  established workbench rather than visual reconstruction or a new user-facing composition.
+- validation:
+  The focused tablet test passed 1 Chromium case with 1 intentional mobile-project skip. The final filtered
+  representative Playwright run across chromium and mobile-chromium passed 10 tests with 8 intentional
+  opposite-project skips, covering desktop/375×812 mobile/768×1024 tablet dispense controls, online/offline
+  mobile-nav geometry, set date/classification, mobile set-audit reachability, normal-color `main` Axe
+  critical/serious 0, forced-colors keyboard smoke, and the 768×512 effective-viewport proxy. `pnpm typecheck`
+  passed. `pnpm lint` exited 0 with the two pre-existing no-unused warnings in
+  `src/lib/platform/break-glass.test.ts`; no new lint error was introduced.
+- remaining / next action:
+  The 768×1024 route-mock is a bounded tablet viewport result, not tablet hardware, manual zoom, forced-
+  colors visual, screen-reader, visual-regression, real-write/full E2E, or offline persistence/recovery/
+  conflict evidence. `pnpm build` remains blocked by the prior shared-environment OOM result. Re-run
+  format/diff after this ledger append; no commit was made by this slice.
+
+## 2026-07-11 UI-UX-PHASE9-WORKBENCH-MOBILE-LONG-IDENTITY — prove narrow patient identity readability
+
+- current task:
+  Add a browser-level regression for the P1 workbench patient-identity path at the 375×812 mobile baseline,
+  without turning a synthetic route-mock check into a real patient-data or write flow.
+- files inspected / changed:
+  Inspected the patient-list component and long-name unit contract, the dispense route-mock fixture, existing
+  mobile geometry cases, UI SSOT §§2.3/2.4/3.4/7.8/8.2, and the active Phase 5/9 evidence/risk/progress
+  records. Changed the route-mock fixture to accept an optional synthetic patient name, added the mobile
+  long-identity case, and updated active UI/UX records only.
+- bugs found / fixed:
+  No new production defect was found. The existing `overflowWrap: 'anywhere'` unit-level contract lacked a
+  narrow browser result. The new mobile test supplies a long synthetic name and proves selected-state
+  retention, visible full DOM text, computed `overflow-wrap: anywhere`, non-ellipsis text, no name-element
+  overflow, and no document-level horizontal overflow. It also preserves normal-color Axe critical/serious 0
+  and console-error checks.
+- security / medical safety:
+  The test uses a non-PHI synthetic name, the local demo-session `SELECT`, and fixed Playwright routes. It
+  performs no database write, patient mutation, external request, authorization change, audit event, or
+  persistence operation. This directly strengthens evidence for the patient-identification display control;
+  it does not replace the remaining specialist safety review.
+- performance:
+  Production code is unchanged. The optional test-fixture field and bounded browser check add no runtime
+  request, query, cache, dependency, or state-loop work.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a constrained accessibility/browser-
+  evidence addition for an established patient queue, not visual reconstruction or a new information
+  architecture.
+- validation:
+  The focused mobile long-identity Playwright case passed 1 mobile-chromium case with 1 intentional Chromium
+  skip. The final filtered representative run across chromium and mobile-chromium passed 11 tests with
+  9 intentional opposite-project skips, covering desktop/375×812 mobile/768×1024 tablet dispense controls,
+  long patient identity, online/offline mobile-nav geometry, set date/classification, mobile set-audit
+  reachability, normal-color `main` Axe critical/serious 0, forced-colors keyboard smoke, and the 768×512
+  effective-viewport proxy. Focused `patient-list-panel` and `right-pane` Vitest passed 2 files / 10 tests.
+  `pnpm typecheck` passed. `pnpm lint` exited 0 with the two pre-existing no-unused warnings in
+  `src/lib/platform/break-glass.test.ts`; no new lint error was introduced.
+- remaining / next action:
+  This is synthetic 375px evidence, not a visual-regression baseline, real-device/manual screen-reader,
+  manual 200% zoom, forced-colors visual, real-write/full E2E, offline persistence/recovery/conflict, or
+  clinical/legal/security specialist review. `pnpm build` remains blocked by the prior shared-environment
+  OOM result. Re-run format/diff after this ledger append; no commit was made by this slice.
+
+## 2026-07-11 UI-UX-PHASE9-COMPARE-DIALOG-FOCUS-RETURN — restore keyboard continuity
+
+- current task:
+  Verify the comparison dialog's keyboard lifecycle and correct the missing focus return that left a keyboard
+  user without a reliable post-dialog action point.
+- files inspected / changed:
+  Inspected `PrescriptionCompareDialog`, its store action/mount boundary, the comparison trigger in
+  `PrescriptionGrid`, the existing dialog test, route-mock E2E, UI SSOT §8.3, and active Phase 5/9 evidence.
+  Changed the dialog, its focused component test, the desktop route-mock assertion, and active evidence/
+  progress records.
+- bugs found / fixed:
+  The dialog correctly focused its close button on open and closed on Escape, but it did not retain or restore
+  the opener after dismissal. On open it now captures a connected non-body active element, focuses the close
+  control, and returns focus to that opener during the layout-effect cleanup. This covers Escape, explicit
+  close, and overlay dismissal without changing the comparison data or close action. The test was initially
+  written with an unavailable jsdom matcher and was corrected to the repository's `document.activeElement`
+  assertion pattern; the passing result is the final evidence.
+- security / medical safety:
+  No clinical decision, API, database, patient data, authentication, authorization, audit, persistence, or
+  irreversible-action behavior changed. The fix reduces keyboard users' risk of losing context after a
+  prescription comparison review.
+- performance:
+  One ref capture and focus call occur only while the view-only dialog opens/closes. No request, query,
+  dependency, cache, or state-loop work was added.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a constrained accessibility correction in an
+  established dialog, not visual reconstruction or a new information architecture.
+- validation:
+  Focused `prescription-compare-dialog`, `patient-list-panel`, and `right-pane` Vitest passed 3 files /
+  13 tests. The final filtered representative Playwright run across chromium and mobile-chromium passed
+  11 tests with 9 intentional opposite-project skips, including desktop comparison Escape and focus return.
+  `pnpm typecheck` passed. `pnpm lint` exited 0 with the two pre-existing no-unused warnings in
+  `src/lib/platform/break-glass.test.ts`; no new lint error was introduced.
+- remaining / next action:
+  This proves the targeted dialog lifecycle only. Manual screen-reader, manual 200% zoom, forced-colors
+  visual, visual-regression baseline, real-write/full E2E, offline persistence/recovery/conflict, and
+  clinical/legal/security specialist validation remain unexecuted. `pnpm build` remains blocked by the prior
+  shared-environment OOM result. Re-run format/diff after this ledger append; no commit was made by this slice.
+
+## 2026-07-11 UI-UX-PHASE9-HOLD-DIALOG-ESCAPE-AND-FOCUS-RETURN — restore cancellable hold review
+
+- current task:
+  Verify the hold-reason dialog with its real radio-focus path, then close any keyboard cancellation or focus
+  return gap without invoking a hold save or changing the clinical workflow.
+- files inspected / changed:
+  Inspected the hold dialog, its conditional mount in `DispensingWorkbench`, store hold actions, set right-pane
+  trigger, focused test, set route-mock E2E, UI SSOT §8.3, and active Phase 5/9 evidence. Changed the hold
+  dialog, its component test, the set route-mock test, and active evidence/progress records.
+- bugs found / fixed:
+  The dialog focused its first radio but depended on its card-local React key handler for Escape. In real
+  Chromium and mobile Chromium, Escape with the radio focused left the dialog open. A document-capture DOM
+  `KeyboardEvent` listener now cancels the local draft regardless of the inner focused control; the existing
+  focus-return cleanup restores the initiating hold button. During validation, TypeScript correctly rejected a
+  React-vs-DOM `KeyboardEvent` type collision; the handler types are now explicitly separated. This is a
+  real browser bug fix, not a test-only change.
+- security / medical safety:
+  The route-mock flow opens and cancels a UI-only hold draft. It sends no save request and performs no database
+  write, patient mutation, external request, authz change, audit event, or persistence operation. Reliable
+  cancellation and focus restoration reduce a keyboard user's risk of being trapped in a clinical review
+  dialog.
+- performance:
+  One document key listener exists only while the modal is open and is removed on cleanup. No request, query,
+  dependency, cache, or persisted state work was added.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a constrained keyboard/accessibility repair
+  in an established dialog, not visual reconstruction or a new information architecture.
+- validation:
+  The focused hold, compare, patient-list, and right-pane Vitest suite passed 4 files / 15 tests. The final
+  filtered representative Playwright run across chromium and mobile-chromium passed 11 tests with 9
+  intentional opposite-project skips, including the set hold dialog's initial radio focus, Escape close, and
+  trigger focus return in both projects. `pnpm typecheck` passed after separating DOM and React event types.
+  `pnpm lint` exited 0 with the two pre-existing no-unused warnings in
+  `src/lib/platform/break-glass.test.ts`; no new lint error was introduced.
+- remaining / next action:
+  The route-mock proof covers the cancellable UI draft only. Manual screen-reader, manual 200% zoom,
+  forced-colors visual, visual-regression baseline, real hold save/real-write/full E2E, offline
+  persistence/recovery/conflict, and clinical/legal/security specialist validation remain unexecuted.
+  `pnpm build` remains blocked by the prior shared-environment OOM result. Re-run format/diff after this ledger
+  append; no commit was made by this slice.
+
+## 2026-07-11 UI-UX-PHASE9-COMPARE-DIALOG-FOCUS-TRAP — keep review focus modal
+
+- current task:
+  Complete the comparison dialog's keyboard lifecycle by preventing Tab and Shift+Tab from reaching clinical
+  controls behind an active modal, while retaining the already-proven Escape and focus-return path.
+- files inspected / changed:
+  Inspected the comparison dialog's focusable descendants, existing document Escape handling, component test,
+  desktop route-mock flow, UI SSOT §8.3, and active evidence/progress records. Changed the dialog, its focused
+  test, the desktop E2E assertion, and active evidence/progress records only.
+- bugs found / fixed:
+  `aria-modal` alone did not provide an explicit focus trap. The dialog now derives its focusable descendants
+  from the card and wraps Tab/Shift+Tab between first and last controls. In the current one-control dialog both
+  directions remain on the close button, so background patient/workbench controls cannot receive focus until
+  dismissal. The existing document-capture Escape listener and unmount cleanup continue to restore the opener.
+- security / medical safety:
+  No clinical data, comparison content, API, database, authz, audit, persistence, or irreversible-action
+  behavior changed. The fix prevents keyboard review from silently drifting to background clinical controls
+  while the comparison modal is active.
+- performance:
+  The focusable lookup runs only for Tab key presses while the view-only dialog is open. No request, query,
+  dependency, cache, or background work was added.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a constrained dialog accessibility repair,
+  not visual reconstruction or a new information architecture.
+- validation:
+  Focused hold, compare, patient-list, and right-pane Vitest passed 4 files / 16 tests. The final filtered
+  representative Playwright run across chromium and mobile-chromium passed 11 tests with 9 intentional
+  opposite-project skips; the desktop comparison case now proves initial focus, Tab/Shift+Tab trap, Escape
+  close, focus return, and its existing mocked irreversible payload path. `pnpm typecheck` passed. `pnpm lint`
+  exited 0 with the two pre-existing no-unused warnings in `src/lib/platform/break-glass.test.ts`; no new lint
+  error was introduced.
+- remaining / next action:
+  This proves the targeted comparison dialog lifecycle only. Manual screen-reader, manual 200% zoom,
+  forced-colors visual, visual-regression baseline, real-write/full E2E, offline persistence/recovery/conflict,
+  and clinical/legal/security specialist validation remain unexecuted. `pnpm build` remains blocked by the
+  prior shared-environment OOM result. Re-run format/diff after this ledger append; no commit was made by this
+  slice.
+
+## 2026-07-11 FE-PHI-SAFE-CLIENT-LOG-001-REPORT-DETAIL — fail-closed mutation failure boundary
+
+- current task:
+  Advance the P1 partial `FE-PHI-SAFE-CLIENT-LOG-001` report-detail slice without exposing raw server errors
+  to the client, and make ambiguous send failures safe against a user-triggered duplicate external delivery.
+- files inspected / changed:
+  Inspected `Plans.md`, report-detail mutations/tests, `client-json`, `error-message`, `client-log`, shared
+  `ErrorState`, the report-send route and idempotency tests, the relevant Next.js client/error-handling guides,
+  and the UI/UX SSOT. Changed only report detail, its tests, and the AI-draft confirmation prop:
+  `src/app/(dashboard)/reports/[id]/page.tsx`, `page.test.tsx`, and
+  `report-ai-draft-review.tsx`.
+- bugs found / fixed:
+  Confirm-draft, single-send, and bulk-send previously surfaced raw `Error.message` values in toast UI. Because
+  client JSON handling preserves non-2xx server `message` values, that could disclose patient, recipient, or
+  provider fragments. Each failure now renders a fixed, assertive `ErrorState` near its action surface and logs
+  only a fixed event plus static allowlisted context. A final independent review found that a plain report
+  `refetch()` could clear a failed send before it proved the outbound result, allowing a later fresh
+  Idempotency-Key. Send and bulk-send now keep the exact normalized request and generated key in a ref and
+  let the user reconcile only that same request. The route's existing contract replays a completed same-key /
+  same-fingerprint result and returns an in-progress conflict without another delivery. All report writes are
+  blocked while a failure is unresolved.
+- security / medical safety:
+  Raw error text is neither stored in React state nor rendered or passed as client-log context. The only client
+  state is the action enum; recipient/body/key data remains in the in-memory recovery ref and is never logged.
+  The recovery copy explicitly states that it reuses the original identifier and creates no separate send
+  request. No authz, database schema, audit, external provider, or production-data behavior was changed.
+- performance:
+  No polling, automatic retry, dependency, or background I/O was added. A recovery request occurs only after
+  the operator explicitly activates the result-confirmation action and reuses the original idempotency key.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a bounded failure/recovery contract within
+  existing action surfaces, not visual reconstruction or a new information architecture.
+- review / Oracle:
+  Independent final review found no P1 issue and requested a P2 regression; the final test now captures the
+  input generated by the real send/bulk buttons and proves the recovery mutation receives that identical
+  object/key. Oracle preflight and target-repository GitHub context were completed, but the advisory browser
+  run failed at Cloudflare / `chrome-disconnected`; no Oracle response was used to justify this change.
+- validation:
+  `pnpm vitest run src/app/(dashboard)/reports/[id]/page.test.tsx --reporter=dot` passed 43 tests;
+  `pnpm vitest run src/app/(dashboard)/reports/[id]/report-ai-draft-review.test.ts --reporter=dot` passed 2;
+  `pnpm vitest run src/app/api/care-reports/[id]/send/route.test.ts --reporter=dot` passed 64. `pnpm typecheck`
+  passed. `pnpm typecheck:no-unused` first exhausted Node's default 4GB heap, then passed with
+  `NODE_OPTIONS=--max-old-space-size=8192` on the 16GB host. Scoped ESLint, `pnpm client-phi-log:check`
+  (1 pre-existing allowlisted raw-error console call), `pnpm frontend-contract:check`,
+  `pnpm boundaries:check`, `pnpm colors:check`, scoped Prettier, and `git diff --check` passed. The final
+  `pnpm test` passed 1479 files with 3 skipped and 15292 tests with 13 skipped.
+- remaining / next action:
+  This fixes the three report-detail mutation surfaces only; the broader FE-PHI inventory (other toasts,
+  notifications, Sentry, offline/retry logging) remains partial. Recovery data intentionally does not survive a
+  full page reload: there is no UI-safe idempotency-status lookup API, so this slice never invents a fresh key
+  to auto-resolve that case. A separate API/product contract is required for durable post-reload reconciliation.
+  No build, commit, push, migration, deploy, or data operation was performed by this slice.
+
+## 2026-07-11 FE-PHI-SAFE-CLIENT-LOG-001-WORKBENCH-AND-SHARED — close high-risk shared boundaries
+
+- current task:
+  Continue the P1 partial FE-PHI-safe-client-log inventory with the highest-leverage clinical write boundary
+  and the public OTP-gated shared-viewer boundary, without weakening idempotency, conflict recovery, or draft
+  preservation.
+- files inspected / changed:
+  Inspected `Plans.md`, `client-json`, `client-log`, the workbench adapter/write types/mutation hook/tests,
+  the external-access self-report route contract, and shared-viewer source/tests. Changed
+  `src/components/features/dispense-workbench/use-workbench-mutations.ts` and its test, plus
+  `src/app/shared/[token]/shared-viewer-content.tsx` and its test. The adapter and server route were inspected
+  but intentionally unchanged.
+- bugs found / fixed:
+  `reportWorkbenchError` was a shared sink for raw `WorkbenchWriteError.message`, 409 detail payloads, and
+  generic Error messages across 13 dispense/audit/set/hold/group/line writes. It now emits only action-specific
+  fixed copy; 409 retains invalidate/refetch/direct rehydrate with fixed conflict guidance, and status 0 retains
+  an explicit outcome-unknown message without automatic retry. The public shared viewer previously rendered raw
+  unlock errors and raw self-report server errors. It now uses fixed alert/toast copy and static client-log
+  context. Self-report response decoding now requires `{ data: { accepted: true, replayed: boolean } }`; network
+  failures, unreadable 2xx, contract-invalid 2xx, and `accepted: false` all preserve the draft/key and use the
+  same result-unknown path. Repeating the same OTP refetches the read query; repeating unchanged self-report
+  content reuses its Idempotency-Key.
+- security / medical safety:
+  No patient, medication, recipient, OTP, token, raw API message, response detail, or request payload is sent
+  to toast UI or client-log context. `clientLog.warn` receives only fixed event/route/entity/code/status values;
+  its shared safe logger omits Error message/stack. The public-viewer tests prove poison strings are absent from
+  DOM/toast/context and prove the OTP is never written to session storage. The clinical workbench's existing
+  conflict recovery and optimistic-recovery behavior remains unchanged.
+- performance:
+  No polling, automatic write retry, new dependency, cache loop, or background I/O was added. A same-OTP read
+  retry occurs only after an explicit button press; a self-report retry retains the existing same-key idempotent
+  request rather than creating a new send.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because both changes are bounded error/recovery states in
+  established action surfaces, not visual reconstruction or new information architecture.
+- review / Oracle:
+  Two independent read-only reviewers found and then verified the workbench/public-viewer fixes; final review
+  reported no P1/P2 findings after the response-schema and `accepted: true` guards. Oracle preflight and GitHub
+  context were completed, but the minimal browser consult failed before a response with
+  `connect ECONNREFUSED 127.0.0.1:55428`; no Oracle answer was used. The prior failed session was not retried.
+- validation:
+  Focused workbench mutation+adapter Vitest passed 2 files / 35 tests; public shared-viewer Vitest passed 1
+  file / 15 tests. The combined targeted report/workbench/shared/API suite passed 6 files / 159 tests.
+  `pnpm typecheck` and `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` passed.
+  `pnpm client-phi-log:check` (1 pre-existing allowlisted raw-error console call),
+  `pnpm frontend-contract:check`, `pnpm boundaries:check`, `pnpm colors:check`, scoped ESLint/Prettier, and
+  `git diff --check` passed. The final `pnpm test` passed 1479 files with 3 skipped and 15297 tests with
+  13 skipped.
+- remaining / next action:
+  FE-PHI-SAFE-CLIENT-LOG-001 remains partial: the current inventory still contains 210
+  `toast.error(messageFromError(...))` call sites plus inline raw-error and Sentry/offline-retry review scope.
+  Next prioritize the visit-record save/attachment/residual-observation fan-out or inbound-communications
+  inline/toast boundary as a separately reviewed slice. Adapter error objects still retain raw payloads in
+  memory; their current display/log consumer is safe, but a future adapter-level fixed-code refactor is
+  defense-in-depth work. No build, commit, push, migration, deploy, or data operation was performed.
+
+## 2026-07-11 UI-UX-DV08-INTAKE-READABILITY-AND-PHI-SAFE-RECOVERY — restore complete triage identifiers
+
+- current task:
+  Advance the UI/UX Refresh P2 DV-08 only: make prescription-intake issuer/content/Rx identifiers readable in
+  the existing DataTable and ensure a failed triage read does not render a raw server error.
+- files inspected / changed:
+  Inspected the Phase 5 DV-08 record, UI/UX SSOT §§2.3/3.10/5.5/6.1/6.3/8, current Next.js 16 client/error/
+  accessibility guides, intake triage and prescription-workspace/table source/tests, DataTable behavior,
+  `clientLog`, and the client JSON-schema ratchet. Changed both intake/prescription display paths and their
+  focused tests plus `tools/client-json-schema-allowlist.json`; refreshed the active Phase 5/8/9 evidence
+  documents.
+- bugs found / fixed:
+  Issuer/content and the existing prescription-table prescriber cell used irreversible `truncate`; content
+  offered only a native hover title, so keyboard and touch users could not recover long prescription/Rx/provider
+  identifiers. All three now retain their existing table layout but allow `overflow-wrap: anywhere` full-text
+  reading. The triage and prescription-list failure states passed raw query error messages toward `ErrorState`,
+  which could disclose server-provided PHI. They now use fixed recovery copy and `clientLog.warn` with static
+  route/entity/code context only. The concurrent shared viewer schema migration reduced a string-fallback debt
+  from two to one; its allowlist baseline was stale and is now ratcheted downward rather than weakening the
+  migration.
+- security / medical safety:
+  No API, query key, persistence, authorization, patient selection, clinical decision, audit, or mutation
+  behavior changed. Long issuers, prescription content, Rx numbers, and prescriber names are no longer hidden
+  behind hover-only recovery. Raw error message text is not rendered or passed as client-log context; focused
+  poison-string tests prove the fixed error boundaries and explicit retry. No database write, external request,
+  or production data operation was performed.
+- performance:
+  The table keeps its bounded scroll container and column model. Wrapping can increase a long row's height but
+  adds no data fetch, cache, state, dependency, polling, or background work.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a constrained readability/error-boundary
+  correction within an established DataTable, not a visual reconstruction or new information architecture.
+- validation:
+  Focused intake-triage/prescription-table/workspace Vitest passed 3 files / 27 tests. `pnpm format:check`,
+  `pnpm lint` (exit 0; only the two pre-existing unused-argument warnings in
+  `src/lib/platform/break-glass.test.ts`),
+  `pnpm typecheck`, `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`,
+  `pnpm boundaries:check`, `pnpm client-phi-log:check`, `pnpm client-json-schema:check`
+  (110 schema-backed / 267 allowlisted schema-less / 0 new debt), `pnpm frontend-contract:check`,
+  `pnpm colors:check`, `pnpm typography:check`, `pnpm api-response-shape:check`, and `git diff --check`
+  passed. Final `pnpm test` passed 1479 files / 15301 tests (13 skipped), and the route-mocked workbench
+  Phase 9 browser subset passed 8 cases with 8 project-gated skips; neither substitutes
+  for a browser proof of this triage slice.
+- remaining / next action:
+  Browser visual/E2E, real touch device, manual screen reader/200% zoom/forced-colors, visual regression, and
+  clinical review for this triage surface remain NOT_EXECUTED. Overall UI/UX Refresh remains in progress:
+  Phase 7/8 all-screen rollout and Phase 9 full build/standalone, full E2E, manual accessibility, offline/sync,
+  and specialist gates are not complete. `pnpm build` remains blocked by the prior shared-environment OOM;
+  no commit, push, migration, deploy, or data operation was performed.
+
+## 2026-07-11 FE-PHI-SAFE-CLIENT-LOG-001-PATIENT-BOARD — preserve safe recovery for patient-list reads
+
+- current task:
+  Remove raw query-error disclosure from the high-frequency patient board's initial and cursor-pagination
+  failure surfaces without changing the board API, patient selection, search/filter state, or cached-card stale
+  behavior.
+- files inspected / changed:
+  Inspected `PatientsBoard`, its cursor reader and existing stale-error behavior, focused board tests, `ErrorState`,
+  `clientLog`, UI/UX SSOT §§2.3/6.1/6.3/8, and the Next.js client/error/accessibility guide. Changed only
+  `patients-board.tsx`, `patients-board.test.tsx`, and the active UI/UX evidence/progress ledger.
+- bugs found / fixed:
+  An initial `boardQuery` failure passed `error.message` as ErrorState detail; a failed additional signed-cursor
+  page stored the same raw message in visible alert state. Either server message could contain patient or other
+  sensitive fragments. Initial failure now shows its existing fixed cause/next-action copy and logs only static
+  context. Cursor failure now logs the same way and shows a fixed retryable message, leaving existing cards and
+  the load-more control intact. Background refetch with cached data remains a stale banner, not a full error
+  surface.
+- security / medical safety:
+  No patient values, raw error text, request payload, or cursor enter DOM or client-log context. The 26-test
+  focused suite uses poison strings to prove both failure paths are PHI-safe. No API/query key, authz,
+  persistence, audit, selection, clinical workflow, external request, or database write changed.
+- performance:
+  A passive log effect runs only for an initial no-data query error. Cursor errors add one bounded client-log call
+  only when the operator requests another page. No polling, cache, dependency, or data-fetch change was added.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a bounded error/recovery correction in an
+  established board, not visual reconstruction or a new information architecture.
+- validation:
+  Focused `patients-board` Vitest passed 1 file / 26 tests. `pnpm format:check`, `pnpm lint` (exit 0; only the
+  two pre-existing unused-argument warnings in `src/lib/platform/break-glass.test.ts`), `pnpm typecheck`,
+  `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`, `pnpm boundaries:check`,
+  `pnpm client-phi-log:check`, `pnpm frontend-contract:check`, `pnpm colors:check`, `pnpm typography:check`,
+  and `git diff --check` passed. Final `pnpm test` passed 1479 files / 15301 tests (13 skipped).
+- remaining / next action:
+  This closes only the patient-board read-error disclosures. The wider FE-PHI-safe inventory still contains
+  toast/inline/Sentry/offline-retry candidates; Phase 7/8 all-screen rollout and Phase 9 build/standalone,
+  full E2E, manual a11y, offline/sync, visual regression, and clinical/legal/security reviews remain incomplete.
+  No commit, push, migration, deploy, or data operation was performed.
+
+## 2026-07-11 FE-PHI-SAFE-CLIENT-LOG-001-DASHBOARD-COCKPIT — safe segmented-read recovery
+
+- current task:
+  Close raw server-error disclosure in the dashboard cockpit's initial summary, details, team-capacity,
+  comments, and inbound-feed reads while preserving the existing no-data recovery and cached-data stale paths.
+- files inspected / changed:
+  Inspected `dashboard-cockpit.tsx`, its query-state test harness, `SegmentError`, `clientLog`, the UI/UX
+  SSOT §§2.3/6.1/6.3/8, and the relevant Next.js client/error/accessibility guidance. Changed only
+  `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx` and its focused test.
+- bugs found / fixed:
+  Each no-data cockpit segment passed `Error.message` into a visible `SegmentError` detail. A server-provided
+  message could therefore expose patient, medication, communication, or staff fragments. The five states now
+  retain their existing fixed cause/next-action/retry copy and route metadata, omit error payloads from the
+  DOM, and emit only coded `clientLog.warn` events with static route/entity/code context. Cached summary or
+  segment data still takes the existing stale banner path and does not produce a full-error state or initial
+  failure log.
+- security / medical safety:
+  The focused tests inject five different PHI-like poison messages and prove each is absent from the DOM while
+  the static client-log event remains available for observability. No patient data, raw error text, request
+  payload, cache value, authorization, audit, clinical workflow, API, or database behavior changed.
+- performance:
+  The passive error effect performs at most five bounded checks on a cockpit render and sends no request or
+  automatic retry. It logs only no-data failures; cached-data refetch failures retain their existing banner.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a bounded recovery-boundary correction in an
+  established cockpit, not visual reconstruction or a new information architecture.
+- validation:
+  Focused `dashboard-cockpit` Vitest passed 1 file / 22 tests. `pnpm typecheck`, `pnpm client-phi-log:check`
+  (1 pre-existing allowlisted raw-error console call), `pnpm format:check`, `pnpm lint` (exit 0; only the two
+  pre-existing unused-argument warnings in `src/lib/platform/break-glass.test.ts`), `pnpm boundaries:check`,
+  `pnpm frontend-contract:check`, `pnpm colors:check`, `pnpm typography:check`, and `git diff --check` passed.
+  Final `pnpm test` passed 1479 files with 3 skipped and 15302 tests with 13 skipped.
+- remaining / next action:
+  This closes only the five cockpit read-error disclosures. The broader FE-PHI inventory and UI/UX Refresh
+  Phase 7/8 all-screen rollout remain partial; Phase 9 full build/standalone, full E2E, manual screen reader,
+  200% zoom, forced-colors visual, offline/sync/conflict, visual-regression, and clinical/legal/security
+  specialist gates remain unexecuted. `pnpm build` remains blocked by the previously observed shared-host OOM.
+  No commit, push, migration, deploy, or data operation was performed.
+
+## 2026-07-11 FE-PHI-SAFE-CLIENT-LOG-001-INBOUND-READS — audited-detail and stock-summary recovery
+
+- current task:
+  Close two raw-error display paths in the inbound communication review surface without changing its five
+  mutation contracts, audited-detail authorization, stock-application guard, or retry behavior.
+- files inspected / changed:
+  Inspected `inbound-content.tsx`, its focused test harness, `messageFromError`, `clientLog`, `ErrorState`,
+  the inbound detail and medication-stock query contracts, UI/UX SSOT §§2.3/6.1/6.3/8, and relevant Next.js
+  client/error/accessibility guidance. Changed only
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx` and its test.
+- bugs found / fixed:
+  The explicitly requested audited-detail read and the post-detail medication-stock-summary read each rendered
+  arbitrary `Error.message` via `messageFromError`. Either error may contain patient, medication, contact, or
+  external communication data. Both states now preserve their existing fixed title, next action, retry button,
+  query keys, `retry: false`, and audited-detail/stock guards, while using fixed cause copy and static
+  `clientLog.warn` events. The five write-mutation error contracts in the same screen were deliberately left
+  unchanged for a separate idempotency/recovery review.
+- security / medical safety:
+  Two focused poison-string tests prove no patient-like name, phone, residual amount, or token reaches the DOM;
+  client logging receives only static route/entity/code context and the safe logger never emits error message or
+  stack. No raw detail authorization, patient ID, stock target, observation, API request, audit, mutation,
+  cache, or persistence behavior changed.
+- performance:
+  The two passive effects do no I/O, polling, or automatic retry. They execute only when the respective
+  already-enabled read reports an error; existing operator-driven retry remains the sole retry path.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a bounded error/recovery correction in an
+  established review panel, not visual reconstruction or a new information architecture.
+- validation:
+  Focused `inbound-content` Vitest passed 1 file / 15 tests. `pnpm typecheck`, `pnpm client-phi-log:check`
+  (1 pre-existing allowlisted raw-error console call), `pnpm format:check`, `pnpm lint` (exit 0; only the two
+  pre-existing unused-argument warnings in `src/lib/platform/break-glass.test.ts`), `pnpm boundaries:check`,
+  `pnpm frontend-contract:check`, `pnpm colors:check`, `pnpm typography:check`, and `git diff --check` passed.
+  Final `pnpm test` passed 1479 files with 3 skipped and 15304 tests with 13 skipped.
+- remaining / next action:
+  This closes only the two inbound read-error disclosures. The inbound write errors, broader FE-PHI inventory,
+  Phase 7/8 all-screen rollout, and Phase 9 full build/standalone, full E2E, manual accessibility, offline/sync,
+  visual-regression, and clinical/legal/security specialist gates remain incomplete. `pnpm build` remains
+  blocked by the previously observed shared-host OOM. No commit, push, migration, deploy, or data operation was
+  performed.
+
+## 2026-07-11 UI-UX-PHASE9-BUILD-ENVIRONMENT-RECHECK — resource gate remains external
+
+- current task:
+  Reassess whether the unresolved full webpack build can safely run in the current shared host before claiming
+  Phase 9 progress.
+- files / runtime inspected:
+  Inspected the `package.json` build command, prior build evidence in this ledger, filesystem capacity, physical
+  memory, and current top resident processes. No source, configuration, generated cache, process, database, or
+  external system was changed.
+- finding:
+  The build already requests an 8GiB Node heap. The host has 16GiB physical memory while the shared
+  `harness-mem` runtime currently has about 7.2GiB RSS and the OpenClaw gateway about 1.1GiB RSS. The prior
+  webpack build reached roughly 10GiB in `.next/cache/webpack`, reduced free disk to about 8.5GiB, and an
+  earlier attempt exited 137 without a code diagnostic. Current free disk is only about 19GiB. Running another
+  build under these conditions risks another host-level OOM or disk-pressure failure and would not distinguish a
+  repository defect from the environment constraint.
+- decision / next action:
+  Do not stop shared runtimes or delete generated cache without explicit authorization. Keep `pnpm build`,
+  standalone runtime, full E2E, manual screen-reader/200% zoom/forced-colors, offline/sync/conflict,
+  visual-regression, and clinical/legal/security specialist evidence as NOT_EXECUTED until a clean or adequately
+  provisioned environment and the required human review are available. No commit, push, migration, deploy, or
+  data operation was performed.
+
+## 2026-07-11 UI-UX-PHASE9-ROUTE-MOCK-RECHECK — safe browser evidence after DV-02 ledger commit
+
+- current task:
+  Execute the Phase 9 browser subset that remains safe in the shared environment after reviewing commit
+  `1a8a986f5` (`docs(ui-ux): record DV-02 typography floor completion and honest Phase 9 status`).
+- files / runtime inspected:
+  Inspected the current `package.json` E2E commands, `playwright.local.config.ts`,
+  `tools/tests/e2e-prescription-dispensing-flow.spec.ts`, the Phase 9 evidence/risk ledgers, and the active
+  dirty tree. Started the local webpack development server only for the test session and stopped it afterward.
+  No production source, E2E fixture, database schema, cache, or runtime configuration was changed.
+- validation:
+  `pnpm test:e2e:local --grep 'route-mocked|mobile dispense|mobile set-audit'
+tools/tests/e2e-prescription-dispensing-flow.spec.ts` passed 10 tests with 8 intentional opposite-project
+  skips. It proves the route-mocked desktop unit-aware dispense payload, 375px mobile controls/long identity/
+  confirmation/offline layout, desktop forced-colors named-landmark and keyboard focus, 768×512
+  200%-equivalent control reachability, 768×1024 tablet comparison/quantity/Axe critical-serious zero, and
+  set/set-audit safety chip/hold-focus/mobile controls. The target write endpoint is intercepted and fulfilled
+  in-browser; no real dispense, set-audit, or database write was made. Server output contained only GET routes
+  for the tested pages and notification summary.
+- evidence boundary:
+  This is a route-mocked regression and accessibility smoke, not a production or real-data safety proof. It does
+  not execute the full 700-test E2E matrix, real irreversible writes, two-session conflict, offline persistence
+  recovery, manual browser 200% zoom, manual screen-reader evaluation, visual-regression baseline, standalone
+  build, or clinical/legal/security specialist review.
+- next action:
+  Preserve the full-build/standalone gate for a clean adequately provisioned host and retain the human review
+  gates as NOT_EXECUTED. No commit, push, migration, deployment, data mutation, or destructive cleanup was
+  performed.
+
+## 2026-07-11 UI-UX-PHASE9-VISUAL-REGRESSION-E2E-SCHEMA-GATE — runtime baseline cannot yet be judged
+
+- current task:
+  Run the existing Chromium visual-regression suite after the route-mocked Phase 9 smoke and determine whether
+  a source defect, stale baseline, or local E2E runtime prerequisite blocks a valid visual result.
+- files / runtime inspected:
+  Inspected `tools/tests/ui-visual-regression.spec.ts`, its current snapshots and selectors, the local dev-server
+  output, the dashboard and report-workspace routes, and read-only Prisma migration status against the local
+  `ph_os_e2e` database. The local dev server was started only for the suite and stopped afterward. No snapshot,
+  source, schema, database, cache, or runtime configuration was changed.
+- finding:
+  `pnpm test:e2e:local tools/tests/ui-visual-regression.spec.ts` reported 4 failures and 4 project-gated skips:
+  dashboard differed from its 811×198 snapshot (actual 284×330), patients differed from its 1232×3903 snapshot
+  (actual 1232×8055), and both report views could not find `report-waiting-box`. The actual dashboard used the
+  current three-column layout rather than the old wide-card baseline, so neither screenshot can safely be
+  accepted as a new reference. During the same run, `/api/dashboard/cockpit/details` and
+  `/api/care-reports/today-workspace` returned 500. Read-only
+  `prisma migrate status --schema=prisma/schema/` found seven unapplied E2E migrations:
+  `20260706033000_add_audit_log_review_state`, `20260707070000_add_inbound_communication_schema`,
+  `20260707083000_add_audit_log_review_display_id`, `20260707084000_add_inbound_attachment_display_id`,
+  `20260707090000_add_medication_stock_ledger`,
+  `20260708093000_add_medication_stock_visit_observation_context`, and
+  `20260709170000_rebuild_standard_clinical_integration`. This schema drift aligns with the two failing runtime
+  route dependencies; the focused report-workspace route unit suite still passed 32 tests.
+- decision / next action:
+  Do not apply migrations or update visual snapshots without explicit authorization and a stable seeded E2E
+  database. The valid next visual-regression run requires that approved environment prerequisite, then the same
+  suite can distinguish current-layout baseline work from source regressions. This leaves the full Phase 9 visual
+  gate NOT_EXECUTED; no commit, push, migration, deployment, data mutation, or destructive cleanup was performed.
+
+## 2026-07-11 FE-PHI-SAFE-CLIENT-LOG-001-INBOUND-WRITES — fixed recovery for five mutation failures
+
+- current task:
+  Remove raw server-error disclosure from the five inbound communication write paths while preserving their
+  successful state transitions, audited-detail guards, idempotency behavior, and operator-entered drafts.
+- files inspected / changed:
+  Inspected the five `useMutation` configurations and their existing success/invalidation tests in
+  `src/app/(dashboard)/communications/inbound/inbound-content.tsx`, the component test harness,
+  `clientLog`, the client PHI-log ratchet, and UI/UX SSOT §§2.3/6.1/6.3/8. Changed only
+  `inbound-content.tsx` and `inbound-content.test.tsx` in this slice.
+- bugs found / fixed:
+  Intake creation, pharmacist-task creation, signal review, medication-stock application, and source-mapping
+  save each passed `messageFromError` output directly to a toast. Server text could carry patient, medication,
+  contact, or inbound-message fragments. Each failure now emits its existing fixed Japanese recovery message and
+  a coded `clientLog.warn` event with only static route/entity/code context. The callbacks do not clear input
+  state, retry automatically, or alter fetch payloads. Their existing successful behavior remains unchanged:
+  intake reset/invalidation, task and review invalidation, stock-specific reset plus the existing idempotency key,
+  and source-mapping reset occur only on success.
+- security / medical safety:
+  A focused poison-error regression invokes all five callbacks and proves the sensitive message is absent from
+  toast arguments and log context while each fixed event/context is retained. `clientLog` receives the Error only
+  through its shared safe logger, which omits error message and stack. No API, authorization, audit, patient
+  selection, clinical decision, persistence, or external request behavior changed.
+- performance:
+  Five bounded client-log calls occur only after an already-attempted mutation fails. No polling, automatic retry,
+  request, cache loop, dependency, or background work was introduced.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a bounded recovery-boundary correction in an
+  established review panel, not visual reconstruction or new information architecture.
+- validation:
+  Focused `inbound-content` and `client-log` Vitest passed 2 files / 23 tests. `pnpm typecheck` passed;
+  `pnpm client-phi-log:check` passed with 1 pre-existing allowlisted raw-error console call; final `pnpm test`
+  passed 1479 files with 3 skipped and 15305 tests with 13 skipped. Prettier was applied to the two changed
+  component files.
+- remaining / next action:
+  This closes only the five inbound mutation-error disclosures. FE-PHI-SAFE-CLIENT-LOG-001 remains partial for
+  the broader inline/toast/Sentry/offline-retry inventory. Retain the migration-gated Phase 9 visual suite and
+  the build/standalone/manual accessibility/offline-sync/specialist gates as NOT_EXECUTED. No commit, push,
+  migration, deployment, data mutation, or destructive cleanup was performed.
+
+## 2026-07-11 FE-PHI-SAFE-CLIENT-LOG-001-VISIT-RECORD-FORM — preserve saved/unsaved recovery state
+
+- current task:
+  Close raw failure-message disclosure in the high-risk visit-record save surface without changing form drafts,
+  attachment partial-success behavior, medication-stock idempotency/retry, location capture, or clinical write
+  contracts.
+- files inspected / changed:
+  Inspected `visit-record-form.tsx`, its large form/idempotency/attachment test harness,
+  `medication-stock-observation.ts` and its transport tests, `clientLog`, UI/UX SSOT §§2.3/6.1/6.3/8, and the
+  Phase 9 evidence state. Changed only the visit-record form, medication-stock submission helper, their focused
+  tests, and this ledger.
+- bugs found / fixed:
+  Visit-record save, GPS capture, attachment link/upload partial failures, and medication-stock observation
+  failures could surface `Error.message`, response `message`, or helper-propagated transport text. Patient,
+  location, medication, contact, attachment, or token fragments could therefore reach an operator toast. The
+  form now retains existing fixed recovery copy and coded `clientLog.warn` events with static route/entity/code
+  context. Attachment link/upload warnings remain the same partial-success workflow: the visit record stays
+  saved and routes to its detail, while only the attachment warning is fixed. The medication-stock helper now
+  exposes only the three stable `conflict`/`unavailable`/`error` statuses; the form maps them to fixed retryable
+  copy, preserves pending request/draft state, and reuses the existing idempotency key.
+- security / medical safety:
+  Focused poison-string tests cover save, GPS, attachment-link, attachment-upload, HTTP response, and transport
+  exception paths. They prove raw server/transport text is absent from toast arguments and client-log context;
+  the shared logger omits raw Error message and stack. No patient selection, consent, authorization, API payload,
+  record versioning, attachment persistence contract, audit behavior, clinical decision, or database write path
+  changed.
+- performance:
+  Failure paths add one bounded safe client-log call only after the attempted operation fails. No polling,
+  automatic retry, request, cache loop, dependency, state expansion, or background work was introduced.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a bounded error/recovery correction within an
+  established clinical form, not visual reconstruction or new information architecture.
+- validation:
+  Focused visit-record-form, medication-stock-observation, and client-log Vitest passed 3 files / 67 tests.
+  `pnpm typecheck`, `pnpm client-phi-log:check` (1 pre-existing allowlisted raw-error console call),
+  `pnpm boundaries:check`, `pnpm frontend-contract:check`, `pnpm format:check`, and `git diff --check` passed.
+  Final `pnpm test` passed 1479 files with 3 skipped and 15309 tests with 13 skipped.
+- remaining / next action:
+  This closes only the visit-record-form and stock-submission message boundaries. The visit-record detail/evidence
+  capture paths and broader FE-PHI inline/toast/Sentry/offline-retry inventory remain partial. Retain the
+  migration-gated Phase 9 visual suite and build/standalone/manual accessibility/offline-sync/specialist gates
+  as NOT_EXECUTED. No commit, push, migration, deployment, data mutation, or destructive cleanup was performed.
+
+## 2026-07-11 FE-PHI-SAFE-CLIENT-LOG-001-VISIT-DETAIL-AND-CAPTURE — post-visit action recovery
+
+- current task:
+  Close raw mutation-error disclosure in post-visit report/schedule/billing actions and mobile evidence capture
+  without changing their write, navigation, partial-success, or patient-safety gates.
+- files inspected / changed:
+  Inspected `visit-record-detail.tsx`, `capture-content.tsx`, their focused query/mutation test harnesses,
+  `clientLog`, UI/UX SSOT §§2.3/6.1/6.3/8, and existing visit-action contracts. Changed only the two components,
+  their tests, and this ledger.
+- bugs found / fixed:
+  Report generation, next-visit creation, billing-candidate generation, evidence-photo persistence, and visit-end
+  PATCH each passed arbitrary `Error.message` to toast UI. A route or storage failure could contain patient,
+  attachment, location, contact, or provider text. All five boundaries now retain fixed Japanese recovery copy
+  and emit coded `clientLog.warn` events with static route/entity/code context. Evidence capture uses one shared
+  failure reporter for both shutter and file-picker paths; its existing patient/safety fail-closed gates and
+  offline draft queue remain unchanged. Visit-end still requires known record version plus start time and makes
+  the same PATCH only after the operator action.
+- security / medical safety:
+  Poison-string tests cover all three post-visit mutation callbacks, evidence-draft persistence, and the visit-end
+  server error. They prove sensitive error text is absent from toast arguments and logger context, while the
+  shared safe logger receives only Error type plus static observability metadata. No patient details, consent,
+  authorization, clinical decision, attachment bytes, schedule payload, billing payload, report payload, audit,
+  persistence, or external request semantics changed.
+- performance:
+  Each already-failed action emits one bounded safe log call. No cache behavior, polling, automatic retry,
+  background upload, data fetch, dependency, or render loop changed.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is constrained error/recovery work in established
+  post-visit surfaces, not visual reconstruction or new information architecture.
+- validation:
+  Focused `visit-record-detail` + `client-log` Vitest passed 2 files / 29 tests; focused `capture-content` +
+  `client-log` Vitest passed 2 files / 18 tests. `pnpm typecheck`, `pnpm client-phi-log:check`
+  (1 pre-existing allowlisted raw-error console call), `pnpm boundaries:check`, and
+  `pnpm frontend-contract:check` passed. Final `pnpm test` passed 1479 files with 3 skipped and 15311 tests
+  with 13 skipped.
+- remaining / next action:
+  This closes only the detail and capture mutation boundaries. Other visit surfaces (brief, voice memo, facility
+  packet) and the broader FE-PHI inline/toast/Sentry/offline-retry inventory remain partial. Retain the
+  migration-gated Phase 9 visual suite and build/standalone/manual accessibility/offline-sync/specialist gates
+  as NOT_EXECUTED. No commit, push, migration, deployment, data mutation, or destructive cleanup was performed.
+
+## 2026-07-11 FE-PHI-SAFE-CLIENT-LOG-001-VISIT-AUXILIARY — close remaining visit mutation toasts
+
+- current task:
+  Finish the remaining direct `messageFromError` mutation-toasts in the visit brief, facility packet, and voice
+  memo screens without changing their draft, confirmation, write, or retry behavior.
+- files inspected / changed:
+  Inspected `visit-brief-review-content.tsx`, `facility-packet-content.tsx`, `voice-memo-content.tsx`, their
+  mutation tests, `clientLog`, and the existing visit contracts. Changed only those three components, their
+  focused tests, and this ledger.
+- bugs found / fixed:
+  Pharmacist brief feedback, facility-packet save, and voice-memo append each surfaced raw server `Error.message`
+  in a toast. The facility packet could expose concurrent route/order context; feedback and voice append can
+  carry clinical patient text. Each now shows its existing fixed recovery message and emits a coded safe log
+  event with static route/entity/code context. The facility packet retains its edit draft on failure; voice memo
+  retains its transcript and enabled append action; brief confirmation success state remains success-only.
+- security / medical safety:
+  Poison-string tests prove all three error callbacks keep patient-like name, phone, and token text out of the
+  toast and logger context. `clientLog` receives only the raw Error through the shared logger path that omits
+  message and stack. No patient details, authorization, safety gate, feedback payload, facility packet payload,
+  transcript, API routing, audit, persistence, or external request semantics changed.
+- performance:
+  A bounded client-log call occurs only after a failed operator mutation. No polling, automatic retry, cache
+  behavior, background upload, dependency, or render loop changed.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is bounded failure/recovery work in established
+  visit screens, not visual reconstruction or new information architecture.
+- validation:
+  Focused visit-brief, facility-packet, voice-memo, and client-log Vitest passed 4 files / 24 tests.
+  `pnpm typecheck`, `pnpm client-phi-log:check` (1 pre-existing allowlisted raw-error console call),
+  `pnpm boundaries:check`, and `pnpm frontend-contract:check` passed. Final `pnpm test` passed 1479 files with
+  3 skipped and 15313 tests with 13 skipped.
+- remaining / next action:
+  The direct visit-screen mutation-toasts in this inventory are now closed. FE-PHI-SAFE-CLIENT-LOG-001 remains
+  partial for non-visit inline/toast/Sentry/offline-retry boundaries. Retain the migration-gated Phase 9 visual
+  suite and build/standalone/manual accessibility/offline-sync/specialist gates as NOT_EXECUTED. No commit,
+  push, migration, deployment, data mutation, or destructive cleanup was performed.
+
+## 2026-07-11 UI-UX-PHASE9-PATIENT-EDIT-FAILED-OVERVIEW-ROUTE-MOCK — P1 failure-state browser proof
+
+- current task:
+  Add the missing Phase 9 browser evidence for NF-01: a failed patient-overview request must never be presented
+  as a missing patient, must not disclose the raw server detail, and must offer a working retry action.
+- files inspected / changed:
+  Inspected `patient-edit-content.tsx`, its existing fetch unit tests, `ErrorState`, the local Playwright helper
+  and dashboard-shell route-mock conventions, `playwright.local.config.ts`, and the active dirty tree. Added only
+  `tools/tests/ui-patient-edit-error-route-mocked.spec.ts` plus this ledger entry.
+- validation:
+  Started `pnpm dev:e2e:local` only for the test session, then ran
+  `pnpm test:e2e:local tools/tests/ui-patient-edit-error-route-mocked.spec.ts`. Chromium passed (1 passed; the
+  duplicate mobile project was intentionally skipped). The route mock returns a synthetic 500 response; the test
+  proves the level-2 failure heading and fixed cause/next-action copy appear, the not-found copy and raw server
+  detail are absent, and clicking `再試行` produces another overview request. The expected browser resource-error
+  caused by the intentional 500 is isolated; any other console/page error fails the test. Local authentication
+  resolves the existing E2E demo user via the helper's read-only query. No write endpoint, fixture seed, migration,
+  cache, or production data was changed. The dev server was stopped after validation. `pnpm format:check`,
+  `pnpm typecheck`, and final `pnpm test` passed (1479 files / 15313 tests; 3 files / 13 tests skipped).
+  `pnpm client-phi-log:check` passed with 1 pre-existing allowlisted raw-error console call;
+  `pnpm boundaries:check`, `pnpm frontend-contract:check`, `pnpm typography:check`, and `git diff --check` passed.
+- security / medical safety:
+  The regression uses a synthetic PHI-like server-detail marker and proves it is absent from the rendered page.
+  This is evidence for the existing fixed recovery boundary only; it does not alter patient selection,
+  authorization, clinical logic, persistence, or audit behavior.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a test-only failure/retry verification in an
+  established page, not a visual reconstruction or new information architecture.
+- remaining / next action:
+  NF-01 now has focused unit and Chromium route-mock browser evidence, but the full Phase 9 build/standalone,
+  schema-ready visual regression, full E2E, manual zoom/screen-reader, offline/conflict, and specialist-review
+  gates remain NOT_EXECUTED. No commit, push, migration, deployment, data mutation, or destructive cleanup was
+  performed.
+
+## 2026-07-11 UI-UX-PHASE9-ADMIN-PERFORMANCE-FALSE-ZERO-ROUTE-MOCK — P1 signal-state browser proof
+
+- current task:
+  Add the missing Phase 9 browser evidence for NF-02: failed workflow, schedule, proposal, or runtime inputs to
+  the administrator performance screen must remain visibly unavailable rather than being misrepresented as 0.
+- files inspected / changed:
+  Inspected `admin/performance/page.tsx`, its existing false-zero unit contract, the lightweight workflow
+  Playwright fixture, staff-KPI response shape, local auth helper, and the active dirty tree. Changed only
+  `tools/tests/ui-workflow-lightweight-views.spec.ts` plus this ledger entry. The existing success assertion was
+  tightened to the named action-signal region because `API P95` intentionally appears in both the signal strip and
+  KPI grid; the shared fixture now supplies a deterministic empty staff-KPI response.
+- validation:
+  Started `pnpm dev:e2e:local` only for this test session, then ran
+  `pnpm test:e2e:local tools/tests/ui-workflow-lightweight-views.spec.ts`. Chromium passed 4 tests and the
+  duplicate mobile project intentionally skipped 4. The added route-mock case makes all four source endpoints
+  return a synthetic 500 response, waits for the existing ErrorState, and proves the five action-signal values are
+  `—`, `—`, `—ms`, `—`, `—` (not a fabricated exact `0`) while the raw server-detail marker is absent. The
+  expected browser resource-error caused by those intentional 500s is isolated; any other console/page error fails
+  the test. The local auth helper resolves only the E2E demo user through its read-only query. No write endpoint,
+  fixture seed, migration, cache, or production data was changed. The dev server was stopped after validation.
+  `pnpm format:check`, `pnpm typecheck`, `pnpm client-phi-log:check` (1 pre-existing allowlisted raw-error
+  console call), `pnpm boundaries:check`, `pnpm frontend-contract:check`, `pnpm typography:check`, and
+  `git diff --check` passed.
+- security / medical safety:
+  This protects the pre-existing P1 control against a false all-clear for emergency-impact or approval signals.
+  The test uses synthetic route responses only; it does not change authorization, patient data, clinical logic,
+  persistence, audit, or alert semantics.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a test-only state/recovery verification in an
+  established page, not a visual reconstruction or new information architecture.
+- remaining / next action:
+  NF-02 now has focused unit and Chromium route-mock browser evidence. Full Phase 9 build/standalone,
+  schema-ready visual regression, full E2E, manual zoom/screen-reader, offline/conflict, and specialist-review
+  gates remain NOT_EXECUTED. No commit, push, migration, deployment, data mutation, or destructive cleanup was
+  performed.
+
+## 2026-07-11 UI-UX-NF05-PLATFORM-RECOVERY-BOUNDARY — preserve platform context on failure
+
+- current task:
+  Correct the P2 `/platform` error-recovery path so an operator does not leave the break-glass console for the
+  tenant dashboard after a route-segment failure, and add the missing lightweight platform loading boundary.
+- files inspected / changed:
+  Inspected `platform/layout.tsx`, `platform-shell.tsx`, tenant-directory behavior, the common
+  `route-error-boundary`, existing admin loading/error conventions, UI SSOT recovery/loading requirements, and
+  Next.js 16.2.9 local file-convention references for `error.tsx` and `loading.tsx`. Changed only
+  `route-error-boundary.tsx`, added `src/app/platform/error.tsx`, `src/app/platform/loading.tsx`, their focused
+  tests, and this ledger.
+- bugs found / fixed:
+  The shared route boundary hard-coded its secondary action to `/dashboard`, which is a different tenant-context
+  surface and can be inaccessible to a platform operator. Its recovery target is now optional with the existing
+  dashboard label/href retained as the default for all current callers. The new platform boundary selects
+  `/platform` and an explicit platform-console label. The new loading boundary is a single polite status with a
+  lightweight directory-shaped skeleton inside the existing `PlatformShell`; it does not duplicate the tenant
+  dashboard shell or break-glass banner.
+- security / medical safety:
+  No authentication, authorization, tenant lookup, break-glass session, audit event, patient data, API, or
+  persistence logic changed. The error boundary continues to emit only coded route/digest context to the shared
+  client logger and does not render raw Error text. The segment boundary cannot and does not claim to catch the
+  same-segment platform layout's authorization/database errors, consistent with the Next.js route-boundary model.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this composes existing `ErrorState` and `SkeletonRows`
+  primitives in an established console shell; no visual reconstruction or new information architecture was made.
+- validation:
+  Focused `pnpm vitest run src/components/ui/route-error-boundary.test.tsx src/app/platform/loading.test.tsx
+--reporter=dot --testTimeout=30000` passed 2 files / 3 tests. It proves the default dashboard recovery is
+  preserved, the platform recovery link points to `/platform`, raw synthetic error detail is absent, retry calls
+  the supplied reset, coded telemetry retains only the route/digest, and the loading state has one named status.
+  `pnpm format:check`, `pnpm typecheck`, `pnpm client-phi-log:check` (1 pre-existing allowlisted raw-error console
+  call), `pnpm boundaries:check`, `pnpm frontend-contract:check`, `pnpm typography:check`, and `git diff --check`
+  passed. Final `pnpm test` passed 1481 files / 15316 tests (3 files / 13 tests skipped).
+- remaining / next action:
+  Platform browser E2E remains NOT_EXECUTED because it requires a legitimate platform-operator session and
+  break-glass context; no auth bypass, role fixture, database mutation, or temporary privilege was introduced.
+  The broader NF-04 loading-coverage inventory, NF-07 status-specific recovery, NF-08 persistent mutation-failure
+  pattern, and Phase 9 build/standalone/manual/visual/specialist gates remain incomplete. No commit, push,
+  migration, deployment, data mutation, or destructive cleanup was performed.
+
+## 2026-07-11 UI-UX-NF04-PRESCRIPTION-INTAKE-LOADING-SHAPE — route fallback matches triage work
+
+- current task:
+  Correct the P2 `/prescriptions/intake` loading-boundary shape mismatch: this route inherited the dense
+  master-detail workbench skeleton even though its actual content is an intake header, triage queue, process strip,
+  and action rail.
+- files inspected / changed:
+  Inspected the intake page and its existing query-loading state, the inherited prescriptions loading boundary,
+  UI SSOT loading/CLS rules, the current intake page tests, and the active dirty tree. Changed only the intake page
+  and its page test, added an `IntakeTriageLoading` composition plus route `loading.tsx` and its test, and this
+  ledger. The existing dirty triage-content source/test files were inspected but not modified.
+- bugs found / fixed:
+  The Suspense fallback was a generic spinner and the route segment fell through to a full-height workbench
+  master-detail skeleton. Both route navigation and Suspense now use one named, triage-shaped skeleton: header and
+  manual-entry control dimensions, queue-card filters/table rows, process strip, and three action-rail cards. The
+  composition uses only existing `Skeleton`/`SkeletonRows` primitives, exposes one polite named status, and reserves
+  the page's own layout without showing the unrelated workbench structure.
+- security / medical safety:
+  No query, API, mutation, patient selection, prescription content, authorization, audit, offline, or persistence
+  behavior changed. The loading state contains no patient or prescription data and introduces no network work.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this is a bounded shape-correct loading composition built
+  from existing primitives for an established route, not a visual reconstruction or new information architecture.
+- validation:
+  Focused `pnpm vitest run src/app/(dashboard)/prescriptions/intake/page.test.tsx
+src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --reporter=dot --testTimeout=30000`
+  passed 2 files / 3 tests. It proves the Suspense fallback uses the triage-specific status and the shared loading
+  composition reserves the intended structural regions. `pnpm format:check`, `pnpm typecheck`,
+  `pnpm client-phi-log:check` (1 pre-existing allowlisted raw-error console call), `pnpm boundaries:check`,
+  `pnpm frontend-contract:check`, `pnpm typography:check`, and `git diff --check` passed.
+- remaining / next action:
+  NF-04's broader loading-coverage inventory remains incomplete; browser CLS/transition evidence and full build
+  remain NOT_EXECUTED. Separately, the required NF-07 Oracle safety consultation was attempted with a minimal
+  redacted file set but the browser session stopped at a ChatGPT Cloudflare challenge before any advisory response.
+  Do not duplicate that consultation; resume it only after the external challenge is completed. No commit, push,
+  migration, deployment, data mutation, or destructive cleanup was performed.
+
+## 2026-07-11 UI-UX-NF08-SELECT-MODE-PERSISTENT-FAILURE — retain failed mode selection with retry
+
+- current task:
+  Close the representative P2 NF-08 mutation failure in `/select-mode`, where a failed work-mode preference PATCH
+  was communicated only by a disappearing toast and could be mistaken for a successful selection.
+- files inspected / changed:
+  Inspected the select-mode mutation/data-flow and its tests, existing PHI-safe client logging, `ErrorState`, UI
+  SSOT failure-notification rules, and the active dirty tree. Changed only `select-mode-content.tsx`, its focused
+  test, and this ledger.
+- bugs found / fixed:
+  The selected option is now retained in local state after a failed PATCH. Instead of displaying raw server text in
+  a toast, the screen renders fixed cause/next-action copy with a persistent `ErrorState` and a retry action that
+  replays exactly that selected `WorkModeOption`. A new attempt clears the stale error; only a successful response
+  performs the existing UI-store update and router push. A coded `clientLog.warn` event records static route/entity/
+  code context without exposing raw response detail. No success toast, failure toast, or auto-retry is added.
+- security / medical safety:
+  The mutation's endpoint, request body, organization headers, work-mode enum, authorization enforcement, and
+  redirect targets are unchanged. The poison-string regression proves server-detail text is absent from rendered
+  UI and safe log context; failed persistence cannot falsely update the local mode or navigate into another work
+  context.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2 because this adds a bounded recovery state with an existing
+  `ErrorState` component to an established selection screen, not a visual reconstruction or new information
+  architecture.
+- validation:
+  Focused `pnpm vitest run src/app/(dashboard)/select-mode/select-mode-content.test.tsx --reporter=dot
+--testTimeout=30000` passed 1 file / 4 tests. It proves the original successful clerk transition, fixed inline
+  copy and raw-detail omission on a synthetic 500, static safe log context, no failed store/router update, and a
+  successful retry of the selected management mode. `pnpm format:check`, `pnpm typecheck`,
+  `pnpm client-phi-log:check` (1 pre-existing allowlisted raw-error console call), `pnpm boundaries:check`,
+  `pnpm frontend-contract:check`, `pnpm typography:check`, and `git diff --check` passed.
+- remaining / next action:
+  This resolves only the `/select-mode` representative. NF-08's cross-repository mutation inventory remains
+  incomplete, and NF-07 remains paused at the external Oracle Cloudflare challenge. No commit, push, migration,
+  deployment, data mutation, or destructive cleanup was performed.
+
+## 2026-07-11 UI-UX-VALIDATION-DASHBOARD-COCKPIT-RERENDER-TIMEOUT — preserve full-suite evidence
+
+- current task:
+  Diagnose the one full-suite failure discovered after the UI/UX slices: the dashboard cockpit's new persistent
+  initial-error logging regression exceeded Vitest's default 5-second timeout only under shared full-suite load.
+- files inspected / changed:
+  Inspected the current dashboard cockpit client-log diff, its mock-state/rerender regression test, shared test
+  output, and the active dirty tree. Changed only the test's per-case timeout from the global default to 15 seconds
+  plus this ledger entry; no dashboard production behavior changed.
+- finding / fix:
+  The same test passed focused (23/23) in about 0.6 seconds and all assertions completed; its four complete
+  cockpit rerenders can exceed the default timeout under concurrent full-repository transform/environment load.
+  The explicit timeout retains every assertion and makes no assertion, mock, fixture, behavior, or error-log
+  contract weaker. It is bounded to the single high-DOM rerender case rather than changing the suite-wide timeout.
+- validation:
+  `pnpm vitest run src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx --reporter=dot` passed 1 file / 23
+  tests. Re-run the full unit suite after this ledger append; no commit, push, migration, deployment, data mutation,
+  or destructive cleanup was performed.
+
+## 2026-07-11 UI-UX-CURRENT-SLICE-FINAL-VALIDATION — bounded changes verified in the shared tree
+
+- scope:
+  Consolidate validation after the P1 browser evidence, platform/intake recovery-boundary, select-mode persistent
+  failure, and dashboard-test stability slices while preserving all unrelated dirty work.
+- validation:
+  Final `pnpm test` passed 1482 files / 15320 tests (3 files / 13 tests skipped). `pnpm typecheck`,
+  `pnpm format:check`, `pnpm client-phi-log:check` (1 pre-existing allowlisted raw-error console call),
+  `pnpm boundaries:check`, `pnpm frontend-contract:check`, `pnpm typography:check`, and `git diff --check` passed
+  during this slice. Targeted route-mock browser runs passed: patient-edit failed overview 1 Chromium pass / 1
+  intentional mobile skip; workflow lightweight views 4 Chromium passes / 4 intentional mobile skips.
+- remaining external gates:
+  The complete UI/UX Definition of Done is not claimed: `pnpm build`/standalone remains resource-gated, visual
+  regression remains blocked by the unprepared E2E schema/baselines, full E2E/manual zoom/screen-reader/offline
+  conflict/specialist reviews remain NOT_EXECUTED, and NF-07 status-specific auth/network recovery is paused until
+  the required Oracle browser Cloudflare challenge is completed. No commit, push, migration, deployment, data
+  mutation, or destructive cleanup was performed.
+
+## 2026-07-11 CODEX-MUTUAL-REVIEW-DIRTY-TREE-COMMIT — recovery, accessibility, and ledger handoff
+
+- current task / ownership:
+  The active user-directed Claude↔Codex mutual-review run temporarily supersedes the historical single-Codex
+  operating note for this session. The user explicitly assigned the entire current dirty product tree to Codex for
+  scoped commits before Claude starts a disjoint admin-users/sites slice. Claude acknowledged the ownership and is
+  waiting for the review handoff. No source/test path from that tree remains uncommitted.
+- files inspected / changed:
+  Inspected all 69 tracked dirty paths plus the source/test untracked paths, the UI SSOT, Next.js local error/loading
+  guides, package scripts, current diffs, gbrain recall, and agmsg coordination state. Landed these scoped commits:
+  `ab18b3d34` reports recovery, `a102f92aa` external shared self-report recovery, `8a4d0b7af` operational safe
+  recovery/loading/browser proof, `6a5de2e0e` visit recovery, `0be73d3a1` medication-stock safe failures,
+  `13589283e` dispense-workbench mobile accessibility, and `2af50e888` platform route recovery. Local harness
+  counters and personal untracked notes remain intentionally unstaged.
+- bugs found / fixed:
+  A report delivery retry could issue parallel same-key reconciliation mutations before the first response settled;
+  an explicit in-flight guard, disabled retry affordance, and regression test now prevent the duplicate action.
+  Dashboard initial-query failures could emit the same client telemetry repeatedly on unrelated segment rerenders;
+  per-segment last-error references now suppress duplicates while allowing a recovered-then-new failure to log.
+  The committed recovery slices retain drafts where supported, use fixed PHI-safe recovery copy, and preserve
+  existing idempotency keys for ambiguous external self-report outcomes.
+- security / medical safety:
+  Poison-detail tests cover shared access, reports, operational reads/writes, visits, and medication-stock helper
+  failures. Raw server detail is not rendered or placed in client-log metadata; authorization, tenant scope,
+  persistence, audit attribution, clinical semantics, migrations, and real data writes were not changed. Route-mock
+  browser evidence is synthetic and no-write only.
+- performance / accessibility:
+  Dashboard warning emission is deduplicated without new polling or I/O. The workbench changes preserve reachable
+  mobile irreversible controls and keyboard focus continuity, and add bounded contrast/forced-colors/200%-effective
+  viewport and route-mock accessibility coverage.
+- UI/imagegen:
+  `gpt-image-2` was omitted under UI SSOT §2.4.2: this slice corrects established recovery behavior, loading shape,
+  accessibility, and tests without a new visual composition or information architecture.
+- validation:
+  `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed. A stale ignored
+  `.next/dev/types/routes.d.ts` cache file was malformed after an interrupted local dev session; deleting only that
+  ignored generated file and regenerating types resolved it, with no source change. Focused changed tests passed
+  28 files / 326 tests; `pnpm test` completed successfully. `pnpm client-phi-log:check` passed with one existing
+  allowlisted raw-error console call; `pnpm frontend-contract:check`, `pnpm boundaries:check`,
+  `pnpm client-json-schema:check`, `pnpm colors:check`, `pnpm typography:check`, and `git diff --check` passed.
+  The existing local route-mock Playwright subset for dispensing, lightweight workflow views, and patient-edit
+  failure recovery completed successfully against `pnpm dev:e2e:local`; the dev server was stopped afterwards.
+  `pnpm build` is still not claimed: the known local 16 GB environment resource failure (exit 137) is recorded in
+  Phase 9 evidence and is not a source-level pass.
+- memory / review / next action:
+  Initial gbrain recall was classified in `.agent-loop/MEMORY_REVIEW.md`; proposed LOOP_POLICY §27 records the
+  PHI-safe recovery and same-key reconciliation rule pending Claude peer review. Next: commit this ledger-only
+  boundary, send Claude the compact PATCH_REVIEW request, record the actual verdict in REVIEW_LOG/VERIFY_LOG,
+  write redacted gbrain GateResult/ReviewFinding/LoopRun records, then continue only with unblocked work. No push,
+  deployment, migration, data mutation, or destructive cleanup has been performed.

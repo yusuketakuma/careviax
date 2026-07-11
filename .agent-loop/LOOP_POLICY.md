@@ -460,6 +460,24 @@ the numbered entries that follow.
       is unavailable, send `STATE_SUMMARY` and continue the already-owned source/test slice rather than
       blocking on ledger churn; reconcile the ledger at the next safe boundary.
 
+27. **PHI-safe mutation recovery and idempotent reconciliation (proposed, both Supervisors).**
+    Proposed by codex-lead on 2026-07-11 from current recovery review and gbrain recall; this is
+    in-effect only for the current mutual-review run until Claude peer review and any required human
+    promotion are recorded.
+
+    - **Fixed recovery boundary.** A client mutation/read failure may show only approved fixed
+      cause/next-action copy. It must preserve the operator's unsent draft where the existing flow can
+      safely do so, and `clientLog` context must remain static route/entity/code metadata rather than raw
+      server text.
+    - **Ambiguous-send reconciliation.** Where an endpoint accepts an idempotency key, a network failure
+      or malformed successful response retains and reuses that same key. A synchronous in-flight guard and
+      disabled retry action prevent parallel duplicate submissions; a retry must not mint a new request
+      identity merely because the outcome was unknown.
+    - **Evidence boundary.** Tests inject synthetic poison detail and prove it is absent from rendered
+      UI/log metadata, preserve the draft, and verify retry-key reuse. Route-mock browser checks are
+      synthetic/no-write evidence only; they do not replace a real write, audit, or clinical workflow
+      approval.
+
 ## Consider
 
 Weigh against the current objective; log the decision in the run log. (Seed list — extend from
@@ -521,4 +539,5 @@ Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 | ApplyNow §24 (component-vertical-slice batching + dual-maker parallel)    | claude-lead | _pending_   | proposed (user-directed 2026-06-23; FOUNDATION F-060 + F-061/062/063 landed as evidence; human gate for permanent)                                        |
 | ApplyNow §25 (ACK-first handoff + sender-side WIP discipline)             | human       | claude-lead | peer-approved (user-directed 2026-06-23; human gate satisfied this run; pending permanent promotion)                                                      |
 | ApplyNow §26 (communication compression + long-gate lease discipline)     | human       | _pending_   | proposed (user-directed 2026-06-24; pending peer review and human-gate promotion)                                                                         |
+| ApplyNow §27 (PHI-safe recovery + idempotent reconciliation)              | codex-lead  | _pending_   | proposed (current mutual-review run; requires Claude review before any promotion)                                                                         |
 | _next candidate_                                                          | _name_      | _name_      | proposed                                                                                                                                                  |
