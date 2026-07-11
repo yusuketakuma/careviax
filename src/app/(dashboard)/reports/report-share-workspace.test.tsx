@@ -614,6 +614,49 @@ describe('ReportShareWorkspace', () => {
     expect(toast.success).toHaveBeenCalledWith('報告候補として採用しました');
   });
 
+  it('keeps a failed inbound candidate decision visible and retries the exact action safely', async () => {
+    const rawErrorMessage = 'patient=山田太郎 token=secret';
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/care-reports/today-workspace')) {
+        return new Response(JSON.stringify({ data: TODAY_WORKSPACE }), { status: 200 });
+      }
+      if (url.includes('/api/communications/inbound/signals/signal_report_1')) {
+        return new Response(JSON.stringify({ message: rawErrorMessage }), { status: 500 });
+      }
+      throw new Error(`unexpected fetch: ${url} ${String(init?.method)}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderWorkspace();
+
+    fireEvent.click(await screen.findByRole('button', { name: '田中 一郎 様 申し送りのみ' }));
+
+    expect(await screen.findByText('報告候補を更新できませんでした')).toBeTruthy();
+    expect(
+      screen.getByText((text) => text.includes('選択した受信情報の扱いはまだ更新されていません。')),
+    ).toBeTruthy();
+    expect(screen.queryByText(rawErrorMessage)).toBeNull();
+    expect(toast.error).toHaveBeenCalledWith('報告候補の更新に失敗しました');
+
+    fireEvent.click(screen.getByRole('button', { name: '報告候補の更新を再試行' }));
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([input]) =>
+          String(input).includes('/api/communications/inbound/signals/signal_report_1'),
+        ),
+      ).toHaveLength(2);
+    });
+    for (const [, init] of fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes('/api/communications/inbound/signals/signal_report_1'),
+    )) {
+      expect(init).toEqual({
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+        body: JSON.stringify({ action: 'handoff_only' }),
+      });
+    }
+  });
+
   it('promotes the action rail into the fold ahead of the main content in DOM order', async () => {
     stubFetch();
     renderWorkspace();
@@ -1055,6 +1098,24 @@ describe('ReportShareWorkspace', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('下書きの作成に失敗しました');
       expect(toast.error).not.toHaveBeenCalledWith(rawErrorMessage);
+    });
+    expect(screen.getByText('報告書の下書きを作成できませんでした')).toBeTruthy();
+    expect(
+      screen.getByText((text) =>
+        text.includes('訪問記録から下書きを作成する処理が完了していません。'),
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(rawErrorMessage)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '下書き作成を再試行' }));
+    await waitFor(() => {
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.filter(([input]) =>
+            String(input).includes('/api/care-reports/generate-from-visit'),
+          ),
+      ).toHaveLength(2);
     });
   });
 

@@ -45623,3 +45623,33 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `375c3b424` (`fix(API-CONTRACT-001): validate navigation badge payloads`) committed the five owned consumer,
   regression, allowlist, plan, and single-ledger paths. Concurrent patient card-workspace changes and pre-existing
   local files were excluded. No push was performed.
+
+## 2026-07-11 FE-REPORT-001 — persistent report mutation recovery
+
+- current task / audit evidence:
+  Incrementally audited the report workspace after the API-contract slice, using the redesign checklist only for
+  missing operational states and the PH-OS UI/UX SSOT as authority. Draft generation and inbound-candidate decisions
+  had safe fallback toasts, but a failed mutation left no persistent cause, next action, or retry at the affected
+  section. This could make an unfinished report operation easy to miss. Patient card-workspace paths were excluded
+  while they were concurrently dirty.
+- implementation / FE-BE alignment:
+  Both report mutations now retain a shared `SegmentError` beside the affected data. Fixed PHI-safe copy states that
+  the operation is not complete, and the retry button replays the exact retained mutation variables: visit record,
+  optimistic-lock timestamp, and report type for draft generation; signal ID and chosen action for inbound decisions.
+  Existing success navigation/invalidation, API methods and payloads, authorization, persistence, audit, masking,
+  normalized-summary-only display, and the rule against automatically inserting raw inbound text are unchanged.
+  Toast remains supplemental, not the only failure signal. `gpt-image-2` was omitted because this composes the
+  existing error-state component without new layout, visual language, or information architecture.
+- validation:
+  Focused Vitest passed 1 file / 29 tests after correcting two initial exact-text assertions to match the shared
+  component's existing combined cause/action paragraph. Regressions prove persistent display, raw server/PHI-like
+  text omission, exact retry payloads, and existing report behavior. Focused ESLint and Prettier passed. The 8 GB
+  `pnpm typecheck`, `pnpm client-phi-log:check`, `pnpm frontend-contract:check`, `pnpm boundaries:check`,
+  `pnpm colors:check`, `pnpm plans:active:check`, and `git diff --check` passed. The first typecheck exposed an
+  unsupported `SegmentError size` prop; it was removed to preserve the shared component contract, then the gate
+  passed. Browser screenshot/E2E and build were not run for this existing-state composition.
+- plans / remaining / next action:
+  `FE-REPORT-001` is Partial rather than Done: broader left/editor/right-rail organization, delivery/masking
+  proximity, AI draft review, and PDF/send-route evidence remain. Next rescan another non-conflicting report error
+  or delivery state before expanding layout. No DB/migration, external send, deploy, production-data action, push,
+  or destructive operation was performed.

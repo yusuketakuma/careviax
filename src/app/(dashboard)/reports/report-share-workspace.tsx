@@ -236,10 +236,14 @@ function TodayDraftsCard({
   data,
   onGenerateDraft,
   generatingDraftKey,
+  generationError,
+  onRetryGeneration,
 }: {
   data: ReportsTodayWorkspaceResponse;
   onGenerateDraft: (input: DraftGenerationInput) => void;
   generatingDraftKey: string | null;
+  generationError: boolean;
+  onRetryGeneration: (() => void) | null;
 }) {
   const draftColumns: ColumnDef<ReportDraftRow>[] = [
     {
@@ -299,6 +303,16 @@ function TodayDraftsCard({
           訪問記録から下書きを自動作成し、薬剤師が手直しして確定します
         </p>
       </div>
+      {generationError ? (
+        <SegmentError
+          className="mt-3"
+          title="報告書の下書きを作成できませんでした"
+          cause="訪問記録から下書きを作成する処理が完了していません。"
+          nextAction="対象患者と報告書種別を確認して、もう一度作成してください。"
+          onRetry={onRetryGeneration ?? undefined}
+          retryLabel="下書き作成を再試行"
+        />
+      ) : null}
       {data.draft_rows.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">
           本日の訪問予定はありません。訪問が完了すると、ここに報告の下書きが並びます。
@@ -351,11 +365,15 @@ function ReportInboundCandidatesSection({
   count,
   onSelectCandidate,
   pendingDecisionKey,
+  decisionError,
+  onRetryDecision,
 }: {
   candidates: ReportInboundCandidate[];
   count: ReportsTodayWorkspaceResponse['count_metadata']['report_candidates'] | null | undefined;
   onSelectCandidate: (input: ReportInboundCandidateDecisionInput) => void;
   pendingDecisionKey: string | null;
+  decisionError: boolean;
+  onRetryDecision: (() => void) | null;
 }) {
   return (
     <section
@@ -371,6 +389,16 @@ function ReportInboundCandidatesSection({
           {formatWorkspaceCountLabel(count, candidates.length)}
         </span>
       </div>
+      {decisionError ? (
+        <SegmentError
+          className="mt-3"
+          title="報告候補を更新できませんでした"
+          cause="選択した受信情報の扱いはまだ更新されていません。"
+          nextAction="対象患者と選択内容を確認して、もう一度更新してください。"
+          onRetry={onRetryDecision ?? undefined}
+          retryLabel="報告候補の更新を再試行"
+        />
+      ) : null}
       {candidates.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">報告候補にできる受信要約はありません。</p>
       ) : (
@@ -919,6 +947,12 @@ export function ReportShareWorkspace() {
                       : null
                     : null
                 }
+                generationError={generateDraftMutation.isError}
+                onRetryGeneration={
+                  generateDraftMutation.variables
+                    ? () => generateDraftMutation.mutate(generateDraftMutation.variables)
+                    : null
+                }
               />
               <ReportInboundCandidatesSection
                 candidates={data.inbound_report_candidates}
@@ -928,6 +962,15 @@ export function ReportShareWorkspace() {
                   decideInboundCandidateMutation.isPending &&
                   decideInboundCandidateMutation.variables
                     ? `${decideInboundCandidateMutation.variables.signalId}:${decideInboundCandidateMutation.variables.action}`
+                    : null
+                }
+                decisionError={decideInboundCandidateMutation.isError}
+                onRetryDecision={
+                  decideInboundCandidateMutation.variables
+                    ? () =>
+                        decideInboundCandidateMutation.mutate(
+                          decideInboundCandidateMutation.variables,
+                        )
                     : null
                 }
               />
