@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientInsuranceCard } from './patient-insurance-card';
 
@@ -36,6 +37,10 @@ vi.mock('@/lib/patient/api-paths', async (importActual) => {
 describe('PatientInsuranceCard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(buildPatientApiPath).mockReset();
+    vi.mocked(buildPatientApiPath).mockImplementation(
+      (patientId, suffix = '') => `/api/patients/${encodePathSegment(patientId)}${suffix}`,
+    );
   });
 
   it('opens a create form and submits a new insurance draft', () => {
@@ -231,6 +236,37 @@ describe('PatientInsuranceCard', () => {
     notes: '',
   };
 
+  const insuranceRecordResponseFixture = {
+    id: 'insurance_current',
+    insurance_type: 'medical' as const,
+    application_status: 'confirmed' as const,
+    application_submitted_at: null,
+    decision_at: '2026-04-02T00:00:00.000Z',
+    public_program_code: null,
+    previous_care_level: null,
+    provisional_care_level: null,
+    confirmed_care_level: null,
+    insurer_number: '137000',
+    symbol: '記号A',
+    number: '1234567',
+    branch_number: '01',
+    copay_ratio: 30,
+    valid_from: '2026-04-01T00:00:00.000Z',
+    valid_until: '2027-03-31T00:00:00.000Z',
+    is_active: true,
+    notes: null,
+    updated_at: '2026-04-02T01:00:00.000Z',
+  };
+
+  const emptyInsuranceResponse = {
+    data: {
+      current: [],
+      upcoming: [],
+      history: [],
+      all: [],
+    },
+  };
+
   type CapturedConfig = {
     queryKey?: unknown[];
     queryFn?: () => Promise<unknown>;
@@ -259,14 +295,30 @@ describe('PatientInsuranceCard', () => {
   it('fetches the insurance list from an encoded patient path with org headers', async () => {
     const hostileId = 'pt/1?x=y#z';
     const { queryConfigs } = captureConfigs();
-    const fetchMock = okFetch();
+    const rawProviderRecord = {
+      ...insuranceRecordResponseFixture,
+      org_id: 'org_1',
+      patient_id: hostileId,
+      display_id: 'INS-001',
+      created_at: '2026-04-01T01:00:00.000Z',
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: {
+          current: [rawProviderRecord],
+          upcoming: [],
+          history: [],
+          all: [rawProviderRecord],
+        },
+      }),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     try {
       render(<PatientInsuranceCard patientId={hostileId} orgId="org_1" />);
 
       expect(queryConfigs[0]?.queryKey).toEqual(['patient-insurance', 'org_1', hostileId]);
-      await queryConfigs[0]?.queryFn?.();
+      const result = await queryConfigs[0]?.queryFn?.();
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(buildPatientApiPath).toHaveBeenCalledWith(hostileId, '/insurance');
@@ -275,6 +327,14 @@ describe('PatientInsuranceCard', () => {
       expect(url).not.toContain('#z');
       expect(url).not.toContain('%25');
       expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+      expect(result).toEqual({
+        data: {
+          current: [insuranceRecordResponseFixture],
+          upcoming: [],
+          history: [],
+          all: [insuranceRecordResponseFixture],
+        },
+      });
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
@@ -297,6 +357,56 @@ describe('PatientInsuranceCard', () => {
       expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/insurance', {
         headers: buildOrgHeaders('org_1'),
       });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each([
+    {
+      name: 'mixed legacy root',
+      payload: { ...emptyInsuranceResponse, current: [] },
+    },
+    {
+      name: 'unknown data key',
+      payload: { data: { ...emptyInsuranceResponse.data, patient_name: '伊藤 キヨ' } },
+    },
+    {
+      name: 'string copay ratio',
+      payload: {
+        data: {
+          ...emptyInsuranceResponse.data,
+          current: [{ ...insuranceRecordResponseFixture, copay_ratio: '30' }],
+        },
+      },
+    },
+    {
+      name: 'missing optimistic timestamp',
+      payload: {
+        data: {
+          ...emptyInsuranceResponse.data,
+          current: [
+            Object.fromEntries(
+              Object.entries(insuranceRecordResponseFixture).filter(
+                ([key]) => key !== 'updated_at',
+              ),
+            ),
+          ],
+        },
+      },
+    },
+  ])('rejects malformed successful insurance payloads: $name', async ({ payload }) => {
+    const { queryConfigs } = captureConfigs();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(payload));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientInsuranceCard patientId="patient_1" orgId="org_1" />);
+
+      await expect(queryConfigs[0]?.queryFn?.()).rejects.toThrow(
+        '患者保険情報の取得に失敗しました',
+      );
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
@@ -403,7 +513,10 @@ describe('PatientInsuranceCard', () => {
     const patientId = 'patient_1';
     const insuranceId = 'ins_1';
     const { queryConfigs, mutationConfigs } = captureConfigs();
-    const fetchMock = okFetch();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(emptyInsuranceResponse))
+      .mockResolvedValue(jsonResponse({}));
     vi.stubGlobal('fetch', fetchMock);
     vi.mocked(buildPatientApiPath)
       .mockReturnValueOnce('/api/patients/__helper_patient__/insurance')

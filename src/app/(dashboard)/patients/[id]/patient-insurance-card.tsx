@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { messageFromError } from '@/lib/utils/error-message';
 import { Skeleton } from '@/components/ui/loading';
 import { Badge } from '@/components/ui/badge';
@@ -29,36 +30,47 @@ import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
-type InsuranceRecord = {
-  id: string;
-  insurance_type: 'medical' | 'care' | 'public_subsidy';
-  application_status: 'confirmed' | 'applying' | 'change_pending' | 'not_applicable';
-  application_submitted_at: string | null;
-  decision_at: string | null;
-  public_program_code: string | null;
-  previous_care_level: string | null;
-  provisional_care_level: string | null;
-  confirmed_care_level: string | null;
-  insurer_number: string | null;
-  symbol: string | null;
-  number: string | null;
-  branch_number: string | null;
-  copay_ratio: number | null;
-  valid_from: string | null;
-  valid_until: string | null;
-  is_active: boolean;
-  notes: string | null;
-  updated_at: string;
-};
+const nullableIsoDateTimeSchema = z.string().datetime().nullable();
 
-type InsuranceResponse = {
-  data: {
-    current: InsuranceRecord[];
-    upcoming: InsuranceRecord[];
-    history: InsuranceRecord[];
-    all?: InsuranceRecord[];
-  };
-};
+// The provider currently serializes full Prisma rows. Keep only the bounded fields consumed by
+// this workspace in the query cache while rejecting drift in the envelope and data containers.
+const insuranceRecordSchema = z.object({
+  id: z.string().min(1),
+  insurance_type: z.enum(['medical', 'care', 'public_subsidy']),
+  application_status: z.enum(['confirmed', 'applying', 'change_pending', 'not_applicable']),
+  application_submitted_at: nullableIsoDateTimeSchema,
+  decision_at: nullableIsoDateTimeSchema,
+  public_program_code: z.string().nullable(),
+  previous_care_level: z.string().nullable(),
+  provisional_care_level: z.string().nullable(),
+  confirmed_care_level: z.string().nullable(),
+  insurer_number: z.string().nullable(),
+  symbol: z.string().nullable(),
+  number: z.string().nullable(),
+  branch_number: z.string().nullable(),
+  copay_ratio: z.number().int().min(0).max(100).nullable(),
+  valid_from: nullableIsoDateTimeSchema,
+  valid_until: nullableIsoDateTimeSchema,
+  is_active: z.boolean(),
+  notes: z.string().nullable(),
+  updated_at: z.string().datetime(),
+});
+
+const insuranceResponseSchema = z
+  .object({
+    data: z
+      .object({
+        current: z.array(insuranceRecordSchema),
+        upcoming: z.array(insuranceRecordSchema),
+        history: z.array(insuranceRecordSchema),
+        all: z.array(insuranceRecordSchema).optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+type InsuranceRecord = z.infer<typeof insuranceRecordSchema>;
+type InsuranceResponse = z.infer<typeof insuranceResponseSchema>;
 
 type InsuranceFormState = {
   insurance_type: InsuranceRecord['insurance_type'];
@@ -583,7 +595,10 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
       const response = await fetch(buildPatientApiPath(patientId, '/insurance'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<InsuranceResponse>(response, '患者保険情報の取得に失敗しました');
+      return readApiJson<InsuranceResponse>(response, {
+        fallbackMessage: '患者保険情報の取得に失敗しました',
+        schema: insuranceResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

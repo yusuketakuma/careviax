@@ -45904,6 +45904,33 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   paths plus the scoped Plans, FE/BE inventory, and single-ledger evidence. Concurrent UI-audit test work,
   harness-memory state, and unrelated untracked files were excluded. No push was performed.
 
+## 2026-07-11 API-CONTRACT-001FZINSURANCESTRICT — patient insurance GET runtime schema
+
+- current task / root cause:
+  The patient insurance workspace still cast a successful GET response directly to `InsuranceResponse`. A malformed
+  2xx could therefore enter query state and drive insurance status, copay, expiry, editing, or stale-delete controls.
+  The provider already enforces `canVisit`, assigned-patient/org scope, sensitive no-store headers, and classified
+  current/upcoming/history/all groups; no provider, DB, authorization, or audit change was needed.
+- implementation / contract:
+  Added a runtime schema at the client boundary for the exact root/data containers and every consumed insurance row
+  field. It validates insurance/application enums, ISO timestamps including required `updated_at`, booleans, nullable
+  identifiers/text, and integer copay ratios from 0 through 100. Unknown root/data keys fail closed. The route currently
+  serializes full Prisma rows, so the bounded row schema intentionally strips unconsumed `org_id`, `patient_id`,
+  `display_id`, and `created_at` before query caching while preserving the existing provider response for compatibility.
+  Error responses retain the existing server-message extraction and fixed fallback. The stale-delete optimistic token,
+  save/delete mutations, UI, API paths, persistence, auth/authz, assignment, no-store, and audit behavior are unchanged.
+- validation / ratchet / remaining:
+  Focused Vitest passed 2 files / 35 tests. Regressions cover a valid provider-shaped row with unused field stripping,
+  mixed legacy root, unknown data key, string copay ratio, missing optimistic timestamp, encoded/dot path handling,
+  provider classification, assignment scope, and sensitive no-store. Exact ESLint/Prettier, client JSON schema,
+  client PHI-log, frontend contract, module boundary, API response shape, 8 GB aggregate typecheck, and diff checks
+  passed. The live ratchet moved from 111 schema-backed / 264 allowlisted calls / 108 files to 112 / 263 / 107.
+  `API-CONTRACT-001` remains Partial for other frontend readers and shared ApiError/request_id/no-store work. No visual
+  change or image generation was applicable. Full build was not rerun because the same-worktree port 3012 preview is
+  active and Next build/dev artifacts must not race; the existing local 16 GB exit-137 build constraint also remains.
+  No DB/migration/auth/authz/audit change, browser action, push, deploy, external send, production-data mutation, or
+  destructive operation occurred.
+
 ## 2026-07-11 FE-QA-001 / FE-REPORT-001 — forced-colors, keyboard, and zoom-proxy evidence
 
 - current task / scope:

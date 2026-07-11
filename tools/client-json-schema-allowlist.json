@@ -307,12 +307,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/patient-labs-card.tsx",
       "counts": {
         "stringFallback": 1
