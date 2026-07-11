@@ -3181,6 +3181,47 @@ test.describe('schedule day route-mocked Gantt smoke', () => {
     expect(unexpectedErrors).toEqual([]);
   });
 
+  test('keeps populated status controls reachable in forced colors and a 200%-equivalent viewport', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.setViewportSize({ width: 768, height: 512 });
+    await page.emulateMedia({ forcedColors: 'active' });
+    await installScheduleDayGanttRouteMocks(page);
+
+    await openStableRoute(page, `/schedules?view=list&tab=confirmed&date=${GANTT_DATE}`);
+
+    const statusTrigger = page.getByRole('combobox', {
+      name: 'ガントE2E 同時A様のステータスを変更',
+    });
+    await expect(statusTrigger).toBeVisible({ timeout: 30_000 });
+    await expect
+      .poll(() => page.evaluate(() => window.matchMedia('(forced-colors: active)').matches))
+      .toBe(true);
+
+    await page.locator('body').press('Home');
+    let reachedStatusTrigger = false;
+    for (let step = 0; step < 80; step += 1) {
+      await page.keyboard.press('Tab');
+      if (await statusTrigger.evaluate((element) => element === document.activeElement)) {
+        reachedStatusTrigger = true;
+        break;
+      }
+    }
+
+    const overflowWidth = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    const triggerBox = await statusTrigger.boundingBox();
+
+    expect(reachedStatusTrigger).toBe(true);
+    expect(triggerBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(overflowWidth).toBeLessThanOrEqual(1);
+    expect(errors).toEqual([]);
+  });
+
   test('keeps tablet portrait Gantt overflow inside the scroll region', async ({
     context,
   }, testInfo) => {
