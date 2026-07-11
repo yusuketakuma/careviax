@@ -45575,3 +45575,7 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `API-CONTRACT-001` remains Partial. Continue bounded provider/consumer runtime-schema migrations and the shared
   ApiError/request_id/no-store ratchets; do not claim parent completion from exact-root zero alone. Existing
   harness-memory and unrelated untracked local files remain excluded. No push was performed.
+- commit:
+  `375c3b424` (`fix(API-CONTRACT-001): validate navigation badge payloads`) committed the five owned consumer,
+  regression, allowlist, plan, and single-ledger paths. Concurrent patient card-workspace changes and pre-existing
+  local files were excluded. No push was performed.
