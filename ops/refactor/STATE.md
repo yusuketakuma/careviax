@@ -45653,3 +45653,7 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   proximity, AI draft review, and PDF/send-route evidence remain. Next rescan another non-conflicting report error
   or delivery state before expanding layout. No DB/migration, external send, deploy, production-data action, push,
   or destructive operation was performed.
+- commit:
+  `aacf5969a` (`fix(FE-REPORT-001): keep report mutation recovery visible`) committed the four owned report,
+  regression, plan, and single-ledger paths. Concurrent patient card-workspace changes and pre-existing local files
+  were excluded. No push was performed.
