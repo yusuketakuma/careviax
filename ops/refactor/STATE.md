@@ -45698,3 +45698,22 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   8 GB `pnpm typecheck`, client PHI-log, frontend contract, module boundary, raw state colors, active Plans, and diff
   checks passed. `FE-REPORT-001` remains Partial for its broader workspace/editor/AI/share/print objectives. Browser,
   screenshot, build, DB/migration, external send, deploy, and production data actions were not run.
+
+## 2026-07-11 FE-REPORT-001 — authenticated report workspace browser proof
+
+- runtime verification:
+  Reused the existing local `ph_os_e2e` server on port 3012 through `playwright.local.config.ts` and ran only the
+  Chromium report-workspace smoke. `/reports` rendered the current `report-share-workspace`, template action,
+  today-drafts area, waiting/resolved sections, and policy bar with the instrumented page reporting no console or
+  network error. The focused test passed 1/1 in 1.6 minutes. An initial invocation used the default Playwright config,
+  which attempted a fresh production build on port 3000 and timed out at the 60-second webServer gate; it made no
+  source, DB, migration, or runtime-state change. The corrected local-config invocation is the claimed evidence.
+- remaining:
+  This proves the normal authenticated desktop state only. Mutation failure rendering/retry remains component-test
+  evidence; mobile, screenshot comparison, keyboard/zoom/forced-colors, AI draft review, share/print, and full build
+  remain outstanding under `FE-REPORT-001`. No push, deploy, external send, production data mutation, or destructive
+  action occurred.
+- commit:
+  `7c6e39cd9` (`fix(FE-REPORT-001): persist delivery follow-up recovery`) committed the three owned delivery UI,
+  regression, and plan paths. The single-ledger evidence had already entered the concurrently advanced HEAD and this
+  line records the resulting implementation hash. Pre-existing local files were excluded. No push was performed.
