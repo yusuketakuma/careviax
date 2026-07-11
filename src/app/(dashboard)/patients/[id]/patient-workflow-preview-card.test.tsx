@@ -181,8 +181,8 @@ describe('PatientWorkflowPreviewCard', () => {
         },
         scheduling_preview: {
           preferred_weekdays: [1, 3],
-          preferred_time_from: '1970-01-01T09:00:00.000-08:00',
-          preferred_time_to: '1970-01-01T12:00:00.000-0800',
+          preferred_time_from: '1970-01-01T09:00:00.000Z',
+          preferred_time_to: '1970-01-01T12:00:00.000Z',
           phone_contact_from: null,
           phone_contact_to: null,
           facility_time_from: null,
@@ -226,6 +226,34 @@ describe('PatientWorkflowPreviewCard', () => {
           recipient_organization: '佐藤医院',
           contact: 'TEL 03-0000-1111',
         },
+        {
+          key: 'care_manager_report',
+          label: 'ケアマネ向け報告',
+          available: false,
+          source: 'missing',
+          recipient_name: null,
+          recipient_organization: null,
+          contact: null,
+        },
+        {
+          key: 'nurse_share',
+          label: '訪問看護共有',
+          available: false,
+          source: 'missing',
+          recipient_name: null,
+          recipient_organization: null,
+          contact: null,
+        },
+        {
+          key: 'mcs',
+          label: 'MCS共有',
+          available: true,
+          source: 'patient_setting',
+          recipient_name: 'MCS連携',
+          recipient_organization: null,
+          contact: null,
+          status: null,
+        },
       ],
       communication_priority: {
         preferred_contact_method: 'phone',
@@ -235,10 +263,17 @@ describe('PatientWorkflowPreviewCard', () => {
         targets: [
           {
             key: 'family',
-            recipientRole: 'family_share',
+            recipientRole: 'family',
             recipientName: '長男 山田',
             contact: '090-1111-2222',
             priority_order: 1,
+          },
+          {
+            key: 'mcs',
+            recipientRole: 'mcs',
+            recipientName: 'MCS連携',
+            contact: null,
+            priority_order: 2,
           },
         ],
         warnings: ['患者・家族への事前連絡を優先します。'],
@@ -390,6 +425,99 @@ describe('PatientWorkflowPreviewCard', () => {
       if (realImpl) {
         vi.mocked(buildPatientWorkflowPreviewApiPath).mockImplementation(realImpl);
       }
+    }
+  });
+
+  it.each([
+    {
+      name: 'unknown root field',
+      payload: { data: buildPreviewData(), patient_name: '伊藤 キヨ' },
+    },
+    {
+      name: 'mixed legacy root',
+      payload: { data: buildPreviewData(), visit_preparation: {} },
+    },
+    {
+      name: 'out-of-range weekday',
+      payload: {
+        data: {
+          ...buildPreviewData(),
+          visit_preparation: {
+            ...buildPreviewData().visit_preparation,
+            scheduling_preview: {
+              ...buildPreviewData().visit_preparation.scheduling_preview,
+              preferred_weekdays: [7],
+            },
+          },
+        },
+      },
+    },
+    {
+      name: 'non-provider time format',
+      payload: {
+        data: {
+          ...buildPreviewData(),
+          visit_preparation: {
+            ...buildPreviewData().visit_preparation,
+            scheduling_preview: {
+              ...buildPreviewData().visit_preparation.scheduling_preview,
+              preferred_time_from: '09:00',
+            },
+          },
+        },
+      },
+    },
+    {
+      name: 'missing report target',
+      payload: {
+        data: { ...buildPreviewData(), report_targets: buildPreviewData().report_targets.slice(1) },
+      },
+    },
+    {
+      name: 'availability and source mismatch',
+      payload: {
+        data: {
+          ...buildPreviewData(),
+          report_targets: buildPreviewData().report_targets.map((target, index) =>
+            index === 0 ? { ...target, available: false } : target,
+          ),
+        },
+      },
+    },
+    {
+      name: 'priority order mismatch',
+      payload: {
+        data: {
+          ...buildPreviewData(),
+          communication_priority: {
+            ...buildPreviewData().communication_priority,
+            targets: buildPreviewData().communication_priority.targets.map((target, index) =>
+              index === 1 ? { ...target, priority_order: 1 } : target,
+            ),
+          },
+        },
+      },
+    },
+  ])('rejects malformed successful workflow-preview payloads: $name', async ({ payload }) => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(payload));
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+
+    let captured: { queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation((config: { queryFn: () => Promise<unknown> }) => {
+      captured = config;
+      return { data: undefined, isLoading: true, error: null };
+    });
+
+    try {
+      render(<PatientWorkflowPreviewCard patientId="patient_1" />);
+
+      if (!captured) throw new Error('query config was not captured');
+      await expect(captured.queryFn()).rejects.toThrow(
+        'ワークフロープレビューの取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 

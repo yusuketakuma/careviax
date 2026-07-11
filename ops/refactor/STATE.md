@@ -46068,3 +46068,27 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   the other four screens plus offline/conflict and PHI-output fixtures. Commit `99488c7eb` contains only the owned
   Playwright audit. No product/API/DB/schema/migration/auth/authz/PHI/audit behavior, push, deployment, external send,
   production-data mutation, or destructive operation occurred.
+
+## 2026-07-11 API-CONTRACT-001FZWORKFLOWSTRICT — patient workflow preview GET runtime schema
+
+- current task / root cause:
+  The patient workflow preview cast a successful GET response directly to `PatientWorkflowPreviewSnapshot`. A
+  malformed 2xx could therefore drive visit-preparation blockers, report-target availability, and communication
+  priority/order in the patient workspace. The provider already enforces `canVisit`, assigned-patient scope, and
+  sensitive no-store, and derives the payload from scoped patient/case/care-team/intake/lab/scheduling data. No
+  provider, DB, authorization, or audit change was needed.
+- implementation / contract:
+  Added an exact runtime schema for every root and nested object. It validates provider enums, ISO timestamps,
+  weekday and buffer bounds, four unique report-target keys with availability/source consistency, and unique
+  communication targets with contiguous provider priority order. Unknown fields, mixed legacy roots, missing report
+  targets, and malformed successful payloads fail closed through the existing recovery path. Existing links, query
+  key, org headers, UI rendering, provider response, persistence, auth/authz, and audit behavior are unchanged.
+- validation / ratchet / remaining:
+  Focused component Vitest passed 1 file / 16 tests, including seven malformed-2xx cases and encoded/dot patient path
+  behavior. Provider and route Vitest passed 2 files / 133 tests. Exact ESLint/Prettier, client JSON schema,
+  client PHI-log/display, frontend contract, module boundary, API response shape, 8 GB aggregate typecheck, and diff
+  checks passed. The live ratchet moved from 113 schema-backed / 262 allowlisted calls / 106 files to 114 / 261 / 105. `API-CONTRACT-001` remains Partial for other frontend readers and shared ApiError/request_id/no-store work.
+  No visual change or image generation was applicable. Full build was not rerun because the same-worktree port 3012
+  preview is active and Next build/dev artifacts must not race; the existing local 16 GB exit-137 build constraint
+  also remains. No DB/migration/auth/authz/audit change, browser action, push, deploy, external send, production-data
+  mutation, or destructive operation occurred.

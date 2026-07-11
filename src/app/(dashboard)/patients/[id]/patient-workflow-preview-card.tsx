@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
+import { z } from 'zod';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/loading';
@@ -17,6 +18,149 @@ import { timeIsoToString } from '@/lib/visits/time-of-day';
 import type { PatientWorkflowPreviewSnapshot } from './patient-detail.types';
 
 const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
+const nullableTextSchema = z.string().nullable();
+const nullableDateTimeSchema = z.string().datetime().nullable();
+
+const reportTargetSchema = z
+  .object({
+    key: z.enum(['physician_report', 'care_manager_report', 'nurse_share', 'mcs']),
+    label: z.string().min(1),
+    available: z.boolean(),
+    source: z.enum(['care_team', 'requester', 'intake', 'patient_setting', 'missing']),
+    recipient_name: nullableTextSchema,
+    recipient_organization: nullableTextSchema,
+    contact: nullableTextSchema,
+    status: nullableTextSchema.optional(),
+  })
+  .strict()
+  .superRefine((target, context) => {
+    if (target.available === (target.source === 'missing')) {
+      context.addIssue({
+        code: 'custom',
+        path: ['source'],
+        message: 'availability/source mismatch',
+      });
+    }
+  });
+
+const reportTargetsSchema = z
+  .array(reportTargetSchema)
+  .length(4)
+  .superRefine((targets, context) => {
+    if (new Set(targets.map((target) => target.key)).size !== targets.length) {
+      context.addIssue({ code: 'custom', message: 'duplicate report target' });
+    }
+  });
+
+const communicationTargetSchema = z
+  .object({
+    key: z.enum(['family', 'facility', 'nurse', 'care_manager', 'mcs']),
+    recipientRole: z.enum(['family', 'facility', 'visiting_nurse', 'care_manager', 'mcs']),
+    recipientName: z.string().min(1),
+    contact: nullableTextSchema,
+    priority_order: z.number().int().positive(),
+  })
+  .strict();
+
+const communicationTargetsSchema = z
+  .array(communicationTargetSchema)
+  .max(5)
+  .superRefine((targets, context) => {
+    if (new Set(targets.map((target) => target.key)).size !== targets.length) {
+      context.addIssue({ code: 'custom', message: 'duplicate communication target' });
+    }
+    targets.forEach((target, index) => {
+      if (target.priority_order !== index + 1) {
+        context.addIssue({
+          code: 'custom',
+          path: [index, 'priority_order'],
+          message: 'priority order mismatch',
+        });
+      }
+    });
+  });
+
+const patientWorkflowPreviewResponseSchema = z
+  .object({
+    data: z
+      .object({
+        visit_preparation: z
+          .object({
+            onboarding_readiness: z
+              .object({
+                consent_obtained: z.boolean(),
+                emergency_contact_set: z.boolean(),
+                primary_physician_set: z.boolean(),
+                management_plan_approved: z.boolean(),
+              })
+              .strict(),
+            scheduling_preview: z
+              .object({
+                preferred_weekdays: z.array(z.number().int().min(0).max(6)).max(7),
+                preferred_time_from: nullableDateTimeSchema,
+                preferred_time_to: nullableDateTimeSchema,
+                phone_contact_from: nullableDateTimeSchema,
+                phone_contact_to: nullableDateTimeSchema,
+                facility_time_from: nullableDateTimeSchema,
+                facility_time_to: nullableDateTimeSchema,
+                family_presence_required: z.boolean(),
+                visit_buffer_minutes: z.number().int().nonnegative().nullable(),
+                preferred_contact_name: nullableTextSchema,
+                preferred_contact_phone: nullableTextSchema,
+                visit_before_contact_required: z.boolean(),
+                first_visit_preferred_date: nullableDateTimeSchema,
+                first_visit_time_slot: nullableTextSchema,
+                first_visit_time_note: nullableTextSchema,
+                parking_available: z.boolean().nullable(),
+                primary_contact_preference: nullableTextSchema,
+                mcs_linked: z.boolean(),
+              })
+              .strict(),
+            baseline_context: z
+              .object({
+                primary_disease: nullableTextSchema,
+                care_level: nullableTextSchema,
+                adl_level: nullableTextSchema,
+                dementia_level: nullableTextSchema,
+                money_management: nullableTextSchema,
+                family_key_person: nullableTextSchema,
+                medication_support_methods: z.array(z.string()),
+                special_medical_procedures: z.array(z.string()),
+                infection_isolation: nullableTextSchema,
+                narcotics_base: z.boolean().nullable(),
+                narcotics_rescue: z.boolean().nullable(),
+                residual_medication_status: nullableTextSchema,
+              })
+              .strict(),
+            latest_labs: z.array(
+              z
+                .object({
+                  analyte_code: z.string().min(1),
+                  measured_at: z.string().datetime(),
+                  value_numeric: z.number().nullable(),
+                  unit: nullableTextSchema,
+                  abnormal_flag: nullableTextSchema,
+                })
+                .strict(),
+            ),
+            blockers: z.array(z.string().min(1)),
+          })
+          .strict(),
+        report_targets: reportTargetsSchema,
+        communication_priority: z
+          .object({
+            preferred_contact_method: nullableTextSchema,
+            effective_channel: z.enum(['phone', 'fax', 'email', 'collaboration', 'in_person']),
+            visit_before_contact_required: z.boolean(),
+            pharmacy_decision_due_date: nullableDateTimeSchema,
+            targets: communicationTargetsSchema,
+            warnings: z.array(z.string().min(1)),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
 
 function labelList(values: string[]) {
   return values.length > 0 ? values.join(' / ') : '—';
@@ -78,10 +222,10 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
       const response = await fetch(buildPatientWorkflowPreviewApiPath(patientId), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
-      const payload = await readApiJson<{ data: PatientWorkflowPreviewSnapshot }>(
-        response,
-        'ワークフロープレビューの取得に失敗しました',
-      );
+      const payload = await readApiJson<{ data: PatientWorkflowPreviewSnapshot }>(response, {
+        fallbackMessage: 'ワークフロープレビューの取得に失敗しました',
+        schema: patientWorkflowPreviewResponseSchema,
+      });
       return payload.data;
     },
   });
