@@ -4,7 +4,18 @@ import { useEffect } from 'react';
 import { ErrorState } from '@/components/ui/error-state';
 import { clientLog } from '@/lib/utils/client-log';
 
-export function createRouteErrorBoundary(tag: string) {
+type RouteErrorBoundaryOptions = {
+  recoveryHref?: string;
+  recoveryLabel?: string;
+};
+
+export function createRouteErrorBoundary(
+  tag: string,
+  {
+    recoveryHref = '/dashboard',
+    recoveryLabel = 'ダッシュボードへ戻る',
+  }: RouteErrorBoundaryOptions = {},
+) {
   return function RouteError({
     error,
     reset,
@@ -24,7 +35,7 @@ export function createRouteErrorBoundary(tag: string) {
         detail={error.digest ? <span>エラーID: {error.digest}</span> : null}
         onRetry={reset}
         retryVariant="outline"
-        secondaryAction={{ label: 'ダッシュボードへ戻る', href: '/dashboard' }}
+        secondaryAction={{ label: recoveryLabel, href: recoveryHref }}
       />
     );
   };
