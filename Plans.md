@@ -58,7 +58,7 @@
 | Program backlog          |     - | `Program backlog` 表。長期プログラム残スコープ。sprint に数えず、着手時に小IDで queue へ昇格する。 |
 | Archive / reference      |     - | `docs/plans-archive.md`。背景・受入条件・旧証跡。未チェックboxをそのまま backlog として数えない。  |
 
-**次の実装優先順（2026-07-10時点）**:
+**次の実装優先順（2026-07-11時点）**:
 
 1. `API-CONTRACT-001`: exact-root 0とstrict型probeを維持し、helper error/request_id/no-store/data-meta readerを収束する。
 2. `QUERY-SHAPE-WATCHLIST-003-FOLLOW` / `PERF-DB-PATIENT-BOARD-CURSOR`: DB read-speed follow-up を zero-debt watchlist で維持し、patients board main cursor を再設計する。
@@ -410,9 +410,8 @@
 
 1. `API-CONTRACT-001`: exact-root 0とstrict型probeを維持し、helper error/request_id/no-store/data-meta readerを収束する。
 2. `QUERY-SHAPE-WATCHLIST-003-FOLLOW` / `PERF-DB-PATIENT-BOARD-CURSOR`: query-shape 対象拡張と zero-debt 維持、patients board main cursor 再設計。
-3. `FE-PHI-SAFE-CLIENT-LOG-001`: console/raw Error 対策の残スコープ（toast/Sentry/offline retry）を完了させる。
-4. `STOCK-002-EQUIVALENCE-REVIEW`: 既存stock itemを保持した薬剤師review flowを実装する。
-5. `SHARE-CONSENT-WRITE-001` / `PERF-DB-006D-INDEX` / `STOCK-001-VISIT-CONTEXT-APPLY` / `OPS-RECOVERY-LIVE-001`: policyまたは実環境証跡が揃ってからhuman gateへ進める。
+3. `STOCK-002-EQUIVALENCE-REVIEW`: 既存stock itemを保持した薬剤師review flowを実装する。
+4. `SHARE-CONSENT-WRITE-001` / `PERF-DB-006D-INDEX` / `STOCK-001-VISIT-CONTEXT-APPLY` / `OPS-RECOVERY-LIVE-001`: policyまたは実環境証跡が揃ってからhuman gateへ進める。
 
 **Program backlog — 長期プログラム残スコープ（sprint queue に数えない。着手時に小IDで queue へ昇格）**:
 
