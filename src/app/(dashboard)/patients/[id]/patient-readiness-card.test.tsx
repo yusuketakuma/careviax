@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { jsonResponse } from '@/test/fetch-test-utils';
 import { PatientReadinessCard } from './patient-readiness-card';
@@ -37,7 +38,47 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+const NOT_APPLICABLE_RESPONSE = {
+  data: {
+    applicable: false,
+    overall_status: 'not_started',
+    completed_count: 0,
+    total_count: 0,
+    current_case: null,
+    items: [],
+  },
+} as const;
+
+const ACTION_REQUIRED_RESPONSE = {
+  data: {
+    applicable: true,
+    overall_status: 'action_required',
+    completed_count: 0,
+    total_count: 1,
+    current_case: { id: 'case_1', status: 'active' },
+    items: [
+      {
+        key: 'management_plan',
+        label: '管理計画書',
+        description: '承認済みの管理計画書が必要です。',
+        completed: false,
+        severity: 'high',
+        action_label: '確認する',
+        action_href: '/patients/patient_1/management-plan',
+      },
+    ],
+  },
+} as const;
+
 describe('PatientReadinessCard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(buildPatientApiPath).mockReset();
+    vi.mocked(buildPatientApiPath).mockImplementation(
+      (patientId, suffix = '') => `/api/patients/${encodePathSegment(patientId)}${suffix}`,
+    );
+  });
+
   it('renders a PH-OS skeleton while readiness data loads', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({
@@ -61,7 +102,7 @@ describe('PatientReadinessCard', () => {
     useQueryMock.mockReturnValue({
       data: {
         applicable: true,
-        overall_status: 'blocked',
+        overall_status: 'action_required',
         completed_count: 1,
         total_count: 2,
         current_case: { status: 'active' },
@@ -105,7 +146,9 @@ describe('PatientReadinessCard', () => {
       },
     );
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: {} }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse(NOT_APPLICABLE_RESPONSE));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -143,7 +186,9 @@ describe('PatientReadinessCard', () => {
       },
     );
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: {} }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse(NOT_APPLICABLE_RESPONSE));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -187,6 +232,64 @@ describe('PatientReadinessCard', () => {
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
+    }
+  });
+
+  it.each([
+    {
+      name: 'legacy status',
+      payload: {
+        data: { ...ACTION_REQUIRED_RESPONSE.data, overall_status: 'blocked' },
+      },
+    },
+    {
+      name: 'count mismatch',
+      payload: {
+        data: { ...ACTION_REQUIRED_RESPONSE.data, completed_count: 1 },
+      },
+    },
+    {
+      name: 'unsafe action href',
+      payload: {
+        data: {
+          ...ACTION_REQUIRED_RESPONSE.data,
+          items: [
+            {
+              ...ACTION_REQUIRED_RESPONSE.data.items[0],
+              action_href: 'javascript:alert(1)',
+            },
+          ],
+        },
+      },
+    },
+    {
+      name: 'unknown data key',
+      payload: {
+        data: { ...NOT_APPLICABLE_RESPONSE.data, patient_name: '伊藤 キヨ' },
+      },
+    },
+    {
+      name: 'mixed legacy root',
+      payload: { ...NOT_APPLICABLE_RESPONSE, applicable: false },
+    },
+  ])('rejects malformed successful readiness payloads: $name', async ({ payload }) => {
+    useOrgIdMock.mockReturnValue('org_1');
+
+    let captured: { queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation((config: { queryFn: () => Promise<unknown> }) => {
+      captured = config;
+      return { data: undefined, isLoading: true, error: null };
+    });
+
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(payload));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientReadinessCard patientId="patient_1" />);
+
+      await expect(captured?.queryFn()).rejects.toThrow('オンボーディング状況の取得に失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, ClipboardCheck } from 'lucide-react';
+import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
@@ -13,6 +14,92 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import type { PatientReadinessSnapshot } from './patient-detail.types';
+
+const readinessItemKeySchema = z.enum([
+  'patient_profile',
+  'primary_residence',
+  'insurance',
+  'visit_preferences',
+  'care_team_recipients',
+  'visit_consent',
+  'emergency_contact',
+  'primary_physician',
+  'management_plan',
+  'prescription_intake',
+  'first_visit_document',
+]);
+
+const patientActionHrefSchema = z
+  .string()
+  .min(1)
+  .max(2048)
+  .refine(
+    (href) => href.startsWith('/patients/') && !href.startsWith('//') && !/[\r\n\\]/.test(href),
+  );
+
+const readinessItemSchema = z
+  .object({
+    key: readinessItemKeySchema,
+    label: z.string().min(1),
+    completed: z.boolean(),
+    description: z.string().min(1),
+    action_href: patientActionHrefSchema,
+    action_label: z.string().min(1),
+    severity: z.enum(['normal', 'high']),
+  })
+  .strict();
+
+const patientReadinessSnapshotSchema = z
+  .object({
+    applicable: z.boolean(),
+    overall_status: z.enum(['ready', 'action_required', 'not_started']),
+    completed_count: z.number().int().nonnegative(),
+    total_count: z.number().int().nonnegative(),
+    current_case: z
+      .object({
+        id: z.string().min(1),
+        status: z.string().min(1),
+      })
+      .strict()
+      .nullable(),
+    items: z.array(readinessItemSchema),
+  })
+  .strict()
+  .superRefine((snapshot, context) => {
+    const completedItems = snapshot.items.filter((item) => item.completed).length;
+    if (snapshot.total_count !== snapshot.items.length) {
+      context.addIssue({ code: 'custom', path: ['total_count'], message: 'total mismatch' });
+    }
+    if (snapshot.completed_count !== completedItems) {
+      context.addIssue({
+        code: 'custom',
+        path: ['completed_count'],
+        message: 'completed mismatch',
+      });
+    }
+    if (!snapshot.applicable) {
+      if (
+        snapshot.overall_status !== 'not_started' ||
+        snapshot.current_case !== null ||
+        snapshot.total_count !== 0
+      ) {
+        context.addIssue({ code: 'custom', path: ['applicable'], message: 'inactive mismatch' });
+      }
+      return;
+    }
+    if (snapshot.current_case === null || snapshot.overall_status === 'not_started') {
+      context.addIssue({ code: 'custom', path: ['current_case'], message: 'active case required' });
+    }
+    if (
+      (snapshot.overall_status === 'ready' && snapshot.completed_count !== snapshot.total_count) ||
+      (snapshot.overall_status === 'action_required' &&
+        snapshot.completed_count === snapshot.total_count)
+    ) {
+      context.addIssue({ code: 'custom', path: ['overall_status'], message: 'status mismatch' });
+    }
+  });
+
+const patientReadinessResponseSchema = z.object({ data: patientReadinessSnapshotSchema }).strict();
 
 function ReadinessHeading() {
   return (
@@ -65,10 +152,10 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
       const response = await fetch(buildPatientApiPath(patientId, '/readiness'), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
-      const payload = await readApiJson<{ data: PatientReadinessSnapshot }>(
-        response,
-        'オンボーディング状況の取得に失敗しました',
-      );
+      const payload = await readApiJson<{ data: PatientReadinessSnapshot }>(response, {
+        fallbackMessage: 'オンボーディング状況の取得に失敗しました',
+        schema: patientReadinessResponseSchema,
+      });
       return payload.data;
     },
   });
