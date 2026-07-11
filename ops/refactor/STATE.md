@@ -45620,6 +45620,20 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   report slice cleared. Concurrent report-delivery work, harness-memory state, and unrelated untracked files were
   excluded. No push was performed.
 
+## 2026-07-11 FULLSTACK-ALIGNMENT — patient workspace revalidation
+
+- result:
+  Reused `.agent-loop/API_REACHABILITY_LEDGER.md` rather than creating the duplicate
+  `ops/refactor/FULLSTACK_ALIGNMENT.md` requested by the broad objective. Added current, non-normative rows for the
+  patient board selected-preview flow and patient-detail Command flow. Both are classified `ALIGNED / PARTIAL`: the
+  inspected frontend, endpoint, shared response/payload, auth/no-store or audit boundary, and tests are connected;
+  remaining work belongs to their existing performance and broader screen tasks, not a missing FE or BE wing.
+- validation / commit:
+  Prettier, diff check, and every referenced source-path existence check passed. `b4c03cdc3`
+  (`docs(FULLSTACK-ALIGNMENT): revalidate patient workspaces`) committed only the alignment artifact. `Plans.md`
+  remains the execution queue and this file remains the progress SSOT. Concurrent report work and unrelated local
+  files were excluded. No push was performed.
+
 ## 2026-07-11 API-CONTRACT-001 — navigation badge runtime envelope
 
 - current task / evidence:
