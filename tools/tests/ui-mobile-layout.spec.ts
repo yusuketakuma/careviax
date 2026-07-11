@@ -39,7 +39,7 @@ const MOBILE_ROUTES = [
     name: 'reports-mobile-layout',
     path: '/reports',
     readyTestId: 'report-share-workspace',
-    primaryTarget: { role: 'heading' as const, name: '報告・共有', level: 2 },
+    primaryTarget: { role: 'heading' as const, name: '報告・共有', level: 1 },
   },
   {
     name: 'workflow-mobile-layout',
