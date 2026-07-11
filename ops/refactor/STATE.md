@@ -45547,3 +45547,7 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   patient-board query redesign as cursor-bounded DB work before expanding summary and priority signals. The local
   preview server remains in tmux session `careviax-preview`. No push, deployment,
   migration, production data mutation, secret rotation, or destructive operation occurred in this slice.
+- commit:
+  `ea65ee168` (`feat(FE-PATIENT-LIST-001): add selected patient preview`) committed the five owned implementation,
+  regression, plan, and single-ledger paths. Existing harness-memory and unrelated untracked local files were
+  excluded. No push was performed.
