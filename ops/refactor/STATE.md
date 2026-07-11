@@ -45614,6 +45614,11 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   and service-worker TypeScript stages. `FE-PATIENT-DETAIL-001` remains Partial for broader responsive,
   keyboard/zoom, state-matrix, and remaining island evidence. Concurrent Plans/report work was preserved. No push,
   build, deployment, migration, production data mutation, or destructive operation occurred.
+- commits:
+  `733715541` (`fix(FE-PATIENT-DETAIL-001): shape command loading states`) committed the owned implementation,
+  regression, and initial ledger evidence. `93f008bcf` recorded the successful full typecheck after the concurrent
+  report slice cleared. Concurrent report-delivery work, harness-memory state, and unrelated untracked files were
+  excluded. No push was performed.
 
 ## 2026-07-11 API-CONTRACT-001 — navigation badge runtime envelope
 
@@ -45676,3 +45681,20 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `aacf5969a` (`fix(FE-REPORT-001): keep report mutation recovery visible`) committed the four owned report,
   regression, plan, and single-ledger paths. Concurrent patient card-workspace changes and pre-existing local files
   were excluded. No push was performed.
+
+## 2026-07-11 FE-REPORT-001 — persistent delivery follow-up recovery
+
+- incremental audit / implementation:
+  Continued the same report-workspace audit and found the adjacent delivery analytics mutation still relied on a
+  failure toast alone for both broad reminder queueing and targeted three-day snooze. The follow-up card now keeps an
+  inline shared `ErrorState` with fixed PHI-safe cause and next action, and retries the exact retained mutation input.
+  A targeted delivery ID and snooze timestamp remain targeted; an empty input remains the existing broad reminder
+  request. Existing client warning telemetry, toast, disabled/loading behavior, query invalidation, API payload,
+  auth/authz, task creation, delivery state, and patient/report links are unchanged. Image generation was omitted for
+  the same reason as the preceding slice: this adds an existing shared state without visual reconstruction.
+- validation / remaining:
+  Focused delivery-dashboard Vitest passed 1 file / 12 tests. The new regression proves persistent recovery copy,
+  exact targeted retry variables, and omission of synthetic patient-like raw detail. Focused ESLint/Prettier,
+  8 GB `pnpm typecheck`, client PHI-log, frontend contract, module boundary, raw state colors, active Plans, and diff
+  checks passed. `FE-REPORT-001` remains Partial for its broader workspace/editor/AI/share/print objectives. Browser,
+  screenshot, build, DB/migration, external send, deploy, and production data actions were not run.
