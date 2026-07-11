@@ -45810,3 +45810,36 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `FE-SCHEDULE-001` owns the current Plans diff, so no mixed hunk was staged. Commit `7ee7c6b79`
   (`test(FE-QA-001): align reports mobile heading contract`) contains only the owned E2E inventory correction. No push
   was performed.
+
+## 2026-07-11 FE-SCHEDULE-001 — shared status control and patient identity visibility
+
+- current task / audit evidence:
+  Incrementally audited `/schedules` against `docs/ui-ux-design-guidelines.md`. The populated board used a native
+  `select` beside shared PH-OS controls, and patient names were ellipsized in the status-control list, route list, and
+  pending-proposal row. Ellipsis-only patient identity conflicts with the patient-safety display contract and can hide
+  distinguishing name suffixes. Existing approximate-capacity wording, hidden-count safeguards, schedule-focused task
+  links, proposal/confirmed boundaries, API methods, and status transitions were already present and were not rebuilt.
+  `gpt-image-2` was omitted because this is a focused shared-component and text-wrapping correction inside the existing
+  layout, not visual reconstruction or a new information architecture.
+- implementation / FE-BE alignment:
+  Replaced only the visit-status native control with the existing Base UI `Select`, preserved the closed Japanese
+  label, explicit patient-specific accessible name, 44px trigger/items, the bounded inline status options, and the
+  existing `{ schedule_status, expected_schedule_status }` mutation. Patient names now wrap rather than truncate in
+  status controls, route stops, and pending proposals. `GET /api/visit-schedules/day-board` and
+  `PATCH /api/visit-schedules/[id]` remain aligned with the shared response and optimistic status contract; no API,
+  DB/schema/migration, auth/authz, tenant/org filter, audit, PHI output, persistence, task, or proposal behavior changed.
+- validation / runtime evidence:
+  Focused Vitest passed 1 file / 34 tests. The Select regression verifies the button trigger, Japanese closed label,
+  44px classes, omission of terminal `completed/cancelled` choices, and exact `planned -> in_progress` mutation payload;
+  Base UI's pointer-down/click contract is exercised instead of replacing the mutation assertion with a mock-only
+  visual check. Exact ESLint, Prettier, `colors:check`, `client-phi-log:check`, `frontend-contract:check`, module-boundary,
+  8 GB aggregate `pnpm typecheck`, and diff checks passed. An isolated authenticated browser session verified
+  `/schedules` at desktop 1440x900 and mobile 390x844 with no document-level horizontal overflow, unique
+  `h1=訪問予定` / `h2=スケジュール`, and zero page/console errors. Screenshots were saved outside the worktree at
+  `/tmp/careviax-schedules-desktop.png` and `/tmp/careviax-schedules-mobile.png`.
+- plans / remaining / rollback:
+  `FE-SCHEDULE-001` remains Partial. The live local day board contained zero visits, so populated patient rows and the
+  shared Select are runtime-proven by component fixtures rather than the screenshot; proposal state matrix,
+  proposal-rail reorganization, keyboard-only selection, 200% zoom, forced-colors, and full build remain outstanding.
+  Rollback is the focused component/test/ledger commit only. No push, deployment, migration, external send,
+  production-data mutation, or destructive operation occurred.

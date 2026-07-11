@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
@@ -1593,7 +1593,7 @@ describe('ScheduleTeamBoard', () => {
     expect(reviewLink.getAttribute('href')).toBe('/communications/inbound');
   });
 
-  it('offers visit status changes from the staff gantt', () => {
+  it('offers visit status changes from the staff gantt through the shared Select', async () => {
     const mutate = vi.fn();
     useMutationMock.mockReturnValue({
       mutate,
@@ -1605,17 +1605,25 @@ describe('ScheduleTeamBoard', () => {
 
     const controls = screen.getByTestId('schedule-status-controls');
     const statusSelect = within(controls).getByLabelText('伊藤 キヨ様のステータスを変更');
-    expect(statusSelect).toBeTruthy();
-    expect(within(controls).queryByRole('option', { name: '完了' })).toBeNull();
-    expect(within(controls).queryByRole('option', { name: '中止' })).toBeNull();
+    expect(statusSelect.tagName).toBe('BUTTON');
+    expect(statusSelect.textContent).toContain('予定');
+    expect(statusSelect.className).toContain('min-h-[44px]');
+    expect(statusSelect.className).toContain('sm:min-h-[44px]');
     expect(within(controls).queryByLabelText('施設グリーンヒル 12名のステータスを変更')).toBeNull();
 
-    fireEvent.change(statusSelect, { target: { value: 'in_progress' } });
+    fireEvent.click(statusSelect);
+    expect(screen.queryByRole('option', { name: '完了' })).toBeNull();
+    expect(screen.queryByRole('option', { name: '中止' })).toBeNull();
+    const inProgressOption = await screen.findByRole('option', { name: '訪問中' });
+    fireEvent.pointerDown(inProgressOption, { pointerType: 'mouse' });
+    fireEvent.click(inProgressOption);
 
-    expect(mutate).toHaveBeenCalledWith({
-      scheduleId: 'visit_1',
-      status: 'in_progress',
-      expectedStatus: 'planned',
+    await waitFor(() => {
+      expect(mutate).toHaveBeenCalledWith({
+        scheduleId: 'visit_1',
+        status: 'in_progress',
+        expectedStatus: 'planned',
+      });
     });
   });
 

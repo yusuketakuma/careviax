@@ -13,6 +13,13 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { StateBadge } from '@/components/ui/state-badge';
 import { SCHEDULE_STATUS_ROLE } from '@/lib/constants/status-labels';
 import type { StatusRole } from '@/lib/constants/status-tokens';
@@ -533,7 +540,7 @@ function ScheduleStatusControlPanel({
                     className="grid grid-cols-[minmax(0,1fr)_minmax(128px,150px)] items-center gap-2 rounded-md border border-border/60 bg-card px-2.5 py-2"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-foreground">
+                      <p className="break-words text-sm font-semibold text-foreground">
                         {block.label}
                       </p>
                       <StateBadge
@@ -548,25 +555,41 @@ function ScheduleStatusControlPanel({
                         className="mt-1"
                       />
                     </div>
-                    <select
-                      aria-label={`${block.label}のステータスを変更`}
-                      className="min-h-[44px] rounded-md border border-input bg-background px-2 text-sm font-semibold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    <Select
                       value={status}
                       disabled={pending}
-                      onChange={(event) =>
+                      onValueChange={(value) => {
+                        if (value === null) return;
                         onStatusChange({
                           scheduleId,
-                          status: event.target.value as ScheduleStatus,
+                          status: value as ScheduleStatus,
                           expectedStatus: status,
-                        })
-                      }
+                        });
+                      }}
                     >
-                      {INLINE_SCHEDULE_STATUS_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger
+                        aria-label={`${block.label}のステータスを変更`}
+                        className="min-h-[44px] w-full font-semibold sm:min-h-[44px]"
+                      >
+                        <SelectValue>
+                          {(value) =>
+                            INLINE_SCHEDULE_STATUS_OPTIONS.find((option) => option.value === value)
+                              ?.label ?? value
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {INLINE_SCHEDULE_STATUS_OPTIONS.map((option) => (
+                          <SelectItem
+                            key={option.value}
+                            value={option.value}
+                            className="min-h-[44px]"
+                          >
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </li>
                 );
               })}
@@ -1090,7 +1113,7 @@ function RouteStaffList({ member, visits }: { member: DayBoardStaff; visits: Day
               {routeStopLabel(visit, index)}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-foreground">
+              <p className="break-words text-sm font-semibold text-foreground">
                 {visit.patient_name}様
               </p>
               <PatientArchiveBadge archive={visit.patient_archive} className="mt-1" />
@@ -1426,7 +1449,7 @@ function PendingProposalRow({
         <span className="inline-flex shrink-0 items-center rounded bg-state-confirm/10 px-2 py-0.5 text-xs font-bold text-state-confirm">
           {proposal.badge_label}
         </span>
-        <p className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">
+        <p className="min-w-0 flex-1 break-words text-sm font-bold text-foreground">
           {proposal.badge_label === '受入判断' ? '新規 ' : ''}
           {proposal.patient_name}様 — {dateLabel} {timeLabel} {pharmacistLabel}
         </p>
