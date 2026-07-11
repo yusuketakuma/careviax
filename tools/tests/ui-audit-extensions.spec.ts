@@ -280,6 +280,29 @@ test('reports accessibility has no critical or serious violations', async ({
   expect(summarizeViolations(severe)).toEqual([]);
 });
 
+test('inbound communications accessibility has no critical or serious violations', async ({
+  context,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium');
+
+  const { page, errors } = await createInstrumentedPage(context, {
+    captureHttpErrors: false,
+  });
+  await openStableRoute(page, '/communications/inbound');
+  await expect(page.getByTestId('inbound-communications-content')).toBeVisible({
+    timeout: 60_000,
+  });
+
+  const results = await analyzeMainAccessibility(page);
+  const severe = results.violations.filter((violation) =>
+    ['critical', 'serious'].includes(violation.impact ?? ''),
+  );
+
+  await writeScreenshot(page, 'inbound-communications-a11y');
+  expect(errors).toEqual([]);
+  expect(summarizeViolations(severe)).toEqual([]);
+});
+
 test('reports keeps its primary navigation reachable in forced colors and a 200%-equivalent viewport', async ({
   context,
 }, testInfo) => {
