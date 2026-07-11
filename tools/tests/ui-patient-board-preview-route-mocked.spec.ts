@@ -107,6 +107,9 @@ test.describe('patient board selected preview', () => {
     await openStableRoute(page, '/patients');
     await expect(page.getByTestId('patients-board-grid')).toBeVisible();
     await expect(page.getByTestId('patient-board-preview-placeholder')).toBeVisible();
+    const cardLinks = page.getByTestId('patient-board-card-link');
+    await expect(cardLinks.nth(0)).toHaveAttribute('href', '/patients/preview_patient_a');
+    await expect(cardLinks.nth(1)).toHaveAttribute('href', '/patients/preview_patient_b');
 
     await page.getByRole('button', { name: 'テスト患者Aを右プレビュー' }).click();
     const desktopPreview = page.getByTestId('patient-board-selected-preview');
@@ -115,7 +118,7 @@ test.describe('patient board selected preview', () => {
     await expect(desktopPreview).toContainText('監査前の確認が必要です');
     await expect(desktopPreview.getByRole('link', { name: '患者詳細' })).toHaveAttribute(
       'href',
-      '/patients/preview_patient_a#patient-foundation',
+      '/patients/preview_patient_a',
     );
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -126,7 +129,7 @@ test.describe('patient board selected preview', () => {
     await expect(sheet).toContainText('外部からの回答を待っています');
     await expect(sheet.getByRole('link', { name: '患者詳細' })).toHaveAttribute(
       'href',
-      '/patients/preview_patient_b#patient-foundation',
+      '/patients/preview_patient_b',
     );
 
     const closeButton = sheet.getByRole('button', { name: '患者プレビューを閉じる' });

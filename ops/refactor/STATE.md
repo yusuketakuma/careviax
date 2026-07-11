@@ -46148,3 +46148,29 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `5aa5ca123` (`fix(API-CONTRACT-001): validate visit constraints payloads`) committed only the owned consumer,
   regression, schema ratchet, Plans, FE/BE inventory, and single-ledger paths. Concurrent patient-board work,
   harness-memory state, and unrelated untracked files were excluded. No push was performed.
+
+## 2026-07-11 FE-PATIENT-LIST-001 — patient detail link target convergence
+
+- current task / root cause:
+  A user-reported mismatch was reproduced in all three patient-board surfaces. The patient-name links opened the
+  patient detail root, while links visibly labeled `患者詳細` opened `foundation_href`, which points to the
+  `#patient-foundation` subsection and is the dedicated target for `正本確認`. Git history traced the regression to
+  the selected-preview slice in `ea65ee168`, where the foundation shortcut was reused for the new detail actions.
+  Updating the expected contract before the implementation produced three focused test failures with the exact
+  root-versus-anchor mismatch.
+- implementation / UI safety:
+  Card, compact-list, and shared desktop/mobile preview `患者詳細` links now always use the same encoded patient detail
+  root as the patient-name link. `正本確認` continues to use `foundation_href`, preserving the direct foundation
+  workflow without giving a general-detail label to a subsection link. No patient identity, selection state, board
+  query/DTO, API, DB, auth/authz, PHI, audit, workflow action, or visual layout changed. The PH-OS UI SSOT requirement
+  that action labels describe their actual destination is restored. `gpt-image-2` was omitted because this is a
+  navigation-semantics correction with no visual reconstruction.
+- validation / remaining:
+  Focused patient-board Vitest passed 1 file / 27 tests after the same suite failed 3 tests before the fix. The
+  route-mocked Chromium desktop/mobile preview passed 1/1 and now explicitly proves that the name link and detail
+  action share `/patients/{id}` for two patients while the supplied foundation anchor remains separate. Exact
+  ESLint/Prettier, 8 GB aggregate typecheck, frontend contract, client PHI-log, raw-state colors, module-boundary, and
+  diff checks passed. `FE-PATIENT-LIST-001` remains Partial for the broader summary/list redesign, bounded patient-board
+  query work, and real-data payload budget. Full build was not rerun because the same-worktree port 3012 preview is
+  active and Next build/dev artifacts must not race. No push, deployment, migration, external send, production-data
+  mutation, or destructive operation occurred.

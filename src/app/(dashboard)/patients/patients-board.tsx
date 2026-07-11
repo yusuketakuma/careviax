@@ -612,7 +612,7 @@ function PatientBoardCardItem({
           → {card.link_label}
         </Link>
         <Link
-          href={card.foundation_href ?? buildPatientHref(card.patient_id)}
+          href={buildPatientHref(card.patient_id)}
           className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '!h-auto !min-h-[44px]')}
         >
           患者詳細
@@ -797,7 +797,7 @@ function PatientBoardCompactListRow({
           → {card.link_label}
         </Link>
         <Link
-          href={card.foundation_href ?? buildPatientHref(card.patient_id)}
+          href={buildPatientHref(card.patient_id)}
           className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '!h-auto !min-h-[44px]')}
         >
           患者詳細
@@ -885,7 +885,7 @@ function PatientBoardSelectedPreview({ card, now }: { card: PatientBoardCard; no
           → {card.link_label}
         </Link>
         <Link
-          href={card.foundation_href ?? buildPatientHref(card.patient_id)}
+          href={buildPatientHref(card.patient_id)}
           className={cn(buttonVariants({ variant: 'outline' }), 'min-h-[44px]')}
         >
           患者詳細

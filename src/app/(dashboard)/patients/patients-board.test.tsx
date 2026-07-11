@@ -364,7 +364,7 @@ describe('PatientsBoard', () => {
     expect(within(desktopPreview).getByText('麻薬監査 期限12:00 — 持参薬が未確定')).toBeTruthy();
     expect(
       within(desktopPreview).getByRole('link', { name: '患者詳細' }).getAttribute('href'),
-    ).toBe('/patients/pt_tanaka#patient-foundation');
+    ).toBe('/patients/pt_tanaka');
 
     fireEvent.click(screen.getByRole('button', { name: '佐々木 ハルをプレビュー' }));
 
@@ -558,7 +558,7 @@ describe('PatientsBoard', () => {
     expect(workflowLink).toBeTruthy();
     expect(workflowLink.className).toContain('!min-h-[44px]');
     const detailLink = within(urgent as HTMLElement).getByRole('link', { name: '患者詳細' });
-    expect(detailLink.getAttribute('href')).toBe('/patients/pt_tanaka#patient-foundation');
+    expect(detailLink.getAttribute('href')).toBe('/patients/pt_tanaka');
     expect(detailLink.className).toContain('!min-h-[44px]');
     expect(
       within(urgent as HTMLElement)
@@ -607,7 +607,7 @@ describe('PatientsBoard', () => {
     expect(workflowLink.getAttribute('href')).toBe('/audit');
     expect(workflowLink.className).toContain('!min-h-[44px]');
     const detailLink = within(urgent as HTMLElement).getByRole('link', { name: '患者詳細' });
-    expect(detailLink.getAttribute('href')).toBe('/patients/pt_tanaka#patient-foundation');
+    expect(detailLink.getAttribute('href')).toBe('/patients/pt_tanaka');
     expect(detailLink.className).toContain('!min-h-[44px]');
   });
 
