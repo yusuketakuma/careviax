@@ -45485,3 +45485,6 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   Remaining frontend work belongs to the eight screen/QA entries, led by `FE-PATIENT-LIST-001`; its patient-board
   cursor/BFF dependency must be reconciled before visual restructuring. No new runtime code was required for this
   reconciliation step. No push, deployment, migration, production data action, or destructive cleanup occurred.
+- commit:
+  `e1fa9261f` (`docs(FE-SHELL-001): record shell completion`) committed the owned Plans and single-ledger closure.
+  Existing harness-memory and unrelated untracked local files were excluded. No push was performed.
