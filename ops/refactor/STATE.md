@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZSTOCKSUMMARYSTRICT patient medication-stock summary reader (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZSTOCKSUMMARYSTRICT patient medication-stock summary reader (VERIFY_REQUIRED, 2026-07-13; implementation `fba648153`; shared clean-capacity build pending).
   - current task / root cause:
     Visit Medication Stock Summary GET readerはcompile-time castだけで、別患者item、重複identity、request limit drift、
     visible/hidden/active・risk/review集計drift、最新観測時刻drift、hidden itemへのevent参照、event順序不正を成功扱い
