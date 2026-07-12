@@ -47045,6 +47045,37 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZNOTIFICATIONBELLSTRICT — notification-bell summary/list contract (IMPLEMENTED, PENDING LANDING)
+
+- current task / root cause:
+  The notification bell summary and drawer refreshes still use optional compile-time payload casts even though the
+  provider returns `{ data: { unreadCount } }` for summary and `{ data, meta }` for list reads. Invalid unread counts,
+  legacy roots, malformed list items, duplicate identities, or unsafe links can therefore silently affect badge/drawer
+  state. Existing PATCH, SSE-safe redaction, OS notification minimization, provider, and authorization semantics are
+  not being changed.
+- baseline:
+  The focused notification-bell suites pass 2 files / 9 tests before implementation. Current client-schema inventory
+  is 167 schema-backed / 206 allowlisted schema-less / 82 files. The target is one `stringFallback` entry in
+  `src/components/features/notifications/notification-bell.tsx` covering the two refresh readers.
+- implementation plan:
+  Add a strict non-negative unread-count response schema, reuse the landed notification list schema, connect both
+  refresh readers, synchronize provider-shaped fixtures, add malformed/legacy/negative/unsafe-link regressions, and
+  remove only the notification-bell allowlist entry. No visual reconstruction or `gpt-image-2` is needed because this
+  is a non-visual badge/drawer parser and privacy-boundary repair.
+- implementation / validation:
+  Added `notificationSummaryResponseSchema`, reused `notificationsResponseSchema` for both refresh readers, and
+  routed successful 2xx JSON through schema-backed `readApiJson`. The consumer now strips provider-only list fields and
+  rejects legacy roots, invalid unread counts, malformed items, duplicate identities, and unsafe links before badge or
+  drawer state changes. PATCH, SSE-safe redaction, OS notification minimization, provider, authorization, and visual
+  behavior are unchanged. Focused suites pass 2 files / 12 tests; static contract gates and `git diff --check` pass;
+  client-schema inventory is 168 schema-backed / 205 allowlisted schema-less / 81 files; typecheck and no-unused
+  typecheck pass; lint exits 0 with the two pre-existing break-glass warnings; Next 16.2.9 build passes with 311/311
+  static pages, existing CSS optimizer warnings, and no ENOSPC warning. Filesystem availability was 14 GiB before and
+  after the build.
+- next action:
+  Update the landing ledgers, inspect explicit owned paths, create the scoped implementation commit, push it, verify
+  local/remote parity, then add the closure ledger.
+
 ## 2026-07-12 API-CONTRACT-001FZFACILITYUNITSSTRICT — facility-unit list contract (DONE)
 
 - current task / root cause:

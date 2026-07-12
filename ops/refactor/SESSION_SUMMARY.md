@@ -3,13 +3,13 @@
 - Session / Run ID: `019f54af-bde2-7b40-ae01-9348fefaa8cd`
 - Repository: `/Users/yusuke/workspace/careviax`
 - Branch: `agent/continuous-improvement-20260712`
-- Current task: `API-CONTRACT-001-RESCAN`
-- Investigation: restored `Plans.md`, `ops/refactor/STATE.md`, Git branch/upstream, current dirty ownership, Next 16.2.9 package scripts, CI trigger, landed jobs/staff/operations/select-site/notifications slices, and the admin facilities unit route/provider/consumer boundary.
+- Current task: `API-CONTRACT-001FZNOTIFICATIONBELLSTRICT`
+- Investigation: restored `Plans.md`, `ops/refactor/STATE.md`, Git branch/upstream, current dirty ownership, Next 16.2.9 package scripts, CI trigger, landed jobs/staff/operations/select-site/notifications/facility-unit slices, and the notification-bell summary/list boundary.
 - Existing completed context: patient-list/detail link convergence was already verified and recorded in STATE; no duplicate source edit was made.
-- Current implementation: facility-unit GET is landed with strict `{ data }` identity/type/numeric checks; notifications and prior contract slices remain landed, and no provider/mutation/auth semantics changed.
-- Validation: facility consumer/unit-provider suites pass 2 files / 25 tests; format, contract/static gates, aggregate and 8 GB no-unused typechecks, lint, diff-check, and build passed. Client-schema inventory is 167 schema-backed / 206 allowlisted / 82 files. Next 16.2.9 compiled in 3.7 minutes, TypeScript finished in 63 seconds, and 311/311 static pages were generated. Two existing CSS optimizer warnings were emitted; build exit was 0 and no ENOSPC warning was emitted in this run.
-- Commit: facility-unit implementation `bde744e93` is pushed; notifications implementation `64ccfd492` / ledger `b70da7085` remain in history.
-- Push: `bde744e93` is pushed to `origin/agent/continuous-improvement-20260712`; local and remote heads match.
-- Remaining: rescan the remaining API-contract residual, select the next disjoint slice, and continue while preserving unrelated dirty paths.
-- High-risk impact: controlled facility/occupancy read with patient-count aggregate; strict parsing rejects malformed unit state without changing provider, auth, mutation, or external output boundaries.
-- Exact next action: `pnpm client-json-schema:check`, then inspect remaining API-contract allowlist entries and provider/consumer coverage.
+- Current implementation: notification-bell summary/list refreshes use strict shared response schemas; malformed roots/items/counts and unsafe links fail closed before badge/drawer state.
+- Validation: focused notification-bell suites pass 2 files / 12 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized Next 16.2.9 build pass. Client-schema inventory is 168 schema-backed / 205 allowlisted / 81 files; build generated 311/311 pages with only existing CSS warnings and no ENOSPC warning.
+- Commit: facility-unit implementation `bde744e93` / ledger `23fad2a86` remain pushed; notification-bell implementation is validated and pending scoped commit.
+- Push: `23fad2a86` is pushed to `origin/agent/continuous-improvement-20260712`; local and remote heads match before notification-bell landing.
+- Remaining: create the notification-bell scoped commit, push and verify parity, then close the ledger while preserving PATCH, SSE-safe redaction, OS notification minimization, and provider/auth semantics.
+- High-risk impact: controlled notification badge/drawer read; strict parsing rejects invalid counts/items and reuses in-app-only content boundaries without changing provider, auth, PATCH, or SSE behavior.
+- Exact next action: inspect explicit owned paths, stage only this slice, commit/push, verify local/remote parity, and write closure state.

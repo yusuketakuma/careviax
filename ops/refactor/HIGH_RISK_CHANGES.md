@@ -48,3 +48,10 @@
 - Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, or production data mutation changed.
 - Safety/privacy control: legacy root, duplicate identity, invalid content/date/read state, pagination drift, provider-only metadata, and unsafe external links are rejected or stripped before the authorized inbox state is used; persisted notification detail remains in-app only.
 - Operational note: PATCH acknowledgement, SSE-safe redaction, org/user authorization, no-store behavior, and provider semantics remain the source of truth; no raw notification content is logged or sent to external systems by this slice.
+
+## API-CONTRACT-001FZNOTIFICATIONBELLSTRICT
+
+- Classification: Controlled PHI-adjacent notification badge/drawer read, but not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, provider, PATCH, SSE, or production data mutation changed.
+- Safety/privacy control: strict summary/list schemas reject legacy roots, negative/non-finite unread counts, malformed notification content/date/read state, duplicate identities, pagination drift, and unsafe external links; provider-only fields are stripped before in-app badge/drawer state.
+- Operational note: in-app notification detail remains within the authorized surface; raw title/message/link are not passed to OS notification helpers, logged, or externalized by this slice.

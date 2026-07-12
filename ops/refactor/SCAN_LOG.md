@@ -98,3 +98,22 @@
 - Landed: implementation commit `bde744e93` passed 2 files / 25 focused tests, all contract/type/lint/diff gates, and
   serialized Next build; client-schema inventory moved to 167 schema-backed / 206 allowlisted / 82 files. Next scan:
   remaining API-CONTRACT allowlist entries and patients board cursor residual.
+
+## 2026-07-12 — API-CONTRACT-001FZNOTIFICATIONBELLSTRICT selection
+
+- Scope: notification-bell allowlist, `src/components/features/notifications/notification-bell.tsx`, shared notification
+  response schemas, and notification-bell fetch tests.
+- Candidate ranking: selected the one-file notification badge/drawer reader because the list schema is already landed and
+  the summary endpoint is a bounded unread-count response; deferred medical, billing, external-share, and mutation-heavy
+  readers with broader controlled-data impact.
+- Finding: the bell summary and drawer refreshes use compile-time optional payload casts despite provider current shapes;
+  malformed values can silently reset or populate badge/drawer state.
+- Baseline: focused notification-bell suites pass 2 files / 9 tests; client-schema is 167 schema-backed / 206 allowlisted
+  / 82 files.
+- Planned fix: strict summary count schema, reuse strict notification list schema, malformed/legacy/negative/unsafe-link
+  regressions, and one allowlist ratchet removal. PATCH, SSE-safe redaction, OS notification minimization, provider/auth,
+  and visual semantics stay fixed.
+
+- Landed locally: `notificationSummaryResponseSchema` and the shared `notificationsResponseSchema` now guard both
+  refresh readers; focused suites pass 2 files / 12 tests; static/type/no-unused/lint/diff/build gates pass; client-schema
+  inventory moved to 168 schema-backed / 205 allowlisted / 81 files. Scoped commit/push and closure ledger remain.

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import type { ZodType } from 'zod';
 import { Bell, BellOff, ExternalLink } from 'lucide-react';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useUIStore } from '@/lib/stores/ui-store';
@@ -22,28 +23,17 @@ import {
   showBrowserNotification,
 } from '@/lib/browser-notifications';
 import { NOTIFICATIONS_API_PATH, buildNotificationsApiPath } from '@/lib/notifications/api-paths';
+import {
+  notificationSummaryResponseSchema,
+  notificationsResponseSchema,
+  type NotificationItem,
+  type NotificationsResponse,
+  type NotificationSummaryResponse,
+} from '@/lib/notifications/response-schema';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 import { subscribeSharedRealtimeStream } from '@/lib/realtime/shared-event-stream';
 
-type Notification = {
-  id: string;
-  type: string;
-  title?: string;
-  message: string;
-  link?: string | null;
-  created_at: string;
-  is_read: boolean;
-};
-
-type NotificationSummaryPayload = {
-  data?: {
-    unreadCount?: number;
-  };
-};
-
-type NotificationListPayload = {
-  data?: Notification[];
-};
+type Notification = NotificationItem;
 
 const NOTIFICATION_STREAM_DISABLED = process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
 export const NOTIFICATION_DISPLAY_LIMIT = 50;
@@ -70,26 +60,28 @@ export function pruneSeenNotificationIds(
   }
 }
 
-async function readNotificationRefreshJson<T>(response: Promise<Response>): Promise<T | null> {
+async function readNotificationRefreshJson<T>(
+  response: Promise<Response>,
+  schema: ZodType<T>,
+): Promise<T | null> {
   try {
     const res = await response;
     if (!res.ok) return null;
-    return await readApiJson<T>(res, '通知の取得に失敗しました');
+    return await readApiJson<T>(res, {
+      fallbackMessage: '通知の取得に失敗しました',
+      schema,
+    });
   } catch {
     return null;
   }
 }
 
-function getUnreadSummaryCount(payload: NotificationSummaryPayload): number | null {
-  const count = payload.data?.unreadCount;
-  if (count == null) return 0;
-  return typeof count === 'number' ? count : null;
+function getUnreadSummaryCount(payload: NotificationSummaryResponse): number {
+  return payload.data.unreadCount;
 }
 
-function getNotificationList(payload: NotificationListPayload): Notification[] | null {
-  const notifications = payload.data;
-  if (notifications == null) return [];
-  return Array.isArray(notifications) ? notifications : null;
+function getNotificationList(payload: NotificationsResponse): Notification[] {
+  return payload.data;
 }
 
 export function NotificationBell() {
@@ -166,28 +158,28 @@ export function NotificationBell() {
 
   const refreshNotificationSummary = useCallback(async () => {
     if (!orgId) return;
-    const payload = await readNotificationRefreshJson<NotificationSummaryPayload>(
+    const payload = await readNotificationRefreshJson<NotificationSummaryResponse>(
       fetch(buildNotificationsApiPath(new URLSearchParams({ summary: '1' })), {
         headers: buildOrgHeaders(orgId),
       }),
+      notificationSummaryResponseSchema,
     );
     if (!payload) return;
     const unreadCount = getUnreadSummaryCount(payload);
-    if (unreadCount == null) return;
     if (!mountedRef.current) return;
     setUnreadSummaryCount(unreadCount);
   }, [orgId]);
 
   const refreshNotifications = useCallback(async () => {
     if (!orgId) return;
-    const payload = await readNotificationRefreshJson<NotificationListPayload>(
+    const payload = await readNotificationRefreshJson<NotificationsResponse>(
       fetch(buildNotificationsApiPath(new URLSearchParams({ limit: '20' })), {
         headers: buildOrgHeaders(orgId),
       }),
+      notificationsResponseSchema,
     );
     if (!payload) return;
     const notificationList = getNotificationList(payload);
-    if (!notificationList) return;
     mergeNotifications(notificationList, { announce: false });
   }, [mergeNotifications, orgId]);
 

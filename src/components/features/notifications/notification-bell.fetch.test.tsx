@@ -278,6 +278,58 @@ describe('NotificationBell fetch contracts', () => {
     consoleWarnSpy.mockRestore();
   });
 
+  it.each([
+    ['legacy list envelope', { data: [notification] }],
+    [
+      'unsafe external notification link',
+      {
+        data: [{ ...notification, link: 'https://example.invalid/notification' }],
+        meta: { limit: 20, has_more: false, next_cursor: null },
+      },
+    ],
+  ])('ignores %s before populating the drawer', async (_label, listPayload) => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/notifications?summary=1') {
+        return Promise.resolve(jsonResponse({ data: { unreadCount: 1 } }));
+      }
+      if (url === '/api/notifications?limit=20') {
+        return Promise.resolve(jsonResponse(listPayload));
+      }
+      return Promise.resolve(jsonResponse({ data: { message: '既読にしました' } }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NotificationBell />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(notification.message)).toBeNull();
+  });
+
+  it('ignores a negative unread summary before changing the badge state', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/notifications?summary=1') {
+        return Promise.resolve(jsonResponse({ data: { unreadCount: -1 } }));
+      }
+      if (url === '/api/notifications?limit=20') {
+        return Promise.resolve(
+          jsonResponse({
+            data: [],
+            meta: { limit: 20, has_more: false, next_cursor: null },
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse({ data: { message: '既読にしました' } }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NotificationBell />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('app-header-notifications').textContent).toBe('通知');
+  });
+
   it('hidden-tab OS 通知では raw title/message/link を helper へ渡さない', async () => {
     getBrowserNotificationPreferenceMock.mockReturnValue(true);
     isBrowserNotificationSupportedMock.mockReturnValue(true);

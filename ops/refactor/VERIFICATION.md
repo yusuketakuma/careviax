@@ -12,6 +12,18 @@
 - Browser/E2E: not run; this is a non-visual response-contract slice and no visual behavior changed.
 - Migration/auth/tenant: no migration or backend authorization change; no production data operation executed.
 
+## API-CONTRACT-001FZNOTIFICATIONBELLSTRICT
+
+- Baseline: inherited notification-bell summary/list refreshes used optional compile-time payload casts and one `stringFallback` allowlist entry; provider returns a bounded `{ data: { unreadCount } }` summary and `{ data, meta }` list envelope.
+- Focused test: `pnpm exec vitest run 'src/components/features/notifications/notification-bell.fetch.test.tsx' 'src/components/features/notifications/notification-bell.test.ts' --reporter=dot --testTimeout=30000` — PASS, 2 files / 12 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`, `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`, `pnpm boundaries:check`, `pnpm plans:active:check`, `git diff --check` — PASS.
+- Client-schema result: 168 schema-backed, 205 allowlisted schema-less calls, 81 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS with the same two pre-existing warnings in `src/lib/platform/break-glass.test.ts`.
+- Build: `pnpm build` — PASS; Next 16.2.9 compiled in 2.5 minutes, TypeScript finished in 65 seconds, 311/311 static pages, and traces completed. Two existing CSS optimizer warnings did not fail the build; no ENOSPC warning was emitted and `df -h .` reported 14 GiB available before and after the build.
+- Browser/E2E: not run; this is a non-visual notification badge/drawer response-contract slice with no layout change. `gpt-image-2` was omitted for the same reason.
+- Migration/auth/tenant: no migration, provider, authorization, or tenant query change; no production data operation executed.
+
 ## API-CONTRACT-001FZNOTIFICATIONSREADSTRICT
 
 - Baseline: inherited notifications GET reader used a compile-time data-only cast while `/api/notifications` returns `{ data, meta.limit, meta.has_more, meta.next_cursor }`; the existing PATCH and SSE-safe paths were already covered and remain unchanged.

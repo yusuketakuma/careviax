@@ -90,3 +90,16 @@
 | Errors / loading / empty    | Existing loading, error/retry, empty, category, unread, and navigation behavior remains; malformed 2xx becomes query error rather than false inbox state.                                    |
 | Tests                       | Notifications consumer/provider suite: 2 files / 29 tests; static contract gates, typechecks, lint, diff-check, and build passed.                                                            |
 | Alignment                   | ALIGNED for this read slice; PATCH acknowledgement, SSE-safe content policy, provider semantics, and visual behavior intentionally unchanged.                                                |
+
+## API-CONTRACT-001FZNOTIFICATIONBELLSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Authorized dashboard users see the header notification bell and `/notifications`; summary/list requests use the existing `/api/notifications` org/user scope.                                                 |
+| Frontend state / clients    | `notification-bell.tsx` validates summary and list refresh JSON before badge/drawer state; the list schema strips provider-only fields and keeps OS/SSE privacy helpers separate.                             |
+| Request / response contract | Provider shapes remain `{ data: { unreadCount } }` and `{ data, meta: { limit, has_more, next_cursor } }`; schemas reject legacy roots, invalid counts/items, duplicates, pagination drift, and unsafe links. |
+| Backend / DB                | Existing notification provider query, bounded list behavior, ordering, no-store handling, persistence, and PATCH route are unchanged.                                                                         |
+| Auth / tenant / audit       | Existing org/user authorization and notification audit semantics remain; authorized detail stays in-app, and raw title/message/link are not passed to OS notification helpers.                                |
+| Errors / loading / empty    | Existing refresh failure, drawer, badge, empty, merge, and retry behavior remains; invalid successful JSON is treated as a failed refresh before state changes.                                               |
+| Tests                       | Notification-bell focused suite: 2 files / 12 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                                   |
+| Alignment                   | ALIGNED for this read slice; PATCH acknowledgement, SSE-safe redaction, provider/auth semantics, and visual behavior intentionally unchanged.                                                                 |

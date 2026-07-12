@@ -106,5 +106,16 @@ export const notificationsResponseSchema = z
     }
   });
 
+export const notificationSummaryResponseSchema = z
+  .object({
+    data: z
+      .object({
+        unreadCount: z.number().finite().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict();
+
 export type NotificationItem = z.infer<typeof notificationItemSchema>;
 export type NotificationsResponse = z.infer<typeof notificationsResponseSchema>;
+export type NotificationSummaryResponse = z.infer<typeof notificationSummaryResponseSchema>;

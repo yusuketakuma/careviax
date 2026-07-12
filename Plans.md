@@ -163,7 +163,7 @@
 
 **Current execution slice (2026-07-12)**:
 
-- `API-CONTRACT-001FZFACILITYUNITSSTRICT` は landing 済み。次は残存 `API-CONTRACT-001` allowlist と patients board cursor residual を再スキャンする。
+- `API-CONTRACT-001FZNOTIFICATIONBELLSTRICT`: **IN_PROGRESS**。通知ベルの summary/list refresh reader を schema-backed に接続し、legacy root、invalid unread count、malformed list item、duplicate/unsafe notification payload を badge/drawer state へ流入させない。Acceptance: (1) summary `{ data: { unreadCount } }` と list `{ data, meta }` を current provider shape で検証する、(2) list reader は既存 notification schema と OS/SSE privacy boundary を共有する、(3) malformed/legacy/negative/unsafe 2xx が state 前に fail-closed、(4) focused tests / typecheck / lint / contract gates を通し scoped commit/push を記録する。既存 PATCH、SSE-safe redaction、provider/auth semantics は変更しない。
 
 **Implementation-ready queue — 未実装 / Partial 残スコープのみ**:
 

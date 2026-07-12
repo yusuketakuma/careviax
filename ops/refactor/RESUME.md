@@ -7,40 +7,40 @@
 - Upstream: `origin/agent/continuous-improvement-20260712`
 - Remote: `origin`
 - Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
-- Current Phase: incremental rescan / next-task selection
-- Current Task ID: `API-CONTRACT-001-RESCAN`
-- Current Task Status: READY_FOR_RESCAN
-- Current Commit Group: `API-CONTRACT-001-RESCAN`
+- Current Phase: notification-bell response-contract hardening
+- Current Task ID: `API-CONTRACT-001FZNOTIFICATIONBELLSTRICT`
+- Current Task Status: IMPLEMENTED_PENDING_LANDING
+- Current Commit Group: `API-CONTRACT-001FZNOTIFICATIONBELLSTRICT`
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
-- Last Safe Checkpoint: Facility consumer/unit-provider suites pass 2 files / 25 tests; static contract gates, typecheck, no-unused, lint, diff-check, serialized build, scoped commit, and push passed.
-- Last Completed Action: Landed facility-unit reader hardening as `bde744e93` and verified remote head plus zero ahead/behind.
-- Current Operation: rescan remaining API contract reader debt and select the next disjoint safe slice.
-- Exact Next Action: Run the client-schema inventory and inspect remaining API-CONTRACT allowlist entries before choosing the next task.
-- Exact Next Command: `pnpm client-json-schema:check && rg -n -C 5 'API-CONTRACT|schema-less|stringFallback' Plans.md ops/refactor tools/client-json-schema-allowlist.json`
-- Changed Files: current facility-unit slice is landed; next work must preserve the inherited harness-memory and personal artifacts.
+- Last Safe Checkpoint: Notification-bell focused suites pass 2 files / 12 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized Next build passed; client-schema is 168 schema-backed / 205 allowlisted / 81 files.
+- Last Completed Action: Implemented strict summary/list parsing and fail-closed regressions while preserving PATCH, SSE, OS, provider, auth, and visual behavior.
+- Current Operation: landing the validated notification-bell response-contract slice.
+- Exact Next Action: Inspect explicit owned paths, stage only the bell implementation/test/schema/allowlist and ledgers, commit, push, verify parity, and write closure state.
+- Exact Next Command: `git status --short --untracked-files=all && git diff --check && git diff --stat`
+- Changed Files: notification-bell consumer/test, notification response schema, client-schema allowlist, Plans, STATE, and checkpoint/verification ledgers; preserve inherited harness-memory and personal artifacts.
 - Staged Files: none; facility-unit slice is committed and unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
 - Unpushed Commits: none
-- Push Status: PUSHED for `API-CONTRACT-001FZFACILITYUNITSSTRICT` (`bde744e93`)
+- Push Status: PUSHED for facility-unit ledger checkpoint (`23fad2a86`); current notification-bell slice is validated but not yet committed.
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
-- Commands Completed: facility baseline Vitest (2 files / 22 tests); notifications focused Vitest; select-site focused Vitest; operations focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; typecheck; no-unused; lint; diff-check; build; provider/consumer scan.
-- Commands Pending: client-schema residual inventory, provider/consumer scan, next-slice focused validation, and scoped landing.
+- Commands Completed: notification-bell baseline Vitest (2 files / 9 tests); facility focused Vitest; notifications focused Vitest; select-site focused Vitest; operations focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; typecheck; no-unused; lint; diff-check; build; provider/consumer scan.
+- Commands Pending: scoped commit/push, remote parity verification, and closure-ledger update.
 - Tests Completed: select-site slice 1 file / 6 tests, operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, and holiday slice 2 files / 39 tests passed.
-- Tests Pending: no tests pending for the landed facility-unit slice; next task not selected yet.
-- Build State: PASS for current select-site slice; Next 16.2.9 compiled in 3.5 minutes, TypeScript finished in 66 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0; no ENOSPC warning was emitted in this run.
+- Tests Pending: none for the validated notification-bell slice; only scoped landing and closure-ledger work remain.
+- Build State: PASS for current notification-bell slice; Next 16.2.9 compiled in 2.5 minutes, TypeScript finished in 65 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0; no ENOSPC warning was emitted in this run.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.
 - Migration State: NOT_APPLICABLE
-- Frontend State: notifications and facility-unit consumers use strict runtime schemas; visual behavior unchanged.
-- Backend State: `/api/admin/facilities/[id]/units` provider remains org-scoped and projects unit fields with patient counts; facility/unit mutations and authz are out of scope.
-- FE/BE Alignment State: facility-unit provider/consumer payload boundary is selected for hardening; authorized occupancy aggregate remains visible in the facility editor while malformed state fails closed.
+- Frontend State: notifications inbox and notification-bell summary/list consumers use strict runtime schemas; no visual change.
+- Backend State: `/api/notifications` summary/list provider remains org/user-scoped; PATCH, SSE, persistence, and authz are out of scope.
+- FE/BE Alignment State: notification-bell provider/consumer payload boundary is hardened; authorized in-app detail remains available while malformed state fails closed and OS/SSE boundaries remain minimized.
 - UI Verification State: no visual reconstruction; no browser run for this contract-only slice.
 - Browser Verification State: NOT_EXECUTED
-- High-Risk Change State: controlled facility/occupancy read completed without DB/auth/tenant/migration/provider/mutation change; malformed identity and counts fail closed.
-- Rollback Point: revert the site-list response schema, consumer adapter, fixture/regressions, allowlist removal, and ledger entries.
+- High-Risk Change State: controlled notification badge/drawer read; no DB/auth/tenant/migration/provider/PATCH/SSE change; invalid count/item payloads fail closed.
+- Rollback Point: revert the notification summary/list schemas, bell adapter, regressions, allowlist removal, and ledger entries.
 - Resume Preconditions: confirm no target-file writer, preserve unrelated dirty paths, keep build/typecheck serialized.
-- Known Blockers: none for this slice; build emitted two existing CSS optimizer warnings but exited 0, with 14 GiB free after the run.
+- Known Blockers: none; notification-bell content retains in-app-only detail and OS notification minimization.
 - External Changes Detected: none in target files during the checkpoint.
 - Notes: The patient-list/detail link issue is already fresh-verified in STATE; do not duplicate that fix. Preserve current unrelated dirty paths. No image generation is needed for this non-visual parser slice.
