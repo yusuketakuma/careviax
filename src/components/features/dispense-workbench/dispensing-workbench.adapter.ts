@@ -43,7 +43,7 @@ import {
   buildPrescriptionLineApiPath,
   buildSetPlanApiPath,
 } from '@/lib/dispensing/api-paths';
-import { readApiJson, throwApiResponseError } from '@/lib/api/client-json';
+import { readApiJson, throwApiResponseError, type ApiJsonSchema } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import {
   WorkbenchConflictError,
@@ -65,6 +65,11 @@ import {
   type SetBatchGenerationMetadata,
 } from './dispensing-workbench.write-types';
 import { DISPENSE_SAFETY_CHECKLIST_ACK } from '@/lib/dispensing/safety-checklist';
+import {
+  buildDispenseTaskWorkbenchResponseSchema,
+  buildDispenseWorkbenchPatientsResponseSchema,
+  buildSetPlanCalendarResponseSchema,
+} from './dispensing-workbench-response-schemas';
 
 /**
  * 既定は実データ（§15 人間承認 2026-06-24）。明示的に `'mock'` / `'0'` を指定したときだけ
@@ -150,7 +155,11 @@ function buildWorkbenchReadHeaders(scope: WorkbenchFetchScope = {}): Record<stri
 }
 
 /** 安全な JSON fetch。非 2xx / 例外は null（呼び出し側が fail-closed する）。 */
-async function fetchJson<T>(url: string, scope: WorkbenchFetchScope = {}): Promise<T | null> {
+async function fetchJson<T>(
+  url: string,
+  schema: ApiJsonSchema<T>,
+  scope: WorkbenchFetchScope = {},
+): Promise<T | null> {
   try {
     const res = await fetch(url, {
       headers: buildWorkbenchReadHeaders(scope),
@@ -158,7 +167,10 @@ async function fetchJson<T>(url: string, scope: WorkbenchFetchScope = {}): Promi
       cache: 'no-store',
     });
     if (!res.ok) return null;
-    return await readApiJson<T>(res, 'ワークベンチデータの取得に失敗しました');
+    return await readApiJson<T>(res, {
+      fallbackMessage: 'ワークベンチデータの取得に失敗しました',
+      schema,
+    });
   } catch {
     return null;
   }
@@ -187,7 +199,15 @@ export async function loadWorkbenchPatientRowsAsync(
 }> {
   if (USE_MOCK) return { patients: buildPatients(), rows: [], meta: null, ok: true };
   const path = `/api/dispense-workbench/patients${buildPatientsQuery(options)}`;
-  const body = await fetchJson<DispenseWorkbenchPatientsResponse>(path, options);
+  const body = await fetchJson<DispenseWorkbenchPatientsResponse>(
+    path,
+    buildDispenseWorkbenchPatientsResponseSchema({
+      phase: options.phase ? PHASE_TO_API_PARAM[options.phase] : undefined,
+      includeSetPlan: options.includeSetPlan,
+      limit: options.limit,
+    }),
+    options,
+  );
   // body=null は非2xx/例外＝取得失敗。配列だが空は「取得成功・0件」で区別する。
   if (!body?.meta) return { patients: [], rows: [], meta: null, ok: false };
   if (!Array.isArray(body.data) || body.data.length === 0) {
@@ -230,6 +250,7 @@ export async function loadWorkbenchAsync(
   if (!taskId) return null;
   const payload = await fetchJson<{ data: DispenseWorkbenchData }>(
     buildDispenseTaskApiPath(taskId, '/workbench'),
+    buildDispenseTaskWorkbenchResponseSchema({ taskId, patientId }),
     options,
   );
   if (!payload) return null;
@@ -260,6 +281,7 @@ export async function loadCalendarAsync(
   if (USE_MOCK) return null;
   const body = await fetchJson<{ data: CalendarMatrixResponse }>(
     buildSetPlanApiPath(planId, '/calendar'),
+    buildSetPlanCalendarResponseSchema(planId),
     scope,
   );
   return body?.data ?? null;
@@ -355,6 +377,10 @@ export async function loadSetCalendarForPatientAsync(
   // set/seta の左一覧も工程フィルタ。BFF が SetBatch 集計後に set と set-audit を分割する。
   const listBody = await fetchJson<DispenseWorkbenchPatientsResponse>(
     `/api/dispense-workbench/patients${buildPatientsQuery({ includeSetPlan: true, phase })}`,
+    buildDispenseWorkbenchPatientsResponseSchema({
+      phase: phase ? PHASE_TO_API_PARAM[phase] : undefined,
+      includeSetPlan: true,
+    }),
     scope,
   );
   const listRows = listBody?.data;

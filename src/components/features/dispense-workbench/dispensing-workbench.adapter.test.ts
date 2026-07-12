@@ -119,9 +119,17 @@ function emptyCell() {
   };
 }
 
-function patientListBody(data: unknown[] = [], overrides: Record<string, unknown> = {}) {
+function patientListBody(
+  data: unknown[] = [],
+  overrides: Record<string, unknown> = {},
+  filterOverrides: Record<string, unknown> = {},
+) {
   return {
-    data,
+    data: data.map((row) => ({
+      representative_task_id: null,
+      representative_task_status: null,
+      ...(row as Record<string, unknown>),
+    })),
     meta: {
       generated_at: '2026-07-06T00:00:00.000Z',
       limit: 50,
@@ -141,6 +149,7 @@ function patientListBody(data: unknown[] = [], overrides: Record<string, unknown
         sort: 'name_kana',
         order: 'asc',
         include_set_plan: false,
+        ...filterOverrides,
       },
       facets: {
         total: data.length,
@@ -232,6 +241,43 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     );
   });
 
+  it('fails closed when the workbench response belongs to another task', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: {
+            ...workbenchBody(),
+            task: { ...workbenchBody().task, id: 'task_other' },
+          },
+        }),
+      ),
+    );
+
+    const { loadWorkbenchAsync } = await import('./dispensing-workbench.adapter');
+    const result = await loadWorkbenchAsync('dispense', 'patient_1', {
+      patientRows: [
+        {
+          patient_id: 'patient_1',
+          cycle_id: 'cycle_1',
+          name: '佐藤 花子',
+          name_kana: 'サトウ ハナコ',
+          overall_status: 'dispensing',
+          badge: 'in_progress',
+          start_date: '2026-06-17',
+          registered_date: '2026-06-01',
+          latest_set_plan_id: null,
+          latest_set_plan_cycle_id: null,
+          representative_task_id: 'task_1',
+          representative_task_status: 'in_progress',
+        },
+      ],
+    });
+
+    expect(result).toBeNull();
+  });
+
   it('resolves direct /audit entry to the completed dispense task for audit-ready cycles', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
     const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
@@ -297,20 +343,24 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?include_set_plan=1') {
         return jsonResponse(
-          patientListBody([
-            {
-              patient_id: 'patient_1',
-              cycle_id: 'cycle_latest_without_plan',
-              name: '佐藤 花子',
-              name_kana: 'サトウ ハナコ',
-              overall_status: 'dispensing',
-              badge: 'in_progress',
-              start_date: '2026-06-17',
-              registered_date: '2026-06-01',
-              latest_set_plan_id: 'plan_1',
-              latest_set_plan_cycle_id: 'cycle_1',
-            },
-          ]),
+          patientListBody(
+            [
+              {
+                patient_id: 'patient_1',
+                cycle_id: 'cycle_latest_without_plan',
+                name: '佐藤 花子',
+                name_kana: 'サトウ ハナコ',
+                overall_status: 'dispensing',
+                badge: 'in_progress',
+                start_date: '2026-06-17',
+                registered_date: '2026-06-01',
+                latest_set_plan_id: 'plan_1',
+                latest_set_plan_cycle_id: 'cycle_1',
+              },
+            ],
+            {},
+            { include_set_plan: true },
+          ),
         );
       }
       if (url === '/api/set-plans/plan_1/calendar') {
@@ -355,38 +405,54 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('fails closed when a calendar response belongs to another set plan', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ data: { ...calendarBody().data, plan_id: 'plan_other' } })),
+    );
+
+    const { loadCalendarAsync } = await import('./dispensing-workbench.adapter');
+
+    await expect(loadCalendarAsync('plan_1')).resolves.toBeNull();
+  });
+
   it('fails closed instead of switching patients when the selected patient has no SetPlan', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
     const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?include_set_plan=1') {
         return jsonResponse(
-          patientListBody([
-            {
-              patient_id: 'patient_without_plan',
-              cycle_id: 'cycle_without_plan',
-              name: '計画なし 患者',
-              name_kana: 'ケイカクナシ カンジャ',
-              overall_status: 'dispensing',
-              badge: 'in_progress',
-              start_date: '2026-06-17',
-              registered_date: '2026-06-01',
-              latest_set_plan_id: null,
-              latest_set_plan_cycle_id: null,
-            },
-            {
-              patient_id: 'patient_with_plan',
-              cycle_id: 'cycle_latest_without_plan',
-              name: '計画あり 患者',
-              name_kana: 'ケイカクアリ カンジャ',
-              overall_status: 'dispensing',
-              badge: 'in_progress',
-              start_date: '2026-06-17',
-              registered_date: '2026-06-01',
-              latest_set_plan_id: 'plan_1',
-              latest_set_plan_cycle_id: 'cycle_1',
-            },
-          ]),
+          patientListBody(
+            [
+              {
+                patient_id: 'patient_without_plan',
+                cycle_id: 'cycle_without_plan',
+                name: '計画なし 患者',
+                name_kana: 'ケイカクナシ カンジャ',
+                overall_status: 'dispensing',
+                badge: 'in_progress',
+                start_date: '2026-06-17',
+                registered_date: '2026-06-01',
+                latest_set_plan_id: null,
+                latest_set_plan_cycle_id: null,
+              },
+              {
+                patient_id: 'patient_with_plan',
+                cycle_id: 'cycle_latest_without_plan',
+                name: '計画あり 患者',
+                name_kana: 'ケイカクアリ カンジャ',
+                overall_status: 'dispensing',
+                badge: 'in_progress',
+                start_date: '2026-06-17',
+                registered_date: '2026-06-01',
+                latest_set_plan_id: 'plan_1',
+                latest_set_plan_cycle_id: 'cycle_1',
+              },
+            ],
+            {},
+            { include_set_plan: true },
+          ),
         );
       }
       if (url === '/api/set-plans/plan_1/calendar') {
@@ -421,32 +487,36 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?include_set_plan=1') {
         return jsonResponse(
-          patientListBody([
-            {
-              patient_id: 'patient_without_plan',
-              cycle_id: 'cycle_without_plan',
-              name: '計画なし 患者',
-              name_kana: 'ケイカクナシ カンジャ',
-              overall_status: 'dispensing',
-              badge: 'in_progress',
-              start_date: '2026-06-17',
-              registered_date: '2026-06-01',
-              latest_set_plan_id: null,
-              latest_set_plan_cycle_id: null,
-            },
-            {
-              patient_id: 'patient_with_plan',
-              cycle_id: 'cycle_latest_without_plan',
-              name: '計画あり 患者',
-              name_kana: 'ケイカクアリ カンジャ',
-              overall_status: 'dispensing',
-              badge: 'in_progress',
-              start_date: '2026-06-17',
-              registered_date: '2026-06-01',
-              latest_set_plan_id: 'plan_1',
-              latest_set_plan_cycle_id: 'cycle_1',
-            },
-          ]),
+          patientListBody(
+            [
+              {
+                patient_id: 'patient_without_plan',
+                cycle_id: 'cycle_without_plan',
+                name: '計画なし 患者',
+                name_kana: 'ケイカクナシ カンジャ',
+                overall_status: 'dispensing',
+                badge: 'in_progress',
+                start_date: '2026-06-17',
+                registered_date: '2026-06-01',
+                latest_set_plan_id: null,
+                latest_set_plan_cycle_id: null,
+              },
+              {
+                patient_id: 'patient_with_plan',
+                cycle_id: 'cycle_latest_without_plan',
+                name: '計画あり 患者',
+                name_kana: 'ケイカクアリ カンジャ',
+                overall_status: 'dispensing',
+                badge: 'in_progress',
+                start_date: '2026-06-17',
+                registered_date: '2026-06-01',
+                latest_set_plan_id: 'plan_1',
+                latest_set_plan_cycle_id: 'cycle_1',
+              },
+            ],
+            {},
+            { include_set_plan: true },
+          ),
         );
       }
       if (url === '/api/set-plans/plan_1/calendar') {
@@ -518,7 +588,9 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
 
   it("retains a mock opt-out seam when the flag is 'mock' (rollback path)", async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = 'mock';
-    const fetchMock = vi.fn(async () => jsonResponse(patientListBody()));
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(patientListBody([], {}, { phase: 'set-audit', include_set_plan: true })),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     const { isRealDataEnabled, loadPatientsAsync } = await import('./dispensing-workbench.adapter');
@@ -532,7 +604,7 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
 
   it('appends ?phase= to the patients query for the audit phase', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async () => jsonResponse(patientListBody()));
+    const fetchMock = vi.fn(async () => jsonResponse(patientListBody([], {}, { phase: 'audit' })));
     vi.stubGlobal('fetch', fetchMock);
 
     const { loadPatientsAsync } = await import('./dispensing-workbench.adapter');
@@ -550,20 +622,24 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?include_set_plan=1&phase=set') {
         return jsonResponse(
-          patientListBody([
-            {
-              patient_id: 'patient_1',
-              cycle_id: 'cycle_latest_without_plan',
-              name: '佐藤 花子',
-              name_kana: 'サトウ ハナコ',
-              overall_status: 'setting',
-              badge: 'in_progress',
-              start_date: '2026-06-17',
-              registered_date: '2026-06-01',
-              latest_set_plan_id: 'plan_1',
-              latest_set_plan_cycle_id: 'cycle_1',
-            },
-          ]),
+          patientListBody(
+            [
+              {
+                patient_id: 'patient_1',
+                cycle_id: 'cycle_latest_without_plan',
+                name: '佐藤 花子',
+                name_kana: 'サトウ ハナコ',
+                overall_status: 'setting',
+                badge: 'in_progress',
+                start_date: '2026-06-17',
+                registered_date: '2026-06-01',
+                latest_set_plan_id: 'plan_1',
+                latest_set_plan_cycle_id: 'cycle_1',
+              },
+            ],
+            {},
+            { phase: 'set', include_set_plan: true },
+          ),
         );
       }
       if (url === '/api/set-plans/plan_1/calendar') {
@@ -597,22 +673,26 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?phase=dispense') {
         return jsonResponse(
-          patientListBody([
-            {
-              patient_id: 'patient_1',
-              cycle_id: 'cycle_1',
-              name: '佐藤 花子',
-              name_kana: 'サトウ ハナコ',
-              overall_status: 'dispensing',
-              badge: 'in_progress',
-              start_date: '2026-06-17',
-              registered_date: '2026-06-01',
-              latest_set_plan_id: null,
-              latest_set_plan_cycle_id: null,
-              representative_task_id: 'task_1',
-              representative_task_status: 'in_progress',
-            },
-          ]),
+          patientListBody(
+            [
+              {
+                patient_id: 'patient_1',
+                cycle_id: 'cycle_1',
+                name: '佐藤 花子',
+                name_kana: 'サトウ ハナコ',
+                overall_status: 'dispensing',
+                badge: 'in_progress',
+                start_date: '2026-06-17',
+                registered_date: '2026-06-01',
+                latest_set_plan_id: null,
+                latest_set_plan_cycle_id: null,
+                representative_task_id: 'task_1',
+                representative_task_status: 'in_progress',
+              },
+            ],
+            {},
+            { phase: 'dispense' },
+          ),
         );
       }
       if (url === '/api/dispense-tasks/task_1/workbench') {
@@ -643,7 +723,9 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
   it('maps the seta phase to set-audit and fails closed on the empty gate', async () => {
     // set-audit は BFF で空集合ゲート → 0 件 → empty（seed カレンダーへ戻さない）。
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async () => jsonResponse(patientListBody()));
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(patientListBody([], {}, { phase: 'set-audit', include_set_plan: true })),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     const { loadSetCalendarForPatientAsync } = await import('./dispensing-workbench.adapter');
@@ -681,7 +763,9 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
 
   it('reports ok=true on a successful but empty patients fetch (0 件は空状態)', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async () => jsonResponse(patientListBody()));
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(patientListBody([], {}, { phase: 'dispense' })),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     const { loadWorkbenchPatientRowsAsync } = await import('./dispensing-workbench.adapter');
@@ -689,6 +773,23 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
 
     expect(result).toMatchObject({ patients: [], rows: [], ok: true });
     expect(result.meta).toMatchObject({ returned_count: 0, has_more: false, next_cursor: null });
+  });
+
+  it('reports ok=false when patient count metadata does not match the returned rows', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(patientListBody([], { returned_count: 1 }, { phase: 'dispense' })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadWorkbenchPatientRowsAsync } = await import('./dispensing-workbench.adapter');
+
+    await expect(loadWorkbenchPatientRowsAsync({ phase: 'dispense' })).resolves.toEqual({
+      patients: [],
+      rows: [],
+      meta: null,
+      ok: false,
+    });
   });
 });
 
