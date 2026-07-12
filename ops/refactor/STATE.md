@@ -46586,3 +46586,8 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   or visual layout changed. Browser and image generation were omitted for this non-visual parser/pagination repair;
   direct query-function and provider tests cover the contract. Rollback is the history page schema, cursor reader,
   regressions, and client-schema ratchet hunk.
+- commit / push:
+  Commit `34bd49cae` (`fix(API-CONTRACT-001): validate prescription history pages`) contains only the history page
+  contract, bounded cursor reader, regressions, client-schema ratchet, Plans, and the two ledger entries above. It was
+  pushed to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal
+  artifacts were excluded, and the feature branch does not match the `main`-only production deploy trigger.
