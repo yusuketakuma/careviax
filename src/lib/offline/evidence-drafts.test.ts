@@ -407,7 +407,13 @@ describe('offline evidence draft sync', () => {
       }
       if (url === '/api/visit-records/visit_record_1' && !init?.method) {
         return jsonResponse({
-          data: { version: 3, attachments: [{ file_id: 'file_old' }] },
+          data: {
+            version: 3,
+            patient_name: 'provider-only-patient-name',
+            attachments: [
+              { file_id: 'file_old', file_name: 'provider-only-sensitive-file-name.jpg' },
+            ],
+          },
         });
       }
       if (url === '/api/visit-records/visit_record_1' && init?.method === 'PATCH') {
@@ -430,6 +436,43 @@ describe('offline evidence draft sync', () => {
     expect(fetchMock).not.toHaveBeenCalledWith('/api/files/presigned-upload', expect.anything());
     expect(evidenceDraftsMock.update).not.toHaveBeenCalled();
     expect(evidenceDraftsMock.delete).toHaveBeenCalledWith(1);
+  });
+
+  it('fails closed before PATCH when the visit-record detail contract is malformed', async () => {
+    evidenceDraftsMock.toArray.mockResolvedValue([
+      createDraft({
+        uploadedFileAssetId: 'file_existing',
+        uploadedVisitRecordId: 'visit_record_1',
+      }),
+    ]);
+    const patchMock = vi.fn();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/visit-schedules/schedule_1') {
+        return jsonResponse({ data: { visit_record: { id: 'visit_record_1' } } });
+      }
+      if (url === '/api/visit-records/visit_record_1' && !init?.method) {
+        return jsonResponse({ data: { version: '3', attachments: [] } });
+      }
+      if (url === '/api/visit-records/visit_record_1' && init?.method === 'PATCH') {
+        patchMock();
+        return jsonResponse({ data: { id: 'visit_record_1' } });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+
+    await expect(syncEvidenceDrafts({ orgId: 'org_1' })).resolves.toEqual({
+      synced: 0,
+      skipped: 0,
+      failed: 1,
+    });
+
+    expect(patchMock).not.toHaveBeenCalled();
+    expect(evidenceDraftsMock.update).toHaveBeenCalledWith(1, {
+      retryCount: 1,
+      lastError: '訪問記録の取得に失敗しました',
+    });
+    expect(evidenceDraftsMock.delete).not.toHaveBeenCalled();
   });
 
   it('encodes hostile schedule and visit-record IDs only when constructing sync URL paths', async () => {

@@ -51,6 +51,33 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZEVIDENCESYNCSTRICT offline evidence visit-record detail reader (VERIFY_REQUIRED, 2026-07-12; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Offline evidence syncがupload済みfile assetをvisit recordへ紐づける前に、visit-record detailの
+    compile-time optional castからversionを読み、attachmentsはunknownのままbest-effort mergeしていた。
+    Legacy/mixed root、不正version/attachmentsでもPATCHへ進む余地があり、full provider detailの患者・記録
+    metadataも同期処理へ到達可能だった。ProviderはcanVisit、assignment/org scope、sensitive no-storeを持つ。
+  - implementation / evidence-privacy-integrity boundary:
+    Strict rootとminimal `{ data: { version, attachments: [{ file_id }] } }` projectionを追加し、nonnegative
+    integer version、500 attachments上限、bounded non-empty file IDを検証した。Data/attachment内のunused
+    provider fieldsはstripし、malformed detail時は固定safe errorを保存してPATCH/deleteを行わない回帰を追加。
+    Encrypted IndexedDB draft、presigned upload/complete、stored file asset resume、optimistic PATCH、retry limit、
+    timeout、UIは変更していない。Visual reconstructionではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/offline/evidence-drafts-response-schema.ts`, `src/lib/offline/evidence-drafts.ts`,
+    `src/lib/offline/evidence-drafts.test.ts`, `tools/client-json-schema-allowlist.json`, `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/provider Vitest passed 2 files / 116 tests. Exact ESLint with `--max-warnings=0`, Prettier,
+    and scoped diff-check passed. `pnpm client-json-schema:check` passed at 211 schema-backed / 160 allowlisted
+    schema-less calls / 51 files; frontend contract, module boundary, aggregate typecheck, 8GB no-unused typecheck,
+    client PHI-log, API response shape, and colors passed. Full build was NOT_EXECUTED because the shared
+    clean-capacity gate remains unresolved; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Invalid optimistic-lock state cannot cause attachment PATCH, and unused visit-record PHI no longer reaches the
+    sync pipeline. Request count, upload sequence, provider query/payload, retry behavior, and dependencies are
+    unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZCYCLEHISTORYSTRICT medication-cycle transition history reader/path (VERIFY_REQUIRED, 2026-07-12; implementation `d9b5d2737`, ledger `9355a5d2c`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Workflow stage timeline / previous-stage summaryがcycle transition historyをcompile-time castだけで読み、

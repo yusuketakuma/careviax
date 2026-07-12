@@ -13,6 +13,7 @@ import {
   pickSyncableEvidenceDrafts,
   resolveScheduleVisitRecordId,
 } from './evidence-drafts.shared';
+import { evidenceDraftVisitRecordDetailResponseSchema } from './evidence-drafts-response-schema';
 
 /**
  * p0_48「スマホで写真・証跡を撮る」のオフライン写真ドラフト。
@@ -289,11 +290,10 @@ async function uploadEvidenceDraft(
   if (!detailRes.ok) {
     throw new Error('訪問記録の取得に失敗しました');
   }
-  const detailPayload = await readApiJson<{
-    data?: { version?: unknown; attachments?: unknown };
-  }>(detailRes, '訪問記録の取得に失敗しました');
-  const detail = detailPayload.data;
-  if (typeof detail?.version !== 'number') throw new Error('訪問記録の取得に失敗しました');
+  const detail = await readApiJson(detailRes, {
+    fallbackMessage: '訪問記録の取得に失敗しました',
+    schema: evidenceDraftVisitRecordDetailResponseSchema,
+  });
 
   const patchRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordPathId}`, {
     method: 'PATCH',

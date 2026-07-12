@@ -307,12 +307,6 @@
       }
     },
     {
-      "path": "src/lib/offline/evidence-drafts.ts",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/lib/visits/medication-stock-observation.ts",
       "counts": {
         "stringFallback": 1
