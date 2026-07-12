@@ -205,6 +205,14 @@
 - Validation: static gates, typecheck, no-unused typecheck, lint, diff-check, and Next build pass; inventory is 173
   schema-backed / 200 allowlisted / 77 files. Implementation commit is pending scoped landing.
 
+## 2026-07-12 — API-CONTRACT-001FZVEHICLESTRICT landed
+
+- Commit: `575696825` pushed to `origin/agent/continuous-improvement-20260712`; parity is `0 0`.
+- Result: vehicle-resource counted-list and pharmacy-site option strict readers, regressions, allowlist ratchet, and
+  validation ledgers landed; unrelated harness-memory and personal untracked artifacts remain excluded.
+- Next scan: rerun `pnpm client-json-schema:check`, inspect remaining one-entry and multi-entry consumers plus the
+  patients board cursor residual, and choose the next bounded disjoint slice.
+
 ## 2026-07-12 — API-CONTRACT-001FZPACKAGINGSTRICT selection
 
 - Scope: `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx`, packaging-method response schema,

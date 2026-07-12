@@ -169,8 +169,8 @@
 ## API-CONTRACT-001FZVEHICLESTRICT
 
 - Commit Group: `API-CONTRACT-001FZVEHICLESTRICT`
-- Commit: pending scoped implementation landing
-- Push Status: PENDING
+- Commit: `575696825`
+- Push Status: PUSHED
 - Branch: `agent/continuous-improvement-20260712`
 - Scope: admin/vehicles counted vehicle-resource GET schema, pharmacy-site option GET schema, consumer regressions,
   client-schema allowlist ratchet, and required ledgers.
@@ -186,4 +186,5 @@
   the existing two CSS optimizer warnings and no ENOSPC warning; filesystem availability was 15 GiB before and 13 GiB
   after the build.
 - Rollback: revert the vehicle response schema, consumer adapters, regressions, allowlist removal, and ledger entries.
-- Remote: `origin/agent/continuous-improvement-20260712`; push evidence will be recorded after the scoped landing.
+- Remote: `origin/agent/continuous-improvement-20260712`
+- Push evidence: `cf7f9a35f..575696825` fast-forward push succeeded; local and remote heads match (`0 0`).

@@ -47045,7 +47045,7 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
-## 2026-07-12 API-CONTRACT-001FZVEHICLESTRICT — vehicle master GET contracts (IMPLEMENTED, PENDING LANDING)
+## 2026-07-12 API-CONTRACT-001FZVEHICLESTRICT — vehicle master GET contracts (DONE)
 
 - current task / root cause:
   The admin vehicle editor trusts compile-time `VisitVehicleResourcesResponse` and `PharmacySitesResponse` casts for
@@ -47073,9 +47073,14 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   schema-less / 77 files; typecheck and no-unused typecheck pass; lint exits 0 with the two pre-existing break-glass
   warnings; Next 16.2.9 build passes with 311/311 static pages, the two existing CSS optimizer warnings, and no ENOSPC
   warning. Filesystem availability was 15 GiB before and 13 GiB after the build.
+- commit / push:
+  Scoped implementation commit `575696825` (`fix(API-CONTRACT-001FZVEHICLESTRICT): validate vehicle readers`) was
+  pushed to `origin/agent/continuous-improvement-20260712`; `git rev-list --left-right --count
+HEAD...origin/agent/continuous-improvement-20260712` is `0 0`. Harness-memory and personal untracked artifacts
+  remain excluded.
 - next action:
-  Inspect status, stage only the vehicle implementation/test/schema, allowlist, Plans, and required ledger paths, then
-  create and push the scoped implementation commit while preserving unrelated harness-memory and personal artifacts.
+  Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
+  disjoint safe slice without touching unrelated dirty paths.
 
 ## 2026-07-12 API-CONTRACT-001FZMASTERHUBSTRICT — master-hub aggregate contract (DONE)
 
