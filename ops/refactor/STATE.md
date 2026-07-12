@@ -51,6 +51,33 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZUATSTRICT admin UAT endpoint response readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, shared clean-capacity build pending).
+  - current task / root cause:
+    Admin UATの共通`fetchOrgJson<T>`は全7 endpoint familyをcompile-time genericへ直接castし、legacy/malformed
+    feedback、readiness、集計、担当候補、組織監査、launch dossierをquery/mutation stateへ流し得た。Ratchet上も
+    helper内のdynamic options 1件として残り、個々の契約境界が不可視だった。
+  - implementation / boundary:
+    共通helperを`ApiJsonSchema<T>`必須へ変更し、feedback item/list、pilot readiness、UAT summary、collaborator、
+    pilot org audit、launch dossierの各consumer実利用shapeをruntime検証するschemaを接続した。Provider-only fieldは
+    parse時にstripされ、mutation successもfull feedback itemを満たすまでform reset/invalidationへ進まない。
+    Test fetch fixtureをendpoint別の最小live envelopeへ同期した。Write payload、admin auth/tenant/audit/no-store、
+    provider query、UIは変更していない。Visual reconstructionではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/admin/uat/uat-content.tsx`,
+    `src/app/(dashboard)/admin/uat/uat-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/provider Vitest passed 7 files / 26 tests. Exact ESLint with `--max-warnings=0`, Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (217 backed / 154 allowlisted / 45 files), frontend
+    contract, module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build was
+    NOT_EXECUTED because only about 2.9 GiB free remains after the shared `.next/cache` capacity failure; generated
+    cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed tenant-scoped UAT/operational data and partial mutation acknowledgements now fail closed before cache/UI
+    side effects; unused provider fields are stripped. Request count, DB/provider work, render behavior, dependencies,
+    and clinical/business decisions are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZBRIEFREVIEWSTRICT visit-brief pharmacist review reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `c29a55c4d`, ledger `67acd4ab9`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Visit Brief pharmacist review画面は患者名、context、生成日時、AI/rule要約とrule sourceだけを使う一方、

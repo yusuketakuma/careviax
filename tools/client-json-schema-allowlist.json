@@ -72,12 +72,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/uat/uat-content.tsx",
-      "counts": {
-        "dynamicOptions": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/users/users-content.tsx",
       "counts": {
         "stringFallback": 2

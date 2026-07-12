@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckSquare, Square, Send } from 'lucide-react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,7 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { Separator } from '@/components/ui/separator';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiJson, type ApiJsonSchema } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { UAT_CHECKLIST, UAT_PRIORITY_OPTIONS, UAT_STATUS_OPTIONS } from '@/lib/constants/uat';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -221,6 +222,170 @@ type PilotLaunchDossierData = {
   };
 };
 
+const uatFeedbackItemSchema = z.object({
+  id: z.string(),
+  priority: z.enum(['critical', 'high', 'medium', 'low']),
+  status: z.enum(['open', 'triaged', 'in_progress', 'resolved', 'deferred']),
+  owner_user_id: z.string().nullable(),
+  feedback: z.string(),
+  checklist_progress: z.string().nullable(),
+  checked_items: z.array(z.string()),
+  source: z.string().nullable(),
+  linked_work_item: z.string().nullable(),
+  due_date: z.string().nullable(),
+  resolved_at: z.string().nullable(),
+  created_at: z.string(),
+});
+
+const recentFeedbackSchema = z.object({
+  id: z.string(),
+  priority: z.string(),
+  feedback: z.string(),
+  checklist_progress: z.string().nullable(),
+  source: z.string().nullable(),
+  created_at: z.string(),
+});
+
+const pilotDecisionSchema = z.enum(['ready', 'phase2_candidate']);
+const pilotReadinessResponseSchema = z.object({
+  data: z.object({
+    generated_at: z.string(),
+    case_summary: z.object({
+      active_case_count: z.number(),
+      facility_linked_case_count: z.number(),
+      non_facility_case_count: z.number(),
+      facility_count: z.number(),
+      set_pilot_case_count: z.number(),
+      set_pilot_without_facility_count: z.number(),
+    }),
+    uat_summary: z.object({
+      total_feedback: z.number(),
+      critical_count: z.number(),
+      high_count: z.number(),
+      medium_count: z.number(),
+      low_count: z.number(),
+      blocker_count: z.number(),
+      recent_feedback: z.array(recentFeedbackSchema),
+    }),
+    decisions: z.object({
+      facility_batching: pilotDecisionSchema,
+      medication_set_workflow: pilotDecisionSchema,
+      phase2_entry: z.enum(['ready', 'blocked']),
+    }),
+    recommendations: z.array(z.string()),
+  }),
+});
+
+const uatFeedbackSummaryResponseSchema = z.object({
+  data: z.object({
+    generated_at: z.string(),
+    total_feedback: z.number(),
+    priorities: z.object({
+      critical: z.number(),
+      high: z.number(),
+      medium: z.number(),
+      low: z.number(),
+    }),
+    blocker_count: z.number(),
+    action_items: z.array(
+      z.object({
+        id: z.string(),
+        priority: z.string(),
+        status: z.string(),
+        feedback: z.string(),
+        checklist_progress: z.string().nullable(),
+        source: z.string().nullable(),
+        created_at: z.string(),
+      }),
+    ),
+    checklist_coverage: z.array(
+      z.object({ item_id: z.string(), label: z.string(), checked_count: z.number() }),
+    ),
+    recommendations: z.array(z.string()),
+  }),
+});
+
+const collaboratorOptionsResponseSchema = z.object({
+  data: z.array(z.object({ id: z.string(), name: z.string(), role: z.string() })),
+});
+
+const pilotOrgAuditResponseSchema = z.object({
+  data: z.object({
+    generated_at: z.string(),
+    org_structure: z.object({
+      site_count: z.number(),
+      active_member_count: z.number(),
+      role_counts: z.record(z.string(), z.number()),
+      site_breakdown: z.array(
+        z.object({
+          site_id: z.string(),
+          site_name: z.string(),
+          active_member_count: z.number(),
+          service_area_count: z.number(),
+          has_geo: z.boolean(),
+        }),
+      ),
+    }),
+    pilot_targets: z.object({
+      active_case_count: z.number(),
+      facility_linked_case_count: z.number(),
+      set_pilot_case_count: z.number(),
+    }),
+    coverage: z.object({
+      total_primary_residences: z.number(),
+      flagged_patient_count: z.number(),
+      flagged_patients_truncated: z.boolean(),
+      service_area_covered_count: z.number(),
+      radius_16km_covered_count: z.number(),
+      uncovered_count: z.number(),
+      review_required_count: z.number(),
+      flagged_patients: z.array(
+        z.object({
+          patient_id: z.string(),
+          patient_name: z.string(),
+          address: z.string(),
+          reason: z.string(),
+          nearest_site_name: z.string().nullable(),
+          nearest_site_distance_km: z.number().nullable(),
+        }),
+      ),
+    }),
+    recommendations: z.array(z.string()),
+  }),
+});
+
+const pilotLaunchDossierResponseSchema = z.object({
+  data: z.object({
+    generated_at: z.string(),
+    recommendations: z.array(z.string()),
+    readiness: pilotReadinessResponseSchema.shape.data.pick({ decisions: true }),
+    org_audit: z.object({
+      coverage: pilotOrgAuditResponseSchema.shape.data.shape.coverage.pick({
+        uncovered_count: true,
+        review_required_count: true,
+        flagged_patient_count: true,
+        flagged_patients_truncated: true,
+      }),
+    }),
+    uat_summary: z.object({ total_feedback: z.number(), blocker_count: z.number() }),
+    external_readiness: z.object({
+      pmda: z.object({ ready_for_import_test: z.boolean() }),
+      backup: z.object({
+        ready_for_live_drill: z.boolean(),
+        recorded_runs: z.array(z.object({ date: z.string() })),
+      }),
+      isms: z.object({
+        ready_for_quote_request: z.boolean(),
+        comparison_table_started: z.boolean(),
+        decision_memo_started: z.boolean(),
+      }),
+    }),
+  }),
+});
+
+const uatFeedbackListResponseSchema = z.object({ data: z.array(uatFeedbackItemSchema) });
+const uatFeedbackResponseSchema = z.object({ data: uatFeedbackItemSchema });
+
 function buildUatRequestHeaders(orgId: string, headers?: HeadersInit): Record<string, string> {
   if (!headers) return buildOrgHeaders(orgId);
   if (headers instanceof Headers) return buildOrgHeaders(orgId, Object.fromEntries(headers));
@@ -233,13 +398,14 @@ async function fetchOrgJson<T>(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
   fallbackMessage: string,
+  schema: ApiJsonSchema<T>,
 ) {
   const response = await fetch(input, {
     ...init,
     headers: buildUatRequestHeaders(orgId, init?.headers),
   });
 
-  return readApiJson<T>(response, fallbackMessage);
+  return readApiJson<T>(response, { fallbackMessage, schema });
 }
 
 export function UatContent() {
@@ -272,6 +438,7 @@ export function UatContent() {
         '/api/admin/uat-feedback',
         undefined,
         'UAT フィードバックの取得に失敗しました',
+        uatFeedbackListResponseSchema,
       ),
     enabled: !!orgId,
   });
@@ -283,6 +450,7 @@ export function UatContent() {
         '/api/admin/pilot-readiness',
         undefined,
         'pilot readiness の取得に失敗しました',
+        pilotReadinessResponseSchema,
       ),
     enabled: !!orgId,
   });
@@ -294,6 +462,7 @@ export function UatContent() {
         '/api/admin/uat-feedback/summary',
         undefined,
         'UAT 集計の取得に失敗しました',
+        uatFeedbackSummaryResponseSchema,
       ),
     enabled: !!orgId,
   });
@@ -305,6 +474,7 @@ export function UatContent() {
         '/api/pharmacists?include_collaborators=true',
         undefined,
         '担当候補の取得に失敗しました',
+        collaboratorOptionsResponseSchema,
       ),
     enabled: !!orgId,
   });
@@ -316,6 +486,7 @@ export function UatContent() {
         '/api/admin/pilot-org-audit',
         undefined,
         'pilot org audit の取得に失敗しました',
+        pilotOrgAuditResponseSchema,
       ),
     enabled: !!orgId,
   });
@@ -327,6 +498,7 @@ export function UatContent() {
         '/api/admin/pilot-launch-dossier',
         undefined,
         'pilot launch dossier の取得に失敗しました',
+        pilotLaunchDossierResponseSchema,
       ),
     enabled: !!orgId,
   });
@@ -351,6 +523,7 @@ export function UatContent() {
           }),
         },
         'UAT フィードバックの送信に失敗しました',
+        uatFeedbackResponseSchema,
       );
     },
     onSuccess: async () => {
@@ -385,6 +558,7 @@ export function UatContent() {
           }),
         },
         'UAT フィードバックの更新に失敗しました',
+        uatFeedbackResponseSchema,
       ),
     onSuccess: async () => {
       toast.success('フィードバックの triage 状態を更新しました');

@@ -129,6 +129,134 @@ function queryFnFor(queryKeyName: string) {
   return queryFn;
 }
 
+const feedbackItemFixture = {
+  id: 'feedback_1',
+  priority: 'medium',
+  status: 'open',
+  owner_user_id: null,
+  feedback: '確認事項',
+  checklist_progress: null,
+  checked_items: [],
+  source: 'pilot_pharmacy',
+  linked_work_item: null,
+  due_date: null,
+  resolved_at: null,
+  created_at: '2026-07-07T00:00:00.000Z',
+};
+
+function successPayloadFor(input: RequestInfo | URL) {
+  const url = String(input);
+  if (url === '/api/admin/uat-feedback') return { data: [feedbackItemFixture] };
+  if (url.startsWith('/api/admin/uat-feedback/feedback_')) return { data: feedbackItemFixture };
+  if (url === '/api/admin/pilot-readiness') {
+    return {
+      data: {
+        generated_at: '2026-07-07T00:00:00.000Z',
+        case_summary: {
+          active_case_count: 0,
+          facility_linked_case_count: 0,
+          non_facility_case_count: 0,
+          facility_count: 0,
+          set_pilot_case_count: 0,
+          set_pilot_without_facility_count: 0,
+        },
+        uat_summary: {
+          total_feedback: 0,
+          critical_count: 0,
+          high_count: 0,
+          medium_count: 0,
+          low_count: 0,
+          blocker_count: 0,
+          recent_feedback: [],
+        },
+        decisions: {
+          facility_batching: 'ready',
+          medication_set_workflow: 'ready',
+          phase2_entry: 'ready',
+        },
+        recommendations: [],
+      },
+    };
+  }
+  if (url === '/api/admin/uat-feedback/summary') {
+    return {
+      data: {
+        generated_at: '2026-07-07T00:00:00.000Z',
+        total_feedback: 0,
+        priorities: { critical: 0, high: 0, medium: 0, low: 0 },
+        blocker_count: 0,
+        action_items: [],
+        checklist_coverage: [],
+        recommendations: [],
+      },
+    };
+  }
+  if (url.startsWith('/api/pharmacists')) return { data: [] };
+  if (url === '/api/admin/pilot-org-audit') {
+    return {
+      data: {
+        generated_at: '2026-07-07T00:00:00.000Z',
+        org_structure: {
+          site_count: 0,
+          active_member_count: 0,
+          role_counts: {},
+          site_breakdown: [],
+        },
+        pilot_targets: {
+          active_case_count: 0,
+          facility_linked_case_count: 0,
+          set_pilot_case_count: 0,
+        },
+        coverage: {
+          total_primary_residences: 0,
+          flagged_patient_count: 0,
+          flagged_patients_truncated: false,
+          service_area_covered_count: 0,
+          radius_16km_covered_count: 0,
+          uncovered_count: 0,
+          review_required_count: 0,
+          flagged_patients: [],
+        },
+        recommendations: [],
+      },
+    };
+  }
+  if (url === '/api/admin/pilot-launch-dossier') {
+    return {
+      data: {
+        generated_at: '2026-07-07T00:00:00.000Z',
+        recommendations: [],
+        readiness: {
+          decisions: {
+            facility_batching: 'ready',
+            medication_set_workflow: 'ready',
+            phase2_entry: 'ready',
+          },
+        },
+        org_audit: {
+          coverage: {
+            uncovered_count: 0,
+            review_required_count: 0,
+            flagged_patient_count: 0,
+            flagged_patients_truncated: false,
+          },
+        },
+        uat_summary: { total_feedback: 0, blocker_count: 0 },
+        external_readiness: {
+          pmda: { ready_for_import_test: false },
+          backup: { ready_for_live_drill: false, recorded_runs: [] },
+          isms: {
+            ready_for_quote_request: false,
+            comparison_table_started: false,
+            decision_memo_started: false,
+          },
+        },
+      },
+    };
+  }
+  throw new Error(`Unexpected UAT test URL: ${url}`);
+}
+
 describe('UatContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -138,9 +266,13 @@ describe('UatContent', () => {
     queryOptionsMock.length = 0;
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        async () => new Response(JSON.stringify({ data: { id: 'feedback_1' } }), { status: 200 }),
-      ),
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const payload =
+          String(input) === '/api/admin/uat-feedback' && init?.method === 'POST'
+            ? { data: feedbackItemFixture }
+            : successPayloadFor(input);
+        return new Response(JSON.stringify(payload), { status: 200 });
+      }),
     );
   });
 
