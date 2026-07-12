@@ -46650,3 +46650,8 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   or visual layout changed. Browser and image generation were omitted because this is a non-visual parser,
   pagination, and cache-minimization repair covered at direct query-function and provider boundaries. Rollback is the
   local contract, four reader adapters, regressions, and client-schema ratchet hunk.
+- commit / push:
+  Commit `b4f547d17` (`fix(API-CONTRACT-001): validate medication workspace reads`) contains only the medication
+  workspace contract, four reader adapters, regressions, client-schema ratchet, Plans, and this ledger entry. It was
+  pushed to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal
+  artifacts were excluded, and the feature branch does not match the `main`-only production deploy trigger.
