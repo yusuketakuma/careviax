@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZOPPOLICYSTRICT operational policy/daily-ops readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZOPPOLICYSTRICT operational policy/daily-ops readers (VERIFY_REQUIRED, 2026-07-13; implementation `07a5cc1bd`; shared clean-capacity build pending).
   - current task / root cause:
     Operational PolicyのGET/PATCHとdaily-ops cockpit readersはcompile-time castだけで、欠損/未知policy、locked-item
     identity drift、PATCH未反映、非editable update、change-log count drift、unsafe/malformed rail actionsを成功扱いし、
