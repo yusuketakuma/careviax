@@ -1,6 +1,12 @@
 import type { ImpactQueueKey } from './drug-master-formulary-view-model';
 
-export type { DrugMasterImportLog } from './drug-master-content-contracts';
+export type {
+  DrugMasterDetail,
+  DrugMasterImportLog,
+  GenericCandidateOption,
+  GenericRecommendation,
+  IngredientGroupResponse,
+} from './drug-master-content-contracts';
 
 export type DrugMasterRow = {
   id: string;
@@ -31,37 +37,6 @@ export type DrugMasterRow = {
 export type ImportAction = 'ssk' | 'mhlw-price' | 'mhlw-generic' | 'hot' | 'pmda';
 export type FormularyExportPurpose = 'operations' | 'audit' | 'posting' | 'pharmacist_review';
 
-export type DrugMasterDetail = DrugMasterRow & {
-  hot_code: string | null;
-  transitional_expiry_date: string | null;
-  package_inserts: Array<{
-    id: string;
-    contraindications: unknown;
-    interactions: unknown;
-    adverse_effects: unknown;
-    dosage_adjustment_renal: unknown;
-    precautions_elderly: unknown;
-    document_version: string | null;
-    revised_at: string | null;
-  }>;
-  interactions_as_a: Array<{
-    id: string;
-    severity: 'contraindicated' | 'caution' | 'minor';
-    mechanism: string | null;
-    clinical_effect: string | null;
-    source: 'pmda_xml' | 'kegg' | 'manual';
-    drug_b: { id: string; drug_name: string; yj_code: string };
-  }>;
-  interactions_as_b: Array<{
-    id: string;
-    severity: 'contraindicated' | 'caution' | 'minor';
-    mechanism: string | null;
-    clinical_effect: string | null;
-    source: 'pmda_xml' | 'kegg' | 'manual';
-    drug_a: { id: string; drug_name: string; yj_code: string };
-  }>;
-};
-
 export type PharmacySiteOption = {
   id: string;
   name: string;
@@ -72,70 +47,6 @@ export type PreferredGenericSummary = {
   id: string;
   drug_name: string;
   yj_code: string;
-};
-
-export type GenericCandidateOption = {
-  id: string;
-  yj_code: string;
-  drug_name: string;
-};
-
-export type GenericRecommendation = GenericCandidateOption & {
-  generic_name: string | null;
-  drug_price: number | null;
-  unit: string | null;
-  manufacturer: string | null;
-  is_generic: boolean;
-  transitional_expiry_date: string | null;
-  price_delta: number | null;
-  price_delta_percent: number | null;
-  site_stock: {
-    drug_master_id: string;
-    is_stocked: boolean;
-    preferred_generic_id: string | null;
-    reorder_point: number | null;
-  } | null;
-};
-
-export type IngredientGroupResponse = {
-  site: Pick<PharmacySiteOption, 'id' | 'name'> | null;
-  target: Pick<
-    DrugMasterRow,
-    'id' | 'yj_code' | 'drug_name' | 'generic_name' | 'drug_price' | 'unit' | 'is_generic'
-  >;
-  generic_name: string | null;
-  summary: {
-    member_count: number;
-    brand_count: number;
-    generic_count: number;
-    stocked_count: number;
-    unstocked_count: number | null;
-    lowest_price: number | null;
-    highest_price: number | null;
-  } | null;
-  members: Array<
-    Pick<
-      DrugMasterRow,
-      | 'id'
-      | 'yj_code'
-      | 'drug_name'
-      | 'generic_name'
-      | 'drug_price'
-      | 'unit'
-      | 'manufacturer'
-      | 'is_generic'
-    > & {
-      transitional_expiry_date: string | null;
-      site_stock: {
-        drug_master_id: string;
-        is_stocked: boolean;
-        preferred_generic_id: string | null;
-        reorder_point: number | null;
-        follow_up_status: string | null;
-      } | null;
-    }
-  >;
-  reason?: 'generic_name_missing';
 };
 
 export type PharmacyDrugStockConfig = {

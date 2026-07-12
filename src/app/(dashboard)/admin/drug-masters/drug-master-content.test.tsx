@@ -1300,7 +1300,55 @@ describe('DrugMasterContent', () => {
     };
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
-    const fetchMock = vi.fn(async () => jsonResponse({ data: [], recommendations: [] }, 200));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('__helper_detail__')) {
+        return jsonResponse({ data: detailDataMock.current }, 200);
+      }
+      if (url.includes('__helper_generic__')) {
+        return jsonResponse({
+          data: {
+            site: null,
+            target: {
+              id: drugMasterId,
+              yj_code: '9999999999',
+              drug_name: '先発薬A',
+              generic_name: 'イブプロフェン',
+              drug_price: 50,
+              unit: '錠',
+              is_generic: false,
+            },
+            mapping: null,
+            recommendations: [],
+          },
+        });
+      }
+      return jsonResponse({
+        data: {
+          site: null,
+          target: {
+            id: drugMasterId,
+            yj_code: '9999999999',
+            drug_name: '先発薬A',
+            generic_name: 'イブプロフェン',
+            drug_price: 50,
+            unit: '錠',
+            is_generic: false,
+          },
+          generic_name: 'イブプロフェン',
+          summary: {
+            member_count: 0,
+            brand_count: 0,
+            generic_count: 0,
+            stocked_count: 0,
+            unstocked_count: null,
+            lowest_price: null,
+            highest_price: null,
+          },
+          members: [],
+        },
+      });
+    });
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     try {
@@ -3136,6 +3184,12 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     return option!.queryFn!;
   }
 
+  function latestQueryFnFor(queryName: string) {
+    const option = capturedQueryOptions.filter((config) => config.queryKey[0] === queryName).at(-1);
+    expect(option?.queryFn).toBeTruthy();
+    return option!.queryFn!;
+  }
+
   it('rejects impossible drug-master import coverage metrics', async () => {
     vi.stubGlobal(
       'fetch',
@@ -3216,6 +3270,148 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
 
     try {
       await expect(queryFnFor('drug-master-import-logs')()).resolves.toEqual({ data: [log] });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a drug detail response for a different selected drug', async () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ data: { ...buildGenericDetail(), id: 'drug_other' } })),
+    );
+    render(<DrugMasterContent variant="formulary" />);
+    fireEvent.click(screen.getByText('採用追加'));
+
+    try {
+      await expect(latestQueryFnFor('drug-master-detail')()).rejects.toThrow(
+        '医薬品詳細の取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('aggregates preferred-generic candidates across bounded cursor pages', async () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    const first = { id: 'generic_1', yj_code: '111111111112', drug_name: '後発品A' };
+    const second = { id: 'generic_2', yj_code: '111111111113', drug_name: '後発品B' };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [first],
+          meta: { has_more: true, next_cursor: '100' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [second],
+          meta: { has_more: false, next_cursor: null },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DrugMasterContent variant="formulary" />);
+    fireEvent.click(screen.getByText('採用追加'));
+
+    try {
+      await expect(latestQueryFnFor('preferred-generic-candidates')()).resolves.toEqual({
+        data: [first, second],
+      });
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        '/api/drug-masters?q=%E3%83%AD%E3%82%AD%E3%82%BD%E3%83%97%E3%83%AD%E3%83%95%E3%82%A7%E3%83%B3&generic=true&limit=100&includeTotal=false',
+        expect.anything(),
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        '/api/drug-masters?q=%E3%83%AD%E3%82%AD%E3%82%BD%E3%83%97%E3%83%AD%E3%83%95%E3%82%A7%E3%83%B3&generic=true&limit=100&includeTotal=false&cursor=100',
+        expect.anything(),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects generic recommendations for a different target drug', async () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: {
+            site: null,
+            target: {
+              id: 'drug_other',
+              yj_code: '999999999999',
+              drug_name: '別薬剤',
+              generic_name: 'ロキソプロフェン',
+              drug_price: 20,
+              unit: '錠',
+              is_generic: false,
+            },
+            mapping: null,
+            recommendations: [],
+          },
+        }),
+      ),
+    );
+    render(<DrugMasterContent variant="formulary" />);
+    fireEvent.click(screen.getByText('採用追加'));
+
+    try {
+      await expect(latestQueryFnFor('generic-recommendations')()).rejects.toThrow(
+        '推奨後発品の取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects internally inconsistent ingredient-group summaries', async () => {
+    queuePendingFormularyRequest();
+    detailDataMock.current = buildGenericDetail();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: {
+            site: null,
+            target: {
+              id: 'drug_generic',
+              yj_code: '111111111111',
+              drug_name: '先発薬A',
+              generic_name: 'ロキソプロフェン',
+              drug_price: 17.1,
+              unit: '錠',
+              is_generic: false,
+            },
+            generic_name: 'ロキソプロフェン',
+            summary: {
+              member_count: 2,
+              brand_count: 1,
+              generic_count: 1,
+              stocked_count: 0,
+              unstocked_count: null,
+              lowest_price: 17.1,
+              highest_price: 17.1,
+            },
+            members: [],
+          },
+        }),
+      ),
+    );
+    render(<DrugMasterContent variant="formulary" />);
+    fireEvent.click(screen.getByText('採用追加'));
+
+    try {
+      await expect(latestQueryFnFor('ingredient-group')()).rejects.toThrow(
+        '同一成分グループの取得に失敗しました',
+      );
     } finally {
       vi.unstubAllGlobals();
     }
@@ -3439,6 +3635,8 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     queuePendingFormularyRequest();
     detailDataMock.current = buildGenericDetail();
     const detailBody = { ...buildGenericDetail(), drug_name: '成功詳細薬' };
+    const { stock_config: _unusedStockConfig, ...consumedDetailBody } = detailBody;
+    void _unusedStockConfig;
     const stockConfigResponseBody = {
       data: null,
       meta: { site: { id: 'site_1', name: '本店' } },
@@ -3472,10 +3670,43 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     };
     const requestsBody = { data: [], meta: { summary: requestSummary } };
     const templatesBody = { data: [] };
+    const genericCandidatesResponseBody = {
+      data: [],
+      meta: { has_more: false, next_cursor: null },
+    };
     const genericCandidatesBody = { data: [] };
-    const recommendationsBody = {
+    const recommendationsResponseBody = {
       data: {
+        site: null,
+        target: {
+          id: 'drug_generic',
+          yj_code: '111111111111',
+          drug_name: '先発薬A',
+          generic_name: null,
+          drug_price: 17.1,
+          unit: '錠',
+          is_generic: false,
+        },
         recommendations: [],
+        reason: 'generic_name_missing',
+      },
+    };
+    const recommendationsBody = { data: { recommendations: [] } };
+    const ingredientGroupResponseBody = {
+      data: {
+        site: null,
+        target: {
+          id: 'drug_generic',
+          yj_code: '111111111111',
+          drug_name: '先発薬A',
+          generic_name: null,
+          drug_price: 17.1,
+          unit: '錠',
+          is_generic: false,
+        },
+        generic_name: null,
+        summary: null,
+        members: [],
         reason: 'generic_name_missing',
       },
     };
@@ -3490,8 +3721,10 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('/generic-recommendations')) return jsonResponse(recommendationsBody, 200);
-      if (url.includes('/ingredient-group')) return jsonResponse(ingredientGroupBody, 200);
+      if (url.includes('/generic-recommendations')) {
+        return jsonResponse(recommendationsResponseBody, 200);
+      }
+      if (url.includes('/ingredient-group')) return jsonResponse(ingredientGroupResponseBody, 200);
       if (url.includes('/pharmacy-drug-stocks/history')) return jsonResponse(stockHistoryBody, 200);
       if (url.includes('/pharmacy-drug-stocks/impact')) {
         return jsonResponse({ data: impactBody }, 200);
@@ -3504,7 +3737,7 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
       if (url.includes('/pharmacy-drug-stocks?')) {
         return jsonResponse(stockConfigResponseBody, 200);
       }
-      if (url.includes('/drug-masters?')) return jsonResponse(genericCandidatesBody, 200);
+      if (url.includes('/drug-masters?')) return jsonResponse(genericCandidatesResponseBody, 200);
       if (url.includes('/drug-masters/')) return jsonResponse({ data: detailBody }, 200);
       return jsonResponse({ message: `unexpected fetch: ${url}` }, 500);
     });
@@ -3525,7 +3758,7 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
         return option!.queryFn!;
       };
 
-      await expect(latestQueryFn('drug-master-detail', 2)()).resolves.toEqual(detailBody);
+      await expect(latestQueryFn('drug-master-detail', 2)()).resolves.toEqual(consumedDetailBody);
       await expect(latestQueryFn('pharmacy-drug-stock')()).resolves.toEqual(stockConfigBody);
       await expect(latestQueryFn('pharmacy-drug-stock-history')()).resolves.toEqual(
         stockHistoryBody,

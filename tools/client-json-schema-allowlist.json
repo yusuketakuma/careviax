@@ -74,7 +74,7 @@
     {
       "path": "src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx",
       "counts": {
-        "stringFallback": 20
+        "stringFallback": 16
       }
     },
     {

@@ -46683,3 +46683,29 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   schema, local log schema, two reader adapters, regressions, client-schema ratchet, Plans, and this ledger entry. It
   was pushed to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked
   personal artifacts were excluded, and the feature branch does not match the `main`-only production deploy trigger.
+
+## 2026-07-12 API-CONTRACT-001FZDRUGDETAILSTRICT — drug detail and alternatives contracts (DONE)
+
+- current task / root cause:
+  The drug-master detail, preferred-generic candidate, generic-recommendation, and ingredient-group readers used
+  compile-time casts. A response for another selected drug, malformed interaction severity, duplicate candidate,
+  invalid price/date, or inconsistent ingredient summary could enter formulary decisions. Preferred-generic search
+  also requested only 20 rows and ignored provider cursor metadata, silently hiding additional candidates.
+- implementation / verification:
+  Added consumed runtime schemas for drug safety detail, generic candidate cursor pages, recommendations, and
+  ingredient groups. Readers now verify selected versus returned target identity, validate and minimize package
+  insert/interaction fields, normalize finite nonnegative Prisma Decimal prices, reject duplicate IDs and invalid
+  dates/enums, and check ingredient counts, stock counts, and price ranges against returned members. Preferred-generic
+  candidates now aggregate 100-row pages up to an explicit five-page bound and reject repeated cursors or cross-page
+  duplicate IDs. Existing endpoint helpers, headers, API error messages, provider responses, recommendation scoring,
+  safety ordering, formulary mutations, and rendered UI remain unchanged. Four regressions failed before
+  implementation; content and four provider suites passed 5 files / 145 tests afterward. Exact ESLint/Prettier,
+  aggregate typecheck, no-unused typecheck, API response-shape, frontend contract, client PHI-log/display,
+  module-boundary, active Plans, client-schema, and diff gates passed. The client-schema ratchet improved from
+  133 schema-backed / 241 allowlisted schema-less / 92 files to 137 / 237 / 92. Additional candidate requests occur
+  only above 100 matches and are bounded at five requests. Full build was not repeated after the unchanged
+  compile-stage shared-memory limitation; there is no new build hypothesis. No provider, DB, auth/authz, tenant,
+  audit, clinical calculation, mutation, or visual layout changed. Browser and image generation were omitted because
+  this is a non-visual parser, identity, pagination, and cache-minimization repair covered at direct query-function
+  and provider boundaries. Rollback is the four schemas, reader adapters, bounded candidate helper, regressions,
+  inferred display types, and client-schema ratchet hunk.

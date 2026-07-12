@@ -85,7 +85,13 @@ import {
 import { baseColumns } from './drug-master-content-columns';
 import { DrugMasterDetailSheet } from './drug-master-detail-sheet';
 import { FormularyOperationsPanel } from './drug-master-formulary-operations-panel';
-import { drugMasterImportLogsResponseSchema } from './drug-master-content-contracts';
+import {
+  drugMasterDetailResponseSchema,
+  drugMasterImportLogsResponseSchema,
+  genericCandidatePageSchema,
+  genericRecommendationsResponseSchema,
+  ingredientGroupResponseSchema,
+} from './drug-master-content-contracts';
 import {
   CATEGORY_OPTIONS,
   CLIPBOARD_COPY_ERROR_MESSAGE,
@@ -110,7 +116,6 @@ import {
 import type {
   BulkPreviewResponse,
   DrugMasterContentProps,
-  DrugMasterDetail,
   DrugMasterImportLog,
   DrugMasterRow,
   FormularyChangeRequestItem,
@@ -124,7 +129,6 @@ import type {
   GenericCandidateOption,
   GenericRecommendation,
   ImportAction,
-  IngredientGroupResponse,
   OfficialImportPreviewData,
   OfficialImportPreviewState,
   PharmacyDrugStockConfig,
@@ -378,6 +382,48 @@ function toApiPath(path: string): `/api/${string}` {
   return trimmed as `/api/${string}`;
 }
 
+const GENERIC_CANDIDATE_PAGE_LIMIT = 100;
+const GENERIC_CANDIDATE_MAX_PAGES = 5;
+const GENERIC_CANDIDATE_FALLBACK = '採用後発薬候補の取得に失敗しました';
+
+async function fetchPreferredGenericCandidates(orgId: string, genericName: string) {
+  const candidates: GenericCandidateOption[] = [];
+  const candidateIds = new Set<string>();
+  const visitedCursors = new Set<string>();
+  const headers = buildOrgHeaders(orgId);
+  let cursor: string | undefined;
+
+  for (let pageNumber = 0; pageNumber < GENERIC_CANDIDATE_MAX_PAGES; pageNumber += 1) {
+    const params = new URLSearchParams({
+      q: genericName,
+      generic: 'true',
+      limit: String(GENERIC_CANDIDATE_PAGE_LIMIT),
+      includeTotal: 'false',
+      ...(cursor ? { cursor } : {}),
+    });
+    const response = await fetch(buildDrugMastersApiPath(params), { headers });
+    const page = await readApiJson(response, {
+      fallbackMessage: GENERIC_CANDIDATE_FALLBACK,
+      schema: genericCandidatePageSchema,
+    });
+
+    for (const candidate of page.data) {
+      if (candidateIds.has(candidate.id)) throw new Error(GENERIC_CANDIDATE_FALLBACK);
+      candidateIds.add(candidate.id);
+      candidates.push(candidate);
+    }
+
+    if (!page.hasMore) return { data: candidates };
+    if (!page.nextCursor || visitedCursors.has(page.nextCursor)) {
+      throw new Error(GENERIC_CANDIDATE_FALLBACK);
+    }
+    visitedCursors.add(page.nextCursor);
+    cursor = page.nextCursor;
+  }
+
+  throw new Error(GENERIC_CANDIDATE_FALLBACK);
+}
+
 function DrugMasterOperationalContent({
   variant = 'master',
 }: Pick<DrugMasterContentProps, 'variant'>) {
@@ -592,10 +638,13 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildDrugMasterApiPath(selectedDrugId), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: DrugMasterDetail }>(
-        res,
-        '医薬品詳細の取得に失敗しました',
-      );
+      const payload = await readApiJson(res, {
+        fallbackMessage: '医薬品詳細の取得に失敗しました',
+        schema: drugMasterDetailResponseSchema,
+      });
+      if (payload.data.id !== selectedDrugId) {
+        throw new Error('医薬品詳細の取得に失敗しました');
+      }
       return payload.data;
     },
     enabled: !!orgId && !!selectedDrugId,
@@ -775,19 +824,7 @@ function DrugMasterOperationalContent({
     queryFn: async () => {
       const genericName = detailQuery.data?.generic_name?.trim();
       if (!genericName) return { data: [] as GenericCandidateOption[] };
-      const params = new URLSearchParams({
-        q: genericName,
-        generic: 'true',
-        limit: '20',
-        includeTotal: 'false',
-      });
-      const res = await fetch(buildDrugMastersApiPath(params), {
-        headers: buildOrgHeaders(orgId),
-      });
-      return readApiJson<{ data: GenericCandidateOption[] }>(
-        res,
-        '採用後発薬候補の取得に失敗しました',
-      );
+      return fetchPreferredGenericCandidates(orgId, genericName);
     },
     enabled: !!orgId && !!selectedDrugId && !!detailQuery.data?.generic_name,
     staleTime: 300_000,
@@ -807,10 +844,14 @@ function DrugMasterOperationalContent({
           headers: buildOrgHeaders(orgId),
         },
       );
-      return readApiJson<{ data: { recommendations: GenericRecommendation[] } }>(
-        res,
-        '推奨後発品の取得に失敗しました',
-      );
+      const payload = await readApiJson(res, {
+        fallbackMessage: '推奨後発品の取得に失敗しました',
+        schema: genericRecommendationsResponseSchema,
+      });
+      if (payload.targetId !== selectedDrugId) {
+        throw new Error('推奨後発品の取得に失敗しました');
+      }
+      return { data: payload.data };
     },
     enabled: !!orgId && !!selectedDrugId && !!detailQuery.data?.generic_name,
     staleTime: 300_000,
@@ -827,10 +868,14 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildDrugMasterIngredientGroupApiPath(selectedDrugId, params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: IngredientGroupResponse }>(
-        res,
-        '同一成分グループの取得に失敗しました',
-      );
+      const payload = await readApiJson(res, {
+        fallbackMessage: '同一成分グループの取得に失敗しました',
+        schema: ingredientGroupResponseSchema,
+      });
+      if (payload.targetId !== selectedDrugId) {
+        throw new Error('同一成分グループの取得に失敗しました');
+      }
+      return { data: payload.data };
     },
     enabled: !!orgId && !!selectedDrugId && !!detailQuery.data?.generic_name,
     staleTime: 300_000,
