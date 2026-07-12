@@ -47045,6 +47045,46 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZGENERICCANDIDATE — (DONE)
+
+- current task / root cause:
+  The prescription intake generic-candidate reader still trusts `/api/drug-masters?generic=true&limit=5` through a
+  compile-time cast. Duplicate identities/YJ codes, non-generic rows, negative/non-finite drug prices, malformed
+  lowest-price JSON, excess rows, or provider-only master/mapping fields can therefore enter candidate selection and
+  price-difference state without runtime validation.
+- baseline / selection:
+  The focused prescription intake form suite passes 1 file / 15 tests. The higher-priority patients-board cursor was
+  re-audited first: global derived attention/foundation/visit ordering and exact facets still make a naive DB `take`
+  unsafe because it can hide high-priority patients. This disjoint medication-contract slice is executable without
+  weakening that patient-safety invariant. Current inventory is 194 schema-backed / 177 allowlisted calls across 66
+  files.
+- implementation plan:
+  Add a strict `{ data, meta }` response schema for the five UI-consumed generic candidate fields plus bounded decimal
+  price comparison, enforce `is_generic`, unique identity/YJ, maximum rows, and cursor relation, strip all unconsumed
+  provider fields, connect `readApiJson`, add malformed/provider-only regressions, and remove only this allowlist entry.
+  This non-visual parser/cache-minimization repair does not require imagegen; provider/auth/search, selection/persistence,
+  and visual behavior remain unchanged.
+- implementation / validation:
+  Added the strict generic-candidate projection with positive identity text, finite/nonnegative drug prices, decimal-only
+  lowest-price input, `is_generic: true`, unique ID/YJ, five-row cap, and cursor relation checks. Manufacturer, stock,
+  mapping-source, and other unused provider fields are stripped before the query cache; malformed prices can no longer
+  produce `NaN` price differences. Focused schema/form suites pass 2 files / 23 tests. Client-schema inventory passes at
+  195 schema-backed / 176 allowlisted calls across 65 files. Aggregate typecheck, 8 GB no-unused typecheck, lint,
+  frontend contract, module boundaries, API response shape, PHI client log/display, colors, typography, Plans, format,
+  and diff gates pass; lint retains only the two pre-existing unused-parameter warnings in
+  `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  Serialized `PHOS_DISABLE_WEBPACK_CACHE=1 pnpm build` passes: compile 85s, build TypeScript 48s, page data 1280ms,
+  static generation 311/311 in 783ms, traces 17.0s, and final optimization 19.4s. It emitted only the two known
+  generated-CSS optimizer warnings. The temporary local webpack cache hook was reverted, leaving no `next.config.ts`
+  diff; no generated artifacts were deleted.
+- commit / landing:
+  Scoped implementation commit `57a2b4d07` contains only the generic-candidate schema/tests, prescription form reader,
+  and allowlist ratchet. Ledger commit and safe feature-branch push follow; unrelated dirty/untracked artifacts remain
+  excluded.
+- next action:
+  Close and push this slice, then return to the 176-call inventory while keeping the patients-board keyset redesign open.
+
 ## 2026-07-12 API-CONTRACT-001FZPERFRUNTIME — (DONE)
 
 - current task / root cause:
