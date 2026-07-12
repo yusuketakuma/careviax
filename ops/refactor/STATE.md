@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZROUTECOMPARESTRICT route compare readers (VERIFY_REQUIRED, 2026-07-13; implementation ready; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZROUTECOMPARESTRICT route compare readers (VERIFY_REQUIRED, 2026-07-13; implementation `6857139b9`; shared clean-capacity build pending).
   - current task / root cause:
     Route Compareのday-board GETとroute-plan POST結果readersはcompile-time castだけで、別日board、count/identity/vehicle
     aggregate drift、不正route geometry/order、requested scenario外scheduleやtravel mode driftを成功扱いし、車両選択・
