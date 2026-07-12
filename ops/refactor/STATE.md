@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZDATAEXPLORERREADSTRICT data-explorer model/row readers (VERIFY_REQUIRED, 2026-07-13; implementation `bce3bad6b`, ledger pending; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZDATAEXPLORERREADSTRICT data-explorer model/row readers (VERIFY_REQUIRED, 2026-07-13; implementation `bce3bad6b`, ledger `d3d22f8bf`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Data Explorerのmodel listとdynamic table rowsはcompile-time castだけで読み、legacy/wrong-table root、
     invalid coverage/count、duplicate model/table/column/row identity、未宣言row field、limit超過をeditor stateへ
