@@ -72,12 +72,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/master-hub-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
       "counts": {
         "stringFallback": 5

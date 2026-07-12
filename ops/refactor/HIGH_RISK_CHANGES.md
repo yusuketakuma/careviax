@@ -69,3 +69,14 @@
 - Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, provider, POST/PATCH/audit, or production data mutation changed.
 - Safety/privacy control: legacy root, duplicate identity, blank/overlong text, negative sort/count, wrong count basis, empty-filter drift, limit overflow, and inconsistent counted metadata fail closed; provider-only timestamps/org fields are stripped before authorized list/form state.
 - Operational note: authorized packaging configuration remains in-app only; no patient detail, provider metadata, or external output is introduced by this slice.
+
+## API-CONTRACT-001FZMASTERHUBSTRICT
+
+- Classification: Controlled admin aggregate freshness/action read, but not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets,
+  deployment, provider, mutation, or production data change.
+- Safety control: strict root and exact 11-card set, duplicate/completeness detection, valid timestamps, bounded
+  non-negative counts/ages, status-count relation, internal hrefs, and malformed/legacy/unsafe/incomplete fail-closed
+  regressions protect authorized freshness/action state; provider-only nested fields are stripped before query state.
+- Operational note: authorized master detail and shared right-rail content remain in-app only; no raw patient detail,
+  provider metadata, or external output is introduced by this slice.

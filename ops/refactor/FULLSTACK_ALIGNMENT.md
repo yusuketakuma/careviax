@@ -129,3 +129,16 @@
 | Errors / loading / empty    | Existing loading, error/retry, empty, truncation notice, edit, and mutation behavior remains; malformed 2xx becomes query error rather than false list/form state.                   |
 | Tests                       | Packaging-method consumer/provider suite: 2 files / 26 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                 |
 | Alignment                   | ALIGNED for this read slice; POST/PATCH/audit, provider/auth semantics, authorized configuration display, and visual behavior intentionally unchanged.                               |
+
+## API-CONTRACT-001FZMASTERHUBSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                                      |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Authorized admin users access `/admin/master-hub`; `/api/admin/master-hub` remains under its existing `canAdmin` authorization and no route boundary changed.                         |
+| Frontend state / clients    | `master-hub-content.tsx` validates the aggregate envelope before card freshness, summary, and right-rail action state; provider-only nested fields are stripped from cached state.     |
+| Request / response contract | Provider returns `{ data }` with exactly 11 master cards and a shared right rail; consumer validates key completeness, card fields, rail identity/severity/age/href, status-count relation, and internal links. |
+| Backend / DB                | Existing org-scoped aggregate queries, date-boundary calculation, no-store handling, right-rail service, persistence, and provider route are unchanged.                               |
+| Auth / tenant / audit       | Existing `canAdmin` authorization, org context, audit-count aggregation, and in-app authorized disclosure remain; no provider metadata is externalized.                              |
+| Errors / loading / empty    | Existing loading, error/retry, summary, card, and right-rail behavior remains; malformed 2xx becomes query error rather than false freshness/action state.                             |
+| Tests                       | Master-hub consumer/provider suite: 2 files / 20 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                        |
+| Alignment                   | ALIGNED for this read slice; aggregate provider/auth semantics, authorized detail display, and visual behavior intentionally unchanged.                                                |

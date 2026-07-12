@@ -36,6 +36,25 @@
 - Browser/E2E: not run; this is a non-visual packaging master-data response-contract slice with no layout change. `gpt-image-2` was omitted for the same reason.
 - Migration/auth/tenant: no migration, provider, authorization, or tenant query change; no production data operation executed.
 
+## API-CONTRACT-001FZMASTERHUBSTRICT
+
+- Baseline: inherited admin/master-hub GET reader used a compile-time `{ data: MasterHubResponse }` cast for an
+  aggregate with 11 cards and a shared right rail; one `stringFallback` allowlist entry covered the reader.
+- Focused test: `pnpm exec vitest run 'src/app/(dashboard)/admin/master-hub-content.test.tsx' 'src/app/api/admin/master-hub/route.test.ts' --reporter=dot --testTimeout=30000` — PASS, 2 files / 20 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`,
+  `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`,
+  `pnpm boundaries:check`, `pnpm plans:active:check`, `pnpm colors:check`, `pnpm typography:check`, and
+  `git diff --check` — PASS.
+- Client-schema result: 171 schema-backed, 202 allowlisted schema-less calls, 78 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS with the same two pre-existing warnings in `src/lib/platform/break-glass.test.ts`.
+- Build: `NODE_OPTIONS=--max-old-space-size=8192 pnpm build` — PASS; Next 16.2.9 compiled in 2.4 minutes, TypeScript
+  finished in 57 seconds, 311/311 static pages, and traces completed. Two existing CSS optimizer warnings did not
+  fail the build; no ENOSPC warning was emitted and `df -h .` reported 14 GiB available before and 13 GiB after.
+- Browser/E2E: not run; this is a non-visual aggregate response-contract slice with no layout change. `gpt-image-2` was
+  omitted for the same reason.
+- Migration/auth/tenant: no migration, provider, authorization, or tenant query change; no production data operation executed.
+
 ## API-CONTRACT-001FZNOTIFICATIONBELLSTRICT
 
 - Baseline: inherited notification-bell summary/list refreshes used optional compile-time payload casts and one `stringFallback` allowlist entry; provider returns a bounded `{ data: { unreadCount } }` summary and `{ data, meta }` list envelope.

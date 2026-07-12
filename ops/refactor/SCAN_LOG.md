@@ -140,6 +140,34 @@
   80 files. Commit `f906abede` is pushed. Next scan: remaining API-CONTRACT allowlist entries and patients board cursor
   residual.
 
+## 2026-07-12 — API-CONTRACT-001FZMASTERHUBSTRICT selection
+
+- Scope: `src/app/(dashboard)/admin/master-hub-content.tsx`, master-hub response schema, master-hub consumer/provider tests,
+  and the one matching client-schema allowlist entry.
+- Candidate ranking: selected the single admin aggregate reader after the packaging-method landing; deferred billing,
+  audit, contact/external/document delivery, inventory/medication, patient/visit, and shared-token readers with broader
+  PHI, audit, or outbound-data impact.
+- Finding: the provider returns 11 master cards plus a right rail under `{ data }`, while the consumer trusts a compile-time
+  `MasterHubResponse` cast. Legacy roots, missing/duplicate keys, invalid status/count/action/date state, unsafe hrefs, and
+  malformed blocked reasons can affect authorized freshness/action state.
+- Baseline: focused master-hub consumer/provider suites pass 2 files / 15 tests; client-schema is 170 schema-backed /
+  203 allowlisted / 79 files.
+- Planned fix: strict exact card/rail schemas, key completeness/status-count/number/href invariants, provider-field
+  stripping, malformed/legacy/duplicate/negative/unsafe/incomplete regressions, and one allowlist ratchet removal.
+  Aggregate provider/auth, authorized disclosure, and visual semantics stay fixed.
+
+## 2026-07-12 — API-CONTRACT-001FZMASTERHUBSTRICT implementation checkpoint
+
+- Implementation: added `src/lib/master-hub/response-schema.ts`, connected `master-hub-content.tsx` to a strict `{ data }`
+  envelope, and removed the single master-hub client JSON schema allowlist entry.
+- Safety contract: exact 11-card key set, duplicate/completeness checks, bounded non-negative card/rail values, valid
+  timestamps, status-count relation, internal action hrefs, bounded text, and provider-only nested-field stripping now
+  guard freshness/action state. Existing aggregate provider, auth, authorized in-app detail, and visual behavior are unchanged.
+- Tests: focused master-hub consumer/provider suites pass 2 files / 20 tests; regressions cover provider-only fields,
+  legacy root, duplicate/incomplete keys, negative count/status drift, unsafe href, and negative rail age.
+- Validation: static gates, typecheck, no-unused typecheck, lint, diff-check, and Next build pass; inventory is 171
+  schema-backed / 202 allowlisted / 78 files. Implementation commit is pending scoped landing.
+
 ## 2026-07-12 — API-CONTRACT-001FZPACKAGINGSTRICT selection
 
 - Scope: `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx`, packaging-method response schema,

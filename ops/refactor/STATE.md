@@ -47045,6 +47045,38 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZMASTERHUBSTRICT — master-hub aggregate contract (IMPLEMENTED, PENDING LANDING)
+
+- current task / root cause:
+  The admin master-hub GET reader trusts a compile-time `{ data: MasterHubResponse }` cast for an aggregate containing
+  11 master cards and a right rail. A legacy root, missing/duplicate master key, invalid freshness/count/status relation,
+  unsafe action href, negative rail age, or malformed blocked reason can therefore affect authorized freshness and next-action
+  state. Existing aggregate provider queries, authorization, in-app detail disclosure, and visual semantics are not being
+  changed.
+- baseline:
+  The focused master-hub consumer/provider suites pass 2 files / 15 tests before implementation. Current client-schema
+  inventory is 170 schema-backed / 203 allowlisted schema-less / 79 files. The target is one `stringFallback` entry in
+  `src/app/(dashboard)/admin/master-hub-content.tsx`.
+- implementation plan:
+  Add a strict shared master-hub schema for the exact 11-card key set, card count/status/action/date fields, and
+  right-rail next/blocked fields; validate unique/completeness invariants, non-negative counts/ages, internal hrefs, and
+  status-count relation; strip provider-only nested fields; add malformed/legacy/duplicate/negative/unsafe/incomplete
+  regressions and remove only the master-hub allowlist entry. No visual reconstruction or `gpt-image-2` is needed because
+  this is a non-visual aggregate parser and authorized freshness/action-state boundary repair.
+- implementation / validation:
+  Added a strict shared master-hub card/rail schema with exact 11-key completeness and duplicate checks, non-negative
+  counts/ages, status-count relation, valid timestamps, internal hrefs, bounded text, and provider-only nested-field
+  stripping. The GET reader now rejects legacy/malformed/duplicate/negative/unsafe/incomplete 2xx before freshness or
+  action state; aggregate provider queries, authorization, in-app disclosure, and visual semantics are unchanged.
+  Focused suites pass 2 files / 20 tests; format, API-shape, client-schema, frontend contract, PHI log/display,
+  boundaries, Plans, colors, typography, and diff-check gates pass; client-schema inventory is 171 schema-backed /
+  202 allowlisted schema-less / 78 files; typecheck and no-unused typecheck pass; lint exits 0 with the two pre-existing
+  break-glass warnings; Next 16.2.9 build passes with 311/311 static pages, the two existing CSS optimizer warnings,
+  and no ENOSPC warning. Filesystem availability was 14 GiB before and 13 GiB after the build.
+- next action:
+  Inspect status, stage only the master-hub implementation/test/schema, allowlist, Plans, and required ledger paths, then
+  create and push the scoped implementation commit while preserving unrelated harness-memory and personal artifacts.
+
 ## 2026-07-12 API-CONTRACT-001FZPACKAGINGSTRICT — packaging-method list contract (DONE)
 
 - current task / root cause:

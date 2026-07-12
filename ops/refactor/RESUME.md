@@ -7,40 +7,40 @@
 - Upstream: `origin/agent/continuous-improvement-20260712`
 - Remote: `origin`
 - Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
-- Current Phase: incremental rescan / next-task selection
-- Current Task ID: `API-CONTRACT-001-RESCAN`
-- Current Task Status: READY_FOR_RESCAN
-- Current Commit Group: `API-CONTRACT-001-RESCAN`
+- Current Phase: admin/master-hub response-contract hardening
+- Current Task ID: `API-CONTRACT-001FZMASTERHUBSTRICT`
+- Current Task Status: IMPLEMENTED, PENDING LANDING
+- Current Commit Group: `API-CONTRACT-001FZMASTERHUBSTRICT`
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
-- Last Safe Checkpoint: Packaging-method focused suites pass 2 files / 26 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized Next build passed; commit `aee2ca6d4` is pushed and local/upstream parity is `0 0`; client-schema is 170 schema-backed / 203 allowlisted / 79 files.
-- Last Completed Action: Landed strict packaging-method counted list parsing and fail-closed regressions while preserving POST/PATCH/audit, provider, authorization, and visual behavior.
-- Current Operation: rescan remaining API contract reader debt and patients board cursor residual.
-- Exact Next Action: Run the client-schema inventory and inspect remaining API-CONTRACT allowlist entries before choosing the next disjoint task.
-- Exact Next Command: `pnpm client-json-schema:check && rg -n -C 5 'API-CONTRACT|schema-less|stringFallback' Plans.md ops/refactor tools/client-json-schema-allowlist.json`
-- Changed Files: no current implementation files; preserve inherited harness-memory and personal artifacts while selecting the next owned slice.
+- Last Safe Checkpoint: Master-hub focused suites pass 2 files / 20 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized Next build passed; client-schema is 171 schema-backed / 202 allowlisted / 78 files; implementation commit is pending landing.
+- Last Completed Action: Implemented and validated the strict master-hub card/rail aggregate reader with provider-only nested-field stripping and fail-closed regressions.
+- Current Operation: land the validated master-hub implementation slice.
+- Exact Next Action: Inspect status, stage only owned master-hub/code/ledger paths, create the scoped implementation commit, push it, verify `HEAD...@{upstream}` parity, then write closure ledgers.
+- Exact Next Command: `git status --short --untracked-files=all && git diff --stat`
+- Changed Files: master-hub consumer/test/schema, client-schema allowlist, Plans, STATE, RESUME, RUN_LOCK, SESSION_SUMMARY, SCAN_LOG, and required implementation ledgers; preserve inherited harness-memory and personal artifacts.
 - Staged Files: none; facility-unit slice is committed and unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
 - Unpushed Commits: none
 - Push Status: PUSHED for packaging-method implementation (`aee2ca6d4`); local and remote heads match.
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
 - Commands Completed: notification-bell baseline Vitest (2 files / 9 tests); facility focused Vitest; notifications focused Vitest; select-site focused Vitest; operations focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; typecheck; no-unused; lint; diff-check; build; provider/consumer scan.
-- Commands Pending: client-schema residual inventory, provider/consumer scan, and next-slice focused validation.
+- Commands Pending: scoped implementation commit/push, parity verification, and closure-ledger update.
 - Tests Completed: packaging-method slice 2 files / 26 tests, institutions slice 2 files / 43 tests, notification-bell slice 2 files / 12 tests, select-site slice 1 file / 6 tests, operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, and holiday slice 2 files / 39 tests passed.
-- Tests Pending: no current test target; the next rescan has not selected a new slice.
-- Build State: PASS for current packaging-method slice; Next 16.2.9 compiled in 3.2 minutes, TypeScript finished in 58 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0; no ENOSPC warning was emitted in this run.
+- Tests Pending: none for the implementation slice; closure bookkeeping remains.
+- Build State: PASS for master-hub slice; Next 16.2.9 compiled in 2.4 minutes, TypeScript finished in 57 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0; no ENOSPC warning was emitted. Filesystem availability was 14 GiB before and 13 GiB after the build.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.
 - Migration State: NOT_APPLICABLE
-- Frontend State: notifications inbox, notification-bell summary/list, institutions GET, and packaging-method GET consumers use strict runtime schemas; no visual change.
-- Backend State: `/api/packaging-methods` remains org-scoped with counted list metadata; POST/PATCH/audit and authz are out of scope.
-- FE/BE Alignment State: packaging-method provider/consumer payload boundary is hardened; authorized master data remains visible while malformed state fails closed and provider-only fields stay out of query/form state.
+- Frontend State: notifications inbox, notification-bell summary/list, institutions GET, packaging-method GET, and master-hub GET consumers use strict runtime schemas; no visual change planned.
+- Backend State: `/api/admin/master-hub` remains an org-scoped aggregate with master cards and right rail; provider queries and authz are out of scope.
+- FE/BE Alignment State: master-hub provider/consumer payload boundary is selected for hardening; authorized aggregate detail remains visible while malformed state fails closed and provider-only nested fields stay out of query state.
 - UI Verification State: no visual reconstruction; no browser run for this contract-only slice.
 - Browser Verification State: NOT_EXECUTED
-- High-Risk Change State: controlled packaging-method master read landed without DB/auth/tenant/migration/provider/mutation change; invalid identity/count/meta payloads fail closed.
-- Rollback Point: revert the packaging-method response schema, consumer adapter, regressions, allowlist removal, and ledger entries.
+- High-Risk Change State: controlled admin aggregate read; no DB/auth/tenant/migration/provider/mutation change made; invalid card/rail payloads fail closed.
+- Rollback Point: revert the master-hub response schema, consumer adapter, regressions, allowlist removal, and ledger entries.
 - Resume Preconditions: confirm no target-file writer, preserve unrelated dirty paths, keep build/typecheck serialized.
-- Known Blockers: none; packaging-method master data remains in the authorized in-app surface only.
+- Known Blockers: none; master-hub aggregate detail remains in the authorized in-app surface only.
 - External Changes Detected: none in target files during the checkpoint.
 - Notes: The patient-list/detail link issue is already fresh-verified in STATE; do not duplicate that fix. Preserve current unrelated dirty paths. No image generation was needed for the non-visual parser slice.

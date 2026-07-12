@@ -216,6 +216,20 @@ function buildFixture(): MasterHubResponse {
   };
 }
 
+function getMasterHubQueryFn() {
+  const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
+    | { queryFn?: () => Promise<MasterHubResponse> }
+    | undefined;
+  if (!queryOptions?.queryFn) throw new Error('master hub query function was not registered');
+  return queryOptions.queryFn;
+}
+
+function stubMasterHubResponse(payload: unknown) {
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 }));
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 describe('MasterHubContent', () => {
   beforeEach(() => {
     useUIStore.setState({ workspaceRailOpen: true });
@@ -276,19 +290,94 @@ describe('MasterHubContent', () => {
 
   it('fetches the master hub through the static API path and unwraps the data envelope', async () => {
     const fixture = buildFixture();
-    const fetchMock = vi.fn(
-      async () => new Response(JSON.stringify({ data: fixture }), { status: 200 }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubMasterHubResponse({ data: fixture });
 
     render(<MasterHubContent />);
 
-    const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
-      | { queryKey: unknown[]; queryFn: () => Promise<MasterHubResponse> }
-      | undefined;
+    const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as { queryKey: unknown[] } | undefined;
     expect(queryOptions?.queryKey).toEqual(['admin', 'master-hub', 'org_1']);
-    await expect(queryOptions?.queryFn()).resolves.toEqual(fixture);
+    await expect(getMasterHubQueryFn()()).resolves.toEqual(fixture);
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/master-hub');
+  });
+
+  it('strips provider-only nested fields before the aggregate enters query state', async () => {
+    const fixture = buildFixture();
+    stubMasterHubResponse({
+      data: {
+        ...fixture,
+        masters: fixture.masters.map((card, index) =>
+          index === 0 ? { ...card, org_id: 'org_1', updated_at: localIso(6, 11) } : card,
+        ),
+        rail: {
+          ...fixture.rail,
+          next_action: { ...fixture.rail.next_action, source: 'today-ops' },
+          blocked_reasons: fixture.rail.blocked_reasons.map((reason, index) =>
+            index === 0 ? { ...reason, created_at: localIso(6, 11) } : reason,
+          ),
+        },
+      },
+    });
+
+    render(<MasterHubContent />);
+
+    await expect(getMasterHubQueryFn()()).resolves.toEqual(fixture);
+  });
+
+  it('rejects a legacy root without the data envelope', async () => {
+    const fixture = buildFixture();
+    stubMasterHubResponse(fixture);
+
+    render(<MasterHubContent />);
+
+    await expect(getMasterHubQueryFn()()).rejects.toThrow('マスター鮮度集計の取得に失敗しました');
+  });
+
+  it('rejects duplicate and incomplete master key sets', async () => {
+    const fixture = buildFixture();
+    fixture.masters[10] = { ...fixture.masters[10], key: 'drugs' };
+    stubMasterHubResponse({ data: fixture });
+
+    render(<MasterHubContent />);
+
+    await expect(getMasterHubQueryFn()()).rejects.toThrow('マスター鮮度集計の取得に失敗しました');
+  });
+
+  it('rejects negative card counts and inconsistent status counts', async () => {
+    const fixture = buildFixture();
+    fixture.masters[0] = { ...fixture.masters[0], count: -1 };
+    stubMasterHubResponse({ data: fixture });
+
+    render(<MasterHubContent />);
+
+    await expect(getMasterHubQueryFn()()).rejects.toThrow('マスター鮮度集計の取得に失敗しました');
+
+    const inconsistentFixture = buildFixture();
+    inconsistentFixture.masters[0] = {
+      ...inconsistentFixture.masters[0],
+      status_count: 1,
+    };
+    stubMasterHubResponse({ data: inconsistentFixture });
+
+    await expect(getMasterHubQueryFn()()).rejects.toThrow('マスター鮮度集計の取得に失敗しました');
+  });
+
+  it('rejects unsafe card actions and negative blocked-reason ages', async () => {
+    const fixture = buildFixture();
+    fixture.masters[0] = { ...fixture.masters[0], action_href: 'https://example.com' };
+    stubMasterHubResponse({ data: fixture });
+
+    render(<MasterHubContent />);
+
+    await expect(getMasterHubQueryFn()()).rejects.toThrow('マスター鮮度集計の取得に失敗しました');
+
+    const unsafeRailFixture = buildFixture();
+    unsafeRailFixture.rail.blocked_reasons[0] = {
+      ...unsafeRailFixture.rail.blocked_reasons[0],
+      age_minutes: -1,
+    };
+    stubMasterHubResponse({ data: unsafeRailFixture });
+
+    await expect(getMasterHubQueryFn()()).rejects.toThrow('マスター鮮度集計の取得に失敗しました');
   });
 
   it('renders master cards with freshness badges, meta, narrative, and outline actions', () => {

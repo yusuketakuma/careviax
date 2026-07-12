@@ -16,6 +16,10 @@ import {
 } from '@/components/features/workspace/action-rail';
 import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  masterHubEnvelopeResponseSchema,
+  type MasterHubEnvelopeResponse,
+} from '@/lib/master-hub/response-schema';
 import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
 
@@ -29,10 +33,10 @@ import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
 
 async function fetchMasterHub(): Promise<MasterHubResponse> {
   const res = await fetch('/api/admin/master-hub');
-  const json = await readApiJson<{ data: MasterHubResponse }>(
-    res,
-    'マスター鮮度集計の取得に失敗しました',
-  );
+  const json = await readApiJson<MasterHubEnvelopeResponse>(res, {
+    fallbackMessage: 'マスター鮮度集計の取得に失敗しました',
+    schema: masterHubEnvelopeResponseSchema,
+  });
   return json.data;
 }
 
