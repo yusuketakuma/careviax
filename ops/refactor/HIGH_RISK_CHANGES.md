@@ -114,3 +114,14 @@
   authorized editor/list state; mutation acknowledgement behavior remains unchanged.
 - Operational note: authorized service-area configuration remains in-app only; no patient detail, provider metadata, or
   external output is introduced by this slice. No cleanup was performed despite transient build filesystem pressure.
+
+## API-CONTRACT-001FZMENTIONSTRICT
+
+- Classification: Low-risk authorized staff-identity lookup read, not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets,
+  deployment, provider, comment mutation, or production data change.
+- Safety control: strict minimal id/name schema and counted metadata reject legacy roots, blank/invalid identities, count
+  drift, and conflicting repeated names; provider-only staff contact/account/capacity/credential metadata is stripped
+  before the mention cache.
+- Operational note: staff mention candidates remain authorized in-app identity data only; comment mention IDs and PHI-safe
+  recovery behavior are unchanged. No external output or cleanup was performed.

@@ -181,3 +181,16 @@
 | Errors / loading / empty    | Existing loading, error/retry, empty, editor, and mutation behavior remains; malformed 2xx becomes query error rather than false site/list state.                                                     |
 | Tests                       | Service-area consumer/provider suite: 2 files / 32 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                      |
 | Alignment                   | ALIGNED for this read slice; providers, authorization, mutations, tenant/audit semantics, authorized detail, and visual behavior intentionally unchanged.                                             |
+
+## API-CONTRACT-001FZMENTIONSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                                         |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Authorized in-app comment users receive staff mention candidates through `/api/pharmacists`; existing `canVisit` authorization and no route boundary changed.                             |
+| Frontend state / clients    | `MentionInput` validates the pharmacist envelope before candidate filtering/mention UI state; only provider id/name fields enter the React Query cache.                                   |
+| Request / response contract | `/api/pharmacists` returns `{ data, meta }`; schema validates id/name, membership or unique-user count basis, filters, limit, visible/hidden arithmetic, and repeated-name identity.      |
+| Backend / DB                | Existing org-scoped membership/visit-count query, bounded limit, role/site filters, no-store handling, and pharmacist provider route are unchanged.                                       |
+| Auth / tenant / audit       | Existing `canVisit` read, org context, membership visibility, comment mention IDs, comment audit/mutations, and PHI-safe recovery remain unchanged; provider fields are not externalized. |
+| Errors / loading / empty    | Existing loading, error/retry, empty candidate, keyboard, and mention insertion behavior remains; malformed 2xx becomes query error rather than false candidate state.                    |
+| Tests                       | Mention consumer/pharmacist provider suite: 2 files / 34 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                    |
+| Alignment                   | ALIGNED for this read slice; provider/auth, comment mutation, mention-id, patient/PHI, and visual behavior intentionally unchanged.                                                       |

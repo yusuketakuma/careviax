@@ -27,8 +27,35 @@ vi.mock('@/lib/api/org-headers', () => ({
 
 setupDomTestEnv();
 
-function renderWithQueryClient(ui: React.ReactElement) {
-  return render(ui, { wrapper: createQueryClientWrapper() });
+function pharmacistListPayload(
+  data: Array<Record<string, unknown>>,
+  meta: Partial<{
+    total_count: number;
+    visible_count: number;
+    hidden_count: number;
+    truncated: boolean;
+    count_basis: 'memberships' | 'unique_users';
+    filters_applied: { site_id: string | null; include_collaborators: boolean };
+    limit: number;
+  }> = {},
+) {
+  return {
+    data,
+    meta: {
+      total_count: data.length,
+      visible_count: data.length,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'memberships' as const,
+      filters_applied: { site_id: null, include_collaborators: false },
+      limit: 500,
+      ...meta,
+    },
+  };
+}
+
+function renderWithQueryClient(ui: React.ReactElement, queryClient = createTestQueryClient()) {
+  return render(ui, { wrapper: createQueryClientWrapper(queryClient) });
 }
 
 describe('MentionInput', () => {
@@ -36,7 +63,7 @@ describe('MentionInput', () => {
     vi.clearAllMocks();
     vi.stubGlobal('fetch', fetchMock);
     useOrgIdMock.mockReturnValue('org_1');
-    fetchMock.mockResolvedValue(jsonResponse({ data: [] }));
+    fetchMock.mockResolvedValue(jsonResponse(pharmacistListPayload([])));
   });
 
   it('fetches staff mention candidates through shared pharmacist path and org headers', async () => {
@@ -61,7 +88,9 @@ describe('MentionInput', () => {
     const rawDetail = 'patient:患者A token=mention-staff-secret';
     fetchMock
       .mockRejectedValueOnce(new Error(rawDetail))
-      .mockResolvedValueOnce(jsonResponse({ data: [{ id: 'staff_1', name: '田中' }] }));
+      .mockResolvedValueOnce(
+        jsonResponse(pharmacistListPayload([{ id: 'staff_1', name: '田中' }])),
+      );
 
     renderWithQueryClient(
       <MentionInput
@@ -89,6 +118,79 @@ describe('MentionInput', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole('button', { name: /田中/ })).toBeTruthy());
     expect(screen.queryByText('メンション候補を表示できません')).toBeNull();
+  });
+
+  it('strips provider-only staff fields before mention candidates enter query state', async () => {
+    const queryClient = createTestQueryClient();
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        pharmacistListPayload([
+          {
+            id: 'staff_1',
+            name: '田中',
+            email: 'staff@example.com',
+            phone: '03-1111-2222',
+            account_status: 'active',
+            max_daily_visits: 8,
+            credential_types: ['認定薬剤師'],
+          },
+        ]),
+      ),
+    );
+
+    renderWithQueryClient(
+      <MentionInput
+        value=""
+        onChange={() => undefined}
+        mentions={[]}
+        onMentionsChange={() => undefined}
+      />,
+      queryClient,
+    );
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['staff-for-mentions', 'org_1'])).toBeTruthy();
+    });
+
+    const cached = queryClient.getQueryData<{
+      data: Array<Record<string, unknown>>;
+    }>(['staff-for-mentions', 'org_1']);
+    expect(cached?.data).toEqual([{ id: 'staff_1', name: '田中' }]);
+  });
+
+  it('rejects legacy, count-drifted, and conflicting repeated staff payloads', async () => {
+    const invalidPayloads = [
+      { data: [{ id: 'staff_1', name: '田中' }] },
+      pharmacistListPayload([{ id: 'staff_1', name: '田中' }], {
+        visible_count: 0,
+      }),
+      pharmacistListPayload(
+        [
+          { id: 'staff_1', name: '田中' },
+          { id: 'staff_1', name: '別名' },
+        ],
+        { total_count: 2 },
+      ),
+    ];
+
+    for (const payload of invalidPayloads) {
+      fetchMock.mockResolvedValueOnce(jsonResponse(payload));
+      const { unmount } = renderWithQueryClient(
+        <MentionInput
+          value=""
+          onChange={() => undefined}
+          mentions={[]}
+          onMentionsChange={() => undefined}
+        />,
+      );
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      fireEvent.change(screen.getByRole('textbox'), {
+        target: { value: '@', selectionStart: 1 },
+      });
+      expect(await screen.findByText('メンション候補を表示できません')).toBeTruthy();
+      unmount();
+    }
   });
 });
 
@@ -127,7 +229,7 @@ async function renderWithLoadedStaff(
     onMentionsChangeSpy: (m: string[]) => void;
   },
 ) {
-  fetchMock.mockResolvedValue(jsonResponse({ data: staff }));
+  fetchMock.mockResolvedValue(jsonResponse(pharmacistListPayload(staff)));
 
   const queryClient = createTestQueryClient();
 

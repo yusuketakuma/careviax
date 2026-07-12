@@ -47045,6 +47045,41 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZMENTIONSTRICT — comment staff-mention lookup (IMPLEMENTED / PENDING SCOPED LANDING)
+
+- current task / root cause:
+  `MentionInput` trusts a compile-time `{ data: StaffMember[] }` cast while `/api/pharmacists` returns a counted
+  `{ data, meta }` envelope containing many staff/provider fields that the mention UI does not consume. A legacy root,
+  invalid staff identity/name, inconsistent counts, or provider-only contact/account/capacity fields can therefore affect
+  mention candidate state or remain in the React Query cache. Existing comment mutations, mention IDs, provider query,
+  authorization, tenant scope, and PHI-safe recovery behavior are not being changed.
+- baseline:
+  Focused mention consumer plus pharmacist provider suites pass 2 files / 32 tests before implementation. Current
+  client-schema inventory is 178 schema-backed / 195 allowlisted schema-less / 75 files. The target is one
+  `stringFallback` call in `src/components/features/comments/mention-input.tsx`.
+- implementation plan:
+  Add a strict, minimal staff-mention response schema for the provider's default `{ data, meta }` contract, validate
+  identity/name and counted metadata while allowing the provider's membership count basis, strip all unconsumed staff
+  fields before query cache, synchronize test fixtures, add provider-field/legacy/duplicate/count-drift regressions,
+  and remove only the mention-input allowlist entry. No visual reconstruction or `gpt-image-2` is needed because this is
+  a non-visual staff lookup/cache boundary repair.
+- safety boundary:
+  `/api/pharmacists` provider/auth semantics, comment POST/PATCH/mention-id behavior, patient/PHI data flow, and
+  external-output boundaries remain unchanged. No DB schema, migration, production data, or external send is planned.
+- implementation / validation checkpoint:
+  Added `src/lib/pharmacists/response-schema.ts`, connected the `MentionInput` reader, synchronized live `{ data, meta }`
+  fixtures, removed the one mention-input `stringFallback` allowlist entry, and added provider-only cache stripping plus
+  legacy-root, count-drift, and conflicting-repeat identity regressions. Legitimate repeated membership rows with the same
+  user/name remain accepted under the provider's `memberships` count basis. Focused mention consumer/provider suites pass
+  2 files / 34 tests. Static format, API response shape, client JSON schema, frontend contract, PHI log/display,
+  boundaries, Plans, colors, typography, and diff gates pass; inventory is 179 schema-backed / 194 allowlisted
+  schema-less / 74 files. `pnpm typecheck`, 8 GB no-unused typecheck, and lint pass; lint retains only the two
+  pre-existing break-glass warnings. Confirmed Next build exits 0 with Next 16.2.9 compile 2.1 minutes, TypeScript 53s,
+  311/311 static pages, traces complete, existing two CSS optimizer warnings, and final filesystem availability 13 GiB.
+- image / browser boundary:
+  `gpt-image-2` and browser/E2E were omitted because this is a non-visual staff lookup/cache parser slice with no screen
+  reconstruction or layout change.
+
 ## 2026-07-12 API-CONTRACT-001FZSERVICEAREASTRICT — service-area list contracts (DONE)
 
 - current task / root cause:

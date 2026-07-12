@@ -208,6 +208,30 @@
 - Next scan: rerun `pnpm client-json-schema:check`, inspect remaining one-entry and multi-entry consumers plus the
   patients board cursor residual, and choose the next bounded disjoint slice.
 
+## 2026-07-12 — API-CONTRACT-001FZMENTIONSTRICT selection
+
+- Rescan: `pnpm client-json-schema:check` passed with 178 schema-backed / 195 allowlisted schema-less calls across 75
+  files and 0 new debt.
+- Selection: `MentionInput` is the next bounded one-reader slice. It consumes only staff id/name from `/api/pharmacists`
+  but trusts a compile-time data-only cast while the provider returns counted `{ data, meta }` plus provider-only contact,
+  account, capacity, and credential fields.
+- Baseline: focused mention consumer/provider command passed 2 files / 32 tests before implementation.
+- Planned boundary: strict minimal id/name response schema, counted metadata invariants, provider-only field stripping,
+  legacy/duplicate/count-drift regressions, and one allowlist ratchet removal; comment mutation, mention IDs,
+  provider/auth, tenant, PHI-safe recovery, and visual semantics remain unchanged. No image generation is needed.
+
+## 2026-07-12 — API-CONTRACT-001FZMENTIONSTRICT implementation checkpoint
+
+- Implementation: added the minimal pharmacist mention response schema, connected `MentionInput`, synchronized live
+  `{ data, meta }` fixtures, and removed one allowlist entry.
+- Regressions: provider-only contact/account/capacity/credential fields are stripped; legacy root, count drift, and
+  repeated identity with conflicting names fail closed. Legitimate same-user repeated membership rows remain accepted.
+- Validation: focused mention consumer/provider suites pass 2 files / 34 tests; static gates, typecheck, no-unused
+  typecheck, lint, diff-check, and confirmed Next build exit 0 pass. Client-schema is 179 schema-backed / 194 allowlisted
+  / 74 files. Build was Next 16.2.9 compile 2.1 minutes, TypeScript 53s, 311/311 static pages, with final 13 GiB available.
+- Landing: implementation commit and closure ledger commit are pending; unrelated harness-memory and personal artifacts
+  remain excluded.
+
 ## 2026-07-12 — API-CONTRACT-001FZOPERATINGHOURSSTRICT selection
 
 - Scope: `src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx`, shared pharmacy-site option schema,

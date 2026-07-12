@@ -33,6 +33,26 @@
 - Migration/auth/tenant: no migration, provider, authorization, or tenant query change; no production data operation
   executed.
 
+## API-CONTRACT-001FZMENTIONSTRICT
+
+- Baseline: inherited `MentionInput` reader used a compile-time `{ data: StaffMember[] }` cast while `/api/pharmacists`
+  returns counted `{ data, meta }`; the one `stringFallback` allowlist entry covered the component.
+- Focused test: `pnpm exec vitest run src/components/features/comments/mention-input.test.tsx src/app/api/pharmacists/route.test.ts --reporter=dot --testTimeout=30000` — PASS, 2 files / 34 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`,
+  `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`,
+  `pnpm boundaries:check`, `pnpm plans:active:check`, `pnpm colors:check`, `pnpm typography:check`, and
+  `git diff --check` — PASS.
+- Client-schema result: 179 schema-backed, 194 allowlisted schema-less calls, 74 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.
+- Build: `NODE_OPTIONS=--max-old-space-size=8192 pnpm build` — PASS, exit code 0; Next 16.2.9 compiled in 2.1 minutes,
+  TypeScript finished in 53 seconds, 311/311 static pages and traces completed. The two existing CSS optimizer warnings
+  were emitted; final `df -h .` reported 13 GiB available and no cleanup was performed.
+- Browser/E2E: not run; this is a non-visual staff lookup/cache response-contract slice with no layout change, and
+  `gpt-image-2` was omitted for the same reason.
+- Migration/auth/tenant: no migration, provider, authorization, tenant, comment mutation, or production data operation
+  executed.
+
 ## API-CONTRACT-001FZINSTITUTIONSSTRICT
 
 - Baseline: inherited admin/institutions GET reader used a compile-time `{ data: Institution[] }` cast while the provider returns an unfiltered `{ data }` root and a filtered `{ data, meta.limit, meta.has_more }` root; one `stringFallback` allowlist entry covered the reader.

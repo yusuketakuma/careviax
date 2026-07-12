@@ -8,6 +8,10 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPharmacistsApiPath } from '@/lib/pharmacists/api-paths';
+import {
+  pharmacistMentionResponseSchema,
+  type PharmacistMentionResponse,
+} from '@/lib/pharmacists/response-schema';
 
 type StaffMember = {
   id: string;
@@ -57,13 +61,16 @@ export function MentionInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const staffQuery = useQuery<{ data: StaffMember[] }>({
+  const staffQuery = useQuery<PharmacistMentionResponse>({
     queryKey: ['staff-for-mentions', orgId],
     queryFn: async () => {
       const res = await fetch(buildPharmacistsApiPath(), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: StaffMember[] }>(res, 'スタッフの取得に失敗しました');
+      return readApiJson<PharmacistMentionResponse>(res, {
+        fallbackMessage: 'スタッフの取得に失敗しました',
+        schema: pharmacistMentionResponseSchema,
+      });
     },
     enabled: !!orgId,
     staleTime: 5 * 60 * 1000,

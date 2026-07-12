@@ -234,3 +234,24 @@
   entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
 - Push evidence: `f129948f9..147a8be16` fast-forward push succeeded; local and remote heads match (`0 0`).
+
+## API-CONTRACT-001FZMENTIONSTRICT
+
+- Commit Group: `API-CONTRACT-001FZMENTIONSTRICT`
+- Commit: pending scoped landing
+- Push Status: pending
+- Branch: `agent/continuous-improvement-20260712`
+- Scope: comments MentionInput pharmacist reader, minimal response schema, consumer regressions, client-schema allowlist
+  ratchet, and required ledgers.
+- Implementation: validate strict staff id/name and counted `{ data, meta }` metadata, strip provider-only contact/account/
+  capacity/credential fields before query cache, and reject legacy/count-drift/conflicting-repeat success payloads while
+  preserving legitimate repeated membership rows.
+- FE/BE impact: MentionInput now fails closed on malformed pharmacist payloads before mention candidate state; `/api/pharmacists`
+  and comment mutation/provider/auth behavior remain unchanged.
+- DB/auth/tenant/audit impact: no DB, migration, provider, auth/authz, tenant, audit, comment mutation, production-data,
+  or external-output change.
+- Verification: focused 2 files / 34 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and
+  confirmed Next build passed; client-schema inventory is 179 schema-backed / 194 allowlisted / 74 files.
+- Rollback: revert the pharmacist response schema, MentionInput adapter, regressions, allowlist removal, and ledger entries.
+- Remote: `origin/agent/continuous-improvement-20260712`
+- Push evidence: pending scoped implementation landing.
