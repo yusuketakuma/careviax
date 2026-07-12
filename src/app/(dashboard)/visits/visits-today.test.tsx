@@ -440,4 +440,46 @@ describe('VisitsToday', () => {
       vi.mocked(buildOrgHeaders).mockReset();
     }
   });
+
+  it('rejects malformed or internally inconsistent successful board payloads', async () => {
+    const queryConfigs: Array<{ queryFn?: () => Promise<unknown> }> = [];
+    useRealtimeQueryMock.mockImplementation((config: { queryFn?: () => Promise<unknown> }) => {
+      queryConfigs.push(config);
+      return {
+        data: buildFixture(),
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: refetchMock,
+      };
+    });
+    render(<VisitsToday />);
+    const queryFn = queryConfigs[0]?.queryFn;
+    const board = buildFixture();
+    const payloads = [
+      { board },
+      { data: board, debug: true },
+      { data: { ...board, visit_count: board.visit_count + 1 } },
+      {
+        data: {
+          ...board,
+          cards: board.cards.map((card, index) =>
+            index === 0 ? { ...card, prep_total: card.prep_total + 1 } : card,
+          ),
+        },
+      },
+    ];
+
+    try {
+      for (const payload of payloads) {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 })),
+        );
+        await expect(queryFn?.()).rejects.toThrow('本日の訪問準備の取得に失敗しました');
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

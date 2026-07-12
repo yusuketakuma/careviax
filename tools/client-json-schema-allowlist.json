@@ -271,12 +271,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/visits/visits-today.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/workflow/workflow-dashboard-content.tsx",
       "counts": {
         "stringFallback": 1

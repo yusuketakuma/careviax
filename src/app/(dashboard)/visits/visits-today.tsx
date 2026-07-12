@@ -29,6 +29,7 @@ import type {
   VisitPreparationBoardResponse,
   VisitPreparationCard,
 } from '@/types/visit-preparation-board';
+import { visitsTodayResponseSchema } from './visits-today-response-schema';
 
 /**
  * new_04_visit の「今日の訪問 — 出発前の準備チェック」(docs/design-gap-analysis-new.md)。
@@ -44,11 +45,10 @@ export async function fetchVisitPreparationBoard(
   const res = await fetch('/api/visits/today-preparation', {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: VisitPreparationBoardResponse }>(
-    res,
-    '本日の訪問準備の取得に失敗しました',
-  );
-  return json.data;
+  return readApiJson(res, {
+    fallbackMessage: '本日の訪問準備の取得に失敗しました',
+    schema: visitsTodayResponseSchema,
+  });
 }
 
 const ACCENT_CLASSES: Record<VisitPreparationCard['accent'], { bar: string; meter: string }> = {

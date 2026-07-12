@@ -51,6 +51,34 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZVISITPREPSTRICT today visit preparation board reader (VERIFY_REQUIRED, 2026-07-12; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    今日の訪問準備board readerがcompile-time `VisitPreparationBoardResponse` castだけを信頼し、legacy/mixed
+    root、不正datetime/enum/negative count、card/check/aggregate不整合を訪問前の準備判断へ流し得た。
+    ProviderはcanVisit、assignment/org scope、sensitive no-storeを既に強制し、単一箇所でresponseを組み立てる。
+  - implementation / medical-operational boundary:
+    Envelopeと全nested fieldsのstrict runtime schemaを追加し、bounded text/arrays、ISO datetime、enum、
+    nonnegative integer、facility/card patient-count relation、note/tone relation、prep total/check count、
+    individual visit count、facility patient totalを検証後にboardだけを返す。Provider query、auth/authz、
+    assignment/tenant/no-store、realtime invalidation、render、UIは変更していない。Visual reconstructionでは
+    ないため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/visits/visits-today-response-schema.ts`,
+    `src/app/(dashboard)/visits/visits-today.tsx`,
+    `src/app/(dashboard)/visits/visits-today.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/provider Vitest passed 2 files / 23 tests. Exact ESLint with `--max-warnings=0`, Prettier,
+    and diff-check passed. `pnpm client-json-schema:check` passed at 208 schema-backed / 163 allowlisted
+    schema-less calls / 54 files; frontend contract, module boundary, aggregate typecheck, 8GB no-unused typecheck,
+    client PHI-log, API response shape, and colors passed. An initial mistyped `pnpm module-boundaries:check` was
+    unavailable; the repository-defined `pnpm boundaries:check` passed. Full build was NOT_EXECUTED because only
+    3.0 GiB free remains after the shared `.next/cache` capacity failure; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed visit/preparation operational data cannot enter query state and present false readiness. Request count,
+    provider query shape, payload, render behavior, and dependencies are unchanged. A clean-capacity runner must
+    complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZCOLLABOVERVIEWSTRICT collaboration minimal patient overview reader (VERIFY_REQUIRED, 2026-07-12; implementation `df995da78`, ledger `f284afaee`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Patient collaboration画面はheader文言に患者名1 fieldだけを使う一方、compile-time `PatientOverview` castで
