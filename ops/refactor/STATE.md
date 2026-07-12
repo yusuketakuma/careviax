@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZUATSTRICT admin UAT endpoint response readers (VERIFY_REQUIRED, 2026-07-13; implementation `d5c1b2da7`, shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZUATSTRICT admin UAT endpoint response readers (VERIFY_REQUIRED, 2026-07-13; implementation `d5c1b2da7`, ledger `7ae890e39`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin UATの共通`fetchOrgJson<T>`は全7 endpoint familyをcompile-time genericへ直接castし、legacy/malformed
     feedback、readiness、集計、担当候補、組織監査、launch dossierをquery/mutation stateへ流し得た。Ratchet上も
