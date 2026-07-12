@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZBILLCHECKSTRICT billing-check BFF reader (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZBILLCHECKSTRICT billing-check BFF reader (VERIFY_REQUIRED, 2026-07-13; implementation `632b4bed0`, shared clean-capacity build pending).
   - current task / root cause:
     算定チェック画面はread-only BFFの3 KPI、疑義rows、根拠/操作link、右railをcompile-time
     `BillingCheckResponse` castだけで読み、legacy root、負数、集計drift、重複identity、外部URLを算定確認UIへ
