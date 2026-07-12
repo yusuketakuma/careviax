@@ -12,12 +12,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx",
       "counts": {
         "stringFallback": 2

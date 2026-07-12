@@ -19,11 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  CONTACT_METHOD_OPTIONS,
-  contactMethodLabel,
-  type ContactProfileKind,
-} from '@/lib/contact-profile-options';
+import { CONTACT_METHOD_OPTIONS, contactMethodLabel } from '@/lib/contact-profile-options';
 import { buildContactProfilesApiPath } from '@/lib/contact-profile-api-paths';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -31,28 +27,10 @@ import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { messageFromError } from '@/lib/utils/error-message';
-
-type ContactProfile = {
-  id: string;
-  kind: ContactProfileKind;
-  name: string;
-  subtitle: string | null;
-  phone: string | null;
-  email: string | null;
-  fax: string | null;
-  preferred_contact_method: string | null;
-  preferred_contact_time: string | null;
-  last_contacted_at: string | null;
-  last_success_channel: string | null;
-  recommended_channels: string[];
-  contact_reliability?: {
-    ready: boolean;
-    warnings: string[];
-    missing_channel_labels: string[];
-  };
-  active_patient_count: number;
-  pending_response_count: number;
-};
+import {
+  contactProfilesResponseSchema,
+  type ContactProfile,
+} from './contact-profiles-response-schema';
 
 const KIND_LABELS: Record<ContactProfile['kind'], string> = {
   facility_contact: '施設担当者',
@@ -128,10 +106,10 @@ export function ContactProfilesContent() {
       const response = await fetch(buildContactProfilesApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: ContactProfile[] }>(
-        response,
-        '連携先プロファイルの取得に失敗しました',
-      );
+      return readApiJson(response, {
+        fallbackMessage: '連携先プロファイルの取得に失敗しました',
+        schema: contactProfilesResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -258,11 +236,7 @@ export function ContactProfilesContent() {
             ) : (
               rows.map((row) => {
                 const isSelected = row.id === selected?.id;
-                const contactReliability = row.contact_reliability ?? {
-                  ready: true,
-                  warnings: [],
-                  missing_channel_labels: [],
-                };
+                const contactReliability = row.contact_reliability;
                 const recommended =
                   row.recommended_channels.length > 0
                     ? row.recommended_channels

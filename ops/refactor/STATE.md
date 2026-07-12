@@ -51,6 +51,29 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZCONTACTREADSTRICT admin contact-profiles strict list reader (DONE, 2026-07-12; pending scoped commit/push).
+  - result / scope:
+    `/admin/contact-profiles` の一覧consumerをprovider準拠のstrict `{ data }` Zod schemaへ接続した。
+    Legacy root、余分なroot/profile field、重複profile ID、負または非整数の集計値、欠損reliability、
+    unknown/duplicate channel、invalid timestampをsuccessful edit/KPI stateへ流さず、固定回復文言で
+    fail-closedにする。Schema必須化後も残っていた欠損reliabilityの`ready: true` fallbackを削除した。
+    API wire/query/write、contact/PII fields、admin auth/tenant/audit、DB、表示レイアウトは変更していない。
+  - files:
+    `src/app/(dashboard)/admin/contact-profiles/contact-profiles-response-schema.ts`,
+    `src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx`,
+    `src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused Vitest passed 3 files / 29 tests. Exact ESLint and Prettier passed.
+    `pnpm client-json-schema:check`, `pnpm frontend-contract:check`, `pnpm boundaries:check`,
+    `pnpm typecheck`, `pnpm client-phi-log:check`, `pnpm api-response-shape:check`, and targeted
+    `git diff --check` passed. Full test/build and browser E2E are NOT_EXECUTED because this is a
+    response-reader contract slice with focused provider/service/consumer coverage; they remain repository-level gates.
+  - risk / performance:
+    Malformed successful payloads can no longer fabricate safe contact readiness or aggregate KPI state. No new I/O,
+    query, render loop, or dependency was introduced. The existing unbounded contact-profile query remains tracked under
+    `PERF-DB-001` and is intentionally not conflated with this reader-hardening slice.
+
 - codex: UI/UX Refresh P1 DV-07 patient pinned-header identifier visibility (PARTIAL, 2026-07-11; focused safety-display slice).
   - result / scope:
     `PatientPinnedHeader` no longer truncates the patient name or kana; the identity cluster has a full-width mobile

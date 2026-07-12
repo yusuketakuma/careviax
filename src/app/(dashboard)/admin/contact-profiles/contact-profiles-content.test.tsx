@@ -173,6 +173,42 @@ describe('ContactProfilesContent', () => {
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
   });
 
+  it('rejects a legacy successful contact-profile root before it reaches edit state', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ profiles }), { status: 200 }),
+    );
+
+    renderContent();
+
+    expect(await screen.findByText('送付先サマリーを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /山本ケアプランセンター/ })).toBeNull();
+    expect(screen.queryByLabelText('宛先')).toBeNull();
+  });
+
+  it('rejects duplicate profile identity and invalid aggregate counts', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [
+            profiles[0],
+            {
+              ...profiles[1],
+              id: profiles[0].id,
+              pending_response_count: -1,
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    renderContent();
+
+    expect(await screen.findByText('送付先サマリーを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('未完了連携 1件')).toBeNull();
+    expect(screen.queryByLabelText('宛先')).toBeNull();
+  });
+
   it('delegates contact profile paths and tenant headers to shared helpers', async () => {
     const fetchSpy = vi.spyOn(global, 'fetch');
 
