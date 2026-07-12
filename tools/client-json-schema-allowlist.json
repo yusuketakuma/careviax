@@ -295,12 +295,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/views/saved-views-content.tsx",
-      "counts": {
-        "stringFallback": 3
-      }
-    },
-    {
       "path": "src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.tsx",
       "counts": {
         "stringFallback": 1

@@ -43,16 +43,18 @@ vi.mock('sonner', () => ({
   },
 }));
 
-import { createQueryClientWrapper } from '@/test/query-client-test-utils';
-import type { SavedViewRecord } from '@/lib/views/saved-filter-views';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { toast } from 'sonner';
 import { SavedViewsContent } from './saved-views-content';
 
-function renderPage() {
-  return render(<SavedViewsContent />, { wrapper: createQueryClientWrapper() });
+function renderPage(queryClient = createTestQueryClient()) {
+  return render(<SavedViewsContent />, { wrapper: createQueryClientWrapper(queryClient) });
 }
 
-function mockPreferences(value: Record<string, unknown>, savedViews: SavedViewRecord[] = []) {
+function mockPreferences(
+  value: Record<string, unknown>,
+  savedViews: Array<Record<string, unknown>> = [],
+) {
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     const target = String(url);
     if (target.startsWith('/api/saved-views')) {
@@ -174,6 +176,116 @@ describe('SavedViewsContent', () => {
       }),
     );
     expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+  });
+
+  it('strips provider-only preference and saved-view fields before query state', async () => {
+    const queryClient = createTestQueryClient();
+    const savedView = {
+      id: 'view_1',
+      name: '患者確認待ち',
+      scope: 'schedules',
+      filters: { conditions: [{ field: 'schedule', value: 'include_patient_confirmation' }] },
+      sort: null,
+      isShared: false,
+      sortOrder: 0,
+      isOwner: true,
+      createdAt: '2026-06-13T00:00:00.000Z',
+      updatedAt: '2026-06-13T00:00:00.000Z',
+      display_id: 'sv0000000001',
+      owner_email: 'owner@example.com',
+    };
+    mockPreferences(
+      {
+        work_mode: 'pharmacist',
+        care_mode: 'home_visit',
+        saved_view: {
+          conditions: [{ field: 'assignee', value: 'me' }],
+          saved_at: '2026-06-13T09:30:00+09:00',
+          provider_debug: 'do-not-cache',
+        },
+        server_only: 'do-not-cache',
+      },
+      [savedView],
+    );
+
+    renderPage(queryClient);
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['me-preferences', 'org_1'])).toBeTruthy();
+      expect(queryClient.getQueryData(['saved-views', 'org_1', 'schedules'])).toBeTruthy();
+    });
+
+    expect(queryClient.getQueryData(['me-preferences', 'org_1'])).toEqual({
+      saved_view: {
+        conditions: [{ field: 'assignee', value: 'me' }],
+        saved_at: '2026-06-13T09:30:00+09:00',
+      },
+    });
+    expect(queryClient.getQueryData(['saved-views', 'org_1', 'schedules'])).toEqual([
+      {
+        id: 'view_1',
+        name: '患者確認待ち',
+        scope: 'schedules',
+        filters: { conditions: [{ field: 'schedule', value: 'include_patient_confirmation' }] },
+        sort: null,
+        isShared: false,
+        sortOrder: 0,
+        isOwner: true,
+        createdAt: '2026-06-13T00:00:00.000Z',
+        updatedAt: '2026-06-13T00:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('fails closed on legacy, wrong-scope, and duplicate saved-view success payloads', async () => {
+    const validSavedView = {
+      id: 'view_1',
+      name: '患者確認待ち',
+      scope: 'schedules',
+      filters: {},
+      sort: null,
+      isShared: false,
+      sortOrder: 0,
+      isOwner: true,
+      createdAt: '2026-06-13T00:00:00.000Z',
+      updatedAt: '2026-06-13T00:00:00.000Z',
+    };
+    const cases = [
+      {
+        preferencePayload: { saved_view: { conditions: [{ field: 'assignee', value: 'me' }] } },
+        savedViewsPayload: { data: [] },
+        expectedHeading: '今の絞り込み条件を表示できません',
+      },
+      {
+        preferencePayload: { data: { work_mode: 'pharmacist' } },
+        savedViewsPayload: {
+          data: [{ ...validSavedView, scope: 'patients' }],
+        },
+        expectedHeading: '保存ビューを表示できません',
+      },
+      {
+        preferencePayload: { data: { work_mode: 'pharmacist' } },
+        savedViewsPayload: {
+          data: [validSavedView, { ...validSavedView, name: '重複' }],
+        },
+        expectedHeading: '保存ビューを表示できません',
+      },
+    ];
+
+    for (const testCase of cases) {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (String(url).startsWith('/api/saved-views')) {
+          return jsonResponse(testCase.savedViewsPayload);
+        }
+        return jsonResponse(testCase.preferencePayload);
+      });
+
+      const { unmount } = renderPage(createTestQueryClient());
+      expect(
+        await screen.findByRole('heading', { name: testCase.expectedHeading, level: 3 }),
+      ).toBeTruthy();
+      unmount();
+    }
   });
 
   it('shows stored conditions and the saved badge when a saved view exists', async () => {

@@ -34,6 +34,12 @@ import {
   buildSavedViewApiPath,
   buildSavedViewsApiPath,
 } from '@/lib/views/api-paths';
+import {
+  savedViewPreferencesResponseSchema,
+  savedViewsSchedulesResponseSchema,
+  type SavedViewPreferencesResponse,
+  type SavedViewsSchedulesResponse,
+} from '@/lib/views/response-schema';
 
 /** /views の名前付き保存ビューが対象とする一覧画面(スケジュール絞り込み)。 */
 const VIEWS_PAGE_SCOPE = 'schedules' as const;
@@ -45,17 +51,17 @@ const VIEWS_PAGE_SCOPE = 'schedules' as const;
  * 未保存時は target と同じ初期 5 チップを表示する。
  */
 
-type PreferencesValue = Record<string, unknown>;
+type PreferencesValue = SavedViewPreferencesResponse['data'];
 
 async function fetchPreferences(orgId: string): Promise<PreferencesValue> {
   const res = await fetch(ME_PREFERENCES_API_PATH, {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data?: PreferencesValue }>(
-    res,
-    '保存済み条件の取得に失敗しました',
-  );
-  return (json.data ?? {}) as PreferencesValue;
+  const json = await readApiJson<SavedViewPreferencesResponse>(res, {
+    fallbackMessage: '保存済み条件の取得に失敗しました',
+    schema: savedViewPreferencesResponseSchema,
+  });
+  return json.data;
 }
 
 function PresetCard({
@@ -117,11 +123,11 @@ function CurrentFilterCard({ orgId }: { orgId: string }) {
           saved_view: { conditions: next, saved_at: new Date().toISOString() },
         }),
       });
-      const json = await readApiJson<{ data?: PreferencesValue }>(
-        res,
-        '絞り込み条件の保存に失敗しました',
-      );
-      return (json.data ?? {}) as PreferencesValue;
+      const json = await readApiJson<SavedViewPreferencesResponse>(res, {
+        fallbackMessage: '絞り込み条件の保存に失敗しました',
+        schema: savedViewPreferencesResponseSchema,
+      });
+      return json.data;
     },
     onSuccess: (updated) => {
       // PATCH 応答のマージ済み preferences をそのままキャッシュへ反映(再取得なしで保存済み表示にする)
@@ -215,18 +221,15 @@ function CurrentFilterCard({ orgId }: { orgId: string }) {
   );
 }
 
-type SavedViewsApiResponse = { data: SavedViewRecord[] };
-
 async function fetchSavedViews(orgId: string): Promise<SavedViewRecord[]> {
   const res = await fetch(buildSavedViewsApiPath(VIEWS_PAGE_SCOPE), {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<Partial<SavedViewsApiResponse>>(
-    res,
-    '保存ビューの取得に失敗しました',
-  );
-  // 配列以外(想定外の応答)は空一覧として扱い、描画を壊さない。
-  return Array.isArray(json.data) ? json.data : [];
+  const json = await readApiJson<SavedViewsSchedulesResponse>(res, {
+    fallbackMessage: '保存ビューの取得に失敗しました',
+    schema: savedViewsSchedulesResponseSchema,
+  });
+  return json.data;
 }
 
 /**
