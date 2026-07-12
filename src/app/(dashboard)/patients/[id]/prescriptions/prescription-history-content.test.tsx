@@ -1489,6 +1489,27 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
     };
   }
 
+  function buildDrugMaster(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'drug_master_1',
+      yj_code: 'YJ001',
+      drug_name: 'アムロジピン錠5mg',
+      dosage_form: '錠',
+      drug_price: 10.5,
+      unit: '錠',
+      is_generic: false,
+      is_narcotic: false,
+      is_psychotropic: false,
+      is_high_risk: false,
+      is_lasa_risk: false,
+      tall_man_name: null,
+      lasa_group_key: null,
+      max_administration_days: null,
+      therapeutic_category: null,
+      ...overrides,
+    };
+  }
+
   function renderHistory({
     patientId = HOSTILE,
     lines = [] as ReturnType<typeof buildLine>[],
@@ -1652,7 +1673,7 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
         }),
       ],
     });
-    const fetchMock = stubFetch({ data: {} });
+    const fetchMock = stubFetch({ data: { by_drug_master_id: {} } });
     try {
       await queryConfigs.get('drug-masters-batch')!.queryFn();
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -1670,6 +1691,55 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
         yj_codes: ['YJ_STALE'],
         drug_master_ids: ['drug_master_current', 'drug_master_id_only'],
       });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('drug-masters batch POST strips fields outside the enrichment contract', async () => {
+    const { queryConfigs } = renderHistory({
+      lines: [buildLine('YJ001', { drug_master_id: 'drug_master_1' })],
+    });
+    const expectedMaster = buildDrugMaster();
+    const fetchMock = stubFetch({
+      data: {
+        YJ001: buildDrugMaster({ unused_org_id: 'must-not-enter-cache' }),
+        by_drug_master_id: {
+          drug_master_1: buildDrugMaster({ unused_created_by: 'must-not-enter-cache' }),
+        },
+      },
+    });
+    try {
+      await expect(queryConfigs.get('drug-masters-batch')!.queryFn()).resolves.toEqual({
+        YJ001: expectedMaster,
+        by_drug_master_id: { drug_master_1: expectedMaster },
+      });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    ['mixed root payload', { data: { by_drug_master_id: {} }, legacy_masters: {} }],
+    [
+      'incomplete YJ-code entry',
+      { data: { YJ001: { id: 'drug_master_1' }, by_drug_master_id: {} } },
+    ],
+    [
+      'incomplete drug-master-id entry',
+      { data: { by_drug_master_id: { drug_master_1: { id: 'drug_master_1' } } } },
+    ],
+  ])('drug-masters batch POST rejects %s', async (_caseName, responseBody) => {
+    const { queryConfigs } = renderHistory({
+      lines: [buildLine('YJ001', { drug_master_id: 'drug_master_1' })],
+    });
+    const fetchMock = stubFetch(responseBody);
+    try {
+      await expect(queryConfigs.get('drug-masters-batch')!.queryFn()).rejects.toThrow(
+        '薬剤マスタの取得に失敗しました',
+      );
+      expect(fetchMock).toHaveBeenCalledOnce();
     } finally {
       vi.unstubAllGlobals();
     }

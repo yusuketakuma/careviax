@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { differenceInCalendarDays, format } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { z } from 'zod';
 import {
   FileText,
   Pill,
@@ -105,28 +106,55 @@ type PrescriptionIntake = {
 
 type PatientInfo = { id: string; name: string; name_kana: string };
 
-type DrugMasterInfo = {
-  id: string;
-  yj_code: string;
-  drug_name: string;
-  dosage_form: string | null;
-  drug_price: number | null;
-  unit: string | null;
-  is_generic: boolean;
-  is_narcotic: boolean;
-  is_psychotropic: boolean;
-  is_high_risk: boolean;
-  is_lasa_risk: boolean;
-  tall_man_name: string | null;
-  lasa_group_key: string | null;
-  max_administration_days: number | null;
-  therapeutic_category: string | null;
+const drugMasterInfoSchema = z.object({
+  id: z.string(),
+  yj_code: z.string(),
+  drug_name: z.string(),
+  dosage_form: z.string().nullable(),
+  drug_price: z.number().nullable(),
+  unit: z.string().nullable(),
+  is_generic: z.boolean(),
+  is_narcotic: z.boolean(),
+  is_psychotropic: z.boolean(),
+  is_high_risk: z.boolean(),
+  is_lasa_risk: z.boolean(),
+  tall_man_name: z.string().nullable(),
+  lasa_group_key: z.string().nullable(),
+  max_administration_days: z.number().int().nullable(),
+  therapeutic_category: z.string().nullable(),
+});
+
+type DrugMasterInfo = z.infer<typeof drugMasterInfoSchema>;
+type DrugMasterBatchResponse = {
+  by_drug_master_id: Record<string, DrugMasterInfo>;
+  [yjCode: string]: DrugMasterInfo | Record<string, DrugMasterInfo>;
 };
 
-type DrugMasterBatchResponse = {
-  by_drug_master_id?: Record<string, DrugMasterInfo>;
-  [yjCode: string]: DrugMasterInfo | Record<string, DrugMasterInfo> | undefined;
-};
+const drugMasterBatchResponseSchema = z
+  .record(z.string(), z.unknown())
+  .transform((value, context): DrugMasterBatchResponse => {
+    const byIdResult = z
+      .record(z.string(), drugMasterInfoSchema)
+      .safeParse(value.by_drug_master_id);
+    if (!byIdResult.success) {
+      context.addIssue({ code: 'custom', message: 'Invalid by_drug_master_id map' });
+      return z.NEVER;
+    }
+
+    const result: DrugMasterBatchResponse = { by_drug_master_id: byIdResult.data };
+    for (const [key, candidate] of Object.entries(value)) {
+      if (key === 'by_drug_master_id') continue;
+      const masterResult = drugMasterInfoSchema.safeParse(candidate);
+      if (!masterResult.success) {
+        context.addIssue({ code: 'custom', message: `Invalid drug master entry: ${key}` });
+        return z.NEVER;
+      }
+      result[key] = masterResult.data;
+    }
+    return result;
+  });
+
+const drugMasterBatchApiResponseSchema = z.object({ data: drugMasterBatchResponseSchema }).strict();
 
 type ChangeType = 'added' | 'removed' | 'dose_changed' | 'frequency_changed' | 'unchanged' | 'do';
 
@@ -1480,7 +1508,9 @@ export function PrescriptionHistoryContent() {
   } = useQuery({
     queryKey: ['drug-masters-batch', orgId, allDrugCodes, allDrugMasterIds],
     queryFn: async () => {
-      if (allDrugCodes.length === 0 && allDrugMasterIds.length === 0) return {};
+      if (allDrugCodes.length === 0 && allDrugMasterIds.length === 0) {
+        return { by_drug_master_id: {} };
+      }
       const res = await fetch('/api/drug-masters/batch', {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
@@ -1488,17 +1518,17 @@ export function PrescriptionHistoryContent() {
       });
       // 取得失敗を黙って {} に潰さず error 状態へ。エンリッチは補助なので画面全体は止めず、
       // timeline 上部に非ブロッキング通知を出して「薬剤情報が欠けている可能性」を可視化する。
-      const payload = await readApiJson<{ data: DrugMasterBatchResponse }>(
-        res,
-        '薬剤マスタの取得に失敗しました',
-      );
+      const payload = await readApiJson<{ data: DrugMasterBatchResponse }>(res, {
+        fallbackMessage: '薬剤マスタの取得に失敗しました',
+        schema: drugMasterBatchApiResponseSchema,
+      });
       return payload.data;
     },
     enabled: !!orgId && (allDrugCodes.length > 0 || allDrugMasterIds.length > 0),
     staleTime: 5 * 60_000,
   });
 
-  const masterMap: DrugMasterBatchResponse = masterData ?? {};
+  const masterMap: DrugMasterBatchResponse = masterData ?? { by_drug_master_id: {} };
   const masterLookupComplete = !isMasterError && !isMasterLoading;
 
   const markOriginalCollectedMutation = useMutation({

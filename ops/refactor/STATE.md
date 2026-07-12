@@ -46521,3 +46521,25 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   prescription response SSOT, two consumer adapters/regressions, client-schema ratchet, Plans, and this ledger entry.
   It was pushed to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked
   personal artifacts were excluded, and the feature branch does not match the `main`-only production deploy trigger.
+
+## 2026-07-12 API-CONTRACT-001FZDRUGBATCHSTRICT — prescription drug enrichment contract (DONE)
+
+- current task / root cause:
+  The patient prescription-history screen enriched medication lines through the drug-master batch POST using a
+  compile-time response cast. A mixed-root 2xx, an incomplete YJ-code entry, or an incomplete drug-master-ID entry
+  could therefore enter safety-badge and reference-price logic. Provider-only fields were also retained in the
+  React Query cache, and the local empty result did not model the provider's required `by_drug_master_id` map.
+- implementation / verification:
+  Added a strict response root and one consumed drug-master schema for both dynamic YJ-code entries and the required
+  `by_drug_master_id` map. The parser rejects malformed entries and mixed roots, strips fields outside the displayed
+  enrichment contract, and returns the provider-shaped empty map when the query has no identifiers. Request path,
+  body, org headers, provider response, API error-message behavior, non-blocking recovery notice, and enrichment
+  precedence are unchanged. Four focused regressions failed before the fix; prescription-history and batch-provider
+  suites passed 2 files / 47 tests afterward. Exact ESLint/Prettier, aggregate typecheck, no-unused typecheck, API
+  response-shape, frontend contract, client PHI-log/display, module-boundary, and client-schema gates passed. The
+  ratchet improved from 123 / 251 / 95 files to 124 / 250 / 95 files. Full build was not repeated after the unchanged
+  compile-stage shared-memory limitation recorded above; there is no new build hypothesis. No DB, provider,
+  auth/authz, tenant, audit, mutation, clinical decision logic, or visual layout changed. Browser and image generation
+  were omitted because this is a non-visual parser/cache-boundary repair covered at the direct query-function and
+  provider boundaries. The same file's patient-prescriptions GET remains one explicit schema-less reader for the next
+  slice. Rollback is the drug-master response schema/test/ratchet hunk.

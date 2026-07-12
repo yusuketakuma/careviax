@@ -291,7 +291,7 @@
     {
       "path": "src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx",
       "counts": {
-        "stringFallback": 2
+        "stringFallback": 1
       }
     },
     {
