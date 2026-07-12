@@ -46887,6 +46887,8 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   state-minimization repair covered at consumer and provider boundaries. Rollback is the preview schema, reader
   adapter, inferred preview type, synchronized fixture, three regressions, and client-schema ratchet hunk.
 - commit / push:
-  Pending scoped commit and push to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes
-  and untracked personal artifacts remain excluded, and the feature branch does not match the `main`-only production
-  deploy trigger.
+  Commit `4a93ab34d` (`fix(API-CONTRACT-001): validate drug import previews`) contains only the preview schema, reader
+  adapter, inferred preview type, synchronized fixture, regressions, client-schema ratchet, Plans, and this ledger
+  entry. It was pushed to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and
+  untracked personal artifacts were excluded, and the feature branch does not match the `main`-only production deploy
+  trigger.
