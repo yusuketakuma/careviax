@@ -38,3 +38,16 @@
 | Errors / loading / empty    | Existing React Query loading, error/retry, empty, and false-zero protection remain; malformed 2xx becomes query error rather than KPI state.                           |
 | Tests                       | Consumer/provider focused suite: 2 files / 16 tests; static contract gates, typechecks, lint, diff-check, and build passed.                                            |
 | Alignment                   | ALIGNED for this read slice; provider, mutation, month calculation, and visual semantics intentionally unchanged.                                                      |
+
+## API-CONTRACT-001FZOPSINSIGHTSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| User roles / routes         | Admin operations-insights screen at `/admin/operations-insights`; backend route `/api/admin/operations-insights` remains protected by existing `canAdmin` authorization. |
+| Frontend state / clients    | React Query reader in `operations-insights-content.tsx`; strict schema runs before trend, duration, or hint state enters the query cache.                                |
+| Request / response contract | Provider returns `{ data: { monthly_visits, processes, hints } }`; consumer validates root, month order/identity, numeric bounds, process keys, and hint bounds.         |
+| Backend / DB                | Existing organization-scoped visit/prescription/audit/set/report reads and aggregate helper behavior are unchanged.                                                      |
+| Auth / tenant / audit       | Existing backend authorization and org predicates remain; no patient detail or external output boundary changes.                                                         |
+| Errors / loading / empty    | Existing loading, error/retry, truthful empty, trend, and bottleneck rendering remain; malformed 2xx becomes query error.                                                |
+| Tests                       | Consumer/helper focused suite: 2 files / 14 tests; static contract gates, typechecks, lint, diff-check, and build passed.                                                |
+| Alignment                   | ALIGNED for this read slice; provider aggregation, empty-state semantics, and visual derivation intentionally unchanged.                                                 |

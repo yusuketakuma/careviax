@@ -31,3 +31,16 @@
 - Landed: implementation commit `6e1454401` passed 2 files / 16 focused tests, all contract/type/lint/diff gates, and
   serialized Next build; client-schema inventory moved to 163 schema-backed / 210 allowlisted / 86 files. Next scan:
   remaining API-CONTRACT allowlist entries and patients board cursor residual.
+
+## 2026-07-12 — API-CONTRACT-001FZOPSINSIGHTSTRICT selection
+
+- Scope: client-schema allowlist, `src/app/(dashboard)/admin/operations-insights/operations-insights-content.tsx`,
+  `/api/admin/operations-insights`, analytics helper types/tests, and consumer tests.
+- Candidate ranking: selected the one-reader aggregate operations path as a disjoint administrative slice; deferred
+  billing, patient/visit, inventory, pharmacy-master, and audit candidates with broader controlled-data impact.
+- Finding: the provider returns five-month visit buckets, process durations, and generated hints; the consumer uses a
+  compile-time cast and derives trend/bottleneck state from bucket order and numeric values.
+- Baseline: focused consumer/helper suites pass 2 files / 12 tests; client-schema is 163 schema-backed / 210 allowlisted
+  / 86 files.
+- Planned fix: strict envelope, chronological/unique bucket checks, process identity/duration bounds, hint bounds,
+  malformed 2xx regressions, and one allowlist ratchet removal. Provider/DB/auth/UI behavior stays fixed.

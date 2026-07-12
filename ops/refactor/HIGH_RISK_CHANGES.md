@@ -20,3 +20,10 @@
 - Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, or production data mutation changed.
 - Safety/privacy control: wrong-month, duplicate-identity, inconsistent-summary, invalid numeric, unsupported-role, or unknown-root success payloads fail closed; provider-only email/capacity metadata is removed from the client query state and no raw patient detail is added.
 - Operational note: provider remains unchanged; a multi-membership duplicate staff identity is rejected rather than rendered as potentially overcounted KPI rows. Webpack cache emitted an ENOSPC warning because the filesystem was 95% full; build still exited 0 and no cleanup was performed.
+
+## API-CONTRACT-001FZOPSINSIGHTSTRICT
+
+- Classification: Controlled administrative aggregate read, but not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, or production data mutation changed.
+- Safety control: unknown root, reverse/duplicate month buckets, negative counts, duplicate process keys, invalid durations, and invalid/overlong hints fail closed before trend or bottleneck state is rendered.
+- Operational note: provider aggregation and empty-state semantics remain unchanged; the build completed with existing CSS warnings and temporary filesystem pressure, without cleanup or destructive operations.

@@ -102,12 +102,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/operations-insights/operations-insights-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx",
       "counts": {
         "stringFallback": 1

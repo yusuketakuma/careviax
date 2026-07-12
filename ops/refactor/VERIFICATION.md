@@ -24,6 +24,18 @@
 - Browser/E2E: not run; this is a non-visual response-contract and query-cache minimization slice with no UI layout change.
 - Migration/auth/tenant: no migration or backend authorization change; no production data operation executed.
 
+## API-CONTRACT-001FZOPSINSIGHTSTRICT
+
+- Baseline: inherited admin/operations-insights reader used a compile-time response cast and one `stringFallback` allowlist entry; provider returned five-month visit buckets, process durations, and generated hints.
+- Focused test: `pnpm exec vitest run 'src/app/(dashboard)/admin/operations-insights/operations-insights-content.test.tsx' src/lib/analytics/operations-insights.test.ts --reporter=dot --testTimeout=30000` — PASS, 2 files / 14 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`, `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`, `pnpm boundaries:check`, `pnpm plans:active:check`, `git diff --check` — PASS.
+- Client-schema result: 164 schema-backed, 209 allowlisted schema-less calls, 85 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS with the same two pre-existing warnings in `src/lib/platform/break-glass.test.ts`.
+- Build: `pnpm build` — PASS; Next 16.2.9 compiled in 5.0 minutes, TypeScript finished in 67 seconds, 311/311 static pages, and traces completed. Two existing CSS optimizer warnings did not fail the build; filesystem usage peaked at 99% during compilation and no cleanup was performed.
+- Browser/E2E: not run; this is a non-visual aggregate response-contract slice with no layout change.
+- Migration/auth/tenant: no migration or backend authorization change; no production data operation executed.
+
 ## API-CONTRACT-001FZJOBLISTSTRICT
 
 - Baseline: inherited admin/jobs reader used a compile-time response cast and one `stringFallback` allowlist entry; provider returned 33 fixed definitions with redacted latest run/export DTOs.

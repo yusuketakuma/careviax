@@ -47045,6 +47045,38 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZOPSINSIGHTSTRICT — operations insights contract (IN_PROGRESS)
+
+- current task / root cause:
+  The admin/operations-insights GET consumer still trusted a compile-time response cast. A successful response with
+  duplicate or reverse-ordered monthly buckets, negative counts, duplicate process identities, invalid durations, or
+  excessive/invalid hints could therefore change the trend and bottleneck summary before the aggregate state was used.
+  The existing provider is organization-scoped and intentionally supports an empty aggregate response; neither is being
+  changed in this slice.
+- baseline:
+  The focused operations-insights consumer/helper suites passed 2 files / 12 tests before implementation. Current
+  client-schema inventory is 163 schema-backed / 210 allowlisted schema-less / 86 files. The target is one
+  `stringFallback` entry in `src/app/(dashboard)/admin/operations-insights/operations-insights-content.tsx`.
+- implementation plan:
+  Add a strict runtime schema for the `{ data: { monthly_visits, processes, hints } }` envelope, validate chronological
+  bucket identity and numeric/process invariants while preserving the empty shape, connect the reader, add malformed
+  2xx regressions, and remove only the operations-insights allowlist entry. No visual reconstruction or `gpt-image-2`
+  is needed because this is a non-visual aggregate response-contract repair.
+- implementation / validation checkpoint:
+  Added `src/lib/analytics/operations-insights-response-schema.ts`, connected the strict reader, removed the one
+  allowlist entry, and added reverse-month-bucket and invalid-duration regressions. Focused operations-insights
+  consumer/helper suites pass 2 files / 14 tests. Format, API shape, client-schema (164 schema-backed / 209 allowlisted /
+  85 files), frontend contract, PHI log/display, module boundary, Plans, diff-check, aggregate typecheck, 8 GB
+  no-unused typecheck, and lint pass. Lint retains only the two pre-existing unused-parameter warnings in
+  `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  `pnpm build` completed successfully. Next 16.2.9 compiled in 5.0 minutes, TypeScript finished in 67 seconds,
+  311/311 static pages were generated, and route optimization/traces completed. The build emitted the two existing CSS
+  optimizer warnings and exited 0. The filesystem reached 99% usage / 2.1 GiB free during compilation but recovered to
+  93% / 14 GiB after the build; no generated-artifact cleanup was performed.
+- next action:
+  Inspect the operations-insights-owned diff and ledgers, then stage only this validated slice for commit/push.
+
 ## 2026-07-12 API-CONTRACT-001FZSTAFFMETRICSSTRICT — admin staff KPI contract (DONE)
 
 - current task / root cause:

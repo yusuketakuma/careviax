@@ -10,22 +10,19 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import type { MonthlyVisitBucket, ProcessDuration } from '@/lib/analytics/operations-insights';
 import {
   formatOperationDuration,
   summarizeOperationsInsights,
 } from '@/lib/analytics/operations-insights';
+import {
+  operationsInsightsResponseSchema,
+  type OperationsInsights,
+} from '@/lib/analytics/operations-insights-response-schema';
 
 /**
  * p1_06「在宅業務の動きを見る」: 月ごとの訪問件数と時間がかかっている工程を
  * CSS バーで可視化し、改善のヒントを箇条書きで示す。
  */
-
-type OperationsInsights = {
-  monthly_visits: MonthlyVisitBucket[];
-  processes: ProcessDuration[];
-  hints: string[];
-};
 
 // グラフ系列色は状態色ではない → --chart-* トークンを循環使用
 const BAR_COLORS = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-5', 'bg-chart-1'];
@@ -73,10 +70,10 @@ export function OperationsInsightsContent() {
       const res = await fetch('/api/admin/operations-insights', {
         headers: buildOrgHeaders(orgId),
       });
-      const json = await readApiJson<{ data: OperationsInsights }>(
-        res,
-        '運用分析の取得に失敗しました',
-      );
+      const json = await readApiJson(res, {
+        fallbackMessage: '運用分析の取得に失敗しました',
+        schema: operationsInsightsResponseSchema,
+      });
       return json.data;
     },
     enabled: !!orgId,

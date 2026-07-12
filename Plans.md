@@ -163,7 +163,7 @@
 
 **Current execution slice (2026-07-12)**:
 
-- `API-CONTRACT-001FZSTAFFMETRICSSTRICT` は landing 済み。次は残存 `API-CONTRACT-001` allowlist と patients board cursor residual を再スキャンする。
+- `API-CONTRACT-001FZOPSINSIGHTSTRICT`: **IN_PROGRESS**。admin/operations-insights の5か月訪問 bucket・工程 duration GET を consumed runtime schema へ接続し、unknown root、月bucket重複/逆順、負数 count、duplicate process、invalid duration、過剰 hints が aggregate query state へ流入させない。Acceptance: (1) consumer が strict schema-backed reader を使う、(2) current provider shape と empty-state shape を検証する、(3) malformed 2xx regression が fail-closed、(4) relevant tests / typecheck / lint / contract gates を通し scoped commit/push を記録する。Provider/DB/auth/UI semantics は変更しない。
 
 **Implementation-ready queue — 未実装 / Partial 残スコープのみ**:
 

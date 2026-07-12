@@ -182,4 +182,37 @@ describe('OperationsInsightsContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
+
+  it('rejects a successful response with duplicate or reverse-ordered month buckets', async () => {
+    stubOperationsFetch({
+      data: {
+        monthly_visits: [
+          { key: '2026-06', label: '6月', count: 14 },
+          { key: '2026-05', label: '5月', count: 10 },
+        ],
+        processes: [],
+        hints: [],
+      },
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('運用分析を表示できません')).toBeTruthy();
+    expect(screen.queryByTestId('operations-insights-kpis')).toBeNull();
+  });
+
+  it('rejects a successful response with invalid process duration data', async () => {
+    stubOperationsFetch({
+      data: {
+        monthly_visits: [],
+        processes: [{ key: 'visit', label: '訪問', averageMinutes: -1, sampleCount: 1 }],
+        hints: [],
+      },
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('運用分析を表示できません')).toBeTruthy();
+    expect(screen.queryByTestId('operations-insights-kpis')).toBeNull();
+  });
 });
