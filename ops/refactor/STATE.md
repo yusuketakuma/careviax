@@ -51,6 +51,33 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZSTRUCTCARESTRICT patient structured-care active-state reader (VERIFY_REQUIRED, 2026-07-12; pending commit/push and shared clean-capacity build).
+  - current task / root cause:
+    Patient detailの在宅医療処置・麻薬panelがcompile-time `PatientStructuredCareList` castだけを信頼し、
+    legacy root、終了済みrow、不正日時、重複identity、確認者不整合を現在のactive careとして表示し得た。
+    Providerは`include_ended=false`、patient assignment、org scope、sensitive no-storeを既に強制している。
+  - implementation / medical-safety boundary:
+    Exact `{ data: { procedures, narcotics } }` schemaを追加し、active-only、`end_date=null`、bounded text、
+    ISO timestamp、confirmed actor/name coherence、各list内identity一意を検証した。Providerが返さないfieldは
+    strictに拒否する。`kind`/`source`は既知enumへ狭めずbounded non-empty stringとし、将来の正当な医療処置を
+    欠落させず既存raw-label fallbackを維持した。Query/path/auth/tenant/DB/service ordering、医療ラベル、表示、
+    retryは変更していない。Visual reconstructionではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/components/features/patients/patient-structured-care-response-schema.ts`,
+    `src/components/features/patients/patient-structured-care-panel.tsx`,
+    `src/components/features/patients/patient-structured-care-panel.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/provider/service Vitest passed 3 files / 15 tests. Exact ESLint/Prettier and diff-check passed.
+    `pnpm client-json-schema:check` passed at 201 schema-backed / 170 allowlisted schema-less calls / 60 files;
+    frontend contract, module boundary, aggregate typecheck, 8GB no-unused typecheck, client PHI-log, API response
+    shape, and colors passed. Full build was NOT_EXECUTED because the prior build left only about 2 GiB free and the
+    existing clean-capacity build gate remains unresolved; no generated cache was deleted or modified.
+  - security / performance / remaining:
+    Malformed PHI-adjacent data cannot fabricate active care state or invalid dates. No new query, I/O, render loop,
+    dependency, or broad cache was introduced. A clean-capacity runner must complete `pnpm build`; then continue the
+    `API-CONTRACT-001-RESCAN` inventory without conflating human-gated stock/DB work.
+
 - codex: API-CONTRACT-001FZREALTIMESTRICT admin realtime workflow/notification readers (VERIFY_REQUIRED, 2026-07-12; implementation `e3816210b`, ledger `bc23ae391`, feature-branch push confirmed; clean-capacity build pending).
   - current task / root cause:
     `/admin/realtime` のworkflow KPI/workbenchとnotification listがcompile-time castsだけを信頼し、legacy root、

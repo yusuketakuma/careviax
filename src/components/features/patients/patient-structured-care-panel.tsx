@@ -9,10 +9,12 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
 import { narcoticUseCategoryLabels, specialProcedureLabels } from '@/lib/patient/home-visit-intake';
-import type {
-  PatientStructuredCareItem,
-  PatientStructuredCareList,
-} from '@/server/services/patient-structured-care-list';
+import {
+  patientStructuredCareResponseSchema,
+  type PatientStructuredCareResponse,
+} from './patient-structured-care-response-schema';
+
+type PatientStructuredCareItem = PatientStructuredCareResponse['data']['procedures'][number];
 
 // 変更履歴タイムラインと同じ出所ラベル(SSOT 化するほどの規模ではないため最小重複に留める)
 const SOURCE_LABELS: Record<string, string> = {
@@ -71,10 +73,10 @@ export function PatientStructuredCarePanel({ patientId }: { patientId: string })
       const response = await fetch(buildPatientApiPath(patientId, '/structured-care'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PatientStructuredCareList }>(
-        response,
-        '在宅医療処置の取得に失敗しました',
-      );
+      return readApiJson(response, {
+        fallbackMessage: '在宅医療処置の取得に失敗しました',
+        schema: patientStructuredCareResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

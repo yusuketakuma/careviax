@@ -42,7 +42,6 @@ describe('PatientStructuredCarePanel', () => {
             confirmed_by: 'u',
             confirmed_by_name: '佐藤',
             confirmed_at: null,
-            notes: null,
           },
         ],
         narcotics: [
@@ -56,7 +55,6 @@ describe('PatientStructuredCarePanel', () => {
             confirmed_by: null,
             confirmed_by_name: null,
             confirmed_at: null,
-            notes: null,
           },
         ],
       },
@@ -81,6 +79,84 @@ describe('PatientStructuredCarePanel', () => {
       expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
     });
     expect(screen.queryByTestId('patient-structured-care-panel')).toBeNull();
+  });
+
+  it('legacy rootや終了済み・不正日時のsuccessful payloadを現行ケアとして表示しない', async () => {
+    const payloads = [
+      { procedures: [], narcotics: [] },
+      {
+        data: {
+          procedures: [
+            {
+              id: 'mp_ended',
+              kind: 'home_oxygen',
+              is_active: false,
+              start_date: '2026-06-10T00:00:00.000Z',
+              end_date: '2026-06-11T00:00:00.000Z',
+              source: 'visit_record',
+              confirmed_by: null,
+              confirmed_by_name: null,
+              confirmed_at: null,
+            },
+          ],
+          narcotics: [],
+        },
+      },
+      {
+        data: {
+          procedures: [],
+          narcotics: [
+            {
+              id: 'nu_invalid',
+              kind: 'base',
+              is_active: true,
+              start_date: 'not-a-date',
+              end_date: null,
+              source: 'patient_detail_edit',
+              confirmed_by: null,
+              confirmed_by_name: null,
+              confirmed_at: null,
+            },
+          ],
+        },
+      },
+    ];
+
+    for (const payload of payloads) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 })),
+      );
+      const { unmount } = render(<PatientStructuredCarePanel patientId="p1" />, {
+        wrapper: createQueryClientWrapper(),
+      });
+
+      expect(await screen.findByTestId('patient-structured-care-panel-error')).toBeTruthy();
+      expect(screen.queryByTestId('patient-structured-care-panel')).toBeNull();
+      unmount();
+    }
+  });
+
+  it('重複した構造化ケアIDを一覧状態へ流入させない', async () => {
+    const item = {
+      id: 'mp_duplicate',
+      kind: 'tpn',
+      is_active: true,
+      start_date: null,
+      end_date: null,
+      source: 'patient_detail_edit',
+      confirmed_by: null,
+      confirmed_by_name: null,
+      confirmed_at: null,
+    };
+    stubFetch({ data: { procedures: [item, item], narcotics: [] } });
+
+    render(<PatientStructuredCarePanel patientId="p1" />, {
+      wrapper: createQueryClientWrapper(),
+    });
+
+    expect(await screen.findByTestId('patient-structured-care-panel-error')).toBeTruthy();
+    expect(screen.queryByText('TPN')).toBeNull();
   });
 
   it('shared patient API path helper 経由で構造化ケアを取得する', async () => {
