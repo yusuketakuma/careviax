@@ -34,8 +34,8 @@
 ## API-CONTRACT-001FZSTAFFMETRICSSTRICT
 
 - Commit Group: `API-CONTRACT-001FZSTAFFMETRICSSTRICT`
-- Commit: pending
-- Push Status: NOT_STARTED
+- Commit: `6e1454401`
+- Push Status: PUSHED
 - Branch: `agent/continuous-improvement-20260712`
 - Scope: admin/staff KPI list response schema, consumer regressions, fixture alignment, and client-schema allowlist ratchet.
 - Implementation: validate requested month, exact summary, unique staff identity, summary/item arithmetic, supported roles, bounded KPI values, and strip provider-only email/capacity metadata; preserve the existing provider, query, error state, and UI behavior.
@@ -44,4 +44,4 @@
 - Verification: focused 2 files / 16 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and Next build passed; client-schema inventory is 163 schema-backed / 210 allowlisted / 86 files. Build emitted an ENOSPC pack-cache warning and existing CSS optimizer warnings but exited 0.
 - Rollback: revert the staff metrics response schema, consumer adapter, fixture/regressions, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
-- Push evidence: pending scoped commit.
+- Push evidence: `a4faa1677..6e1454401` fast-forward push succeeded; local and remote heads match.

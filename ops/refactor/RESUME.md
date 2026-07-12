@@ -7,39 +7,39 @@
 - Upstream: `origin/agent/continuous-improvement-20260712`
 - Remote: `origin`
 - Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
-- Current Phase: implementation planning / contract hardening
-- Current Task ID: `API-CONTRACT-001FZSTAFFMETRICSSTRICT`
-- Current Task Status: IN_PROGRESS
-- Current Commit Group: `API-CONTRACT-001FZSTAFFMETRICSSTRICT`
+- Current Phase: incremental rescan / next-task selection
+- Current Task ID: `API-CONTRACT-001-RESCAN`
+- Current Task Status: READY_FOR_RESCAN
+- Current Commit Group: `API-CONTRACT-001-RESCAN`
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
-- Last Safe Checkpoint: Staff focused tests, static contract gates, typecheck, no-unused, lint, diff-check, and build passed; only the scoped landing remains.
-- Last Completed Action: Implemented the staff KPI schema, passed 2 files / 16 focused tests, and completed the serialized Next.js build.
-- Current Operation: final diff review and scoped landing for the admin staff KPI contract slice.
-- Exact Next Action: Inspect the staff-owned diff, stage only owned paths, commit, push, and verify the remote branch.
-- Exact Next Command: `git diff --check && git diff --stat && git status --short --untracked-files=all`
-- Changed Files: current admin/staff KPI consumer/test, staff metrics response schema, client schema allowlist, Plans, STATE, and checkpoint/verification ledgers; previous jobs slice is already landed.
-- Staged Files: explicit staff implementation, test, response schema, allowlist, Plans, STATE, and checkpoint/verification ledgers only; unrelated harness-memory and personal artifacts remain unstaged.
+- Last Safe Checkpoint: Staff focused tests, static contract gates, typecheck, no-unused, lint, diff-check, build, scoped commit, and push passed.
+- Last Completed Action: Landed staff KPI reader hardening as `6e1454401` and verified remote head plus zero ahead/behind.
+- Current Operation: rescan remaining API contract reader debt and select the next disjoint safe slice.
+- Exact Next Action: Run the client-schema inventory and inspect remaining API-CONTRACT allowlist entries before choosing the next task.
+- Exact Next Command: `pnpm client-json-schema:check && rg -n -C 5 'API-CONTRACT|schema-less|stringFallback' Plans.md ops/refactor tools/client-json-schema-allowlist.json`
+- Changed Files: current staff KPI slice is landed; next work must preserve the inherited harness-memory and personal artifacts.
+- Staged Files: none; staff slice is committed and unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
 - Unpushed Commits: none
-- Push Status: PUSHED for previous `API-CONTRACT-001FZJOBLISTSTRICT` (`1435465a2`); current staff slice pending scoped commit.
+- Push Status: PUSHED for `API-CONTRACT-001FZSTAFFMETRICSSTRICT` (`6e1454401`)
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
 - Commands Completed: staff focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; typecheck; no-unused; lint; diff-check; build.
-- Commands Pending: final diff review, scoped commit/push, closure-ledger update, and post-push status.
-- Tests Completed: current staff slice 2 files / 16 tests passed; previous jobs slice 2 files / 16 tests and holiday slice 2 files / 39 tests passed.
-- Tests Pending: no focused tests pending for this slice; full suite not run.
+- Commands Pending: client-schema residual inventory, provider/consumer scan, next-slice focused validation, and scoped landing.
+- Tests Completed: staff slice 2 files / 16 tests passed; previous jobs slice 2 files / 16 tests and holiday slice 2 files / 39 tests passed.
+- Tests Pending: no tests pending for the landed staff slice; next task not selected yet.
 - Build State: PASS for current staff slice; Next 16.2.9 compiled in 6.0 minutes, TypeScript finished in 68 seconds, and 311/311 static pages were generated. Webpack emitted an ENOSPC cache warning on the 95%-full filesystem and existing CSS optimizer warnings, but exit was 0.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.
 - Migration State: NOT_APPLICABLE
-- Frontend State: admin/jobs consumer runtime schema connected; visual behavior unchanged.
-- Backend State: jobs provider unchanged and already returns redacted bounded `{ data }` list.
-- FE/BE Alignment State: provider/consumer payload boundary hardened; rerun mutation paths unchanged.
+- Frontend State: admin/staff KPI consumer expected-month runtime schema connected; visual behavior unchanged.
+- Backend State: staff metrics provider unchanged and continues organization-scoped aggregate reads with existing month boundaries.
+- FE/BE Alignment State: staff provider/consumer payload boundary hardened; query, authorization, and mutation paths unchanged.
 - UI Verification State: no visual reconstruction; no browser run for this contract-only slice.
 - Browser Verification State: NOT_EXECUTED
 - High-Risk Change State: no DB/auth/tenant/migration change; org-scope validation is fail-closed at the client boundary.
-- Rollback Point: revert the schema, two consumer adapters, test regressions, allowlist removal, and ledger entries.
+- Rollback Point: revert the staff metrics schema, consumer adapter, fixture/regressions, allowlist removal, and ledger entries.
 - Resume Preconditions: confirm no target-file writer, preserve unrelated dirty paths, keep build/typecheck serialized.
 - Known Blockers: none for this slice; build emitted two existing CSS optimizer warnings but exited 0.
 - External Changes Detected: none in target files during the checkpoint.

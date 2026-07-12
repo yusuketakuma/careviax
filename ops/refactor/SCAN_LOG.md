@@ -28,3 +28,6 @@
   retains provider-only email/capacity fields in the inferred response type.
 - Planned fix: expected-month strict envelope, summary/item identity and arithmetic checks, UI-consumed field projection,
   malformed/wrong-month regressions, and one allowlist ratchet removal. Provider/DB/auth/mutation behavior stays fixed.
+- Landed: implementation commit `6e1454401` passed 2 files / 16 focused tests, all contract/type/lint/diff gates, and
+  serialized Next build; client-schema inventory moved to 163 schema-backed / 210 allowlisted / 86 files. Next scan:
+  remaining API-CONTRACT allowlist entries and patients board cursor residual.

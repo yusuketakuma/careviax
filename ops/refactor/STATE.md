@@ -47045,7 +47045,7 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
-## 2026-07-12 API-CONTRACT-001FZSTAFFMETRICSSTRICT — admin staff KPI contract (IN_PROGRESS)
+## 2026-07-12 API-CONTRACT-001FZSTAFFMETRICSSTRICT — admin staff KPI contract (DONE)
 
 - current task / root cause:
   The admin/staff KPI reader still trusted a compile-time response cast. A successful response for another month,
@@ -47073,5 +47073,11 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   311/311 static pages were generated, and route optimization/traces completed. Webpack emitted an `ENOSPC: no space
 left on device` pack-cache warning on the 95%-full filesystem, plus the two existing CSS optimizer warnings; the
   build still exited 0. No generated-artifact cleanup was performed.
+- commit / push:
+  Scoped implementation commit `6e1454401` (`fix(API-CONTRACT-001FZSTAFFMETRICSSTRICT): validate staff KPI reader`)
+  was pushed to `origin/agent/continuous-improvement-20260712`; remote head matches and
+  `git rev-list --left-right --count HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts
+  remain excluded; the feature branch does not match the `main`-only production deploy trigger.
 - next action:
-  Inspect the staff-owned diff and ledgers, then stage only this validated slice for commit/push.
+  Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
+  disjoint safe slice without touching unrelated dirty paths.
