@@ -25,3 +25,16 @@
 | Errors / loading / empty    | Existing React Query loading, error/retry, polling, rerun, and empty states remain; malformed 2xx becomes query error rather than false operational state.        |
 | Tests                       | Consumer/provider focused suite: 2 files / 16 tests; static contract gates, typechecks, lint, diff-check, and build passed.                                       |
 | Alignment                   | ALIGNED for this read slice; provider, mutation, and visual semantics intentionally unchanged.                                                                    |
+
+## API-CONTRACT-001FZSTAFFMETRICSSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                      |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Admin staff KPI screen at `/admin/staff`; backend route `/api/admin/staff-metrics` remains protected by existing `canAdmin` authorization.                             |
+| Frontend state / clients    | React Query reader in `staff-kpi-panel.tsx`; expected-month schema runs before KPI summary or staff rows enter query state.                                            |
+| Request / response contract | Provider returns `{ data: { month, summary, items } }`; consumer validates exact root, month identity, roles, numeric ranges, unique IDs, and summary/item arithmetic. |
+| Backend / DB                | Existing membership, visit-record, care-report, and pharmacist-shift organization-scoped queries and JST/UTC month boundaries are unchanged.                           |
+| Auth / tenant / audit       | Existing backend authorization, org predicates, and audit behavior unchanged; provider-only email/capacity fields are stripped from the client cache.                  |
+| Errors / loading / empty    | Existing React Query loading, error/retry, empty, and false-zero protection remain; malformed 2xx becomes query error rather than KPI state.                           |
+| Tests                       | Consumer/provider focused suite: 2 files / 16 tests; static contract gates, typechecks, lint, diff-check, and build passed.                                            |
+| Alignment                   | ALIGNED for this read slice; provider, mutation, month calculation, and visual semantics intentionally unchanged.                                                      |

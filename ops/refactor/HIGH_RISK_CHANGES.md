@@ -13,3 +13,10 @@
 - Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, or production data mutation changed.
 - Safety control: malformed, duplicate, unsafe-endpoint, cross-definition, unsupported-status, invalid-count/timestamp, or non-redacted error metadata in a successful response fails closed before jobs state is used.
 - Human review: no external human gate required for this local read-contract slice; provider and mutation semantics remain unchanged.
+
+## API-CONTRACT-001FZSTAFFMETRICSSTRICT
+
+- Classification: Controlled administrative data read, but not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, or production data mutation changed.
+- Safety/privacy control: wrong-month, duplicate-identity, inconsistent-summary, invalid numeric, unsupported-role, or unknown-root success payloads fail closed; provider-only email/capacity metadata is removed from the client query state and no raw patient detail is added.
+- Operational note: provider remains unchanged; a multi-membership duplicate staff identity is rejected rather than rendered as potentially overcounted KPI rows. Webpack cache emitted an ENOSPC warning because the filesystem was 95% full; build still exited 0 and no cleanup was performed.

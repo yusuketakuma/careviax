@@ -7,6 +7,7 @@ import { buildAdminStaffMetricsApiPath } from '@/lib/staff-metrics/api-paths';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
+const CURRENT_MONTH = new Date().toISOString().slice(0, 7);
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
@@ -42,12 +43,12 @@ setupDomTestEnv();
 const SUCCESS_DATA = {
   data: {
     data: {
-      month: '2026-06',
+      month: CURRENT_MONTH,
       summary: {
-        total_staff: 3,
+        total_staff: 1,
         avg_monthly_visits: 10,
         avg_report_submission_rate: 90,
-        overloaded_count: 1,
+        overloaded_count: 0,
         underutilized_count: 0,
       },
       items: [
@@ -105,7 +106,26 @@ describe('StaffKpiPanel', () => {
     render(<StaffKpiPanel />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    await expect(queryPromise).resolves.toEqual(SUCCESS_DATA.data);
+    const parsed = await queryPromise;
+    expect(parsed).toMatchObject({
+      data: {
+        month: CURRENT_MONTH,
+        summary: SUCCESS_DATA.data.data.summary,
+        items: [
+          expect.objectContaining({
+            id: 's1',
+            name: '山田',
+            role: 'pharmacist',
+            monthly_visit_count: 10,
+            assigned_patient_count: 5,
+            report_submission_rate: 90,
+          }),
+        ],
+      },
+    });
+    const parsedItems = (parsed as { data: { items: Array<Record<string, unknown>> } }).data.items;
+    expect(parsedItems[0]).not.toHaveProperty('email');
+    expect(parsedItems[0]).not.toHaveProperty('max_weekly_visits');
     expect(buildAdminStaffMetricsApiPath).toHaveBeenCalledWith(expect.any(URLSearchParams));
     expect(buildOrgHeaders).toHaveBeenCalledWith('org_1');
     expect(fetchMock).toHaveBeenCalledWith(`/api/admin/staff-metrics?month=${currentMonth}`, {
@@ -133,5 +153,92 @@ describe('StaffKpiPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a successful response for another month before it reaches query state', async () => {
+    const wrongMonth = CURRENT_MONTH === '2026-01' ? '2026-02' : '2026-01';
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ...SUCCESS_DATA.data,
+            data: { ...SUCCESS_DATA.data.data, month: wrongMonth },
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      data: SUCCESS_DATA.data,
+      refetch: vi.fn(),
+    });
+
+    render(<StaffKpiPanel />);
+
+    const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
+      | { queryFn: () => Promise<unknown> }
+      | undefined;
+    await expect(queryOptions?.queryFn()).rejects.toThrow('スタッフKPIの取得に失敗しました');
+  });
+
+  it('rejects a successful response when summary counts drift from the staff rows', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ...SUCCESS_DATA.data,
+            data: {
+              ...SUCCESS_DATA.data.data,
+              summary: { ...SUCCESS_DATA.data.data.summary, total_staff: 2 },
+            },
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      data: SUCCESS_DATA.data,
+      refetch: vi.fn(),
+    });
+
+    render(<StaffKpiPanel />);
+
+    const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
+      | { queryFn: () => Promise<unknown> }
+      | undefined;
+    await expect(queryOptions?.queryFn()).rejects.toThrow('スタッフKPIの取得に失敗しました');
+  });
+
+  it('rejects a successful response with duplicate staff identities', async () => {
+    const item = SUCCESS_DATA.data.data.items[0];
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ...SUCCESS_DATA.data,
+            data: {
+              ...SUCCESS_DATA.data.data,
+              summary: { ...SUCCESS_DATA.data.data.summary, total_staff: 2 },
+              items: [item, item],
+            },
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      data: SUCCESS_DATA.data,
+      refetch: vi.fn(),
+    });
+
+    render(<StaffKpiPanel />);
+
+    const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
+      | { queryFn: () => Promise<unknown> }
+      | undefined;
+    await expect(queryOptions?.queryFn()).rejects.toThrow('スタッフKPIの取得に失敗しました');
   });
 });

@@ -162,12 +162,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/staff/staff-kpi-panel.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/uat/uat-content.tsx",
       "counts": {
         "dynamicOptions": 1

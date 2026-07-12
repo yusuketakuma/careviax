@@ -12,6 +12,18 @@
 - Browser/E2E: not run; this is a non-visual response-contract slice and no visual behavior changed.
 - Migration/auth/tenant: no migration or backend authorization change; no production data operation executed.
 
+## API-CONTRACT-001FZSTAFFMETRICSSTRICT
+
+- Baseline: inherited admin/staff KPI reader used a compile-time response cast and one `stringFallback` allowlist entry; provider returned `{ data: { month, summary, items } }` from the existing authorized organization-scoped aggregate route.
+- Focused test: `pnpm exec vitest run 'src/app/(dashboard)/admin/staff/staff-kpi-panel.test.tsx' 'src/app/api/admin/staff-metrics/route.test.ts' --reporter=dot --testTimeout=30000` — PASS, 2 files / 16 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`, `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`, `pnpm boundaries:check`, `pnpm plans:active:check`, `git diff --check` — PASS.
+- Client-schema result: 163 schema-backed, 210 allowlisted schema-less calls, 86 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS with the same two pre-existing warnings in `src/lib/platform/break-glass.test.ts`.
+- Build: `pnpm build` — PASS; Next 16.2.9 compiled in 6.0 minutes, TypeScript finished in 68 seconds, 311/311 static pages, and traces completed. Webpack emitted an ENOSPC pack-cache warning on the 95%-full filesystem and two existing CSS optimizer warnings; exit was 0.
+- Browser/E2E: not run; this is a non-visual response-contract and query-cache minimization slice with no UI layout change.
+- Migration/auth/tenant: no migration or backend authorization change; no production data operation executed.
+
 ## API-CONTRACT-001FZJOBLISTSTRICT
 
 - Baseline: inherited admin/jobs reader used a compile-time response cast and one `stringFallback` allowlist entry; provider returned 33 fixed definitions with redacted latest run/export DTOs.

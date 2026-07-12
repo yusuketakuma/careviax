@@ -163,7 +163,7 @@
 
 **Current execution slice (2026-07-12)**:
 
-- `API-CONTRACT-001FZJOBLISTSTRICT` は landing 済み。次は残存 `API-CONTRACT-001` allowlist と patients board cursor residual を再スキャンする。
+- `API-CONTRACT-001FZSTAFFMETRICSSTRICT`: **IN_PROGRESS**。admin/staff の月次 KPI GET を consumed runtime schema へ接続し、unknown root、別月 response、summary/item count drift、重複 staff、負数・範囲外 KPI、未使用 email/capacity fields の query state 流入を防ぐ。Acceptance: (1) consumer が expected-month schema-backed reader を使う、(2) current provider shape を検証し UI 未使用 field を strip する、(3) malformed/mismatched 2xx regression が fail-closed、(4) relevant tests / typecheck / lint / contract gates を通し scoped commit/push を記録する。Provider/DB/auth/mutation semantics は変更しない。
 
 **Implementation-ready queue — 未実装 / Partial 残スコープのみ**:
 

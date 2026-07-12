@@ -47044,3 +47044,34 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
 - next action:
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
+
+## 2026-07-12 API-CONTRACT-001FZSTAFFMETRICSSTRICT — admin staff KPI contract (IN_PROGRESS)
+
+- current task / root cause:
+  The admin/staff KPI reader still trusted a compile-time response cast. A successful response for another month,
+  duplicate staff row, inconsistent summary counts, invalid KPI numbers, or extra provider fields such as email and
+  capacity metadata could therefore enter the admin query state. The provider already scopes memberships and aggregate
+  reads to the authorized organization; this slice hardens the consumed read contract without changing those semantics.
+- baseline:
+  The focused staff consumer/provider suites passed 2 files / 13 tests before implementation. Current client-schema
+  inventory is 162 schema-backed / 211 allowlisted schema-less / 87 files. The target is one `stringFallback` entry in
+  `src/app/(dashboard)/admin/staff/staff-kpi-panel.tsx`.
+- implementation plan:
+  Add an expected-month runtime schema for the exact summary and UI-consumed staff metrics, enforce item identity and
+  summary arithmetic, strip provider-only email/capacity fields, connect the admin reader, add malformed and wrong-month
+  regressions, and remove only the staff KPI allowlist entry. No visual reconstruction or `gpt-image-2` is needed because
+  this is a non-visual administrative response-contract and query-cache minimization repair.
+- implementation / validation checkpoint:
+  Added `src/lib/staff-metrics/response-schema.ts`, connected the expected-month schema-backed reader, removed the one
+  allowlist entry, projected out provider-only email/capacity fields, and added wrong-month, summary-drift, and duplicate
+  identity regressions. Focused staff consumer/provider suites pass 2 files / 16 tests. Format, API shape, client-schema
+  (163 schema-backed / 210 allowlisted / 86 files), frontend contract, PHI log/display, module boundary, Plans,
+  diff-check, aggregate typecheck, 8 GB no-unused typecheck, and lint pass. Lint retains only the two pre-existing
+  unused-parameter warnings in `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  `pnpm build` completed successfully. Next 16.2.9 compiled in 6.0 minutes, TypeScript finished in 68 seconds,
+  311/311 static pages were generated, and route optimization/traces completed. Webpack emitted an `ENOSPC: no space
+left on device` pack-cache warning on the 95%-full filesystem, plus the two existing CSS optimizer warnings; the
+  build still exited 0. No generated-artifact cleanup was performed.
+- next action:
+  Inspect the staff-owned diff and ledgers, then stage only this validated slice for commit/push.

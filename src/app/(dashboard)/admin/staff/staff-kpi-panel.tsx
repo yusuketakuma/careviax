@@ -15,39 +15,10 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildAdminStaffMetricsApiPath } from '@/lib/staff-metrics/api-paths';
-
-type StaffMetricItem = {
-  id: string;
-  name: string;
-  name_kana: string | null;
-  email: string;
-  role: string;
-  site_name: string | null;
-  monthly_visit_count: number;
-  assigned_patient_count: number;
-  avg_visit_minutes: number | null;
-  report_submission_rate: number;
-  shift_days: number;
-  shift_hours: number;
-  workload_balance_delta_percent: number;
-  workload_utilization_percent: number | null;
-  max_weekly_visits: number | null;
-  max_travel_minutes: number | null;
-};
-
-type StaffMetricsResponse = {
-  data: {
-    month: string;
-    summary: {
-      total_staff: number;
-      avg_monthly_visits: number;
-      avg_report_submission_rate: number;
-      overloaded_count: number;
-      underutilized_count: number;
-    };
-    items: StaffMetricItem[];
-  };
-};
+import {
+  buildStaffMetricsResponseSchema,
+  type StaffMetricItem,
+} from '@/lib/staff-metrics/response-schema';
 
 function balanceBadge(delta: number) {
   if (delta >= 20) {
@@ -69,7 +40,10 @@ export function StaffKpiPanel() {
       const response = await fetch(buildAdminStaffMetricsApiPath(new URLSearchParams({ month })), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<StaffMetricsResponse>(response, 'スタッフKPIの取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: 'スタッフKPIの取得に失敗しました',
+        schema: buildStaffMetricsResponseSchema(month),
+      });
     },
     enabled: !!orgId,
   });
