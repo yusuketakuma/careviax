@@ -2,9 +2,6 @@ import {
   buildHomeVisit2026ReadinessItems,
   type HomeVisit2026EvidenceItem,
 } from '@/lib/visits/home-visit-2026-evidence';
-import { readApiJson } from '@/lib/api/client-json';
-import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
 import {
   PREPARATION_ITEMS,
   VISIT_TYPE_LABELS,
@@ -13,26 +10,12 @@ import {
   type VisitSchedule,
 } from './day-view.shared';
 
-type FetchLike = typeof fetch;
-
-type QueryInvalidator = (filters: { queryKey: readonly unknown[] }) => Promise<unknown> | unknown;
-
 export type ScheduleDayPreparationForm = {
   medication_changes_reviewed: boolean;
   carry_items_confirmed: boolean;
   previous_issues_reviewed: boolean;
   route_confirmed: boolean;
   offline_synced: boolean;
-};
-
-export type ScheduleDayPreparationDetails = {
-  preparation: VisitPreparation | null;
-  pack: VisitPreparationPack | null;
-};
-
-export type ScheduleDayPreparationDetailsState = ScheduleDayPreparationDetails & {
-  loadError: string | null;
-  identityError: string | null;
 };
 
 export type ScheduleDayPreparationReadinessStatus =
@@ -111,12 +94,6 @@ const ONBOARDING_READINESS_ITEMS = [
     variant: 'outline',
   },
 ] as const satisfies readonly ScheduleDayOnboardingReadinessWarning[];
-
-export type SaveScheduleDayPreparationRequest = {
-  scheduleId: string;
-  form: ScheduleDayPreparationForm;
-  markReady: boolean;
-};
 
 export function buildScheduleDayPreparationForm(
   preparation: VisitPreparation | null,
@@ -255,77 +232,4 @@ export function buildScheduleDayPreparationClinicalViewModel(
     requiredItems,
     requiredOpenItems: requiredItems.filter((item) => !item.done),
   };
-}
-
-export async function fetchScheduleDayPreparationDetails({
-  orgId,
-  scheduleId,
-  fetchImpl = fetch,
-}: {
-  orgId: string;
-  scheduleId: string;
-  fetchImpl?: FetchLike;
-}) {
-  const res = await fetchImpl(`/api/visit-preparations/${encodePathSegment(scheduleId)}`, {
-    headers: buildOrgHeaders(orgId),
-  });
-
-  const payload = await readApiJson<{
-    data: ScheduleDayPreparationDetails;
-  }>(res, '訪問準備情報の取得に失敗しました');
-  return payload.data;
-}
-
-export async function saveScheduleDayPreparation({
-  orgId,
-  request,
-  fetchImpl = fetch,
-}: {
-  orgId: string;
-  request: SaveScheduleDayPreparationRequest;
-  fetchImpl?: FetchLike;
-}) {
-  const preparationRes = await fetchImpl(
-    `/api/visit-preparations/${encodePathSegment(request.scheduleId)}`,
-    {
-      method: 'PUT',
-      headers: buildOrgJsonHeaders(orgId),
-      body: JSON.stringify({
-        checklist: request.form,
-        ...request.form,
-        mark_ready: request.markReady,
-      }),
-    },
-  );
-
-  if (!preparationRes.ok) {
-    const error = (await preparationRes.json().catch(() => ({}))) as { message?: string };
-    throw new Error(error.message ?? '訪問準備の保存に失敗しました');
-  }
-
-  return preparationRes.json();
-}
-
-export async function handleScheduleDayPreparationSuccess({
-  orgId,
-  markReady,
-  notifySuccess,
-  closeDialog,
-  invalidateQueries,
-}: {
-  orgId: string;
-  markReady: boolean;
-  notifySuccess: (message: string) => void;
-  closeDialog: () => void;
-  invalidateQueries: QueryInvalidator;
-}) {
-  notifySuccess(markReady ? '訪問準備を保存し、ready へ進めました' : '訪問準備を保存しました');
-  closeDialog();
-  await Promise.all([
-    invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
-    invalidateQueries({ queryKey: ['schedule-day-board', orgId] }),
-    invalidateQueries({ queryKey: ['schedule-rail-cockpit', orgId] }),
-    invalidateQueries({ queryKey: ['visits', 'today-preparation', orgId] }),
-    invalidateQueries({ queryKey: ['tasks', orgId] }),
-  ]);
 }

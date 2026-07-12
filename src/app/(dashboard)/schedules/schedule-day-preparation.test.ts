@@ -1,27 +1,14 @@
-import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   PREPARATION_PACK_MISMATCH_MESSAGE,
   PREPARATION_PACK_MISSING_MESSAGE,
   buildScheduleDayPreparationClinicalViewModel,
   buildScheduleDayPreparationForm,
   buildScheduleDayPreparationReadiness,
-  fetchScheduleDayPreparationDetails,
   getPreparationPackIdentityError,
-  handleScheduleDayPreparationSuccess,
-  saveScheduleDayPreparation,
   type ScheduleDayPreparationForm,
 } from './schedule-day-preparation';
 import type { VisitPreparationPack, VisitSchedule } from './day-view.shared';
-
-vi.mock('@/lib/api/org-headers', async (importActual) => {
-  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
-  return {
-    ...actual,
-    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
-    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
-  };
-});
 
 const completeForm: ScheduleDayPreparationForm = {
   medication_changes_reviewed: true,
@@ -176,11 +163,6 @@ function buildPreparationPack(overrides: PreparationPackOverrides = {}): VisitPr
 }
 
 describe('schedule day preparation helpers', () => {
-  beforeEach(() => {
-    vi.mocked(buildOrgHeaders).mockClear();
-    vi.mocked(buildOrgJsonHeaders).mockClear();
-  });
-
   it('builds preparation checklist form defaults from missing preparation', () => {
     expect(buildScheduleDayPreparationForm(null)).toEqual({
       medication_changes_reviewed: false,
@@ -441,227 +423,5 @@ describe('schedule day preparation helpers', () => {
         'billing_blocker:missing_billing_evidence',
       ]),
     );
-  });
-
-  it('fetches preparation details with org scope', async () => {
-    const scheduleId = 'schedule/1?x=y#frag';
-    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
-    vi.mocked(buildOrgHeaders).mockReturnValueOnce(sentinelHeaders);
-    const fetchImpl = vi.fn<typeof fetch>(async () =>
-      Response.json({
-        data: {
-          preparation: null,
-          pack: null,
-        },
-      }),
-    );
-
-    await expect(
-      fetchScheduleDayPreparationDetails({
-        orgId: 'org_1',
-        scheduleId,
-        fetchImpl,
-      }),
-    ).resolves.toEqual({
-      preparation: null,
-      pack: null,
-    });
-
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchImpl.mock.calls[0]!;
-    expect(url).toBe(`/api/visit-preparations/${encodeURIComponent(scheduleId)}`);
-    expect(String(url)).not.toContain(scheduleId);
-    expect(String(url)).not.toContain('%25');
-    expect(init?.headers).toBe(sentinelHeaders);
-    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
-  });
-
-  it.each(['.', '..'])(
-    'rejects dot-segment preparation detail id %s before fetch',
-    async (scheduleId) => {
-      const fetchImpl = vi.fn<typeof fetch>();
-
-      await expect(
-        fetchScheduleDayPreparationDetails({
-          orgId: 'org_1',
-          scheduleId,
-          fetchImpl,
-        }),
-      ).rejects.toThrow(RangeError);
-      expect(fetchImpl).not.toHaveBeenCalled();
-    },
-  );
-
-  it('keeps API messages when preparation details cannot be fetched', async () => {
-    const fetchImpl = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ message: '訪問準備情報を表示できません' }), { status: 500 }),
-    );
-
-    await expect(
-      fetchScheduleDayPreparationDetails({
-        orgId: 'org_1',
-        scheduleId: 'schedule_1',
-        fetchImpl,
-      }),
-    ).rejects.toThrow('訪問準備情報を表示できません');
-  });
-
-  it('saves preparation checklist without ready transition', async () => {
-    const scheduleId = 'schedule/1?x=y#frag';
-    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
-    vi.mocked(buildOrgJsonHeaders).mockReturnValueOnce(sentinelHeaders);
-    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ data: { id: 'prep_1' } }));
-
-    await expect(
-      saveScheduleDayPreparation({
-        orgId: 'org_1',
-        request: {
-          scheduleId,
-          form: completeForm,
-          markReady: false,
-        },
-        fetchImpl,
-      }),
-    ).resolves.toEqual({ data: { id: 'prep_1' } });
-
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchImpl.mock.calls[0]!;
-    expect(url).toBe(`/api/visit-preparations/${encodeURIComponent(scheduleId)}`);
-    expect(String(url)).not.toContain(scheduleId);
-    expect(String(url)).not.toContain('%25');
-    expect(init?.method).toBe('PUT');
-    expect(init?.headers).toBe(sentinelHeaders);
-    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
-    expect(init?.body).toBe(
-      JSON.stringify({
-        checklist: completeForm,
-        ...completeForm,
-        mark_ready: false,
-      }),
-    );
-    expect(JSON.parse(String(init?.body))).toEqual({
-      checklist: completeForm,
-      ...completeForm,
-      mark_ready: false,
-    });
-  });
-
-  it.each(['.', '..'])(
-    'rejects dot-segment preparation save id %s before fetch',
-    async (scheduleId) => {
-      const fetchImpl = vi.fn<typeof fetch>();
-
-      await expect(
-        saveScheduleDayPreparation({
-          orgId: 'org_1',
-          request: {
-            scheduleId,
-            form: completeForm,
-            markReady: false,
-          },
-          fetchImpl,
-        }),
-      ).rejects.toThrow(RangeError);
-      expect(fetchImpl).not.toHaveBeenCalled();
-    },
-  );
-
-  it('saves preparation and marks the schedule ready atomically when requested', async () => {
-    const fetchImpl = vi.fn().mockResolvedValueOnce(Response.json({ data: { id: 'prep_1' } }));
-
-    await saveScheduleDayPreparation({
-      orgId: 'org_1',
-      request: {
-        scheduleId: 'schedule_1',
-        form: completeForm,
-        markReady: true,
-      },
-      fetchImpl,
-    });
-
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl).toHaveBeenCalledWith('/api/visit-preparations/schedule_1', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': 'org_1',
-      },
-      body: JSON.stringify({
-        checklist: completeForm,
-        ...completeForm,
-        mark_ready: true,
-      }),
-    });
-  });
-
-  it('propagates save and ready-transition server messages', async () => {
-    await expect(
-      saveScheduleDayPreparation({
-        orgId: 'org_1',
-        request: {
-          scheduleId: 'schedule_1',
-          form: completeForm,
-          markReady: false,
-        },
-        fetchImpl: vi.fn(
-          async () =>
-            new Response(JSON.stringify({ message: 'チェックリストが古いです' }), {
-              status: 409,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-        ),
-      }),
-    ).rejects.toThrow('チェックリストが古いです');
-
-    await expect(
-      saveScheduleDayPreparation({
-        orgId: 'org_1',
-        request: {
-          scheduleId: 'schedule_1',
-          form: completeForm,
-          markReady: true,
-        },
-        fetchImpl: vi.fn(
-          async () =>
-            new Response(JSON.stringify({ message: 'ready にできません' }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-        ),
-      }),
-    ).rejects.toThrow('ready にできません');
-  });
-
-  it('notifies, closes the dialog, and refreshes preparation-dependent queries after save', async () => {
-    const notifySuccess = vi.fn();
-    const closeDialog = vi.fn();
-    const invalidateQueries = vi.fn(async () => undefined);
-
-    await handleScheduleDayPreparationSuccess({
-      orgId: 'org_1',
-      markReady: true,
-      notifySuccess,
-      closeDialog,
-      invalidateQueries,
-    });
-
-    expect(notifySuccess).toHaveBeenCalledWith('訪問準備を保存し、ready へ進めました');
-    expect(closeDialog).toHaveBeenCalledOnce();
-    expect(invalidateQueries).toHaveBeenNthCalledWith(1, {
-      queryKey: ['visit-schedules', 'week-board', 'org_1'],
-    });
-    expect(invalidateQueries).toHaveBeenNthCalledWith(2, {
-      queryKey: ['schedule-day-board', 'org_1'],
-    });
-    expect(invalidateQueries).toHaveBeenNthCalledWith(3, {
-      queryKey: ['schedule-rail-cockpit', 'org_1'],
-    });
-    expect(invalidateQueries).toHaveBeenNthCalledWith(4, {
-      queryKey: ['visits', 'today-preparation', 'org_1'],
-    });
-    expect(invalidateQueries).toHaveBeenNthCalledWith(5, {
-      queryKey: ['tasks', 'org_1'],
-    });
   });
 });

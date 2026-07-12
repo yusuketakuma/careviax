@@ -51,6 +51,34 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZPREPDEAD schedule-day preparation dead orchestration removal (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, shared clean-capacity build pending).
+  - current task / root cause:
+    `schedule-day-preparation.ts`は現役のform/readiness/onboarding helperと同居して、production参照がない
+    preparation GET/PUT fetchers、save-success query invalidation wrapper、専用typesをexportしていた。利用検索では
+    これらは同名testからだけ参照され、GET readerはclient-schema debt 1件として残っていた。Schema追加ではdead
+    network pathと巨大preparation pack contractを温存するため、削除がroot fixだった。
+  - implementation / boundary:
+    未参照fetch/save/success functions、FetchLike/QueryInvalidator/details/save request types、専用9 tests、不要な
+    client-json/org-header/path importsを削除した。現役のpreparation form、patient/schedule identity check、
+    onboarding/readiness/billing blocker、clinical view-modelは変更していない。Visual reconstructionではないため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/schedules/schedule-day-preparation.ts`,
+    `src/app/(dashboard)/schedules/schedule-day-preparation.test.ts`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Repository-wide symbol search confirmed 0 remaining references to the removed APIs/types. Focused active
+    helper/chrome/provider Vitest passed 3 files / 53 tests. Exact ESLint with `--max-warnings=0`, Prettier, aggregate
+    typecheck, 8GB no-unused typecheck, client schema (218 backed / 152 allowlisted / 43 files), frontend contract,
+    module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build was NOT_EXECUTED
+    because only about 2.9 GiB free remains after the shared `.next/cache` capacity failure; generated cache was not
+    deleted or modified.
+  - security / performance / remaining:
+    A dormant unvalidated GET cast and raw PUT response/error path no longer ship beside the active client helper;
+    unused client module code and maintenance surface are reduced. Active request count, visit-preparation provider/write,
+    auth/assignment/tenant/audit/no-store, clinical readiness decisions, render behavior, and dependencies are unchanged.
+    A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZBILLCHECKSTRICT billing-check BFF reader (VERIFY_REQUIRED, 2026-07-13; implementation `632b4bed0`, ledger `f51f4c821`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     算定チェック画面はread-only BFFの3 KPI、疑義rows、根拠/操作link、右railをcompile-time
