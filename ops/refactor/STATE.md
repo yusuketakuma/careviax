@@ -47045,6 +47045,42 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZPERFRUNTIME — (DONE)
+
+- current task / root cause:
+  The final schema-less reader on admin performance trusts current-process runtime metrics through a compile-time cast.
+  Malformed/contradictory latency percentiles, counts, rates, payload/query budgets, route identities, and status fields
+  can therefore drive operational performance and payload-budget decisions without runtime validation.
+- baseline / scope:
+  The adjacent performance suites pass 2 files / 14 tests and the page now has one remaining allowlist call. Provider
+  inspection confirms `GET /api/admin/performance-metrics?top=6` is admin-gated and derives an in-memory, current-process
+  snapshot with at most six displayed routes; collection and authorization are not changing.
+- implementation plan:
+  Add a strict `{ data }` runtime snapshot schema, validate count/rate/percentile/sample/budget/status relationships,
+  unique method+route identities, and the six-row cap, project only displayed telemetry, connect `readApiJson`, add
+  malformed/provider-only regressions, and remove the final performance allowlist entry. This non-visual telemetry
+  contract repair does not require imagegen.
+- implementation / validation:
+  Added the runtime snapshot projection with nonnegative/finite metrics, ordered percentiles, exact slow-rate arithmetic,
+  request/sample/subtotal bounds, payload-budget state consistency, unique route identities, target consistency, and the
+  six-row cap. Raw store/sample and other provider-only fields are stripped before the query cache. Focused performance
+  suites pass 2 files / 17 tests. The performance page is removed from the allowlist; client-schema inventory passes at
+  194 schema-backed / 177 allowlisted calls across 66 files. Aggregate typecheck, 8 GB no-unused typecheck, lint,
+  frontend contract, module boundaries, API response shape, PHI client log/display, colors, typography, Plans, format,
+  and diff gates pass; lint retains only the two pre-existing unused-parameter warnings in
+  `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  Serialized `PHOS_DISABLE_WEBPACK_CACHE=1 pnpm build` passes: compile 80s, build TypeScript 48s, page data 1375ms,
+  static generation 311/311 in 714ms, traces 16.7s, and final optimization 19.2s. It emitted only the two known
+  generated-CSS optimizer warnings. The temporary local webpack cache hook was reverted, leaving no `next.config.ts`
+  diff; no generated artifacts were deleted.
+- commit / landing:
+  Scoped implementation commit `ebeb61cd1` contains only the performance runtime reader/schema/tests and removal of
+  the page's final allowlist entry. Ledger commit and safe feature-branch push follow; unrelated dirty/untracked
+  artifacts remain excluded.
+- next action:
+  Close and push this slice, then return to the 177-call inventory and patients-board cursor residual.
+
 ## 2026-07-12 API-CONTRACT-001FZPERFWORKFLOW — (DONE)
 
 - current task / root cause:
