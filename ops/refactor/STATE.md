@@ -47045,6 +47045,34 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZPERFSCHEDULES — (DONE)
+
+- current task / root cause:
+  Admin performance requested a two-week visit range with `limit=100` through one direct GET and ignored cursor metadata.
+  More than 100 schedules could therefore undercount route-lock rate, emergency work, fallback assignments, and pending
+  overrides. The reader also cached the full schedule/patient provider row through a compile-time cast.
+- implementation:
+  Replaced the direct reader with the shared cursor collector at 100 rows/page. Added a performance-specific item schema
+  for schedule identity/date, priority, assignment, confirmation, patient name, and override status/reason, projecting
+  out residences and unrelated provider fields. Reduced only the performance page allowlist count from four to three;
+  workflow, proposal, and runtime readers remain separate residuals.
+- validation:
+  Focused performance, item-schema, and cursor-helper suites pass 3 files / 23 tests. Exact ESLint/Prettier, aggregate
+  typecheck, 8 GB no-unused typecheck, client JSON schema, frontend contract, API shape, boundaries, PHI client log/
+  display, colors, typography, Plans, serialized production build, and diff gates pass. Inventory is 191 schema-backed /
+  180 allowlisted calls across 67 files. With the temporary cache-disable hook used only to avoid the known `.next/cache`
+  ENOSPC issue, Next 16.2.9 compiled in 104 seconds, TypeScript finished in 62 seconds, and 311/311 static pages generated.
+  The build completed with only the two pre-existing CSS optimizer warnings; the hook was reverted and `next.config.ts`
+  has no final diff.
+- scope / safety:
+  No API/provider query semantics, auth/authz, tenant boundary, visit mutation, metric formula, realtime invalidation,
+  patient source data, or visual behavior changed. This non-visual pagination/contract repair did not require imagegen.
+- commit / landing:
+  Scoped implementation commit `a29e9b528` contains only the performance consumer/test, item schema/test, and allowlist.
+  Ledger commit and safe feature-branch push follow; unrelated dirty/untracked artifacts remain excluded.
+- next action:
+  Close and push this slice, then continue the residual reader/cursor scan.
+
 ## 2026-07-12 API-CONTRACT-001FZMYDAYVISITS — (DONE)
 
 - current task / root cause:
