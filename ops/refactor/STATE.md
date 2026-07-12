@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZINTAKETRIAGESTRICT prescription intake triage readers (VERIFY_REQUIRED, 2026-07-13; implementation `4a3d01d01`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZINTAKETRIAGESTRICT prescription intake triage readers (VERIFY_REQUIRED, 2026-07-13; implementation `4a3d01d01`, ledger `dbf270d81`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Prescription Intake Triageのqueueとcockpit right-rail GET readersはcompile-time castだけで、重複identity、
     reverse order、lane/decision/duplicate notice集計drift、不正status/action/OCR confidence、unsafe action URLを
