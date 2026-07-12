@@ -307,12 +307,6 @@
       }
     },
     {
-      "path": "src/app/shared/[token]/shared-viewer-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/components/features/comments/comment-thread.tsx",
       "counts": {
         "stringFallback": 3

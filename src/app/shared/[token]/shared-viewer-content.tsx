@@ -23,103 +23,12 @@ import { Label } from '@/components/ui/label';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
-import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { clientLog } from '@/lib/utils/client-log';
-
-type ExternalPayload = {
-  patient: {
-    id: string;
-    name: string;
-    birth_date: string | null;
-    gender: string | null;
-    archive?: PatientArchiveSummary | null;
-  };
-  allergy_info?: string | null;
-  medication_profiles?: Array<{
-    id: string;
-    drug_name: string;
-    dose: string | null;
-    frequency: string | null;
-    start_date: string | null;
-    end_date: string | null;
-    is_current: boolean;
-  }>;
-  visit_schedules?: Array<{
-    id: string;
-    scheduled_date: string;
-    time_window_start: string | null;
-    time_window_end: string | null;
-    schedule_status: string;
-  }>;
-  care_reports?: Array<{
-    id: string;
-    report_type: string;
-    status: string;
-    created_at: string;
-  }>;
-  self_report_history?: Array<{
-    id: string;
-    reported_by_name: string;
-    relation: string | null;
-    category: string;
-    subject: string;
-    content: string;
-    requested_callback: boolean;
-    preferred_contact_time: string | null;
-    status: string;
-    created_at: string;
-    triaged_at: string | null;
-  }>;
-  inbound_communication_summary?: {
-    version: number;
-    window: {
-      from: string;
-      to: string;
-      days: number;
-    };
-    totals: {
-      event_count: number;
-      signal_count: number;
-      safety_event_count: number;
-      medication_stock_event_count: number;
-      schedule_event_count: number;
-      report_event_count: number;
-      urgent_signal_count: number;
-      truncated: boolean;
-    };
-    latest_received_at: string | null;
-    event_type_counts: Array<{ event_type: string; label: string; count: number }>;
-    signal_domain_counts: Array<{ signal_domain: string; label: string; count: number }>;
-    signal_type_counts: Array<{ signal_type: string; label: string; count: number }>;
-    source_channel_counts: Array<{ source_channel: string; label: string; count: number }>;
-    recent_events: Array<{
-      received_at: string;
-      event_type: string;
-      event_type_label: string;
-      source_channel: string;
-      source_channel_label: string;
-      sender_role: string;
-      sender_role_label: string;
-      flags: {
-        medication_stock: boolean;
-        patient_safety: boolean;
-        schedule: boolean;
-        report: boolean;
-      };
-      signal_domains: Array<{ signal_domain: string; label: string }>;
-      signal_types: Array<{ signal_type: string; label: string }>;
-    }>;
-  };
-  shared_summary?: {
-    headline: string;
-    bullets: string[];
-    key_medications: string[];
-    next_visit_date: string | null;
-  };
-  scope: Record<string, boolean>;
-  expires_at: string;
-};
+import {
+  sharedViewerResponseSchema,
+  type SharedViewerResponse,
+} from './shared-viewer-response-schema';
 
 type SelfReportSubmitPayload = {
   reported_by_name: string;
@@ -334,7 +243,10 @@ export function SharedViewerContent({ token }: { token: string }) {
         headers: { 'x-otp': activeOtp },
       });
 
-      return readApiJson<{ data: ExternalPayload }>(response, '共有情報の取得に失敗しました');
+      return readApiJson<SharedViewerResponse>(response, {
+        fallbackMessage: '共有情報の取得に失敗しました',
+        schema: sharedViewerResponseSchema,
+      });
     },
   });
 

@@ -39,10 +39,16 @@ function createSharedViewerPayload() {
         archive: { status: 'active', archived: false, archived_at: null },
       },
       scope: {
-        self_report_history: true,
+        allergy_info: true,
       },
       expires_at: '2026-06-18T09:00:00.000Z',
       self_report_history: [],
+      shared_summary: {
+        headline: '共有情報',
+        bullets: [],
+        key_medications: [],
+        next_visit_date: null,
+      },
     },
   };
 }
@@ -115,6 +121,12 @@ describe('SharedViewerContent self report', () => {
               },
               expires_at: '2026-06-18T09:00:00.000Z',
               self_report_history: [],
+              shared_summary: {
+                headline: '共有情報',
+                bullets: [],
+                key_medications: [],
+                next_visit_date: null,
+              },
               inbound_communication_summary: {
                 version: 1,
                 window: {
@@ -141,7 +153,7 @@ describe('SharedViewerContent self report', () => {
                   { signal_domain: 'urgent', label: '至急', count: 1 },
                 ],
                 signal_type_counts: [
-                  { signal_type: 'report_inclusion_candidate', label: '報告書候補', count: 1 },
+                  { signal_type: 'report_inclusion_candidate', label: '報告書候補', count: 2 },
                 ],
                 source_channel_counts: [{ source_channel: 'mcs', label: 'MCS', count: 1 }],
                 recent_events: [
