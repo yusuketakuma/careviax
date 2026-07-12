@@ -51,6 +51,33 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZINTERVENTIONSTRICT medication intervention readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Medication Intervention Panelの患者/服薬課題別GETとPOST結果readerはcompile-time castだけで、別患者/別課題、
+    重複identity、reverse order、invalid type/date、実施前の作成日時、silent 50件truncationを成功扱いし得た。
+    既存issue-filter consumer fixtureも要求`issue_1`に対して`issue_id: null`というprovider不整合を含んでいた。
+  - implementation / medication-safety boundary:
+    Shared intervention item/list/create schemasを追加し、requested patient/issue scope、identity一意、newest-first、
+    bounded text、strict type、offset timestamps、created>=performed、complete pageを検証。Provider-only org/update fieldsを
+    state前にstripし、別scopeのPOST結果ではdialog/state更新へ進まない回帰を追加した。Request payload、outcome更新、
+    provider、assignment/auth/tenant/RLS/audit/DB/UIは変更していない。非visual parser/medication-safety境界のため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/lib/interventions/response-schema.ts`, `src/lib/interventions/response-schema.test.ts`,
+    `src/components/features/medications/intervention-panel.tsx`,
+    `src/components/features/medications/intervention-panel.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/GET/PATCH provider Vitest passed 4 files / 41 tests. Exact ESLint, Prettier, aggregate
+    typecheck, 8GB no-unused typecheck, client schema (258 backed / 105 allowlisted / 27 files), frontend contract,
+    module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build was NOT_EXECUTED
+    because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated cache was not
+    deleted or modified.
+  - security / performance / remaining:
+    Cross-patient/cross-issue, duplicate/reordered, malformed, and incomplete intervention payloads now fail closed.
+    Network/DB query count, mutation payload, assignment/auth/tenant/RLS/audit, render behavior, and dependencies are
+    unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZSTOCKSUMMARYSTRICT patient medication-stock summary reader (VERIFY_REQUIRED, 2026-07-13; implementation `fba648153`, ledger `619d3153b`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Visit Medication Stock Summary GET readerはcompile-time castだけで、別患者item、重複identity、request limit drift、

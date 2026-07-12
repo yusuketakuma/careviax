@@ -157,12 +157,6 @@
       }
     },
     {
-      "path": "src/components/features/medications/intervention-panel.tsx",
-      "counts": {
-        "stringFallback": 2
-      }
-    },
-    {
       "path": "src/components/features/patients/patient-form.tsx",
       "counts": {
         "stringFallback": 6

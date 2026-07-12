@@ -53,7 +53,7 @@ describe('InterventionPanel new intervention form', () => {
   it('loads interventions from the current data envelope', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({
-        data: [buildIntervention({ description: '服薬支援を実施' })],
+        data: [buildIntervention({ issue_id: 'issue_1', description: '服薬支援を実施' })],
         meta: {
           limit: 50,
           has_more: false,
@@ -69,6 +69,20 @@ describe('InterventionPanel new intervention form', () => {
     });
     expect(screen.queryByText('介入記録はありません。')).toBeNull();
     expect(fetch).toHaveBeenCalledWith('/api/interventions?patient_id=patient_1&issue_id=issue_1');
+  });
+
+  it('fails closed when the list contains an intervention for another patient', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        data: [buildIntervention({ patient_id: 'patient_2' })],
+        meta: { limit: 50, has_more: false, next_cursor: null },
+      }),
+    );
+
+    render(<InterventionPanel patientId="patient_1" />);
+
+    expect(await screen.findByText('介入記録の読み込みに失敗しました。')).toBeTruthy();
+    expect(screen.queryByText('用量を減量')).toBeNull();
   });
 
   it('shows the intervention type label, not the raw enum, in the closed select trigger', async () => {
@@ -134,6 +148,30 @@ describe('InterventionPanel new intervention form', () => {
       expect(screen.getByText('作成に失敗しました')).toBeTruthy();
     });
     expect(screen.queryByText('介入記録の作成権限がありません')).toBeNull();
+  });
+
+  it('rejects a successful create response for another medication issue', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ data: buildIntervention({ issue_id: 'issue_2' }) }, 201),
+    );
+
+    render(
+      <InterventionPanel
+        patientId="patient_1"
+        issueId="issue_1"
+        initialInterventions={[buildIntervention({ issue_id: 'issue_1' })]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '介入記録' }));
+    await screen.findByRole('heading', { name: '介入記録の追加' });
+    fireEvent.change(screen.getByLabelText('介入内容'), {
+      target: { value: '服薬支援を実施' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '追加' }));
+
+    expect(await screen.findByText('作成に失敗しました')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '介入記録の追加' })).toBeTruthy();
+    expect(screen.getByText('用量を減量')).toBeTruthy();
   });
 
   it('uses safe recovery copy for failed intervention outcome save responses', async () => {
