@@ -51,6 +51,35 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZREPORTDETAILSTRICT care-report detail readers (VERIFY_REQUIRED, 2026-07-13; implementation ready; shared clean-capacity build pending).
+  - current task / root cause:
+    Care Report detail GETとexternal-professional suggestions GET readersはcompile-time castだけで、別report/patient、
+    malformed status/date/archive/delivery/contact、権限とcontent/pdf/patient/contact visibilityの不整合、重複suggestionを
+    成功扱いし、報告本文・患者情報・送付先連絡先を含むPHI/PII-bearing stateへ流し得た。Provider-only source IDs、
+    baseline、contact reliabilityもquery cacheへ保持していた。
+  - implementation / report safety boundary:
+    Requested report準拠schemaとsuggestions schemaを追加し、identity・bounds・権限別visibility・delivery/support relationを
+    検証。`visit_record_id`、`template_id`、`intake_baseline_context`、contact reliabilityを検証後にprojectionから除去した。
+    権限なし応答の`recipient_contact: null`をconsumer型へ同期し、resend formは空文字へ安全変換する。Report generation/edit/
+    send、provider query、assignment/auth/tenant/audit/DB/UIは変更していない。非visual parser/PHI境界のため`gpt-image-2`は
+    使用していない。
+  - files:
+    `src/app/(dashboard)/reports/[id]/report-detail-response-schema.ts`,
+    `src/app/(dashboard)/reports/[id]/report-detail-response-schema.test.ts`,
+    `src/app/(dashboard)/reports/[id]/page.tsx`,
+    `src/app/(dashboard)/reports/[id]/page.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/care-report provider/suggestion provider Vitest passed 4 files / 83 tests. Exact zero-warning
+    ESLint, focused Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (285 backed / 78 allowlisted /
+    16 files), module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build remains
+    NOT_EXECUTED because the shared machine has only about 4.3 GiB free while `.next` consumes 16 GiB.
+  - security / performance / remaining:
+    Cross-report/cross-patient and permission-inconsistent payloads now fail closed before PHI/PII-bearing state is updated;
+    unused provider metadata no longer enters client cache and the file's allowlist entry is removed. Network/DB calls,
+    writes, rendering, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZWORKFLOWSTRICT workflow dashboard reader (VERIFY_REQUIRED, 2026-07-13; implementation `ab8147fa2`; shared clean-capacity build pending).
   - current task / root cause:
     Workflow Dashboardのfull GET readerはcompile-time castだけで、約30 sectionの欠損/未知field、不正enum/count/date/

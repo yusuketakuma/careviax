@@ -217,7 +217,7 @@ function sendMutationInput<T>(request: T) {
   return { request, idempotencyKey: 'care-report-send:test-key' };
 }
 
-function mockReport() {
+function mockReport(overrides: Record<string, unknown> = {}) {
   return {
     id: 'report_1',
     patient_id: 'patient_1',
@@ -251,6 +251,18 @@ function mockReport() {
       can_view_patient: true,
       can_view_related_requests: true,
     },
+    ...overrides,
+  };
+}
+
+function mockReportProvider(overrides: Record<string, unknown> = {}) {
+  return {
+    ...mockReport(),
+    visit_record_id: 'visit_record_1',
+    template_id: null,
+    intake_baseline_context: null,
+    external_professional_suggestions: [],
+    ...overrides,
   };
 }
 
@@ -1002,7 +1014,7 @@ describe('ReportDetailPage send safety dialog', () => {
     });
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
       async () =>
-        new Response(JSON.stringify({ data: mockReport() }), {
+        new Response(JSON.stringify({ data: mockReportProvider({ id: HOSTILE_REPORT_ID }) }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),

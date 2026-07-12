@@ -67,6 +67,10 @@ import type {
 } from '@/types/care-report-content';
 import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 import { ReportAiDraftReview } from './report-ai-draft-review';
+import {
+  buildCareReportDetailResponseSchema,
+  externalProfessionalSuggestionsResponseSchema,
+} from './report-detail-response-schema';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
 import {
@@ -90,7 +94,7 @@ type DeliveryRecord = {
   id: string;
   channel: string;
   recipient_name: string;
-  recipient_contact: string;
+  recipient_contact: string | null;
   status: string;
   sent_at: string | null;
   created_at: string;
@@ -131,7 +135,7 @@ const REPORT_ACTION_FAILURES = {
   { event: string; code: string; title: string; description: string; retryLabel: string }
 >;
 
-type CareReport = {
+export type CareReport = {
   id: string;
   patient_id: string;
   case_id?: string | null;
@@ -385,12 +389,12 @@ function buildSendFormFromDeliveryRecord(
   return {
     channel: isCareReportDirectSendChannel(delivery.channel) ? delivery.channel : 'email',
     recipient_name: delivery.recipient_name,
-    recipient_contact: delivery.recipient_contact,
+    recipient_contact: delivery.recipient_contact ?? '',
     recipient_role: inferCareReportTargetRole(reportType),
   };
 }
 
-type ExternalProfessionalSuggestion = {
+export type ExternalProfessionalSuggestion = {
   id: string;
   name: string;
   profession_type: string;
@@ -662,7 +666,10 @@ export default function ReportDetailPage() {
       const res = await fetch(buildCareReportApiPath(id), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: CareReport }>(res, '報告書の取得に失敗しました');
+      return readApiJson<{ data: CareReport }>(res, {
+        fallbackMessage: '報告書の取得に失敗しました',
+        schema: buildCareReportDetailResponseSchema(id),
+      });
     },
     enabled: !!orgId && !!id,
   });
@@ -688,10 +695,10 @@ export default function ReportDetailPage() {
       const res = await fetch(`/api/external-professionals/suggestions?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: ExternalProfessionalSuggestion[] }>(
-        res,
-        '他職種候補の取得に失敗しました',
-      );
+      return readApiJson<{ data: ExternalProfessionalSuggestion[] }>(res, {
+        fallbackMessage: '他職種候補の取得に失敗しました',
+        schema: externalProfessionalSuggestionsResponseSchema,
+      });
     },
     enabled: !!orgId && !!report?.patient_id && canSendReportForSupportQuery,
   });
