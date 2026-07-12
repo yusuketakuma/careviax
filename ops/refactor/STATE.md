@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZEXTPROFREMAINDER external-professional facility/mutation readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, ledger pending; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZEXTPROFREMAINDER external-professional facility/mutation readers (VERIFY_REQUIRED, 2026-07-13; implementation `66ae81eed`, ledger pending; shared clean-capacity build pending).
   - current task / root cause:
     Admin External Professionalsでは主要listとlinked patientsはschema化済みだったが、facility optionsとsave/delete
     の3 readersがcompile-time castを残していた。施設providerの余分なfields、legacy root、duplicate/empty facility
