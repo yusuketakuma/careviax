@@ -46709,3 +46709,9 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   this is a non-visual parser, identity, pagination, and cache-minimization repair covered at direct query-function
   and provider boundaries. Rollback is the four schemas, reader adapters, bounded candidate helper, regressions,
   inferred display types, and client-schema ratchet hunk.
+- commit / push:
+  Commit `84063b4fa` (`fix(API-CONTRACT-001): validate drug detail alternatives`) contains only the drug detail and
+  alternatives schemas, four reader adapters, bounded candidate helper, inferred display types, regressions,
+  client-schema ratchet, Plans, and this ledger entry. It was pushed to
+  `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
+  were excluded, and the feature branch does not match the `main`-only production deploy trigger.
