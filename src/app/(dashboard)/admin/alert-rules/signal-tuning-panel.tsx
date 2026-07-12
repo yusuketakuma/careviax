@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
@@ -37,15 +38,120 @@ const TAG_TONE_CLASSES: Record<string, string> = {
   blue: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
 };
 
-type DrugAlertRulesResponse = {
-  data: SignalTuningRule[];
-  meta: {
-    total_count: number;
-    visible_count: number;
-    hidden_count: number;
-    truncated: boolean;
-  };
-};
+const drugAlertTypeSchema = z.enum([
+  'interaction',
+  'duplicate',
+  'allergy_cross',
+  'renal_dose',
+  'pim_elderly',
+  'high_risk',
+  'narcotic',
+  'max_days',
+]);
+
+const signalTuningRulePayloadSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    org_id: z.string().trim().min(1).nullable(),
+    alert_type: drugAlertTypeSchema,
+    severity: z.enum(['critical', 'warning', 'info']),
+    is_active: z.boolean(),
+  })
+  .strip();
+
+function buildSignalTuningRulesResponseSchema(orgId: string) {
+  return z
+    .object({
+      data: z.array(signalTuningRulePayloadSchema),
+      meta: z
+        .object({
+          total_count: z.number().int().nonnegative(),
+          visible_count: z.number().int().nonnegative(),
+          hidden_count: z.number().int().nonnegative(),
+          truncated: z.boolean(),
+          count_basis: z.literal('drug_alert_rules'),
+          filters_applied: z.object({ alert_type: z.null() }).strict(),
+          limit: z.number().int().positive().max(500),
+        })
+        .strict(),
+    })
+    .strict()
+    .superRefine((payload, context) => {
+      const ids = new Set<string>();
+      for (const [index, rule] of payload.data.entries()) {
+        if (ids.has(rule.id)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['data', index, 'id'],
+            message: 'Duplicate drug alert rule id',
+          });
+        }
+        ids.add(rule.id);
+        if (rule.org_id !== null && rule.org_id !== orgId) {
+          context.addIssue({
+            code: 'custom',
+            path: ['data', index, 'org_id'],
+            message: 'Drug alert rule is outside the active organization',
+          });
+        }
+      }
+      const meta = payload.meta;
+      if (
+        meta.visible_count !== payload.data.length ||
+        meta.total_count !== meta.visible_count + meta.hidden_count ||
+        meta.truncated !== meta.hidden_count > 0 ||
+        meta.visible_count > meta.limit
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['meta'],
+          message: 'Drug alert rule list counts are inconsistent',
+        });
+      }
+    })
+    .transform(({ data, meta }) => ({
+      data: data.map(
+        ({ id, alert_type, severity, is_active }): SignalTuningRule => ({
+          id,
+          alert_type,
+          severity,
+          is_active,
+        }),
+      ),
+      meta: {
+        visible_count: meta.visible_count,
+        hidden_count: meta.hidden_count,
+        truncated: meta.truncated,
+      },
+    }));
+}
+
+function buildSignalTuningMutationResponseSchema(expected: {
+  orgId: string;
+  ruleId?: string;
+  alertType?: SignalTuningAlertType;
+  isActive: boolean;
+}) {
+  return z
+    .object({ data: signalTuningRulePayloadSchema })
+    .strict()
+    .superRefine(({ data }, context) => {
+      if (
+        data.org_id !== expected.orgId ||
+        data.severity !== 'critical' ||
+        data.is_active !== expected.isActive ||
+        (expected.ruleId !== undefined && data.id !== expected.ruleId) ||
+        (expected.alertType !== undefined && data.alert_type !== expected.alertType)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['data'],
+          message: 'Drug alert rule mutation result does not match the request',
+        });
+      }
+    })
+    .transform(() => undefined);
+}
 
 export function SignalTuningPanel() {
   const orgId = useOrgId();
@@ -55,7 +161,10 @@ export function SignalTuningPanel() {
     queryKey: ['drug-alert-rules', orgId],
     queryFn: async () => {
       const res = await fetch(DRUG_ALERT_RULES_API_PATH, { headers: buildOrgHeaders(orgId) });
-      return readApiJson<DrugAlertRulesResponse>(res, 'アラートルールの取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: 'アラートルールの取得に失敗しました',
+        schema: buildSignalTuningRulesResponseSchema(orgId),
+      });
     },
     enabled: !!orgId,
   });
@@ -98,7 +207,15 @@ export function SignalTuningPanel() {
             is_active: true,
           }),
         });
-        if (!res.ok) throw new Error('表示設定の保存に失敗しました');
+        if (res.status !== 201) throw new Error('表示設定の保存に失敗しました');
+        await readApiJson(res, {
+          fallbackMessage: '表示設定の保存に失敗しました',
+          schema: buildSignalTuningMutationResponseSchema({
+            orgId,
+            alertType,
+            isActive: true,
+          }),
+        });
       }
       // buildDrugAlertRuleApiPath validates before each fetch, so a dot-segment ruleId fails
       // closed before the is_active PATCH side effect.
@@ -108,7 +225,15 @@ export function SignalTuningPanel() {
           headers,
           body: JSON.stringify({ is_active: true }),
         });
-        if (!res.ok) throw new Error('表示設定の保存に失敗しました');
+        if (res.status !== 200) throw new Error('表示設定の保存に失敗しました');
+        await readApiJson(res, {
+          fallbackMessage: '表示設定の保存に失敗しました',
+          schema: buildSignalTuningMutationResponseSchema({
+            orgId,
+            ruleId,
+            isActive: true,
+          }),
+        });
       }
       for (const ruleId of diff.deactivate) {
         const res = await fetch(buildDrugAlertRuleApiPath(ruleId), {
@@ -116,7 +241,15 @@ export function SignalTuningPanel() {
           headers,
           body: JSON.stringify({ is_active: false }),
         });
-        if (!res.ok) throw new Error('表示設定の保存に失敗しました');
+        if (res.status !== 200) throw new Error('表示設定の保存に失敗しました');
+        await readApiJson(res, {
+          fallbackMessage: '表示設定の保存に失敗しました',
+          schema: buildSignalTuningMutationResponseSchema({
+            orgId,
+            ruleId,
+            isActive: false,
+          }),
+        });
       }
     },
     onSuccess: async () => {
@@ -124,7 +257,10 @@ export function SignalTuningPanel() {
       setDesiredOverrides({});
       await queryClient.invalidateQueries({ queryKey: ['drug-alert-rules', orgId] });
     },
-    onError: (error) => toast.error(messageFromError(error, '表示設定の保存に失敗しました')),
+    onError: async (error) => {
+      toast.error(messageFromError(error, '表示設定の保存に失敗しました'));
+      await queryClient.invalidateQueries({ queryKey: ['drug-alert-rules', orgId] });
+    },
   });
 
   const strongItems = SIGNAL_TUNING_ITEMS.filter((item) => desired[item.alertType]);

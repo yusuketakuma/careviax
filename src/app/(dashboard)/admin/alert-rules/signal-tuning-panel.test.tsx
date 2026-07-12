@@ -68,18 +68,42 @@ function stubFetch(
     if (url === '/api/drug-alert-rules' && !init?.method) {
       return new Response(
         JSON.stringify({
-          data: rules,
+          data: rules.map((rule) => ({
+            ...rule,
+            org_id: 'org_1',
+          })),
           meta: {
             total_count: metadata.total_count ?? rules.length,
             visible_count: metadata.visible_count ?? rules.length,
             hidden_count: metadata.hidden_count ?? 0,
             truncated: metadata.truncated ?? false,
+            count_basis: 'drug_alert_rules',
+            filters_applied: { alert_type: null },
+            limit: 200,
           },
         }),
         { status: 200 },
       );
     }
-    return new Response(JSON.stringify({}), { status: 200 });
+    const body = JSON.parse(String(init?.body ?? '{}')) as {
+      alert_type?: string;
+      severity?: string;
+      is_active?: boolean;
+    };
+    const ruleId = decodeURIComponent(url.split('/').at(-1) ?? 'created_rule');
+    const existingRule = rules.find((rule) => rule.id === ruleId);
+    return new Response(
+      JSON.stringify({
+        data: {
+          id: init?.method === 'POST' ? `created_${body.alert_type}` : ruleId,
+          org_id: 'org_1',
+          alert_type: body.alert_type ?? existingRule?.alert_type,
+          severity: body.severity ?? existingRule?.severity,
+          is_active: body.is_active ?? existingRule?.is_active,
+        },
+      }),
+      { status: init?.method === 'POST' ? 201 : 200 },
+    );
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
@@ -275,6 +299,155 @@ describe('SignalTuningPanel', () => {
         (init as RequestInit | undefined)?.method === 'POST',
     );
     expect(postCalls).toHaveLength(0);
+  });
+
+  it('rejects a successful list whose visible count does not match the returned rules', async () => {
+    stubFetch([{ id: 'high_1', alert_type: 'high_risk', severity: 'critical', is_active: true }], {
+      total_count: 2,
+      visible_count: 2,
+    });
+    renderPanel();
+
+    expect(await screen.findByText('表示設定を取得できませんでした')).toBeTruthy();
+    expect(screen.queryByTestId('signal-tuning-panel')).toBeNull();
+  });
+
+  it('rejects a successful list containing another organization rule', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'foreign_rule',
+                  org_id: 'org_other',
+                  alert_type: 'renal_dose',
+                  severity: 'critical',
+                  is_active: true,
+                },
+              ],
+              meta: {
+                total_count: 1,
+                visible_count: 1,
+                hidden_count: 0,
+                truncated: false,
+                count_basis: 'drug_alert_rules',
+                filters_applied: { alert_type: null },
+                limit: 200,
+              },
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    renderPanel();
+
+    expect(await screen.findByText('表示設定を取得できませんでした')).toBeTruthy();
+    expect(screen.queryByTestId('signal-tuning-panel')).toBeNull();
+  });
+
+  it('rejects a successful create response for a different alert type and refetches saved state', async () => {
+    let getCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/drug-alert-rules' && !init?.method) {
+        getCount += 1;
+        return new Response(
+          JSON.stringify({
+            data: [],
+            meta: {
+              total_count: 0,
+              visible_count: 0,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'drug_alert_rules',
+              filters_applied: { alert_type: null },
+              limit: 200,
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          data: {
+            id: 'created_wrong',
+            org_id: 'org_1',
+            alert_type: 'interaction',
+            severity: 'critical',
+            is_active: true,
+          },
+        }),
+        { status: 201 },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+
+    await screen.findByText('腎機能に注意');
+    fireEvent.click(toggleButton('腎機能に注意'));
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('表示設定の保存に失敗しました'));
+    expect(toast.success).not.toHaveBeenCalled();
+    await waitFor(() => expect(getCount).toBeGreaterThanOrEqual(2));
+  });
+
+  it('rejects a successful patch response for another rule and refetches saved state', async () => {
+    let getCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/drug-alert-rules' && !init?.method) {
+        getCount += 1;
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'renal_1',
+                org_id: 'org_1',
+                alert_type: 'renal_dose',
+                severity: 'critical',
+                is_active: true,
+              },
+            ],
+            meta: {
+              total_count: 1,
+              visible_count: 1,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'drug_alert_rules',
+              filters_applied: { alert_type: null },
+              limit: 200,
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          data: {
+            id: 'other_rule',
+            org_id: 'org_1',
+            alert_type: 'renal_dose',
+            severity: 'critical',
+            is_active: false,
+          },
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+
+    await waitFor(() => expect(toggleButton('腎機能に注意').textContent).toContain('強く表示'));
+    fireEvent.click(toggleButton('腎機能に注意'));
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('表示設定の保存に失敗しました'));
+    expect(toast.success).not.toHaveBeenCalled();
+    await waitFor(() => expect(getCount).toBeGreaterThanOrEqual(2));
   });
 
   it('shows loading (not the all-standard panel) while orgId is unresolved and the query is disabled', () => {

@@ -6,12 +6,6 @@
   "plannedAction": "Migrate bounded provider/consumer families to exact runtime response schemas.",
   "entries": [
     {
-      "path": "src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/analytics/analytics-content.tsx",
       "counts": {
         "stringFallback": 1

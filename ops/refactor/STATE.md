@@ -46946,3 +46946,30 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   Scoped implementation commit `9b563e6a0` (`fix(API-CONTRACT-001): validate alert rule contracts`) was pushed to
   `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
   remain excluded, and the feature branch does not match the `main`-only production deploy trigger.
+
+## 2026-07-12 API-CONTRACT-001FZSIGNALTUNINGSTRICT — signal-tuning read/write contracts (DONE)
+
+- current task / root cause:
+  The signal-tuning panel compile-time cast its alert-rule list and treated POST/PATCH as successful from HTTP status
+  alone. Inconsistent list counts, another organization's rule, a create result for another alert type, or a PATCH
+  result for another rule/state could therefore drive the safety-emphasis preview or success toast. A malformed
+  response after a completed side effect also left the query cache stale because only successful mutations refetched.
+- implementation / verification:
+  Added consumed runtime schemas for the GET plus create/activate/deactivate responses. GET validates the complete
+  count/filter/limit envelope, unique IDs, active-org/global scope, enums, and exact visible/hidden/total/truncated
+  arithmetic, then retains only fields used by the signal state. Mutation parsing requires the provider's exact 201
+  create or 200 update status and checks org, critical severity, requested active state, created alert type, and
+  updated rule ID before discarding the response. Failure now invalidates the alert-rule query so a possibly completed
+  side effect is reconciled before another edit. Four regressions failed before implementation and passed afterward;
+  consumer, shared logic, and GET/POST/PATCH providers passed 4 files / 34 tests. Aggregate and 8 GB no-unused
+  typechecks passed. Exact ESLint/Prettier and client-schema/diff gates passed. The client-schema ratchet improved from
+  154 schema-backed / 216 allowlisted schema-less / 90 files to 158 / 215 / 89. Full build was not repeated after the
+  existing compile-stage memory limitation; both typecheck gates cover the changed client boundary. No provider, DB,
+  auth/authz, tenant, audit, clinical-rule definition, mutation payload, or visual layout changed. Browser and image
+  generation were omitted because this is a non-visual fail-closed response-contract and cache-reconciliation repair
+  covered at consumer, shared-logic, and provider boundaries. Rollback is the two schema builders, four reader
+  adapters, failure invalidation, four regressions, fixture synchronization, and client-schema ratchet hunk.
+- commit / push:
+  Pending scoped commit and push to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes
+  and untracked personal artifacts remain excluded, and the feature branch does not match the `main`-only production
+  deploy trigger.
