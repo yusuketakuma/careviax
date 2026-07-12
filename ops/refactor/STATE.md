@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZVISITPREPSTRICT today visit preparation board reader (VERIFY_REQUIRED, 2026-07-12; implementation `debbdb0aa`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZVISITPREPSTRICT today visit preparation board reader (VERIFY_REQUIRED, 2026-07-12; implementation `debbdb0aa`, ledger `13898b8e0`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     今日の訪問準備board readerがcompile-time `VisitPreparationBoardResponse` castだけを信頼し、legacy/mixed
     root、不正datetime/enum/negative count、card/check/aggregate不整合を訪問前の準備判断へ流し得た。
