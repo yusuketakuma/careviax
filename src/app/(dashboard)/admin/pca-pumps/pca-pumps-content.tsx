@@ -33,7 +33,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { formatDateKey } from '@/lib/date-key';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   buildPcaPumpApiPath,
@@ -42,6 +42,11 @@ import {
   buildPcaPumpsApiPath,
 } from '@/lib/pca-pumps/api-paths';
 import { PRESCRIBER_INSTITUTIONS_API_PATH } from '@/lib/prescriber-institutions/api-paths';
+import {
+  buildPcaPumpRentalsResponseSchema,
+  buildPcaPumpsResponseSchema,
+  pcaPumpInstitutionOptionsResponseSchema,
+} from '@/lib/pca-pumps/response-schema';
 import { isValidDateKey } from '@/lib/validations/date-key';
 
 type PcaPumpStatus = 'available' | 'rented' | 'maintenance' | 'retired';
@@ -130,9 +135,6 @@ type PcaPumpRental = {
     fax: string | null;
   };
 };
-
-type PcaPumpMutationResponse = { data: PcaPump };
-type PcaPumpRentalMutationResponse = { data: PcaPumpRental };
 
 type PumpFormState = {
   asset_code: string;
@@ -474,7 +476,10 @@ export function PcaPumpsContent() {
       const response = await fetch(buildPcaPumpsApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PcaPump[] }>(response, 'PCAポンプ台帳の取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: 'PCAポンプ台帳の取得に失敗しました',
+        schema: buildPcaPumpsResponseSchema(Boolean(debouncedQuery.trim())),
+      });
     },
     enabled: !!orgId,
   });
@@ -485,10 +490,10 @@ export function PcaPumpsContent() {
       const response = await fetch(buildPcaPumpRentalsApiPath({ status: 'open' }), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PcaPumpRental[] }>(
-        response,
-        'PCAポンプレンタル履歴の取得に失敗しました',
-      );
+      return readApiJson(response, {
+        fallbackMessage: 'PCAポンプレンタル履歴の取得に失敗しました',
+        schema: buildPcaPumpRentalsResponseSchema({ statuses: ['scheduled', 'active', 'overdue'] }),
+      });
     },
     enabled: !!orgId,
   });
@@ -502,10 +507,13 @@ export function PcaPumpsContent() {
           headers: buildOrgHeaders(orgId),
         },
       );
-      return readApiJson<{ data: PcaPumpRental[] }>(
-        response,
-        'PCAポンプ返却検品待ちの取得に失敗しました',
-      );
+      return readApiJson(response, {
+        fallbackMessage: 'PCAポンプ返却検品待ちの取得に失敗しました',
+        schema: buildPcaPumpRentalsResponseSchema({
+          statuses: ['returned'],
+          inspectionStatus: 'pending',
+        }),
+      });
     },
     enabled: !!orgId,
   });
@@ -516,7 +524,10 @@ export function PcaPumpsContent() {
       const response = await fetch(PRESCRIBER_INSTITUTIONS_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: Institution[] }>(response, '医療機関マスターの取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '医療機関マスターの取得に失敗しました',
+        schema: pcaPumpInstitutionOptionsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -594,7 +605,7 @@ export function PcaPumpsContent() {
           notes: toNullableString(pumpForm.notes),
         }),
       });
-      return readApiJson<PcaPumpMutationResponse>(response, '保存に失敗しました');
+      return readApiAcknowledgement(response, '保存に失敗しました');
     },
     onSuccess: async () => {
       toast.success('PCAポンプを登録しました');
@@ -627,7 +638,7 @@ export function PcaPumpsContent() {
           notes: toNullableString(rentalForm.notes),
         }),
       });
-      return readApiJson<PcaPumpRentalMutationResponse>(response, '貸出登録に失敗しました');
+      return readApiAcknowledgement(response, '貸出登録に失敗しました');
     },
     onSuccess: async () => {
       toast.success('PCAポンプの貸出を登録しました');
@@ -650,7 +661,7 @@ export function PcaPumpsContent() {
           returned_at: status === 'returned' ? todayDateKey() : null,
         }),
       });
-      return readApiJson<PcaPumpRentalMutationResponse>(response, '更新に失敗しました');
+      return readApiAcknowledgement(response, '更新に失敗しました');
     },
     onSuccess: async (_payload, variables) => {
       toast.success(variables.status === 'returned' ? '返却済みにしました' : '貸出を取消しました');
@@ -683,7 +694,7 @@ export function PcaPumpsContent() {
           }),
         ),
       });
-      return readApiJson<PcaPumpMutationResponse>(response, '状態更新に失敗しました');
+      return readApiAcknowledgement(response, '状態更新に失敗しました');
     },
     onSuccess: async () => {
       toast.success('PCAポンプの状態を更新しました');
@@ -707,7 +718,7 @@ export function PcaPumpsContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(buildPcaReturnInspectionPayload(inspectionForm)),
       });
-      return readApiJson<PcaPumpRentalMutationResponse>(response, '返却検品の保存に失敗しました');
+      return readApiAcknowledgement(response, '返却検品の保存に失敗しました');
     },
     onSuccess: async () => {
       const payload = buildPcaReturnInspectionPayload(inspectionForm);

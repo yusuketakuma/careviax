@@ -6,12 +6,6 @@
   "plannedAction": "Migrate bounded provider/consumer families to exact runtime response schemas.",
   "entries": [
     {
-      "path": "src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx",
-      "counts": {
-        "stringFallback": 9
-      }
-    },
-    {
       "path": "src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx",
       "counts": {
         "stringFallback": 5

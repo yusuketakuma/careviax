@@ -51,6 +51,36 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZPCAPUMPSTRICT PCA pump/rental/institution readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, ledger pending; shared clean-capacity build pending).
+  - current task / root cause:
+    Admin PCA Pumpsのpump list、open/pending-inspection rentals、institution options 4 GETとpump/rental create/update/
+    inspection 5 mutation readersがcompile-time castを残し、lifecycle/date/relation/inspection driftを医療機器stateへ
+    流し得た。Mutation payloadは全て未使用なのにlist DTOを仮定し、institution queryは住所・連絡先・notes・処方
+    集計等をoption cacheへ保持していた。
+  - implementation / medical-device boundary:
+    Shared pump/rental/institution schemasを追加し、pump statusとopen rental一対一、maintenance newest-first、
+    asset/identity一意、rental date/status/inspection整合、inspection actor+timestamp、request status/filter一致を検証。
+    Institutionはid/name/codeへstrip。5 mutationはproviderが返す詳細形の差異を固定せず、未使用payloadをshared strict
+    acknowledgementへ収束した。患者/貸出割当、機器状態遷移、返却検品、保守event、楽観lock、audit/provider/UIは
+    変更していない。非visual parser/medical-device safety境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/pca-pumps/response-schema.ts`,
+    `src/lib/pca-pumps/response-schema.test.ts`,
+    `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`,
+    `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/providers Vitest passed 6 files / 87 tests. Exact ESLint with `--max-warnings=0`,
+    Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (254 backed / 109 allowlisted / 30 files),
+    frontend contract, module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build
+    was NOT_EXECUTED because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated
+    cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed medical-device/rental/inspection data now fails closed; unused institution PII/usage metadata is not
+    cached. Request/query count, DB/provider work, patient/institution assignment, pump state transitions, inspection,
+    maintenance, optimistic concurrency, audit, auth/tenant, render behavior, and dependencies are unchanged. A
+    clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZBILLRULEREADSTRICT billing-rule list/sync/create/update readers (VERIFY_REQUIRED, 2026-07-13; implementation `768b8083c`, ledger `086602ff5`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Billing Rulesのlist、SSOT sync、create、update計4 readersはcompile-time castだけで、legacy/extra root、
