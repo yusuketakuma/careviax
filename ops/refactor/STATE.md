@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZSHIFTREADSTRICT admin shift/support readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, ledger pending; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZSHIFTREADSTRICT admin shift/support readers (VERIFY_REQUIRED, 2026-07-13; implementation `a6b7d2257`, ledger pending; shared clean-capacity build pending).
   - current task / root cause:
     Admin Shiftsのsite/member、当月/前月shift、templates、apply result計6 readersはcompile-time castを残し、legacy
     root、month drift、duplicate user-date/template、relation ID drift、不正time range、負applied countを勤務stateへ
