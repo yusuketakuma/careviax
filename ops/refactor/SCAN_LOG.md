@@ -63,3 +63,20 @@
 - Landed: implementation commit `053b48c74` passed 1 file / 6 focused tests, all contract/type/lint/diff gates, and
   serialized Next build; client-schema inventory moved to 165 schema-backed / 208 allowlisted / 84 files. Next scan:
   remaining API-CONTRACT allowlist entries and patients board cursor residual.
+
+## 2026-07-12 — API-CONTRACT-001FZNOTIFICATIONSREADSTRICT selection
+
+- Scope: client-schema allowlist, `src/app/(dashboard)/notifications/notifications-content.tsx`,
+  `/api/notifications`, notification stream types, and consumer/provider tests.
+- Candidate ranking: selected the one-reader notification inbox as a disjoint bounded contract slice; deferred patient,
+  billing, inventory, and multi-reader candidates with broader controlled-data impact.
+- Finding: the provider returns `{ data, meta.limit, meta.has_more, meta.next_cursor }`, while the consumer uses a
+  data-only compile-time cast and can route directly from persisted notification links.
+- Baseline: focused notifications consumer/provider suites pass 2 files / 24 tests; client-schema is 165 schema-backed
+  / 208 allowlisted / 84 files.
+- Planned fix: strict list/meta schema, identity/type/content/date/read/link checks, provider-field stripping, cursor
+  relation invariants, malformed/legacy/unsafe-link regressions, and one allowlist ratchet removal. PATCH, SSE-safe
+  redaction, org authorization, provider query, and visual semantics stay fixed.
+- Implemented/validated: focused consumer/provider suites pass 2 files / 29 tests; client-schema inventory moved to 166
+  schema-backed / 207 allowlisted / 83 files; all static/type/lint/diff gates and serialized Next build passed. Scoped
+  commit/push remains pending.

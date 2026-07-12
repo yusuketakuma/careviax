@@ -23,6 +23,11 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { NOTIFICATIONS_API_PATH, buildNotificationsApiPath } from '@/lib/notifications/api-paths';
+import {
+  notificationsResponseSchema,
+  type NotificationItem,
+  type NotificationsResponse,
+} from '@/lib/notifications/response-schema';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 import { messageFromError } from '@/lib/utils/error-message';
 import { clientLog } from '@/lib/utils/client-log';
@@ -34,17 +39,6 @@ import type { NotificationCategoryFilter } from './notifications-query-state';
  * バッジ+タイトル+「患者名様:補足」+「開く」のカードリスト。
  * 「未同期」はサーバー通知ではなく offline-store からの合成行。
  */
-
-type NotificationItem = {
-  id: string;
-  type: string;
-  event_type?: string | null;
-  title?: string | null;
-  message: string;
-  link?: string | null;
-  created_at: string;
-  is_read: boolean;
-};
 
 const CATEGORY_FILTERS: NotificationCategoryFilter[] = [
   'all',
@@ -139,23 +133,31 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
       const nextNotifications = normalizeNotificationStreamPayload(event);
       if (nextNotifications.length === 0) return;
 
-      queryClient.setQueryData<{ data: NotificationItem[] }>(
+      queryClient.setQueryData<NotificationsResponse>(
         ['notifications', 'inbox', orgId],
-        (current) => ({
-          data: mergeNotificationItems(current?.data ?? [], nextNotifications),
-        }),
+        (current) => {
+          const data = mergeNotificationItems(current?.data ?? [], nextNotifications);
+          if (current) return { ...current, data };
+          return {
+            data,
+            meta: { limit: 50, has_more: false, next_cursor: null },
+          };
+        },
       );
     },
     [orgId, queryClient],
   );
 
-  const { data, isLoading, isError, refetch } = useRealtimeQuery<{ data: NotificationItem[] }>({
+  const { data, isLoading, isError, refetch } = useRealtimeQuery<NotificationsResponse>({
     queryKey: ['notifications', 'inbox', orgId],
     queryFn: async () => {
       const res = await fetch(buildNotificationsApiPath(new URLSearchParams({ limit: '50' })), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: NotificationItem[] }>(res, 'お知らせの取得に失敗しました');
+      return readApiJson<NotificationsResponse>(res, {
+        fallbackMessage: 'お知らせの取得に失敗しました',
+        schema: notificationsResponseSchema,
+      });
     },
     enabled: Boolean(orgId),
     fallbackRefetchInterval: 30_000,

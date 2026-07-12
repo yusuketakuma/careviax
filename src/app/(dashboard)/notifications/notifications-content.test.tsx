@@ -116,7 +116,10 @@ describe('NotificationsContent', () => {
       ) => selector({ pendingSyncCount: 2, refreshSyncCount: refreshSyncCountMock }),
     );
     useQueryMock.mockReturnValue({
-      data: { data: NOTIFICATIONS },
+      data: {
+        data: NOTIFICATIONS,
+        meta: { limit: 50, has_more: false, next_cursor: null },
+      },
       isLoading: false,
     });
   });
@@ -238,6 +241,67 @@ describe('NotificationsContent', () => {
       headers: { 'x-test-org-id': 'org_1' },
     });
     expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+  });
+
+  it('strips provider-only notification fields before the inbox query state', async () => {
+    const notificationsPayload = {
+      data: [
+        {
+          ...NOTIFICATIONS[0],
+          org_id: 'org_1',
+          user_id: 'user_1',
+          metadata: { patient_id: 'patient_1' },
+          read_at: null,
+          updated_at: '2026-06-10T08:00:00.000Z',
+        },
+      ],
+      meta: { limit: 50, has_more: false, next_cursor: null },
+    };
+    stubJsonFetch(notificationsPayload);
+
+    render(<NotificationsContent />);
+
+    const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
+      | { queryFn: () => Promise<unknown> }
+      | undefined;
+    await expect(queryOptions?.queryFn()).resolves.toEqual({
+      data: [NOTIFICATIONS[0]],
+      meta: { limit: 50, has_more: false, next_cursor: null },
+    });
+  });
+
+  it.each([
+    ['legacy data-only envelope', { data: NOTIFICATIONS }],
+    [
+      'duplicate notification identity',
+      {
+        data: [NOTIFICATIONS[0], { ...NOTIFICATIONS[0] }],
+        meta: { limit: 50, has_more: false, next_cursor: null },
+      },
+    ],
+    [
+      'unsafe external link',
+      {
+        data: [{ ...NOTIFICATIONS[0], link: 'https://example.invalid/notification' }],
+        meta: { limit: 50, has_more: false, next_cursor: null },
+      },
+    ],
+    [
+      'truncated page without cursor',
+      {
+        data: NOTIFICATIONS,
+        meta: { limit: NOTIFICATIONS.length, has_more: true, next_cursor: null },
+      },
+    ],
+  ])('fails closed on %s successful list payloads', async (_label, payload) => {
+    stubJsonFetch(payload);
+
+    render(<NotificationsContent />);
+
+    const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
+      | { queryFn: () => Promise<unknown> }
+      | undefined;
+    await expect(queryOptions?.queryFn()).rejects.toThrow('お知らせの取得に失敗しました');
   });
 
   it('marks notifications read through the shared collection path and JSON org headers', async () => {
@@ -366,7 +430,13 @@ describe('NotificationsContent', () => {
       expect.any(Function),
     );
     const updater = setQueryData.mock.calls[0]?.[1] as
-      | ((current: { data: typeof NOTIFICATIONS }) => { data: typeof NOTIFICATIONS })
+      | ((current: {
+          data: typeof NOTIFICATIONS;
+          meta: { limit: number; has_more: boolean; next_cursor: string | null };
+        }) => {
+          data: typeof NOTIFICATIONS;
+          meta: { limit: number; has_more: boolean; next_cursor: string | null };
+        })
       | undefined;
     const currentItems = [
       ...Array.from({ length: 51 }, (_, index) => ({
@@ -382,7 +452,11 @@ describe('NotificationsContent', () => {
         created_at: '2026-06-10T08:30:00.000Z',
       },
     ];
-    const merged = updater?.({ data: currentItems }).data ?? [];
+    const merged =
+      updater?.({
+        data: currentItems,
+        meta: { limit: 50, has_more: true, next_cursor: 'old_0' },
+      }).data ?? [];
     expect(merged).toHaveLength(50);
     expect(merged.slice(0, 3).map((item) => item.id)).toEqual([
       'notification_4',

@@ -75,3 +75,18 @@
 - Rollback: revert the sites response schema, consumer adapter, fixture/regressions, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
 - Push evidence: `47fcaf80f..053b48c74` fast-forward push succeeded; local and remote heads match.
+
+## API-CONTRACT-001FZNOTIFICATIONSREADSTRICT
+
+- Commit Group: `API-CONTRACT-001FZNOTIFICATIONSREADSTRICT`
+- Commit: pending
+- Push Status: NOT_STARTED
+- Branch: `agent/continuous-improvement-20260712`
+- Scope: notifications GET response schema, inbox consumer/realtime envelope, provider-shaped fixtures, regressions, and client-schema allowlist ratchet.
+- Implementation: validate strict `{ data, meta }`, notification identity/type/content/date/read state, internal links, unique identities, cursor relation, and bounded page size; strip provider-only fields while preserving PATCH acknowledgement, SSE-safe redaction, and org/user authorization.
+- FE/BE impact: provider route remains unchanged; `NotificationsContent` rejects malformed, legacy, duplicate, or unsafe-link 2xx payloads before inbox state and navigation are used.
+- DB/auth/tenant/audit impact: no DB, migration, provider, auth/authz, tenant, audit, mutation, or production-data change; authorized notification message content remains available only in the in-app operational surface.
+- Verification: focused 2 files / 29 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and Next build passed; client-schema inventory is 166 schema-backed / 207 allowlisted / 83 files. Build emitted existing CSS optimizer warnings and exited 0.
+- Rollback: revert the notifications response schema, consumer/realtime type adapter, fixtures/regressions, allowlist removal, and ledger entries.
+- Remote: `origin/agent/continuous-improvement-20260712`
+- Push evidence: pending scoped commit.

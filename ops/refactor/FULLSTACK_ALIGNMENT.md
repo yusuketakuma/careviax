@@ -64,3 +64,16 @@
 | Errors / loading / empty    | Existing loading, error/retry, empty, summary, and card rendering remain; malformed/legacy 2xx becomes query error rather than false site state.               |
 | Tests                       | Select-site focused suite: 1 file / 6 tests; static contract gates, typechecks, lint, diff-check, and build passed.                                            |
 | Alignment                   | ALIGNED for this read slice; PUT acknowledgement, provider membership filtering, and visual/navigation semantics intentionally unchanged.                      |
+
+## API-CONTRACT-001FZNOTIFICATIONSREADSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                                            |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Notifications inbox at `/notifications`; `/api/notifications` remains under existing authenticated org/user scope, while PATCH and SSE routes remain unchanged.                              |
+| Frontend state / clients    | `NotificationsContent` uses `readApiJson` with the strict list schema before inbox cards, unread ordering, or link navigation state; realtime updates preserve the response envelope.        |
+| Request / response contract | Provider returns `{ data, meta: { limit, has_more, next_cursor } }`; consumer validates notification identity/type/content/date/read state, internal links, uniqueness, and cursor relation. |
+| Backend / DB                | Existing org/user predicates, bounded cursor query, ordering, no-store handling, notification persistence, and provider route are unchanged.                                                 |
+| Auth / tenant / audit       | Existing authorization and org/user isolation remain; provider-only metadata is stripped from query state and authorized in-app notification detail is not blanket-redacted.                 |
+| Errors / loading / empty    | Existing loading, error/retry, empty, category, unread, and navigation behavior remains; malformed 2xx becomes query error rather than false inbox state.                                    |
+| Tests                       | Notifications consumer/provider suite: 2 files / 29 tests; static contract gates, typechecks, lint, diff-check, and build passed.                                                            |
+| Alignment                   | ALIGNED for this read slice; PATCH acknowledgement, SSE-safe content policy, provider semantics, and visual behavior intentionally unchanged.                                                |

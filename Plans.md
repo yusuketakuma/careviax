@@ -163,7 +163,7 @@
 
 **Current execution slice (2026-07-12)**:
 
-- `API-CONTRACT-001FZSITESELECTREADSTRICT` は landing 済み。次は残存 `API-CONTRACT-001` allowlist と patients board cursor residual を再スキャンする。
+- `API-CONTRACT-001FZNOTIFICATIONSREADSTRICT`: **IN_PROGRESS**。通知一覧 GET の `{ data, meta }` を consumed runtime schema へ接続し、legacy/data-only root、pagination drift、duplicate notification identity、invalid notification fields、unsafe external link を inbox state へ流入させない。Acceptance: (1) consumer が provider current shape の schema-backed reader を使う、(2) notification identity/type/content/date/read/link と cursor relation を検証する、(3) provider-only metadata を query state へ残さず malformed/legacy 2xx を fail-closed、(4) focused tests / typecheck / lint / contract gates を通し scoped commit/push を記録する。既存 PATCH acknowledgement、SSE-safe redaction、org authorization/provider semantics は変更しない。
 
 **Implementation-ready queue — 未実装 / Partial 残スコープのみ**:
 

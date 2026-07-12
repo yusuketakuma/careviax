@@ -47045,6 +47045,41 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZNOTIFICATIONSREADSTRICT — notifications list contract (IN_PROGRESS)
+
+- current task / root cause:
+  The notifications inbox GET consumer still trusts a compile-time `{ data: NotificationItem[] }` cast even though the
+  provider returns `{ data, meta: { limit, has_more, next_cursor } }` and Prisma list rows contain provider-only fields.
+  A legacy/data-only root, pagination drift, duplicate notification identity, invalid notification content/date/read
+  state, or unsafe external link could therefore affect an authorized inbox before its state is used. Existing PATCH
+  acknowledgement, SSE-safe redaction, organization authorization, and provider query semantics are not being changed.
+- baseline:
+  The focused notifications consumer/provider suites pass 2 files / 24 tests before implementation. Current
+  client-schema inventory is 165 schema-backed / 208 allowlisted schema-less / 84 files. The target is one
+  `stringFallback` entry in `src/app/(dashboard)/notifications/notifications-content.tsx`.
+- implementation plan:
+  Add a strict `{ data, meta }` runtime schema with notification identity/type/content/date/read/link checks, cursor
+  relation invariants, and provider-only field stripping; connect the inbox reader and realtime cache type, synchronize
+  provider-shaped fixtures, add legacy/duplicate/unsafe-link regressions, and remove only the notifications allowlist
+  entry. No visual reconstruction or `gpt-image-2` is needed because this is a non-visual notification-data parser and
+  privacy-boundary repair.
+- implementation / validation checkpoint:
+  Added `src/lib/notifications/response-schema.ts`, connected the schema-backed GET reader and typed realtime cache
+  envelope, stripped provider-only fields, synchronized the current `{ data, meta }` fixture, removed the one allowlist
+  entry, and added provider-field, legacy-root, duplicate-identity, unsafe-link, and cursor regressions. Focused
+  notifications consumer/provider suites pass 2 files / 29 tests. Format, API shape, client-schema (166 schema-backed /
+  207 allowlisted / 83 files), frontend contract, PHI log/display, module boundary, Plans, diff-check, aggregate
+  typecheck, 8 GB no-unused typecheck, and lint pass. Lint retains only the two pre-existing unused-parameter warnings
+  in `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  `pnpm build` completed successfully. Next 16.2.9 compiled in 3.8 minutes, TypeScript finished in 58 seconds,
+  311/311 static pages were generated, and route optimization/traces completed. The build emitted the two existing CSS
+  optimizer warnings and exited 0; no ENOSPC warning was emitted in this run. Filesystem usage was 93% / 14 GiB free
+  after the build; no generated-artifact cleanup was performed.
+- next action:
+  Inspect the validated notification-owned diff, stage only this slice and its ledgers, then commit and push it while
+  preserving unrelated harness-memory and personal artifacts.
+
 ## 2026-07-12 API-CONTRACT-001FZSITESELECTREADSTRICT — select-site list contract (DONE)
 
 - current task / root cause:

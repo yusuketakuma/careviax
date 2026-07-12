@@ -12,6 +12,18 @@
 - Browser/E2E: not run; this is a non-visual response-contract slice and no visual behavior changed.
 - Migration/auth/tenant: no migration or backend authorization change; no production data operation executed.
 
+## API-CONTRACT-001FZNOTIFICATIONSREADSTRICT
+
+- Baseline: inherited notifications GET reader used a compile-time data-only cast while `/api/notifications` returns `{ data, meta.limit, meta.has_more, meta.next_cursor }`; the existing PATCH and SSE-safe paths were already covered and remain unchanged.
+- Focused test: `pnpm exec vitest run 'src/app/(dashboard)/notifications/notifications-content.test.tsx' 'src/app/api/notifications/route.test.ts' --reporter=dot --testTimeout=30000` — PASS, 2 files / 29 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`, `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`, `pnpm boundaries:check`, `pnpm plans:active:check`, `git diff --check` — PASS.
+- Client-schema result: 166 schema-backed, 207 allowlisted schema-less calls, 83 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS with the same two pre-existing warnings in `src/lib/platform/break-glass.test.ts`.
+- Build: `pnpm build` — PASS; Next 16.2.9 compiled in 3.8 minutes, TypeScript finished in 58 seconds, 311/311 static pages, and traces completed. Two existing CSS optimizer warnings did not fail the build; no ENOSPC warning was emitted.
+- Browser/E2E: not run; this is a non-visual notification-data contract slice with no layout change. `gpt-image-2` was omitted for the same reason.
+- Migration/auth/tenant: no migration, provider, authorization, or tenant query change; no production data operation executed.
+
 ## API-CONTRACT-001FZSTAFFMETRICSSTRICT
 
 - Baseline: inherited admin/staff KPI reader used a compile-time response cast and one `stringFallback` allowlist entry; provider returned `{ data: { month, summary, items } }` from the existing authorized organization-scoped aggregate route.
