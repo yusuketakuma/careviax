@@ -21,6 +21,11 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 import { WORKFLOW_DASHBOARD_INVALIDATION_EVENTS } from '@/lib/realtime/workflow-invalidation-policy';
+import {
+  adminRealtimeNotificationsResponseSchema,
+  adminRealtimeWorkflowResponseSchema,
+  type AdminRealtimeNotificationsResponse,
+} from './realtime-response-schema';
 
 type NotificationType = 'urgent' | 'business' | 'reminder' | 'system';
 
@@ -32,29 +37,6 @@ type Notification = {
   link: string | null;
   is_read: boolean;
   created_at: string;
-};
-
-type WorkflowSnapshot = {
-  route_control: {
-    locked_schedules: number;
-    pending_override_requests: number;
-    emergency_impact_items: number;
-  };
-  workflow_exceptions: {
-    open: number;
-  };
-  unified_workbench: Array<{
-    id: string;
-    queue_label: string;
-    title: string;
-    summary: string;
-    priority: 'urgent' | 'high' | 'normal' | 'low';
-    due_at: string | null;
-    action_href: string;
-    action_label: string;
-    patient_name: string | null;
-    badges: string[];
-  }>;
 };
 
 const TYPE_CONFIG: Record<
@@ -87,7 +69,7 @@ export default function RealtimePage() {
       const nextNotifications = normalizeNotificationStreamPayload(event);
       if (nextNotifications.length === 0) return;
 
-      queryClient.setQueryData<{ data: Notification[] }>(
+      queryClient.setQueryData<AdminRealtimeNotificationsResponse>(
         ['admin-realtime-notifications', orgId],
         (current) => ({
           data: mergeNotifications(current?.data ?? [], nextNotifications),
@@ -103,7 +85,10 @@ export default function RealtimePage() {
       const res = await fetch('/api/dashboard/workflow?view=realtime', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: WorkflowSnapshot }>(res, 'ワークフローの取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: 'ワークフローの取得に失敗しました',
+        schema: adminRealtimeWorkflowResponseSchema,
+      });
     },
     enabled: !!orgId,
     invalidateOn: WORKFLOW_DASHBOARD_INVALIDATION_EVENTS,
@@ -116,7 +101,10 @@ export default function RealtimePage() {
       const res = await fetch('/api/notifications?limit=12&is_read=false', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: Notification[] }>(res, '通知の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '通知の取得に失敗しました',
+        schema: adminRealtimeNotificationsResponseSchema,
+      });
     },
     enabled: !!orgId,
     invalidateOn: false,

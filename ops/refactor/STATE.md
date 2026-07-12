@@ -51,6 +51,38 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZREALTIMESTRICT admin realtime workflow/notification readers (VERIFY_REQUIRED, 2026-07-12; pending commit/push and clean-capacity build).
+  - current task / root cause:
+    `/admin/realtime` のworkflow KPI/workbenchとnotification listがcompile-time castsだけを信頼し、legacy root、
+    負の運用件数、重複workbench identity、unsafe action/link、invalid timestamp、pagination driftを
+    successful live stateへ流し得た。通知GETのprovider envelopeとSSE merge cacheの形も暗黙に異なっていた。
+  - implementation:
+    `realtime-response-schema.ts` に画面が消費するworkflow projectionのstrict schemaを追加し、既存
+    `notificationsResponseSchema`を再利用してrequested limit 12、required title、safe internal linkを検証後、
+    SSE mergeと一致するbounded `{ data }` view modelへ明示投影した。両readerをschema-backed
+    `readApiJson`へ接続し、allowlist debtを2件削減した。Polling/SSE/invalidation、API query、auth/tenant、
+    notification privacy projection、表示・操作は変更していない。Visual reconstructionではないため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/admin/realtime/realtime-response-schema.ts`,
+    `src/app/(dashboard)/admin/realtime/page.tsx`,
+    `src/app/(dashboard)/admin/realtime/page.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused provider/consumer Vitest passed 3 files / 47 tests. Exact ESLint/Prettier and diff-check passed.
+    `pnpm client-json-schema:check` passed at 200 schema-backed / 171 allowlisted schema-less calls / 61 files;
+    frontend contract, module boundary, aggregate typecheck, client PHI-log, API response shape, and colors passed.
+    Default 4GB `pnpm typecheck:no-unused` OOMed during V8 mark-compact (exit 134); the identical gate passed with
+    `NODE_OPTIONS=--max-old-space-size=8192`. `pnpm build` started with 6.0 GiB free, but the process ended without a
+    final exit/result or generated `BUILD_ID` after `.next/cache` grew to 15 GiB and filesystem availability fell to
+    1.2 GiB / 100%. Build is NOT_PASSED and was not retried on the resource-limited checkout.
+  - risk / performance / remaining:
+    Malformed successful payloads no longer fabricate all-clear KPI/notification state or unsafe navigation. No new
+    network request, polling interval, render loop, or dependency was introduced. A clean-capacity runner must complete
+    `pnpm build`; generated cache cleanup was not performed because it is outside the owned source slice. Continue the
+    `API-CONTRACT-001-RESCAN` inventory after this disjoint slice; patients-board cursor and human-gated stock/DB work
+    remain separate.
+
 - codex: API-CONTRACT-001FZCONTACTREADSTRICT admin contact-profiles strict list reader (DONE, 2026-07-12; implementation `fbb0d31eb`, ledger `f112fd17b`, feature-branch push confirmed).
   - result / scope:
     `/admin/contact-profiles` の一覧consumerをprovider準拠のstrict `{ data }` Zod schemaへ接続した。

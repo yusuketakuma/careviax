@@ -152,7 +152,9 @@ describe('RealtimePage', () => {
     );
 
     await expect(workflowCall?.[0].queryFn()).resolves.toEqual(WORKFLOW_DATA);
-    await expect(notificationsCall?.[0].queryFn()).resolves.toEqual(NOTIFICATIONS_DATA);
+    await expect(notificationsCall?.[0].queryFn()).resolves.toEqual({
+      data: NOTIFICATIONS_DATA.data,
+    });
 
     expect(fetchMock).toHaveBeenCalledWith('/api/dashboard/workflow?view=realtime', {
       headers: { 'x-org-id': 'org_1' },
@@ -160,6 +162,63 @@ describe('RealtimePage', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/notifications?limit=12&is_read=false', {
       headers: { 'x-org-id': 'org_1' },
     });
+  });
+
+  it('rejects malformed successful realtime workflow data before it reaches KPI state', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/dashboard/workflow?view=realtime') {
+        return new Response(
+          JSON.stringify({
+            data: {
+              ...WORKFLOW_DATA.data,
+              route_control: {
+                ...WORKFLOW_DATA.data.route_control,
+                pending_override_requests: -1,
+              },
+              unified_workbench: [
+                WORKFLOW_DATA.data.unified_workbench[0],
+                WORKFLOW_DATA.data.unified_workbench[0],
+              ],
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(NOTIFICATIONS_DATA), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<RealtimePage />);
+
+    const workflowCall = useRealtimeQueryMock.mock.calls.find(
+      ([options]) => options.queryKey[0] === 'admin-realtime-workflow',
+    );
+    await expect(workflowCall?.[0].queryFn()).rejects.toThrow('ワークフローの取得に失敗しました');
+  });
+
+  it('rejects legacy or unsafe successful notification data before it reaches the live cache', async () => {
+    const responses = [
+      { notifications: NOTIFICATIONS_DATA.data },
+      {
+        ...NOTIFICATIONS_DATA,
+        data: [{ ...NOTIFICATIONS_DATA.data[0], link: 'https://example.test/notification' }],
+      },
+      { ...NOTIFICATIONS_DATA, meta: { ...NOTIFICATIONS_DATA.meta, limit: 50 } },
+    ];
+
+    render(<RealtimePage />);
+    const notificationsCall = useRealtimeQueryMock.mock.calls.find(
+      ([options]) => options.queryKey[0] === 'admin-realtime-notifications',
+    );
+
+    for (const payload of responses) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 })),
+      );
+      await expect(notificationsCall?.[0].queryFn()).rejects.toThrow('通知の取得に失敗しました');
+    }
   });
 
   it('prioritizes actionable realtime signals before routine route KPIs', () => {
