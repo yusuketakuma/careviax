@@ -47045,7 +47045,7 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
-## 2026-07-12 API-CONTRACT-001FZMENTIONSTRICT — comment staff-mention lookup (IMPLEMENTED / PENDING SCOPED LANDING)
+## 2026-07-12 API-CONTRACT-001FZMENTIONSTRICT — comment staff-mention lookup (DONE)
 
 - current task / root cause:
   `MentionInput` trusts a compile-time `{ data: StaffMember[] }` cast while `/api/pharmacists` returns a counted
@@ -47079,6 +47079,13 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
 - image / browser boundary:
   `gpt-image-2` and browser/E2E were omitted because this is a non-visual staff lookup/cache parser slice with no screen
   reconstruction or layout change.
+- commit / push:
+  Scoped implementation commit `55ffe485a` (`fix(API-CONTRACT-001FZMENTIONSTRICT): validate mention staff reader`) was
+  pushed to `origin/agent/continuous-improvement-20260712`; local/upstream parity is `0 0`. Harness-memory and personal
+  untracked artifacts remain excluded.
+- next action:
+  Return to `API-CONTRACT-001-RESCAN`, rerun the client-schema inventory and patients board cursor residual scan, and
+  select the next disjoint safe slice without touching unrelated dirty paths.
 
 ## 2026-07-12 API-CONTRACT-001FZSERVICEAREASTRICT — service-area list contracts (DONE)
 

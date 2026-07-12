@@ -329,3 +329,11 @@
   artifacts remain excluded.
 - Next scan: rerun `pnpm client-json-schema:check`, inspect remaining one-entry and multi-entry consumers plus the
   patients board cursor residual, and choose the next bounded disjoint slice.
+
+## 2026-07-12 — API-CONTRACT-001FZMENTIONSTRICT landed
+
+- Commit: `55ffe485a` pushed to `origin/agent/continuous-improvement-20260712`; local/upstream parity is `0 0`.
+- Result: MentionInput minimal pharmacist schema, provider-only field stripping, live fixtures, regressions, allowlist
+  ratchet, and validation ledgers landed; unrelated harness-memory and personal artifacts remain excluded.
+- Next scan: rerun `pnpm client-json-schema:check`, inspect remaining one-entry and multi-entry consumers plus the
+  patients board cursor residual, and choose the next bounded disjoint slice.

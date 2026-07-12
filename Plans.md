@@ -163,7 +163,7 @@
 
 **Current execution slice (2026-07-12)**:
 
-- `API-CONTRACT-001FZMENTIONSTRICT`: **IN_PROGRESS**。comments の `MentionInput` staff lookup reader を対象に、`/api/pharmacists` の strict `{ data, meta }` response schema を接続する。rescan の `178 schema-backed / 195 allowlisted / 75 files` 後に選定した低リスク slice で、comment mutation、provider/auth semantics、patient detail、visual behavior は再実装しない。
+- `API-CONTRACT-001-RESCAN`: **IN_PROGRESS**。MentionInput strict reader を `55ffe485a` として push 済み。残る `API-CONTRACT-001` allowlist と patients board cursor residual を再走査し、次の disjoint safe slice を選定する。既存の患者詳細リンク収束、provider/auth semantics、authorized in-app detail、visual behavior は再実装しない。
 
 **Implementation-ready queue — 未実装 / Partial 残スコープのみ**:
 
@@ -264,7 +264,7 @@
 - `API-CONTRACT-001FZVEHICLESTRICT`: admin/vehicles の counted vehicle-resource GET と pharmacy-site option GET を strict runtime schema へ接続し、vehicle identity/site/travel/operation/date、counted-list arithmetic、site option identity を検証し、provider-only fields を strip して malformed・legacy・duplicate・negative・invalid 2xx が vehicle editor state へ流入しない fail-closed reader 化。既存 provider/auth/mutation/visual semantics は維持（commit `575696825`、feature branch push済み）。
 - `API-CONTRACT-001FZOPERATINGHOURSSTRICT`: admin/operating-hours の pharmacy-site option GET、weekly operating-hours GET、PUT response を strict runtime schema へ接続し、site identity、weekly 0-6 completeness/site relation/time/source、holiday/resolved-day bounds を検証し、shared site-option provider fields を strip して malformed・legacy・duplicate・invalid 2xx が editor state へ流入しない fail-closed reader 化。既存 provider/auth/mutation/audit/visual semantics は維持（commit `725b480e4`、feature branch push済み）。
 - `API-CONTRACT-001FZSERVICEAREASTRICT`: admin/service-areas の pharmacy-site option GET と counted service-area GET を strict runtime schema へ接続し、site/area identity、nested site relation、area type/geo object、duplicate ID、counted-list arithmetic を検証して provider-only fields を strip。malformed・legacy・duplicate・mismatched・count-drifted 2xx が editor/list state へ流入しない fail-closed reader 化。既存 mutation/provider/auth/tenant/audit/visual semantics は維持（commit `147a8be16`、feature branch push済み）。
-- `API-CONTRACT-001FZMENTIONSTRICT`: comments の `MentionInput` staff lookup を strict runtime schema へ接続し、staff identity/name、counted metadata、provider-only staff field stripping、legacy/conflicting-repeat/count-drift regressions を追加する。既存 `/api/pharmacists` provider/auth、comment mutation/mention IDs、PHI-safe recovery、visual behavior は維持（implementation validation complete; scoped commit pending）。
+- `API-CONTRACT-001FZMENTIONSTRICT`: comments の `MentionInput` staff lookup を strict runtime schema へ接続し、staff identity/name、counted metadata、provider-only staff field stripping、legacy/conflicting-repeat/count-drift regressions を追加する。既存 `/api/pharmacists` provider/auth、comment mutation/mention IDs、PHI-safe recovery、visual behavior は維持（commit `55ffe485a`、feature branch push済み）。
 - `ROUTE-CTRLFLOW-RETHROW-001`: 広域 `catch` から sanitized 500 を返す10 API route / 12 handlerで、`unstable_rethrow` をfallback前に実行し、Next.jsの`redirect()` / `notFound()`等の内部制御フローを保持する契約テストを固定。
 - `SEC-EVENT-PATH-PII-SANITIZE-001`: AuditLog target/dedup pathのemail、電話、OTP、credential/opaque tokenをredactし、実在static routeの可読性とtoken-parent境界をtestで固定（commit `d084dccc8`）。
 - `PUSH-SUB-ATOMICITY-001`: push subscription POST/DELETE を `withOrgContext` 内の tx mutation に寄せ、RLS context 未適用の base Prisma write を除去（commit `db63de58a`）。

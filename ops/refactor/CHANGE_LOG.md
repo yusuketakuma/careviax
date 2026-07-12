@@ -238,8 +238,8 @@
 ## API-CONTRACT-001FZMENTIONSTRICT
 
 - Commit Group: `API-CONTRACT-001FZMENTIONSTRICT`
-- Commit: pending scoped landing
-- Push Status: pending
+- Commit: `55ffe485a`
+- Push Status: PUSHED
 - Branch: `agent/continuous-improvement-20260712`
 - Scope: comments MentionInput pharmacist reader, minimal response schema, consumer regressions, client-schema allowlist
   ratchet, and required ledgers.
@@ -254,4 +254,4 @@
   confirmed Next build passed; client-schema inventory is 179 schema-backed / 194 allowlisted / 74 files.
 - Rollback: revert the pharmacist response schema, MentionInput adapter, regressions, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
-- Push evidence: pending scoped implementation landing.
+- Push evidence: `862c8688e..55ffe485a` fast-forward push succeeded; local and remote heads match (`0 0`).
