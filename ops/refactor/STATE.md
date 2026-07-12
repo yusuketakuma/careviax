@@ -51,6 +51,35 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZCYCLEHISTORYSTRICT medication-cycle transition history reader/path (VERIFY_REQUIRED, 2026-07-12; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Workflow stage timeline / previous-stage summaryがcycle transition historyをcompile-time castだけで読み、
+    legacy root、unknown status、duplicate/reverse-ordered logsを履歴表示へ流し得た。さらにcycleIdをAPI pathへ
+    直接補間していた。ProviderはcanViewDashboard、care-case assignment/org scope、sensitive no-store、
+    created_at昇順を既に強制する。
+  - implementation / medication-workflow boundary:
+    現行16 medication-cycle statusesをSSOT配列から再利用するstrict `{ data }` schemaを追加し、500件上限、
+    bounded identity/actor/note、ISO datetime、identity一意、oldest-firstを検証した。Prescription API path helperへ
+    medication-cycle history builderを追加し、hostile IDを1 segmentへencode、exact dot-segmentをfail-closed化した。
+    Transition write/state machine、provider query、auth/authz、assignment/tenant/no-store、timeline UIは変更して
+    いない。Visual reconstructionではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/components/features/workflow/cycle-transition-response-schema.ts`,
+    `src/components/features/workflow/cycle-transition-query.ts`,
+    `src/components/features/workflow/cycle-transition-query.test.ts`,
+    `src/lib/prescriptions/api-paths.ts`, `src/lib/prescriptions/api-paths.test.ts`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/provider/path Vitest passed 3 files / 18 tests. Exact ESLint with `--max-warnings=0`, Prettier,
+    and scoped diff-check passed. `pnpm client-json-schema:check` passed at 210 schema-backed / 161 allowlisted
+    schema-less calls / 52 files; frontend contract, module boundary, aggregate typecheck, 8GB no-unused typecheck,
+    client PHI-log, API response shape, and colors passed. Full build was NOT_EXECUTED because only 3.0 GiB free
+    remains after the shared `.next/cache` capacity failure; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed medication workflow history and cycle-ID path injection cannot reach timeline state. Request count,
+    provider DB query, payload, render behavior, and dependencies are unchanged. A clean-capacity runner must complete
+    `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZEVIDENCESTRICT evidence gallery attachment reader (VERIFY_REQUIRED, 2026-07-12; implementation `af855ee4a`, ledger `dbe9bb97f`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     証跡galleryのvisit-record attachment readerがoptional compile-time型だけを信頼し、legacy root、不正

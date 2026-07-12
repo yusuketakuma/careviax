@@ -301,12 +301,6 @@
       }
     },
     {
-      "path": "src/components/features/workflow/cycle-transition-query.ts",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/components/visit-brief/patient-visit-brief-section.tsx",
       "counts": {
         "stringFallback": 1

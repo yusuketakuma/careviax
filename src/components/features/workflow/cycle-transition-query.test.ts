@@ -63,4 +63,55 @@ describe('fetchCycleTransitionLogs', () => {
       vi.clearAllMocks();
     }
   });
+
+  it('encodes hostile cycle ids as one path segment', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const cycleId = 'cycle/1?patient=x#frag';
+
+    try {
+      await fetchCycleTransitionLogs({ cycleId, orgId: 'org_1' });
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/medication-cycles/${encodeURIComponent(cycleId)}/history`,
+        expect.anything(),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('rejects legacy, unknown-status, duplicate, or reverse-ordered successful history', async () => {
+    const log = {
+      id: 'log_1',
+      from_status: 'dispensing',
+      to_status: 'dispensed',
+      actor_name: '薬剤師A',
+      note: null,
+      created_at: '2026-07-04T00:00:00.000Z',
+    };
+    const payloads = [
+      { history: [log] },
+      { data: [{ ...log, to_status: 'legacy_completed' }] },
+      { data: [log, log] },
+      {
+        data: [
+          { ...log, id: 'log_2', created_at: '2026-07-05T00:00:00.000Z' },
+          { ...log, created_at: '2026-07-04T00:00:00.000Z' },
+        ],
+      },
+    ];
+
+    try {
+      for (const payload of payloads) {
+        vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(payload)));
+        await expect(
+          fetchCycleTransitionLogs({ cycleId: 'cycle_1', orgId: 'org_1' }),
+        ).rejects.toThrow('履歴の取得に失敗しました');
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
 });
