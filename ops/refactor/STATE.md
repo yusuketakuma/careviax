@@ -46548,3 +46548,41 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   history drug-enrichment schema/regressions, client-schema ratchet, Plans, and this ledger entry. It was pushed to
   `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
   were excluded, and the feature branch does not match the `main`-only production deploy trigger.
+
+## 2026-07-12 FE-PATIENT-LIST-001-LINKVERIFY — patient detail link convergence recheck (DONE)
+
+- current task / evidence:
+  Rechecked the reported mismatch between patient-list links and the patient-detail destination against current HEAD.
+  The historical root cause was `foundation_href` (`#patient-foundation`) overriding only the explicit detail buttons
+  while patient-name links used the canonical patient root. Commit `47586a637` already removed that override from
+  card, compact-list, and selected-preview detail links and routed all of them through `buildPatientHref`.
+- verification:
+  Fresh `patients-board.test.tsx` passed 32 / 32 tests. A local Next 16.2.9 E2E server plus the route-mocked Chromium
+  scenario confirmed both patient-name links and desktop/mobile preview detail links resolve to `/patients/{id}`; the
+  relevant browser test passed. No source edit was required. The existing `foundation_href` remains intentionally
+  scoped to the separate foundation action. No DB, API, auth, PHI, layout, or deployment changed.
+
+## 2026-07-12 API-CONTRACT-001FZRXHISTORYSTRICT — prescription history page contract (DONE)
+
+- current task / root cause:
+  The patient prescription-history GET used a compile-time cast and requested only `limit=100` while omitting the
+  provider's `hasMore` / `nextCursor` contract. Histories beyond 100 intakes were silently truncated. Mixed or
+  malformed 2xx data could also place another patient's prescriptions, invalid medication dates, unsafe original
+  document URLs, invalid line version timestamps, or inconsistent medication-diff metadata into clinical UI state.
+- implementation / verification:
+  Added a consumed runtime contract for patient identity, intakes, medication lines, cycle status, diff review, and
+  cursor metadata. The reader validates requested versus returned patient identity, safe relative/HTTPS document
+  destinations, medication dates and optimistic timestamps, split-dispense progress, unique IDs, diff counts and
+  current/previous identity, and cursor consistency. It now aggregates up to 20 pages of 100 records, rejects repeated
+  cursors, duplicate intake IDs, cross-page patient drift, diff metadata on continuation pages, and histories beyond
+  the explicit bound instead of showing a partial result. Provider-only and unused fields are stripped before the
+  PHI-bearing React Query cache. Six regressions failed before implementation; the final consumer/provider suites
+  passed 2 files / 62 tests, including valid diff preservation and cursor-loop rejection. Exact ESLint/Prettier,
+  aggregate typecheck, no-unused typecheck, API response-shape, frontend contract, client PHI-log/display,
+  module-boundary, client-schema, and diff gates passed. The ratchet improved from 124 / 250 / 95 files to
+  125 / 249 / 94 files. The bounded loop adds network calls only when a patient has more than 100 intakes and caps
+  fan-out at 20 requests. Full build was not repeated after the unchanged compile-stage shared-memory limitation;
+  there is no new build hypothesis. No provider, DB, auth/authz, tenant, audit, mutation, medication-diff generation,
+  or visual layout changed. Browser and image generation were omitted for this non-visual parser/pagination repair;
+  direct query-function and provider tests cover the contract. Rollback is the history page schema, cursor reader,
+  regressions, and client-schema ratchet hunk.

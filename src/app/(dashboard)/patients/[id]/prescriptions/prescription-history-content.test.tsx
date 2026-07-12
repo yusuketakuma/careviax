@@ -1510,6 +1510,96 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
     };
   }
 
+  function buildHistoryLineResponse(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'line_history_1',
+      line_number: 1,
+      updated_at: '2026-06-01T00:00:00.000Z',
+      drug_name: 'アムロジピン錠5mg',
+      drug_master_id: 'drug_master_1',
+      drug_code: 'YJ001',
+      source_drug_code: null,
+      source_drug_code_type: null,
+      drug_resolution_status: 'resolved',
+      dosage_form: '錠',
+      dose: '1錠',
+      frequency: '1日1回朝食後',
+      days: 28,
+      quantity: 28,
+      unit: '錠',
+      is_generic: false,
+      packaging_instructions: null,
+      notes: null,
+      route: 'internal',
+      dispensing_method: 'standard',
+      start_date: null,
+      end_date: null,
+      ...overrides,
+    };
+  }
+
+  function buildHistoryIntakeResponse(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'intake_history_1',
+      cycle_id: 'cycle_1',
+      source_type: 'paper',
+      prescribed_date: '2026-06-01T00:00:00.000Z',
+      updated_at: '2026-06-01T01:00:00.000Z',
+      prescriber_name: '佐藤医師',
+      prescriber_institution: '青空クリニック',
+      prescription_expiry_date: null,
+      original_document_url: null,
+      original_collected_at: null,
+      original_collected_by: null,
+      refill_remaining_count: null,
+      refill_next_dispense_date: null,
+      split_dispense_total: null,
+      split_dispense_current: null,
+      split_next_dispense_date: null,
+      created_at: '2026-06-01T00:00:00.000Z',
+      cycle: { overall_status: 'intake_received' },
+      lines: [buildHistoryLineResponse()],
+      ...overrides,
+    };
+  }
+
+  function buildHistoryPage(patientId: string, overrides: Record<string, unknown> = {}) {
+    return {
+      data: {
+        patient: { id: patientId, name: '山田花子', name_kana: 'ヤマダハナコ' },
+        data: [],
+        hasMore: false,
+        diff_review: null,
+        diff_meta: null,
+        ...overrides,
+      },
+    };
+  }
+
+  function buildDiffReviewResponse(overrides: Record<string, unknown> = {}) {
+    return {
+      rows: [
+        {
+          key: 'line_history_1',
+          drug_name: 'アムロジピン錠5mg',
+          current_drug_master_id: 'drug_master_1',
+          current_drug_code: 'YJ001',
+          previous_drug_master_id: null,
+          previous_drug_code: null,
+          change_type: 'added',
+          change_label: '追加',
+          previous_label: 'なし',
+          current_label: '1錠 1日1回朝食後 28日',
+          pharmacist_memo: null,
+        },
+      ],
+      set_impacts: [],
+      patient_checks: ['開始後の体調変化を確認'],
+      change_count: 1,
+      ...overrides,
+    };
+  }
+
   function renderHistory({
     patientId = HOSTILE,
     lines = [] as ReturnType<typeof buildLine>[],
@@ -1580,9 +1670,7 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
     const sentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinel);
     const { queryConfigs } = renderHistory();
-    const fetchMock = stubFetch({
-      data: { patient: {}, data: [], diff_review: null, diff_meta: null },
-    });
+    const fetchMock = stubFetch(buildHistoryPage(HOSTILE));
     try {
       await queryConfigs.get('patient-prescriptions')!.queryFn();
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -1620,9 +1708,7 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
 
   it('prescriptions GET consumes the shared patient API path helper return value', async () => {
     const { queryConfigs } = renderHistory({ patientId: 'patient_1' });
-    const fetchMock = stubFetch({
-      data: { patient: {}, data: [], diff_review: null, diff_meta: null },
-    });
+    const fetchMock = stubFetch(buildHistoryPage('patient_1'));
     vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__/rx');
 
     try {
@@ -1633,6 +1719,227 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
         '/api/patients/patient_1/prescriptions?limit=100',
         expect.anything(),
       );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('prescriptions GET aggregates cursor pages without silently truncating history', async () => {
+    const { queryConfigs } = renderHistory({ patientId: 'patient_1' });
+    const firstIntake = buildHistoryIntakeResponse({ id: 'intake_current' });
+    const secondIntake = buildHistoryIntakeResponse({
+      id: 'intake_previous',
+      prescribed_date: '2026-05-01T00:00:00.000Z',
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            buildHistoryPage('patient_1', {
+              data: [firstIntake],
+              hasMore: true,
+              nextCursor: 'cursor_2',
+            }),
+          ),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(buildHistoryPage('patient_1', { data: [secondIntake] })), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const result = await queryConfigs.get('patient-prescriptions')!.queryFn();
+      expect(result).toEqual(
+        expect.objectContaining({
+          patient: expect.objectContaining({ id: 'patient_1' }),
+          data: [
+            expect.objectContaining({ id: 'intake_current' }),
+            expect.objectContaining({ id: 'intake_previous' }),
+          ],
+        }),
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        '/api/patients/patient_1/prescriptions?limit=100',
+        expect.anything(),
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        '/api/patients/patient_1/prescriptions?limit=100&cursor=cursor_2',
+        expect.anything(),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('prescriptions GET rejects a repeated cursor instead of looping or duplicating history', async () => {
+    const { queryConfigs } = renderHistory({ patientId: 'patient_1' });
+    const repeatedPage = buildHistoryPage('patient_1', {
+      data: [buildHistoryIntakeResponse()],
+      hasMore: true,
+      nextCursor: 'cursor_repeated',
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(repeatedPage), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            buildHistoryPage('patient_1', {
+              data: [buildHistoryIntakeResponse({ id: 'intake_history_2' })],
+              hasMore: true,
+              nextCursor: 'cursor_repeated',
+            }),
+          ),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      await expect(queryConfigs.get('patient-prescriptions')!.queryFn()).rejects.toThrow(
+        '処方履歴の取得に失敗しました',
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('prescriptions GET keeps only the consumed history contract in query state', async () => {
+    const { queryConfigs } = renderHistory({ patientId: 'patient_1' });
+    const fetchMock = stubFetch(
+      buildHistoryPage('patient_1', {
+        data: [
+          buildHistoryIntakeResponse({
+            unused_org_id: 'must-not-enter-cache',
+            lines: [buildHistoryLineResponse({ unused_created_by: 'must-not-enter-cache' })],
+          }),
+        ],
+        unused_case_id: 'must-not-enter-cache',
+      }),
+    );
+
+    try {
+      const result = (await queryConfigs.get('patient-prescriptions')!.queryFn()) as Record<
+        string,
+        unknown
+      >;
+      expect(result).not.toHaveProperty('hasMore');
+      expect(result).not.toHaveProperty('nextCursor');
+      expect(result).not.toHaveProperty('unused_case_id');
+      expect(result).not.toHaveProperty('data.0.updated_at');
+      expect(result).not.toHaveProperty('data.0.unused_org_id');
+      expect(result).not.toHaveProperty('data.0.lines.0.line_number');
+      expect(result).not.toHaveProperty('data.0.lines.0.unused_created_by');
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('prescriptions GET preserves a provider-consistent medication diff review', async () => {
+    const { queryConfigs } = renderHistory({ patientId: 'patient_1' });
+    const current = buildHistoryIntakeResponse({ id: 'intake_current' });
+    const previous = buildHistoryIntakeResponse({
+      id: 'intake_previous',
+      prescribed_date: '2026-05-01T00:00:00.000Z',
+      lines: [buildHistoryLineResponse({ id: 'line_history_previous' })],
+    });
+    const diffReview = buildDiffReviewResponse();
+    const fetchMock = stubFetch(
+      buildHistoryPage('patient_1', {
+        data: [current, previous],
+        diff_review: diffReview,
+        diff_meta: {
+          current: { id: 'intake_current', prescribed_date: '2026-06-01T00:00:00.000Z' },
+          previous: { id: 'intake_previous', prescribed_date: '2026-05-01T00:00:00.000Z' },
+        },
+      }),
+    );
+
+    try {
+      await expect(queryConfigs.get('patient-prescriptions')!.queryFn()).resolves.toEqual(
+        expect.objectContaining({ diff_review: diffReview }),
+      );
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    [
+      'a patient different from the requested route',
+      buildHistoryPage('patient_other', { data: [buildHistoryIntakeResponse()] }),
+    ],
+    [
+      'an unsafe original-document URL',
+      buildHistoryPage('patient_1', {
+        data: [buildHistoryIntakeResponse({ original_document_url: 'javascript:alert(1)' })],
+      }),
+    ],
+    [
+      'an invalid prescription date',
+      buildHistoryPage('patient_1', {
+        data: [buildHistoryIntakeResponse({ prescribed_date: 'not-a-date' })],
+      }),
+    ],
+    [
+      'a malformed line update timestamp',
+      buildHistoryPage('patient_1', {
+        data: [
+          buildHistoryIntakeResponse({
+            lines: [buildHistoryLineResponse({ updated_at: 'not-a-timestamp' })],
+          }),
+        ],
+      }),
+    ],
+    [
+      'incomplete medication-diff metadata',
+      buildHistoryPage('patient_1', {
+        data: [buildHistoryIntakeResponse()],
+        diff_review: buildDiffReviewResponse(),
+        diff_meta: null,
+      }),
+    ],
+    [
+      'an inconsistent medication-diff change count',
+      buildHistoryPage('patient_1', {
+        data: [
+          buildHistoryIntakeResponse({ id: 'intake_current' }),
+          buildHistoryIntakeResponse({
+            id: 'intake_previous',
+            prescribed_date: '2026-05-01T00:00:00.000Z',
+          }),
+        ],
+        diff_review: buildDiffReviewResponse({ change_count: 0 }),
+        diff_meta: {
+          current: { id: 'intake_current', prescribed_date: '2026-06-01T00:00:00.000Z' },
+          previous: { id: 'intake_previous', prescribed_date: '2026-05-01T00:00:00.000Z' },
+        },
+      }),
+    ],
+  ])('prescriptions GET rejects %s', async (_caseName, responseBody) => {
+    const { queryConfigs } = renderHistory({ patientId: 'patient_1' });
+    const fetchMock = stubFetch(responseBody);
+    try {
+      await expect(queryConfigs.get('patient-prescriptions')!.queryFn()).rejects.toThrow(
+        '処方履歴の取得に失敗しました',
+      );
+      expect(fetchMock).toHaveBeenCalledOnce();
     } finally {
       vi.unstubAllGlobals();
     }

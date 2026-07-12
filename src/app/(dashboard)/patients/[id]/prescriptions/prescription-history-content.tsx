@@ -58,53 +58,193 @@ import { messageFromError } from '@/lib/utils/error-message';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type PrescriptionLine = {
-  id: string;
-  line_number: number;
-  updated_at: string;
-  drug_name: string;
-  drug_master_id?: string | null;
-  drug_code: string | null;
-  source_drug_code?: string | null;
-  source_drug_code_type?: string | null;
-  drug_resolution_status?: string | null;
-  dosage_form: string | null;
-  dose: string;
-  frequency: string;
-  days: number;
-  quantity: number | null;
-  unit: string | null;
-  is_generic: boolean;
-  packaging_instructions: string | null;
-  notes: string | null;
-  route: string | null;
-  dispensing_method: string | null;
-  start_date: string | null;
-  end_date: string | null;
-};
+const PRESCRIPTION_HISTORY_PAGE_LIMIT = 100;
+const PRESCRIPTION_HISTORY_MAX_PAGES = 20;
+const PRESCRIPTION_HISTORY_FETCH_ERROR = '処方履歴の取得に失敗しました';
+const apiDateSchema = z.union([z.string().date(), z.string().datetime()]);
+const prescriptionDocumentHrefSchema = z
+  .string()
+  .max(2048)
+  .refine((value) => {
+    if (value.startsWith('/')) return !value.startsWith('//');
+    try {
+      const url = new URL(value);
+      if (url.protocol === 'https:') return true;
+      return url.protocol === 'http:' && ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+    } catch {
+      return false;
+    }
+  });
 
-type PrescriptionIntake = {
-  id: string;
-  cycle_id: string;
-  source_type: string;
-  prescribed_date: string;
-  prescriber_name: string | null;
-  prescriber_institution: string | null;
-  prescription_expiry_date: string | null;
-  original_document_url: string | null;
-  original_collected_at: string | null;
-  original_collected_by: string | null;
-  refill_remaining_count: number | null;
-  refill_next_dispense_date: string | null;
-  split_dispense_total: number | null;
-  split_dispense_current: number | null;
-  split_next_dispense_date: string | null;
-  created_at: string;
-  cycle: { overall_status: string };
-  lines: PrescriptionLine[];
-};
+const prescriptionHistoryLineSchema = z
+  .object({
+    id: z.string().min(1),
+    updated_at: z.string().datetime(),
+    drug_name: z.string().min(1),
+    drug_master_id: z.string().nullable(),
+    drug_code: z.string().nullable(),
+    source_drug_code: z.string().nullable(),
+    source_drug_code_type: z.string().nullable(),
+    drug_resolution_status: z.string().nullable(),
+    dosage_form: z.string().nullable(),
+    dose: z.string().min(1),
+    frequency: z.string().min(1),
+    days: z.number().int().positive(),
+    quantity: z.number().positive().nullable(),
+    unit: z.string().nullable(),
+    is_generic: z.boolean(),
+    packaging_instructions: z.string().nullable(),
+    notes: z.string().nullable(),
+    route: z.string().nullable(),
+    dispensing_method: z.string().nullable(),
+    start_date: apiDateSchema.nullable(),
+    end_date: apiDateSchema.nullable(),
+  })
+  .superRefine((line, context) => {
+    if (line.start_date && line.end_date && line.start_date > line.end_date) {
+      context.addIssue({ code: 'custom', path: ['end_date'], message: 'Invalid line date range' });
+    }
+  });
 
-type PatientInfo = { id: string; name: string; name_kana: string };
+const prescriptionHistoryIntakeSchema = z
+  .object({
+    id: z.string().min(1),
+    source_type: z.enum(['paper', 'fax', 'e_prescription', 'facility_batch', 'refill', 'qr_scan']),
+    prescribed_date: apiDateSchema,
+    prescriber_name: z.string().nullable(),
+    prescriber_institution: z.string().nullable(),
+    original_document_url: prescriptionDocumentHrefSchema.nullable(),
+    original_collected_at: z.string().datetime().nullable(),
+    refill_remaining_count: z.number().int().nonnegative().nullable(),
+    split_dispense_total: z.number().int().positive().nullable(),
+    split_dispense_current: z.number().int().positive().nullable(),
+    split_next_dispense_date: apiDateSchema.nullable(),
+    created_at: z.string().datetime(),
+    cycle: z.object({
+      overall_status: z.enum([
+        'intake_received',
+        'structuring',
+        'inquiry_pending',
+        'inquiry_resolved',
+        'ready_to_dispense',
+        'dispensing',
+        'dispensed',
+        'audit_pending',
+        'audited',
+        'setting',
+        'set_audited',
+        'visit_ready',
+        'visit_completed',
+        'reported',
+        'on_hold',
+        'cancelled',
+      ]),
+    }),
+    lines: z.array(prescriptionHistoryLineSchema),
+  })
+  .superRefine((intake, context) => {
+    if (
+      intake.split_dispense_total !== null &&
+      intake.split_dispense_current !== null &&
+      intake.split_dispense_current > intake.split_dispense_total
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['split_dispense_current'],
+        message: 'Invalid split dispensing progress',
+      });
+    }
+    const lineIds = new Set<string>();
+    for (const [index, line] of intake.lines.entries()) {
+      if (lineIds.has(line.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['lines', index, 'id'],
+          message: 'Duplicate prescription line id',
+        });
+      }
+      lineIds.add(line.id);
+    }
+  });
+
+const prescriptionDiffReviewRowSchema = z.object({
+  key: z.string().min(1),
+  drug_name: z.string().min(1),
+  current_drug_master_id: z.string().nullable(),
+  current_drug_code: z.string().nullable(),
+  previous_drug_master_id: z.string().nullable(),
+  previous_drug_code: z.string().nullable(),
+  change_type: z.enum(['added', 'removed', 'changed', 'unchanged']),
+  change_label: z.string().min(1),
+  previous_label: z.string().nullable(),
+  current_label: z.string().nullable(),
+  pharmacist_memo: z.string().nullable(),
+});
+
+const prescriptionDiffReviewSchema = z
+  .object({
+    rows: z.array(prescriptionDiffReviewRowSchema),
+    set_impacts: z.array(z.string()),
+    patient_checks: z.array(z.string()),
+    change_count: z.number().int().nonnegative(),
+  })
+  .superRefine((review, context) => {
+    const changedRows = review.rows.filter((row) => row.change_type !== 'unchanged').length;
+    if (review.change_count !== changedRows) {
+      context.addIssue({ code: 'custom', path: ['change_count'], message: 'Invalid change count' });
+    }
+  });
+
+const prescriptionDiffMetaSchema = z.object({
+  current: z.object({ id: z.string().min(1), prescribed_date: apiDateSchema }),
+  previous: z.object({ id: z.string().min(1), prescribed_date: apiDateSchema }),
+});
+
+const prescriptionHistoryPageDataSchema = z
+  .object({
+    patient: z.object({ id: z.string().min(1), name: z.string().min(1), name_kana: z.string() }),
+    data: z.array(prescriptionHistoryIntakeSchema),
+    hasMore: z.boolean(),
+    nextCursor: z.string().min(1).optional(),
+    diff_review: prescriptionDiffReviewSchema.nullable(),
+    diff_meta: prescriptionDiffMetaSchema.nullable(),
+  })
+  .superRefine((page, context) => {
+    if (page.hasMore && (!page.nextCursor || page.data.length === 0)) {
+      context.addIssue({ code: 'custom', path: ['nextCursor'], message: 'Invalid cursor page' });
+    }
+    if (Boolean(page.diff_review) !== Boolean(page.diff_meta)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['diff_meta'],
+        message: 'Incomplete diff metadata',
+      });
+    }
+    if (page.diff_meta) {
+      const [current, previous] = page.data;
+      if (
+        !current ||
+        !previous ||
+        page.diff_meta.current.id !== current.id ||
+        page.diff_meta.current.prescribed_date !== current.prescribed_date ||
+        page.diff_meta.previous.id !== previous.id ||
+        page.diff_meta.previous.prescribed_date !== previous.prescribed_date
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['diff_meta'],
+          message: 'Mismatched diff metadata',
+        });
+      }
+    }
+  });
+
+const prescriptionHistoryPageResponseSchema = z
+  .object({ data: prescriptionHistoryPageDataSchema })
+  .strict();
+
+type PrescriptionLine = z.infer<typeof prescriptionHistoryLineSchema>;
+type PrescriptionIntake = z.infer<typeof prescriptionHistoryIntakeSchema>;
 
 const drugMasterInfoSchema = z.object({
   id: z.string(),
@@ -1449,6 +1589,65 @@ function DiffReviewView({
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
+async function fetchPrescriptionHistory(orgId: string, patientId: string) {
+  const path = buildPatientApiPath(patientId, '/prescriptions');
+  const headers = buildOrgHeaders(orgId);
+  const intakes: PrescriptionIntake[] = [];
+  const intakeIds = new Set<string>();
+  const cursors = new Set<string>();
+  let cursor: string | undefined;
+  let firstPage: z.infer<typeof prescriptionHistoryPageDataSchema> | null = null;
+
+  for (let pageIndex = 0; pageIndex < PRESCRIPTION_HISTORY_MAX_PAGES; pageIndex += 1) {
+    const params = new URLSearchParams({ limit: String(PRESCRIPTION_HISTORY_PAGE_LIMIT) });
+    if (cursor) params.set('cursor', cursor);
+    const response = await fetch(`${path}?${params.toString()}`, { headers });
+    const payload = await readApiJson<z.infer<typeof prescriptionHistoryPageResponseSchema>>(
+      response,
+      {
+        fallbackMessage: PRESCRIPTION_HISTORY_FETCH_ERROR,
+        schema: prescriptionHistoryPageResponseSchema,
+      },
+    );
+    const page = payload.data;
+
+    if (page.patient.id !== patientId) throw new Error(PRESCRIPTION_HISTORY_FETCH_ERROR);
+    if (
+      firstPage &&
+      (page.patient.name !== firstPage.patient.name ||
+        page.patient.name_kana !== firstPage.patient.name_kana)
+    ) {
+      throw new Error(PRESCRIPTION_HISTORY_FETCH_ERROR);
+    }
+    if (pageIndex > 0 && (page.diff_review !== null || page.diff_meta !== null)) {
+      throw new Error(PRESCRIPTION_HISTORY_FETCH_ERROR);
+    }
+
+    firstPage ??= page;
+    for (const intake of page.data) {
+      if (intakeIds.has(intake.id)) throw new Error(PRESCRIPTION_HISTORY_FETCH_ERROR);
+      intakeIds.add(intake.id);
+      intakes.push(intake);
+    }
+
+    if (!page.hasMore) {
+      return {
+        patient: firstPage.patient,
+        data: intakes,
+        diff_review: firstPage.diff_review,
+        diff_meta: firstPage.diff_meta,
+      };
+    }
+
+    const nextCursor = page.nextCursor!;
+    if (cursors.has(nextCursor)) throw new Error(PRESCRIPTION_HISTORY_FETCH_ERROR);
+    cursors.add(nextCursor);
+    cursor = nextCursor;
+  }
+
+  throw new Error(PRESCRIPTION_HISTORY_FETCH_ERROR);
+}
+
 export function PrescriptionHistoryContent() {
   const { id: patientId } = useParams<{ id: string }>();
   const orgId = useOrgId();
@@ -1458,20 +1657,7 @@ export function PrescriptionHistoryContent() {
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['patient-prescriptions', orgId, patientId],
-    queryFn: async () => {
-      const res = await fetch(`${buildPatientApiPath(patientId, '/prescriptions')}?limit=100`, {
-        headers: buildOrgHeaders(orgId),
-      });
-      const payload = await readApiJson<{
-        data: {
-          patient: PatientInfo;
-          data: PrescriptionIntake[];
-          diff_review: DiffReview | null;
-          diff_meta: DiffMeta | null;
-        };
-      }>(res, '処方履歴の取得に失敗しました');
-      return payload.data;
-    },
+    queryFn: () => fetchPrescriptionHistory(orgId, patientId),
     enabled: !!orgId && !!patientId,
   });
 
