@@ -51,6 +51,35 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZSTOCKOBSRESULTSTRICT visit medication-stock observation result (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, ledger pending; shared clean-capacity build pending).
+  - current task / root cause:
+    Visit Medication Stock Observation POST結果はcompile-time castだけで、legacy/wrong visit、empty/duplicate
+    observation identities、不正kind/quantity/risk/timestamp、applied/replay count driftを成功扱いし得た。既存fixture
+    もrequested `record/1`に対して`record_1`、observations 0なのにreplay 1というprovider不整合を含んでいた。
+  - implementation / medication-safety boundary:
+    Requested visit ID factory schemaを追加し、1-50 observations、client/stock-event/context identity一意、strict
+    observation/quantity/risk enums、finite nonnegative quantity、offset timestamps、applied+replay=returned count、
+    replay flag count一致を検証。Fixtureを実provider-shaped replay observationへ同期した。観測request、idempotency、
+    residual-stock calculation/snapshot write/provider/UIは変更していない。非visual parser/medication-safety境界のため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/lib/visits/medication-stock-observation-response-schema.ts`,
+    `src/lib/visits/medication-stock-observation-response-schema.test.ts`,
+    `src/lib/visits/medication-stock-observation.ts`,
+    `src/lib/visits/medication-stock-observation.test.ts`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/provider Vitest passed 3 files / 21 tests. Exact ESLint with `--max-warnings=0`, Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (255 backed / 108 allowlisted / 29 files), frontend
+    contract, module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build was
+    NOT_EXECUTED because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated
+    cache was not deleted or modified.
+  - security / performance / remaining:
+    Wrong-visit/count/identity observation results now fail closed. Request/query count, idempotency, DB transaction,
+    medication-stock calculation/snapshot, visit assignment, auth/tenant, render behavior, and dependencies are
+    unchanged. The paired summary GET reader remains in the ratchet for a dedicated aggregate schema. A clean-capacity
+    runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZPCAPUMPSTRICT PCA pump/rental/institution readers (VERIFY_REQUIRED, 2026-07-13; implementation `8ac7b7b16`, ledger `86c20009b`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin PCA Pumpsのpump list、open/pending-inspection rentals、institution options 4 GETとpump/rental create/update/

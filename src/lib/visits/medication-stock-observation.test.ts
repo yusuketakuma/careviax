@@ -164,7 +164,26 @@ describe('visit medication stock observation request builder', () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
         JSON.stringify({
-          data: { visit_record_id: 'record_1', observations: [] },
+          data: {
+            visit_record_id: 'record/1',
+            observations: [
+              {
+                client_observation_id: 'visit-stock-observation-1',
+                stock_item_id: 'stock_1',
+                stock_event_id: 'event_1',
+                observation_context_id: 'context_1',
+                event_type: 'visit_observation',
+                observation_kind: 'observed_absolute',
+                quantity_kind: 'observed_absolute',
+                snapshot: {
+                  current_quantity: 12,
+                  stock_risk_level: 'ok',
+                  calculated_at: observedAt.toISOString(),
+                },
+                idempotent_replay: true,
+              },
+            ],
+          },
           meta: { generated_at: observedAt.toISOString(), applied_count: 0, replay_count: 1 },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },

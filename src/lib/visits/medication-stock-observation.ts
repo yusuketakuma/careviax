@@ -3,6 +3,7 @@ import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { isValidDateKey } from '@/lib/validations/date-key';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 import { buildVisitMedicationStockObservationsApiPath } from '@/lib/visits/api-paths';
+import { buildVisitMedicationStockObservationResponseSchema } from '@/lib/visits/medication-stock-observation-response-schema';
 import type {
   VisitMedicationStockObservationDraft,
   VisitMedicationStockObservationDraftErrors,
@@ -236,10 +237,10 @@ export async function submitVisitMedicationStockObservations(input: {
     }
     return {
       ok: true,
-      data: await readApiJson<VisitMedicationStockObservationResponse>(
-        response,
-        '残数観測の登録結果を確認できませんでした',
-      ),
+      data: await readApiJson<VisitMedicationStockObservationResponse>(response, {
+        fallbackMessage: '残数観測の登録結果を確認できませんでした',
+        schema: buildVisitMedicationStockObservationResponseSchema(input.visitRecordId),
+      }),
     };
   } catch {
     return {
