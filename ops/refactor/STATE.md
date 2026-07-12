@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZREPORTDETAILSTRICT care-report detail readers (VERIFY_REQUIRED, 2026-07-13; implementation ready; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZREPORTDETAILSTRICT care-report detail readers (VERIFY_REQUIRED, 2026-07-13; implementation `c5ce1223c`; shared clean-capacity build pending).
   - current task / root cause:
     Care Report detail GETとexternal-professional suggestions GET readersはcompile-time castだけで、別report/patient、
     malformed status/date/archive/delivery/contact、権限とcontent/pdf/patient/contact visibilityの不整合、重複suggestionを
