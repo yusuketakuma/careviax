@@ -54,6 +54,34 @@ setupDomTestEnv();
 
 type IssueOverrides = Partial<SafetyIssueRecord> & { id: string };
 
+function buildPatientSummaryPayload(patientId = 'patient_1') {
+  return {
+    id: patientId,
+    name: '山田花子',
+    name_kana: 'ヤマダハナコ',
+    birth_date: '1948-03-02T00:00:00.000Z',
+    unused_phone: 'must-not-enter-safety-cache',
+    workspace: {
+      action_context: {
+        patient_id: patientId,
+        prescription_intake_id: null,
+        visit_schedule_id: null,
+        visit_record_id: null,
+        report_id: null,
+      },
+      safety: {
+        allergy: 'ペニシリン',
+        renal: 'eGFR 38',
+        swallowing: null,
+        handling_tags: ['narcotic'],
+        cautions: ['ふらつき'],
+        unused_detail: 'must-not-enter-safety-cache',
+      },
+      unused_medications: ['must-not-enter-safety-cache'],
+    },
+  };
+}
+
 function buildIssue(overrides: IssueOverrides): SafetyIssueRecord & {
   patient_id: string;
   case_id: string | null;
@@ -348,13 +376,13 @@ describe('SafetyCheckContent url/header convergence', () => {
     const sentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinel);
     const { queryConfigs } = renderSafetyCheck();
-    const fetchMock = stubFetch();
+    const fetchMock = stubJsonFetch({ data: buildPatientSummaryPayload(HOSTILE) });
 
     try {
       await queryConfigs.get('patient-safety-check-summary')!.queryFn();
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(buildPatientApiPath).toHaveBeenCalledWith(HOSTILE);
-      expect(url).toBe(`/api/patients/${ENCODED}`);
+      expect(buildPatientApiPath).toHaveBeenCalledWith(HOSTILE, '/overview');
+      expect(url).toBe(`/api/patients/${ENCODED}/overview`);
       expect(url).not.toContain('%25');
       expect(init.headers).toBe(sentinel);
       expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
@@ -387,14 +415,75 @@ describe('SafetyCheckContent url/header convergence', () => {
 
   it('patient summary GET consumes the shared patient API path helper return value', async () => {
     const { queryConfigs } = renderSafetyCheck({ patientId: 'patient_1' });
-    const fetchMock = stubFetch();
+    const fetchMock = stubJsonFetch({ data: buildPatientSummaryPayload() });
     vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__');
 
     try {
       await queryConfigs.get('patient-safety-check-summary')!.queryFn();
-      expect(buildPatientApiPath).toHaveBeenCalledWith('patient_1');
+      expect(buildPatientApiPath).toHaveBeenCalledWith('patient_1', '/overview');
       expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/patients/__helper_patient__');
       expect(fetchMock).not.toHaveBeenCalledWith('/api/patients/patient_1', expect.anything());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('retains only the patient identity and safety fields consumed by the pinned header', async () => {
+    const { queryConfigs } = renderSafetyCheck({ patientId: 'patient_1' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ data: buildPatientSummaryPayload() })),
+    );
+
+    try {
+      await expect(queryConfigs.get('patient-safety-check-summary')!.queryFn()).resolves.toEqual({
+        id: 'patient_1',
+        name: '山田花子',
+        name_kana: 'ヤマダハナコ',
+        birth_date: '1948-03-02T00:00:00.000Z',
+        workspace: {
+          safety: {
+            allergy: 'ペニシリン',
+            renal: 'eGFR 38',
+            swallowing: null,
+            handling_tags: ['narcotic'],
+            cautions: ['ふらつき'],
+          },
+        },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    [
+      'mixed root fields',
+      () => ({ data: buildPatientSummaryPayload(), legacy_patient: buildPatientSummaryPayload() }),
+    ],
+    [
+      'unexpected overview patient',
+      () => ({ data: buildPatientSummaryPayload('another_patient') }),
+    ],
+    [
+      'patient-mismatched workspace context',
+      () => {
+        const payload = buildPatientSummaryPayload();
+        payload.workspace.action_context.patient_id = 'another_patient';
+        return { data: payload };
+      },
+    ],
+  ])('rejects malformed safety summary 2xx payloads: %s', async (_label, buildPayload) => {
+    const { queryConfigs } = renderSafetyCheck({ patientId: 'patient_1' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse(buildPayload())),
+    );
+
+    try {
+      await expect(queryConfigs.get('patient-safety-check-summary')!.queryFn()).rejects.toThrow(
+        '患者情報の取得に失敗しました',
+      );
     } finally {
       vi.unstubAllGlobals();
     }

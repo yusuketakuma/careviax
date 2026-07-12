@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { messageFromError } from '@/lib/utils/error-message';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -48,21 +49,67 @@ import {
  */
 
 type PatientSummaryResponse = {
+  id: string;
   name: string;
-  name_kana?: string | null;
-  birth_date?: string | null;
-  // root /api/patients/[id] は workspace.safety を返す(card-workspace と同一形状)。
+  name_kana: string | null;
+  birth_date: string;
+  // overview BFF は workspace.safety を返す(card-workspace と同一形状)。
   // 安全チェック中もアレルギー/ハイリスクを常時可視化するために再掲する。
-  workspace?: {
-    safety?: {
-      allergy?: string | null;
-      renal?: string | null;
-      swallowing?: string | null;
-      handling_tags?: string[] | null;
-      cautions?: string[] | null;
-    } | null;
+  workspace: {
+    safety: {
+      allergy: string | null;
+      renal: string | null;
+      swallowing: string | null;
+      handling_tags: string[];
+      cautions: string[];
+    };
   } | null;
 };
+
+const patientSafetySchema = z.object({
+  allergy: z.string().nullable(),
+  renal: z.string().nullable(),
+  swallowing: z.string().nullable(),
+  handling_tags: z.array(z.string().min(1)),
+  cautions: z.array(z.string().min(1)),
+});
+const rawPatientSummaryResponseSchema = z
+  .object({
+    data: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      name_kana: z.string().nullable(),
+      birth_date: z.union([z.string().date(), z.string().datetime()]),
+      workspace: z
+        .object({
+          action_context: z.object({ patient_id: z.string().min(1) }),
+          safety: patientSafetySchema,
+        })
+        .nullable(),
+    }),
+  })
+  .strict()
+  .superRefine((payload, context) => {
+    if (
+      payload.data.workspace &&
+      payload.data.workspace.action_context.patient_id !== payload.data.id
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['data', 'workspace', 'action_context', 'patient_id'],
+        message: 'Safety workspace patient must match summary patient',
+      });
+    }
+  });
+const patientSummaryResponseSchema = rawPatientSummaryResponseSchema.transform((payload) => ({
+  data: {
+    id: payload.data.id,
+    name: payload.data.name,
+    name_kana: payload.data.name_kana,
+    birth_date: payload.data.birth_date,
+    workspace: payload.data.workspace ? { safety: payload.data.workspace.safety } : null,
+  },
+}));
 
 async function fetchPatientCdsAlerts(orgId: string, patientId: string): Promise<SafetyCdsAlert[]> {
   // CDS チェックはサイクル単位のため、患者の最新サイクルを引いてから実行する。
@@ -348,13 +395,15 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
   const patientQuery = useQuery({
     queryKey: ['patient-safety-check-summary', patientId, orgId],
     queryFn: async () => {
-      const response = await fetch(buildPatientApiPath(patientId), {
+      const response = await fetch(buildPatientApiPath(patientId, '/overview'), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: PatientSummaryResponse }>(
-        response,
-        '患者情報の取得に失敗しました',
-      );
+      const fallbackMessage = '患者情報の取得に失敗しました';
+      const payload = await readApiJson<{ data: PatientSummaryResponse }>(response, {
+        fallbackMessage,
+        schema: patientSummaryResponseSchema,
+      });
+      if (payload.data.id !== patientId) throw new Error(fallbackMessage);
       return payload.data;
     },
     enabled: !!orgId,

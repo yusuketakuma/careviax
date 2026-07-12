@@ -46410,3 +46410,25 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `origin/agent/continuous-improvement-20260712`, which is synchronized with its upstream. Unrelated harness-memory
   changes and untracked personal artifacts were excluded; the feature branch does not match the `main`-only
   production deployment trigger.
+
+## 2026-07-12 API-CONTRACT-001FZPATSAFETYSTRICT — safety-check patient context contract (DONE)
+
+- current task / root cause:
+  The medication safety screen documents and renders `workspace.safety`, but its patient summary query called the
+  root `/api/patients/{id}` provider, which does not return `workspace`. The existing `/overview` BFF is the provider
+  that supplies the same workspace used by the patient card. The consumer also compile-time cast the full patient
+  response, retained unconsumed PHI-bearing fields, and did not verify that response/workspace identity matched the
+  requested patient. Real data could therefore omit the pinned allergy/high-risk band or mix patient context.
+- implementation / verification:
+  Connected the summary query to `/api/patients/{id}/overview` through the existing encoded path helper. Added a
+  strict response root and a transformed consumed-data schema that keeps only patient ID/name/kana/birth date and
+  allergy, renal, swallowing, handling-tag, and caution safety fields. It validates date/array/null contracts, strips
+  unused overview/workspace/safety fields, checks workspace versus response patient ID, and rejects a response ID
+  different from the requested route patient. Existing API error messages and the pinned recovery UI are preserved.
+  Six focused tests failed before the fix; safety-check/shared and overview provider suites passed 3 files / 55 tests
+  afterward. Exact ESLint/Prettier, aggregate typecheck, no-unused typecheck, API response-shape, frontend contract,
+  client PHI-log/display, module-boundary, active Plans, client-schema, and diff gates passed. The ratchet improved
+  from 118 / 256 / 100 files to 119 / 255 / 99 files. No provider, DB, auth/authz, PHI projection, read audit,
+  medication issue/CDS logic, mutation, or visual layout changed. Browser and image generation were omitted because
+  this repairs an existing data connection/runtime contract without reconstructing the screen; direct query-function
+  tests cover the network parser and rendered-query wiring. Rollback is the consumer path/schema/test/ratchet hunk.

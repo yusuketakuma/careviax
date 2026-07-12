@@ -313,12 +313,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/safety-check/safety-check-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/share/external-share-content.tsx",
       "counts": {
         "stringFallback": 5
