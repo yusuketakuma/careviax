@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZHISTORYSTRICT patient prescription/visit history summary readers (VERIFY_REQUIRED, 2026-07-12; implementation `f108fd48c`, push and shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZHISTORYSTRICT patient prescription/visit history summary readers (VERIFY_REQUIRED, 2026-07-12; implementation `f108fd48c`, ledger `0a1568d4a`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Patient history summaryの処方/訪問readerがcompile-time castsだけを信頼し、legacy/wrong envelope、duplicate/
     reverse-ordered rows、pagination drift、unknown visit outcomeを直近過去歴へ流し得た。両providerはlimit=5、
