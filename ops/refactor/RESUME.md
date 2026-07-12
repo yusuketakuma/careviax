@@ -7,26 +7,26 @@
 - Upstream: `origin/agent/continuous-improvement-20260712`
 - Remote: `origin`
 - Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
-- Current Phase: implementation / verification checkpoint
-- Current Task ID: `API-CONTRACT-001FZBUSINESSHOLIDAYSTRICT`
+- Current Phase: incremental rescan / next-task selection
+- Current Task ID: `API-CONTRACT-001`
 - Current Task Status: IN_PROGRESS
-- Current Commit Group: `API-CONTRACT-001FZBUSINESSHOLIDAYSTRICT`
+- Current Commit Group: none; previous group landed
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
 - Last Safe Checkpoint: Focused tests, static contract gates, typecheck, no-unused, lint, diff-check, and build passed.
-- Last Completed Action: Serialized Next.js build completed successfully (311/311 static pages).
-- Current Operation: Pre-commit owned-path review.
-- Exact Next Action: Verify the staged diff and staged path list, then create the scoped commit.
-- Exact Next Command: `git diff --cached --check && git diff --cached --stat && git diff --cached --name-only`
+- Last Completed Action: Commit `c4d0b015e` was pushed to the feature branch.
+- Current Operation: Incremental API-contract residual scan.
+- Exact Next Action: Run the client-schema inventory and inspect the next remaining allowlisted reader while preserving unrelated dirty paths.
+- Exact Next Command: `pnpm client-json-schema:check && git status --short --untracked-files=all`
 - Changed Files: business-holidays consumer/test, shifts consumer/test, business-holidays response schema, client schema allowlist, Plans, STATE, checkpoint files.
-- Staged Files: Plans.md; ops/refactor/{STATE,RESUME,RUN_LOCK,SESSION_SUMMARY,CHANGE_LOG,VERIFICATION,SCAN_LOG,FULLSTACK_ALIGNMENT,HIGH_RISK_CHANGES}.md; business-holidays and shifts consumers/tests; business-holidays response schema; client JSON schema allowlist.
+- Staged Files: none
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
 - Unpushed Commits: none
-- Push Status: NOT_STARTED for current commit group
+- Push Status: PUSHED for `API-CONTRACT-001FZBUSINESSHOLIDAYSTRICT`
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
 - Commands Completed: focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; colors; typography; typecheck; no-unused; lint; diff-check.
-- Commands Pending: staged diff review; scoped commit; push; post-push status.
+- Commands Pending: next client-schema scan; residual selection; focused implementation/verification; scoped commit/push for the next group.
 - Tests Completed: 2 files / 39 tests passed.
 - Tests Pending: no focused tests pending; full suite not run for this slice.
 - Build State: PASS (`pnpm plans:active:check && pnpm build`; Next 16.2.9, 311/311 pages).
@@ -43,4 +43,4 @@
 - Resume Preconditions: confirm no target-file writer, preserve unrelated dirty paths, keep build/typecheck serialized.
 - Known Blockers: none for this slice; build emitted two existing CSS optimizer warnings but exited 0.
 - External Changes Detected: none in target files during the checkpoint.
-- Notes: The patient-list/detail link issue is already fresh-verified in STATE; do not duplicate that fix.
+- Notes: The patient-list/detail link issue is already fresh-verified in STATE; do not duplicate that fix. Preserve current unrelated dirty paths.

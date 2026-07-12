@@ -46974,7 +46974,7 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
   remain excluded, and the feature branch does not match the `main`-only production deploy trigger.
 
-## 2026-07-12 API-CONTRACT-001FZBUSINESSHOLIDAYSTRICT — business holiday list contracts (IN_PROGRESS)
+## 2026-07-12 API-CONTRACT-001FZBUSINESSHOLIDAYSTRICT — business holiday list contracts (DONE)
 
 - current task / root cause:
   The business-holidays admin page and the shifts support query still trusted compile-time list casts. A successful
@@ -47002,9 +47002,10 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   emitted two existing CSS optimizer warnings for dynamic `var(...)` Tailwind classes but exited 0. No new build
   failure or route-generation regression was observed.
 - commit / push:
-  Commit and feature-branch push are the remaining landing actions for this validated group. Explicit owned paths
-  are limited to the two consumers/tests, response schema, client-schema allowlist, Plans, STATE, and the checkpoint /
-  verification ledgers. Harness-memory and personal untracked artifacts remain excluded.
+  Commit `c4d0b015e` (`fix(API-CONTRACT-001FZBUSINESSHOLIDAYSTRICT): validate holiday list readers`) contains the
+  two consumers/tests, response schema, client-schema allowlist, Plans, STATE, and the checkpoint/verification ledgers.
+  It was pushed to `origin/agent/continuous-improvement-20260712`. Harness-memory and personal untracked artifacts
+  remain excluded; the feature branch does not match the `main`-only production deploy trigger.
 - next action:
-  Inspect the complete diff, stage only the owned paths, verify the staged diff, create the scoped commit, push the
-  feature branch, and record the remote result.
+  Rescan remaining API-CONTRACT allowlist entries and select the next safe residual without touching unrelated dirty
+  paths.
