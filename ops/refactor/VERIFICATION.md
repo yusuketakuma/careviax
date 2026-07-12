@@ -12,6 +12,19 @@
 - Browser/E2E: not run; this is a non-visual response-contract slice and no visual behavior changed.
 - Migration/auth/tenant: no migration or backend authorization change; no production data operation executed.
 
+## API-CONTRACT-001FZCONFLICTPHARMACIST
+
+- Baseline: inherited schedule-conflict pharmacist lookup used a compile-time `{ data: Pharmacist[] }` cast while the
+  existing `/api/pharmacists` provider returns a counted `{ data, meta }` envelope.
+- Focused test: `pnpm exec vitest run 'src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.test.tsx' 'src/app/api/pharmacists/route.test.ts' --reporter=dot --testTimeout=30000` — PASS, 2 files / 36 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`, `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`, `pnpm boundaries:check`, `pnpm plans:active:check`, `pnpm colors:check`, `pnpm typography:check`, `git diff --check` — PASS.
+- Client-schema result: 180 schema-backed, 193 allowlisted schema-less calls, 73 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS.
+- Build: `NODE_OPTIONS=--max-old-space-size=8192 pnpm build` — PASS; Next 16.2.9 compiled in 2.4 minutes, TypeScript finished in 62 seconds, 311/311 static pages and traces completed. The two existing CSS optimizer warnings did not fail the build; 12 GiB filesystem availability remained after build.
+- Browser/E2E: not run; this is a non-visual pharmacist response-contract/cache-minimization slice with no layout change. `gpt-image-2` was omitted for the same reason.
+- Migration/auth/tenant: no migration, provider, authorization, tenant, mutation, external-send, or production-data operation executed.
+
 ## API-CONTRACT-001FZSERVICEAREASTRICT
 
 - Baseline: inherited admin/service-areas GET readers used compile-time site-option and counted-list casts; two

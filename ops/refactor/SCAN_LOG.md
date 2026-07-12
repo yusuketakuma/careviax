@@ -232,6 +232,42 @@
 - Landing: implementation commit and closure ledger commit are pending; unrelated harness-memory and personal artifacts
   remain excluded.
 
+## 2026-07-12 — API-CONTRACT-001FZCONFLICTPHARMACIST selection
+
+- Rescan: live `pnpm client-json-schema:check` passes with 179 schema-backed / 194 allowlisted schema-less calls across
+  74 files and 0 new debt.
+- Selection: `src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.tsx` has one remaining
+  `stringFallback` reader for `/api/pharmacists`. It consumes only id/name for conflict candidate identity while the
+  provider returns the same counted envelope already validated by `pharmacistMentionResponseSchema`.
+- Safety boundary: reuse the existing minimal pharmacist schema, strip provider-only staff fields, and reject legacy,
+  count-drifted, and conflicting-repeat payloads before conflict analysis. No provider/auth, schedule query, reorder,
+  reconfirmation mutation, patient detail, or visual behavior change is planned.
+- Baseline: focused schedule-conflict consumer/provider suites passed 2 files / 34 tests before implementation;
+  unrelated harness-memory and personal artifacts remain excluded.
+
+## 2026-07-12 — API-CONTRACT-001FZCONFLICTPHARMACIST implementation checkpoint
+
+- Implementation: reused the existing pharmacist response schema, narrowed the conflict helper to id/name, synchronized
+  the counted fixture, added provider-only field stripping and legacy/count-drift/conflicting-repeat regressions, and
+  removed the single conflict allowlist entry.
+- Validation: focused consumer/provider suites pass 2 files / 36 tests; static contract gates, typecheck, no-unused,
+  lint, diff-check, and confirmed Next build pass. Client-schema is 180 schema-backed / 193 allowlisted schema-less
+  calls across 73 files. Build is Next 16.2.9 compile 2.4 minutes, TypeScript 62 seconds, 311/311 static pages, two
+  existing CSS optimizer warnings, and 12 GiB available after build.
+- Landing: implementation commit and closure ledger commit are pending; no provider/auth/mutation/visual behavior was
+  changed and unrelated harness-memory and personal artifacts remain excluded.
+
+## 2026-07-12 — API-CONTRACT-001FZCONFLICTPHARMACIST landed locally
+
+- Commit: `ba2831aea` (`fix(API-CONTRACT-001FZCONFLICTPHARMACIST): validate conflict pharmacist reader`) contains only
+  the conflict consumer/test and allowlist removal; unrelated paths remain unstaged.
+- Result: 180 schema-backed / 193 allowlisted schema-less calls across 73 files, focused 2 files / 36 tests, all static
+  gates, type gates, lint, diff-check, and confirmed Next build pass.
+- Push: not performed because no current user instruction requested remote publication; the branch is intentionally one
+  local implementation commit ahead of `origin/agent/continuous-improvement-20260712`.
+- Next scan: return to `API-CONTRACT-001-RESCAN`, inspect remaining allowlist entries and patients board cursor residual,
+  and select the next bounded disjoint safe slice.
+
 ## 2026-07-12 — API-CONTRACT-001FZOPERATINGHOURSSTRICT selection
 
 - Scope: `src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx`, shared pharmacy-site option schema,

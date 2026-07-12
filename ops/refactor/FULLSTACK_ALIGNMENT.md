@@ -194,3 +194,16 @@
 | Errors / loading / empty    | Existing loading, error/retry, empty candidate, keyboard, and mention insertion behavior remains; malformed 2xx becomes query error rather than false candidate state.                    |
 | Tests                       | Mention consumer/pharmacist provider suite: 2 files / 34 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                    |
 | Alignment                   | ALIGNED for this read slice; provider/auth, comment mutation, mention-id, patient/PHI, and visual behavior intentionally unchanged.                                                       |
+
+## API-CONTRACT-001FZCONFLICTPHARMACIST
+
+| Area                        | Evidence / status                                                                                                                                                                                        |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Authorized schedule operators access the existing conflict page; `/api/pharmacists` retains its existing organization-scoped `canVisit` read boundary.                                                   |
+| Frontend state / clients    | `conflict-resolution-content.tsx` validates the counted pharmacist envelope before conflict naming, candidate selection, and Plan A state; only id/name enter the consumed helper state.                 |
+| Request / response contract | Provider returns `{ data, meta }`; the shared schema validates identity, count basis/filter metadata, visible/hidden arithmetic, limit, and repeated-name identity while stripping provider-only fields. |
+| Backend / DB                | Existing pharmacist membership query, schedule-window query, reorder/reconfirmation endpoints, persistence, and provider routes are unchanged.                                                           |
+| Auth / tenant / audit       | Existing org context, pharmacist visibility, schedule mutation authorization, audit behavior, and in-app patient detail remain unchanged; no provider metadata is externalized.                          |
+| Errors / loading / empty    | Existing loading, lookup error/retry, conflict, no-conflict, and mutation recovery behavior remains; malformed 2xx becomes a query error rather than false candidate/conflict state.                     |
+| Tests                       | Conflict consumer/provider suite: 2 files / 36 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                             |
+| Alignment                   | ALIGNED for this read slice; schedule providers, authorization, mutations, patient/PHI behavior, audit semantics, and visual behavior intentionally unchanged.                                           |

@@ -125,3 +125,15 @@
   before the mention cache.
 - Operational note: staff mention candidates remain authorized in-app identity data only; comment mention IDs and PHI-safe
   recovery behavior are unchanged. No external output or cleanup was performed.
+
+## API-CONTRACT-001FZCONFLICTPHARMACIST
+
+- Classification: Low-risk authorized staff-identity lookup read reused in a schedule-conflict surface; not a high-risk
+  controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets,
+  deployment, provider, schedule mutation, production-data, or external-send operation changed.
+- Safety control: strict minimal id/name schema and counted metadata reject legacy roots, blank/invalid identities, count
+  drift, and conflicting repeated names; provider-only staff contact/account/capacity/credential metadata is stripped
+  before conflict analysis and Plan A candidate state.
+- Operational note: authorized pharmacist identity candidates remain in-app only; schedule reorder/reconfirmation,
+  patient detail, and PHI/audit behavior are unchanged. No external output or cleanup was performed.

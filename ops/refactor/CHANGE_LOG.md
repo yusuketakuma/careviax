@@ -255,3 +255,25 @@
 - Rollback: revert the pharmacist response schema, MentionInput adapter, regressions, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
 - Push evidence: `862c8688e..55ffe485a` fast-forward push succeeded; local and remote heads match (`0 0`).
+
+## API-CONTRACT-001FZCONFLICTPHARMACIST
+
+- Commit Group: `API-CONTRACT-001FZCONFLICTPHARMACIST`
+- Commit: `ba2831aea`
+- Push Status: NOT_REQUESTED
+- Branch: `agent/continuous-improvement-20260712`
+- Scope: schedule-conflict pharmacist lookup, reuse of the minimal counted pharmacist response schema, focused
+  regressions, client-schema allowlist ratchet, and required ledgers.
+- Implementation: validate strict id/name and counted pharmacist metadata, strip provider-only staff fields before
+  conflict candidate state, and reject legacy/count-drift/conflicting-repeat success payloads while preserving existing
+  schedule conflict and reassignment behavior.
+- FE/BE impact: the conflict page now fails closed before conflict analysis and Plan A candidate selection; `/api/pharmacists`,
+  schedule-window reads, reorder/reconfirmation mutations, provider/auth semantics, and visual behavior remain unchanged.
+- DB/auth/tenant/audit impact: no DB, migration, provider, auth/authz, tenant, audit, mutation, production-data, or
+  external-output change.
+- Verification: focused 2 files / 36 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check,
+  and confirmed Next build passed; client-schema inventory is 180 schema-backed / 193 allowlisted / 73 files.
+- Rollback: revert the conflict consumer adapter, regressions, allowlist removal, and ledger entries; the shared
+  pharmacist schema remains owned by the MentionInput slice.
+- Push evidence: not performed because no current user instruction requested remote publication; local branch is one
+  implementation commit ahead of `origin/agent/continuous-improvement-20260712`.

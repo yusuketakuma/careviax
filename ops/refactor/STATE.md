@@ -47045,6 +47045,45 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZCONFLICTPHARMACIST — schedule-conflict pharmacist lookup (DONE)
+
+- current task / selection:
+  The schedule-conflict consumer has one remaining `stringFallback` call for `/api/pharmacists`. It consumes only
+  pharmacist id/name to build conflict candidate identity and Plan A reassignment state, while the provider returns the
+  same counted envelope already validated by `pharmacistMentionResponseSchema`. The compile-time `{ data:
+Pharmacist[] }` cast does not reject a legacy root, count drift, conflicting repeated names, or provider-only staff
+  contact/account/capacity fields entering the query result.
+- scope / safety boundary:
+  Reuse the existing minimal pharmacist response schema and connect only the conflict lookup reader. Schedule-window
+  fetching, provider/auth semantics, visit reorder and reconfirmation mutations, patient detail, comment/mention IDs,
+  audit behavior, and visual behavior remain unchanged. No DB schema, migration, production data, external send, or
+  `gpt-image-2` is needed because this is a non-visual response-contract/cache-minimization slice.
+- implementation plan:
+  Baseline the conflict consumer/provider suite, replace the string fallback with `pharmacistMentionResponseSchema`,
+  narrow the conflict helper to the consumed id/name projection, synchronize the counted test fixture, add provider-only
+  field stripping plus legacy/count-drift/conflicting-repeat regressions, and remove only the conflict allowlist entry.
+- implementation / validation checkpoint:
+  Reused `src/lib/pharmacists/response-schema.ts` in the conflict reader, narrowed the helper to the consumed id/name
+  projection, synchronized the counted fixture, removed the one conflict allowlist entry, and added provider-only field,
+  legacy-root, count-drift, and conflicting-repeat regressions. Focused schedule-conflict/pharmacist provider suites pass
+  2 files / 36 tests. Format, API response shape, client JSON schema, frontend contract, PHI log/display, boundaries,
+  Plans, colors, typography, and diff gates pass; inventory is 180 schema-backed / 193 allowlisted schema-less calls
+  across 73 files. `pnpm typecheck`, 8 GB no-unused typecheck, and lint pass. Confirmed Next build exits 0 with Next
+  16.2.9 compile 2.4 minutes, TypeScript 62 seconds, 311/311 static pages, existing two CSS optimizer warnings, and
+  12 GiB available after the build.
+- safety / limits:
+  `/api/pharmacists` provider query/auth, schedule-window reader, reorder and reconfirmation mutations, patient detail,
+  audit behavior, and visual behavior remain unchanged. Only authorized in-app pharmacist id/name candidates enter the
+  conflict state; provider-only staff contact/account/capacity/credential fields are stripped and malformed 2xx fails
+  closed. No migration, production data operation, external output, or image generation was required.
+- commit / landing:
+  Scoped implementation commit `ba2831aea` (`fix(API-CONTRACT-001FZCONFLICTPHARMACIST): validate conflict pharmacist reader`)
+  was created locally with only the conflict consumer, focused test, and allowlist path staged. Push was not performed
+  because no current user instruction requested remote publication; the ledger closure is recorded locally.
+- next action:
+  Return to `API-CONTRACT-001-RESCAN`, rerun the client-schema inventory and patients board cursor residual scan, and
+  select the next disjoint safe slice without touching unrelated dirty paths.
+
 ## 2026-07-12 API-CONTRACT-001FZMENTIONSTRICT — comment staff-mention lookup (DONE)
 
 - current task / root cause:
