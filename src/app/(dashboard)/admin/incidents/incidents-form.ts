@@ -4,6 +4,7 @@ import type {
   IncidentStatus,
 } from '@/lib/validations/incident-report';
 import type { StatusRole } from '@/lib/constants/status-tokens';
+import type { IncidentReportResponseItem } from '@/lib/incident-reports/response-schema';
 
 /**
  * p1_09「ヒヤリハット管理」: API レコード ⇔ 再発防止メモフォームの射影。
@@ -80,19 +81,13 @@ export function incidentSeverityBadgeRole(severity: string): StatusRole {
   return 'info';
 }
 
-export type IncidentReportListItem = {
-  id: string;
-  title: string;
-  what_happened: string | null;
-  cause: string | null;
-  immediate_action: string | null;
-  prevention_plan: string | null;
+export type IncidentReportListItem = Omit<
+  IncidentReportResponseItem,
+  'related_process' | 'severity' | 'status'
+> & {
   related_process: string | null;
   severity: string;
   status: string;
-  occurred_at: string | null;
-  created_at: string;
-  updated_at: string;
 };
 
 /** 再発防止メモフォーム(未入力は空文字で保持する) */

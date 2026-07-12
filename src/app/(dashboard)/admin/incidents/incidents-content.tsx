@@ -33,6 +33,10 @@ import {
   buildIncidentReportApiPath,
 } from '@/lib/incident-reports/api-paths';
 import { readApiJson } from '@/lib/api/client-json';
+import {
+  buildIncidentReportResponseSchema,
+  incidentReportsResponseSchema,
+} from '@/lib/incident-reports/response-schema';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { cn } from '@/lib/utils';
@@ -56,7 +60,6 @@ import {
   toIncidentStatusPatchValue,
   type IncidentCreateForm,
   type IncidentMemoForm,
-  type IncidentReportListItem,
 } from './incidents-form';
 
 /**
@@ -101,10 +104,10 @@ export function IncidentsContent() {
       const res = await fetch(INCIDENT_REPORTS_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      const json = await readApiJson<{ data: IncidentReportListItem[] }>(
-        res,
-        'ヒヤリハット記録の取得に失敗しました',
-      );
+      const json = await readApiJson(res, {
+        fallbackMessage: 'ヒヤリハット記録の取得に失敗しました',
+        schema: incidentReportsResponseSchema,
+      });
       return json.data;
     },
     enabled: !!orgId,
@@ -131,7 +134,10 @@ export function IncidentsContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(buildIncidentMemoPatchPayload(form)),
       });
-      return readApiJson<{ data: IncidentReportListItem }>(res, '再発防止メモの保存に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '再発防止メモの保存に失敗しました',
+        schema: buildIncidentReportResponseSchema(selected.id),
+      });
     },
     onSuccess: () => {
       toast.success('再発防止メモを保存しました');
@@ -155,7 +161,10 @@ export function IncidentsContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ status: nextStatus }),
       });
-      return readApiJson<{ data: IncidentReportListItem }>(res, 'ステータスの変更に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: 'ステータスの変更に失敗しました',
+        schema: buildIncidentReportResponseSchema(selected.id),
+      });
     },
     onSuccess: () => {
       toast.success('ステータスを更新しました');
@@ -176,7 +185,10 @@ export function IncidentsContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(buildIncidentCreatePayload(createForm)),
       });
-      return readApiJson<{ data: IncidentReportListItem }>(res, '記録の作成に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '記録の作成に失敗しました',
+        schema: buildIncidentReportResponseSchema(),
+      });
     },
     onSuccess: (result) => {
       toast.success('記録を作成しました');

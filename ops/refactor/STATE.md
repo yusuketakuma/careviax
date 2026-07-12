@@ -51,6 +51,36 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZINCIDENTSTRICT incident list/create/update/status readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, ledger pending; shared clean-capacity build pending).
+  - current task / root cause:
+    Admin Incidentsのlist、memo PATCH、status PATCH、createの4 readersはcompile-time castだけで、legacy root、未知
+    severity/status/process、不正timestamp、duplicate identity、wrong update identityをmedical-safety UI stateへ流し得た。
+    Provider projectionのreported_by actor IDもUI未使用ながらquery cacheへ保持されていた。
+  - implementation / medical-safety boundary:
+    Shared item/list/detail schemasを追加し、bounded incident memo/title、strict clinical enums、offset timestamps、
+    updated>=created、100件上限、identity一意、created_at降順を検証。PATCH schema factoryはrequested incident ID
+    一致を強制し、createは同じstrict item contractを使用。reported_byはparse時にstripした。医療安全payload、
+    status canAdmin、write audit/provider/tenant/no-store/UIは変更していない。非visual parser/privacy境界のため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/lib/incident-reports/response-schema.ts`,
+    `src/lib/incident-reports/response-schema.test.ts`,
+    `src/app/(dashboard)/admin/incidents/incidents-form.ts`,
+    `src/app/(dashboard)/admin/incidents/incidents-content.tsx`,
+    `src/app/(dashboard)/admin/incidents/incidents-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/providers Vitest passed 5 files / 45 tests. Exact ESLint with `--max-warnings=0`,
+    Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (240 backed / 128 allowlisted / 33 files),
+    frontend contract, module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build
+    was NOT_EXECUTED because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated
+    cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed/unknown incident clinical states and wrong-identity updates now fail closed; actor identity is not cached.
+    Request/query count, DB/provider work, clinical payload, status authorization, write audit, auth/tenant,
+    render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZDATAEXPLORERREADSTRICT data-explorer model/row readers (VERIFY_REQUIRED, 2026-07-13; implementation `bce3bad6b`, ledger `d3d22f8bf`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Data Explorerのmodel listとdynamic table rowsはcompile-time castだけで読み、legacy/wrong-table root、

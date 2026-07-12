@@ -43,9 +43,7 @@ function stubIncidentFetch(reports: IncidentReportListItem[]) {
   const fetchMock = vi.fn(
     async (_input: RequestInfo | URL, init?: RequestInit) =>
       new Response(
-        JSON.stringify(
-          init?.method === 'PATCH' ? { data: { id: reports[0]?.id } } : { data: reports },
-        ),
+        JSON.stringify(init?.method === 'PATCH' ? { data: reports[0] } : { data: reports }),
         { status: 200 },
       ),
   );
