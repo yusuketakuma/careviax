@@ -87,6 +87,7 @@ import { DrugMasterDetailSheet } from './drug-master-detail-sheet';
 import { FormularyOperationsPanel } from './drug-master-formulary-operations-panel';
 import {
   bulkFormularyResponseSchema,
+  drugMasterJobResponseSchema,
   drugMasterDetailResponseSchema,
   drugMasterImportLogsResponseSchema,
   formularyCopyResponseSchema,
@@ -101,6 +102,7 @@ import {
   genericCandidatePageSchema,
   genericRecommendationsResponseSchema,
   ingredientGroupResponseSchema,
+  officialDrugMasterImportResponseSchema,
   pharmacySiteReferencesResponseSchema,
 } from './drug-master-content-contracts';
 import {
@@ -947,12 +949,10 @@ function DrugMasterOperationalContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(definition.body ?? {}),
       });
-      const json = await readApiJson<{
-        data: {
-          importedCount: number;
-          entryName: string;
-        };
-      }>(res, `${definition.label}に失敗しました`);
+      const json = await readApiJson(res, {
+        fallbackMessage: `${definition.label}に失敗しました`,
+        schema: officialDrugMasterImportResponseSchema,
+      });
       return {
         action,
         definition,
@@ -990,9 +990,14 @@ function DrugMasterOperationalContent({
         method: 'POST',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{
-        data: { jobType?: string; processedCount?: number; errors?: string[] };
-      }>(res, '一括更新の実行に失敗しました');
+      const result = await readApiJson(res, {
+        fallbackMessage: '一括更新の実行に失敗しました',
+        schema: drugMasterJobResponseSchema,
+      });
+      if (result.jobType !== 'drug-master-auto-refresh') {
+        throw new Error('一括更新の実行に失敗しました');
+      }
+      return result;
     },
     onSuccess: async (result) => {
       const processedCount = result.data.processedCount;
@@ -1026,10 +1031,14 @@ function DrugMasterOperationalContent({
         method: 'POST',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: { processedCount?: number; errors?: string[] } }>(
-        res,
-        'マスター鮮度チェックに失敗しました',
-      );
+      const result = await readApiJson(res, {
+        fallbackMessage: 'マスター鮮度チェックに失敗しました',
+        schema: drugMasterJobResponseSchema,
+      });
+      if (result.jobType !== 'drug-master-freshness-check') {
+        throw new Error('マスター鮮度チェックに失敗しました');
+      }
+      return result;
     },
     onSuccess: async (result) => {
       toast.success(

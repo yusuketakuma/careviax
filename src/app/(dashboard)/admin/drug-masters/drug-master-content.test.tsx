@@ -1039,6 +1039,57 @@ describe('DrugMasterContent', () => {
     }
   });
 
+  it('rejects a successful official import with a negative imported count', async () => {
+    render(<DrugMasterContent />);
+
+    confirmMasterImportAction();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({ data: { importedCount: -1, entryName: 'master.csv' } }, 201),
+      ),
+    );
+    try {
+      await expect(runCurrentMutation('ssk')).rejects.toThrow('SSK全件取込に失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects an auto-refresh response for another job type', async () => {
+    render(<DrugMasterContent />);
+
+    confirmAutoRefreshAction();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({ data: { jobType: 'drug-master-freshness-check', processedCount: 1 } }, 200),
+      ),
+    );
+    try {
+      await expect(runCurrentMutation()).rejects.toThrow('一括更新の実行に失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a freshness-check response for another job type', async () => {
+    render(<DrugMasterContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '鮮度チェック' }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({ data: { jobType: 'drug-master-auto-refresh', processedCount: 1 } }, 200),
+      ),
+    );
+    try {
+      await expect(runCurrentMutation()).rejects.toThrow('マスター鮮度チェックに失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('requires typed confirmation before running free master auto-refresh', () => {
     render(<DrugMasterContent />);
 

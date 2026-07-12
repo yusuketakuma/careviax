@@ -46834,3 +46834,30 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   schemas, reader adapters, synchronized fixtures, regressions, client-schema ratchet, Plans, and this ledger entry.
   It was pushed to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked
   personal artifacts were excluded, and the feature branch does not match the `main`-only production deploy trigger.
+
+## 2026-07-12 API-CONTRACT-001FZDRUGJOBSTRICT — drug-master mutation outcome contracts (DONE)
+
+- current task / root cause:
+  The official drug-master import, free-master auto-refresh, and freshness-check mutation readers trusted compile-time
+  casts. A negative import count, a response for another job type, or a missing/invalid processed count could therefore
+  be reported as successful and trigger preview clearing or query invalidation. Full import logs, source URLs/hashes,
+  workbook metadata, and job error arrays were retained although this screen consumes only the outcome count.
+- implementation / verification:
+  Added a consumed import outcome schema shared across the five official import providers and a consumed job outcome
+  schema for the dynamic job route. Import parsing requires a nonnegative integer `importedCount`; job parsing requires
+  the exact supported `jobType` and a nonnegative integer `processedCount`, while each reader verifies its requested
+  job identity. Both schemas minimize provider metadata before mutation state. Three regressions failed before
+  implementation and passed afterward; the consumer, five import providers, and dynamic job provider passed 7 files /
+  235 tests. Aggregate and 8 GB no-unused typechecks passed. Exact ESLint/Prettier, API response-shape, frontend
+  contract, client PHI-log/display, module-boundary, active Plans, client-schema, and diff gates passed. The
+  client-schema ratchet improved from 147 schema-backed / 227 allowlisted schema-less / 92 files to 150 / 224 / 92.
+  Full build was not repeated after the existing compile-stage memory limitation; no new build hypothesis remains
+  after both typecheck gates passed. No provider, job, DB, auth/authz, tenant, audit, import calculation, clinical data,
+  or visual layout changed, and no import or job was executed outside mocked provider tests. Browser and image
+  generation were omitted because this is a non-visual fail-closed response-contract and state-minimization repair
+  covered at consumer and provider boundaries. Rollback is the two schemas, three reader adapters, three regressions,
+  and client-schema ratchet hunk.
+- commit / push:
+  Pending scoped commit and push to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes
+  and untracked personal artifacts remain excluded, and the feature branch does not match the `main`-only production
+  deploy trigger.

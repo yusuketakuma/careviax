@@ -1304,6 +1304,31 @@ export const formularySafetyFollowUpResponseSchema = z
     },
   }));
 
+export const officialDrugMasterImportResponseSchema = z
+  .object({
+    data: z.object({ importedCount: z.number().int().nonnegative() }).strip(),
+  })
+  .strict()
+  .transform(({ data }) => ({ data: { importedCount: data.importedCount } }));
+
+const drugMasterJobTypeSchema = z.enum(['drug-master-auto-refresh', 'drug-master-freshness-check']);
+
+export const drugMasterJobResponseSchema = z
+  .object({
+    data: z
+      .object({
+        jobType: drugMasterJobTypeSchema,
+        processedCount: z.number().int().nonnegative(),
+        errors: z.array(z.string()).optional(),
+      })
+      .strip(),
+  })
+  .strict()
+  .transform(({ data }) => ({
+    jobType: data.jobType,
+    data: { processedCount: data.processedCount },
+  }));
+
 export type BulkPreviewResponse = z.infer<typeof bulkFormularyResponseSchema>['data'];
 export type DrugMasterDetail = z.infer<typeof drugMasterDetailSchema>;
 export type FormularyCopyPreviewResponse = z.infer<typeof formularyCopyResponseSchema>['data'];
