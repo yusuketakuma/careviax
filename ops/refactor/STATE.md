@@ -47045,6 +47045,37 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZPACKAGINGSTRICT — packaging-method list contract (IMPLEMENTED, PENDING LANDING)
+
+- current task / root cause:
+  The admin packaging-methods GET reader trusts a compile-time `PackagingMethodsResponse` cast while the provider
+  returns a counted `{ data, meta }` envelope. Provider-only timestamps/org metadata, duplicate method identities,
+  blank or overlong text, negative order/count values, inconsistent visible/hidden/total arithmetic, or an incorrect
+  count basis can therefore enter the authorized list/form state. Existing POST/PATCH audit behavior, provider query,
+  authorization, and visual semantics are not being changed.
+- baseline:
+  The focused packaging-method consumer/provider suites pass 2 files / 20 tests before implementation. Current
+  client-schema inventory is 169 schema-backed / 204 allowlisted schema-less / 80 files. The target is one
+  `stringFallback` entry in `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx`.
+- implementation plan:
+  Add a strict shared packaging-method item and counted-meta schema, validate item identity/text/order/active fields,
+  unique IDs, total/visible/hidden/truncated arithmetic, exact count basis, and bounded limit, strip provider-only fields,
+  add malformed/legacy/duplicate/negative/inconsistent regressions, and remove only the packaging-method allowlist entry.
+  No visual reconstruction or `gpt-image-2` is needed because this is a non-visual bounded master-data parser and
+  authorized query/form-state boundary repair.
+- implementation / validation:
+  Added a strict shared packaging-method item/count-meta schema with provider-field stripping, duplicate identity
+  detection, non-negative order/count checks, exact count basis, bounded limit, and visible/hidden/total/truncated
+  arithmetic invariants. The GET reader now rejects legacy/malformed/duplicate/negative/inconsistent 2xx before list or
+  form state; POST/PATCH/audit behavior, provider query, authorization, and visual behavior are unchanged. Focused
+  suites pass 2 files / 26 tests; static contract gates and `git diff --check` pass; client-schema inventory is
+  170 schema-backed / 203 allowlisted schema-less / 79 files; typecheck and no-unused typecheck pass; lint exits 0
+  with the two pre-existing break-glass warnings; Next 16.2.9 build passes with 311/311 static pages, the two existing
+  CSS optimizer warnings, and no ENOSPC warning. Filesystem availability was 14 GiB before and 13 GiB after the build.
+- next action:
+  Update the landing ledgers, inspect explicit owned paths, create the scoped implementation commit, push it, verify
+  local/remote parity, then add the closure ledger.
+
 ## 2026-07-12 API-CONTRACT-001FZINSTITUTIONSSTRICT — prescriber-institutions list contract (DONE)
 
 - current task / root cause:

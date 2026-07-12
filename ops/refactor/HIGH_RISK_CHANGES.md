@@ -62,3 +62,10 @@
 - Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, provider, POST/PATCH/DELETE, or production data mutation changed.
 - Safety/privacy control: legacy root, duplicate identity, blank identity, negative prescription count, invalid prescribed date, pagination drift, and overlong contact/text fields fail closed; provider-only organization/timestamp/relation fields are stripped before authorized table/edit state.
 - Operational note: authorized institution contact and prescription-usage aggregate remain in-app only; no raw patient record, provider relation, or external output is introduced by this slice.
+
+## API-CONTRACT-001FZPACKAGINGSTRICT
+
+- Classification: Controlled packaging-configuration operational read, but not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, provider, POST/PATCH/audit, or production data mutation changed.
+- Safety/privacy control: legacy root, duplicate identity, blank/overlong text, negative sort/count, wrong count basis, empty-filter drift, limit overflow, and inconsistent counted metadata fail closed; provider-only timestamps/org fields are stripped before authorized list/form state.
+- Operational note: authorized packaging configuration remains in-app only; no patient detail, provider metadata, or external output is introduced by this slice.

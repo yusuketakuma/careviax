@@ -139,3 +139,23 @@
   static/type/no-unused/lint/diff/build gates pass; client-schema inventory moved to 169 schema-backed / 204 allowlisted /
   80 files. Commit `f906abede` is pushed. Next scan: remaining API-CONTRACT allowlist entries and patients board cursor
   residual.
+
+## 2026-07-12 — API-CONTRACT-001FZPACKAGINGSTRICT selection
+
+- Scope: `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx`, packaging-method response schema,
+  packaging-method consumer/provider tests, and the one matching client-schema allowlist entry.
+- Candidate ranking: selected the bounded one-entry master-data reader after the institutions landing; deferred billing,
+  external/document delivery, patient/visit detail, and mutation-heavy readers with broader controlled-data or outbound
+  side effects.
+- Finding: the provider returns a counted `{ data, meta }` envelope while the consumer trusts a compile-time response
+  cast; duplicate/blank/negative rows, count arithmetic drift, incorrect count basis, or provider-only timestamps can
+  affect the authorized packaging-method list/form state.
+- Baseline: focused packaging-method consumer/provider suites pass 2 files / 20 tests; client-schema is 169
+  schema-backed / 204 allowlisted / 80 files.
+- Planned fix: strict item/meta schema, unique IDs, counted-list invariants, provider-field stripping,
+  malformed/legacy/duplicate/negative/inconsistent regressions, and one allowlist ratchet removal. POST/PATCH/audit,
+  provider/auth, and visual semantics stay fixed.
+
+- Landed locally: shared packaging-method item/meta schema now guards the counted provider envelope; focused suites pass
+  2 files / 26 tests; static/type/no-unused/lint/diff/build gates pass; client-schema inventory moved to 170
+  schema-backed / 203 allowlisted / 79 files. Scoped commit/push and closure ledger remain.

@@ -116,3 +116,16 @@
 | Errors / loading / empty    | Existing loading, error/retry, empty, search debounce, edit, and mutation behavior remains; malformed 2xx becomes query error rather than false table/edit state.                             |
 | Tests                       | Institutions consumer/provider suite: 2 files / 43 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                              |
 | Alignment                   | ALIGNED for this read slice; POST/PATCH/DELETE, provider/auth semantics, authorized contact/usage display, and visual behavior intentionally unchanged.                                       |
+
+## API-CONTRACT-001FZPACKAGINGSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| User roles / routes         | Authorized users access `/admin/packaging-methods`; `/api/packaging-methods` remains under existing `canVisit` GET scope and admin-only mutation permissions.                        |
+| Frontend state / clients    | `packaging-methods-content.tsx` validates the counted response before list/form state; provider-only timestamps and organization fields are stripped from cached rows.               |
+| Request / response contract | Provider returns `{ data, meta }` with `count_basis=packaging_methods`, empty filters, bounded `limit`, and counted-list metadata; consumer validates row and arithmetic invariants. |
+| Backend / DB                | Existing org-scoped method query, ordering, bounded take, no-store/provider behavior, persistence, and audit-backed POST/PATCH paths are unchanged.                                  |
+| Auth / tenant / audit       | Existing `canVisit` GET and admin mutation/audit authorization remain; authorized packaging configuration stays in-app and is not sent to external output.                           |
+| Errors / loading / empty    | Existing loading, error/retry, empty, truncation notice, edit, and mutation behavior remains; malformed 2xx becomes query error rather than false list/form state.                   |
+| Tests                       | Packaging-method consumer/provider suite: 2 files / 26 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                 |
+| Alignment                   | ALIGNED for this read slice; POST/PATCH/audit, provider/auth semantics, authorized configuration display, and visual behavior intentionally unchanged.                               |

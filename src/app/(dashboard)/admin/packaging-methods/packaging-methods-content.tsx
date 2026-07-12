@@ -22,29 +22,11 @@ import {
   PACKAGING_METHODS_API_PATH,
   buildPackagingMethodApiPath,
 } from '@/lib/packaging-methods/api-paths';
+import {
+  packagingMethodsResponseSchema,
+  type PackagingMethodsResponse,
+} from '@/lib/packaging-methods/response-schema';
 import { messageFromError } from '@/lib/utils/error-message';
-
-type PackagingMethodRow = {
-  id: string;
-  name: string;
-  description: string | null;
-  icon_key: string | null;
-  sort_order: number;
-  is_active: boolean;
-};
-
-type PackagingMethodsResponse = {
-  data: PackagingMethodRow[];
-  meta: {
-    total_count: number;
-    visible_count: number;
-    hidden_count: number;
-    truncated: boolean;
-    count_basis: 'packaging_methods';
-    filters_applied: Record<string, unknown>;
-    limit: number;
-  };
-};
 
 const packagingMethodFormSchema = z.object({
   id: z.string(),
@@ -108,7 +90,10 @@ export function PackagingMethodsContent() {
       const res = await fetch(PACKAGING_METHODS_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PackagingMethodsResponse>(res, '配薬方法マスターの取得に失敗しました');
+      return readApiJson<PackagingMethodsResponse>(res, {
+        fallbackMessage: '配薬方法マスターの取得に失敗しました',
+        schema: packagingMethodsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

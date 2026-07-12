@@ -90,12 +90,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx",
       "counts": {
         "stringFallback": 9

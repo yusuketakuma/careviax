@@ -78,8 +78,8 @@ function latestMutationFn() {
   return call?.[0].mutationFn as () => Promise<unknown>;
 }
 
-function stubFetchOk() {
-  return stubJsonFetch({
+function stubFetchOkBody() {
+  return {
     data: [METHOD],
     meta: {
       total_count: 1,
@@ -90,7 +90,11 @@ function stubFetchOk() {
       filters_applied: {},
       limit: 100,
     },
-  });
+  };
+}
+
+function stubFetchOk() {
+  return stubJsonFetch(stubFetchOkBody());
 }
 
 beforeEach(() => {
@@ -158,6 +162,55 @@ describe('PackagingMethodsContent', () => {
     expect(fetchMock).toHaveBeenCalledWith(PACKAGING_METHODS_API_PATH, {
       headers: buildOrgHeaders('org_1'),
     });
+  });
+
+  it('strips provider-only packaging method fields before query state', async () => {
+    const fetchMock = stubJsonFetch({
+      data: [{ ...METHOD, org_id: 'org_1', created_at: '2026-07-01T00:00:00.000Z' }],
+      meta: {
+        total_count: 1,
+        visible_count: 1,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'packaging_methods',
+        filters_applied: {},
+        limit: 100,
+      },
+    });
+    render(<PackagingMethodsContent />);
+
+    const result = await latestQueryFn()();
+
+    expect(result).toMatchObject({ data: [METHOD] });
+    const parsed = result as { data: Array<Record<string, unknown>> };
+    expect(parsed.data[0]).not.toHaveProperty('org_id');
+    expect(parsed.data[0]).not.toHaveProperty('created_at');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['legacy root', { data: [METHOD] }],
+    ['duplicate identity', { ...stubFetchOkBody(), data: [METHOD, METHOD] }],
+    ['negative sort order', { ...stubFetchOkBody(), data: [{ ...METHOD, sort_order: -1 }] }],
+    [
+      'inconsistent counted metadata',
+      {
+        ...stubFetchOkBody(),
+        meta: { ...stubFetchOkBody().meta, visible_count: 0 },
+      },
+    ],
+    [
+      'wrong count basis',
+      {
+        ...stubFetchOkBody(),
+        meta: { ...stubFetchOkBody().meta, count_basis: 'packaging_method_master' },
+      },
+    ],
+  ])('rejects %s before query state', async (_label, payload) => {
+    stubJsonFetch(payload);
+    render(<PackagingMethodsContent />);
+
+    await expect(latestQueryFn()()).rejects.toThrow('配薬方法マスターの取得に失敗しました');
   });
 
   it('create (POST) delegates to buildOrgJsonHeaders and posts to the static collection path', async () => {
