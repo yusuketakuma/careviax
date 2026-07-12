@@ -64,8 +64,8 @@
 ## API-CONTRACT-001FZSITESELECTREADSTRICT
 
 - Commit Group: `API-CONTRACT-001FZSITESELECTREADSTRICT`
-- Commit: pending
-- Push Status: NOT_STARTED
+- Commit: `053b48c74`
+- Push Status: PUSHED
 - Branch: `agent/continuous-improvement-20260712`
 - Scope: select-site list response schema, consumer regressions, current provider-shaped fixture, and client-schema allowlist ratchet.
 - Implementation: validate strict `{ data, meta }`, unique site identities, at-most-one current site, non-negative visit counts, non-empty identity, and `limit/has_more` relation; preserve the existing PUT acknowledgement, membership filtering, and navigation behavior.
@@ -74,4 +74,4 @@
 - Verification: focused 1 file / 6 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and Next build passed; client-schema inventory is 165 schema-backed / 208 allowlisted / 84 files. Build emitted existing CSS optimizer warnings and exited 0.
 - Rollback: revert the sites response schema, consumer adapter, fixture/regressions, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
-- Push evidence: pending scoped commit.
+- Push evidence: `47fcaf80f..053b48c74` fast-forward push succeeded; local and remote heads match.

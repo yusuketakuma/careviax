@@ -47045,7 +47045,7 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
-## 2026-07-12 API-CONTRACT-001FZSITESELECTREADSTRICT — select-site list contract (IN_PROGRESS)
+## 2026-07-12 API-CONTRACT-001FZSITESELECTREADSTRICT — select-site list contract (DONE)
 
 - current task / root cause:
   The select-site GET consumer still trusted a compile-time `{ data: MySite[] }` cast even though the provider returns
@@ -47073,8 +47073,14 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   311/311 static pages were generated, and route optimization/traces completed. The build emitted the two existing CSS
   optimizer warnings and exited 0; no ENOSPC warning was emitted in this run and no generated-artifact cleanup was
   performed.
+- commit / push:
+  Scoped implementation commit `053b48c74` (`fix(API-CONTRACT-001FZSITESELECTREADSTRICT): validate site list reader`)
+  was pushed to `origin/agent/continuous-improvement-20260712`; remote head matches and
+  `git rev-list --left-right --count HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts
+  remain excluded; the feature branch does not match the `main`-only production deploy trigger.
 - next action:
-  Inspect the select-site-owned diff and ledgers, then stage only this validated slice for commit/push.
+  Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
+  disjoint safe slice without touching unrelated dirty paths.
 
 ## 2026-07-12 API-CONTRACT-001FZOPSINSIGHTSTRICT — operations insights contract (DONE)
 

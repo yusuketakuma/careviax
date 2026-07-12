@@ -60,3 +60,6 @@
   allowlisted / 85 files.
 - Planned fix: strict `{ data, meta }` schema, unique/current site identity and count checks, pagination relation,
   malformed/legacy 2xx regressions, and one allowlist ratchet removal. Provider/PUT/auth/UI behavior stays fixed.
+- Landed: implementation commit `053b48c74` passed 1 file / 6 focused tests, all contract/type/lint/diff gates, and
+  serialized Next build; client-schema inventory moved to 165 schema-backed / 208 allowlisted / 84 files. Next scan:
+  remaining API-CONTRACT allowlist entries and patients board cursor residual.
