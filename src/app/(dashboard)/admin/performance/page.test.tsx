@@ -293,7 +293,10 @@ describe('PerformancePage polling policy', () => {
         workload_metrics: { pharmacists: [] },
       },
     };
-    const schedulesPayload = { data: [] };
+    const schedulesPayload = {
+      data: [],
+      meta: { limit: 100, has_more: false, next_cursor: null },
+    };
     const proposalsPayload = { data: [] };
     const runtimePayload = {
       data: {
@@ -358,7 +361,7 @@ describe('PerformancePage polling policy', () => {
     )?.[0] as QueryOption | undefined;
 
     await expect(workflowQuery?.queryFn?.()).resolves.toEqual(workflowPayload);
-    await expect(schedulesQuery?.queryFn?.()).resolves.toEqual(schedulesPayload);
+    await expect(schedulesQuery?.queryFn?.()).resolves.toEqual({ data: [], hasMore: false });
     await expect(proposalsQuery?.queryFn?.()).resolves.toEqual(proposalsPayload);
     await expect(runtimeQuery?.queryFn?.()).resolves.toEqual(runtimePayload);
 

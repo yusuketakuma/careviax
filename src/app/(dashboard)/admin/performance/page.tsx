@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { readApiJson } from '@/lib/api/client-json';
+import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -32,6 +33,7 @@ import {
   WORKFLOW_DASHBOARD_INVALIDATION_EVENTS,
 } from '@/lib/realtime/workflow-invalidation-policy';
 import { StaffKpiPanel } from '@/app/(dashboard)/admin/staff/staff-kpi-panel';
+import { performanceScheduleSchema, type PerformanceSchedule } from './performance-schedule-schema';
 
 type WorkflowData = {
   route_control: {
@@ -57,23 +59,6 @@ type WorkflowData = {
       facility_clusters: number;
     }>;
   };
-};
-
-type VisitSchedule = {
-  id: string;
-  scheduled_date: string;
-  priority: 'normal' | 'urgent' | 'emergency';
-  assignment_mode: 'primary' | 'fallback';
-  confirmed_at: string | null;
-  case_: {
-    patient: {
-      name: string;
-    };
-  };
-  override_request: {
-    status: 'pending' | 'completed' | 'cancelled';
-    reason: string;
-  } | null;
 };
 
 type Proposal = {
@@ -266,10 +251,14 @@ export default function PerformancePage() {
         date_to: dateTo,
         limit: '100',
       });
-      const res = await fetch(`/api/visit-schedules?${params}`, {
-        headers: buildOrgHeaders(orgId),
+      return fetchAllCursorPages<PerformanceSchedule>({
+        path: '/api/visit-schedules',
+        params,
+        init: { headers: buildOrgHeaders(orgId) },
+        limit: 100,
+        errorMessage: '訪問予定の取得に失敗しました',
+        itemSchema: performanceScheduleSchema,
       });
-      return readApiJson<{ data: VisitSchedule[] }>(res, '訪問予定の取得に失敗しました');
     },
     enabled: !!orgId,
     invalidateOn: SCHEDULE_WORKFLOW_INVALIDATION_EVENTS,
