@@ -8,6 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/loading';
 import { readApiJson } from '@/lib/api/client-json';
+import {
+  buildCreateCommentResponseSchema,
+  commentListResponseSchema,
+  deleteCommentResponseSchema,
+} from '@/lib/comments/response-schemas';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   COMMENTS_API_PATH,
@@ -61,7 +66,10 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
       const res = await fetch(buildCommentsApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: Comment[] }>(res, 'コメントの取得に失敗しました');
+      return readApiJson<{ data: Comment[] }>(res, {
+        fallbackMessage: 'コメントの取得に失敗しました',
+        schema: commentListResponseSchema,
+      });
     },
     enabled: !!orgId && !!entityId,
     invalidateOn: ['comment_refresh'],
@@ -80,7 +88,15 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
           mentions,
         }),
       });
-      return readApiJson(res, 'コメントの投稿に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: 'コメントの投稿に失敗しました',
+        schema: buildCreateCommentResponseSchema({
+          entityType,
+          entityId,
+          content,
+          mentions,
+        }),
+      });
     },
     onMutate: () => {
       setCreateError(false);
@@ -104,7 +120,10 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson(res, 'コメントの削除に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: 'コメントの削除に失敗しました',
+        schema: deleteCommentResponseSchema,
+      });
     },
     onMutate: (commentId) => {
       setDeleteErrorCommentId((current) => (current === commentId ? null : current));

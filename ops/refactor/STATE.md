@@ -51,6 +51,33 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZCOMMENTSTRICT comment thread readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Comment ThreadのGET/POST/DELETE readersはcompile-time castまたはuntyped JSONで、duplicate/reordered comments、
+    duplicate mentions、別entity/改変contentのPOST結果、legacy/false delete acknowledgementを成功扱いし、PHIを
+    含み得るthread state、draft clear、cache invalidationへ進め得た。Providerのraw rowにはUI未使用のorg/entity/update
+    metadataも含まれていた。
+  - implementation / privacy boundary:
+    Shared comment list/create/delete schemasを追加し、comment/mention identity一意、oldest-first、bounded content、
+    requested entity/content/normalized mentions一致、exact delete acknowledgementを検証。List/create provider-only fieldsを
+    cache/mutation state前にprojectionした。Comment body/mentions、per-entity authorization、mention recipient validation、
+    notifications/realtime、tenant/RLS/DB/UIは変更していない。非visual parser/PHI boundaryのため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/comments/response-schemas.ts`, `src/lib/comments/response-schemas.test.ts`,
+    `src/components/features/comments/comment-thread.tsx`,
+    `src/components/features/comments/comment-thread.test.tsx`, `tools/client-json-schema-allowlist.json`,
+    `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/GET-POST/DELETE provider Vitest passed 4 files / 44 tests. Exact ESLint, Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (263 backed / 100 allowlisted / 25 files), frontend
+    contract, module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build was
+    NOT_EXECUTED because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated
+    cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed/cross-entity comment results now fail closed and unused provider metadata no longer enters thread state.
+    Network/DB query count, authorization/tenant/RLS, notification/realtime behavior, and dependencies are unchanged.
+    A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZINTAKETRIAGESTRICT prescription intake triage readers (VERIFY_REQUIRED, 2026-07-13; implementation `4a3d01d01`, ledger `dbf270d81`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Prescription Intake Triageのqueueとcockpit right-rail GET readersはcompile-time castだけで、重複identity、

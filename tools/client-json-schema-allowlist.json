@@ -139,12 +139,6 @@
       }
     },
     {
-      "path": "src/components/features/comments/comment-thread.tsx",
-      "counts": {
-        "stringFallback": 3
-      }
-    },
-    {
       "path": "src/components/features/dispense-workbench/dispensing-workbench.adapter.ts",
       "counts": {
         "stringFallback": 2

@@ -88,6 +88,7 @@ describe('CommentThread', () => {
   });
 
   it('uses an org-scoped realtime query key and shared fetch helpers for the comment list', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ data: [] }));
     renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
 
     expect(screen.getByText('コメントはまだありません。')).toBeTruthy();
@@ -107,6 +108,22 @@ describe('CommentThread', () => {
       { headers: { 'x-org-id': 'org-header:org_1', 'x-test-helper': 'buildOrgHeaders' } },
     );
     expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+  });
+
+  it('rejects a duplicate successful comment list response', async () => {
+    const duplicate = {
+      id: 'comment_1',
+      author_id: 'user_1',
+      author_name: '田中',
+      content: '確認お願いします',
+      mentions: [],
+      created_at: '2026-06-13T09:30:00+09:00',
+    };
+    fetchMock.mockResolvedValueOnce(jsonResponse({ data: [duplicate, duplicate] }));
+    renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
+
+    const options = useRealtimeQueryMock.mock.calls[0][0] as { queryFn: () => Promise<unknown> };
+    await expect(options.queryFn()).rejects.toThrow('コメントの取得に失敗しました');
   });
 
   it('single-encodes comment delete paths and preserves delete headers', async () => {
@@ -143,6 +160,21 @@ describe('CommentThread', () => {
   });
 
   it('posts comments through shared collection path and JSON org headers', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          data: {
+            id: 'comment_1',
+            entity_type: 'patient',
+            entity_id: 'patient_1',
+            content: '確認お願いします',
+            mentions: ['user_2'],
+            created_at: '2026-06-13T09:30:00+09:00',
+          },
+        },
+        201,
+      ),
+    );
     renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
 
     fireEvent.change(screen.getByLabelText('コメント入力'), {
