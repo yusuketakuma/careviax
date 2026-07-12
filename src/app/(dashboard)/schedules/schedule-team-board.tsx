@@ -39,6 +39,7 @@ import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useStaleAfterRefetchError } from '@/lib/hooks/use-stale-after-refetch-error';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
+import { buildScheduleDayBoardResponseSchema } from '@/lib/schedules/day-board-response-schema';
 import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
 import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import { familyNameOf } from '@/lib/utils/person-name';
@@ -83,10 +84,10 @@ async function fetchScheduleDayBoard(
   const res = await fetch(`/api/visit-schedules/day-board?date=${date}`, {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: ScheduleDayBoardResponse }>(
-    res,
-    '全員スケジュールの取得に失敗しました',
-  );
+  const json = await readApiJson<{ data: ScheduleDayBoardResponse }>(res, {
+    fallbackMessage: '全員スケジュールの取得に失敗しました',
+    schema: buildScheduleDayBoardResponseSchema(date),
+  });
   return json.data;
 }
 

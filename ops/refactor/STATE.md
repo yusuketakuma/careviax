@@ -51,6 +51,34 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZSCHEDULEBOARDSTRICT schedule day-board reader (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, feature-branch push pending; shared clean-capacity build pending).
+  - current task / root cause:
+    Schedule Team Boardのday-board GET readerはcompile-time castだけで、別日、重複identity、不正日時/関係、
+    visible/hidden workload・proposal・inbound counts drift、車両容量/推奨矛盾、unsanitized task metadataを成功扱いし、
+    当日のスタッフ・患者・訪問・タスクを含むPHI-bearing operational stateへ流し得た。
+  - implementation / schedule-safety boundary:
+    Requested date準拠のconsumed schemaを追加し、staff/visit/preparation/patient summary、vehicle、proposal、inbound signal、
+    operational taskの型・identity・relation・count arithmeticを検証。既存のstaff上限6、proposal上限3、inbound上限5、
+    task上限24とhidden-count契約を固定し、provider-only vehicle recommendation inputをcache前に除去した。
+    過去のcount-only hidden-work方針もlive provider/fixtureで再確認した。Provider、query、DB、auth/tenant、UIは不変。
+    非visual response parser/PHI境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/schedules/day-board-response-schema.ts`,
+    `src/lib/schedules/day-board-response-schema.test.ts`,
+    `src/app/(dashboard)/schedules/schedule-team-board.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/helper/schema/provider Vitest passed 4 files / 66 tests. Exact ESLint, Prettier, aggregate
+    typecheck, 8GB no-unused typecheck, client schema (279 backed / 84 allowlisted / 20 files), frontend contract,
+    module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build was NOT_EXECUTED
+    because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated cache was not
+    deleted or modified.
+  - security / performance / remaining:
+    Cross-date/malformed schedule payloads now fail closed, hidden work remains count-only, and provider-only vehicle
+    ranking input no longer enters client cache. Network/DB query count, schedule writes, authorization, rendering,
+    and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZCONSENTSTRICT consent record/template readers (VERIFY_REQUIRED, 2026-07-13; implementation `1986de54d`, ledger `4c85c902f`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Patient Consent Recordsのtemplate list、consent list、create、update、revoke計5 readersはcompile-time castだけで、

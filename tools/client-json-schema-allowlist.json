@@ -85,12 +85,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/schedules/schedule-team-board.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/visits/[id]/capture/capture-content.tsx",
       "counts": {
         "stringFallback": 2
