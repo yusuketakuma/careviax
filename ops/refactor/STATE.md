@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZCREDENTIALSTRICT pharmacist credential/staff-option readers (VERIFY_REQUIRED, 2026-07-13; implementation `115430961`, shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCREDENTIALSTRICT pharmacist credential/staff-option readers (VERIFY_REQUIRED, 2026-07-13; implementation `115430961`, ledger `c5d5c8958`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Pharmacist Credentialsはcredential listとstaff optionsをcompile-time castだけで読み、legacy root、
     duplicate credential/patient、不正issue/expiry range・tenure/work hours、count drift、wrong staff scope/roleを
