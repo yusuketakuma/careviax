@@ -156,6 +156,7 @@
   malformed/legacy/duplicate/negative/inconsistent regressions, and one allowlist ratchet removal. POST/PATCH/audit,
   provider/auth, and visual semantics stay fixed.
 
-- Landed locally: shared packaging-method item/meta schema now guards the counted provider envelope; focused suites pass
-  2 files / 26 tests; static/type/no-unused/lint/diff/build gates pass; client-schema inventory moved to 170
-  schema-backed / 203 allowlisted / 79 files. Scoped commit/push and closure ledger remain.
+- Landed: shared packaging-method item/meta schema now guards the counted provider envelope; focused suites pass 2 files /
+  26 tests; static/type/no-unused/lint/diff/build gates pass; client-schema inventory moved to 170 schema-backed / 203
+  allowlisted / 79 files. Commit `aee2ca6d4` is pushed. Next scan: remaining API-CONTRACT allowlist entries and patients
+  board cursor residual.

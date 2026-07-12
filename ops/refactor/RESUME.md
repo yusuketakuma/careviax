@@ -7,30 +7,29 @@
 - Upstream: `origin/agent/continuous-improvement-20260712`
 - Remote: `origin`
 - Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
-- Current Phase: admin/packaging-methods response-contract hardening
-- Current Task ID: `API-CONTRACT-001FZPACKAGINGSTRICT`
-- Current Task Status: IMPLEMENTED_PENDING_LANDING
-- Current Commit Group: `API-CONTRACT-001FZPACKAGINGSTRICT`
+- Current Phase: incremental rescan / next-task selection
+- Current Task ID: `API-CONTRACT-001-RESCAN`
+- Current Task Status: READY_FOR_RESCAN
+- Current Commit Group: `API-CONTRACT-001-RESCAN`
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
-- Last Safe Checkpoint: Institutions focused suites pass 2 files / 43 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized Next build passed; client-schema is 169 schema-backed / 204 allowlisted / 80 files.
-- Last Safe Checkpoint: Packaging-method focused suites pass 2 files / 26 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized Next build passed; client-schema is 170 schema-backed / 203 allowlisted / 79 files.
-- Last Completed Action: Implemented strict packaging-method counted list parsing and fail-closed regressions while preserving POST/PATCH/audit, provider, authorization, and visual behavior.
-- Current Operation: landing the validated packaging-method response-contract slice.
-- Exact Next Action: Inspect explicit owned paths, stage only the packaging-method implementation/test/schema/allowlist and ledgers, commit, push, verify parity, and write closure state.
-- Exact Next Command: `git status --short --untracked-files=all && git diff --check && git diff --stat`
-- Changed Files: packaging-method consumer/test, packaging-method response schema, client-schema allowlist, Plans, STATE, and checkpoint/verification ledgers; preserve inherited harness-memory and personal artifacts.
+- Last Safe Checkpoint: Packaging-method focused suites pass 2 files / 26 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized Next build passed; commit `aee2ca6d4` is pushed and local/upstream parity is `0 0`; client-schema is 170 schema-backed / 203 allowlisted / 79 files.
+- Last Completed Action: Landed strict packaging-method counted list parsing and fail-closed regressions while preserving POST/PATCH/audit, provider, authorization, and visual behavior.
+- Current Operation: rescan remaining API contract reader debt and patients board cursor residual.
+- Exact Next Action: Run the client-schema inventory and inspect remaining API-CONTRACT allowlist entries before choosing the next disjoint task.
+- Exact Next Command: `pnpm client-json-schema:check && rg -n -C 5 'API-CONTRACT|schema-less|stringFallback' Plans.md ops/refactor tools/client-json-schema-allowlist.json`
+- Changed Files: no current implementation files; preserve inherited harness-memory and personal artifacts while selecting the next owned slice.
 - Staged Files: none; facility-unit slice is committed and unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
 - Unpushed Commits: none
-- Push Status: PUSHED for institutions implementation (`f906abede`); local and remote heads match.
+- Push Status: PUSHED for packaging-method implementation (`aee2ca6d4`); local and remote heads match.
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
 - Commands Completed: notification-bell baseline Vitest (2 files / 9 tests); facility focused Vitest; notifications focused Vitest; select-site focused Vitest; operations focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; typecheck; no-unused; lint; diff-check; build; provider/consumer scan.
-- Commands Pending: scoped commit/push, remote parity verification, and closure-ledger update.
-- Tests Completed: institutions slice 2 files / 43 tests, notification-bell slice 2 files / 12 tests, select-site slice 1 file / 6 tests, operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, and holiday slice 2 files / 39 tests passed.
-- Tests Pending: none for the validated packaging-method slice; only scoped landing and closure-ledger work remain.
-- Build State: PASS for current institutions slice; Next 16.2.9 compiled in 4.5 minutes, TypeScript finished in 73 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0; no ENOSPC warning was emitted in this run.
+- Commands Pending: client-schema residual inventory, provider/consumer scan, and next-slice focused validation.
+- Tests Completed: packaging-method slice 2 files / 26 tests, institutions slice 2 files / 43 tests, notification-bell slice 2 files / 12 tests, select-site slice 1 file / 6 tests, operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, and holiday slice 2 files / 39 tests passed.
+- Tests Pending: no current test target; the next rescan has not selected a new slice.
+- Build State: PASS for current packaging-method slice; Next 16.2.9 compiled in 3.2 minutes, TypeScript finished in 58 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0; no ENOSPC warning was emitted in this run.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.
 - Migration State: NOT_APPLICABLE
@@ -39,7 +38,7 @@
 - FE/BE Alignment State: packaging-method provider/consumer payload boundary is hardened; authorized master data remains visible while malformed state fails closed and provider-only fields stay out of query/form state.
 - UI Verification State: no visual reconstruction; no browser run for this contract-only slice.
 - Browser Verification State: NOT_EXECUTED
-- High-Risk Change State: controlled packaging-method master read; no DB/auth/tenant/migration/provider/mutation change; invalid identity/count/meta payloads fail closed.
+- High-Risk Change State: controlled packaging-method master read landed without DB/auth/tenant/migration/provider/mutation change; invalid identity/count/meta payloads fail closed.
 - Rollback Point: revert the packaging-method response schema, consumer adapter, regressions, allowlist removal, and ledger entries.
 - Resume Preconditions: confirm no target-file writer, preserve unrelated dirty paths, keep build/typecheck serialized.
 - Known Blockers: none; packaging-method master data remains in the authorized in-app surface only.
