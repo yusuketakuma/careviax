@@ -56,30 +56,15 @@ import {
   buildPharmacySiteInsuranceConfigApiPath,
   buildPharmacySiteInsuranceConfigsApiPath,
 } from '@/lib/pharmacy-sites/api-paths';
+import {
+  buildPharmacySiteInsuranceConfigsResponseSchema,
+  pharmacySiteAdminResponseSchema,
+  type PharmacySiteAdmin as PharmacySite,
+  type PharmacySiteAdminResponse,
+  type PharmacySiteInsuranceConfig as InsuranceConfig,
+  type PharmacySiteInsuranceConfigsResponse,
+} from '@/lib/pharmacy-sites/response-schema';
 import { isValidDateKey } from '@/lib/validations/date-key';
-
-type PharmacySite = {
-  id: string;
-  name: string;
-  address: string;
-  phone: string | null;
-  fax: string | null;
-  is_health_support_pharmacy: boolean;
-  is_regional_support: boolean;
-  is_specialized_pharmacy: boolean;
-  dispensing_fee_category: string | null;
-};
-
-type InsuranceConfig = {
-  id: string;
-  site_id: string;
-  insurance_type: string;
-  revision_code: string;
-  revision_label: string | null;
-  effective_from: string;
-  effective_to: string | null;
-  config: Record<string, unknown>;
-};
 
 type SiteForm = {
   name: string;
@@ -190,7 +175,10 @@ export function PharmacySitesContent() {
       const response = await fetch(PHARMACY_SITES_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PharmacySite[] }>(response, '薬局情報の取得に失敗しました');
+      return readApiJson<PharmacySiteAdminResponse>(response, {
+        fallbackMessage: '薬局情報の取得に失敗しました',
+        schema: pharmacySiteAdminResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -206,7 +194,10 @@ export function PharmacySitesContent() {
       const response = await fetch(buildPharmacySiteInsuranceConfigsApiPath(configSiteId), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: InsuranceConfig[] }>(response, '保険設定の取得に失敗しました');
+      return readApiJson<PharmacySiteInsuranceConfigsResponse>(response, {
+        fallbackMessage: '保険設定の取得に失敗しました',
+        schema: buildPharmacySiteInsuranceConfigsResponseSchema(configSiteId),
+      });
     },
     enabled: !!orgId && !!configSiteId,
   });

@@ -553,6 +553,35 @@ describe('PharmacySitesContent', () => {
     });
   });
 
+  it('rejects a legacy-root sites response instead of rendering false-empty state', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify([
+              {
+                id: 'site_1',
+                name: '本店',
+                address: '東京都千代田区1-1',
+                phone: null,
+                fax: null,
+                is_health_support_pharmacy: false,
+                is_regional_support: false,
+                is_specialized_pharmacy: false,
+                dispensing_fee_category: null,
+              },
+            ]),
+            { status: 200 },
+          ),
+      ),
+    );
+    renderContent();
+
+    expect(await screen.findByText('薬局情報を読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByText('薬局情報がありません。')).toBeNull();
+  });
+
   it('surfaces an insurance-configs fetch error instead of a false-empty "not registered" state', async () => {
     // 薬局一覧 GET は 200、保険設定 GET だけ 500。「未登録」に潰れないことを検証する。
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {

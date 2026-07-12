@@ -51,6 +51,36 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZPHARMACYSITESTRICT admin pharmacy-site/config readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, shared clean-capacity build pending).
+  - current task / root cause:
+    Admin Pharmacy Sitesは拠点一覧と選択拠点のinsurance configsをcompile-time castだけで読み、legacy root、
+    duplicate/cross-site config、不正insurance/date rangeをedit stateへ流し得た。拠点readerはUI未使用の座標を、
+    config readerはorg/persistence timestamps等をquery cacheへ保持していた。Providersはorg scope、sites GETの
+    canVisit、configs GETのcanAdminを強制し、writesは既にstrict acknowledgement、validation、auditを持つ。
+  - implementation / tenant-config boundary:
+    既存`lib/pharmacy-sites/response-schema.ts`をSSOTとしてadmin site projectionとexpected-site-aware insurance
+    config schema factoryを追加した。Site/config/revision identity一意性、site ID一致、medical/care enum、valid
+    date keysとend-after-startを検証し、未使用fieldsをstrip。Local duplicate typesをschema inferへ置換した。
+    Legacy site rootをfalse-emptyへ潰さないconsumer回帰とshared schema回帰を追加。Write/provider/DB/UIは変更
+    していない。Visual reconstructionではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/pharmacy-sites/response-schema.ts`,
+    `src/lib/pharmacy-sites/response-schema.test.ts`,
+    `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/shared-schema/providers Vitest passed 4 files / 49 tests. Exact ESLint with
+    `--max-warnings=0`, Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (221 backed / 149
+    allowlisted / 41 files), frontend contract, module boundary, client PHI-log, API response shape, colors, and
+    diff-check passed. Full build was NOT_EXECUTED because only about 2.9 GiB free remains after the shared
+    `.next/cache` capacity failure; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Cross-tenant/malformed config data and duplicate editing identities now fail closed before cache/UI; unnecessary
+    location/persistence metadata is not cached. Request/query count, DB/provider work, writes, auth/tenant/audit,
+    render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZCALPREVIEWSTRICT calendar billing-preview batch reader (VERIFY_REQUIRED, 2026-07-13; implementation `08bd509f2`, ledger `34458e186`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Calendarは最大100 scheduleのread-only billing preview batchをcompile-time record castだけで読み、legacy root、
