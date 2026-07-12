@@ -18,12 +18,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/document-templates/template-body-editor.tsx",
       "counts": {
         "stringFallback": 2

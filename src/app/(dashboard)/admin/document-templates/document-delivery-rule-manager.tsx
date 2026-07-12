@@ -30,35 +30,15 @@ import {
   buildDocumentDeliveryRulesApiPath,
   buildDocumentDeliveryRuleApiPath,
 } from '@/lib/document-templates/api-paths';
+import {
+  documentDeliveryRulesResponseSchema,
+  type DeliveryChannel,
+  type DocumentDeliveryRuleRow,
+  type DocumentDeliveryRulesResponse,
+} from '@/lib/document-templates/response-schemas';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
-
-type DeliveryChannel = 'email' | 'fax' | 'mcs';
-
-type DocumentDeliveryRuleRow = {
-  id: string;
-  document_type: string;
-  target_role: string;
-  channel: DeliveryChannel;
-  fallback_channels: string[] | null;
-  is_active: boolean;
-};
-
-type DocumentDeliveryRulesResponse = {
-  data: DocumentDeliveryRuleRow[];
-  meta: {
-    total_count: number;
-    visible_count: number;
-    hidden_count: number;
-    truncated: boolean;
-    count_basis: 'document_delivery_rules';
-    filters_applied: {
-      document_type: string | null;
-    };
-    limit: number;
-  };
-};
 
 const DOCUMENT_TYPE_OPTIONS = [
   { value: 'care_report', label: '報告書' },
@@ -176,7 +156,10 @@ export function DocumentDeliveryRuleManager() {
       const res = await fetch(buildDocumentDeliveryRulesApiPath(), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<DocumentDeliveryRulesResponse>(res, '文書送達ルールの取得に失敗しました');
+      return readApiJson<DocumentDeliveryRulesResponse>(res, {
+        fallbackMessage: '文書送達ルールの取得に失敗しました',
+        schema: documentDeliveryRulesResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

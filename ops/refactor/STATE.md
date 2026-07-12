@@ -51,6 +51,35 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZDELRULESTRICT document-delivery rule list reader (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Admin document-delivery rule managerがcounted list responseをcompile-time castだけで読み、legacy/mixed root、
+    invalid channel/fallback、duplicate rules、meta count/limit/truncation driftを送達rule編集へ流し得た。Providerは
+    raw Prisma rowsを返すためorg/timestamps等の画面未使用fieldsもquery stateへ到達していた。Providerは
+    canAdmin、org/RLS scope、最大200件、sensitive no-storeを既に強制する。
+  - implementation / delivery-policy boundary:
+    Shared strict response schemaでbounded rule ID/document type/target role、email/fax/mcs channel、最大3 fallback、
+    active flag、最大200 rowsを検証した。Fallbackはprimary除外・一意、rule ID一意を固定し、visible/hidden/
+    total/data length/limit/truncated算術とcount basis/filter metaを検証。Rowは画面が使う6 fieldsだけへstripした。
+    Delivery rule create/update/delete acknowledgement、rule resolution、admin auth/RLS/no-store、UIは変更して
+    いない。Visual reconstructionではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/document-templates/response-schemas.ts`,
+    `src/lib/document-templates/response-schemas.test.ts`,
+    `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx`,
+    `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/providers/schema Vitest passed 4 files / 45 tests. Exact ESLint with `--max-warnings=0`,
+    Prettier, and scoped diff-check passed. `pnpm client-json-schema:check` passed at 215 schema-backed / 156
+    allowlisted schema-less calls / 47 files; frontend contract, module boundary, aggregate typecheck, 8GB no-unused
+    typecheck, client PHI-log, API response shape, and colors passed. Full build was NOT_EXECUTED because only 2.9 GiB
+    free remains after the shared `.next/cache` capacity failure; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed/incomplete delivery policy lists cannot enter admin state, and raw tenant metadata is removed from the
+    client projection. Request count, provider query/take/count, rule writes, render behavior, and dependencies are
+    unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZFACPACKETSTRICT facility visit packet reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `9e474fff1`, ledger `39d24994c`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Facility packet画面はvisit-preparationの巨大packから施設巡回contextだけを使う一方、compile-time castで

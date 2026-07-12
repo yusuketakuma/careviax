@@ -70,11 +70,13 @@ describe('DocumentDeliveryRuleManager', () => {
               data: [
                 {
                   id: 'rule_1',
+                  org_id: 'provider-only-org-id',
                   document_type: 'care_report',
                   target_role: 'physician',
                   channel: 'fax',
                   fallback_channels: ['mcs'],
                   is_active: true,
+                  created_at: '2026-07-13T00:00:00.000Z',
                 },
                 {
                   id: 'rule_2',
