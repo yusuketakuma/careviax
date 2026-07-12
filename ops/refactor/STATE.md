@@ -51,6 +51,35 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZDATAEXPLORERREADSTRICT data-explorer model/row readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, ledger pending; shared clean-capacity build pending).
+  - current task / root cause:
+    Admin Data Explorerのmodel listとdynamic table rowsはcompile-time castだけで読み、legacy/wrong-table root、
+    invalid coverage/count、duplicate model/table/column/row identity、未宣言row field、limit超過をeditor stateへ
+    流し得た。Test fixtureも実providerと異なるcoverage enumとdenylist対象emailを含んでいた。
+  - implementation / dynamic-PHI boundary:
+    Model schemaはcoverage enum、bounded counts、editable<=scalar、model/table identity一意性を検証。Rows schema
+    factoryはrequested table一致、columns/id存在と一意性、rows<=limit、row ID一意性、全row keyがprovider宣言
+    columns内であることを検証し、provider-only count精度/has-more metadataをcache前にstripした。Fixtureをlive
+    providerの`frontend_api` label、id/name columnsへ同期。Dynamic SQL allowlist/redaction、PATCH audit/provider/UIは
+    変更していない。非visual parser/privacy境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/admin/data-explorer-response-schema.ts`,
+    `src/lib/admin/data-explorer-response-schema.test.ts`,
+    `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx`,
+    `src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/providers Vitest passed 4 files / 26 tests. Exact ESLint with `--max-warnings=0`,
+    Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (236 backed / 132 allowlisted / 34 files),
+    frontend contract, module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build
+    was NOT_EXECUTED because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated
+    cache was not deleted or modified.
+  - security / performance / remaining:
+    Wrong-table and undeclared/duplicate dynamic data now fail closed; denylisted/unadvertised fields cannot enter the
+    editor cache. Query count, DB/provider work, SQL identifiers/parameters, redaction, write audit, auth/tenant,
+    render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZEXTPROFREMAINDER external-professional facility/mutation readers (VERIFY_REQUIRED, 2026-07-13; implementation `66ae81eed`, ledger `a8e435be2`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin External Professionalsでは主要listとlinked patientsはschema化済みだったが、facility optionsとsave/delete

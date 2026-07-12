@@ -19,9 +19,17 @@ const rowsPayloadMock = vi.hoisted(() => ({
   value: {
     modelName: 'Patient',
     tableName: 'patients',
-    coverageCategory: 'patient',
-    coverageLabel: '患者',
+    coverageCategory: 'frontend_api',
+    coverageLabel: '画面 + API',
     columns: [
+      {
+        name: 'id',
+        type: 'String',
+        kind: 'scalar',
+        isList: false,
+        isRequired: true,
+        isEditable: false,
+      },
       {
         name: 'name',
         type: 'String',
@@ -38,14 +46,10 @@ const rowsPayloadMock = vi.hoisted(() => ({
       {
         id: 'patient_1',
         name: '山田 花子',
-        drug_name: 'アムロジピン',
-        email: 'hanako@example.test',
       },
       {
         id: 'patient_2',
         name: '佐藤 一郎',
-        drug_name: 'メトホルミン',
-        email: 'ichiro@example.test',
       },
     ],
   },
@@ -55,9 +59,17 @@ function resetRowsPayload() {
   rowsPayloadMock.value = {
     modelName: 'Patient',
     tableName: 'patients',
-    coverageCategory: 'patient',
-    coverageLabel: '患者',
+    coverageCategory: 'frontend_api',
+    coverageLabel: '画面 + API',
     columns: [
+      {
+        name: 'id',
+        type: 'String',
+        kind: 'scalar',
+        isList: false,
+        isRequired: true,
+        isEditable: false,
+      },
       {
         name: 'name',
         type: 'String',
@@ -74,14 +86,10 @@ function resetRowsPayload() {
       {
         id: 'patient_1',
         name: '山田 花子',
-        drug_name: 'アムロジピン',
-        email: 'hanako@example.test',
       },
       {
         id: 'patient_2',
         name: '佐藤 一郎',
-        drug_name: 'メトホルミン',
-        email: 'ichiro@example.test',
       },
     ],
   };
@@ -154,8 +162,8 @@ vi.mock('@tanstack/react-query', () => ({
             {
               modelName: 'Patient',
               tableName: 'patients',
-              coverageCategory: 'patient',
-              coverageLabel: '患者',
+              coverageCategory: 'frontend_api',
+              coverageLabel: '画面 + API',
               rowCount: 1,
               scalarFieldCount: 2,
               editableFieldCount: 1,
@@ -249,8 +257,8 @@ describe('DataExplorerContent', () => {
               {
                 modelName: 'Patient',
                 tableName: 'patients',
-                coverageCategory: 'patient',
-                coverageLabel: '患者',
+                coverageCategory: 'frontend_api',
+                coverageLabel: '画面 + API',
                 rowCount: 1,
                 scalarFieldCount: 2,
                 editableFieldCount: 1,
@@ -285,8 +293,8 @@ describe('DataExplorerContent', () => {
         {
           modelName: 'Patient',
           tableName: 'patients',
-          coverageCategory: 'patient',
-          coverageLabel: '患者',
+          coverageCategory: 'frontend_api',
+          coverageLabel: '画面 + API',
           rowCount: 1,
           scalarFieldCount: 2,
           editableFieldCount: 1,

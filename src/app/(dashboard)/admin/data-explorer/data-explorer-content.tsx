@@ -23,6 +23,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { SkeletonRows } from '@/components/ui/loading';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
+import {
+  buildDataExplorerRowsResponseSchema,
+  dataExplorerModelsResponseSchema,
+} from '@/lib/admin/data-explorer-response-schema';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -37,29 +41,6 @@ type ExplorerField = {
   isList: boolean;
   isRequired: boolean;
   isEditable: boolean;
-};
-
-type ExplorerModel = {
-  modelName: string;
-  tableName: string;
-  coverageCategory: CoverageCategory;
-  coverageLabel: string;
-  rowCount: number;
-  scalarFieldCount: number;
-  editableFieldCount: number;
-  searchableField: string | null;
-};
-
-type ExplorerRowsPayload = {
-  modelName: string;
-  tableName: string;
-  coverageCategory: CoverageCategory;
-  coverageLabel: string;
-  columns: ExplorerField[];
-  totalCount: number;
-  limit: number;
-  offset: number;
-  rows: Array<Record<string, unknown>>;
 };
 
 const SUMMARY_KEYS = [
@@ -132,7 +113,10 @@ export function DataExplorerContent() {
       const response = await fetch('/api/admin/data-explorer/models', {
         headers: orgScopedHeaders(orgId),
       });
-      return readApiJson<{ data: ExplorerModel[] }>(response, 'モデル一覧の取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: 'モデル一覧の取得に失敗しました',
+        schema: dataExplorerModelsResponseSchema,
+      });
     },
   });
 
@@ -167,10 +151,10 @@ export function DataExplorerContent() {
           headers: orgScopedHeaders(orgId),
         },
       );
-      return readApiJson<{ data: ExplorerRowsPayload }>(
-        response,
-        'テーブルデータの取得に失敗しました',
-      );
+      return readApiJson(response, {
+        fallbackMessage: 'テーブルデータの取得に失敗しました',
+        schema: buildDataExplorerRowsResponseSchema(effectiveSelectedTable),
+      });
     },
     enabled: !!effectiveSelectedTable,
   });
