@@ -12,6 +12,22 @@
 - Browser/E2E: not run; this is a non-visual response-contract slice and no visual behavior changed.
 - Migration/auth/tenant: no migration or backend authorization change; no production data operation executed.
 
+## API-CONTRACT-001FZNOTIFICATIONSETTINGSTRICT
+
+- Baseline: admin notification-settings consumer/provider suites passed 2 files / 21 tests; the event-rule GET had one
+  schema-less `readApiJson` debt within a five-reader file.
+- Focused test: `pnpm exec vitest run 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx' 'src/app/api/notification-rules/route.test.ts' --reporter=dot --testTimeout=30000` — PASS, 2 files / 26 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`,
+  `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`, `pnpm boundaries:check`,
+  `pnpm plans:active:check`, `pnpm colors:check`, `pnpm typography:check`, `git diff --check` — PASS.
+- Client-schema result: 184 schema-backed, 189 allowlisted schema-less calls, 72 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS with the same two pre-existing warnings in `src/lib/platform/break-glass.test.ts`.
+- Build: `pnpm build` — PASS; Next 16.2.9 compiled in 3.0 minutes, TypeScript finished in 59 seconds, 311/311 static
+  pages, optimization/traces complete. Two existing CSS optimizer warnings did not fail the build.
+- Browser/E2E: not run; this is a non-visual settings response-contract/cache-boundary slice with no layout change.
+- Migration/auth/tenant: no migration, provider, authorization, tenant, audit, production-data, or external-send operation changed.
+
 ## API-CONTRACT-001FZSAVEDVIEWSSTRICT
 
 - Baseline: inherited `/views` readers used compile-time preferences and saved-view casts, with three remaining

@@ -148,3 +148,15 @@
   query state while opaque filters/sort are preserved as JSON objects.
 - Operational note: saved conditions and named-view metadata remain authorized in-app settings only; no patient records,
   external shares, audit events, or mutation payload semantics are changed. No external output or cleanup was performed.
+
+## API-CONTRACT-001FZNOTIFICATIONSETTINGSTRICT
+
+- Classification: Low-risk authorized notification-configuration read contract; not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets,
+  deployment, provider query, escalation behavior, mutation, production-data, or external-send operation changed.
+- Safety control: strict counted notification-rule schema rejects legacy roots, malformed recipient/channel/date state,
+  duplicate identities, list-limit/count arithmetic drift, and provider-only org/display/conditions/update fields before
+  event-rule state; the existing canAdmin/org boundary remains authoritative.
+- Operational note: authorized notification configuration remains in-app only; no patient record, raw provider metadata,
+  external delivery, browser OS notification, audit, or visual behavior is changed. No image generation or cleanup was
+  performed.

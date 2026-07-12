@@ -298,3 +298,23 @@
 - Rollback: revert the saved-view response schema, consumer adapters, regressions, allowlist removal, and ledger entries.
 - Push evidence: not performed because no current user instruction requested remote publication; local branch is two
   implementation commits ahead of `origin/agent/continuous-improvement-20260712`.
+
+## API-CONTRACT-001FZNOTIFICATIONSETTINGSTRICT
+
+- Commit Group: `API-CONTRACT-001FZNOTIFICATIONSETTINGSTRICT`
+- Commit: `a2b24709a`
+- Push Status: NOT_REQUESTED
+- Branch: `agent/continuous-improvement-20260712`
+- Scope: admin notification-settings event notification-rule GET response schema, consumer regressions, client-schema
+  allowlist ratchet, and required ledgers; escalation GET and all mutations remain out of scope.
+- Implementation: validate the minimal counted `{ data, meta }` rule projection, recipient/date/channel/identity fields,
+  duplicate/count arithmetic, and strip provider-only org/display/conditions/update fields before event-rule state.
+- FE/BE impact: malformed or legacy 2xx now fails closed before the authorized event-rule toggles; notification-rule
+  provider query/authz/org scope, escalation behavior, mutation/audit semantics, and visual behavior remain unchanged.
+- Verification: focused 2 files / 26 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and
+  confirmed Next build passed; client-schema inventory is 184 schema-backed / 189 allowlisted / 72 files. Lint retains
+  only the two pre-existing warnings in `src/lib/platform/break-glass.test.ts`; build retains two existing CSS warnings.
+- Rollback: revert the notification-rule response schema, event-rule consumer/test adapter, allowlist decrement, and
+  ledger entries.
+- Push evidence: not performed because no current user instruction requested remote publication; local branch is now five
+  implementation commits ahead of `origin/agent/continuous-improvement-20260712` before the separate ledger closure.

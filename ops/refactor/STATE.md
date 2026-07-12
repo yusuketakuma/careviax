@@ -47084,6 +47084,54 @@ Pharmacist[] }` cast does not reject a legacy root, count drift, conflicting rep
   Return to `API-CONTRACT-001-RESCAN`, rerun the client-schema inventory and patients board cursor residual scan, and
   select the next disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZNOTIFICATIONSETTINGSTRICT — notification-settings event-rule GET (DONE)
+
+- current task / selection:
+  The admin notification-settings screen has five schema-less `readApiJson` readers. The bounded event notification-rule
+  GET is the next smallest disjoint slice: its provider already returns `{ data, meta }`, the screen consumes only the
+  rule identity/event/channel/enabled/recipient/date projection, and it does not expose patient records or outbound
+  payloads. Escalation GET and all notification/escalation mutations remain outside this slice.
+- baseline:
+  Focused notification-settings consumer/provider suites pass 2 files / 21 tests. The current client-schema inventory is
+  183 schema-backed / 190 allowlisted schema-less calls across 72 files. Relevant product paths are clean; only inherited
+  harness-memory and personal untracked artifacts are dirty and must remain excluded.
+- scope / safety boundary:
+  Add one strict counted notification-rule response schema, connect only the event-rule GET reader, and keep existing
+  notification/escalation mutation response casts, provider query/authz, org scope, audit behavior, browser notification
+  preference, and visual behavior unchanged. This is a non-visual response-parser/cache-minimization slice; no
+  `gpt-image-2` generation is needed.
+- implementation plan:
+  Validate the minimal rule projection, recipient shape, ISO timestamp, bounded data/meta arithmetic, fixed count basis,
+  filters, and duplicate identity; strip provider-only org/display/conditions/update fields; synchronize live fixtures;
+  add provider-field, legacy-root, malformed-item, duplicate, and count-drift regressions; and decrement only this one
+  allowlist count.
+- implementation / validation checkpoint:
+  Added `src/lib/notification-rules/response-schema.ts`, connected only the event notification-rule GET reader, removed
+  one `stringFallback` allowlist count, and synchronized the consumer's provider-shaped fixtures. The schema validates
+  minimal rule identity/event/channel/enabled/recipient/date fields, fixed counted metadata, duplicate identities, and
+  count arithmetic while stripping provider-only org/display/conditions/update fields. Focused notification-settings
+  consumer/provider suites pass 2 files / 26 tests. Format, API response shape, client JSON schema, frontend contract,
+  PHI log/display, boundaries, Plans, colors, typography, and diff gates pass; inventory is 184 schema-backed / 189
+  allowlisted schema-less calls across 72 files. `pnpm typecheck`, 8 GB no-unused typecheck, and lint pass; lint retains
+  only the two pre-existing unused-parameter warnings in `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  `pnpm build` exits 0. Next 16.2.9 compiled in 3.0 minutes, TypeScript finished in 59 seconds, 311/311 static pages
+  were generated, and route optimization/traces completed. The build emitted the two existing CSS optimizer warnings;
+  no ENOSPC warning was emitted in this run. Filesystem availability was 14 GiB before and 13 GiB after the build.
+- safety / limits:
+  The notification-rule provider query, `canAdmin` authorization, org scope, escalation GET, notification/escalation
+  mutations, audit behavior, browser notification preference, and visual behavior remain unchanged. Only the authorized
+  in-app event-rule projection is validated; malformed 2xx fails closed and provider-only metadata does not enter rule
+  state. No migration, production data operation, external send, or image generation was required.
+- commit / landing:
+  Scoped implementation commit `a2b24709a` (`fix(API-CONTRACT-001FZNOTIFICATIONSETTINGSTRICT): validate notification
+rule reader`) was created locally with only the schema, consumer/test, and allowlist paths staged. Push was not
+  performed because no current user instruction requested remote publication; unrelated harness-memory and personal
+  artifacts remain excluded.
+- next action:
+  Return to `API-CONTRACT-001-RESCAN`, rerun the client-schema inventory and patients board cursor residual scan, and
+  select the next disjoint safe slice without touching unrelated dirty paths.
+
 ## 2026-07-12 API-CONTRACT-001FZSAVEDVIEWSSTRICT — saved-views read contracts (DONE)
 
 - current task / selection:

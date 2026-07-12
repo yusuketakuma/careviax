@@ -409,3 +409,44 @@
   ratchet, and validation ledgers landed; unrelated harness-memory and personal artifacts remain excluded.
 - Next scan: rerun `pnpm client-json-schema:check`, inspect remaining one-entry and multi-entry consumers plus the
   patients board cursor residual, and choose the next bounded disjoint slice.
+
+## 2026-07-12 — API-CONTRACT-001FZNOTIFICATIONSETTINGSTRICT selection
+
+- Scope: `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`, a new notification-rule
+  response schema, the focused consumer/provider tests, and one matching client-schema allowlist count.
+- Candidate ranking: selected the event notification-rule GET as a bounded authorized configuration read after saved views;
+  deferred escalation readers/mutations, billing, audit, contact/external/document delivery, inventory/medication, patient/
+  visit, shared-token, and the patients-board DB query-take residual because they have broader controlled-data, outbound,
+  or performance/PHI impact.
+- Finding: the provider returns a bounded counted `{ data, meta }` list, but the consumer trusts a compile-time cast and
+  can admit provider-only fields, legacy roots, malformed rules, duplicate identities, or count arithmetic drift into the
+  event-rule state. Only event-rule GET is in scope; no escalation or mutation reader is changed.
+- Baseline: focused notification-settings consumer/provider suites pass 2 files / 21 tests; client-schema is 183
+  schema-backed / 190 allowlisted schema-less calls across 72 files. Relevant product paths are clean; inherited
+  harness-memory and personal artifacts remain excluded.
+- Planned fix: strict minimal rule/date/recipient/count schema, provider-field stripping, live fixture synchronization,
+  malformed/legacy/duplicate/count-drift regressions, and one allowlist-count decrement. No visual reconstruction or
+  `gpt-image-2` is needed for this non-visual parser/cache boundary.
+
+## 2026-07-12 — API-CONTRACT-001FZNOTIFICATIONSETTINGSTRICT implementation checkpoint
+
+- Implementation: added `src/lib/notification-rules/response-schema.ts`, connected the event notification-rule GET reader,
+  stripped provider-only org/display/conditions/update fields, synchronized provider-shaped fixtures, removed one
+  allowlist count, and added provider-field, legacy-root, malformed-recipient, duplicate-identity, and count-drift
+  regressions.
+- Safety contract: the counted `{ data, meta }` envelope now validates rule identity/channel/enabled/recipient/date fields,
+  fixed count basis/filter metadata, visible/hidden/truncated arithmetic, and requested-list bound before event-rule state;
+  escalation GET, all mutations, provider/auth/tenant/audit behavior, and visual semantics remain unchanged.
+- Tests: focused notification-settings consumer/provider suites pass 2 files / 26 tests.
+- Validation: static contract gates, typecheck, no-unused typecheck, lint, diff-check, and serialized Next build pass;
+  inventory is 184 schema-backed / 189 allowlisted schema-less calls across 72 files. Next 16.2.9 compiled in 3.0 minutes,
+  TypeScript finished in 59 seconds, and 311/311 static pages generated with the two existing CSS optimizer warnings.
+  No browser/E2E or image generation was needed for this non-visual parser slice.
+
+## 2026-07-12 — API-CONTRACT-001FZNOTIFICATIONSETTINGSTRICT landed locally
+
+- Commit: `a2b24709a` (`fix(API-CONTRACT-001FZNOTIFICATIONSETTINGSTRICT): validate notification rule reader`) is local;
+  push was not requested. The implementation commit contains only the schema, notification-settings consumer/test, and
+  client-schema allowlist paths; unrelated harness-memory and personal artifacts remain excluded.
+- Next scan: return to `API-CONTRACT-001-RESCAN`, rerun `pnpm client-json-schema:check`, inspect remaining candidates and
+  the patients-board DB query-take residual, and choose the next bounded disjoint slice.

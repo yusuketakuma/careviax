@@ -220,3 +220,16 @@
 | Errors / loading / empty    | Existing loading, empty, stale, error/retry, and mutation recovery behavior remains; malformed 2xx becomes a query error rather than false default/view state.                                                           |
 | Tests                       | Saved-views/preferences consumer/provider suite: 3 files / 39 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                              |
 | Alignment                   | ALIGNED for this read slice; provider/auth/audit/mutation semantics, opaque filters/sort, patient detail, external output, and visual behavior intentionally unchanged.                                                  |
+
+## API-CONTRACT-001FZNOTIFICATIONSETTINGSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                                                                    |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Authorized admins continue to access the existing `/admin/notification-settings` surface; `/api/notification-rules` retains its existing `canAdmin` and org-scoped GET boundary.                                     |
+| Frontend state / clients    | `notification-settings-content.tsx` validates the event-rule GET before rule/channel state; only the consumed rule projection enters state and provider-only fields are stripped.                                    |
+| Request / response contract | Provider `{ data, meta }` is validated for rule id/event/channel/enabled/recipient/date fields, fixed count basis/filter metadata, duplicate IDs, list bound, and visible/hidden/truncated arithmetic.               |
+| Backend / DB                | Existing notification-rule query, bounded `take`, ordering, no-store response, persistence, and provider route are unchanged; escalation readers/mutations are outside this slice.                                   |
+| Auth / tenant / audit       | Existing `canAdmin`, organization scope, audit/mutation semantics, browser preference, and in-app event settings remain unchanged; provider-only org/conditions/update metadata is not externalized to client state. |
+| Errors / loading / empty    | Existing loading, error/retry, empty, and toggle behavior remains; malformed or legacy 2xx becomes a settings-load error rather than false event-rule state.                                                         |
+| Tests                       | Notification-settings consumer/provider suite: 2 files / 26 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                            |
+| Alignment                   | ALIGNED for this bounded read slice; escalation GET, mutation response contracts, patient/PHI data, outbound delivery, and visual behavior intentionally unchanged.                                                  |
