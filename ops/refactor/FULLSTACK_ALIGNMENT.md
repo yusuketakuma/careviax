@@ -132,13 +132,26 @@
 
 ## API-CONTRACT-001FZMASTERHUBSTRICT
 
-| Area                        | Evidence / status                                                                                                                                                                      |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| User roles / routes         | Authorized admin users access `/admin/master-hub`; `/api/admin/master-hub` remains under its existing `canAdmin` authorization and no route boundary changed.                         |
-| Frontend state / clients    | `master-hub-content.tsx` validates the aggregate envelope before card freshness, summary, and right-rail action state; provider-only nested fields are stripped from cached state.     |
+| Area                        | Evidence / status                                                                                                                                                                                               |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Authorized admin users access `/admin/master-hub`; `/api/admin/master-hub` remains under its existing `canAdmin` authorization and no route boundary changed.                                                   |
+| Frontend state / clients    | `master-hub-content.tsx` validates the aggregate envelope before card freshness, summary, and right-rail action state; provider-only nested fields are stripped from cached state.                              |
 | Request / response contract | Provider returns `{ data }` with exactly 11 master cards and a shared right rail; consumer validates key completeness, card fields, rail identity/severity/age/href, status-count relation, and internal links. |
-| Backend / DB                | Existing org-scoped aggregate queries, date-boundary calculation, no-store handling, right-rail service, persistence, and provider route are unchanged.                               |
-| Auth / tenant / audit       | Existing `canAdmin` authorization, org context, audit-count aggregation, and in-app authorized disclosure remain; no provider metadata is externalized.                              |
-| Errors / loading / empty    | Existing loading, error/retry, summary, card, and right-rail behavior remains; malformed 2xx becomes query error rather than false freshness/action state.                             |
-| Tests                       | Master-hub consumer/provider suite: 2 files / 20 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                        |
-| Alignment                   | ALIGNED for this read slice; aggregate provider/auth semantics, authorized detail display, and visual behavior intentionally unchanged.                                                |
+| Backend / DB                | Existing org-scoped aggregate queries, date-boundary calculation, no-store handling, right-rail service, persistence, and provider route are unchanged.                                                         |
+| Auth / tenant / audit       | Existing `canAdmin` authorization, org context, audit-count aggregation, and in-app authorized disclosure remain; no provider metadata is externalized.                                                         |
+| Errors / loading / empty    | Existing loading, error/retry, summary, card, and right-rail behavior remains; malformed 2xx becomes query error rather than false freshness/action state.                                                      |
+| Tests                       | Master-hub consumer/provider suite: 2 files / 20 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                                  |
+| Alignment                   | ALIGNED for this read slice; aggregate provider/auth semantics, authorized detail display, and visual behavior intentionally unchanged.                                                                         |
+
+## API-CONTRACT-001FZVEHICLESTRICT
+
+| Area                        | Evidence / status                                                                                                                                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| User roles / routes         | Authorized vehicle administrators access `/admin/vehicles`; vehicle-resource and pharmacy-site option GET routes retain their existing `canVisit` scope and no route boundary changed.                                   |
+| Frontend state / clients    | `vehicles-content.tsx` validates the counted vehicle list and site option envelope before list, editor, and create-form state; provider-only timestamps/site metadata are stripped.                                      |
+| Request / response contract | Vehicle provider returns `{ data, meta }` with counted-list fields and nested site summary; site options return `{ data }`; consumer validates identity/site relation/travel/operation/date/count fields and duplicates. |
+| Backend / DB                | Existing org-scoped vehicle/site queries, ordering, bounded vehicle limit, no-store handling, persistence, and provider routes are unchanged.                                                                            |
+| Auth / tenant / audit       | Existing `canVisit` reads, `canAdmin` mutations, org context, and vehicle audit behavior remain; provider metadata is not externalized.                                                                                  |
+| Errors / loading / empty    | Existing loading, error/retry, empty, editor, and mutation behavior remains; malformed 2xx becomes query error rather than false vehicle/editor state.                                                                   |
+| Tests                       | Vehicle consumer/provider suite: 2 files / 33 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                                              |
+| Alignment                   | ALIGNED for this read slice; providers, authorization, mutation acknowledgements, and visual behavior intentionally unchanged.                                                                                           |

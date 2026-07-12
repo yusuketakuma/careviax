@@ -144,12 +144,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/vehicles/vehicles-content.tsx",
-      "counts": {
-        "stringFallback": 2
-      }
-    },
-    {
       "path": "src/app/(dashboard)/billing/billing-check-content.tsx",
       "counts": {
         "stringFallback": 1

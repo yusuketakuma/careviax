@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildVisitVehicleResourceApiPath } from '@/lib/visit-vehicle-resources/api-paths';
@@ -88,8 +88,8 @@ vi.mock('@/components/ui/data-table', () => ({
   ),
 }));
 
-function renderContent() {
-  return render(<VehiclesContent />, { wrapper: createQueryClientWrapper() });
+function renderContent(queryClient = createTestQueryClient()) {
+  return render(<VehiclesContent />, { wrapper: createQueryClientWrapper(queryClient) });
 }
 
 function vehicleFixture(id = 'vehicle_1'): VisitVehicleResource {
@@ -167,6 +167,24 @@ function stubFetchWithVehicle(
   return fetchMock;
 }
 
+function stubVehicleReadPayloads(
+  vehiclePayload: unknown,
+  sitePayload: unknown = { data: [{ id: 'site_1', name: '本店' }] },
+) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === '/api/visit-vehicle-resources?limit=200') {
+      return new Response(JSON.stringify(vehiclePayload), { status: 200 });
+    }
+    if (url === '/api/pharmacy-sites') {
+      return new Response(JSON.stringify(sitePayload), { status: 200 });
+    }
+    return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 describe('VehiclesContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -198,6 +216,100 @@ describe('VehiclesContent', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/pharmacy-sites', {
       headers: buildOrgHeaders('org_1'),
     });
+  });
+
+  it('strips provider-only fields from vehicle and site-option query state', async () => {
+    const queryClient = createTestQueryClient();
+    stubVehicleReadPayloads(
+      {
+        data: [vehicleFixture()],
+        meta: buildVehicleListMeta(1),
+      },
+      {
+        data: [
+          {
+            id: 'site_1',
+            name: '本店',
+            address: '東京都千代田区1-1',
+            org_id: 'org_1',
+          },
+        ],
+      },
+    );
+
+    renderContent(queryClient);
+
+    await screen.findByText('軽バン1号');
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryData(['pharmacy-sites', 'org_1', 'vehicle-resource-options']),
+      ).toBeTruthy();
+    });
+
+    const vehicleData = queryClient.getQueryData<{
+      data: Array<Record<string, unknown>>;
+    }>(['admin-visit-vehicle-resources', 'org_1']);
+    expect(vehicleData?.data[0]).not.toHaveProperty('created_at');
+    expect(vehicleData?.data[0]).not.toHaveProperty('updated_at');
+
+    const siteData = queryClient.getQueryData<{
+      data: Array<Record<string, unknown>>;
+    }>(['pharmacy-sites', 'org_1', 'vehicle-resource-options']);
+    expect(siteData?.data).toEqual([{ id: 'site_1', name: '本店' }]);
+  });
+
+  it('rejects negative vehicle operation values before rendering a false-empty list', async () => {
+    const vehicle = { ...vehicleFixture(), max_stops: 0 };
+    stubVehicleReadPayloads({
+      data: [vehicle],
+      meta: buildVehicleListMeta(1),
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('車両マスターを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('車両はまだ登録されていません')).toBeNull();
+  });
+
+  it('rejects duplicate vehicle identities and counted metadata drift', async () => {
+    const vehicle = vehicleFixture();
+    stubVehicleReadPayloads({
+      data: [vehicle, { ...vehicle, label: '軽バン重複' }],
+      meta: {
+        ...buildVehicleListMeta(2, 2),
+        visible_count: 1,
+      },
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('車両マスターを取得できませんでした')).toBeTruthy();
+  });
+
+  it('rejects invalid vehicle dates before the editor can use them', async () => {
+    stubVehicleReadPayloads({
+      data: [{ ...vehicleFixture(), next_inspection_date: '2026-02-30' }],
+      meta: buildVehicleListMeta(1),
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('車両マスターを取得できませんでした')).toBeTruthy();
+  });
+
+  it('rejects a legacy site-option root instead of enabling an unvalidated create form', async () => {
+    stubVehicleReadPayloads(
+      {
+        data: [vehicleFixture()],
+        meta: buildVehicleListMeta(1),
+      },
+      [{ id: 'site_1', name: '本店' }],
+    );
+
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '新規登録' }));
+    expect(await screen.findByText('店舗候補を取得できませんでした')).toBeTruthy();
   });
 
   it('keeps list actions and search at the PH-OS touch target size', async () => {

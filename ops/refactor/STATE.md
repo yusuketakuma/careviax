@@ -47045,6 +47045,38 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZVEHICLESTRICT — vehicle master GET contracts (IMPLEMENTED, PENDING LANDING)
+
+- current task / root cause:
+  The admin vehicle editor trusts compile-time `VisitVehicleResourcesResponse` and `PharmacySitesResponse` casts for
+  its counted vehicle-resource list and pharmacy-site option GETs. Duplicate or blank vehicle identity, invalid site or
+  travel-mode state, negative operational values, counted-list drift, legacy roots, or provider-only site metadata can
+  therefore affect the authorized vehicle editor and create-form state. Existing vehicle/site providers, authorization,
+  mutation acknowledgements, and visual semantics are not being changed.
+- baseline:
+  The focused vehicle consumer/provider suites pass 2 files / 28 tests before implementation. Current client-schema
+  inventory is 171 schema-backed / 202 allowlisted schema-less / 78 files. The target is two allowlisted `stringFallback`
+  calls in `src/app/(dashboard)/admin/vehicles/vehicles-content.tsx`.
+- implementation plan:
+  Add shared strict vehicle-resource counted-list and pharmacy-site option schemas; validate identity/site/travel/operation
+  fields, dates, counted metadata arithmetic, duplicate IDs, internal provider shape, and strip provider-only fields. Add
+  malformed/legacy/duplicate/negative/invalid regressions and remove only the vehicle consumer allowlist entry. No visual
+  reconstruction or `gpt-image-2` is needed because this is a non-visual bounded resource/config parser and authorized
+  editor-state boundary repair.
+- implementation / validation:
+  Added shared strict vehicle-resource counted-list and pharmacy-site option schemas with bounded identity/site/travel/
+  operation/date fields, duplicate identity checks, site relation checks, counted metadata arithmetic, and provider-only
+  field stripping. Both GET readers now reject malformed/legacy/duplicate/negative/invalid 2xx before vehicle list or
+  create-form state; providers, authorization, mutation acknowledgements, and visual semantics are unchanged. Focused
+  suites pass 2 files / 33 tests; format, API-shape, client-schema, frontend contract, PHI log/display, boundaries,
+  Plans, colors, typography, and diff-check gates pass; client-schema inventory is 173 schema-backed / 200 allowlisted
+  schema-less / 77 files; typecheck and no-unused typecheck pass; lint exits 0 with the two pre-existing break-glass
+  warnings; Next 16.2.9 build passes with 311/311 static pages, the two existing CSS optimizer warnings, and no ENOSPC
+  warning. Filesystem availability was 15 GiB before and 13 GiB after the build.
+- next action:
+  Inspect status, stage only the vehicle implementation/test/schema, allowlist, Plans, and required ledger paths, then
+  create and push the scoped implementation commit while preserving unrelated harness-memory and personal artifacts.
+
 ## 2026-07-12 API-CONTRACT-001FZMASTERHUBSTRICT — master-hub aggregate contract (DONE)
 
 - current task / root cause:
@@ -47076,7 +47108,7 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
 - commit / push:
   Scoped implementation commit `20d75daeb` (`fix(API-CONTRACT-001FZMASTERHUBSTRICT): validate master hub reader`) was
   pushed to `origin/agent/continuous-improvement-20260712`; `git rev-list --left-right --count
-  HEAD...origin/agent/continuous-improvement-20260712` is `0 0`. Harness-memory and personal untracked artifacts
+HEAD...origin/agent/continuous-improvement-20260712` is `0 0`. Harness-memory and personal untracked artifacts
   remain excluded.
 - next action:
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next

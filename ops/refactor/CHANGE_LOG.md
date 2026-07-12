@@ -165,3 +165,25 @@
 - Rollback: revert the master-hub response schema, consumer adapter, regressions, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
 - Push evidence: `cd707e2dd..20d75daeb` fast-forward push succeeded; local and remote heads match (`0 0`).
+
+## API-CONTRACT-001FZVEHICLESTRICT
+
+- Commit Group: `API-CONTRACT-001FZVEHICLESTRICT`
+- Commit: pending scoped implementation landing
+- Push Status: PENDING
+- Branch: `agent/continuous-improvement-20260712`
+- Scope: admin/vehicles counted vehicle-resource GET schema, pharmacy-site option GET schema, consumer regressions,
+  client-schema allowlist ratchet, and required ledgers.
+- Implementation: validate strict counted vehicle list metadata, vehicle identity/site/travel/operation/date fields,
+  duplicate/site relation invariants, strict site option identity, and provider-only field stripping; preserve vehicle/site
+  providers, authorization, mutation acknowledgement, and visual semantics.
+- FE/BE impact: `/admin/vehicles` now fails closed on malformed, legacy, duplicate, negative, invalid, or inconsistent
+  2xx payloads before vehicle list/editor state; `/api/visit-vehicle-resources` and `/api/pharmacy-sites` remain unchanged.
+- DB/auth/tenant/audit impact: no DB, migration, provider, auth/authz, tenant, audit, mutation, production-data, or
+  external-output change.
+- Verification: focused 2 files / 33 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check,
+  and Next build passed; client-schema inventory is 173 schema-backed / 200 allowlisted / 77 files. Build emitted only
+  the existing two CSS optimizer warnings and no ENOSPC warning; filesystem availability was 15 GiB before and 13 GiB
+  after the build.
+- Rollback: revert the vehicle response schema, consumer adapters, regressions, allowlist removal, and ledger entries.
+- Remote: `origin/agent/continuous-improvement-20260712`; push evidence will be recorded after the scoped landing.

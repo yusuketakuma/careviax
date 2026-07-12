@@ -7,28 +7,28 @@
 - Upstream: `origin/agent/continuous-improvement-20260712`
 - Remote: `origin`
 - Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
-- Current Phase: API-CONTRACT-001 allowlist rescan
-- Current Task ID: `API-CONTRACT-001-RESCAN`
+- Current Phase: admin/vehicles response-contract hardening
+- Current Task ID: `API-CONTRACT-001FZVEHICLESTRICT`
 - Current Task Status: IN_PROGRESS
-- Current Commit Group: `API-CONTRACT-001-RESCAN`
+- Current Commit Group: `API-CONTRACT-001FZVEHICLESTRICT`
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
 - Last Safe Checkpoint: Master-hub focused suites pass 2 files / 20 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized Next build passed; commit `20d75daeb` is pushed and local/upstream parity is `0 0`; client-schema is 171 schema-backed / 202 allowlisted / 78 files.
-- Last Completed Action: Implemented, validated, committed, and pushed the strict master-hub card/rail aggregate reader with provider-only nested-field stripping and fail-closed regressions.
-- Current Operation: rescan remaining API-CONTRACT-001 debt and choose the next disjoint safe slice.
-- Exact Next Action: Run the allowlist/inventory and patients-board cursor residual scan, rank candidates by blast radius, and select the next bounded consumer/provider pair without touching unrelated dirty paths.
-- Exact Next Command: `pnpm client-json-schema:check`
-- Changed Files: none for the rescan slice yet; preserve inherited harness-memory and personal artifacts.
+- Last Completed Action: Selected admin/vehicles as the next bounded one-file, two-GET contract slice after rescanning the allowlist and confirming the patients-board cursor item is a separate DB take follow-up.
+- Current Operation: implement strict vehicle-resource counted-list and pharmacy-site option GET parsing.
+- Exact Next Action: Add shared vehicle/site option schemas, connect both GET readers, add malformed/legacy/duplicate/negative/invalid regressions, and remove only the vehicle consumer allowlist entry.
+- Exact Next Command: `sed -n '1,220p' 'src/app/(dashboard)/admin/vehicles/vehicles-content.tsx' && sed -n '1,120p' src/types/api/visit-vehicle-resources.ts`
+- Changed Files: planned vehicle consumer/test, vehicle response schema, client-schema allowlist, Plans, STATE, and checkpoint/scan ledgers; preserve inherited harness-memory and personal artifacts.
 - Staged Files: none; facility-unit slice is committed and unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
 - Unpushed Commits: none
-- Push Status: PUSHED for master-hub implementation (`20d75daeb`); local and remote heads match.
+- Push Status: PUSHED for master-hub implementation (`20d75daeb`); local and remote heads match before vehicle slice.
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
 - Commands Completed: notification-bell baseline Vitest (2 files / 9 tests); facility focused Vitest; notifications focused Vitest; select-site focused Vitest; operations focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; typecheck; no-unused; lint; diff-check; build; provider/consumer scan.
-- Commands Pending: remaining API-CONTRACT-001 allowlist scan, candidate ranking, next-slice baseline, and implementation planning.
+- Commands Pending: vehicle implementation, focused regressions, static gates, typechecks, lint, diff-check, build, scoped commit/push, and closure-ledger update.
 - Tests Completed: packaging-method slice 2 files / 26 tests, institutions slice 2 files / 43 tests, notification-bell slice 2 files / 12 tests, select-site slice 1 file / 6 tests, operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, and holiday slice 2 files / 39 tests passed.
-- Tests Pending: none for the completed master-hub slice; next candidate baseline is pending.
+- Tests Pending: vehicle schema-backed reader regressions and full gates.
 - Build State: PASS for master-hub slice; Next 16.2.9 compiled in 2.4 minutes, TypeScript finished in 57 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0; no ENOSPC warning was emitted. Filesystem availability was 14 GiB before and 13 GiB after the build.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.

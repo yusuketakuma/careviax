@@ -176,6 +176,35 @@
 - Next scan: rerun `pnpm client-json-schema:check`, inspect remaining one-entry and multi-entry consumers plus the
   patients board cursor residual, and choose the next bounded disjoint slice.
 
+## 2026-07-12 — API-CONTRACT-001FZVEHICLESTRICT selection
+
+- Scope: `src/app/(dashboard)/admin/vehicles/vehicles-content.tsx`, vehicle response schema, vehicle consumer/provider
+  tests, and the two matching client-schema allowlist entries.
+- Candidate ranking: selected the org-scoped vehicle master after the master-hub landing; deferred billing analytics,
+  audit logs, contact/external/document delivery, inventory/medication, patient/visit, and shared-token readers with
+  broader billing, PHI, audit, or outbound-data impact.
+- Finding: the consumer trusts compile-time `VisitVehicleResourcesResponse` and `PharmacySitesResponse` casts for a
+  counted vehicle-resource list and site option list. Duplicate/blank identity, invalid travel/operation/date state,
+  counted metadata drift, legacy roots, or provider-only site fields can affect authorized vehicle editor state.
+- Baseline: focused vehicle consumer/provider suites pass 2 files / 28 tests; client-schema is 171 schema-backed / 202
+  allowlisted / 78 files. The patients-board cursor item remains a separate declared-vs-implemented DB query-take
+  follow-up, not a client JSON schema gap.
+- Planned fix: strict vehicle item/count-meta and site-option schemas, duplicate/count/date/field-bound regressions,
+  provider-field stripping, and two allowlist ratchet removals. Vehicle/site providers, auth, mutations, and visual
+  semantics stay fixed; no image generation is needed for this non-visual parser slice.
+
+## 2026-07-12 — API-CONTRACT-001FZVEHICLESTRICT implementation checkpoint
+
+- Implementation: added shared vehicle-resource counted-list and pharmacy-site option schemas, connected both vehicle
+  GET readers, added regressions for provider-only fields, negative/invalid values, duplicate/count drift, and legacy
+  site roots, and removed the two matching allowlist entries.
+- Safety contract: vehicle identity/site relation/travel/operation/date fields, counted metadata arithmetic, site option
+  identity, and provider-only field stripping now guard authorized list/editor/create state. Vehicle/site providers,
+  auth, mutations, and visual semantics are unchanged.
+- Tests: focused vehicle consumer/provider suites pass 2 files / 33 tests.
+- Validation: static gates, typecheck, no-unused typecheck, lint, diff-check, and Next build pass; inventory is 173
+  schema-backed / 200 allowlisted / 77 files. Implementation commit is pending scoped landing.
+
 ## 2026-07-12 — API-CONTRACT-001FZPACKAGINGSTRICT selection
 
 - Scope: `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx`, packaging-method response schema,

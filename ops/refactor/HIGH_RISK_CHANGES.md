@@ -80,3 +80,14 @@
   regressions protect authorized freshness/action state; provider-only nested fields are stripped before query state.
 - Operational note: authorized master detail and shared right-rail content remain in-app only; no raw patient detail,
   provider metadata, or external output is introduced by this slice.
+
+## API-CONTRACT-001FZVEHICLESTRICT
+
+- Classification: Controlled vehicle/configuration operational read, but not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets,
+  deployment, provider, mutation, or production data change.
+- Safety control: strict counted vehicle list and site-option schemas reject legacy roots, duplicate identities, invalid
+  site/travel/operation/date fields, negative or inconsistent counts, and provider-only state before authorized vehicle
+  editor state; nested provider metadata is stripped.
+- Operational note: authorized vehicle configuration remains in-app only; no patient detail, provider metadata, or external
+  output is introduced by this slice.

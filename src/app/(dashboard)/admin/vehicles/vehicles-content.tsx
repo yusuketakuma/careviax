@@ -38,6 +38,13 @@ import { japanDateKey } from '@/lib/utils/date-boundary';
 import { messageFromError } from '@/lib/utils/error-message';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PHARMACY_SITES_API_PATH } from '@/lib/pharmacy-sites/api-paths';
+import {
+  pharmacySiteOptionsResponseSchema,
+  type PharmacySiteOption,
+  type PharmacySiteOptionsResponse,
+  visitVehicleResourcesResponseSchema,
+  type VisitVehicleResourcesResponse,
+} from '@/lib/visit-vehicle-resources/response-schema';
 import { formatDateLabel } from '@/lib/ui/date-format';
 import {
   VISIT_VEHICLE_RESOURCES_API_PATH,
@@ -46,18 +53,8 @@ import {
 } from '@/lib/visit-vehicle-resources/api-paths';
 import type {
   VisitVehicleResource,
-  VisitVehicleResourcesResponse,
   VisitVehicleResourceTravelMode,
 } from '@/types/api/visit-vehicle-resources';
-
-type PharmacySiteOption = {
-  id: string;
-  name: string;
-};
-
-type PharmacySitesResponse = {
-  data: PharmacySiteOption[];
-};
 
 type FormState = {
   site_id: string;
@@ -330,10 +327,10 @@ export function VehiclesContent() {
       const response = await fetch(buildListPath(), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<VisitVehicleResourcesResponse>(
-        response,
-        '車両マスターの取得に失敗しました',
-      );
+      return readApiJson<VisitVehicleResourcesResponse>(response, {
+        fallbackMessage: '車両マスターの取得に失敗しました',
+        schema: visitVehicleResourcesResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -344,7 +341,10 @@ export function VehiclesContent() {
       const response = await fetch(PHARMACY_SITES_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PharmacySitesResponse>(response, '店舗候補の取得に失敗しました');
+      return readApiJson<PharmacySiteOptionsResponse>(response, {
+        fallbackMessage: '店舗候補の取得に失敗しました',
+        schema: pharmacySiteOptionsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
