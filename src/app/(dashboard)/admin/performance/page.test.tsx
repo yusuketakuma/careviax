@@ -282,6 +282,7 @@ describe('PerformancePage polling policy', () => {
           locked_schedules: 1,
           pending_override_requests: 0,
           emergency_impact_items: 0,
+          provider_only: 'strip-me',
         },
         outcome_metrics: {
           completed_last_7_days: 3,
@@ -291,6 +292,7 @@ describe('PerformancePage polling policy', () => {
           open_exceptions: 0,
         },
         workload_metrics: { pharmacists: [] },
+        patient_risk_queue: { high_risk_count: 1, items: [{ patient_id: 'provider-only' }] },
       },
     };
     const schedulesPayload = {
@@ -360,7 +362,17 @@ describe('PerformancePage polling policy', () => {
       ([options]) => (options as QueryOption).queryKey[0] === 'admin-performance-runtime',
     )?.[0] as QueryOption | undefined;
 
-    await expect(workflowQuery?.queryFn?.()).resolves.toEqual(workflowPayload);
+    await expect(workflowQuery?.queryFn?.()).resolves.toEqual({
+      data: {
+        route_control: {
+          locked_schedules: 1,
+          pending_override_requests: 0,
+          emergency_impact_items: 0,
+        },
+        outcome_metrics: workflowPayload.data.outcome_metrics,
+        workload_metrics: { pharmacists: [] },
+      },
+    });
     await expect(schedulesQuery?.queryFn?.()).resolves.toEqual({ data: [], hasMore: false });
     await expect(proposalsQuery?.queryFn?.()).resolves.toEqual(proposalsPayload);
     await expect(runtimeQuery?.queryFn?.()).resolves.toEqual(runtimePayload);

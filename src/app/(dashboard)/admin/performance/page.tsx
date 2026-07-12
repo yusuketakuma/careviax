@@ -38,32 +38,10 @@ import {
   performanceProposalsResponseSchema,
   type PerformanceProposalsResponse,
 } from './performance-proposal-schema';
-
-type WorkflowData = {
-  route_control: {
-    locked_schedules: number;
-    pending_override_requests: number;
-    emergency_impact_items: number;
-  };
-  outcome_metrics: {
-    completed_last_7_days: number;
-    disrupted_last_7_days: number;
-    urgent_completed_last_7_days: number;
-    awaiting_reports: number;
-    open_exceptions: number;
-  };
-  workload_metrics: {
-    pharmacists: Array<{
-      pharmacist_id: string;
-      pharmacist_name: string;
-      confirmed_visits: number;
-      pending_tasks: number;
-      urgent_items: number;
-      callback_followups: number;
-      facility_clusters: number;
-    }>;
-  };
-};
+import {
+  performanceWorkflowResponseSchema,
+  type PerformanceWorkflowResponse,
+} from './performance-workflow-schema';
 
 type RuntimePerformanceSnapshot = {
   scope: 'current-process';
@@ -210,7 +188,10 @@ export default function PerformancePage() {
       const res = await fetch('/api/dashboard/workflow?view=performance', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: WorkflowData }>(res, 'ワークフローの取得に失敗しました');
+      return readApiJson<PerformanceWorkflowResponse>(res, {
+        fallbackMessage: 'ワークフローの取得に失敗しました',
+        schema: performanceWorkflowResponseSchema,
+      });
     },
     enabled: !!orgId,
     invalidateOn: WORKFLOW_DASHBOARD_INVALIDATION_EVENTS,
