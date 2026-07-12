@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZCYCLEHISTORYSTRICT medication-cycle transition history reader/path (VERIFY_REQUIRED, 2026-07-12; implementation `d9b5d2737`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCYCLEHISTORYSTRICT medication-cycle transition history reader/path (VERIFY_REQUIRED, 2026-07-12; implementation `d9b5d2737`, ledger `9355a5d2c`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Workflow stage timeline / previous-stage summaryがcycle transition historyをcompile-time castだけで読み、
     legacy root、unknown status、duplicate/reverse-ordered logsを履歴表示へ流し得た。さらにcycleIdをAPI pathへ
