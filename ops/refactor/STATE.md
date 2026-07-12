@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZCOMMENTSTRICT comment thread readers (VERIFY_REQUIRED, 2026-07-13; implementation `6b05ea0ba`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCOMMENTSTRICT comment thread readers (VERIFY_REQUIRED, 2026-07-13; implementation `6b05ea0ba`, ledger `81f53083b`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Comment ThreadのGET/POST/DELETE readersはcompile-time castまたはuntyped JSONで、duplicate/reordered comments、
     duplicate mentions、別entity/改変contentのPOST結果、legacy/false delete acknowledgementを成功扱いし、PHIを
