@@ -42,7 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiJson, throwApiResponseError } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   buildDrugMasterApiPath,
@@ -1554,7 +1554,7 @@ function DrugMasterOperationalContent({
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
-        await readApiJson<never>(res, '採用薬CSVの出力に失敗しました');
+        await throwApiResponseError(res, '採用薬CSVの出力に失敗しました');
       }
       return res.blob();
     },
@@ -1581,7 +1581,7 @@ function DrugMasterOperationalContent({
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) {
-        await readApiJson<never>(res, '採用薬CSVテンプレートの取得に失敗しました');
+        await throwApiResponseError(res, '採用薬CSVテンプレートの取得に失敗しました');
       }
       return res.blob();
     },

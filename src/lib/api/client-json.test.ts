@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { readApiAcknowledgement, readApiJson } from './client-json';
+import { readApiAcknowledgement, readApiJson, throwApiResponseError } from './client-json';
 
 describe('client JSON API helpers', () => {
   it('returns typed JSON for successful responses', async () => {
@@ -103,6 +103,32 @@ describe('client JSON API helpers', () => {
         fallbackMessage: 'レスポンスが不正です',
       }),
     ).rejects.toThrow('レスポンスが不正です');
+  });
+
+  it('throws the server message for an explicitly failed response', async () => {
+    await expect(
+      throwApiResponseError(
+        new Response(JSON.stringify({ error: { message: '出力権限がありません' } }), {
+          status: 403,
+        }),
+        '出力に失敗しました',
+      ),
+    ).rejects.toThrow('出力権限がありません');
+  });
+
+  it('uses the fallback for a non-JSON failed response', async () => {
+    await expect(
+      throwApiResponseError(new Response('not-json', { status: 500 }), '出力に失敗しました'),
+    ).rejects.toThrow('出力に失敗しました');
+  });
+
+  it('fails closed when the error-only helper is misused with a successful response', async () => {
+    await expect(
+      throwApiResponseError(
+        new Response(JSON.stringify({ message: '成功payload' }), { status: 200 }),
+        '失敗responseではありません',
+      ),
+    ).rejects.toThrow('失敗responseではありません');
   });
 
   it('accepts only standard acknowledgement envelopes', async () => {

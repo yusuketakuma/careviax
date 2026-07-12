@@ -85,6 +85,17 @@ export async function readApiJson<T>(
   return json.value as T;
 }
 
+export async function throwApiResponseError(
+  response: Response,
+  fallbackMessage = '処理に失敗しました',
+): Promise<never> {
+  const json = await parseResponseJson(response);
+  if (response.ok) {
+    throw new Error(fallbackMessage);
+  }
+  throw new Error(readApiErrorMessage(json.value) ?? fallbackMessage);
+}
+
 export async function readApiAcknowledgement(
   response: Response,
   fallbackMessage = '処理に失敗しました',

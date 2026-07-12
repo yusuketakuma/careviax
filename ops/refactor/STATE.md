@@ -46892,3 +46892,29 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   entry. It was pushed to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and
   untracked personal artifacts were excluded, and the feature branch does not match the `main`-only production deploy
   trigger.
+
+## 2026-07-12 API-CONTRACT-001FZERRORONLY — explicit non-2xx response reader (DONE)
+
+- current task / root cause:
+  Four callsites used `readApiJson<never>` only inside an already-proven non-2xx branch: two drug-master CSV downloads,
+  audit-log export, and dispense-workbench writes. These were not successful JSON contracts, but they appeared as
+  schema-less response debt and required each caller to express an impossible success type. The workbench path also
+  passed a dynamic fallback through the general-purpose JSON reader.
+- implementation / verification:
+  Added shared `throwApiResponseError`, which parses only the standard nested/root error message and always throws;
+  non-JSON bodies use the supplied fallback, and accidental use with a successful response fails closed with that
+  fallback. Migrated all four error-only callsites while preserving their existing server-message/fallback handling,
+  `WorkbenchWriteError` status mapping, and successful blob/write paths. Shared-helper, drug-master, audit-export, and
+  workbench suites passed 4 files / 194 tests. Aggregate and 8 GB no-unused typechecks passed. Exact ESLint/Prettier,
+  API response-shape, frontend contract, client PHI-log/display, module-boundary, active Plans, client-schema, and
+  diff gates passed. The client-schema inventory moved from 151 schema-backed / 223 allowlisted schema-less / 92 files
+  to 151 / 219 / 91 by removing four error-only calls rather than mislabeling them as schema-backed success readers.
+  Full build was not repeated after the existing compile-stage memory limitation; no new build hypothesis remains
+  after both typecheck gates passed. No provider, API payload, auth/authz, tenant, audit semantics, write behavior,
+  successful download behavior, clinical data, or visual layout changed. Browser and image generation were omitted
+  because this is a non-visual shared error-boundary refactor covered by direct helper and consumer tests. Rollback is
+  the helper, four import/callsite replacements, helper regressions, and client-schema inventory hunks.
+- commit / push:
+  Pending scoped commit and push to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes
+  and untracked personal artifacts remain excluded, and the feature branch does not match the `main`-only production
+  deploy trigger.

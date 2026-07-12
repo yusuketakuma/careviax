@@ -43,7 +43,7 @@ import {
   buildPrescriptionLineApiPath,
   buildSetPlanApiPath,
 } from '@/lib/dispensing/api-paths';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiJson, throwApiResponseError } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import {
   WorkbenchConflictError,
@@ -419,7 +419,7 @@ async function mutateJson<T>(url: string, method: 'POST' | 'PATCH', body: unknow
   if (!res.ok) {
     let message = '保存に失敗しました';
     try {
-      await readApiJson<never>(res, message);
+      await throwApiResponseError(res, message);
     } catch (err) {
       if (err instanceof Error && err.message) message = err.message;
     }

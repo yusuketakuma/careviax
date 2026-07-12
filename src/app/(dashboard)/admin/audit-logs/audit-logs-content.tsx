@@ -43,7 +43,7 @@ import {
   AUDIT_LOG_TARGET_TYPE_OPTIONS,
 } from '@/lib/audit-logs/filter-options';
 import { DEFAULT_AUDIT_LOG_REVIEW_REASON_CODE } from '@/lib/audit-logs/review';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiJson, throwApiResponseError } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -395,8 +395,7 @@ export function AuditLogsContent() {
         headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) {
-        await readApiJson<never>(response, '監査ログのエクスポートに失敗しました');
-        throw new Error('監査ログのエクスポートに失敗しました');
+        await throwApiResponseError(response, '監査ログのエクスポートに失敗しました');
       }
 
       const blob = await response.blob();
