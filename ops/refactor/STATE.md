@@ -47045,6 +47045,35 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZPERFPROPOSALS — (DONE)
+
+- current task / root cause:
+  Admin performance still trusted the visit-proposal list through a compile-time cast before calculating emergency,
+  fallback-assignment, contact-confirmation, and route-score metrics. Although the normal provider view returns the full
+  filtered range when no limit is supplied, malformed/duplicate proposal rows or provider-only patient/contact fields
+  could enter the metric cache without runtime validation.
+- implementation:
+  Added a strict `{ data }` proposal response schema for identity/date, priority, proposal/contact status, assignment,
+  nonnegative route score, reason, deadline, and patient name. It rejects duplicate identities and strips residences,
+  contact logs, and other provider-only fields. Connected the reader and reduced only this page's allowlist count from
+  three to two; workflow and runtime readers remain separate residuals.
+- validation:
+  Focused performance and proposal-schema suites pass 2 files / 13 tests. Exact ESLint/Prettier, aggregate typecheck,
+  8 GB no-unused typecheck, client JSON schema, frontend contract, API shape, boundaries, PHI client log/display, colors,
+  typography, Plans, and diff gates pass. Inventory is 192 schema-backed / 179 allowlisted calls across 67 files.
+  Serialized `PHOS_DISABLE_WEBPACK_CACHE=1 pnpm build` also passes: compile 94s, build TypeScript 53s, and static
+  generation 311/311 in 921ms. It emitted only the two known generated-CSS optimizer warnings. The temporary local
+  webpack cache hook used to avoid the approximately 15 GB `.next/cache` ENOSPC condition was reverted, leaving no
+  `next.config.ts` diff.
+- scope / safety:
+  No proposal query/generation/mutation, authorization, tenant boundary, patient source, metric formula, realtime policy,
+  or visual behavior changed. This non-visual contract repair did not require imagegen.
+- commit / landing:
+  Scoped implementation commit `5c6f0ea43` contains only the performance consumer, proposal schema/test, and allowlist.
+  Ledger commit and safe feature-branch push follow; unrelated dirty/untracked artifacts remain excluded.
+- next action:
+  Close and push this slice, then continue with performance workflow/runtime or another higher-value residual.
+
 ## 2026-07-12 API-CONTRACT-001FZPERFSCHEDULES — (DONE)
 
 - current task / root cause:
