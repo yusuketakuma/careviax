@@ -47045,6 +47045,43 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZPERFWORKFLOW — (DONE)
+
+- current task / root cause:
+  Admin performance still trusts `/api/dashboard/workflow?view=performance` through a compile-time cast before route
+  control, outcome, and pharmacist-workload values drive operational signals. Malformed/negative counts, duplicate
+  pharmacist identities, inconsistent completed/urgent or pending/callback counts, and full-workflow/provider-only
+  fields can therefore enter this page's realtime query cache without runtime validation.
+- baseline / scope:
+  The focused performance page suite passes 1 file / 8 tests. Provider inspection confirms the performance view is
+  authorization- and assignment-scoped and intentionally builds the same dashboard aggregate while using reduced
+  phase queries; this slice changes only the client projection. Current inventory is 192 schema-backed / 179
+  allowlisted calls across 67 files, with two entries on the performance page.
+- implementation plan:
+  Add a strict `{ data }` performance-workflow schema for the three consumed sections, enforce nonnegative integer,
+  unique identity, maximum provider row count, and derived count relationships, strip all unconsumed aggregate fields,
+  connect `readApiJson`, add contract regressions, and remove only this reader from the allowlist. This non-visual
+  contract/cache-minimization repair does not require imagegen. Provider/API/auth/tenant, metric formulas, realtime
+  invalidation, and visual behavior remain unchanged.
+- implementation / validation:
+  Added the three-section runtime projection, rejected negative/fractional counts, duplicate or more-than-six pharmacist
+  rows, urgent-completed totals above all completed visits, and callback totals above pending tasks. Provider-only
+  nested fields and all unconsumed workflow sections are stripped before the realtime query cache. Focused performance
+  suites pass 2 files / 14 tests. Client-schema inventory passes at 193 schema-backed / 178 allowlisted calls across 67
+  files. Aggregate typecheck, 8 GB no-unused typecheck, lint, frontend contract, module boundaries, API response shape,
+  PHI client log/display, colors, typography, Plans, format, and diff gates pass; lint retains only the two pre-existing
+  unused-parameter warnings in `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  Serialized `PHOS_DISABLE_WEBPACK_CACHE=1 pnpm build` passes: compile 83s, build TypeScript 50s, page data 1213ms,
+  static generation 311/311 in 822ms, traces 17.1s, and final optimization 19.5s. It emitted only the two known
+  generated-CSS optimizer warnings. The temporary local webpack cache hook used on the 99%-full filesystem was
+  reverted, leaving no `next.config.ts` diff; no generated artifacts were deleted.
+- commit / landing:
+  Scoped implementation commit `a4e7d517e` contains only the performance reader/schema/tests and allowlist ratchet.
+  Ledger commit and safe feature-branch push follow; unrelated dirty/untracked artifacts remain excluded.
+- next action:
+  Close and push this slice, then harden the final performance runtime reader or select a higher-value residual.
+
 ## 2026-07-12 API-CONTRACT-001FZPERFPROPOSALS — (DONE)
 
 - current task / root cause:
