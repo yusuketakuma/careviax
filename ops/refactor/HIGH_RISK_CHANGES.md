@@ -55,3 +55,10 @@
 - Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, provider, PATCH, SSE, or production data mutation changed.
 - Safety/privacy control: strict summary/list schemas reject legacy roots, negative/non-finite unread counts, malformed notification content/date/read state, duplicate identities, pagination drift, and unsafe external links; provider-only fields are stripped before in-app badge/drawer state.
 - Operational note: in-app notification detail remains within the authorized surface; raw title/message/link are not passed to OS notification helpers, logged, or externalized by this slice.
+
+## API-CONTRACT-001FZINSTITUTIONSSTRICT
+
+- Classification: Controlled medical-master/contact operational read, but not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, provider, POST/PATCH/DELETE, or production data mutation changed.
+- Safety/privacy control: legacy root, duplicate identity, blank identity, negative prescription count, invalid prescribed date, pagination drift, and overlong contact/text fields fail closed; provider-only organization/timestamp/relation fields are stripped before authorized table/edit state.
+- Operational note: authorized institution contact and prescription-usage aggregate remain in-app only; no raw patient record, provider relation, or external output is introduced by this slice.

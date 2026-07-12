@@ -118,3 +118,23 @@
   readers; focused suites pass 2 files / 12 tests; static/type/no-unused/lint/diff/build gates pass; client-schema
   inventory moved to 168 schema-backed / 205 allowlisted / 81 files. Commit `8a9956f0d` is pushed. Next scan: remaining
   API-CONTRACT allowlist entries and patients board cursor residual.
+
+## 2026-07-12 — API-CONTRACT-001FZINSTITUTIONSSTRICT selection
+
+- Scope: `src/app/(dashboard)/admin/institutions/institutions-content.tsx`, prescriber-institutions response schema,
+  institutions consumer/provider tests, and the one matching client-schema allowlist entry.
+- Candidate ranking: selected the bounded one-entry admin master-data reader after the notification-bell landing; deferred
+  billing analytics, document-delivery/external communication, medical patient detail, and mutation-heavy readers with
+  broader controlled-data or outbound side effects.
+- Finding: the provider returns `{ data }` for an unfiltered full list and `{ data, meta: { limit, has_more } }` for a
+  bounded `q` search, while the consumer trusts a compile-time `{ data: Institution[] }` cast and retains provider-only
+  fields. Invalid identity/contact/usage/date state or pagination drift can affect authorized table/edit state.
+- Baseline: focused institutions consumer/provider suites pass 2 files / 38 tests; client-schema is 168 schema-backed /
+  205 allowlisted / 81 files.
+- Planned fix: strict institution item schema, union root for unfiltered/filtered provider shapes, duplicate/count/date/page
+  invariants, provider-field stripping, malformed/legacy/duplicate/negative/invalid-date regressions, and one allowlist
+  ratchet removal. POST/PATCH/DELETE, provider/auth, and visual semantics stay fixed.
+
+- Landed locally: shared institution item/root schemas now guard both provider list shapes; focused suites pass 2 files /
+  43 tests; static/type/no-unused/lint/diff/build gates pass; client-schema inventory moved to 169 schema-backed / 204
+  allowlisted / 80 files. Scoped commit/push and closure ledger remain.

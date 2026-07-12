@@ -103,3 +103,16 @@
 | Errors / loading / empty    | Existing refresh failure, drawer, badge, empty, merge, and retry behavior remains; invalid successful JSON is treated as a failed refresh before state changes.                                               |
 | Tests                       | Notification-bell focused suite: 2 files / 12 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                                   |
 | Alignment                   | ALIGNED for this read slice; PATCH acknowledgement, SSE-safe redaction, provider/auth semantics, and visual behavior intentionally unchanged.                                                                 |
+
+## API-CONTRACT-001FZINSTITUTIONSSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                                             |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Authorized admin users access `/admin/institutions`; `/api/prescriber-institutions` remains under existing `canReport` GET scope and admin-only mutation permissions.                         |
+| Frontend state / clients    | `institutions-content.tsx` selects an exact unfiltered or filtered schema from the trimmed query before table/edit state; provider-only fields are stripped from cached items.                |
+| Request / response contract | Provider returns `{ data }` without search and `{ data, meta: { limit, has_more } }` for `q`; consumer validates identity/contact/usage/date, duplicate IDs, count bounds, and page relation. |
+| Backend / DB                | Existing org-scoped institution query, usage count/latest prescribed date projection, ordering, no-store behavior, persistence, and provider routes are unchanged.                            |
+| Auth / tenant / audit       | Existing `canReport` GET and admin mutation authorization remain; authorized institution contact/usage data stays in the in-app admin surface and is not sent to external output.             |
+| Errors / loading / empty    | Existing loading, error/retry, empty, search debounce, edit, and mutation behavior remains; malformed 2xx becomes query error rather than false table/edit state.                             |
+| Tests                       | Institutions consumer/provider suite: 2 files / 43 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                              |
+| Alignment                   | ALIGNED for this read slice; POST/PATCH/DELETE, provider/auth semantics, authorized contact/usage display, and visual behavior intentionally unchanged.                                       |

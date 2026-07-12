@@ -47045,6 +47045,37 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZINSTITUTIONSSTRICT — prescriber-institutions list contract (IMPLEMENTED, PENDING LANDING)
+
+- current task / root cause:
+  The admin institutions GET reader still trusts a compile-time `{ data: Institution[] }` cast while the provider
+  returns `{ data }` for the unfiltered master list and `{ data, meta: { limit, has_more } }` for a bounded search.
+  Provider-only organization/timestamp/count relation fields, duplicate identities, negative usage counts, invalid
+  timestamps, or pagination drift can therefore enter authorized institution table/edit state. Existing POST/PATCH/DELETE,
+  provider query, authorization, and visual semantics are not being changed.
+- baseline:
+  The focused institutions consumer/provider suites pass 2 files / 38 tests before implementation. Current client-schema
+  inventory is 168 schema-backed / 205 allowlisted schema-less / 81 files. The target is one `stringFallback` entry in
+  `src/app/(dashboard)/admin/institutions/institutions-content.tsx`.
+- implementation plan:
+  Add a strict shared institution-item schema and a union for the provider's unfiltered `{ data }` and filtered
+  `{ data, meta }` roots; validate identity/contact/usage/date fields, duplicate IDs, count/page relation, and strip
+  provider-only fields before query state. Add malformed/legacy/duplicate/negative/invalid-date regressions and remove
+  only the institutions allowlist entry. No visual reconstruction or `gpt-image-2` is needed because this is a non-visual
+  authorized master-data parser and query-state boundary repair.
+- implementation / validation:
+  Added a shared institution item schema with provider-field stripping, duplicate identity detection, non-negative
+  prescription counts, valid date handling, and exact root builders for unfiltered `{ data }` versus filtered
+  `{ data, meta }` responses. The institutions GET reader now selects the correct root schema from the trimmed query
+  state; POST/PATCH/DELETE, provider query, authorization, and visual behavior are unchanged. Focused suites pass
+  2 files / 43 tests; static contract gates and `git diff --check` pass; client-schema inventory is 169 schema-backed /
+  204 allowlisted schema-less / 80 files; typecheck and no-unused typecheck pass; lint exits 0 with the two pre-existing
+  break-glass warnings; Next 16.2.9 build passes with 311/311 static pages, the two existing CSS optimizer warnings,
+  and no ENOSPC warning. Filesystem availability was 14 GiB before and 13 GiB after the build.
+- next action:
+  Update the landing ledgers, inspect explicit owned paths, create the scoped implementation commit, push it, verify
+  local/remote parity, then add the closure ledger.
+
 ## 2026-07-12 API-CONTRACT-001FZNOTIFICATIONBELLSTRICT — notification-bell summary/list contract (DONE)
 
 - current task / root cause:

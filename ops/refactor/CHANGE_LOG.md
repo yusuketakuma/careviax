@@ -120,3 +120,18 @@
 - Rollback: revert the summary schema, bell reader adapter, regressions, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
 - Push evidence: `bde744e93..8a9956f0d` fast-forward push succeeded; local and remote heads match (`0 0`).
+
+## API-CONTRACT-001FZINSTITUTIONSSTRICT
+
+- Commit Group: `API-CONTRACT-001FZINSTITUTIONSSTRICT`
+- Commit: PENDING
+- Push Status: NOT_STARTED
+- Branch: `agent/continuous-improvement-20260712`
+- Scope: admin/institutions GET response schema, consumer regressions, provider-shaped filtered/unfiltered fixtures, and client-schema allowlist ratchet.
+- Implementation: validate exact unfiltered `{ data }` and filtered `{ data, meta }` roots, institution identity/contact/usage/date fields, unique identities, non-negative counts, pagination relation, and strip provider-only fields; preserve POST/PATCH/DELETE, provider query, authorization, and visual behavior.
+- FE/BE impact: `/admin/institutions` now fails closed on malformed/legacy/duplicate/negative/invalid-date/pagination-drift 2xx payloads before table/edit state; `/api/prescriber-institutions` and mutation paths remain unchanged.
+- DB/auth/tenant/audit impact: no DB, migration, provider, auth/authz, tenant, audit, mutation, production-data, or external-output change.
+- Verification: focused 2 files / 43 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and Next build passed; client-schema inventory is 169 schema-backed / 204 allowlisted / 80 files. Build emitted only the existing two CSS optimizer warnings and no ENOSPC warning.
+- Rollback: revert the institution response schema, consumer adapter, regressions, allowlist removal, and ledger entries.
+- Remote: `origin/agent/continuous-improvement-20260712`
+- Push evidence: pending scoped commit and push.

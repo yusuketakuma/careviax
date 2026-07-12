@@ -66,12 +66,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/institutions/institutions-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.tsx",
       "counts": {
         "stringFallback": 1

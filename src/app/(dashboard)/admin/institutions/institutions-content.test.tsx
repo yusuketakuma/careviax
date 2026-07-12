@@ -169,7 +169,7 @@ function institutionFixture(id = 'institution_1'): Institution {
     fax: '03-1111-2223',
     notes: '報告書はFAX優先',
     prescription_count: 12,
-    last_prescribed_at: '2026-06-01',
+    last_prescribed_at: '2026-06-01T00:00:00.000Z',
   };
 }
 
@@ -178,7 +178,10 @@ function stubFetchWithInstitution(institution = institutionFixture()) {
     const url = String(input);
 
     if (url.startsWith('/api/prescriber-institutions?') && !init?.method) {
-      return new Response(JSON.stringify({ data: [institution] }), { status: 200 });
+      const body = url.includes('q=')
+        ? { data: [institution], meta: { limit: 500, has_more: false } }
+        : { data: [institution] };
+      return new Response(JSON.stringify(body), { status: 200 });
     }
 
     if (url === '/api/prescriber-institutions' && init?.method === 'POST') {
@@ -527,6 +530,70 @@ describe('InstitutionsContent', () => {
       '医療機関一覧を取得できませんでした',
     );
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+  });
+
+  it.each([
+    ['legacy root', { institutions: [institutionFixture()] }],
+    ['duplicate identity', { data: [institutionFixture(), institutionFixture()] }],
+    [
+      'negative prescription count',
+      { data: [{ ...institutionFixture(), prescription_count: -1 }] },
+    ],
+    [
+      'invalid last-prescribed date',
+      { data: [{ ...institutionFixture(), last_prescribed_at: 'not-a-date' }] },
+    ],
+  ])('rejects %s before rendering institution state', async (_label, payload) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) === '/api/prescriber-institutions?') {
+          return new Response(JSON.stringify(payload), { status: 200 });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${String(input)}` }), {
+          status: 500,
+        });
+      }),
+    );
+
+    renderContent();
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      '医療機関一覧を取得できませんでした',
+    );
+    expect(screen.queryByText('在宅内科クリニック')).toBeNull();
+  });
+
+  it('rejects inconsistent search pagination before rendering filtered state', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/prescriber-institutions?') {
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      if (url.includes('q=')) {
+        return new Response(
+          JSON.stringify({
+            data: [institutionFixture()],
+            meta: { limit: 2, has_more: true },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/prescriber-institutions?', expect.anything()),
+    );
+
+    fireEvent.change(screen.getByLabelText('検索'), { target: { value: '在宅' } });
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      '医療機関一覧を取得できませんでした',
+    );
+    expect(screen.queryByText('在宅内科クリニック')).toBeNull();
   });
 
   it('debounces the search so it requests only after the user pauses typing', async () => {

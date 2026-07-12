@@ -36,6 +36,11 @@ import {
   buildPrescriberInstitutionApiPath,
   buildPrescriberInstitutionsApiPath,
 } from '@/lib/prescriber-institutions/api-paths';
+import {
+  buildPrescriberInstitutionsResponseSchema,
+  type PrescriberInstitution,
+  type PrescriberInstitutionsResponse,
+} from '@/lib/prescriber-institutions/response-schema';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { formatDateLabel } from '@/lib/ui/date-format';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -99,17 +104,7 @@ function ContactLine({
   );
 }
 
-export type Institution = {
-  id: string;
-  name: string;
-  institution_code: string | null;
-  address: string | null;
-  phone: string | null;
-  fax: string | null;
-  notes: string | null;
-  prescription_count: number;
-  last_prescribed_at: string | null;
-};
+export type Institution = PrescriberInstitution;
 
 type FormState = {
   name: string;
@@ -178,11 +173,15 @@ export function InstitutionsContent() {
     queryKey: ['prescriber-institutions', orgId, debouncedQuery],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (debouncedQuery.trim()) params.set('q', debouncedQuery.trim());
+      const trimmedQuery = debouncedQuery.trim();
+      if (trimmedQuery) params.set('q', trimmedQuery);
       const response = await fetch(buildPrescriberInstitutionsApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: Institution[] }>(response, '医療機関マスターの取得に失敗しました');
+      return readApiJson<PrescriberInstitutionsResponse>(response, {
+        fallbackMessage: '医療機関マスターの取得に失敗しました',
+        schema: buildPrescriberInstitutionsResponseSchema({ hasQuery: Boolean(trimmedQuery) }),
+      });
     },
     enabled: !!orgId,
   });
