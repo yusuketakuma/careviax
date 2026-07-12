@@ -221,6 +221,19 @@
 | Tests                       | Saved-views/preferences consumer/provider suite: 3 files / 39 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                              |
 | Alignment                   | ALIGNED for this read slice; provider/auth/audit/mutation semantics, opaque filters/sort, patient detail, external output, and visual behavior intentionally unchanged.                                                  |
 
+## API-CONTRACT-001FZESCALATIONSETTINGSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                                                                      |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Authorized admins continue to access `/admin/notification-settings`; `/api/admin/escalation-rules` retains its existing `canAdmin` and org-scoped GET boundary.                                                        |
+| Frontend state / clients    | `notification-settings-content.tsx` validates the escalation GET before rule rows and hidden-count state; only the consumed rule projection enters state and provider-only fields are stripped.                        |
+| Request / response contract | Provider `{ data, meta }` is validated for rule id/trigger/condition/action/role/active/date fields, fixed count basis/filter metadata, duplicate IDs, list bound, and visible/hidden/truncated arithmetic.            |
+| Backend / DB                | Existing escalation query, ordering, bounded `take`, condition serialization, no-store response, persistence, and provider route are unchanged; all POST/PATCH/DELETE behavior is outside this slice.                  |
+| Auth / tenant / audit       | Existing `canAdmin`, organization scope, audit/mutation semantics, browser preference, and in-app escalation settings remain unchanged; provider-only org/display/update metadata is not externalized to client state. |
+| Errors / loading / empty    | Existing loading, error/retry, empty, hidden-count, and toggle behavior remains; malformed or legacy 2xx becomes a settings-load error rather than false escalation state.                                             |
+| Tests                       | Notification-settings consumer/escalation-provider suite: 2 files / 35 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                   |
+| Alignment                   | ALIGNED for this bounded read slice; notification GET, notification/escalation mutations, patient/PHI data, outbound delivery, and visual behavior intentionally unchanged.                                            |
+
 ## API-CONTRACT-001FZNOTIFICATIONSETTINGSTRICT
 
 | Area                        | Evidence / status                                                                                                                                                                                                    |

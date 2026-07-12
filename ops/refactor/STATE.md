@@ -47045,6 +47045,53 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZESCALATIONSETTINGSTRICT — (DONE)
+
+- current task / selection:
+  The notification-settings screen still has four schema-less readers after the event-rule GET repair. The bounded
+  escalation-rules GET is the next disjoint low-risk configuration read: the provider already returns `{ data, meta }`,
+  the screen consumes only rule id/trigger/condition/action/role/active/date fields, and no patient record or outbound
+  payload is introduced. Notification-rule mutations, escalation mutations, and all other readers remain out of scope.
+- baseline:
+  The previous notification-settings event-rule slice passes 2 files / 26 focused tests, with 184 schema-backed / 189
+  allowlisted schema-less calls across 72 files. The product tree is clean apart from unrelated harness-memory and
+  personal artifacts; the branch is six commits ahead of upstream and push remains unrequested.
+- scope / safety boundary:
+  Add one strict counted escalation-rule response schema and connect only its GET reader. Preserve existing escalation
+  provider query/order/take, `canAdmin` authorization, org scope, audit/mutation behavior, browser preference, and visual
+  behavior. This is a non-visual parser/cache-minimization slice; no `gpt-image-2` generation is needed.
+- implementation plan:
+  Validate the minimal rule projection, enum/condition/threshold/date fields, fixed count basis/filter metadata, bounded
+  list arithmetic, and duplicate identity; strip provider-only update/org fields; synchronize all live `{ data, meta }`
+  fixtures; add provider-field, legacy-root, malformed-condition, duplicate, and count-drift regressions; and decrement
+  only the escalation GET allowlist count.
+- implementation / validation checkpoint:
+  Added `src/lib/escalation-rules/response-schema.ts`, connected only the escalation-rules GET reader, removed one
+  `stringFallback` allowlist count, and synchronized all focused escalation GET fixtures to the counted provider envelope.
+  The schema validates minimal rule identity/trigger/condition/action/role/active/date fields, fixed count basis/filter
+  metadata, duplicate identities, and count arithmetic while stripping provider-only org/display/update fields. Focused
+  notification-settings consumer/escalation-provider suites pass 2 files / 35 tests. Format, API response shape, client
+  JSON schema, frontend contract, PHI log/display, boundaries, Plans, colors, typography, and diff gates pass; inventory
+  is 185 schema-backed / 188 allowlisted schema-less calls across 72 files. `pnpm typecheck`, 8 GB no-unused typecheck,
+  and lint pass; lint retains only the two pre-existing unused-parameter warnings in `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  `pnpm build` exits 0. Next 16.2.9 compiled in 94 seconds, TypeScript finished in 60 seconds, 311/311 static pages
+  were generated, and route optimization/traces completed. The build emitted the two existing CSS optimizer warnings;
+  no ENOSPC warning was emitted in this run. Filesystem availability was 14 GiB before and was not remeasured after
+  this build.
+- safety / limits:
+  The escalation provider query/order/take, `canAdmin` authorization, org scope, notification-rule GET, notification and
+  escalation mutations, audit behavior, browser notification preference, and visual behavior remain unchanged. Only the
+  authorized in-app escalation projection is validated; malformed 2xx fails closed and provider-only metadata does not
+  enter escalation state. No migration, production data operation, external send, or image generation was required.
+- commit / landing:
+  Scoped implementation commit `943ea1eca` (`fix(API-CONTRACT-001FZESCALATIONSETTINGSTRICT): validate escalation rule
+reader`) was created locally with only the escalation schema, consumer/test, and allowlist paths staged. Push remains
+  unrequested; unrelated harness-memory and personal artifacts remain excluded.
+- next action:
+  Complete the scoped implementation and ledger commits, then return to `API-CONTRACT-001-RESCAN` and choose the next
+  disjoint safe slice without touching unrelated dirty paths.
+
 ## 2026-07-12 API-CONTRACT-001FZCONFLICTPHARMACIST — schedule-conflict pharmacist lookup (DONE)
 
 - current task / selection:

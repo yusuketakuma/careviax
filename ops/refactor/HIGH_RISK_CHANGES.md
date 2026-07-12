@@ -160,3 +160,15 @@
 - Operational note: authorized notification configuration remains in-app only; no patient record, raw provider metadata,
   external delivery, browser OS notification, audit, or visual behavior is changed. No image generation or cleanup was
   performed.
+
+## API-CONTRACT-001FZESCALATIONSETTINGSTRICT
+
+- Classification: Low-risk authorized escalation-configuration read contract; not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets,
+  deployment, provider query, notification behavior, mutation, production-data, or external-send operation changed.
+- Safety control: strict counted escalation-rule schema rejects legacy roots, malformed condition/enum/date state,
+  duplicate identities, list-limit/count arithmetic drift, and provider-only org/display/update fields before escalation
+  state; the existing canAdmin/org boundary remains authoritative.
+- Operational note: authorized escalation configuration remains in-app only; no patient record, raw provider metadata,
+  external delivery, browser OS notification, audit, or visual behavior is changed. No image generation or cleanup was
+  performed.

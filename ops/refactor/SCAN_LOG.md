@@ -450,3 +450,44 @@
   client-schema allowlist paths; unrelated harness-memory and personal artifacts remain excluded.
 - Next scan: return to `API-CONTRACT-001-RESCAN`, rerun `pnpm client-json-schema:check`, inspect remaining candidates and
   the patients-board DB query-take residual, and choose the next bounded disjoint slice.
+
+## 2026-07-12 — API-CONTRACT-001FZESCALATIONSETTINGSTRICT selection
+
+- Scope: the escalation-rules GET reader in `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`,
+  a new escalation-rule response schema, focused consumer/provider fixtures/regressions, and one allowlist count.
+- Candidate ranking: selected the same-screen bounded escalation configuration read after the event-rule GET; deferred
+  escalation mutations, billing, audit, contact/external/document delivery, inventory/medication, patient/visit,
+  shared-token, and the patients-board DB query-take residual because they have broader controlled-data, outbound, or
+  performance/PHI impact.
+- Finding: `/api/admin/escalation-rules` already returns a counted `{ data, meta }` list, but the consumer trusts an
+  optional compile-time cast and may silently fall back to an empty list on legacy/malformed/count-drifted success data;
+  provider-only `updated_at`/org metadata can also enter state. Only GET is in scope.
+- Baseline: notification-settings event-rule consumer/provider suites pass 2 files / 26 tests; client-schema is 184
+  schema-backed / 189 allowlisted schema-less calls across 72 files. Product paths are clean; unrelated harness-memory
+  and personal artifacts remain excluded.
+- Planned fix: strict minimal escalation rule/condition/date/count schema, provider-field stripping, fixture synchronization,
+  malformed/legacy/duplicate/count-drift regressions, and one allowlist-count decrement. No visual reconstruction or
+  `gpt-image-2` is needed for this non-visual parser/cache boundary.
+
+## 2026-07-12 — API-CONTRACT-001FZESCALATIONSETTINGSTRICT implementation checkpoint
+
+- Implementation: added `src/lib/escalation-rules/response-schema.ts`, connected only the escalation-rules GET reader,
+  stripped provider-only org/display/update fields, synchronized all focused GET fixtures to `{ data, meta }`, removed
+  one allowlist count, and added provider-field, legacy-root, malformed-condition, duplicate-identity, and count-drift
+  regressions.
+- Safety contract: the counted escalation envelope now validates rule identity/trigger/condition/action/role/active/date,
+  fixed count basis/filter metadata, visible/hidden/truncated arithmetic, and requested-list bound before escalation state;
+  notification GET, all mutations, provider/auth/tenant/audit behavior, and visual semantics remain unchanged.
+- Tests: focused notification-settings/escalation-provider suites pass 2 files / 35 tests.
+- Validation: static contract gates, typecheck, no-unused typecheck, lint, diff-check, and serialized Next build pass;
+  inventory is 185 schema-backed / 188 allowlisted schema-less calls across 72 files. Next 16.2.9 compiled in 94 seconds,
+  TypeScript finished in 60 seconds, and 311/311 static pages generated with the two existing CSS optimizer warnings.
+  No browser/E2E or image generation was needed for this non-visual parser slice.
+
+## 2026-07-12 — API-CONTRACT-001FZESCALATIONSETTINGSTRICT landed locally
+
+- Commit: `943ea1eca` (`fix(API-CONTRACT-001FZESCALATIONSETTINGSTRICT): validate escalation rule reader`) is local;
+  push was not requested. The implementation commit contains only the escalation schema, notification-settings
+  consumer/test, and client-schema allowlist paths; unrelated harness-memory and personal artifacts remain excluded.
+- Next scan: return to `API-CONTRACT-001-RESCAN`, rerun `pnpm client-json-schema:check`, inspect remaining candidates and
+  the patients-board DB query-take residual, and choose the next bounded disjoint slice.

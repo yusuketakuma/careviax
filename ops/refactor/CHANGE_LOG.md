@@ -318,3 +318,23 @@
   ledger entries.
 - Push evidence: not performed because no current user instruction requested remote publication; local branch is now five
   implementation commits ahead of `origin/agent/continuous-improvement-20260712` before the separate ledger closure.
+
+## API-CONTRACT-001FZESCALATIONSETTINGSTRICT
+
+- Commit Group: `API-CONTRACT-001FZESCALATIONSETTINGSTRICT`
+- Commit: `943ea1eca`
+- Push Status: NOT_REQUESTED
+- Branch: `agent/continuous-improvement-20260712`
+- Scope: admin notification-settings escalation-rules GET response schema, consumer regressions, client-schema allowlist
+  ratchet, and required ledgers; notification-rule GET and all mutations remain out of scope.
+- Implementation: validate the minimal counted `{ data, meta }` escalation projection, enum/condition/threshold/date fields,
+  duplicate/count arithmetic, and strip provider-only org/display/update fields before escalation state.
+- FE/BE impact: malformed or legacy 2xx now fails closed before authorized escalation rows/hidden-count state; escalation
+  provider query/authz/org scope, notification behavior, mutation/audit semantics, and visual behavior remain unchanged.
+- Verification: focused 2 files / 35 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and
+  confirmed Next build passed; client-schema inventory is 185 schema-backed / 188 allowlisted / 72 files. Lint retains
+  only the two pre-existing warnings in `src/lib/platform/break-glass.test.ts`; build retains two existing CSS warnings.
+- Rollback: revert the escalation-rule response schema, escalation GET consumer/test adapter, allowlist decrement, and
+  ledger entries.
+- Push evidence: not performed because no current user instruction requested remote publication; local branch is now six
+  implementation commits ahead of `origin/agent/continuous-improvement-20260712` before the separate ledger closure.
