@@ -7,40 +7,40 @@
 - Upstream: `origin/agent/continuous-improvement-20260712`
 - Remote: `origin`
 - Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
-- Current Phase: notification response-contract hardening
-- Current Task ID: `API-CONTRACT-001FZNOTIFICATIONSREADSTRICT`
-- Current Task Status: IN_PROGRESS
-- Current Commit Group: `API-CONTRACT-001FZNOTIFICATIONSREADSTRICT`
+- Current Phase: incremental rescan / next-task selection
+- Current Task ID: `API-CONTRACT-001-RESCAN`
+- Current Task Status: READY_FOR_RESCAN
+- Current Commit Group: `API-CONTRACT-001-RESCAN`
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
-- Last Safe Checkpoint: Notifications consumer/provider suites pass 2 files / 29 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized build passed; only scoped landing remains.
-- Last Completed Action: Implemented and validated the schema-backed notifications GET reader with provider-field stripping and malformed/unsafe-link regressions.
-- Current Operation: final diff review and scoped landing for the notifications contract slice.
-- Exact Next Action: Inspect the notification-owned diff, stage only owned paths, commit, push, and verify the remote branch.
-- Exact Next Command: `git diff --check && git diff --stat && git status --short --untracked-files=all`
-- Changed Files: notifications consumer/test, response schema, client-schema allowlist, Plans, STATE, and checkpoint/verification ledgers; unrelated harness-memory and personal artifacts remain excluded.
-- Staged Files: none; select-site slice is committed and unrelated harness-memory and personal artifacts remain unstaged.
+- Last Safe Checkpoint: Notifications consumer/provider suites pass 2 files / 29 tests; static contract gates, typecheck, no-unused, lint, diff-check, serialized build, scoped commit, and push passed.
+- Last Completed Action: Landed notifications reader hardening as `64ccfd492` and verified remote head plus zero ahead/behind.
+- Current Operation: rescan remaining API contract reader debt and select the next disjoint safe slice.
+- Exact Next Action: Run the client-schema inventory and inspect remaining API-CONTRACT allowlist entries before choosing the next task.
+- Exact Next Command: `pnpm client-json-schema:check && rg -n -C 5 'API-CONTRACT|schema-less|stringFallback' Plans.md ops/refactor tools/client-json-schema-allowlist.json`
+- Changed Files: current notifications slice is landed; next work must preserve the inherited harness-memory and personal artifacts.
+- Staged Files: none; notifications slice is committed and unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
 - Unpushed Commits: none
-- Push Status: PUSHED for the previous select-site ledger checkpoint (`e39ede0ff`); current notifications slice is not yet committed.
+- Push Status: PUSHED for `API-CONTRACT-001FZNOTIFICATIONSREADSTRICT` (`64ccfd492`)
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
 - Commands Completed: notifications baseline Vitest (2 files / 24 tests); select-site focused Vitest; operations focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; typecheck; no-unused; lint; diff-check; build; provider/consumer scan.
-- Commands Pending: final diff review, scoped commit/push, closure-ledger update, and post-push status.
+- Commands Pending: client-schema residual inventory, provider/consumer scan, next-slice focused validation, and scoped landing.
 - Tests Completed: select-site slice 1 file / 6 tests, operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, and holiday slice 2 files / 39 tests passed.
-- Tests Pending: no notification tests pending; full suite not run.
+- Tests Pending: no tests pending for the landed notifications slice; next task not selected yet.
 - Build State: PASS for current select-site slice; Next 16.2.9 compiled in 3.5 minutes, TypeScript finished in 66 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0; no ENOSPC warning was emitted in this run.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.
 - Migration State: NOT_APPLICABLE
-- Frontend State: notifications consumer strict `{ data, meta }` schema connected; no visual behavior changed.
-- Backend State: `/api/notifications` provider is unchanged and remains org/user scoped with bounded cursor pagination; PATCH/SSE routes remain unchanged and out of scope.
-- FE/BE Alignment State: notification list provider/consumer payload boundary is hardened; authorized in-app notification content remains visible while provider-only metadata is stripped from query state.
+- Frontend State: notifications consumer strict `{ data, meta }` schema connected; visual behavior unchanged.
+- Backend State: `/api/notifications` provider unchanged and remains org/user scoped with bounded cursor pagination; PATCH/SSE routes unchanged.
+- FE/BE Alignment State: notification list provider/consumer payload boundary hardened; authorized in-app notification content remains visible while provider-only metadata is stripped from query state.
 - UI Verification State: no visual reconstruction; no browser run for this contract-only slice.
 - Browser Verification State: NOT_EXECUTED
-- High-Risk Change State: controlled PHI-adjacent notification read; no DB/auth/tenant/migration/provider change; client boundary rejects unsafe links and malformed payloads.
+- High-Risk Change State: controlled PHI-adjacent notification read completed without DB/auth/tenant/migration/provider change; unsafe links and malformed payloads fail closed.
 - Rollback Point: revert the site-list response schema, consumer adapter, fixture/regressions, allowlist removal, and ledger entries.
 - Resume Preconditions: confirm no target-file writer, preserve unrelated dirty paths, keep build/typecheck serialized.
-- Known Blockers: none; build emitted two existing CSS optimizer warnings but exited 0, with 14 GiB free after the run.
+- Known Blockers: none for this slice; build emitted two existing CSS optimizer warnings but exited 0, with 14 GiB free after the run.
 - External Changes Detected: none in target files during the checkpoint.
 - Notes: The patient-list/detail link issue is already fresh-verified in STATE; do not duplicate that fix. Preserve current unrelated dirty paths. No image generation is needed for this non-visual parser slice.

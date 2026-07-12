@@ -77,6 +77,6 @@
 - Planned fix: strict list/meta schema, identity/type/content/date/read/link checks, provider-field stripping, cursor
   relation invariants, malformed/legacy/unsafe-link regressions, and one allowlist ratchet removal. PATCH, SSE-safe
   redaction, org authorization, provider query, and visual semantics stay fixed.
-- Implemented/validated: focused consumer/provider suites pass 2 files / 29 tests; client-schema inventory moved to 166
-  schema-backed / 207 allowlisted / 83 files; all static/type/lint/diff gates and serialized Next build passed. Scoped
-  commit/push remains pending.
+- Landed: implementation commit `64ccfd492` passed 2 files / 29 focused tests, all contract/type/lint/diff gates, and
+  serialized Next build; client-schema inventory moved to 166 schema-backed / 207 allowlisted / 83 files. Next scan:
+  remaining API-CONTRACT allowlist entries and patients board cursor residual.

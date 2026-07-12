@@ -79,8 +79,8 @@
 ## API-CONTRACT-001FZNOTIFICATIONSREADSTRICT
 
 - Commit Group: `API-CONTRACT-001FZNOTIFICATIONSREADSTRICT`
-- Commit: pending
-- Push Status: NOT_STARTED
+- Commit: `64ccfd492`
+- Push Status: PUSHED
 - Branch: `agent/continuous-improvement-20260712`
 - Scope: notifications GET response schema, inbox consumer/realtime envelope, provider-shaped fixtures, regressions, and client-schema allowlist ratchet.
 - Implementation: validate strict `{ data, meta }`, notification identity/type/content/date/read state, internal links, unique identities, cursor relation, and bounded page size; strip provider-only fields while preserving PATCH acknowledgement, SSE-safe redaction, and org/user authorization.
@@ -89,4 +89,4 @@
 - Verification: focused 2 files / 29 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and Next build passed; client-schema inventory is 166 schema-backed / 207 allowlisted / 83 files. Build emitted existing CSS optimizer warnings and exited 0.
 - Rollback: revert the notifications response schema, consumer/realtime type adapter, fixtures/regressions, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
-- Push evidence: pending scoped commit.
+- Push evidence: `e39ede0ff..64ccfd492` fast-forward push succeeded; local and remote heads match.

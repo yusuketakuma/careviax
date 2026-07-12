@@ -163,7 +163,7 @@
 
 **Current execution slice (2026-07-12)**:
 
-- `API-CONTRACT-001FZNOTIFICATIONSREADSTRICT`: **IN_PROGRESS**。通知一覧 GET の `{ data, meta }` を consumed runtime schema へ接続し、legacy/data-only root、pagination drift、duplicate notification identity、invalid notification fields、unsafe external link を inbox state へ流入させない。Acceptance: (1) consumer が provider current shape の schema-backed reader を使う、(2) notification identity/type/content/date/read/link と cursor relation を検証する、(3) provider-only metadata を query state へ残さず malformed/legacy 2xx を fail-closed、(4) focused tests / typecheck / lint / contract gates を通し scoped commit/push を記録する。既存 PATCH acknowledgement、SSE-safe redaction、org authorization/provider semantics は変更しない。
+- `API-CONTRACT-001FZNOTIFICATIONSREADSTRICT` は landing 済み。次は残存 `API-CONTRACT-001` allowlist と patients board cursor residual を再スキャンする。
 
 **Implementation-ready queue — 未実装 / Partial 残スコープのみ**:
 
@@ -255,6 +255,7 @@
 - `API-CONTRACT-001FZSTAFFMETRICSSTRICT`: admin/staff KPI の expected-month runtime schema、staff identity／summary 算術整合、KPI 数値境界、provider-only email/capacity field strip を接続し、wrong-month・duplicate・malformed 2xx が query state へ流入しない fail-closed reader 化（commit `6e1454401`、feature branch push済み）。
 - `API-CONTRACT-001FZOPSINSIGHTSTRICT`: admin/operations-insights の `{ data }` aggregate reader を strict runtime schema へ接続し、月 bucket の chronology/identity、process duration、hint bounds を検証して malformed 2xx が trend/bottleneck state へ流入しない fail-closed reader 化（commit `47fcaf80f`、feature branch push済み）。
 - `API-CONTRACT-001FZSITESELECTREADSTRICT`: select-site の `{ data, meta.limit, meta.has_more }` reader を strict runtime schema へ接続し、site identity/current flag/count/pagination relation を検証して legacy・duplicate・malformed 2xx が site navigation state へ流入しない fail-closed reader 化（commit `053b48c74`、feature branch push済み）。
+- `API-CONTRACT-001FZNOTIFICATIONSREADSTRICT`: notifications inbox の `{ data, meta.limit, meta.has_more, meta.next_cursor }` reader を strict runtime schema へ接続し、notification identity/type/content/date/read state、内部リンク、重複、cursor relation を検証し、provider-only metadata を strip して malformed・legacy・unsafe-link 2xx が inbox/navigation state へ流入しない fail-closed reader 化（commit `64ccfd492`、feature branch push済み）。
 - `ROUTE-CTRLFLOW-RETHROW-001`: 広域 `catch` から sanitized 500 を返す10 API route / 12 handlerで、`unstable_rethrow` をfallback前に実行し、Next.jsの`redirect()` / `notFound()`等の内部制御フローを保持する契約テストを固定。
 - `SEC-EVENT-PATH-PII-SANITIZE-001`: AuditLog target/dedup pathのemail、電話、OTP、credential/opaque tokenをredactし、実在static routeの可読性とtoken-parent境界をtestで固定（commit `d084dccc8`）。
 - `PUSH-SUB-ATOMICITY-001`: push subscription POST/DELETE を `withOrgContext` 内の tx mutation に寄せ、RLS context 未適用の base Prisma write を除去（commit `db63de58a`）。
