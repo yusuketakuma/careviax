@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZSTOCKOBSRESULTSTRICT visit medication-stock observation result (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, ledger pending; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZSTOCKOBSRESULTSTRICT visit medication-stock observation result (VERIFY_REQUIRED, 2026-07-13; implementation `208c7e8b3`, ledger pending; shared clean-capacity build pending).
   - current task / root cause:
     Visit Medication Stock Observation POST結果はcompile-time castだけで、legacy/wrong visit、empty/duplicate
     observation identities、不正kind/quantity/risk/timestamp、applied/replay count driftを成功扱いし得た。既存fixture
