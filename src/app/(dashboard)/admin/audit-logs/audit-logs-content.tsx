@@ -47,7 +47,12 @@ import { readApiJson, throwApiResponseError } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
-import { auditLogsResponseSchema, type AuditLogListRow } from '@/types/api/audit-logs';
+import {
+  auditLogReviewResponseSchemaFor,
+  auditLogsResponseSchema,
+  type AuditLogListRow,
+  type AuditLogReviewResponse,
+} from '@/types/api/audit-logs';
 import type { AuditLogReviewReasonCode } from '@/lib/audit-logs/review';
 import {
   buildApprovedServerExportDescriptor,
@@ -200,10 +205,10 @@ export function AuditLogsContent() {
           reason_code: reasonCode,
         }),
       });
-      return readApiJson<{ data: { audit_log_id: string; review_state: 'reviewed' | 'pending' } }>(
-        res,
-        '監査ログレビューの更新に失敗しました',
-      );
+      return readApiJson<AuditLogReviewResponse>(res, {
+        fallbackMessage: '監査ログレビューの更新に失敗しました',
+        schema: auditLogReviewResponseSchemaFor(auditLogId),
+      });
     },
     onSuccess: (_data, variables) => {
       setReviewErrorByLogId((current) => {

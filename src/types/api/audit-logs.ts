@@ -149,3 +149,27 @@ export function auditLogsResponseSchemaFor<T extends z.ZodTypeAny>(rowSchema: T)
 
 export const auditLogsResponseSchema: z.ZodType<AuditLogsResponse> =
   auditLogsResponseSchemaFor(auditLogListRowSchema);
+
+export function auditLogReviewResponseSchemaFor(expectedAuditLogId: string) {
+  return z
+    .object({
+      data: z
+        .object({
+          audit_log_id: z.string().min(1),
+          review_state: z.enum(['reviewed', 'pending']),
+        })
+        .strip(),
+    })
+    .strict()
+    .superRefine(({ data }, context) => {
+      if (data.audit_log_id !== expectedAuditLogId) {
+        context.addIssue({
+          code: 'custom',
+          path: ['data', 'audit_log_id'],
+          message: 'Audit log review response identity must match the requested audit log',
+        });
+      }
+    });
+}
+
+export type AuditLogReviewResponse = z.infer<ReturnType<typeof auditLogReviewResponseSchemaFor>>;

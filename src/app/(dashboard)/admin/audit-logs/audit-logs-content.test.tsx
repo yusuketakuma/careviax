@@ -454,6 +454,54 @@ describe('AuditLogsContent', () => {
     );
   });
 
+  it('does not report success when the review response identifies another audit log', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/audit-logs/log_1/review') {
+        return new Response(
+          JSON.stringify({ data: { audit_log_id: 'log_other', review_state: 'reviewed' } }),
+          { status: 200 },
+        );
+      }
+      if (url.startsWith('/api/audit-logs?')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                ...makeAuditLog(1),
+                review_state: 'pending',
+                reviewed_at: null,
+                reviewed_by: null,
+                reason_code: null,
+              },
+            ],
+            meta: { summary: makeAuditLogSummary(1, 0) },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    const reviewButton = (
+      await screen.findAllByRole('button', {
+        name: /通常.*操作者1.*target_1をレビュー済みにする/,
+      })
+    )[0];
+    fireEvent.click(reviewButton);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('監査ログレビューの更新に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(
+      fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/audit-logs?')),
+    ).toHaveLength(1);
+  });
+
   it('keeps failed audit review updates visible in the row and retries the same log', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);

@@ -12,12 +12,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/billing-rules/page.tsx",
       "counts": {
         "stringFallback": 4
