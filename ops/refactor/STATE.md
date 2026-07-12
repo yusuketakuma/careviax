@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZPREPDEAD schedule-day preparation dead orchestration removal (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZPREPDEAD schedule-day preparation dead orchestration removal (VERIFY_REQUIRED, 2026-07-13; implementation `63396b5b3`, shared clean-capacity build pending).
   - current task / root cause:
     `schedule-day-preparation.ts`は現役のform/readiness/onboarding helperと同居して、production参照がない
     preparation GET/PUT fetchers、save-success query invalidation wrapper、専用typesをexportしていた。利用検索では
