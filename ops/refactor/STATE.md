@@ -47070,9 +47070,11 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   or visual behavior changed. This non-visual contract repair did not require imagegen.
 - commit / landing:
   Scoped implementation commit `5c6f0ea43` contains only the performance consumer, proposal schema/test, and allowlist.
-  Ledger commit and safe feature-branch push follow; unrelated dirty/untracked artifacts remain excluded.
+  Ledger commit `ae2eee82a` records the completed slice. Both commits were pushed without force to
+  `origin/agent/continuous-improvement-20260712`; the main-only production deploy workflow was not triggered.
+  Unrelated dirty/untracked artifacts remain excluded.
 - next action:
-  Close and push this slice, then continue with performance workflow/runtime or another higher-value residual.
+  Continue with performance workflow/runtime or another higher-value residual from the 179-call allowlist inventory.
 
 ## 2026-07-12 API-CONTRACT-001FZPERFSCHEDULES — (DONE)
 
