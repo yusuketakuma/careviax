@@ -36,6 +36,18 @@
 - Browser/E2E: not run; this is a non-visual aggregate response-contract slice with no layout change.
 - Migration/auth/tenant: no migration or backend authorization change; no production data operation executed.
 
+## API-CONTRACT-001FZSITESELECTREADSTRICT
+
+- Baseline: inherited select-site GET reader used a compile-time data-only cast while `/api/me/sites` returns `{ data, meta.limit, meta.has_more }`; existing PUT acknowledgement tests were already present.
+- Focused test: `pnpm exec vitest run 'src/app/(dashboard)/select-site/select-site-content.test.tsx' --reporter=dot --testTimeout=30000` — PASS, 1 file / 6 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`, `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`, `pnpm boundaries:check`, `pnpm plans:active:check`, `git diff --check` — PASS.
+- Client-schema result: 165 schema-backed, 208 allowlisted schema-less calls, 84 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS with the same two pre-existing warnings in `src/lib/platform/break-glass.test.ts`.
+- Build: `pnpm build` — PASS; Next 16.2.9 compiled in 3.5 minutes, TypeScript finished in 66 seconds, 311/311 static pages, and traces completed. Two existing CSS optimizer warnings did not fail the build.
+- Browser/E2E: not run; this is a non-visual navigation-data response-contract slice with no layout change.
+- Migration/auth/tenant: no migration or backend authorization change; no production data operation executed.
+
 ## API-CONTRACT-001FZJOBLISTSTRICT
 
 - Baseline: inherited admin/jobs reader used a compile-time response cast and one `stringFallback` allowlist entry; provider returned 33 fixed definitions with redacted latest run/export DTOs.

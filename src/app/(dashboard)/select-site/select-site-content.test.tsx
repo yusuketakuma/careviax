@@ -57,6 +57,7 @@ const SITES = [
     is_current: false,
   },
 ];
+const SITES_RESPONSE = { data: SITES, meta: { limit: 500, has_more: false } };
 
 function renderPage() {
   return render(<SelectSiteContent />, { wrapper: createQueryClientWrapper() });
@@ -78,7 +79,7 @@ describe('SelectSiteContent', () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/me/sites') {
-        return jsonResponse({ data: SITES });
+        return jsonResponse(SITES_RESPONSE);
       }
       if (url === '/api/me/site' && init?.method === 'PUT') {
         return jsonResponse({ data: { site_id: 'site_east' } });
@@ -149,7 +150,7 @@ describe('SelectSiteContent', () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/me/sites') {
-        return jsonResponse({ data: SITES });
+        return jsonResponse(SITES_RESPONSE);
       }
       if (url === '/api/me/site' && init?.method === 'PUT') {
         return jsonResponse({ message: 'この薬局を選択する権限がありません' }, 403);
@@ -180,7 +181,7 @@ describe('SelectSiteContent', () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/me/sites') {
-        return jsonResponse({ data: SITES });
+        return jsonResponse(SITES_RESPONSE);
       }
       if (url === '/api/me/site' && init?.method === 'PUT') {
         return jsonResponse({ message: '使う薬局を切り替えました' });
@@ -197,5 +198,36 @@ describe('SelectSiteContent', () => {
     });
     expect(toast.success).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on a legacy successful site list without pagination metadata', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input) === '/api/me/sites') {
+        return jsonResponse({ data: SITES });
+      }
+      return jsonResponse({});
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('薬局一覧を表示できません')).toBeTruthy();
+    expect(screen.queryByTestId('select-site-card')).toBeNull();
+  });
+
+  it('fails closed when a successful site list has duplicate current identities', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input) === '/api/me/sites') {
+        return jsonResponse({
+          data: SITES.map((site) => ({ ...site, is_current: true })),
+          meta: { limit: 500, has_more: false },
+        });
+      }
+      return jsonResponse({});
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('薬局一覧を表示できません')).toBeTruthy();
+    expect(screen.queryByTestId('select-site-summary')).toBeNull();
   });
 });

@@ -27,3 +27,10 @@
 - Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, or production data mutation changed.
 - Safety control: unknown root, reverse/duplicate month buckets, negative counts, duplicate process keys, invalid durations, and invalid/overlong hints fail closed before trend or bottleneck state is rendered.
 - Operational note: provider aggregation and empty-state semantics remain unchanged; the build completed with existing CSS warnings and temporary filesystem pressure, without cleanup or destructive operations.
+
+## API-CONTRACT-001FZSITESELECTREADSTRICT
+
+- Classification: Controlled navigation/access-context read, but not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, or production data mutation changed.
+- Safety control: legacy root, missing pagination metadata, duplicate site identity, multiple current sites, negative visit count, or empty identity fails closed before site cards and switch navigation state.
+- Operational note: existing PUT acknowledgement and provider membership authorization remain the source of truth; no client-side permission weakening was introduced.

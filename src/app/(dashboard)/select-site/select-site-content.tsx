@@ -13,23 +13,19 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { messageFromError } from '@/lib/utils/error-message';
+import { mySitesResponseSchema, type MySite } from '@/lib/sites/response-schema';
 
 /**
  * p0_02「薬局を選ぶ」: 所属サイトのカードから使う薬局を切り替える。
  * サイト切替(PUT /api/me/site)は監査ログ付きの既存 API を使う。
  */
 
-type MySite = {
-  id: string;
-  name: string;
-  todays_visit_count: number;
-  has_home_visit: boolean;
-  is_current: boolean;
-};
-
 async function fetchMySites(orgId: string): Promise<MySite[]> {
   const res = await fetch('/api/me/sites', { headers: buildOrgHeaders(orgId) });
-  const json = await readApiJson<{ data: MySite[] }>(res, '所属薬局の取得に失敗しました');
+  const json = await readApiJson(res, {
+    fallbackMessage: '所属薬局の取得に失敗しました',
+    schema: mySitesResponseSchema,
+  });
   return json.data;
 }
 

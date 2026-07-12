@@ -47045,6 +47045,37 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZSITESELECTREADSTRICT — select-site list contract (IN_PROGRESS)
+
+- current task / root cause:
+  The select-site GET consumer still trusted a compile-time `{ data: MySite[] }` cast even though the provider returns
+  `{ data, meta: { limit, has_more } }`. A legacy root, pagination/data mismatch, duplicate site, multiple current sites,
+  negative visit count, or empty identity could therefore drive the site summary and switch-card navigation state.
+  Existing PUT acknowledgement, provider membership filtering, and authorization are not being changed.
+- baseline:
+  The focused select-site consumer suite passed 1 file / 4 tests before implementation. Current client-schema inventory
+  is 164 schema-backed / 209 allowlisted schema-less / 85 files. The target is one `stringFallback` entry in
+  `src/app/(dashboard)/select-site/select-site-content.tsx`.
+- implementation plan:
+  Add a strict `{ data, meta }` runtime schema with unique/current site identity and bounded count checks, synchronize the
+  current provider-shaped test fixture, connect `fetchMySites`, add malformed/legacy 2xx regressions, and remove only
+  the select-site allowlist entry. No visual reconstruction or `gpt-image-2` is needed because this is a non-visual
+  navigation-data contract repair.
+- implementation / validation checkpoint:
+  Added `src/lib/sites/response-schema.ts`, connected the strict `{ data, meta }` reader, synchronized the provider-shaped
+  fixture, removed the one allowlist entry, and added legacy-root and duplicate-current regressions. Focused select-site
+  consumer suite passes 1 file / 6 tests. Format, API shape, client-schema (165 schema-backed / 208 allowlisted / 84
+  files), frontend contract, PHI log/display, module boundary, Plans, diff-check, aggregate typecheck, 8 GB no-unused
+  typecheck, and lint pass. Lint retains only the two pre-existing unused-parameter warnings in
+  `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  `pnpm build` completed successfully. Next 16.2.9 compiled in 3.5 minutes, TypeScript finished in 66 seconds,
+  311/311 static pages were generated, and route optimization/traces completed. The build emitted the two existing CSS
+  optimizer warnings and exited 0; no ENOSPC warning was emitted in this run and no generated-artifact cleanup was
+  performed.
+- next action:
+  Inspect the select-site-owned diff and ledgers, then stage only this validated slice for commit/push.
+
 ## 2026-07-12 API-CONTRACT-001FZOPSINSIGHTSTRICT — operations insights contract (DONE)
 
 - current task / root cause:

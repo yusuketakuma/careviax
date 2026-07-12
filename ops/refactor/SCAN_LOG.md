@@ -47,3 +47,16 @@
 - Landed: implementation commit `47fcaf80f` passed 2 files / 14 focused tests, all contract/type/lint/diff gates, and
   serialized Next build; client-schema inventory moved to 164 schema-backed / 209 allowlisted / 85 files. Next scan:
   remaining API-CONTRACT allowlist entries and patients board cursor residual.
+
+## 2026-07-12 — API-CONTRACT-001FZSITESELECTREADSTRICT selection
+
+- Scope: client-schema allowlist, `src/app/(dashboard)/select-site/select-site-content.tsx`, `/api/me/sites`, and the
+  select-site consumer test.
+- Candidate ranking: selected the one-reader site list as a low-conflict navigation-data slice; the existing PUT switch
+  acknowledgement and provider membership/auth semantics are already hardened and remain untouched.
+- Finding: provider returns `{ data, meta.limit, meta.has_more }`, while `fetchMySites` trusts a data-only compile-time
+  cast and the UI derives current site, totals, and switch cards from the result.
+- Baseline: focused select-site consumer suite passes 1 file / 4 tests; client-schema is 164 schema-backed / 209
+  allowlisted / 85 files.
+- Planned fix: strict `{ data, meta }` schema, unique/current site identity and count checks, pagination relation,
+  malformed/legacy 2xx regressions, and one allowlist ratchet removal. Provider/PUT/auth/UI behavior stays fixed.

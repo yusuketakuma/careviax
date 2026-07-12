@@ -163,7 +163,7 @@
 
 **Current execution slice (2026-07-12)**:
 
-- `API-CONTRACT-001FZOPSINSIGHTSTRICT` は landing 済み。次は残存 `API-CONTRACT-001` allowlist と patients board cursor residual を再スキャンする。
+- `API-CONTRACT-001FZSITESELECTREADSTRICT`: **IN_PROGRESS**。select-site の所属薬局 GET `{ data, meta }` を consumed runtime schema へ接続し、unknown root、pagination meta/data drift、duplicate site、複数 current site、負数 visit count、空 identity を navigation state へ流入させない。Acceptance: (1) consumer が provider current shape の strict schema-backed reader を使う、(2) site identity/current/count と `limit/has_more` relation を検証する、(3) malformed/legacy 2xx regression が switch/navigation state 前に fail-closed、(4) relevant tests / typecheck / lint / contract gates を通し scoped commit/push を記録する。既存 PUT acknowledgement/provider/auth semantics は変更しない。
 
 **Implementation-ready queue — 未実装 / Partial 残スコープのみ**:
 

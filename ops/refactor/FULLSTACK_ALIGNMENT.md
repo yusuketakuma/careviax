@@ -51,3 +51,16 @@
 | Errors / loading / empty    | Existing loading, error/retry, truthful empty, trend, and bottleneck rendering remain; malformed 2xx becomes query error.                                                |
 | Tests                       | Consumer/helper focused suite: 2 files / 14 tests; static contract gates, typechecks, lint, diff-check, and build passed.                                                |
 | Alignment                   | ALIGNED for this read slice; provider aggregation, empty-state semantics, and visual derivation intentionally unchanged.                                                 |
+
+## API-CONTRACT-001FZSITESELECTREADSTRICT
+
+| Area                        | Evidence / status                                                                                                                                              |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Select-site screen at `/select-site`; `/api/me/sites` and existing `/api/me/site` remain behind current auth/org context.                                      |
+| Frontend state / clients    | `fetchMySites` in `select-site-content.tsx`; strict `{ data, meta }` schema runs before cards, summary, or switch navigation state.                            |
+| Request / response contract | Provider returns `{ data, meta: { limit, has_more } }`; consumer validates identity, current flag, counts, and pagination relation.                            |
+| Backend / DB                | Existing membership-scoped site query, bounded `take`, visit counts, default-site resolution, and provider route are unchanged.                                |
+| Auth / tenant / audit       | Existing membership/authz and PUT audit semantics unchanged; malformed site list cannot influence the switch request before the existing server authorization. |
+| Errors / loading / empty    | Existing loading, error/retry, empty, summary, and card rendering remain; malformed/legacy 2xx becomes query error rather than false site state.               |
+| Tests                       | Select-site focused suite: 1 file / 6 tests; static contract gates, typechecks, lint, diff-check, and build passed.                                            |
+| Alignment                   | ALIGNED for this read slice; PUT acknowledgement, provider membership filtering, and visual/navigation semantics intentionally unchanged.                      |

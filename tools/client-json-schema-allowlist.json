@@ -343,12 +343,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/select-site/select-site-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/settings/operational-policy-content.tsx",
       "counts": {
         "stringFallback": 3
