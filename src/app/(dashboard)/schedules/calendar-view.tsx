@@ -33,11 +33,11 @@ import {
   type CalendarVisitSchedule,
   type ScheduleStatus,
 } from './calendar-view.helpers';
+import { VISIT_TYPE_LABELS } from './day-view.shared';
 import {
-  VISIT_TYPE_LABELS,
-  type BillingCadencePreview,
-  type BillingRequirementAlert,
-} from './day-view.shared';
+  buildCalendarBillingPreviewResponseSchema,
+  type CalendarBillingPreview,
+} from './calendar-billing-preview-response-schema';
 
 // ---- Constants ------------------------------------------------------------
 
@@ -318,15 +318,15 @@ export function CalendarView() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ items: schedulePreviewRequests }),
       });
-      const payload = await readApiJson<{
-        data: Record<
-          string,
-          {
-            alerts: BillingRequirementAlert[];
-            cadence: BillingCadencePreview;
-          }
-        >;
-      }>(response, '算定プレビューの取得に失敗しました');
+      const payload = await readApiJson<{ data: Record<string, CalendarBillingPreview> }>(
+        response,
+        {
+          fallbackMessage: '算定プレビューの取得に失敗しました',
+          schema: buildCalendarBillingPreviewResponseSchema(
+            schedulePreviewRequests.map((request) => request.key),
+          ),
+        },
+      );
       return new Map(Object.entries(payload.data));
     },
     enabled: Boolean(orgId) && schedulePreviewRequests.length > 0,
@@ -474,14 +474,7 @@ export function CalendarView() {
               const overflow = daySchedules.length - visible.length;
               const dayPreviewEntries = daySchedules
                 .map((schedule) => schedulePreviewMap?.get(schedule.id) ?? null)
-                .filter(
-                  (
-                    value,
-                  ): value is {
-                    alerts: BillingRequirementAlert[];
-                    cadence: BillingCadencePreview;
-                  } => value != null,
-                );
+                .filter((value): value is CalendarBillingPreview => value != null);
               const hasCadenceWarning = dayPreviewEntries.some((entry) =>
                 entry.alerts.some((alert) => alert.severity !== 'info'),
               );

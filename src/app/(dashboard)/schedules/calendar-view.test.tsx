@@ -225,6 +225,41 @@ describe('CalendarView false-empty', () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
+  it('rejects a legacy-root billing preview instead of silently dropping cadence warnings', async () => {
+    realtimeQueryMock.mockReturnValue({
+      data: [
+        {
+          id: 'sch_1',
+          scheduled_date: '2026-06-15',
+          schedule_status: 'planned',
+          visit_type: 'home',
+          pharmacist_id: 'ph_1',
+          case_id: 'case_1',
+          cycle_id: null,
+          case_: { patient: { id: 'p1', name: '患者 太郎' } },
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      refetch: refetchMock,
+      connected: true,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          Response.json({
+            sch_1: { alerts: [], cadence: { next_billable_date: null } },
+          }),
+        ),
+      ),
+    );
+
+    renderCalendar();
+
+    expect(await screen.findByText('算定プレビューを読み込めませんでした')).toBeTruthy();
+  });
+
   it('shows billing preview loading instead of temporarily implying there are no warnings', () => {
     realtimeQueryMock.mockReturnValue({
       data: [

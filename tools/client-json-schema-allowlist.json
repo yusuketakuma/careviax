@@ -163,12 +163,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/schedules/calendar-view.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx",
       "counts": {
         "stringFallback": 5

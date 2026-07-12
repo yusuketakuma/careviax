@@ -51,6 +51,39 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZCALPREVIEWSTRICT calendar billing-preview batch reader (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, shared clean-capacity build pending).
+  - current task / root cause:
+    Calendarは最大100 scheduleのread-only billing preview batchをcompile-time record castだけで読み、legacy root、
+    schedule key欠落/混入、不正severity/dateをcadence warning表示へ流し得た。さらにCalendarが使うのはalert
+    severityとnext billable dateだけなのに、alert message/details、cadence counts/reason/date lists、revision等の
+    算定内部情報をquery cacheへ保持していた。ProviderはcanVisit、case assignment/org scope、sensitive no-storeを
+    既に強制し、DB writeは行わない。
+  - implementation / billing safety boundary:
+    Expected schedule keysを受け取るstrict response schema factoryを追加し、root data envelope、要求key完全一致、
+    alert severity enum/最大32件、valid date-key/nullを検証した。Parse後は各scheduleの`alerts[].severity`と
+    `cadence.next_billable_date`だけを保持する。Legacy rootをsilent no-warningにしないconsumer回帰とschemaの
+    missing/extra key、severity/date回帰を追加した。算定計算・provider/service/query、Calendar UIは変更していない。
+    Visual reconstructionではないため`gpt-image-2`は使用していない。現行SSOTのOracle不使用指示に従い、
+    focused provider/service/consumer/schema testsとfull static gatesで代替した。
+  - files:
+    `src/app/(dashboard)/schedules/calendar-billing-preview-response-schema.ts`,
+    `src/app/(dashboard)/schedules/calendar-billing-preview-response-schema.test.ts`,
+    `src/app/(dashboard)/schedules/calendar-view.tsx`,
+    `src/app/(dashboard)/schedules/calendar-view.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Initial Prettier found a stale multiline type-predicate fragment from the edit; it was removed before tests.
+    Focused consumer/schema/provider/service Vitest passed 4 files / 45 tests. Exact ESLint with `--max-warnings=0`,
+    Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (219 backed / 151 allowlisted / 42 files),
+    frontend contract, module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build was
+    NOT_EXECUTED because only about 2.9 GiB free remains after the shared `.next/cache` capacity failure; generated cache
+    was not deleted or modified.
+  - security / performance / remaining:
+    Cross-request/malformed preview keys and invalid billing warnings now fail closed; unused billing/possible PHI-bearing
+    details are not cached. Request/query count, concurrency, billing calculation, DB/provider work, assignment/tenant
+    boundary, render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZPREPDEAD schedule-day preparation dead orchestration removal (VERIFY_REQUIRED, 2026-07-13; implementation `63396b5b3`, ledger `8ddecaa5a`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     `schedule-day-preparation.ts`は現役のform/readiness/onboarding helperと同居して、production参照がない
