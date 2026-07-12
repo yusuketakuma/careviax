@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZSCHEDULEBOARDSTRICT schedule day-board reader (VERIFY_REQUIRED, 2026-07-13; implementation `616752932`, feature-branch push pending; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZSCHEDULEBOARDSTRICT schedule day-board reader (VERIFY_REQUIRED, 2026-07-13; implementation `616752932`, ledger `9b2696f3d`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Schedule Team Boardのday-board GET readerはcompile-time castだけで、別日、重複identity、不正日時/関係、
     visible/hidden workload・proposal・inbound counts drift、車両容量/推奨矛盾、unsanitized task metadataを成功扱いし、
