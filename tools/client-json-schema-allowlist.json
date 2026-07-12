@@ -74,7 +74,7 @@
     {
       "path": "src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
       "counts": {
-        "stringFallback": 5
+        "stringFallback": 4
       }
     },
     {

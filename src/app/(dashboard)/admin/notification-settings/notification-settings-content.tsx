@@ -62,20 +62,14 @@ import {
   buildEscalationRuleApiPath,
   buildEscalationRulesApiPath,
 } from '@/lib/escalation-rules/api-paths';
+import {
+  notificationRulesResponseSchema,
+  type NotificationRulesResponse,
+} from '@/lib/notification-rules/response-schema';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { parseEscalationThresholdHoursInput } from './escalation-threshold';
 
-type NotificationRule = {
-  id: string;
-  event_type: string;
-  channel: 'in_app' | 'email' | 'sms' | 'line' | 'fax' | 'mcs';
-  enabled: boolean;
-  recipients: {
-    roles?: string[];
-    user_ids?: string[];
-  } | null;
-  created_at: string;
-};
+type NotificationRule = NotificationRulesResponse['data'][number];
 
 type EscalationRule = {
   id: string;
@@ -101,19 +95,6 @@ type EscalationRulesResponse = {
     count_basis?: string;
     filters_applied?: Record<string, unknown>;
     limit?: number;
-  };
-};
-
-type NotificationRulesResponse = {
-  data: NotificationRule[];
-  meta: {
-    total_count: number;
-    visible_count: number;
-    hidden_count: number;
-    truncated: boolean;
-    count_basis: string;
-    filters_applied: Record<string, unknown>;
-    limit: number;
   };
 };
 
@@ -383,7 +364,10 @@ export function NotificationSettingsContent() {
       headers: buildOrgHeaders(orgId),
     })
       .then(async (response) => {
-        return readApiJson<NotificationRulesResponse>(response, '通知設定の取得に失敗しました');
+        return readApiJson<NotificationRulesResponse>(response, {
+          fallbackMessage: '通知設定の取得に失敗しました',
+          schema: notificationRulesResponseSchema,
+        });
       })
       .then((payload) => {
         if (!active) return;

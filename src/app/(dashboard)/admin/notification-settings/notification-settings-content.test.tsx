@@ -67,6 +67,25 @@ const EMPTY_NOTIFICATION_RULES_RESPONSE = {
   },
 };
 
+const NOTIFICATION_RULE = {
+  id: 'rule_1',
+  event_type: 'patient_self_report_followup_due',
+  channel: 'sms',
+  enabled: true,
+  recipients: {},
+  created_at: '2026-06-19T10:00:00.000Z',
+};
+
+const NOTIFICATION_RULE_META = {
+  total_count: 1,
+  visible_count: 1,
+  hidden_count: 0,
+  truncated: false,
+  count_basis: 'notification_rules',
+  filters_applied: {},
+  limit: 100,
+};
+
 describe('NotificationSettingsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -196,6 +215,100 @@ describe('NotificationSettingsContent', () => {
     });
     expect(global.fetch).toHaveBeenCalledWith('/__test__/escalation-rules', {
       headers: { 'x-org-id': 'read-org_1' },
+    });
+  });
+
+  it('strips provider-only notification rule fields before event-rule state', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === '/__test__/notification-rules' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  ...NOTIFICATION_RULE,
+                  org_id: 'org_1',
+                  display_id: 'nrul_1',
+                  conditions: { provider_only: true },
+                  updated_at: '2026-06-19T11:00:00.000Z',
+                },
+              ],
+              meta: NOTIFICATION_RULE_META,
+            }),
+            { status: 200 },
+          );
+        }
+
+        if (url === '/__test__/escalation-rules' && !init?.method) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        }
+
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    render(<NotificationSettingsContent />);
+
+    const smsLabel = (await screen.findAllByText('SMS'))[0].closest('label');
+    expect(smsLabel).toBeTruthy();
+    await waitFor(() => {
+      expect(
+        within(smsLabel as HTMLElement)
+          .getByRole('checkbox')
+          .getAttribute('aria-checked'),
+      ).toBe('true');
+    });
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['legacy data-only envelope', { data: [NOTIFICATION_RULE] }],
+    [
+      'malformed rule item',
+      {
+        data: [{ ...NOTIFICATION_RULE, recipients: [] }],
+        meta: NOTIFICATION_RULE_META,
+      },
+    ],
+    [
+      'duplicate rule identity',
+      {
+        data: [NOTIFICATION_RULE, { ...NOTIFICATION_RULE }],
+        meta: { ...NOTIFICATION_RULE_META, total_count: 2, visible_count: 2, limit: 2 },
+      },
+    ],
+    [
+      'count drift',
+      {
+        data: [NOTIFICATION_RULE],
+        meta: { ...NOTIFICATION_RULE_META, total_count: 2, hidden_count: 0 },
+      },
+    ],
+  ])('fails closed on %s notification-rule success payloads', async (_label, payload) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === '/__test__/notification-rules' && !init?.method) {
+          return new Response(JSON.stringify(payload), { status: 200 });
+        }
+
+        if (url === '/__test__/escalation-rules' && !init?.method) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        }
+
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    render(<NotificationSettingsContent />);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('通知設定の取得に失敗しました');
     });
   });
 
