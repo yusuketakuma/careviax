@@ -47045,6 +47045,52 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZNOTIFICATIONMUTSTRICT — (DONE)
+
+- current task / selection:
+  The notification-settings screen now has three schema-less readers after the two GET repairs. The event notification
+  POST/PATCH paths share one response reader that directly replaces or prepends a rule in local state. The provider returns
+  a broad Prisma row, so a strict `{ data }` mutation response is the next smallest disjoint slice; escalation mutations
+  and all other readers remain out of scope.
+- baseline:
+  Notification-settings consumer/escalation-provider suites pass 2 files / 35 tests; the current client-schema inventory is
+  185 schema-backed / 188 allowlisted schema-less calls across 72 files. Product paths are clean apart from unrelated
+  harness-memory and personal artifacts; the branch is eight commits ahead of upstream and push remains unrequested.
+- scope / safety boundary:
+  Reuse the landed minimal notification-rule item schema, validate only successful POST/PATCH response data, and preserve
+  request validation/payloads, DB writes, provider/authz/org scope, audit/delivery side effects, escalation mutations, and
+  visual behavior. This is a non-visual mutation response-parser/cache-minimization slice; no `gpt-image-2` generation is
+  needed.
+- implementation plan:
+  Add a strict `{ data }` notification-rule response envelope, connect the shared POST/PATCH reader, add provider-only
+  field, legacy-root, malformed-item, and missing-field regressions, and decrement only this one allowlist count.
+- implementation / validation checkpoint:
+  Added `notificationRuleResponseSchema` to the landed notification-rule item contract, connected the shared POST/PATCH
+  reader, removed one `stringFallback` allowlist count, and added provider-only success, legacy-root, malformed-item, and
+  missing-field regressions. The strict `{ data }` envelope strips provider-only org/conditions/update fields before the
+  rule state update. Focused notification-settings plus notification-rule provider suites pass 3 files / 45 tests.
+  Format, API response shape, client JSON schema, frontend contract, PHI log/display, boundaries, Plans, colors,
+  typography, and diff gates pass; inventory is 186 schema-backed / 187 allowlisted schema-less calls across 72 files.
+  `pnpm typecheck`, 8 GB no-unused typecheck, and lint pass; lint retains only the two pre-existing unused-parameter
+  warnings in `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  `pnpm build` exits 0. Next 16.2.9 compiled in 2.1 minutes, TypeScript finished in 79 seconds, 311/311 static pages
+  were generated, and route optimization/traces completed. The build emitted the two existing CSS optimizer warnings;
+  no ENOSPC warning was emitted in this run. Filesystem availability was 14 GiB before and was not remeasured after
+  this build.
+- safety / limits:
+  Notification POST/PATCH request validation, DB writes, provider/authz/org scope, audit and delivery side effects,
+  notification/escalation GETs, escalation mutations, and visual behavior remain unchanged. Only successful in-app rule
+  response projection is validated; malformed 2xx fails closed and provider-only metadata does not enter state. No
+  migration, production data operation, external send, or image generation was required.
+- commit / landing:
+  Scoped implementation commit `c5d21827c` (`fix(API-CONTRACT-001FZNOTIFICATIONMUTSTRICT): validate notification
+mutation response`) was created locally with only the shared notification response schema, consumer/test, and allowlist
+  paths staged. Push remains unrequested; unrelated harness-memory and personal artifacts remain excluded.
+- next action:
+  Commit this scoped ledger update, then return to `API-CONTRACT-001-RESCAN` and choose the next disjoint safe slice
+  without touching unrelated dirty paths.
+
 ## 2026-07-12 API-CONTRACT-001FZESCALATIONSETTINGSTRICT — (DONE)
 
 - current task / selection:
