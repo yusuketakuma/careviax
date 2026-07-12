@@ -36,12 +36,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/settings/settings-content.tsx",
-      "counts": {
-        "stringFallback": 4
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/shifts/shifts-content.tsx",
       "counts": {
         "stringFallback": 6

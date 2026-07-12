@@ -51,6 +51,34 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZADMINSETTINGSSTRICT admin settings/profile/site readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, ledger pending; shared clean-capacity build pending).
+  - current task / root cause:
+    Admin Settingsは設定GET/PATCH、current profile、site optionの4 responsesをcompile-time castだけで読み、legacy
+    root、duplicate setting key、不正scope/type/range、過大な文字列/配列をquery/edit stateへ流し得た。Profile画面は
+    id/name/defaultSiteIdだけを使う一方、providerのemail、phone、role、MFA等も将来そのままcacheへ保持し得た。
+    Settings providerは固定`SETTING_CATALOG` projectionとcanAdmin/org scope、site providerはorg scopeを強制する。
+  - implementation / settings-secret boundary:
+    Shared admin settings schemaを追加し、bounded scope/id/item/option/value、finite min/max、min<=max、setting key
+    identity一意性を検証。Profile responseは画面使用3 fieldsだけへstripし、site optionsは既存shared minimal schemaへ
+    収束した。設定GET/PATCHは同じresponse schemaを再利用し、4 allowlist callsを除去。設定catalog/write、provider、
+    authorization、health polling、UIは変更していない。非visual parser/privacy境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/admin/settings-response-schema.ts`,
+    `src/lib/admin/settings-response-schema.test.ts`,
+    `src/app/(dashboard)/admin/settings/settings-content.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/shared-schema/provider Vitest passed 3 files / 28 tests. Exact ESLint with
+    `--max-warnings=0`, Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (233 backed / 137
+    allowlisted / 36 files), frontend contract, module boundary, client PHI-log, API response shape, colors, and
+    diff-check passed. A non-gate file-targeted `tsc` probe was not applicable under current TypeScript (`TS5112`);
+    the canonical aggregate gates passed. Full build was NOT_EXECUTED because only about 2.5 GiB free remains after
+    the shared `.next/cache` capacity failure; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed settings data now fails closed and unused profile identity/security metadata is not cached. Request/query
+    count, DB/provider work, setting writes, canAdmin/tenant/no-store, health polling, render behavior, and dependencies
+    are unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZCREDENTIALSTRICT pharmacist credential/staff-option readers (VERIFY_REQUIRED, 2026-07-13; implementation `115430961`, ledger `c5d5c8958`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Pharmacist Credentialsはcredential listとstaff optionsをcompile-time castだけで読み、legacy root、

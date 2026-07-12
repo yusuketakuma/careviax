@@ -25,6 +25,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
+  adminSettingsProfileResponseSchema,
+  adminSettingsResponseSchema,
+  type AdminSettingsProfileResponse,
+} from '@/lib/admin/settings-response-schema';
+import {
   getSettingRangeError,
   SCOPE_LABELS,
   type SettingScope,
@@ -32,26 +37,11 @@ import {
 } from '@/lib/admin/settings-catalog';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  pharmacySiteOptionsResponseSchema,
+  type PharmacySiteOptionsResponse,
+} from '@/lib/pharmacy-sites/response-schema';
 import { messageFromError } from '@/lib/utils/error-message';
-
-type SettingResponse = {
-  data: {
-    scope: SettingScope;
-    scope_id: string | null;
-    items: SettingValueItem[];
-  };
-};
-
-type SiteOption = {
-  id: string;
-  name: string;
-};
-
-type CurrentProfile = {
-  id: string;
-  name: string;
-  defaultSiteId: string | null;
-};
 
 type HealthPayload = {
   status: 'ok' | 'degraded' | 'down';
@@ -177,7 +167,10 @@ function ScopePanel({
       const response = await fetch(`/api/settings?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<SettingResponse>(response, '設定の取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '設定の取得に失敗しました',
+        schema: adminSettingsResponseSchema,
+      });
     },
     enabled: !!orgId && (scope !== 'site' || !!scopeId),
     staleTime: 300_000,
@@ -255,7 +248,10 @@ function ScopePanel({
           values: Object.fromEntries(itemsForSave.map((item) => [item.key, item.value])),
         }),
       });
-      return readApiJson<SettingResponse>(response, '設定の保存に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '設定の保存に失敗しました',
+        schema: adminSettingsResponseSchema,
+      });
     },
     onSuccess: async (payload) => {
       queryClient.setQueryData(settingsQueryKey, payload);
@@ -383,7 +379,10 @@ export function SettingsContent() {
     queryKey: ['me-profile', orgId, 'admin-settings'],
     queryFn: async () => {
       const response = await fetch('/api/me/profile');
-      return readApiJson<{ data: CurrentProfile }>(response, 'プロフィールの取得に失敗しました');
+      return readApiJson<AdminSettingsProfileResponse>(response, {
+        fallbackMessage: 'プロフィールの取得に失敗しました',
+        schema: adminSettingsProfileResponseSchema,
+      });
     },
     enabled: !!orgId,
     staleTime: 300_000,
@@ -395,7 +394,10 @@ export function SettingsContent() {
       const response = await fetch('/api/pharmacy-sites', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: SiteOption[] }>(response, '店舗一覧の取得に失敗しました');
+      return readApiJson<PharmacySiteOptionsResponse>(response, {
+        fallbackMessage: '店舗一覧の取得に失敗しました',
+        schema: pharmacySiteOptionsResponseSchema,
+      });
     },
     enabled: !!orgId,
     staleTime: 300_000,
