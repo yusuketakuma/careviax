@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZSTRUCTCARESTRICT patient structured-care active-state reader (VERIFY_REQUIRED, 2026-07-12; implementation `769528a2f`, push and shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZSTRUCTCARESTRICT patient structured-care active-state reader (VERIFY_REQUIRED, 2026-07-12; implementation `769528a2f`, ledger `78fc3f7c2`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Patient detailの在宅医療処置・麻薬panelがcompile-time `PatientStructuredCareList` castだけを信頼し、
     legacy root、終了済みrow、不正日時、重複identity、確認者不整合を現在のactive careとして表示し得た。
