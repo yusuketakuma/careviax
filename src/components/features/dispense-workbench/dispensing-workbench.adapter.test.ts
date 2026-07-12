@@ -943,6 +943,32 @@ describe('dispensing-workbench.adapter generateSetBatches', () => {
     );
   });
 
+  it('rejects a successful generate response that omits its reused outcome', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ data: { count: 1, batches: [] } })),
+    );
+
+    const { generateSetBatches } = await import('./dispensing-workbench.adapter');
+
+    await expect(generateSetBatches('plan_1', { force: false })).rejects.toThrow(
+      '保存に失敗しました',
+    );
+  });
+
+  it('rejects a successful hold resolution response for another hold', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ data: { id: 'hold_other', resolved: true } })),
+    );
+
+    const { resolveCycleHold } = await import('./dispensing-workbench.adapter');
+
+    await expect(resolveCycleHold({ id: 'hold_1' })).rejects.toThrow('保存に失敗しました');
+  });
+
   it('promotes network failures to a WorkbenchWriteError with status 0', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
     const fetchMock = vi.fn(async () => {

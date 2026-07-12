@@ -397,3 +397,228 @@ export function buildSetPlanCalendarResponseSchema(expectedPlanId: string) {
       }
     });
 }
+
+const dataEnvelope = <T extends z.ZodType>(data: T) => z.object({ data }).strict();
+
+const setBatchSchema = z
+  .object({
+    id: idSchema,
+    line_id: idSchema,
+    set_state: idSchema,
+    audit_state: idSchema,
+    version: countSchema,
+    day_number: z.number().int().positive(),
+    slot: idSchema,
+  })
+  .passthrough();
+
+export function buildCreatePackagingGroupResponseSchema(expected: {
+  label: string;
+  method: string;
+}) {
+  return dataEnvelope(
+    z
+      .object({
+        id: idSchema,
+        label: z.literal(expected.label),
+        method: z.literal(expected.method),
+        version: countSchema,
+        created: z.boolean(),
+      })
+      .passthrough(),
+  ).transform(({ data }) => ({ data: { id: data.id, version: data.version } }));
+}
+
+export function buildUpdatePackagingGroupsResponseSchema(
+  expected: Array<{ id: string; version: number }>,
+) {
+  return dataEnvelope(
+    z
+      .object({
+        updated: z.array(z.object({ id: idSchema, version: countSchema }).strict()),
+      })
+      .strict(),
+  ).superRefine(({ data }, context) => {
+    const expectedVersions = new Map(expected.map((item) => [item.id, item.version + 1]));
+    if (
+      data.updated.length !== expected.length ||
+      data.updated.some((item) => expectedVersions.get(item.id) !== item.version)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['data', 'updated'],
+        message: 'updated groups mismatch',
+      });
+    }
+  });
+}
+
+export function buildAssignPackagingLinesResponseSchema(expectedLineIds: string[]) {
+  return dataEnvelope(
+    z.object({ assigned: z.array(z.object({ line_id: idSchema }).strict()) }).strict(),
+  ).superRefine(({ data }, context) => {
+    if (
+      data.assigned.length !== expectedLineIds.length ||
+      data.assigned.some((item, index) => item.line_id !== expectedLineIds[index])
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['data', 'assigned'],
+        message: 'assigned lines mismatch',
+      });
+    }
+  });
+}
+
+export function buildPrescriptionLineMutationResponseSchema(expectedLineId: string) {
+  return dataEnvelope(z.object({ id: z.literal(expectedLineId) }).passthrough());
+}
+
+export function buildPrescriptionLinesMutationResponseSchema(expectedLineIds: string[]) {
+  return dataEnvelope(
+    z.object({ updated: z.array(z.object({ id: idSchema }).passthrough()) }).strict(),
+  ).superRefine(({ data }, context) => {
+    if (
+      data.updated.length !== expectedLineIds.length ||
+      data.updated.some((item, index) => item.id !== expectedLineIds[index])
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['data', 'updated'],
+        message: 'updated lines mismatch',
+      });
+    }
+  });
+}
+
+export function buildDispenseResultsMutationResponseSchema(expectedTaskId: string) {
+  return dataEnvelope(
+    z
+      .object({
+        task_id: z.literal(expectedTaskId),
+        partial: z.boolean(),
+        idempotent: z.boolean().optional(),
+        results: z.array(z.unknown()),
+      })
+      .strict(),
+  );
+}
+
+export function buildVerifyDispenseBarcodeResponseSchema(expectedDrugName?: string) {
+  return dataEnvelope(
+    z
+      .object({
+        match: z.boolean(),
+        decoded: z
+          .object({
+            gtin: z.string().optional(),
+            expiryDate: z.string().optional(),
+            lotNumber: z.string().optional(),
+          })
+          .strict(),
+        expected: z
+          .object({
+            drug_code: nullableTextSchema,
+            drug_name: expectedDrugName ? z.literal(expectedDrugName) : z.string().trim().min(1),
+          })
+          .strict(),
+        warnings: z.array(z.string()),
+      })
+      .strict(),
+  );
+}
+
+export function buildDispenseAuditMutationResponseSchema(expectedTaskId: string) {
+  return dataEnvelope(
+    z
+      .object({
+        id: idSchema,
+        task_id: z.literal(expectedTaskId).optional(),
+        result: idSchema,
+        idempotent: z.boolean().optional(),
+      })
+      .passthrough(),
+  );
+}
+
+export function buildSetBatchCellMutationResponseSchema(expectedBatchIds: string[]) {
+  const dataSchema = z.union([
+    setBatchSchema,
+    z.object({ batches: z.array(setBatchSchema) }).strict(),
+  ]);
+  return dataEnvelope(dataSchema).superRefine(({ data }, context) => {
+    const nestedBatches = (data as { batches?: unknown }).batches;
+    const batches = Array.isArray(nestedBatches) ? nestedBatches : [data];
+    if (
+      batches.length !== expectedBatchIds.length ||
+      batches.some((batch) => !expectedBatchIds.includes(batch.id))
+    ) {
+      context.addIssue({ code: 'custom', path: ['data'], message: 'mutated batches mismatch' });
+    }
+  });
+}
+
+export function buildSetBatchCollectionMutationResponseSchema(options: {
+  expectedBatchIds?: string[];
+  requireCountMatch?: boolean;
+}) {
+  return dataEnvelope(
+    z
+      .object({
+        count: countSchema,
+        batches: z.array(setBatchSchema),
+      })
+      .strict(),
+  ).superRefine(({ data }, context) => {
+    if (options.requireCountMatch && data.count !== data.batches.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['data', 'count'],
+        message: 'batch count mismatch',
+      });
+    }
+    if (
+      options.expectedBatchIds &&
+      data.batches.some((batch) => !options.expectedBatchIds?.includes(batch.id))
+    ) {
+      context.addIssue({ code: 'custom', path: ['data', 'batches'], message: 'unexpected batch' });
+    }
+  });
+}
+
+export function buildGenerateSetBatchesResponseSchema() {
+  return dataEnvelope(
+    z
+      .object({
+        count: countSchema,
+        batches: z.array(setBatchSchema),
+        reused: z.boolean(),
+      })
+      .strict(),
+  );
+}
+
+export function buildSetAuditMutationResponseSchema(expectedPlanId: string) {
+  return dataEnvelope(
+    z
+      .object({
+        id: idSchema,
+        plan_id: z.literal(expectedPlanId).optional(),
+        result: idSchema,
+        idempotent: z.boolean().optional(),
+      })
+      .passthrough(),
+  );
+}
+
+export function buildCreateCycleHoldResponseSchema(expectedCycleId: string) {
+  return dataEnvelope(
+    z.object({ id: idSchema, cycle_id: z.literal(expectedCycleId) }).passthrough(),
+  ).transform(({ data }) => ({ data: { id: data.id } }));
+}
+
+export function buildResolveCycleHoldResponseSchema(expectedHoldId: string) {
+  return dataEnvelope(
+    z.object({ id: z.literal(expectedHoldId), resolved: z.literal(true) }).strict(),
+  );
+}

@@ -79,12 +79,6 @@
       }
     },
     {
-      "path": "src/components/features/dispense-workbench/dispensing-workbench.adapter.ts",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/components/features/patients/patient-form.tsx",
       "counts": {
         "stringFallback": 6

@@ -66,9 +66,23 @@ import {
 } from './dispensing-workbench.write-types';
 import { DISPENSE_SAFETY_CHECKLIST_ACK } from '@/lib/dispensing/safety-checklist';
 import {
+  buildAssignPackagingLinesResponseSchema,
+  buildCreateCycleHoldResponseSchema,
+  buildCreatePackagingGroupResponseSchema,
+  buildDispenseAuditMutationResponseSchema,
+  buildDispenseResultsMutationResponseSchema,
   buildDispenseTaskWorkbenchResponseSchema,
   buildDispenseWorkbenchPatientsResponseSchema,
+  buildGenerateSetBatchesResponseSchema,
+  buildPrescriptionLineMutationResponseSchema,
+  buildPrescriptionLinesMutationResponseSchema,
+  buildResolveCycleHoldResponseSchema,
+  buildSetAuditMutationResponseSchema,
+  buildSetBatchCellMutationResponseSchema,
+  buildSetBatchCollectionMutationResponseSchema,
   buildSetPlanCalendarResponseSchema,
+  buildUpdatePackagingGroupsResponseSchema,
+  buildVerifyDispenseBarcodeResponseSchema,
 } from './dispensing-workbench-response-schemas';
 
 /**
@@ -420,7 +434,12 @@ export async function loadSetCalendarForPatientAsync(
  * 409 を {@link WorkbenchConflictError}、その他非 2xx を {@link WorkbenchWriteError} へ昇格して throw する
  * （mutations hook が toast / rollback / 解決導線に振り分けるため、ここでは握り潰さない）。
  */
-async function mutateJson<T>(url: string, method: 'POST' | 'PATCH', body: unknown): Promise<T> {
+async function mutateJson<T>(
+  url: string,
+  method: 'POST' | 'PATCH',
+  body: unknown,
+  schema: ApiJsonSchema<T>,
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(url, {
@@ -451,7 +470,7 @@ async function mutateJson<T>(url: string, method: 'POST' | 'PATCH', body: unknow
     }
     throw new WorkbenchWriteError(message, res.status);
   }
-  return await readApiJson<T>(res, '保存に失敗しました');
+  return await readApiJson<T>(res, { fallbackMessage: '保存に失敗しました', schema });
 }
 
 /** 一包化グループ作成（POST /api/dispense-tasks/[taskId]/groups）。 */
@@ -460,7 +479,12 @@ export async function createGroup(
   body: { group_key: string; label: string; method: string; slot?: string; sort_order?: number },
 ): Promise<{ data: { id: string; version?: number } } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(buildDispenseTaskApiPath(taskId, '/groups'), 'POST', body);
+  return mutateJson(
+    buildDispenseTaskApiPath(taskId, '/groups'),
+    'POST',
+    body,
+    buildCreatePackagingGroupResponseSchema(body),
+  );
 }
 
 /** グループ属性の一括更新（PATCH /api/dispense-tasks/[taskId]/groups, groups[]）。 */
@@ -476,9 +500,12 @@ export async function updateGroups(
   }>,
 ): Promise<{ data: unknown } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(buildDispenseTaskApiPath(taskId, '/groups'), 'PATCH', {
-    groups,
-  });
+  return mutateJson(
+    buildDispenseTaskApiPath(taskId, '/groups'),
+    'PATCH',
+    { groups },
+    buildUpdatePackagingGroupsResponseSchema(groups),
+  );
 }
 
 /** 処方明細のグループ割当（PATCH /api/dispense-tasks/[taskId]/groups, assignments[]）。 */
@@ -491,9 +518,12 @@ export async function assignLinesToGroup(
   }>,
 ): Promise<{ data: unknown } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(buildDispenseTaskApiPath(taskId, '/groups'), 'PATCH', {
-    assignments,
-  });
+  return mutateJson(
+    buildDispenseTaskApiPath(taskId, '/groups'),
+    'PATCH',
+    { assignments },
+    buildAssignPackagingLinesResponseSchema(assignments.map((item) => item.line_id)),
+  );
 }
 
 /** 処方明細編集（PATCH /api/prescription-lines/[lineId]）。did === line_id。 */
@@ -511,7 +541,12 @@ export async function updatePrescriptionLine(
   },
 ): Promise<{ data: unknown } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(buildPrescriptionLineApiPath(lineId), 'PATCH', body);
+  return mutateJson(
+    buildPrescriptionLineApiPath(lineId),
+    'PATCH',
+    body,
+    buildPrescriptionLineMutationResponseSchema(lineId),
+  );
 }
 
 /** 処方明細の一括期間編集（PATCH /api/dispense-tasks/[taskId]/lines）。 */
@@ -519,11 +554,16 @@ export async function updatePrescriptionLines(
   input: UpdatePrescriptionLinesInput,
 ): Promise<{ data: unknown } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(buildDispenseTaskApiPath(input.taskId, '/lines'), 'PATCH', {
-    client_action_id: input.client_action_id,
-    packaging_group_id: input.packaging_group_id,
-    lines: input.lines,
-  });
+  return mutateJson(
+    buildDispenseTaskApiPath(input.taskId, '/lines'),
+    'PATCH',
+    {
+      client_action_id: input.client_action_id,
+      packaging_group_id: input.packaging_group_id,
+      lines: input.lines,
+    },
+    buildPrescriptionLinesMutationResponseSchema(input.lines.map((line) => line.line_id)),
+  );
 }
 
 /** 調剤完了（POST /api/dispense-results）。OCC は expected_version=cycle.version。 */
@@ -531,10 +571,12 @@ export async function submitDispenseResults(
   input: SubmitDispenseResultsInput,
 ): Promise<SubmitDispenseResultsResponse | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson('/api/dispense-results', 'POST', {
-    ...input,
-    safety_checklist: DISPENSE_SAFETY_CHECKLIST_ACK,
-  });
+  return mutateJson(
+    '/api/dispense-results',
+    'POST',
+    { ...input, safety_checklist: DISPENSE_SAFETY_CHECKLIST_ACK },
+    buildDispenseResultsMutationResponseSchema(input.task_id),
+  );
 }
 
 /** GS1バーコード照合（POST /api/dispense-tasks/[taskId]/verify-barcode）。 */
@@ -542,10 +584,12 @@ export async function verifyDispenseBarcode(
   input: VerifyDispenseBarcodeInput,
 ): Promise<VerifyDispenseBarcodeResponse | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(buildDispenseTaskApiPath(input.taskId, '/verify-barcode'), 'POST', {
-    barcode: input.barcode,
-    line_id: input.line_id,
-  });
+  return mutateJson(
+    buildDispenseTaskApiPath(input.taskId, '/verify-barcode'),
+    'POST',
+    { barcode: input.barcode, line_id: input.line_id },
+    buildVerifyDispenseBarcodeResponseSchema(),
+  );
 }
 
 /** 調剤監査完了（POST /api/dispense-audits）。 */
@@ -553,7 +597,12 @@ export async function submitDispenseAudit(
   input: SubmitDispenseAuditInput,
 ): Promise<{ data: unknown } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson('/api/dispense-audits', 'POST', input);
+  return mutateJson(
+    '/api/dispense-audits',
+    'POST',
+    input,
+    buildDispenseAuditMutationResponseSchema(input.task_id),
+  );
 }
 
 /** セル set/hold/clear（PATCH /api/set-plans/[planId]/batches/cell）。 */
@@ -562,7 +611,14 @@ export async function mutateCell(
   input: CellMutationInput,
 ): Promise<{ data: SetBatchDto | { batches: SetBatchDto[] } } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(buildSetPlanApiPath(planId, '/batches/cell'), 'PATCH', input);
+  return mutateJson(
+    buildSetPlanApiPath(planId, '/batches/cell'),
+    'PATCH',
+    input,
+    buildSetBatchCellMutationResponseSchema(
+      input.cells?.map((cell) => cell.batch_id) ?? (input.batch_id ? [input.batch_id] : []),
+    ),
+  );
 }
 
 /** 一括セット（POST /api/set-plans/[planId]/batches/bulk-set）。 */
@@ -571,9 +627,14 @@ export async function bulkSetCells(
   cells: Array<{ batch_id: string; expected_version?: number }>,
 ): Promise<{ data: { count: number; batches: SetBatchDto[] } } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(buildSetPlanApiPath(planId, '/batches/bulk-set'), 'POST', {
-    cells,
-  });
+  return mutateJson(
+    buildSetPlanApiPath(planId, '/batches/bulk-set'),
+    'POST',
+    { cells },
+    buildSetBatchCollectionMutationResponseSchema({
+      expectedBatchIds: cells.map((cell) => cell.batch_id),
+    }),
+  );
 }
 
 /**
@@ -588,7 +649,12 @@ export async function generateSetBatches(
   body: { force?: boolean; expected_updated_at?: string },
 ): Promise<{ data: { count: number; batches: SetBatchDto[]; reused: boolean } } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(buildSetPlanApiPath(planId, '/generate-batches'), 'POST', body);
+  return mutateJson(
+    buildSetPlanApiPath(planId, '/generate-batches'),
+    'POST',
+    body,
+    buildGenerateSetBatchesResponseSchema(),
+  );
 }
 
 /** セット監査 OK/部分/NG（POST /api/set-audits）。 */
@@ -596,7 +662,12 @@ export async function submitSetAudit(
   input: SubmitSetAuditInput,
 ): Promise<{ data: unknown } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson('/api/set-audits', 'POST', input);
+  return mutateJson(
+    '/api/set-audits',
+    'POST',
+    input,
+    buildSetAuditMutationResponseSchema(input.plan_id),
+  );
 }
 
 /** 構造化保留 作成（POST /api/cycle-holds）。 */
@@ -604,7 +675,12 @@ export async function createCycleHold(
   input: CreateCycleHoldInput,
 ): Promise<{ data: { id: string } } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson('/api/cycle-holds', 'POST', input);
+  return mutateJson(
+    '/api/cycle-holds',
+    'POST',
+    input,
+    buildCreateCycleHoldResponseSchema(input.cycle_id),
+  );
 }
 
 /** 構造化保留 解決（PATCH /api/cycle-holds）。 */
@@ -613,5 +689,10 @@ export async function resolveCycleHold(input: {
   note?: string;
 }): Promise<{ data: { id: string; resolved: boolean } } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson('/api/cycle-holds', 'PATCH', input);
+  return mutateJson(
+    '/api/cycle-holds',
+    'PATCH',
+    input,
+    buildResolveCycleHoldResponseSchema(input.id),
+  );
 }
