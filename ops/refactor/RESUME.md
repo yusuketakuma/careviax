@@ -7,35 +7,35 @@
 - Upstream: `origin/agent/continuous-improvement-20260712`
 - Remote: `origin`
 - Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
-- Current Phase: incremental rescan / next-task selection
-- Current Task ID: `API-CONTRACT-001`
+- Current Phase: pre-landing checkpoint
+- Current Task ID: `API-CONTRACT-001FZJOBLISTSTRICT`
 - Current Task Status: IN_PROGRESS
-- Current Commit Group: none; previous group landed
+- Current Commit Group: `API-CONTRACT-001FZJOBLISTSTRICT`
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
-- Last Safe Checkpoint: Focused tests, static contract gates, typecheck, no-unused, lint, diff-check, and build passed.
-- Last Completed Action: Commit `c4d0b015e` was pushed to the feature branch.
-- Current Operation: Incremental API-contract residual scan.
-- Exact Next Action: Run the client-schema inventory and inspect the next remaining allowlisted reader while preserving unrelated dirty paths.
-- Exact Next Command: `pnpm client-json-schema:check && git status --short --untracked-files=all`
-- Changed Files: business-holidays consumer/test, shifts consumer/test, business-holidays response schema, client schema allowlist, Plans, STATE, checkpoint files.
-- Staged Files: none
+- Last Safe Checkpoint: Jobs focused tests, static contract gates, typecheck, no-unused, lint, diff-check, and build passed.
+- Last Completed Action: Connected the jobs runtime schema, passed 2 files / 16 focused tests, and completed the serialized Next.js build.
+- Current Operation: final diff review and scoped landing for the admin/jobs contract slice.
+- Exact Next Action: Inspect the jobs-owned diff, stage only owned paths, commit, push, and verify the remote branch.
+- Exact Next Command: `git diff --check && git diff --stat && git status --short --untracked-files=all`
+- Changed Files: admin/jobs consumer/test, jobs response schema, client schema allowlist, Plans, STATE, and checkpoint ledgers.
+- Staged Files: explicit jobs implementation, test, response schema, allowlist, Plans, STATE, and checkpoint/verification ledgers only; unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
 - Unpushed Commits: none
 - Push Status: PUSHED for `API-CONTRACT-001FZBUSINESSHOLIDAYSTRICT`
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
-- Commands Completed: focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; colors; typography; typecheck; no-unused; lint; diff-check.
-- Commands Pending: next client-schema scan; residual selection; focused implementation/verification; scoped commit/push for the next group.
-- Tests Completed: 2 files / 39 tests passed.
-- Tests Pending: no focused tests pending; full suite not run for this slice.
-- Build State: PASS (`pnpm plans:active:check && pnpm build`; Next 16.2.9, 311/311 pages).
+- Commands Completed: jobs focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; typecheck; no-unused; lint; diff-check; build.
+- Commands Pending: final diff review; scoped commit/push; post-push status.
+- Tests Completed: current jobs slice 2 files / 16 tests passed; previous holiday slice 2 files / 39 tests passed.
+- Tests Pending: full suite not run for this slice.
+- Build State: PASS for current jobs slice; Next 16.2.9 compiled in 2.6 minutes, TypeScript finished in 55 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.
 - Migration State: NOT_APPLICABLE
-- Frontend State: consumer runtime schema connected; visual behavior unchanged.
-- Backend State: provider unchanged and already returns bounded `{ data }` list.
-- FE/BE Alignment State: provider/consumer payload boundary hardened; mutation paths unchanged.
+- Frontend State: admin/jobs consumer runtime schema connected; visual behavior unchanged.
+- Backend State: jobs provider unchanged and already returns redacted bounded `{ data }` list.
+- FE/BE Alignment State: provider/consumer payload boundary hardened; rerun mutation paths unchanged.
 - UI Verification State: no visual reconstruction; no browser run for this contract-only slice.
 - Browser Verification State: NOT_EXECUTED
 - High-Risk Change State: no DB/auth/tenant/migration change; org-scope validation is fail-closed at the client boundary.

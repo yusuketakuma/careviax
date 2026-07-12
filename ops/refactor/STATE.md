@@ -47009,3 +47009,32 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
 - next action:
   Rescan remaining API-CONTRACT allowlist entries and select the next safe residual without touching unrelated dirty
   paths.
+
+## 2026-07-12 API-CONTRACT-001FZJOBLISTSTRICT — admin jobs list contract (IN_PROGRESS)
+
+- current task / root cause:
+  The admin/jobs GET consumer still used a compile-time response cast. A malformed or legacy success envelope, duplicate
+  job definition, unsafe endpoint, mismatched latest-run identity, unsupported status, invalid count/timestamp, or
+  provider-only error metadata could therefore enter operational job state. This is a read-contract hardening slice;
+  the existing provider already redacts error details and is not being changed.
+- implementation plan:
+  Add one consumed runtime schema for the fixed job definition list and latest run/export run DTOs, verify definition
+  and run identity relationships, strip fields outside the UI contract, add consumer regressions, and remove the one
+  `stringFallback` allowlist entry. Keep the existing query key, polling, rerun mutation, auth, backend route, DB read,
+  error redaction, and UI behavior unchanged. `gpt-image-2` is omitted because this is a non-visual parser/cache
+  boundary repair with no screen reconstruction.
+- baseline:
+  The focused jobs consumer/provider suites passed 2 files / 15 tests before implementation. Current client-schema
+  inventory is 161 schema-backed / 212 allowlisted schema-less / 88 files.
+- implementation / validation checkpoint:
+  Added `src/lib/jobs/response-schema.ts`, connected the admin/jobs GET reader, removed its one allowlist entry, and
+  added a mismatched-latest-run regression. Focused jobs consumer/provider suites pass 2 files / 16 tests. Format,
+  API shape, client-schema (162 schema-backed / 211 allowlisted / 87 files), frontend contract, PHI log/display,
+  module boundary, Plans, diff-check, aggregate typecheck, 8 GB no-unused typecheck, and lint pass. Lint retains only
+  the two pre-existing unused-parameter warnings in `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  `pnpm build` passed. Next 16.2.9 compiled successfully in 2.6 minutes, TypeScript finished in 55 seconds,
+  311/311 static pages were generated, and page optimization/traces completed. The build emitted the same two
+  existing CSS optimizer warnings for dynamic `var(...)` Tailwind classes but exited 0.
+- next action:
+  Inspect the jobs-owned diff and ledgers, stage only the jobs slice, then commit and push the validated group.

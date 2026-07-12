@@ -182,6 +182,7 @@ describe('JobsDashboardContent', () => {
                 schedule_hint: '毎朝',
                 endpoint: '/api/jobs/daily',
                 latest_run: null,
+                latest_export_run: null,
               },
             ],
           }),
@@ -208,12 +209,57 @@ describe('JobsDashboardContent', () => {
           schedule_hint: '毎朝',
           endpoint: '/api/jobs/daily',
           latest_run: null,
+          latest_export_run: null,
         },
       ],
     });
     expect(fetchMock).toHaveBeenCalledWith('/api/jobs', {
       headers: { 'x-org-id': 'org_1' },
     });
+  });
+
+  it('rejects a successful jobs response when a latest run belongs to another definition', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                job_type: 'daily',
+                schedule_hint: '毎朝',
+                endpoint: '/api/jobs/daily',
+                latest_run: {
+                  id: 'run_1',
+                  job_type: 'monthly',
+                  status: 'completed',
+                  output: null,
+                  error_summary: null,
+                  retry_count: 0,
+                  max_retries: 3,
+                  started_at: null,
+                  completed_at: null,
+                  created_at: '2026-05-21T01:00:00.000Z',
+                },
+                latest_export_run: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      data: { data: [] },
+      refetch: vi.fn(),
+    });
+
+    render(<JobsDashboardContent />);
+
+    const queryOptions = useQueryMock.mock.calls.at(-1)?.[0] as
+      | { queryFn: () => Promise<unknown> }
+      | undefined;
+    await expect(queryOptions?.queryFn()).rejects.toThrow('ジョブ一覧の取得に失敗しました');
   });
 
   it('ignores malformed or successful bulk export output', () => {

@@ -84,12 +84,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/jobs/jobs-dashboard-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/master-hub-content.tsx",
       "counts": {
         "stringFallback": 1

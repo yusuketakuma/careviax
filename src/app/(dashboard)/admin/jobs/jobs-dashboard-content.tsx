@@ -23,41 +23,15 @@ import {
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  jobsResponseSchema,
+  type IntegrationJobRun,
+  type JobDefinitionEntry,
+} from '@/lib/jobs/response-schema';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import { messageFromError } from '@/lib/utils/error-message';
 
 // --- Types ---
-
-// Structured, pre-redacted error summary. `message` is always the fixed,
-// already-sanitized wording returned by the API — never the raw error_log
-// text — so this screen can never render token/password/patient-name
-// content even if a future bug writes an unsanitized error_log.
-type JobErrorSummary = {
-  error_name: string;
-  occurred_at: string | null;
-  message: string;
-};
-
-type IntegrationJobRun = {
-  id: string;
-  job_type: string;
-  status: string;
-  output: unknown;
-  error_summary: JobErrorSummary | null;
-  retry_count: number;
-  max_retries: number;
-  started_at: string | null;
-  completed_at: string | null;
-  created_at: string;
-};
-
-type JobDefinitionEntry = {
-  job_type: string;
-  schedule_hint: string;
-  endpoint: string;
-  latest_run: IntegrationJobRun | null;
-  latest_export_run?: IntegrationJobRun | null;
-};
 
 // --- Constants ---
 
@@ -96,12 +70,16 @@ type BulkExportRunSummary = {
   failedCount: number;
 };
 
+type BulkExportRunInput = Omit<IntegrationJobRun, 'output'> & {
+  output: unknown;
+};
+
 function readNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 export function getBulkExportRunSummary(
-  run: IntegrationJobRun | null,
+  run: BulkExportRunInput | null,
 ): BulkExportRunSummary | null {
   if (!run || !run.job_type.startsWith('medication-history-bulk-export')) return null;
   if (!run.output || typeof run.output !== 'object' || Array.isArray(run.output)) return null;
@@ -163,7 +141,10 @@ export function JobsDashboardContent() {
       const res = await fetch('/api/jobs', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: JobDefinitionEntry[] }>(res, 'ジョブ一覧の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: 'ジョブ一覧の取得に失敗しました',
+        schema: jobsResponseSchema,
+      });
     },
     enabled: !!orgId,
     refetchInterval: JOBS_REFETCH_INTERVAL_MS,

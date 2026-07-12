@@ -12,3 +12,16 @@
 | Errors / loading / empty    | Existing React Query loading, error/retry, and empty states remain; malformed 2xx becomes query error rather than false empty.                                   |
 | Tests                       | Consumer regressions plus focused suites: 2 files / 39 tests; aggregate and no-unused typechecks; static contract gates; build.                                  |
 | Alignment                   | ALIGNED for this read slice; mutation and provider semantics intentionally unchanged.                                                                            |
+
+## API-CONTRACT-001FZJOBLISTSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                 |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Admin jobs screen at `/admin/jobs`; backend route `/api/jobs` remains protected by existing `canAdmin` authorization.                                             |
+| Frontend state / clients    | React Query reader in `jobs-dashboard-content.tsx`; schema-backed before jobs definitions or latest run state enters cache/render.                                |
+| Request / response contract | Provider returns fixed `{ data }` definitions with redacted run/export DTOs; consumer verifies strict envelope, uniqueness, endpoint identity, and run relations. |
+| Backend / DB                | Existing authenticated route, organization/global job selection, bounded latest-run reads, and Prisma semantics unchanged.                                        |
+| Auth / tenant / audit       | Backend auth/org scope and audit/mutation behavior unchanged; client rejects cross-definition and unsupported success payloads.                                   |
+| Errors / loading / empty    | Existing React Query loading, error/retry, polling, rerun, and empty states remain; malformed 2xx becomes query error rather than false operational state.        |
+| Tests                       | Consumer/provider focused suite: 2 files / 16 tests; static contract gates, typechecks, lint, diff-check, and build passed.                                       |
+| Alignment                   | ALIGNED for this read slice; provider, mutation, and visual semantics intentionally unchanged.                                                                    |
