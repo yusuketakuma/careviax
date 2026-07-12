@@ -215,7 +215,7 @@ describe('VisitBriefReviewContent', () => {
       },
     );
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: null }));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: buildBrief() }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {

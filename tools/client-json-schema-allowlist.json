@@ -217,12 +217,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/visits/[id]/capture/capture-content.tsx",
       "counts": {
         "stringFallback": 2

@@ -1,5 +1,4 @@
 import { buildPatientHref } from '@/lib/patient/navigation';
-import type { VisitBrief } from '@/types/visit-brief';
 
 /**
  * p1_03「訪問前まとめを確認」の表示モデル(純関数)。
@@ -19,9 +18,20 @@ export type BriefSummarySelection = {
  * AI 生成が有効(provider=openai かつ非 fallback)なら AI 要約、
  * fallback(ルール代替)時はルール要約を使う(visit-brief-card と同じ判定)。
  */
-export function selectBriefSummary(
-  brief: Pick<VisitBrief, 'ai_summary' | 'rule_summary'>,
-): BriefSummarySelection {
+export function selectBriefSummary(brief: {
+  ai_summary: {
+    generation_id: string;
+    provider: 'rule' | 'openai';
+    is_fallback: boolean;
+    headline: string;
+    bullets: string[];
+  };
+  rule_summary: {
+    generation_id: string;
+    headline: string;
+    bullets: string[];
+  };
+}): BriefSummarySelection {
   const ai = brief.ai_summary;
   if (ai.provider === 'openai' && !ai.is_fallback) {
     return {

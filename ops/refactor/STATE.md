@@ -51,6 +51,41 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZBRIEFREVIEWSTRICT visit-brief pharmacist review reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Visit Brief pharmacist review画面は患者名、context、生成日時、AI/rule要約とrule sourceだけを使う一方、
+    compile-time full `VisitBrief` castで薬剤、検査、患者変化、多職種連携、未解決事項等の大量PHIをquery
+    stateへ保持していた。Legacy/mixed root、不正provider/model/contextも要約表示とfeedback attributionへ流れ得て、
+    visit schedule/record二段解決のIDをAPI pathへ直接補間していた。ProvidersはcanVisit、assignment/org scope、
+    sensitive no-storeを既に強制する。
+  - implementation / AI-medical-summary boundary:
+    Strict rootとminimal review snapshot schemaを追加し、bounded patient identity、patient/schedule context、ISO
+    generation time、AI/rule generation ID/headline/bullets、AI provider/requested provider/fallback/model、rule
+    source refs/generated timeを検証した。Non-fallback OpenAI summaryはmodel必須とし、data/summary内のunused
+    fieldsをstrip。Schedule/record二段解決をshared encoded API path helpersへ接続し、summary selectorの入力型を
+    実利用shapeへ縮小した。Brief provider/generation、pharmacist feedback/audit、assignment/tenant/no-store、UIは
+    変更していない。Visual reconstructionではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/visits/[id]/brief/visit-brief-review-response-schema.ts`,
+    `src/app/(dashboard)/visits/[id]/brief/visit-brief-review-response-schema.test.ts`,
+    `src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.tsx`,
+    `src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.test.tsx`,
+    `src/app/(dashboard)/visits/[id]/brief/visit-brief-review.shared.ts`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/providers/feedback/path/schema Vitest passed 6 files / 61 tests. Initial aggregate typecheck found
+    rule source refs/generated time were also consumed by the source disclosure; the minimal schema was corrected and
+    focused tests reran 3 files / 38 tests, then aggregate typecheck and 8GB no-unused typecheck passed. Exact ESLint
+    with `--max-warnings=0`, Prettier, scoped diff-check, client schema (216 backed / 155 allowlisted / 46 files),
+    frontend contract, module boundary, client PHI-log, API response shape, and colors passed. Full build was
+    NOT_EXECUTED because only 2.9 GiB free remains after the shared `.next/cache` capacity failure; generated cache was
+    not deleted or modified.
+  - security / performance / remaining:
+    Malformed AI attribution cannot enter pharmacist review/feedback, path injection is blocked, and cached medical PHI
+    is materially reduced. Request count, provider generation/query/payload, feedback write, render behavior, and
+    dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZDELRULESTRICT document-delivery rule list reader (VERIFY_REQUIRED, 2026-07-13; implementation `80ecd8007`, ledger `0918cad46`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin document-delivery rule managerがcounted list responseをcompile-time castだけで読み、legacy/mixed root、

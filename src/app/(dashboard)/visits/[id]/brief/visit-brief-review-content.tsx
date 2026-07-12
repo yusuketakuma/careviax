@@ -16,7 +16,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
 import { clientLog } from '@/lib/utils/client-log';
-import type { VisitBrief } from '@/types/visit-brief';
+import { buildVisitRecordApiPath, buildVisitScheduleApiPath } from '@/lib/visits/api-paths';
 import {
   buildNeedsEditFeedbackInput,
   composeBriefParagraph,
@@ -31,6 +31,10 @@ import {
   type BriefFeedbackInput,
   type PharmacistConfirmChoice,
 } from './visit-brief-review.shared';
+import {
+  visitBriefReviewResponseSchema,
+  type VisitBriefReviewSnapshot,
+} from './visit-brief-review-response-schema';
 
 /**
  * p1_03「訪問前まとめを確認」: 根拠になる情報 / AIがまとめた訪問前メモ /
@@ -59,7 +63,7 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
     queryKey: ['visit-brief-review-patient', visitId, orgId],
     queryFn: async () => {
       const headers = buildOrgHeaders(orgId);
-      const scheduleRes = await fetch(`/api/visit-schedules/${visitId}`, { headers });
+      const scheduleRes = await fetch(buildVisitScheduleApiPath(visitId), { headers });
       if (scheduleRes.ok) {
         const payload = await readApiJson(scheduleRes, {
           fallbackMessage: '訪問予定の取得に失敗しました',
@@ -68,7 +72,7 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
         const patientId = pickVisitPatientId(payload?.data);
         if (patientId) return { patientId };
       }
-      const recordRes = await fetch(`/api/visit-records/${visitId}`, { headers });
+      const recordRes = await fetch(buildVisitRecordApiPath(visitId), { headers });
       if (recordRes.ok) {
         const payload = await readApiJson(recordRes, {
           fallbackMessage: '訪問記録の取得に失敗しました',
@@ -83,14 +87,17 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
   });
   const patientId = patientQuery.data?.patientId ?? null;
 
-  const briefQuery = useQuery<{ data: VisitBrief }>({
+  const briefQuery = useQuery<{ data: VisitBriefReviewSnapshot }>({
     queryKey: ['patient-visit-brief', patientId, orgId],
     queryFn: async () => {
       if (!patientId) throw new Error('患者IDが未解決です');
       const res = await fetch(buildPatientApiPath(patientId, '/visit-brief'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: VisitBrief }>(res, '訪問前まとめの取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '訪問前まとめの取得に失敗しました',
+        schema: visitBriefReviewResponseSchema,
+      });
     },
     enabled: !!orgId && !!patientId,
   });
