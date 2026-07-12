@@ -25,6 +25,11 @@ import { ActionRail } from '@/components/ui/action-rail';
 import { cn } from '@/lib/utils';
 import { messageFromError } from '@/lib/utils/error-message';
 import type { ExternalFocus } from '@/lib/dashboard/home-link-builders';
+import {
+  communityFollowupsResponseSchema,
+  type CommunityFollowup,
+  type CommunityFollowupsResponse,
+} from './community-followup-schema';
 
 type ExternalGrant = {
   id: string;
@@ -92,16 +97,6 @@ const selfReportSchema: z.ZodType<SelfReport> = z
   })
   .passthrough();
 
-type CommunityActivity = {
-  id: string;
-  title: string;
-  activity_type: string;
-  partner_name: string | null;
-  follow_up_required: boolean;
-  referrals_generated: number | null;
-  activity_date: string;
-};
-
 function scopeLabels(scope: Record<string, boolean>) {
   return Object.entries(scope)
     .filter(([, enabled]) => enabled)
@@ -152,7 +147,10 @@ export function ExternalViewerContent({
       const response = await fetch('/api/community-activities?limit=8&follow_up_required=true', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: CommunityActivity[] }>(response, '地域活動の取得に失敗しました');
+      return readApiJson<CommunityFollowupsResponse>(response, {
+        fallbackMessage: '地域活動の取得に失敗しました',
+        schema: communityFollowupsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -162,7 +160,7 @@ export function ExternalViewerContent({
   const activeSelfReports = selfReports.filter(
     (item) => item.status !== 'resolved' && item.status !== 'dismissed',
   );
-  const followUps = (activitiesQuery.data?.data ?? []).filter((item) => item.follow_up_required);
+  const followUps: CommunityFollowup[] = activitiesQuery.data?.data ?? [];
   const contextSummary =
     initialContext === 'dashboard_home'
       ? initialFocus === 'self_reports'

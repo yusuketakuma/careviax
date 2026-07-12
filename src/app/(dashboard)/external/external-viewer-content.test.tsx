@@ -81,7 +81,22 @@ describe('ExternalViewerContent', () => {
         ? { data: [], meta: { has_more: false, next_cursor: null } }
         : url === '/api/external-access'
           ? { data: [], meta: { has_more: false, next_cursor: null } }
-          : { data: [] };
+          : {
+              data: [
+                {
+                  id: 'activity_1',
+                  title: '地域ケア会議',
+                  activity_type: 'conference',
+                  partner_name: '地域包括支援センター',
+                  follow_up_required: true,
+                  referrals_generated: 2,
+                  activity_date: '2026-07-12T01:00:00.000Z',
+                  org_id: 'provider-only',
+                  description: 'provider-only free text',
+                },
+              ],
+              meta: { limit: 8, has_more: false, next_cursor: null },
+            };
       return new Response(JSON.stringify(payload), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -103,7 +118,20 @@ describe('ExternalViewerContent', () => {
 
     await grantsQuery?.queryFn();
     await selfReportsQuery?.queryFn();
-    await activitiesQuery?.queryFn();
+    await expect(activitiesQuery?.queryFn()).resolves.toEqual({
+      data: [
+        {
+          id: 'activity_1',
+          title: '地域ケア会議',
+          activity_type: 'conference',
+          partner_name: '地域包括支援センター',
+          follow_up_required: true,
+          referrals_generated: 2,
+          activity_date: '2026-07-12T01:00:00.000Z',
+        },
+      ],
+      meta: { limit: 8, has_more: false, next_cursor: null },
+    });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/external-access', {
       headers: { 'x-org-id': 'org_1' },

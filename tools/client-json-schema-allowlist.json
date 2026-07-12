@@ -126,12 +126,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/external/external-viewer-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/handoff/handoff-workspace.tsx",
       "counts": {
         "stringFallback": 4
