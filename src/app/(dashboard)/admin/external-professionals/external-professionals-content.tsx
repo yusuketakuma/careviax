@@ -33,7 +33,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
-import { readApiJson } from '@/lib/api/client-json';
+import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import {
@@ -105,9 +105,6 @@ type ExternalProfessionalsResponse = {
     };
   };
 };
-
-type ExternalProfessionalMutationResponse = { data: ExternalProfessional };
-type ExternalProfessionalDeleteResponse = { ok: boolean };
 
 type FacilityOption = {
   id: string;
@@ -265,6 +262,32 @@ const linkedPatientsResponseSchema: z.ZodType<LinkedPatientsResponse> = z
       .strict(),
   })
   .strict();
+
+const facilitiesResponseSchema: z.ZodType<FacilitiesResponse> = z
+  .object({
+    data: z.array(
+      z
+        .object({
+          id: z.string().trim().min(1).max(200),
+          name: z.string().trim().min(1).max(500),
+        })
+        .strip(),
+    ),
+  })
+  .strict()
+  .superRefine(({ data }, context) => {
+    const ids = new Set<string>();
+    for (const [index, facility] of data.entries()) {
+      if (ids.has(facility.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['data', index, 'id'],
+          message: 'Duplicate facility identity',
+        });
+      }
+      ids.add(facility.id);
+    }
+  });
 
 function createEmptyForm(): FormState {
   return {
@@ -526,7 +549,10 @@ export function ExternalProfessionalsContent() {
       const response = await fetch(buildAdminFacilitiesApiPath(new URLSearchParams()), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<FacilitiesResponse>(response, '施設候補の取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '施設候補の取得に失敗しました',
+        schema: facilitiesResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -594,11 +620,8 @@ export function ExternalProfessionalsContent() {
           professional ? buildUpdatePayload(currentForm) : buildCreatePayload(currentForm),
         ),
       });
-      const payload = await readApiJson<ExternalProfessionalMutationResponse>(
-        response,
-        '保存に失敗しました',
-      );
-      return { payload, wasEditing: Boolean(professional) };
+      await readApiAcknowledgement(response, '保存に失敗しました');
+      return { wasEditing: Boolean(professional) };
     },
     onSuccess: async ({ wasEditing }) => {
       toast.success(wasEditing ? '他職種マスターを更新しました' : '他職種を登録しました');
@@ -620,7 +643,7 @@ export function ExternalProfessionalsContent() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<ExternalProfessionalDeleteResponse>(response, '削除に失敗しました');
+      return readApiAcknowledgement(response, '削除に失敗しました');
     },
     onSuccess: async () => {
       toast.success('他職種マスターを削除しました');

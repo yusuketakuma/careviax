@@ -51,6 +51,32 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZEXTPROFREMAINDER external-professional facility/mutation readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, ledger pending; shared clean-capacity build pending).
+  - current task / root cause:
+    Admin External Professionalsでは主要listとlinked patientsはschema化済みだったが、facility optionsとsave/delete
+    の3 readersがcompile-time castを残していた。施設providerの余分なfields、legacy root、duplicate/empty facility
+    identityが選択stateへ入り得て、DELETE fixtureはlive providerの`{ data: { id } }`と異なる旧`{ ok: true }`だった。
+  - implementation / PII boundary:
+    Facility responseをbounded id/name projectionとidentity一意性を持つruntime schemaへ接続。Save/deleteは返却
+    entityを使用しないためshared strict acknowledgementへ収束し、delete fixtureをlive provider envelopeへ同期した。
+    他職種/連絡先PII payload、write validation、provider、canAdmin/tenant/no-store、render/UIは変更していない。
+    非visual parser/privacy境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/admin/external-professionals/external-professionals-content.tsx`,
+    `src/app/(dashboard)/admin/external-professionals/external-professionals-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/providers Vitest passed 3 files / 46 tests. Exact ESLint with `--max-warnings=0`, Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (234 backed / 134 allowlisted / 35 files), frontend
+    contract, module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build was
+    NOT_EXECUTED because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated
+    cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed facility options and legacy mutation envelopes now fail closed; unused facility/provider and mutation
+    payload fields are not retained. Request/query count, DB/provider work, write behavior, PII handling, auth/tenant,
+    render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZADMINSETTINGSSTRICT admin settings/profile/site readers (VERIFY_REQUIRED, 2026-07-13; implementation `3bf68e892`, ledger `6e5083010`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Settingsは設定GET/PATCH、current profile、site optionの4 responsesをcompile-time castだけで読み、legacy

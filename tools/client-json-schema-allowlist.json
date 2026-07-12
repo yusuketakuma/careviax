@@ -18,12 +18,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/external-professionals/external-professionals-content.tsx",
-      "counts": {
-        "stringFallback": 3
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/incidents/incidents-content.tsx",
       "counts": {
         "stringFallback": 4

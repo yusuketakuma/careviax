@@ -228,7 +228,7 @@ function stubFetchWithProfessional(
 
     if (url.startsWith('/api/admin/external-professionals/') && method === 'DELETE') {
       if (mutationResponses.DELETE) return mutationResponses.DELETE.clone();
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      return new Response(JSON.stringify({ data: { id: professional.id } }), { status: 200 });
     }
 
     return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
