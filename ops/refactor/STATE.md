@@ -47045,6 +47045,40 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZBILLINGANALYTICS — (DONE)
+
+- current task / root cause:
+  The admin analytics page still trusted the billing-evidence analytics GET through a compile-time cast. Its provider
+  deterministically returns six consecutive monthly buckets and derives summary counts/rates from one selected bucket,
+  but legacy roots, missing months, status-count drift, summary mismatch, invalid rates, or oversized top lists could
+  enter the billing UI without runtime proof.
+- implementation:
+  Added a strict billing analytics response schema and connected the reader. It validates six unique consecutive months,
+  nonnegative counts, candidate-total/status arithmetic, summary-month membership, recalculated claimable/close rates,
+  summary count alignment, and top-5 reason/code bounds. It projects out provider-only revision and site-configuration
+  diagnostics not consumed by this client. Existing one-month and internally inconsistent UI fixtures were corrected to
+  the actual provider contract rather than weakening the schema.
+- validation:
+  The first focused run exposed four fixture failures because `current_month_exported` retained its old inconsistent
+  value after the monthly bucket was corrected; the fixture was repaired. The rerun passed 3 files / 20 tests covering
+  schema, consumer, and provider route. Exact ESLint/Prettier, aggregate typecheck, 8 GB no-unused typecheck, client JSON
+  schema, frontend contract, API response shape, module boundaries, PHI client log/display, colors, typography, Plans,
+  serialized production build, and diff checks passed. Inventory improved to 190 schema-backed / 183 allowlisted calls
+  across 69 files. With the temporary cache-disable hook used only to avoid the known 15 GiB `.next/cache` ENOSPC issue,
+  Next 16.2.9 compiled in 102 seconds, TypeScript finished in 51 seconds, and 311/311 static pages generated. The build
+  completed with only the two pre-existing CSS optimizer warnings; the temporary hook was reverted and `next.config.ts`
+  has no final diff.
+- scope / safety:
+  No DB query, billing rule, claimability calculation, candidate/evidence persistence, auth/authz, tenant boundary,
+  patient/PHI data, resource-map contract, or visual behavior changed. This non-visual contract slice did not require
+  `gpt-image-2`.
+- commit / landing:
+  Scoped implementation commit `c454c9224` (`fix(API-CONTRACT-001FZBILLINGANALYTICS): validate billing analytics`)
+  contains only the consumer/test, shared schema/test, and allowlist paths. Ledger commit and safe feature-branch push
+  follow; unrelated dirty/untracked artifacts remain excluded.
+- next action:
+  Close and push this slice, then rescan the remaining allowlist and patients-board cursor residual.
+
 ## 2026-07-12 API-CONTRACT-001FZAUDITREVIEWSTRICT — (DONE)
 
 - current task / root cause:
