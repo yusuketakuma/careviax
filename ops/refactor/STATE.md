@@ -47045,6 +47045,41 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZESCALATIONMUTSTRICT — (DONE)
+
+- current task / selection:
+  After the escalation GET contract repair, the notification-settings screen still accepted POST/PATCH success payloads
+  through two schema-less readers and inserted their optional `data` directly into client state. The existing strict
+  escalation item contract made these two readers the next smallest disjoint `API-CONTRACT-001` residual.
+- scope / safety boundary:
+  Reuse the landed escalation-rule item schema for a strict `{ data }` mutation envelope. Preserve request validation and
+  payloads, DB writes, provider/authz/org scope, audit side effects, DELETE behavior, notification rules, and visual
+  behavior. This is a non-visual response-parser/cache-minimization slice, so `gpt-image-2` was not used.
+- implementation:
+  Added `escalationRuleResponseSchema`, connected both POST and PATCH readers, removed their two `stringFallback`
+  allowlist entries, and added direct response-schema tests. Successful provider rows are projected to the client rule
+  shape; legacy roots, malformed conditions, missing required fields, and unexpected envelope fields fail closed before
+  local state or success UI is updated.
+- validation:
+  Focused Vitest passed 2 files / 30 tests. `pnpm typecheck`, 8 GB `pnpm typecheck:no-unused`, exact ESLint, Prettier,
+  client JSON schema, frontend contract, API response shape, module boundaries, PHI client log/display, colors,
+  typography, Plans active-board, production build, and `git diff --check` passed. Client schema inventory improved from 186 schema-backed /
+  187 allowlisted calls to 188 schema-backed / 185 allowlisted calls across 71 files. The initially attempted nonexistent
+  `phi:client-log:check` script stopped one chained validation command; it was corrected to the repository scripts
+  `client-phi-log:check` and `client-phi-display:check`, both of which passed. Next 16.2.9 compiled successfully in 95
+  seconds, TypeScript finished in 59 seconds, and 311/311 static pages generated. The build retained the two pre-existing
+  CSS optimizer warnings for placeholder `var(...)` utility candidates and exited successfully.
+- safety / limits:
+  No API route, mutation payload, DB/schema/migration, authorization, audit, delivery, patient/PHI data, or UI layout was
+  changed. Malformed successful responses now surface the existing fixed fallback error and do not report success.
+- commit / landing:
+  Scoped implementation commit `e6949e99e` (`fix(API-CONTRACT-001FZESCALATIONMUTSTRICT): validate escalation
+  mutations`) contains only the shared schema/test, consumer, and allowlist paths. Ledger commit and push follow;
+  unrelated harness-memory and personal artifacts remain excluded.
+- next action:
+  Commit this Plans/STATE ledger update, push the safe feature branch, then rescan remaining `API-CONTRACT-001` allowlist
+  entries and the patients-board cursor residual.
+
 ## 2026-07-12 API-CONTRACT-001FZNOTIFICATIONMUTSTRICT — (DONE)
 
 - current task / selection:
