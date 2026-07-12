@@ -411,6 +411,70 @@ describe('PrescriptionIntakeForm secondary-lookup fetch-error handling', () => {
     }
   });
 
+  it('validates and minimizes generic candidate query results before caching them', async () => {
+    setupQueries({
+      'patient-cases': { data: { data: [] } },
+      'patient-prescriptions': { data: { data: [] } },
+    });
+    const candidate = {
+      id: 'drug_generic_1',
+      yj_code: '2171014F1020',
+      drug_name: 'アムロジピン錠5mg「後発」',
+      generic_name: 'アムロジピンベシル酸塩',
+      dosage_form: '錠剤',
+      drug_price: 9.8,
+      unit: '錠',
+      is_generic: true,
+      generic_price_comparison: { lowest_price: '8.7', source_row: 'provider-only' },
+      manufacturer: 'provider-only',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async () =>
+        jsonResponse({ data: [candidate], meta: { has_more: false, next_cursor: null } }),
+      ),
+    );
+
+    try {
+      render(<PrescriptionIntakeForm />);
+      fireEvent.change(screen.getByLabelText('明細行 1 の薬剤名'), {
+        target: { value: 'アムロ' },
+      });
+      fireEvent.click(screen.getByLabelText('一般名処方'));
+
+      await waitFor(() =>
+        expect(
+          queryConfigs.some(
+            (config) =>
+              config.queryKey[0] === 'generic-candidates' && config.queryKey[2] === 'アムロ',
+          ),
+        ).toBe(true),
+      );
+      const query = queryConfigs
+        .filter((config) => config.queryKey[0] === 'generic-candidates')
+        .at(-1);
+
+      await expect(query?.queryFn?.()).resolves.toEqual({
+        data: [
+          {
+            id: candidate.id,
+            yj_code: candidate.yj_code,
+            drug_name: candidate.drug_name,
+            generic_name: candidate.generic_name,
+            dosage_form: candidate.dosage_form,
+            drug_price: candidate.drug_price,
+            unit: candidate.unit,
+            is_generic: true,
+            generic_price_comparison: { lowest_price: '8.7' },
+          },
+        ],
+        meta: { has_more: false, next_cursor: null },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('preserves cached generic candidates and warns when their refetch fails', () => {
     setupQueries({
       'generic-candidates': {

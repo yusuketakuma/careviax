@@ -75,6 +75,11 @@ import {
   type JahisSupplementalRecordView,
 } from '@/lib/pharmacy/jahis-supplemental-records-view';
 import { medicationIdentityKey } from '@/lib/prescription/medication-diff';
+import {
+  genericCandidatesResponseSchema,
+  type GenericCandidate,
+  type GenericCandidatesResponse,
+} from './generic-candidate-schema';
 
 const PRESCRIPTION_TYPEAHEAD_DEBOUNCE_MS = 250;
 
@@ -188,24 +193,6 @@ type PrescriberInstitutionOption = {
   fax: string | null;
 };
 
-type GenericCandidate = {
-  id: string;
-  yj_code: string;
-  drug_name: string;
-  generic_name: string | null;
-  dosage_form: string | null;
-  drug_price: number | null;
-  unit: string | null;
-  is_generic: boolean;
-  generic_price_comparison?: {
-    standard_name?: string | null;
-    dosage_form?: string | null;
-    specification?: string | null;
-    lowest_price?: string | null;
-    add_on_scope?: string | null;
-  } | null;
-};
-
 function GenericCandidatePanel({
   query,
   enabled,
@@ -229,7 +216,10 @@ function GenericCandidatePanel({
       const res = await fetch(buildDrugMastersApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: GenericCandidate[] }>(res, '後発候補の取得に失敗しました');
+      return readApiJson<GenericCandidatesResponse>(res, {
+        fallbackMessage: '後発候補の取得に失敗しました',
+        schema: genericCandidatesResponseSchema,
+      });
     },
     enabled: !!orgId && enabled && query.trim().length >= 2,
     staleTime: 30_000,

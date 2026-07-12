@@ -169,12 +169,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx",
       "counts": {
         "stringFallback": 3
