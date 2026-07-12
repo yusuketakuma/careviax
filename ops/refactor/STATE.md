@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZEVIDENCESYNCSTRICT offline evidence visit-record detail reader (VERIFY_REQUIRED, 2026-07-12; implementation `PENDING`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZEVIDENCESYNCSTRICT offline evidence visit-record detail reader (VERIFY_REQUIRED, 2026-07-12; implementation `93955963d`; shared clean-capacity build pending).
   - current task / root cause:
     Offline evidence syncがupload済みfile assetをvisit recordへ紐づける前に、visit-record detailの
     compile-time optional castからversionを読み、attachmentsはunknownのままbest-effort mergeしていた。
