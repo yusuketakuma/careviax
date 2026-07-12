@@ -249,10 +249,6 @@ describe('MyDayContent', () => {
   it('builds the assigned visits query with the current user and org header', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-10T08:00:00+09:00'));
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(new Response(JSON.stringify({ data: [] }), { status: 200 }));
-    vi.stubGlobal('fetch', fetchMock);
 
     render(<MyDayContent />);
 
@@ -260,10 +256,18 @@ describe('MyDayContent', () => {
     expect(visitsOptions.enabled).toEqual(true);
     await visitsOptions.queryFn?.();
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/visit-schedules?date_from=2026-04-10&date_to=2026-04-10&pharmacist_id=user_1',
-      { headers: { 'x-org-id': 'org_1' } },
-    );
+    expect(fetchAllCursorPagesMock).toHaveBeenCalledWith({
+      path: '/api/visit-schedules',
+      params: expect.any(URLSearchParams),
+      init: { headers: { 'x-org-id': 'org_1' } },
+      limit: 100,
+      errorMessage: '訪問スケジュールの取得に失敗しました',
+      itemSchema: expect.any(Object),
+    });
+    const params = fetchAllCursorPagesMock.mock.calls[0]?.[0].params as URLSearchParams;
+    expect(params.get('date_from')).toBe('2026-04-10');
+    expect(params.get('date_to')).toBe('2026-04-10');
+    expect(params.get('pharmacist_id')).toBe('user_1');
   });
 
   it('waits for the current user before fetching assigned visits and tasks', () => {

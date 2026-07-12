@@ -51,7 +51,6 @@ import {
   SCHEDULE_STATUS_LABELS,
   statusBadgeClass,
   timeLabel,
-  type VisitSchedule,
   VISIT_TYPE_LABELS,
 } from '@/app/(dashboard)/schedules/day-view.shared';
 import type {
@@ -77,6 +76,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { StatCard } from '@/components/ui/stat-card';
+import { myDayVisitSchema, type MyDayVisit } from './my-day-visit-schema';
 
 type Task = {
   id: string;
@@ -234,10 +234,14 @@ export function MyDayContent({
     queryFn: async () => {
       const params = new URLSearchParams({ date_from: today, date_to: today });
       if (userId) params.set('pharmacist_id', userId);
-      const res = await fetch(`/api/visit-schedules?${params.toString()}`, {
-        headers: buildOrgHeaders(orgId),
+      return fetchAllCursorPages<MyDayVisit>({
+        path: '/api/visit-schedules',
+        params,
+        init: { headers: buildOrgHeaders(orgId) },
+        limit: 100,
+        errorMessage: '訪問スケジュールの取得に失敗しました',
+        itemSchema: myDayVisitSchema,
       });
-      return readApiJson<{ data: VisitSchedule[] }>(res, '訪問スケジュールの取得に失敗しました');
     },
     enabled: !!orgId && !!userId,
   });
