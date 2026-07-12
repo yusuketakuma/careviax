@@ -82,6 +82,14 @@ import type {
   VisitVehicleResourceScheduleOption,
   VisitVehicleResourceScheduleOptionsResponse,
 } from '@/types/api/visit-vehicle-resources';
+import { visitVehicleResourcesResponseSchema } from '@/lib/visit-vehicle-resources/response-schema';
+import { buildVisitRoutePlanResponseSchema } from '../emergency-route/emergency-route-response-schema';
+import {
+  buildWeeklyOptimizerCasesResponseSchema,
+  buildWeeklyOptimizerProposalsResponseSchema,
+  buildWeeklyOptimizerShiftsResponseSchema,
+  weeklyOptimizerBillingPreviewResponseSchema,
+} from './schedule-weekly-optimizer-response-schemas';
 
 type PharmacistShift = {
   id: string;
@@ -550,7 +558,10 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch(`/api/cases?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<CaseListResponse>(response, 'ケース一覧の取得に失敗しました');
+      return readApiJson<CaseListResponse>(response, {
+        fallbackMessage: 'ケース一覧の取得に失敗しました',
+        schema: buildWeeklyOptimizerCasesResponseSchema({ limit: 100, status: 'active' }),
+      });
     },
     enabled: !!orgId,
   });
@@ -565,7 +576,10 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch(`/api/cases?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<CaseListResponse>(response, 'ケース候補の取得に失敗しました');
+      return readApiJson<CaseListResponse>(response, {
+        fallbackMessage: 'ケース候補の取得に失敗しました',
+        schema: buildWeeklyOptimizerCasesResponseSchema({ limit: 8, status: 'active' }),
+      });
     },
     enabled: !!orgId && deferredCaseSearchInput.length >= 2,
   });
@@ -594,7 +608,10 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch(`/api/visit-schedule-proposals?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: Proposal[] }>(response, '週間候補の取得に失敗しました');
+      return readApiJson<{ data: Proposal[] }>(response, {
+        fallbackMessage: '週間候補の取得に失敗しました',
+        schema: buildWeeklyOptimizerProposalsResponseSchema(dateFrom, dateTo),
+      });
     },
     enabled: !!orgId,
     invalidateOn: [{ type: 'workflow_refresh', source: SCHEDULE_PROPOSAL_WORKFLOW_SOURCES }],
@@ -610,7 +627,10 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch(`/api/pharmacist-shifts?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PharmacistShift[] }>(response, '薬剤師シフトの取得に失敗しました');
+      return readApiJson<{ data: PharmacistShift[] }>(response, {
+        fallbackMessage: '薬剤師シフトの取得に失敗しました',
+        schema: buildWeeklyOptimizerShiftsResponseSchema(dateFrom, dateTo),
+      });
     },
     enabled: !!orgId,
   });
@@ -621,10 +641,10 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch('/api/visit-vehicle-resources?available=true', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<VisitVehicleResourceScheduleOptionsResponse>(
-        response,
-        '社用車リソースの取得に失敗しました',
-      );
+      return readApiJson<VisitVehicleResourceScheduleOptionsResponse>(response, {
+        fallbackMessage: '社用車リソースの取得に失敗しました',
+        schema: visitVehicleResourcesResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -673,10 +693,10 @@ export function ScheduleWeeklyOptimizer({
       const response = await fetch(`/api/visit-schedule-proposals/billing-preview?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: VisitScheduleBillingPreview }>(
-        response,
-        '算定プレビューの取得に失敗しました',
-      );
+      const payload = await readApiJson<{ data: VisitScheduleBillingPreview }>(response, {
+        fallbackMessage: '算定プレビューの取得に失敗しました',
+        schema: weeklyOptimizerBillingPreviewResponseSchema,
+      });
       return payload.data;
     },
     enabled: !!orgId && !!selectedCaseId,
@@ -827,14 +847,16 @@ export function ScheduleWeeklyOptimizer({
           travel_mode: plannerSettings.travel_mode,
         }),
       });
-      const payload = await readApiJson<{ data?: VisitRoutePlan }>(
-        response,
-        'ルートプレビューの取得に失敗しました',
-      );
-      if (!payload.data) {
-        throw new Error('ルートプレビューの取得に失敗しました');
-      }
-      return payload.data;
+      return readApiJson<VisitRoutePlan>(response, {
+        fallbackMessage: 'ルートプレビューの取得に失敗しました',
+        schema: buildVisitRoutePlanResponseSchema({
+          expectedScheduleIds: [
+            ...selectedCellSchedules.map((schedule) => schedule.id),
+            ...selectedCellProposals.map((proposal) => `proposal:${proposal.id}`),
+          ],
+          expectedTravelMode: plannerSettings.travel_mode,
+        }),
+      });
     },
     enabled: Boolean(
       orgId &&

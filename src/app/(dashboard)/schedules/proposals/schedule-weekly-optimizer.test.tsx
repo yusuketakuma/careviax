@@ -406,9 +406,27 @@ describe('ScheduleWeeklyOptimizer', () => {
 
   it('unwraps the billing preview data envelope', async () => {
     const preview = {
+      alerts: [],
+      cadence: {
+        monthly_cap: 4,
+        current_month_count: 0,
+        remaining_month_count: 4,
+        weekly_cap: 1,
+        current_week_count: 0,
+        scheduled_dates_current_month: [],
+        next_billable_date: null,
+        suggested_dates: [],
+        reason: '算定可能',
+      },
       suggested_schedule_slot_count: 4,
       recommended_visit_type: 'regular',
       recommended_priority: 'normal',
+      effective_revision_code: '2026',
+      effective_revision_label: '2026年度',
+      site_config_status: 'resolved',
+      site_config_revision_code: '2026',
+      warnings: [],
+      home_comprehensive_preview: null,
     };
     const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ data: preview }));
     vi.stubGlobal('fetch', fetchMock);
@@ -429,6 +447,39 @@ describe('ScheduleWeeklyOptimizer', () => {
   });
 
   it('reads route preview from the standard data envelope', async () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'pharmacist-shifts') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'shift_1',
+                user_id: 'pharmacist_1',
+                site_id: 'site_1',
+                date: '2026-04-09T00:00:00.000Z',
+                available: true,
+                available_from: null,
+                available_to: null,
+                user: { id: 'pharmacist_1', name: '薬剤師A', name_kana: null },
+                site: { id: 'site_1', name: '本店' },
+              },
+            ],
+          },
+          isLoading: false,
+        };
+      }
+      return { data: undefined, isLoading: false };
+    });
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return { data: { data: [buildWeeklySchedule()] }, isLoading: false, connected: true };
+      }
+      return {
+        data: { data: [buildWeeklyProposal({ id: 'proposal_2' })] },
+        isLoading: false,
+        connected: true,
+      };
+    });
     const routePlan = {
       status: 'ok',
       note: null,
@@ -443,7 +494,13 @@ describe('ScheduleWeeklyOptimizer', () => {
     const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: routePlan }));
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<ScheduleWeeklyOptimizer />);
+    render(
+      <ScheduleWeeklyOptimizer
+        initialDate="2026-04-09"
+        initialRouteDate="2026-04-09"
+        initialRoutePharmacistId="pharmacist_1"
+      />,
+    );
 
     const routePreviewQuery = useQueryMock.mock.calls
       .map(([config]) => config as QueryConfig)
