@@ -1,12 +1,12 @@
 {
   "engine": "browser",
-  "model": "gpt-5.5-pro",
+  "model": "gpt-5.6-sol",
   "filesReport": true,
   "heartbeatSeconds": 30,
   "browser": {
     "manualLogin": true,
     "thinkingTime": "heavy",
-    "modelStrategy": "current",
+    "modelStrategy": "select",
     "archiveConversations": "auto",
     "maxConcurrentTabs": 2
   }
