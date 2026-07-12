@@ -478,6 +478,9 @@ describe('NotificationSettingsContent', () => {
                 enabled: false,
                 recipients: {},
                 created_at: '2026-06-19T10:00:00.000Z',
+                org_id: 'org_1',
+                conditions: { provider_only: true },
+                updated_at: '2026-06-19T11:00:00.000Z',
               },
             }),
             { status: 200 },
@@ -509,6 +512,9 @@ describe('NotificationSettingsContent', () => {
         }),
       );
     });
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('SMS通知を停止しました');
+    });
     expect(helperMocks.buildNotificationRuleApiPath).toHaveBeenCalledWith('rule_1');
     expect(helperMocks.buildOrgJsonHeaders).toHaveBeenCalledWith('org_1');
   });
@@ -537,6 +543,9 @@ describe('NotificationSettingsContent', () => {
                 enabled: true,
                 recipients: {},
                 created_at: '2026-06-19T10:00:00.000Z',
+                org_id: 'org_1',
+                conditions: { provider_only: true },
+                updated_at: '2026-06-19T11:00:00.000Z',
               },
             }),
             { status: 201 },
@@ -573,7 +582,58 @@ describe('NotificationSettingsContent', () => {
         }),
       );
     });
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('SMS通知を有効化しました');
+    });
     expect(helperMocks.buildOrgJsonHeaders).toHaveBeenCalledWith('org_1');
+  });
+
+  it.each([
+    ['legacy success root', { message: '通知設定を保存しました' }],
+    ['malformed rule item', { data: { ...NOTIFICATION_RULE, enabled: 'yes' } }],
+    [
+      'missing rule field',
+      {
+        data: {
+          id: NOTIFICATION_RULE.id,
+          event_type: NOTIFICATION_RULE.event_type,
+          enabled: true,
+          recipients: {},
+          created_at: NOTIFICATION_RULE.created_at,
+        },
+      },
+    ],
+  ])('fails closed on %s notification-rule mutation responses', async (_label, payload) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === '/__test__/notification-rules' && !init?.method) {
+          return new Response(JSON.stringify(EMPTY_NOTIFICATION_RULES_RESPONSE), { status: 200 });
+        }
+
+        if (url === '/__test__/escalation-rules' && !init?.method) {
+          return new Response(JSON.stringify(EMPTY_ESCALATION_RULES_RESPONSE), { status: 200 });
+        }
+
+        if (url === '/__test__/notification-rules' && init?.method === 'POST') {
+          return new Response(JSON.stringify(payload), { status: 201 });
+        }
+
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    render(<NotificationSettingsContent />);
+
+    const smsLabel = (await screen.findAllByText('SMS'))[0].closest('label');
+    expect(smsLabel).toBeTruthy();
+    fireEvent.click(within(smsLabel as HTMLElement).getByRole('checkbox'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('通知設定の保存に失敗しました');
+    });
   });
 
   it('delegates escalation rule toggles to shared path and JSON-header helpers', async () => {

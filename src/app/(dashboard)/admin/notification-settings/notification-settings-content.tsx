@@ -62,7 +62,9 @@ import {
   type EscalationRulesResponse,
 } from '@/lib/escalation-rules/response-schema';
 import {
+  notificationRuleResponseSchema,
   notificationRulesResponseSchema,
+  type NotificationRuleResponse,
   type NotificationRulesResponse,
 } from '@/lib/notification-rules/response-schema';
 import { PageScaffold } from '@/components/layout/page-scaffold';
@@ -71,10 +73,6 @@ import { parseEscalationThresholdHoursInput } from './escalation-threshold';
 type NotificationRule = NotificationRulesResponse['data'][number];
 
 type EscalationRule = EscalationRulesResponse['data'][number];
-
-type NotificationRuleResponse = {
-  data: NotificationRule;
-};
 
 type EscalationListMeta = {
   totalCount: number;
@@ -474,10 +472,10 @@ export function NotificationSettingsContent() {
             ),
           },
         );
-        const payload = await readApiJson<NotificationRuleResponse>(
-          response,
-          '通知設定の保存に失敗しました',
-        );
+        const payload = await readApiJson<NotificationRuleResponse>(response, {
+          fallbackMessage: '通知設定の保存に失敗しました',
+          schema: notificationRuleResponseSchema,
+        });
         const nextRule = payload.data;
         setRules((prev) => {
           if (!existing) {

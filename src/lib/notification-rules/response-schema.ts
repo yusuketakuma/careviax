@@ -94,4 +94,11 @@ export const notificationRulesResponseSchema = z
     }
   });
 
+export const notificationRuleResponseSchema = z
+  .object({
+    data: notificationRuleSchema,
+  })
+  .strict();
+
 export type NotificationRulesResponse = z.infer<typeof notificationRulesResponseSchema>;
+export type NotificationRuleResponse = z.infer<typeof notificationRuleResponseSchema>;
