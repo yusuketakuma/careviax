@@ -313,12 +313,6 @@
       }
     },
     {
-      "path": "src/components/features/patients/patient-history-summary.tsx",
-      "counts": {
-        "stringFallback": 2
-      }
-    },
-    {
       "path": "src/components/features/visits/visit-medication-stock-observation-panel.tsx",
       "counts": {
         "stringFallback": 1

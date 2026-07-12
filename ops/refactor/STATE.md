@@ -51,6 +51,36 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZHISTORYSTRICT patient prescription/visit history summary readers (VERIFY_REQUIRED, 2026-07-12; pending commit/push and shared clean-capacity build).
+  - current task / root cause:
+    Patient history summaryの処方/訪問readerがcompile-time castsだけを信頼し、legacy/wrong envelope、duplicate/
+    reverse-ordered rows、pagination drift、unknown visit outcomeを直近過去歴へ流し得た。両providerはlimit=5、
+    assignment/org scope、sensitive no-store、新しい順を既に強制するが、処方はnested body/camel cursor、訪問は
+    standard `{ data, meta }` と異なる契約を持つ。
+  - implementation / medical-privacy boundary:
+    専用2 schemasでnested prescription envelopeとvisit envelopeを個別検証し、5件上限、identity一意、
+    prescribed/visit date降順、cursor/has-more relation、truncated page full-size、visit outcome enum、bounded
+    summary textを固定した。検証後は画面が使うprescription id/date/prescriber/drug namesとvisit
+    id/date/outcome/assessment/next suggestionだけへ投影し、patient identity、diff review、cycle/line internals、
+    subjective/objective/plan等をquery cacheからstripした。Write、assignment/tenant/no-store、stale-after-refetch、
+    independent error recovery、shared links、UIは変更していない。Visual reconstructionではないため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/components/features/patients/patient-history-summary-response-schema.ts`,
+    `src/components/features/patients/patient-history-summary.tsx`,
+    `src/components/features/patients/patient-history-summary.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer + prescription/visit provider Vitest passed 3 files / 121 tests. Exact ESLint with
+    `--max-warnings=0`, Prettier, and diff-check passed. `pnpm client-json-schema:check` passed at 206 schema-backed /
+    165 allowlisted schema-less calls / 56 files; frontend contract, module boundary, aggregate typecheck, 8GB
+    no-unused typecheck, client PHI-log, API response shape, and colors passed. Full build was NOT_EXECUTED because the
+    shared clean-capacity gate remains unresolved; no generated cache was deleted or modified.
+  - security / performance / remaining:
+    Malformed history cannot fabricate the previous medication/visit context, and cached PHI fields are materially
+    reduced. Request count, provider take/query, render behavior, and dependencies are unchanged. A clean-capacity
+    runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZREFLECTEDSTRICT visit reflected-fields provenance reader/path (VERIFY_REQUIRED, 2026-07-12; implementation `8c6ef6905`, ledger `4258ad5c2`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Visit recordの「患者詳細へ反映した項目」cardがcompile-time service typeだけを信頼し、legacy root、

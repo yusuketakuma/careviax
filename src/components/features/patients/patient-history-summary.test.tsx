@@ -327,7 +327,9 @@ describe('PatientHistorySummary', () => {
     });
 
     it('routes the prescriptions summary fetch through the shared patient API path helper', async () => {
-      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { data: [] } })));
+      const fetchMock = vi.fn(
+        async () => new Response(JSON.stringify({ data: { data: [], hasMore: false } })),
+      );
       vi.stubGlobal('fetch', fetchMock);
       vi.mocked(buildPatientApiPath).mockReturnValueOnce(
         '/api/patients/__helper_pt__/prescriptions',
@@ -395,6 +397,161 @@ describe('PatientHistorySummary', () => {
       );
 
       vi.unstubAllGlobals();
+    });
+
+    it('validates and minimizes prescription and visit history responses', async () => {
+      const queryFns: Record<string, () => Promise<unknown>> = {};
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/prescriptions')) {
+          return new Response(
+            JSON.stringify({
+              data: {
+                patient: { id: 'patient_1', name: '患者名' },
+                data: [
+                  {
+                    id: 'intake_1',
+                    prescribed_date: '2026-04-20T00:00:00.000Z',
+                    prescriber_name: '佐藤医師',
+                    lines: [
+                      {
+                        id: 'line_1',
+                        drug_name: '薬A',
+                        dose: '1錠',
+                        notes: 'provider-only note',
+                      },
+                    ],
+                    cycle_id: 'cycle_1',
+                  },
+                ],
+                hasMore: false,
+                diff_review: { provider_only: true },
+              },
+            }),
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'visit_1',
+                visit_date: '2026-04-10T10:00:00.000Z',
+                outcome_status: 'completed',
+                soap_assessment: '継続可',
+                next_visit_suggestion_date: null,
+                patient_id: 'provider-only-patient',
+                soap_subjective: 'provider-only subjective',
+              },
+            ],
+            meta: { has_more: false, next_cursor: null },
+          }),
+        );
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      useOrgIdMock.mockReturnValue('org_1');
+      useQueryMock.mockImplementation(
+        ({ queryKey, queryFn }: { queryKey: string[]; queryFn: () => Promise<unknown> }) => {
+          queryFns[queryKey[0]] = queryFn;
+          return { data: { data: [] }, isLoading: false, error: null };
+        },
+      );
+
+      try {
+        render(<PatientHistorySummary patientId="patient_1" />);
+
+        await expect(queryFns['patient-history-summary-prescriptions']?.()).resolves.toEqual({
+          data: [
+            {
+              id: 'intake_1',
+              prescribed_date: '2026-04-20T00:00:00.000Z',
+              prescriber_name: '佐藤医師',
+              lines: [{ drug_name: '薬A', dose: '1錠' }],
+            },
+          ],
+        });
+        await expect(queryFns['patient-history-summary-visits']?.()).resolves.toEqual({
+          data: [
+            {
+              id: 'visit_1',
+              visit_date: '2026-04-10T10:00:00.000Z',
+              outcome_status: 'completed',
+              soap_assessment: '継続可',
+              next_visit_suggestion_date: null,
+            },
+          ],
+        });
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    });
+
+    it('rejects malformed, duplicate, reverse-ordered, or inconsistent history pages', async () => {
+      const queryFns: Record<string, () => Promise<unknown>> = {};
+      useOrgIdMock.mockReturnValue('org_1');
+      useQueryMock.mockImplementation(
+        ({ queryKey, queryFn }: { queryKey: string[]; queryFn: () => Promise<unknown> }) => {
+          queryFns[queryKey[0]] = queryFn;
+          return { data: { data: [] }, isLoading: false, error: null };
+        },
+      );
+      render(<PatientHistorySummary patientId="patient_1" />);
+
+      const prescription = {
+        id: 'intake_1',
+        prescribed_date: '2026-04-20T00:00:00.000Z',
+        prescriber_name: null,
+        lines: [],
+      };
+      const visit = {
+        id: 'visit_1',
+        visit_date: '2026-04-10T10:00:00.000Z',
+        outcome_status: 'completed',
+        soap_assessment: null,
+        next_visit_suggestion_date: null,
+      };
+      const cases = [
+        {
+          key: 'patient-history-summary-prescriptions',
+          payload: { prescriptions: [prescription] },
+        },
+        {
+          key: 'patient-history-summary-prescriptions',
+          payload: {
+            data: { data: [prescription, prescription], hasMore: false },
+          },
+        },
+        {
+          key: 'patient-history-summary-visits',
+          payload: {
+            data: [
+              { ...visit, id: 'visit_old', visit_date: '2026-04-01T00:00:00.000Z' },
+              { ...visit, id: 'visit_new', visit_date: '2026-04-10T00:00:00.000Z' },
+            ],
+            meta: { has_more: false, next_cursor: null },
+          },
+        },
+        {
+          key: 'patient-history-summary-visits',
+          payload: {
+            data: [visit],
+            meta: { has_more: true, next_cursor: null },
+          },
+        },
+      ];
+
+      try {
+        for (const testCase of cases) {
+          vi.stubGlobal(
+            'fetch',
+            vi.fn(async () => new Response(JSON.stringify(testCase.payload), { status: 200 })),
+          );
+          await expect(queryFns[testCase.key]?.()).rejects.toThrow(/履歴の取得に失敗しました/);
+        }
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
     });
 
     it('all four browser links consume the shared helper return values', () => {

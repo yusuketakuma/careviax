@@ -15,33 +15,14 @@ import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildVisitHref } from '@/lib/visits/navigation';
+import {
+  patientHistoryPrescriptionsResponseSchema,
+  patientHistoryVisitsResponseSchema,
+} from './patient-history-summary-response-schema';
 
 type PrescriptionSummaryLine = {
   drug_name: string;
   dose?: string | null;
-};
-
-type PrescriptionSummaryItem = {
-  id: string;
-  prescribed_date: string;
-  prescriber_name: string | null;
-  lines: PrescriptionSummaryLine[];
-};
-
-type VisitSummaryItem = {
-  id: string;
-  visit_date: string;
-  outcome_status: string;
-  soap_assessment: string | null;
-  next_visit_suggestion_date: string | null;
-};
-
-type PatientPrescriptionsResponse = {
-  data: PrescriptionSummaryItem[];
-};
-
-type PatientVisitsResponse = {
-  data: VisitSummaryItem[];
 };
 
 type PatientHistorySummaryProps = {
@@ -73,11 +54,10 @@ export function PatientHistorySummary({
       const response = await fetch(`${buildPatientApiPath(patientId, '/prescriptions')}?limit=5`, {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: PatientPrescriptionsResponse }>(
-        response,
-        '処方履歴の取得に失敗しました',
-      );
-      return payload.data;
+      return readApiJson(response, {
+        fallbackMessage: '処方履歴の取得に失敗しました',
+        schema: patientHistoryPrescriptionsResponseSchema,
+      });
     },
     enabled: Boolean(orgId && patientId),
   });
@@ -89,7 +69,10 @@ export function PatientHistorySummary({
       const response = await fetch(`/api/visit-records?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PatientVisitsResponse>(response, '訪問履歴の取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '訪問履歴の取得に失敗しました',
+        schema: patientHistoryVisitsResponseSchema,
+      });
     },
     enabled: Boolean(orgId && patientId),
   });
