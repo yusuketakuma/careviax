@@ -89,10 +89,13 @@ import {
   bulkFormularyResponseSchema,
   drugMasterDetailResponseSchema,
   drugMasterImportLogsResponseSchema,
-  formularyImpactResponseSchema,
   formularyCopyResponseSchema,
-  formularyTemplateItemSchema,
+  formularyImpactResponseSchema,
+  formularyRequestDecisionResponseSchema,
+  formularyReviewResponseSchema,
+  formularySafetyFollowUpResponseSchema,
   formularyTemplateApplyResponseSchema,
+  formularyTemplateItemSchema,
   formularyTemplateListResponseSchema,
   formularyUsageMismatchResponseSchema,
   genericCandidatePageSchema,
@@ -136,7 +139,6 @@ import type {
   ImportAction,
   OfficialImportPreviewData,
   OfficialImportPreviewState,
-  PharmacyDrugStockConfig,
   PharmacyDrugStockHistoryItem,
 } from './drug-master-content-types';
 
@@ -1130,17 +1132,23 @@ function DrugMasterOperationalContent({
           decision_note: payload.decision_note ?? null,
         }),
       });
-      const body = await readApiJson<{
-        data: {
-          request: FormularyChangeRequestItem;
-          stock: PharmacyDrugStockConfig | null;
-        };
-      }>(res, '採用品変更申請の決裁に失敗しました');
-      return body.data;
+      const body = await readApiJson(res, {
+        fallbackMessage: '採用品変更申請の決裁に失敗しました',
+        schema: formularyRequestDecisionResponseSchema,
+      });
+      const expectedStatus = payload.decision === 'approve' ? 'approved' : 'rejected';
+      if (
+        body.requestId !== payload.request_id ||
+        body.siteId !== effectiveSelectedSiteId ||
+        body.status !== expectedStatus
+      ) {
+        throw new Error('採用品変更申請の決裁に失敗しました');
+      }
+      return { status: body.status };
     },
     onSuccess: async (result) => {
       toast.success(
-        result.request.status === 'approved'
+        result.status === 'approved'
           ? '採用品変更申請を承認しました'
           : '採用品変更申請を却下しました',
       );
@@ -1450,10 +1458,13 @@ function DrugMasterOperationalContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ site_id: effectiveSelectedSiteId }),
       });
-      const body = await readApiJson<{ data: { reviewedCount: number } }>(
-        res,
-        '採用薬レビューの記録に失敗しました',
-      );
+      const body = await readApiJson(res, {
+        fallbackMessage: '採用薬レビューの記録に失敗しました',
+        schema: formularyReviewResponseSchema,
+      });
+      if (body.siteId !== effectiveSelectedSiteId) {
+        throw new Error('採用薬レビューの記録に失敗しました');
+      }
       return body.data;
     },
     onSuccess: async (result) => {
@@ -1480,13 +1491,13 @@ function DrugMasterOperationalContent({
           due_in_days: 30,
         }),
       });
-      const body = await readApiJson<{
-        data: {
-          matchedCount: number;
-          updatedCount: number;
-          skippedUnresolvedCount: number;
-        };
-      }>(res, '安全性フォローアップの作成に失敗しました');
+      const body = await readApiJson(res, {
+        fallbackMessage: '安全性フォローアップの作成に失敗しました',
+        schema: formularySafetyFollowUpResponseSchema,
+      });
+      if (body.siteId !== effectiveSelectedSiteId || body.queue !== 'all' || body.dryRun) {
+        throw new Error('安全性フォローアップの作成に失敗しました');
+      }
       return body.data;
     },
     onSuccess: async (result) => {

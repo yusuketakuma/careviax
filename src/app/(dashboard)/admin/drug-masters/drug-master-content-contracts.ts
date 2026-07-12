@@ -1202,6 +1202,108 @@ export const bulkFormularyResponseSchema = z
     },
   }));
 
+const formularyDecisionRequestSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    site_id: z.string().trim().min(1),
+    drug_master_id: z.string().trim().min(1),
+    status: z.enum(['approved', 'rejected']),
+  })
+  .strip();
+
+const formularyRequestDecisionDataSchema = z
+  .object({
+    request: formularyDecisionRequestSchema,
+    stock: z.unknown().nullable(),
+  })
+  .strict()
+  .superRefine((data, context) => {
+    const stockIsObject =
+      typeof data.stock === 'object' && data.stock !== null && !Array.isArray(data.stock);
+    if (
+      (data.request.status === 'approved' && !stockIsObject) ||
+      (data.request.status === 'rejected' && data.stock !== null)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['stock'],
+        message: 'Formulary decision stock result does not match its status',
+      });
+    }
+  });
+
+export const formularyRequestDecisionResponseSchema = z
+  .object({ data: formularyRequestDecisionDataSchema })
+  .strict()
+  .transform(({ data }) => ({
+    requestId: data.request.id,
+    siteId: data.request.site_id,
+    drugMasterId: data.request.drug_master_id,
+    status: data.request.status,
+  }));
+
+const formularyReviewDataSchema = z
+  .object({
+    site: formularyOperationSiteSchema,
+    reviewedCount: z.number().int().nonnegative(),
+    reviewedAt: z.string().datetime().optional(),
+  })
+  .strip()
+  .superRefine((data, context) => {
+    if (data.reviewedCount > 0 && !data.reviewedAt) {
+      context.addIssue({
+        code: 'custom',
+        path: ['reviewedAt'],
+        message: 'A non-empty formulary review requires its timestamp',
+      });
+    }
+  });
+
+export const formularyReviewResponseSchema = z
+  .object({ data: formularyReviewDataSchema })
+  .strict()
+  .transform(({ data }) => ({
+    siteId: data.site.id,
+    data: { reviewedCount: data.reviewedCount },
+  }));
+
+const formularySafetyQueueSchema = z.enum(['all', 'high_risk', 'lasa_risk', 'controlled']);
+
+const formularySafetyFollowUpDataSchema = z
+  .object({
+    site: formularyOperationSiteSchema,
+    queue: formularySafetyQueueSchema,
+    matchedCount: z.number().int().nonnegative(),
+    updatedCount: z.number().int().nonnegative(),
+    skippedUnresolvedCount: z.number().int().nonnegative(),
+    dueDate: z.string().datetime(),
+    dryRun: z.boolean(),
+  })
+  .strip()
+  .superRefine((data, context) => {
+    if (data.updatedCount > data.matchedCount || (data.dryRun && data.updatedCount !== 0)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['updatedCount'],
+        message: 'Formulary safety follow-up counts are inconsistent',
+      });
+    }
+  });
+
+export const formularySafetyFollowUpResponseSchema = z
+  .object({ data: formularySafetyFollowUpDataSchema })
+  .strict()
+  .transform(({ data }) => ({
+    siteId: data.site.id,
+    queue: data.queue,
+    dryRun: data.dryRun,
+    data: {
+      matchedCount: data.matchedCount,
+      updatedCount: data.updatedCount,
+      skippedUnresolvedCount: data.skippedUnresolvedCount,
+    },
+  }));
+
 export type BulkPreviewResponse = z.infer<typeof bulkFormularyResponseSchema>['data'];
 export type DrugMasterDetail = z.infer<typeof drugMasterDetailSchema>;
 export type FormularyCopyPreviewResponse = z.infer<typeof formularyCopyResponseSchema>['data'];

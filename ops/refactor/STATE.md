@@ -46805,3 +46805,31 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   entry. It was pushed to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and
   untracked personal artifacts were excluded, and the feature branch does not match the `main`-only production deploy
   trigger.
+
+## 2026-07-12 API-CONTRACT-001FZFORMULARYOUTCOMESTRICT — formulary workflow outcome contracts (DONE)
+
+- current task / root cause:
+  The drug-master change-request decision, periodic review, and safety follow-up mutation readers trusted compile-time
+  response casts. A result for another request or site, a status/stock result that contradicted the requested decision,
+  a review count without its provider timestamp, or impossible follow-up update counts could therefore be reported as
+  successful and trigger downstream cache invalidation. Full request, stock, site, and due-date provider objects were
+  also retained although the success UI consumes only status or counts.
+- implementation / verification:
+  Added consumed runtime schemas for all three outcomes. Decision parsing verifies approved versus rejected stock
+  presence and the reader checks request ID, selected site, and requested status. Review parsing checks the selected
+  site and requires a timestamp for nonempty review updates. Safety follow-up parsing verifies queue, dry-run mode,
+  selected site, and `updatedCount <= matchedCount`. All responses are minimized before entering mutation state. Three
+  regressions failed before implementation and passed afterward; consumer plus decision/review/safety providers passed
+  4 files / 148 tests. Aggregate typecheck passed. The 8 GB no-unused gate identified and removed the now-obsolete
+  `PharmacyDrugStockConfig` consumer import, then passed. Exact ESLint/Prettier, API response-shape, frontend contract,
+  client PHI-log/display, module-boundary, active Plans, client-schema, and diff gates passed. The client-schema
+  ratchet improved from 144 schema-backed / 230 allowlisted schema-less / 92 files to 147 / 227 / 92. Full build was
+  not repeated after the existing compile-stage memory limitation; no new build hypothesis remains after both
+  typecheck gates passed. No provider, DB, auth/authz, tenant, audit, mutation calculation, clinical selection logic,
+  or visual layout changed. Browser and image generation were omitted because this is a non-visual fail-closed
+  response-contract and state-minimization repair covered at direct consumer and provider boundaries. Rollback is the
+  three schemas, reader adapters, synchronized fixtures, three regressions, and client-schema ratchet hunk.
+- commit / push:
+  Pending scoped commit and push to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes
+  and untracked personal artifacts remain excluded, and the feature branch does not match the `main`-only production
+  deploy trigger.

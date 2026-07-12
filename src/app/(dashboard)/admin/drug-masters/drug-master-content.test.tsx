@@ -312,9 +312,9 @@ vi.mock('@tanstack/react-query', () => ({
           recent_changes: [],
           totals: {
             stocked_count: 0,
-            review_due_count: 0,
+            review_due_count: 1,
             missing_reorder_point_count: 0,
-            safety_flagged_count: 0,
+            safety_flagged_count: 1,
             high_risk_count: 2,
             lasa_risk_count: 1,
             controlled_count: 1,
@@ -1478,7 +1478,20 @@ describe('DrugMasterContent', () => {
           },
         });
       }
-      return jsonResponse({ data: { request: { status: 'approved' }, stock: null } }, 200);
+      return jsonResponse(
+        {
+          data: {
+            request: {
+              id: requestId,
+              site_id: 'site_1',
+              drug_master_id: 'drug_1',
+              status: 'approved',
+            },
+            stock: { id: 'stock_1' },
+          },
+        },
+        200,
+      );
     });
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
@@ -1782,6 +1795,106 @@ describe('DrugMasterContent', () => {
     try {
       await expect(runCurrentMutation({ dryRun: true })).rejects.toThrow(
         '採用品テンプレートの適用に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a successful formulary decision returned for another request', async () => {
+    pendingRequestsMock.mockReturnValue([
+      {
+        id: 'request_1',
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        status: 'pending',
+        action_type: 'adopt',
+        requested_payload: { is_stocked: true },
+        reason: '新規採用候補',
+        created_at: '2026-05-27T00:00:00.000Z',
+      },
+    ]);
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '承認' }));
+    fireEvent.click(screen.getByRole('button', { name: '承認' }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: {
+            request: {
+              id: 'request_other',
+              site_id: 'site_1',
+              drug_master_id: 'drug_1',
+              status: 'approved',
+            },
+            stock: { id: 'stock_1' },
+          },
+        }),
+      ),
+    );
+    try {
+      await expect(
+        runCurrentMutation({
+          request_id: 'request_1',
+          decision: 'approve',
+          decision_note: null,
+        }),
+      ).rejects.toThrow('採用品変更申請の決裁に失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a successful formulary review returned for another site', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const reviewButton = screen.getByRole('button', { name: 'レビュー済み' });
+    fireEvent.click(reviewButton);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: {
+            site: { id: 'site_2', name: '別拠点' },
+            reviewedCount: 1,
+            reviewedAt: '2026-07-12T00:00:00.000Z',
+          },
+        }),
+      ),
+    );
+    try {
+      await expect(runCurrentMutation()).rejects.toThrow('採用薬レビューの記録に失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a successful safety follow-up with impossible update counts', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const followUpButton = screen.getByRole('button', { name: '安全性フォローアップ作成' });
+    fireEvent.click(followUpButton);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: {
+            site: { id: 'site_1', name: '本店' },
+            queue: 'all',
+            matchedCount: 1,
+            updatedCount: 2,
+            skippedUnresolvedCount: 0,
+            dueDate: '2026-08-11T00:00:00.000Z',
+            dryRun: false,
+          },
+        }),
+      ),
+    );
+    try {
+      await expect(runCurrentMutation()).rejects.toThrow(
+        '安全性フォローアップの作成に失敗しました',
       );
     } finally {
       vi.unstubAllGlobals();
