@@ -1,4 +1,4 @@
-import type { CockpitAuditQueueItem, DashboardCockpitResponse } from '@/types/dashboard-cockpit';
+import type { CockpitAuditQueueItem, CockpitVisit } from '@/types/dashboard-cockpit';
 import { formatElapsedLabel } from '@/lib/datetime/relative-time';
 import { formatTimeOfDay as formatDailyOpsTime } from '@/lib/datetime/time-of-day';
 import { familyNameOf } from '@/lib/utils/person-name';
@@ -17,7 +17,12 @@ export { formatDailyOpsTime };
 /** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間表示)。 */
 export const formatDailyOpsAgeLabel = formatElapsedLabel;
 
-function describeTopAudit(topAudit: CockpitAuditQueueItem, data: DashboardCockpitResponse): string {
+type DailyOpsCockpitSource = {
+  audit_queue: CockpitAuditQueueItem[];
+  today_visits: CockpitVisit[];
+};
+
+function describeTopAudit(topAudit: CockpitAuditQueueItem, data: DailyOpsCockpitSource): string {
   const visit = data.today_visits.find(
     (candidate) => candidate.patient_name === topAudit.patient_name && candidate.time_start,
   );
@@ -69,7 +74,7 @@ type DailyOpsBlockedReasonsSource = {
  * 無ければ画面ごとのフォールバックを返す。
  */
 export function buildDailyOpsNextAction(
-  data: DashboardCockpitResponse | null,
+  data: DailyOpsCockpitSource | null,
   fallback: DailyOpsNextActionFallback,
 ): DailyOpsNextAction {
   const topAudit = data?.audit_queue[0] ?? null;

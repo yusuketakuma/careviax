@@ -51,6 +51,34 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZINTAKETRIAGESTRICT prescription intake triage readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Prescription Intake Triageのqueueとcockpit right-rail GET readersはcompile-time castだけで、重複identity、
+    reverse order、lane/decision/duplicate notice集計drift、不正status/action/OCR confidence、unsafe action URLを
+    operational stateへ流し得た。Cockpit readerは画面が3領域しか使わないのにfull PHI-bearing aggregateをcacheし、
+    fixtureもacceptance pendingとduplicate suspected各1件に対してdecision count 1という不整合を含んでいた。
+  - implementation / medication-safety boundary:
+    Triage strict schemaでrow/lane/decision/duplicate/evidence invariantsを検証。Cockpit consumed schemaはaudit queue、
+    today visits、blocked reasonsだけをvalidate/projectし、未使用comments/counts/team metadataをcache前に除去した。
+    Daily Ops helperを必要最小structural sourceへ狭めた。取込処理、重複判定、OCR confidence heuristic、provider、
+    auth/tenant/RLS/DB/UIは変更していない。非visual parser/privacy境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/prescriptions/intake-triage-response-schema.ts`,
+    `src/lib/prescriptions/intake-triage-response-schema.test.ts`,
+    `src/app/(dashboard)/prescriptions/intake/intake-triage-content.tsx`,
+    `src/app/(dashboard)/prescriptions/intake/intake-triage-content.test.tsx`,
+    `src/lib/workspace/daily-ops-rail.ts`, `tools/client-json-schema-allowlist.json`, `Plans.md`,
+    `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/provider/helper Vitest passed 4 files / 34 tests. Exact ESLint, Prettier, aggregate typecheck,
+    8GB no-unused typecheck, client schema (260 backed / 103 allowlisted / 26 files), frontend contract, module boundary,
+    client PHI-log, API response shape, colors, and diff-check passed. Full build was NOT_EXECUTED because only about
+    2.5 GiB free remains after the shared `.next/cache` capacity failure; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed queue/right-rail data now fails closed and unused cockpit fields no longer persist in this query cache.
+    Network/DB query count, triage/OCR calculations, auth/tenant/RLS, render behavior, and dependencies are unchanged.
+    A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZINTERVENTIONSTRICT medication intervention readers (VERIFY_REQUIRED, 2026-07-13; implementation `c3db5e73f`, ledger `92c180066`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Medication Intervention Panelの患者/服薬課題別GETとPOST結果readerはcompile-time castだけで、別患者/別課題、

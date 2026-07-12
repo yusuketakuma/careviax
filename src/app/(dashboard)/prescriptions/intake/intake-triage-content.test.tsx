@@ -60,7 +60,7 @@ function buildTriageFixture(): IntakeTriageResponse {
   return {
     generated_at: localIso(2026, 5, 11, 9, 42),
     new_today_count: 2,
-    needs_decision_count: 1,
+    needs_decision_count: 2,
     lane_counts: { fax: 3, online: 1, walk_in: 1 },
     rows: [
       buildRow({
@@ -226,7 +226,7 @@ describe('IntakeTriageContent', () => {
 
     // ヘッダー: 見出し + 新着/確認待ちサマリ + 手動取込(outline)
     expect(screen.getByRole('heading', { name: '処方取込', level: 1 })).toBeTruthy();
-    expect(screen.getByText(/新着2件・確認待ち1件/)).toBeTruthy();
+    expect(screen.getByText(/新着2件・確認待ち2件/)).toBeTruthy();
     const manualLink = screen.getByTestId('intake-manual-entry-link');
     expect(manualLink.getAttribute('href')).toBe('/prescriptions/new');
     expect(manualLink.className).toContain('!min-h-11');
@@ -335,7 +335,12 @@ describe('IntakeTriageContent', () => {
           headers: { 'content-type': 'application/json' },
         }),
       );
-      await expect(captured[1]?.queryFn()).resolves.toStrictEqual(buildCockpitFixture());
+      const cockpit = buildCockpitFixture();
+      await expect(captured[1]?.queryFn()).resolves.toStrictEqual({
+        audit_queue: cockpit.audit_queue,
+        today_visits: cockpit.today_visits,
+        blocked_reasons: cockpit.blocked_reasons,
+      });
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/dashboard/cockpit');
       expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).toEqual({

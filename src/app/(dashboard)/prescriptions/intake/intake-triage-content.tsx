@@ -18,6 +18,11 @@ import {
   type EvidenceItem,
 } from '@/components/features/workspace/action-rail';
 import { readApiJson } from '@/lib/api/client-json';
+import {
+  intakeCockpitResponseSchema,
+  intakeTriageResponseSchema,
+  type IntakeCockpitData,
+} from '@/lib/prescriptions/intake-triage-response-schema';
 import { PROCESS_STEPS_9 } from '@/lib/prescription/cycle-workspace';
 import {
   buildDailyOpsBlockedReasons,
@@ -28,7 +33,6 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { cn } from '@/lib/utils';
 import { clientLog } from '@/lib/utils/client-log';
-import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import {
   INTAKE_ACTION_PRESENTATIONS,
   INTAKE_LANE_BADGE_CLASSES,
@@ -53,21 +57,21 @@ async function fetchIntakeTriage(orgId: string): Promise<IntakeTriageResponse> {
   const res = await fetch('/api/prescription-intakes/triage', {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: IntakeTriageResponse }>(
-    res,
-    '取込キューの取得に失敗しました',
-  );
+  const json = await readApiJson<{ data: IntakeTriageResponse }>(res, {
+    fallbackMessage: '取込キューの取得に失敗しました',
+    schema: intakeTriageResponseSchema,
+  });
   return json.data;
 }
 
-async function fetchCockpit(orgId: string): Promise<DashboardCockpitResponse> {
+async function fetchCockpit(orgId: string): Promise<IntakeCockpitData> {
   const res = await fetch('/api/dashboard/cockpit', {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: DashboardCockpitResponse }>(
-    res,
-    '当日オペレーション状態の取得に失敗しました',
-  );
+  const json = await readApiJson<{ data: IntakeCockpitData }>(res, {
+    fallbackMessage: '当日オペレーション状態の取得に失敗しました',
+    schema: intakeCockpitResponseSchema,
+  });
   return json.data;
 }
 
