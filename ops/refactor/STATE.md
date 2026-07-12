@@ -47045,6 +47045,41 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZINVENTORYFORECAST — (DONE)
+
+- current task / root cause:
+  The admin inventory forecast GET reader still trusted a compile-time cast before using medication demand, registered
+  stock evidence, shortage status, affected-patient cards, run-out basis, and urgency. A malformed or contradictory 2xx
+  could therefore show false stock availability, unsupported shortage evidence, or a mismatched patient/facility scope.
+- implementation:
+  Added a strict forecast response schema and connected the reader. It validates week ordering, unique drug/patient/
+  unresolved identities, nonnegative quantities/counts, stock registration-to-evidence consistency, zero stock for a
+  missing adopted record, patient versus facility scope, run-out date/basis consistency, unique shortage labels, and
+  patient shortage-detail references to forecast drugs. Removed the reader allowlist entry.
+- fixture findings / repair:
+  The first focused run failed four UI tests because legacy fixtures omitted the provider-required `unresolvedDrugs`,
+  used non-empty shortage labels with empty evidence details, and marked a `sufficient` drug as a facility shortage.
+  The schema was not weakened. Fixtures were aligned to the route contract with explicit shortage details and the
+  duplicate-label assertion was updated after both patient and facility cards correctly showed the same shortage drug.
+- validation:
+  Consumer/provider/pure forecast suites pass 3 files / 42 tests; direct schema regressions pass 1 file / 5 tests for
+  legacy root, reversed week, duplicate identity, and contradictory stock evidence. Exact ESLint/Prettier, aggregate
+  typecheck, 8 GB no-unused typecheck, client JSON schema, frontend contract, API shape, module boundaries, PHI client
+  log/display, colors, typography, Plans, serialized production build, and diff gates pass. Inventory improved to 191
+  schema-backed / 182 allowlisted calls across 68 files. With the temporary cache-disable hook used only to avoid the
+  known `.next/cache` ENOSPC issue, Next 16.2.9 compiled in 84 seconds, TypeScript finished in 50 seconds, and 311/311
+  static pages generated. The build completed with only the two pre-existing CSS optimizer warnings; the hook was
+  reverted and `next.config.ts` has no final diff.
+- scope / safety:
+  No DB query, forecast algorithm, prescription/stock calculation, auth/authz, tenant boundary, PHI source, mutation,
+  or visual behavior changed. This non-visual contract slice did not require `gpt-image-2`.
+- commit / landing:
+  Implementation commit `b8609e667` and test commit `a5cfc76c2` contain only the consumer/fixture, shared schema/tests,
+  and allowlist paths. Ledger commit and safe feature-branch push follow; unrelated dirty/untracked artifacts
+  remain excluded.
+- next action:
+  Close and push this slice, then resume the remaining allowlist/cursor scan.
+
 ## 2026-07-12 API-CONTRACT-001FZBILLINGANALYTICS — (DONE)
 
 - current task / root cause:
