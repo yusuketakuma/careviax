@@ -15,37 +15,10 @@ import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state'
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-
-type AnalyticsResponse = {
-  summary: {
-    ssot_rule_count: number;
-    current_month: string;
-    current_month_candidates: number;
-    current_month_review_pending: number;
-    current_month_claimable_rate: number;
-    current_month_close_rate: number;
-    current_month_exported: number;
-  };
-  monthly_trend: Array<{
-    month: string;
-    total_candidates: number;
-    review_pending: number;
-    confirmed: number;
-    excluded: number;
-    exported: number;
-    claimable_evidence: number;
-    unclaimable_evidence: number;
-  }>;
-  blocker_reasons: Array<{
-    reason: string;
-    count: number;
-  }>;
-  top_codes: Array<{
-    billing_code: string;
-    billing_name: string;
-    count: number;
-  }>;
-};
+import {
+  billingEvidenceAnalyticsResponseSchema,
+  type BillingEvidenceAnalyticsResponse,
+} from '@/lib/billing-evidence/analytics-response-schema';
 
 const resourceMapResponseSchema = z
   .object({
@@ -95,7 +68,7 @@ type ResourceFilter =
   | 'delegate'
   | 'missing_geo';
 
-type MonthlyTrendRow = AnalyticsResponse['monthly_trend'][number];
+type MonthlyTrendRow = BillingEvidenceAnalyticsResponse['data']['monthly_trend'][number];
 
 function LoadingRegion({
   label,
@@ -187,7 +160,10 @@ export function AnalyticsContent() {
       const res = await fetch('/api/billing-evidence/analytics', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: AnalyticsResponse }>(res, '請求分析の取得に失敗しました');
+      return readApiJson<BillingEvidenceAnalyticsResponse>(res, {
+        fallbackMessage: '請求分析の取得に失敗しました',
+        schema: billingEvidenceAnalyticsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

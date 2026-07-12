@@ -39,19 +39,29 @@ const BILLING_BODY = {
       ssot_rule_count: 4,
       current_month: '2026-06',
       current_month_candidates: 12,
-      current_month_review_pending: 3,
+      current_month_review_pending: 6,
       current_month_claimable_rate: 75,
       current_month_close_rate: 50,
-      current_month_exported: 6,
+      current_month_exported: 3,
     },
     monthly_trend: [
+      ...['2026-01', '2026-02', '2026-03', '2026-04', '2026-05'].map((month) => ({
+        month,
+        total_candidates: 0,
+        review_pending: 0,
+        confirmed: 0,
+        excluded: 0,
+        exported: 0,
+        claimable_evidence: 0,
+        unclaimable_evidence: 0,
+      })),
       {
         month: '2026-06',
         total_candidates: 12,
-        review_pending: 3,
-        confirmed: 8,
+        review_pending: 6,
+        confirmed: 2,
         excluded: 1,
-        exported: 6,
+        exported: 3,
         claimable_evidence: 9,
         unclaimable_evidence: 3,
       },
@@ -100,38 +110,7 @@ describe('AnalyticsContent', () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         if (url === '/api/billing-evidence/analytics') {
-          return new Response(
-            JSON.stringify({
-              data: {
-                summary: {
-                  ssot_rule_count: 4,
-                  current_month: '2026-06',
-                  current_month_candidates: 12,
-                  current_month_review_pending: 3,
-                  current_month_claimable_rate: 75,
-                  current_month_close_rate: 50,
-                  current_month_exported: 6,
-                },
-                monthly_trend: [
-                  {
-                    month: '2026-06',
-                    total_candidates: 12,
-                    review_pending: 3,
-                    confirmed: 8,
-                    excluded: 1,
-                    exported: 6,
-                    claimable_evidence: 9,
-                    unclaimable_evidence: 3,
-                  },
-                ],
-                blocker_reasons: [{ reason: '添付書類未確認', count: 2 }],
-                top_codes: [
-                  { billing_code: 'ZAI-001', billing_name: '在宅患者訪問薬剤管理指導料', count: 5 },
-                ],
-              },
-            }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify(BILLING_BODY), { status: 200 });
         }
 
         if (url === '/api/pharmacy-sites?view=resource_map') {
@@ -313,38 +292,7 @@ describe('AnalyticsContent', () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         if (url === '/api/billing-evidence/analytics') {
-          return new Response(
-            JSON.stringify({
-              data: {
-                summary: {
-                  ssot_rule_count: 4,
-                  current_month: '2026-06',
-                  current_month_candidates: 12,
-                  current_month_review_pending: 3,
-                  current_month_claimable_rate: 75,
-                  current_month_close_rate: 50,
-                  current_month_exported: 6,
-                },
-                monthly_trend: [
-                  {
-                    month: '2026-06',
-                    total_candidates: 12,
-                    review_pending: 3,
-                    confirmed: 8,
-                    excluded: 1,
-                    exported: 6,
-                    claimable_evidence: 9,
-                    unclaimable_evidence: 3,
-                  },
-                ],
-                blocker_reasons: [{ reason: '添付書類未確認', count: 2 }],
-                top_codes: [
-                  { billing_code: 'ZAI-001', billing_name: '在宅患者訪問薬剤管理指導料', count: 5 },
-                ],
-              },
-            }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify(BILLING_BODY), { status: 200 });
         }
         if (url === '/api/pharmacy-sites?view=resource_map') {
           return new Response('患者 山田太郎 storage_key=private/provider_error token=secret', {
