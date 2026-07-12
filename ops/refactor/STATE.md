@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZDELRULESTRICT document-delivery rule list reader (VERIFY_REQUIRED, 2026-07-13; implementation `80ecd8007`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZDELRULESTRICT document-delivery rule list reader (VERIFY_REQUIRED, 2026-07-13; implementation `80ecd8007`, ledger `0918cad46`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin document-delivery rule managerがcounted list responseをcompile-time castだけで読み、legacy/mixed root、
     invalid channel/fallback、duplicate rules、meta count/limit/truncation driftを送達rule編集へ流し得た。Providerは
