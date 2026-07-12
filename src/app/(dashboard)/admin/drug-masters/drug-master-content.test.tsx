@@ -3178,6 +3178,113 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     };
   }
 
+  function buildFormularyImpact(overrides: Record<string, unknown> = {}) {
+    const emptySamples = {
+      review_due: [],
+      missing_reorder_point: [],
+      safety_flagged: [],
+      high_risk: [],
+      lasa_risk: [],
+      controlled: [],
+      transitional_expiry: [],
+      action_required: [],
+      recently_changed: [],
+    };
+    return {
+      site: { id: 'site_1', name: '本店' },
+      checked_at: '2026-07-12T00:00:00.000Z',
+      thresholds: {
+        expiry_within_days: 90,
+        review_overdue_days: 180,
+        price_impact_days: 90,
+        price_impact_draft_limit: 500,
+      },
+      selected_queue: { key: 'action_required', rows: [], total_count: 0 },
+      totals: {
+        stocked_count: 0,
+        review_due_count: 0,
+        missing_reorder_point_count: 0,
+        safety_flagged_count: 0,
+        high_risk_count: 0,
+        lasa_risk_count: 0,
+        controlled_count: 0,
+        transitional_expiry_count: 0,
+        transitional_expiry_within_30_count: 0,
+        transitional_expiry_within_60_count: 0,
+        transitional_expiry_within_90_count: 0,
+        action_required_count: 0,
+        recent_master_change_count: 0,
+      },
+      master_change_report: {
+        cutoff: '2026-06-12T00:00:00.000Z',
+        total_count: 0,
+        sampled_count: 0,
+        is_truncated: false,
+        change_type_counts: [],
+        rows: [],
+        price_impact: {
+          usage_window_days: 90,
+          scanned_draft_count: 0,
+          estimated_total_delta: 0,
+          rows: [],
+        },
+      },
+      follow_up_summary: {
+        unresolved_count: 0,
+        overdue_count: 0,
+        missing_due_date_count: 0,
+      },
+      recent_changes: [],
+      samples: emptySamples,
+      ...overrides,
+    };
+  }
+
+  function buildUsageMismatch(overrides: Record<string, unknown> = {}) {
+    const countMetadata = {
+      total_count: 0,
+      visible_count: 0,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'test_basis',
+      sort_basis: 'test_sort',
+    };
+    return {
+      site: { id: 'site_1', name: '本店' },
+      checked_at: '2026-07-12T00:00:00.000Z',
+      period: {
+        since: '2026-04-13T00:00:00.000Z',
+        until: '2026-07-12T00:00:00.000Z',
+      },
+      thresholds: { days: 90, frequent_threshold: 2, draft_limit: 500, limit: 10 },
+      totals: {
+        scanned_draft_count: 0,
+        used_drug_count: 0,
+        medication_line_count: 0,
+        matched_drug_count: 0,
+        unmatched_drug_count: 0,
+        stocked_count: 0,
+        frequent_unstocked_count: 0,
+        unused_stocked_count: 0,
+        possibly_used_stocked_count: 0,
+        displayed_frequent_unstocked_count: 0,
+        displayed_unused_stocked_count: 0,
+        displayed_possibly_used_stocked_count: 0,
+      },
+      list_counts: {
+        frequent_unstocked: countMetadata,
+        unused_stocked: countMetadata,
+        possibly_used_stocked: countMetadata,
+        unmatched_prescribed: countMetadata,
+      },
+      frequent_unstocked: [],
+      unused_stocked: [],
+      possibly_used_stocked: [],
+      unmatched_prescribed: [],
+      ...overrides,
+    };
+  }
+
   function queryFnFor(queryName: string) {
     const option = capturedQueryOptions.find((config) => config.queryKey[0] === queryName);
     expect(option?.queryFn).toBeTruthy();
@@ -3517,6 +3624,104 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     }
   });
 
+  it('rejects formulary impact data for a different selected site', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: buildFormularyImpact({ site: { id: 'site_other', name: '別拠点' } }),
+        }),
+      ),
+    );
+    render(<DrugMasterContent variant="formulary" />);
+
+    try {
+      await expect(queryFnFor('pharmacy-drug-stocks-impact')()).rejects.toThrow(
+        '採用薬影響レビューの取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects impossible formulary impact expiry buckets', async () => {
+    const impact = buildFormularyImpact();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: {
+            ...impact,
+            totals: {
+              ...impact.totals,
+              transitional_expiry_count: 1,
+              transitional_expiry_within_30_count: 2,
+              transitional_expiry_within_60_count: 1,
+              transitional_expiry_within_90_count: 1,
+            },
+          },
+        }),
+      ),
+    );
+    render(<DrugMasterContent variant="formulary" />);
+
+    try {
+      await expect(queryFnFor('pharmacy-drug-stocks-impact')()).rejects.toThrow(
+        '採用薬影響レビューの取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects usage-mismatch data for a different selected site', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: buildUsageMismatch({ site: { id: 'site_other', name: '別拠点' } }),
+        }),
+      ),
+    );
+    render(<DrugMasterContent variant="formulary" />);
+
+    try {
+      await expect(queryFnFor('pharmacy-drug-stock-usage-mismatch')()).rejects.toThrow(
+        '処方・採用品不一致の取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects usage-mismatch displayed counts that disagree with returned rows', async () => {
+    const mismatch = buildUsageMismatch();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: {
+            ...mismatch,
+            totals: {
+              ...mismatch.totals,
+              frequent_unstocked_count: 1,
+              displayed_frequent_unstocked_count: 1,
+            },
+          },
+        }),
+      ),
+    );
+    render(<DrugMasterContent variant="formulary" />);
+
+    try {
+      await expect(queryFnFor('pharmacy-drug-stock-usage-mismatch')()).rejects.toThrow(
+        '処方・採用品不一致の取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('normalizes the current drug-master meta page and rejects legacy root cursor fields', async () => {
     const currentRow = {
       id: 'drug_1',
@@ -3746,16 +3951,31 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
       data: [],
       meta: { site: { id: 'site_1', name: '本店' }, stock: null },
     };
+    const impactResponseBody = buildFormularyImpact();
     const impactBody = {
-      totals: { stocked_count: 0, action_required_count: 0 },
-      selected_queue: { key: 'action_required', rows: [], total_count: 0 },
-      master_change_report: { rows: [], total_count: 0 },
-      follow_up_summary: { unresolved_count: 0 },
-      samples: {},
-      recent_changes: [],
+      recent_changes: impactResponseBody.recent_changes,
+      totals: impactResponseBody.totals,
+      selected_queue: impactResponseBody.selected_queue,
+      master_change_report: impactResponseBody.master_change_report,
+      follow_up_summary: impactResponseBody.follow_up_summary,
+      samples: impactResponseBody.samples,
     };
+    const usageMismatchResponseBody = buildUsageMismatch();
     const usageMismatchBody = {
-      totals: { unmatched_drug_count: 0 },
+      period: usageMismatchResponseBody.period,
+      thresholds: usageMismatchResponseBody.thresholds,
+      totals: {
+        scanned_draft_count: 0,
+        used_drug_count: 0,
+        medication_line_count: 0,
+        matched_drug_count: 0,
+        unmatched_drug_count: 0,
+        stocked_count: 0,
+        frequent_unstocked_count: 0,
+        unused_stocked_count: 0,
+        displayed_frequent_unstocked_count: 0,
+        displayed_unused_stocked_count: 0,
+      },
       frequent_unstocked: [],
       unused_stocked: [],
       unmatched_prescribed: [],
@@ -3827,10 +4047,10 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
       if (url.includes('/ingredient-group')) return jsonResponse(ingredientGroupResponseBody, 200);
       if (url.includes('/pharmacy-drug-stocks/history')) return jsonResponse(stockHistoryBody, 200);
       if (url.includes('/pharmacy-drug-stocks/impact')) {
-        return jsonResponse({ data: impactBody }, 200);
+        return jsonResponse({ data: impactResponseBody }, 200);
       }
       if (url.includes('/pharmacy-drug-stocks/usage-mismatch')) {
-        return jsonResponse({ data: usageMismatchBody }, 200);
+        return jsonResponse({ data: usageMismatchResponseBody }, 200);
       }
       if (url.includes('/pharmacy-drug-stock-requests')) return jsonResponse(requestsBody, 200);
       if (url.includes('/pharmacy-drug-stock-templates')) return jsonResponse(templatesBody, 200);

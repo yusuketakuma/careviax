@@ -46744,3 +46744,31 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   client-schema ratchet, Plans, and this ledger entry. It was pushed to
   `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
   were excluded, and the feature branch does not match the `main`-only production deploy trigger.
+
+## 2026-07-12 API-CONTRACT-001FZFORMULARYANALYTICSSTRICT — formulary analytics contracts (DONE)
+
+- current task / root cause:
+  The drug-master formulary impact and usage-mismatch readers used compile-time casts. A response for another selected
+  site, impossible expiry buckets, inconsistent queue/report/follow-up counters, or displayed mismatch counts that
+  disagreed with the returned rows could therefore enter operational analytics. The cached values also retained
+  provider fields that the screen never consumes.
+- implementation / verification:
+  Added consumed runtime schemas for both analytics responses. They verify selected versus returned site identity,
+  drug identity, finite nonnegative Decimal prices, monotonic expiry buckets, queue totals, sampled-report and
+  truncation consistency, follow-up bounds, period order, matched versus unmatched arithmetic, list visibility and
+  truncation counts, and displayed row counts. Parsing minimizes provider metadata before React Query caching. The
+  formulary operations view-model generic now separates review-due stock rows from the distinct impact-analysis stock
+  DTO instead of falsely requiring one shared shape. Four regressions failed before implementation; content,
+  view-model, and both provider suites passed 4 files / 160 tests afterward. Exact ESLint/Prettier, aggregate
+  typecheck, no-unused typecheck, API response-shape, frontend contract, client PHI-log/display, module-boundary,
+  active Plans, client-schema, and diff gates passed. The client-schema ratchet improved from 139 schema-backed / 235
+  allowlisted schema-less / 92 files to 141 / 233 / 92. Full build was not repeated after the unchanged compile-stage
+  shared-memory limitation; there is no new build hypothesis. No provider, DB, auth/authz, tenant, audit, calculation,
+  mutation behavior, or visual layout changed. Browser and image generation were omitted because this is a non-visual
+  parser, identity, count-integrity, type-model, and cache-minimization repair covered at direct query-function,
+  view-model, and provider boundaries. Rollback is the two schemas, reader adapters, inferred analytics types,
+  separated view-model generics, regressions, and client-schema ratchet hunk.
+- commit / push:
+  Pending scoped commit and push to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes
+  and untracked personal artifacts remain excluded, and the feature branch does not match the `main`-only production
+  deploy trigger.

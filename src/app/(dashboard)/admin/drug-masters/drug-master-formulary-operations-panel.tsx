@@ -93,6 +93,7 @@ type StockRequestDecisionVariables = {
 type FormularyOperationsViewModel = ReturnType<
   typeof buildFormularyOperationsViewModel<
     FormularyStockSummaryRow,
+    FormularyStockSummaryRow,
     FormularyRecentChange,
     NonNullable<FormularyImpactResponse['master_change_report']>,
     NonNullable<FormularyImpactResponse['follow_up_summary']>

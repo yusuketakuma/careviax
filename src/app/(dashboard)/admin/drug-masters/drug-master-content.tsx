@@ -88,8 +88,10 @@ import { FormularyOperationsPanel } from './drug-master-formulary-operations-pan
 import {
   drugMasterDetailResponseSchema,
   drugMasterImportLogsResponseSchema,
+  formularyImpactResponseSchema,
   formularyTemplateItemSchema,
   formularyTemplateListResponseSchema,
+  formularyUsageMismatchResponseSchema,
   genericCandidatePageSchema,
   genericRecommendationsResponseSchema,
   ingredientGroupResponseSchema,
@@ -124,10 +126,8 @@ import type {
   FormularyChangeRequestItem,
   FormularyCopyPreviewResponse,
   FormularyExportPurpose,
-  FormularyImpactResponse,
   FormularyRequestDecisionTarget,
   FormularyTemplatePreviewResponse,
-  FormularyUsageMismatchResponse,
   GenericCandidateOption,
   GenericRecommendation,
   ImportAction,
@@ -741,11 +741,14 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStockImpactApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      const body = await readApiJson<{ data: FormularyImpactResponse }>(
-        res,
-        '採用薬影響レビューの取得に失敗しました',
-      );
-      return body.data;
+      const payload = await readApiJson(res, {
+        fallbackMessage: '採用薬影響レビューの取得に失敗しました',
+        schema: formularyImpactResponseSchema,
+      });
+      if (payload.siteId !== effectiveSelectedSiteId) {
+        throw new Error('採用薬影響レビューの取得に失敗しました');
+      }
+      return payload.data;
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,
@@ -763,11 +766,14 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStockUsageMismatchApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      const body = await readApiJson<{ data: FormularyUsageMismatchResponse }>(
-        res,
-        '処方・採用品不一致の取得に失敗しました',
-      );
-      return body.data;
+      const payload = await readApiJson(res, {
+        fallbackMessage: '処方・採用品不一致の取得に失敗しました',
+        schema: formularyUsageMismatchResponseSchema,
+      });
+      if (payload.siteId !== effectiveSelectedSiteId) {
+        throw new Error('処方・採用品不一致の取得に失敗しました');
+      }
+      return payload.data;
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,

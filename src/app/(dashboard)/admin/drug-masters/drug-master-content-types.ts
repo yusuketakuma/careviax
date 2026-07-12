@@ -1,9 +1,11 @@
-import type { ImpactQueueKey } from './drug-master-formulary-view-model';
-
 export type {
   DrugMasterDetail,
   DrugMasterImportLog,
+  FormularyImpactResponse,
+  FormularyRecentChange,
+  FormularyStockSummaryRow,
   FormularyTemplateItem,
+  FormularyUsageMismatchResponse,
   GenericCandidateOption,
   GenericRecommendation,
   IngredientGroupResponse,
@@ -63,144 +65,6 @@ export type PharmacyDrugStockConfig = {
   follow_up_resolved_at: string | null;
   updated_at: string;
   preferred_generic: PreferredGenericSummary | null;
-};
-
-export type FormularyStockSummaryRow = PharmacyDrugStockConfig & {
-  drug_master: {
-    id: string;
-    drug_name: string;
-    yj_code: string;
-    drug_price: number | null;
-    unit: string | null;
-    is_generic: boolean;
-    is_narcotic: boolean;
-    is_psychotropic: boolean;
-    is_high_risk: boolean;
-    is_lasa_risk: boolean;
-    transitional_expiry_date: string | null;
-  };
-};
-
-export type FormularyRecentChange = {
-  id: string;
-  yj_code: string;
-  change_type: string;
-  previous_value: unknown;
-  current_value: unknown;
-  created_at: string;
-};
-
-export type FormularyImpactResponse = {
-  recent_changes: FormularyRecentChange[];
-  totals: {
-    stocked_count: number;
-    review_due_count: number;
-    missing_reorder_point_count: number;
-    safety_flagged_count: number;
-    high_risk_count: number;
-    lasa_risk_count: number;
-    controlled_count: number;
-    transitional_expiry_count: number;
-    transitional_expiry_within_30_count: number;
-    transitional_expiry_within_60_count: number;
-    transitional_expiry_within_90_count: number;
-    action_required_count: number;
-    recent_master_change_count: number;
-  };
-  selected_queue: {
-    key: ImpactQueueKey;
-    rows: FormularyStockSummaryRow[];
-    total_count: number;
-  };
-  master_change_report?: {
-    cutoff: string;
-    total_count: number;
-    sampled_count: number;
-    is_truncated: boolean;
-    change_type_counts: Array<{ change_type: string; count: number }>;
-    rows: Array<{
-      stock: FormularyStockSummaryRow;
-      changes: FormularyRecentChange[];
-    }>;
-    price_impact?: {
-      usage_window_days: number;
-      scanned_draft_count: number;
-      estimated_total_delta: number;
-      rows: Array<{
-        stock: FormularyStockSummaryRow;
-        previous_price: number | null;
-        current_price: number | null;
-        unit_price_delta: number | null;
-        usage_count: number;
-        estimated_total_delta: number | null;
-      }>;
-    };
-  };
-  follow_up_summary?: {
-    unresolved_count: number;
-    overdue_count: number;
-    missing_due_date_count: number;
-  };
-  samples: {
-    review_due: FormularyStockSummaryRow[];
-    missing_reorder_point: FormularyStockSummaryRow[];
-    safety_flagged: FormularyStockSummaryRow[];
-    high_risk: FormularyStockSummaryRow[];
-    lasa_risk: FormularyStockSummaryRow[];
-    controlled: FormularyStockSummaryRow[];
-    transitional_expiry: FormularyStockSummaryRow[];
-    action_required: FormularyStockSummaryRow[];
-    recently_changed: FormularyStockSummaryRow[];
-  };
-};
-
-export type FormularyUsageMismatchResponse = {
-  period: {
-    since: string;
-    until: string;
-  };
-  thresholds: {
-    days: number;
-    frequent_threshold: number;
-    draft_limit: number;
-    limit: number;
-  };
-  totals: {
-    scanned_draft_count: number;
-    used_drug_count: number;
-    medication_line_count: number;
-    matched_drug_count: number;
-    unmatched_drug_count: number;
-    stocked_count: number;
-    frequent_unstocked_count: number;
-    unused_stocked_count: number;
-    displayed_frequent_unstocked_count: number;
-    displayed_unused_stocked_count: number;
-  };
-  frequent_unstocked: Array<{
-    drug_code: string | null;
-    drug_name: string | null;
-    count: number;
-    last_seen_at: string;
-    matched_drug: Pick<
-      DrugMasterRow,
-      'id' | 'yj_code' | 'drug_name' | 'generic_name' | 'drug_price' | 'unit' | 'is_generic'
-    > | null;
-  }>;
-  unused_stocked: Array<
-    Pick<PharmacyDrugStockConfig, 'id' | 'drug_master_id' | 'reorder_point' | 'updated_at'> & {
-      drug_master: Pick<
-        DrugMasterRow,
-        'id' | 'yj_code' | 'drug_name' | 'generic_name' | 'drug_price' | 'unit' | 'is_generic'
-      >;
-    }
-  >;
-  unmatched_prescribed: Array<{
-    drug_code: string | null;
-    drug_name: string | null;
-    count: number;
-    last_seen_at: string;
-  }>;
 };
 
 export type BulkPreviewResponse = {

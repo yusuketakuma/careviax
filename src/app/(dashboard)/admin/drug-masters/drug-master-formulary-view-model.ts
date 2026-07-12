@@ -402,15 +402,16 @@ type FormularyOperationsUsageMismatch = {
 };
 
 export type FormularyOperationsViewModelInput<
-  TStock extends FormularyOperationsStock,
+  TReviewStock extends FormularyOperationsStock,
+  TImpactStock extends FormularyOperationsStock,
   TRecentChange extends FormularyOperationsRecentChange,
   TMasterChangeReport,
   TFollowUpSummary,
 > = {
-  reviewDueStocks: TStock[];
-  missingReorderStocks: TStock[];
+  reviewDueStocks: TReviewStock[];
+  missingReorderStocks: TReviewStock[];
   formularyImpact:
-    | FormularyOperationsImpact<TStock, TRecentChange, TMasterChangeReport, TFollowUpSummary>
+    | FormularyOperationsImpact<TImpactStock, TRecentChange, TMasterChangeReport, TFollowUpSummary>
     | null
     | undefined;
   formularyUsageMismatch: FormularyOperationsUsageMismatch | null | undefined;
@@ -419,7 +420,8 @@ export type FormularyOperationsViewModelInput<
 };
 
 export function buildFormularyOperationsViewModel<
-  TStock extends FormularyOperationsStock,
+  TReviewStock extends FormularyOperationsStock,
+  TImpactStock extends FormularyOperationsStock,
   TRecentChange extends FormularyOperationsRecentChange,
   TMasterChangeReport,
   TFollowUpSummary,
@@ -431,7 +433,8 @@ export function buildFormularyOperationsViewModel<
   impactQueue,
   expiryReferenceTime,
 }: FormularyOperationsViewModelInput<
-  TStock,
+  TReviewStock,
+  TImpactStock,
   TRecentChange,
   TMasterChangeReport,
   TFollowUpSummary
