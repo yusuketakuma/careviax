@@ -51,6 +51,33 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZHANDOFFSTRICT handoff board/task/comment readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Handoff Workspaceに残るboard、pending confirmation/supervision tasks、recent comments 3 GET readersはcompile-time
+    castだけで、duplicate/reordered/legacy board items、progress/aggregate drift、truncated/wrong-type/unrelated tasks、
+    unrelated/reordered commentsを成功扱いし、責任移転・確認task・PHI-bearing communication stateへ流し得た。
+  - implementation / handoff-safety boundary:
+    Shared Handoff schemasでboard item/recipient/read identity、oldest-first、current-item条件、progress/summary/month bounds、
+    task type/related identity/complete page、recent-comment involvement/newest-firstを検証。Provider-only board/task fieldsを
+    cache前にprojectionした。Fixtureのrecent commentに欠けていたauthor identity/authored flagもlive provider契約へ同期。
+    Handoff mutations、visit handoff、provider、auth/tenant/RLS/DB/UIは変更していない。非visual parser/PHI境界のため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/lib/handoff/workspace-response-schemas.ts`, `src/lib/handoff/workspace-response-schemas.test.ts`,
+    `src/app/(dashboard)/handoff/handoff-workspace.tsx`,
+    `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/board/comments/tasks Vitest passed 5 files / 99 tests. Exact ESLint, Prettier, aggregate
+    typecheck, 8GB no-unused typecheck, client schema (273 backed / 90 allowlisted / 22 files), frontend contract,
+    module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build was NOT_EXECUTED
+    because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated cache was not
+    deleted or modified.
+  - security / performance / remaining:
+    Malformed/cross-context Handoff data now fails closed and the file's allowlist entry is removed. Network/DB query
+    count, Handoff writes, auth/tenant/RLS, render behavior, and dependencies are unchanged. A clean-capacity runner
+    must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZDAILYOPSCONSUMERS handoff/schedule cockpit consumers (VERIFY_REQUIRED, 2026-07-13; implementation `017c605c7`, ledger `8925ad38c`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Handoff WorkspaceとSchedule Team Boardはshared daily-ops railを使う一方、cockpit GETをcompile-time full response castで

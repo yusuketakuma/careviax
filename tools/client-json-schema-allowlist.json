@@ -24,12 +24,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/handoff/handoff-workspace.tsx",
-      "counts": {
-        "stringFallback": 3
-      }
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/card-workspace.tsx",
       "counts": {
         "stringFallback": 3,

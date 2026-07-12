@@ -31,6 +31,11 @@ import { GuardedWorkspaceActionRail } from '@/components/features/workspace/acti
 import { HandoffConfirmPanel } from '@/components/features/visits/handoff-confirm-panel';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import {
+  handoffBoardResponseSchema,
+  handoffConfirmationTasksResponseSchema,
+  recentHandoffCommentsResponseSchema,
+} from '@/lib/handoff/workspace-response-schemas';
+import {
   dailyOpsCockpitResponseSchema,
   type DailyOpsCockpitData,
 } from '@/lib/workspace/daily-ops-cockpit-response-schema';
@@ -81,10 +86,10 @@ export async function fetchHandoffBoard(orgId: string): Promise<HandoffBoardResp
   const res = await fetch('/api/handoff-board', {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: HandoffBoardResponse }>(
-    res,
-    'ハンドオフボードの取得に失敗しました',
-  );
+  const json = await readApiJson<{ data: HandoffBoardResponse }>(res, {
+    fallbackMessage: 'ハンドオフボードの取得に失敗しました',
+    schema: handoffBoardResponseSchema,
+  });
   return json.data;
 }
 
@@ -212,11 +217,11 @@ export async function fetchHandoffConfirmationTasks(
   const res = await fetch(`/api/tasks?${params.toString()}`, {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data?: HandoffConfirmationTask[] }>(
-    res,
-    '訪問申し送り確認タスクの取得に失敗しました',
-  );
-  return (json.data ?? []).filter((task) => Boolean(task.related_entity_id));
+  const json = await readApiJson<{ data: HandoffConfirmationTask[] }>(res, {
+    fallbackMessage: '訪問申し送り確認タスクの取得に失敗しました',
+    schema: handoffConfirmationTasksResponseSchema,
+  });
+  return json.data;
 }
 
 export type RecentComment = {
@@ -245,8 +250,11 @@ export async function fetchRecentComments(orgId: string): Promise<RecentComment[
   const res = await fetch('/api/comments/recent', {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data?: RecentComment[] }>(res, 'やり取りの取得に失敗しました');
-  return json.data ?? [];
+  const json = await readApiJson<{ data: RecentComment[] }>(res, {
+    fallbackMessage: 'やり取りの取得に失敗しました',
+    schema: recentHandoffCommentsResponseSchema,
+  });
+  return json.data;
 }
 
 export async function fetchVisitHandoff(
