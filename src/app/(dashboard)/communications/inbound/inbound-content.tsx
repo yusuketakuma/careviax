@@ -40,6 +40,17 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { clientLog } from '@/lib/utils/client-log';
 import { cn } from '@/lib/utils';
 import type { PatientMedicationStockSummaryResponse } from '@/types/medication-stock';
+import { buildPatientMedicationStockSummaryResponseSchema } from '@/lib/medication-stock/summary-response-schema';
+import {
+  buildInboundCreateResponseSchema,
+  buildInboundDetailResponseSchema,
+  buildInboundInboxResponseSchema,
+  buildInboundSignalCandidatesResponseSchema,
+  buildInboundSignalReviewResponseSchema,
+  buildInboundSourceMappingResponseSchema,
+  buildInboundStockApplyResponseSchema,
+  inboundSignalTaskResponseSchema,
+} from './inbound-response-schemas';
 import { toast } from 'sonner';
 
 type InboundInboxItem = {
@@ -77,7 +88,10 @@ type InboundInboxResponse = {
   meta: {
     generated_at: string;
     limit: number;
+    visible_count: number;
+    hidden_count: number;
     count_basis: string;
+    partial_failures: [];
   };
 };
 
@@ -233,7 +247,10 @@ type InboundSignalCandidatesResponse = {
   meta: {
     generated_at: string;
     limit: number;
+    visible_count: number;
+    hidden_count: number;
     count_basis: string;
+    partial_failures: [];
     source: string;
     classifier_version: string;
   };
@@ -900,6 +917,7 @@ export function InboundCommunicationsContent() {
       });
       return readApiJson<InboundInboxResponse>(response, {
         fallbackMessage: '他職種受信インボックスの取得に失敗しました',
+        schema: buildInboundInboxResponseSchema({ channel, priority, status, limit: 50 }),
       });
     },
     enabled: !!orgId,
@@ -917,6 +935,7 @@ export function InboundCommunicationsContent() {
       });
       return readApiJson<InboundSignalCandidatesResponse>(response, {
         fallbackMessage: '受信シグナル候補の取得に失敗しました',
+        schema: buildInboundSignalCandidatesResponseSchema({ channel, limit: 50 }),
       });
     },
     enabled: !!orgId,
@@ -944,6 +963,10 @@ export function InboundCommunicationsContent() {
       });
       return readApiJson<InboundCreateResponse>(response, {
         fallbackMessage: '受信情報を登録できませんでした',
+        schema: buildInboundCreateResponseSchema({
+          channel: input.sourceChannel,
+          eventType: input.eventType,
+        }),
       });
     },
     onSuccess: async () => {
@@ -976,6 +999,7 @@ export function InboundCommunicationsContent() {
       });
       return readApiJson<InboundSignalTaskResponse>(response, {
         fallbackMessage: '薬剤師確認タスクを作成できませんでした',
+        schema: inboundSignalTaskResponseSchema,
       });
     },
     onSuccess: async () => {
@@ -1008,6 +1032,7 @@ export function InboundCommunicationsContent() {
       });
       return readApiJson<InboundSignalReviewResponse>(response, {
         fallbackMessage: '受信シグナルのレビュー状態を更新できませんでした',
+        schema: buildInboundSignalReviewResponseSchema(input.signalId),
       });
     },
     onSuccess: async (response) => {
@@ -1057,6 +1082,10 @@ export function InboundCommunicationsContent() {
       });
       return readApiJson<InboundDetailResponse>(response, {
         fallbackMessage: '受信情報の詳細取得に失敗しました',
+        schema: buildInboundDetailResponseSchema({
+          eventId: selectedCommunicationEventId!,
+          requestId: `inbound_review:${selectedCommunicationEventId}`,
+        }),
       });
     },
     enabled: !!orgId && !!detailQueryPath && selectedDetailRequested,
@@ -1082,6 +1111,11 @@ export function InboundCommunicationsContent() {
       );
       return readApiJson<PatientMedicationStockSummaryResponse>(response, {
         fallbackMessage: '患者の残数管理候補を取得できませんでした',
+        schema: buildPatientMedicationStockSummaryResponseSchema({
+          patientId: stockSummaryPatientId,
+          itemLimit: 20,
+          eventLimit: 0,
+        }),
       });
     },
     enabled: !!orgId && !!stockSummaryPatientId,
@@ -1120,6 +1154,10 @@ export function InboundCommunicationsContent() {
       });
       return readApiJson<InboundStockApplyResponse>(response, {
         fallbackMessage: '残数台帳へ反映できませんでした',
+        schema: buildInboundStockApplyResponseSchema({
+          signalId: input.signalId,
+          stockItemId: input.targetStockItemId,
+        }),
       });
     },
     onSuccess: async (response) => {
@@ -1165,6 +1203,13 @@ export function InboundCommunicationsContent() {
       );
       return readApiJson<InboundSourceMappingResponse>(response, {
         fallbackMessage: '出所mappingを保存できませんでした',
+        schema: buildInboundSourceMappingResponseSchema({
+          eventId: input.eventId,
+          patientId: input.form.patientId.trim(),
+          caseId: trimmedOrUndefined(input.form.caseId),
+          confidence: input.form.confidence,
+          mappingStatus: input.form.mappingStatus,
+        }),
       });
     },
     onSuccess: () => {

@@ -12,12 +12,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/communications/inbound/inbound-content.tsx",
-      "counts": {
-        "objectWithoutSchema": 9
-      }
-    },
-    {
       "path": "src/app/(dashboard)/conferences/conferences-content.tsx",
       "counts": {
         "stringFallback": 6
