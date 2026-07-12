@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZINCIDENTSTRICT incident list/create/update/status readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, ledger pending; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZINCIDENTSTRICT incident list/create/update/status readers (VERIFY_REQUIRED, 2026-07-13; implementation `fe660d73c`, ledger pending; shared clean-capacity build pending).
   - current task / root cause:
     Admin Incidentsのlist、memo PATCH、status PATCH、createの4 readersはcompile-time castだけで、legacy root、未知
     severity/status/process、不正timestamp、duplicate identity、wrong update identityをmedical-safety UI stateへ流し得た。
