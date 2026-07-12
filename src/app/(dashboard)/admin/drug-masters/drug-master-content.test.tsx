@@ -873,6 +873,7 @@ describe('DrugMasterContent', () => {
             mappings: {
               dryRun: true,
               operation: 'generic_mapping',
+              sourceFileHash: 'mhlw_mappings_source_hash',
               preview: {
                 summary: {
                   parsed_records: 4,
@@ -932,6 +933,106 @@ describe('DrugMasterContent', () => {
       expect(screen.getByText(/invalid YJ 2件/)).toBeTruthy();
       expect(screen.getByText(/標準名 【般】エスタゾラム錠１ｍｇ/)).toBeTruthy();
       expect(mutationMutateMock).not.toHaveBeenCalledWith('mhlw-generic');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a successful official import preview without a data envelope', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({}, 200)),
+    );
+    try {
+      render(<DrugMasterContent />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'SSK全件取込' }));
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: '差分確認' }));
+      });
+
+      expect(toastErrorMock).toHaveBeenCalledWith('SSK全件取込の差分確認に失敗しました');
+      expect(toastSuccessMock).not.toHaveBeenCalledWith('SSK全件取込の差分確認が完了しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a generic import preview whose mode differs from the request', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse(
+          {
+            data: {
+              dryRun: true,
+              mode: 'flags',
+              flags: {
+                dryRun: true,
+                operation: 'generic_flags',
+                sourceFileHash: 'mhlw_flags_source_hash',
+                preview: {
+                  summary: { parsed_records: 1, sampled_rows: 1 },
+                  rows: [
+                    {
+                      action: 'upsert_generic_flag',
+                      yj_code: '1124001F1030',
+                      drug_name: 'テスト薬',
+                    },
+                  ],
+                },
+              },
+              mappings: null,
+            },
+          },
+          200,
+        ),
+      ),
+    );
+    try {
+      render(<DrugMasterContent />);
+
+      fireEvent.click(screen.getByRole('button', { name: '一般名/後発更新' }));
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: '差分確認' }));
+      });
+
+      expect(toastErrorMock).toHaveBeenCalledWith('一般名/後発更新の差分確認に失敗しました');
+      expect(toastSuccessMock).not.toHaveBeenCalledWith('一般名/後発更新の差分確認が完了しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects an official import preview with inconsistent sample counts', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse(
+          {
+            data: {
+              dryRun: true,
+              sourceFileHash: 'ssk_source_hash',
+              preview: {
+                summary: { parsed_records: 1, sampled_rows: 2 },
+                rows: [{ action: 'create', yj_code: '1124001F1030', drug_name: 'テスト薬' }],
+              },
+            },
+          },
+          200,
+        ),
+      ),
+    );
+    try {
+      render(<DrugMasterContent />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'SSK全件取込' }));
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: '差分確認' }));
+      });
+
+      expect(toastErrorMock).toHaveBeenCalledWith('SSK全件取込の差分確認に失敗しました');
+      expect(toastSuccessMock).not.toHaveBeenCalledWith('SSK全件取込の差分確認が完了しました');
     } finally {
       vi.unstubAllGlobals();
     }

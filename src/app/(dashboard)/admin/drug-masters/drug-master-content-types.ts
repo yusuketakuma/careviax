@@ -70,20 +70,8 @@ export type PharmacyDrugStockConfig = {
   preferred_generic: PreferredGenericSummary | null;
 };
 
-export type OfficialImportPreviewData = {
-  dryRun?: boolean;
-  mode?: string;
-  workbookUrl?: string | null;
-  workbookUrls?: string[];
-  sourceFileHash?: string | null;
-  sourcePublishedAt?: string | null;
-  preview?: {
-    summary?: Record<string, unknown>;
-    rows?: unknown[];
-  };
-  flags?: OfficialImportPreviewData | null;
-  mappings?: OfficialImportPreviewData | null;
-};
+export type OfficialImportPreviewData =
+  import('./drug-master-content-contracts').OfficialImportPreviewData;
 
 export type OfficialImportPreviewState = {
   action: ImportAction;

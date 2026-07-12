@@ -46862,3 +46862,31 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   reader adapters, regressions, client-schema ratchet, Plans, and this ledger entry. It was pushed to
   `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
   were excluded, and the feature branch does not match the `main`-only production deploy trigger.
+
+## 2026-07-12 API-CONTRACT-001FZDRUGPREVIEWSTRICT — official import preview contract (DONE)
+
+- current task / root cause:
+  The official drug-master dry-run preview reader accepted an optional data envelope and cast an empty or malformed
+  success body to a recursive preview type. A missing envelope, mismatched generic import mode/branch, excessive or
+  inconsistent sample count, false dry-run flag, or malformed summary could therefore be announced as a successful
+  preview. Source URLs and publication metadata not rendered by the dialog also remained in local state.
+- implementation / verification:
+  Added a consumed preview schema shared across the SSK, MHLW price, MHLW generic, HOT, and PMDA providers. It requires
+  a strict data envelope, `dryRun: true`, nonnegative integer summary counters, at most five object rows,
+  `sampled_rows === rows.length <= parsed_records`, source hash presence for direct previews, and mode-consistent
+  generic flags/mappings branches with exact operations. The reader additionally checks the requested generic or PMDA
+  mode and rejects branch-shaped responses from direct-preview actions. Provider URLs/publication fields are stripped
+  while the displayed source hash, summary, and rows remain. Three regressions failed before implementation and passed
+  afterward; the consumer and five provider suites passed 6 files / 204 tests. Aggregate and 8 GB no-unused typechecks
+  passed. Exact ESLint/Prettier, API response-shape, frontend contract, client PHI-log/display, module-boundary, active
+  Plans, client-schema, and diff gates passed. The client-schema ratchet improved from 150 schema-backed / 224
+  allowlisted schema-less / 92 files to 151 / 223 / 92. Full build was not repeated after the existing compile-stage
+  memory limitation; no new build hypothesis remains after both typecheck gates passed. No provider, import
+  calculation, DB, auth/authz, tenant, audit, clinical data, or visual layout changed, and no import was executed.
+  Browser and image generation were omitted because this is a non-visual fail-closed response-contract and
+  state-minimization repair covered at consumer and provider boundaries. Rollback is the preview schema, reader
+  adapter, inferred preview type, synchronized fixture, three regressions, and client-schema ratchet hunk.
+- commit / push:
+  Pending scoped commit and push to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes
+  and untracked personal artifacts remain excluded, and the feature branch does not match the `main`-only production
+  deploy trigger.

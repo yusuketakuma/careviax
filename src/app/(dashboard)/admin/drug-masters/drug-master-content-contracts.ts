@@ -1329,6 +1329,93 @@ export const drugMasterJobResponseSchema = z
     data: { processedCount: data.processedCount },
   }));
 
+const officialImportPreviewSummarySchema = z
+  .object({
+    parsed_records: z.number().int().nonnegative(),
+    sampled_rows: z.number().int().nonnegative(),
+  })
+  .catchall(z.number().int().nonnegative());
+
+const officialImportPreviewPayloadSchema = z
+  .object({
+    summary: officialImportPreviewSummarySchema,
+    rows: z.array(z.record(z.string(), z.unknown())).max(5),
+  })
+  .strict()
+  .superRefine((preview, context) => {
+    if (
+      preview.summary.sampled_rows !== preview.rows.length ||
+      preview.summary.sampled_rows > preview.summary.parsed_records
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['summary', 'sampled_rows'],
+        message: 'Official import preview sample counts are inconsistent',
+      });
+    }
+  });
+
+const officialImportPreviewOperationSchema = z.enum(['generic_flags', 'generic_mapping']);
+
+const officialImportPreviewLeafSchema = z
+  .object({
+    dryRun: z.literal(true),
+    operation: officialImportPreviewOperationSchema.optional(),
+    sourceFileHash: z.string().trim().min(1).nullable(),
+    preview: officialImportPreviewPayloadSchema,
+  })
+  .strip();
+
+const officialImportPreviewModeSchema = z.enum(['flags', 'mappings', 'all', 'full', 'delta']);
+
+export const officialImportPreviewDataSchema = z
+  .object({
+    dryRun: z.literal(true),
+    mode: officialImportPreviewModeSchema.optional(),
+    operation: officialImportPreviewOperationSchema.optional(),
+    sourceFileHash: z.string().trim().min(1).nullable().optional(),
+    preview: officialImportPreviewPayloadSchema.optional(),
+    flags: officialImportPreviewLeafSchema.nullable().optional(),
+    mappings: officialImportPreviewLeafSchema.nullable().optional(),
+  })
+  .strip()
+  .superRefine((data, context) => {
+    const hasBranches = data.flags !== undefined || data.mappings !== undefined;
+    if (data.preview) {
+      if (data.sourceFileHash === undefined || hasBranches) {
+        context.addIssue({
+          code: 'custom',
+          path: ['preview'],
+          message: 'A direct official import preview requires source identity without branches',
+        });
+      }
+      return;
+    }
+
+    const flagsPresent = data.flags !== null && data.flags !== undefined;
+    const mappingsPresent = data.mappings !== null && data.mappings !== undefined;
+    const branchesMatchMode =
+      (data.mode === 'all' && flagsPresent && mappingsPresent) ||
+      (data.mode === 'flags' && flagsPresent && !mappingsPresent) ||
+      (data.mode === 'mappings' && !flagsPresent && mappingsPresent);
+    if (
+      !hasBranches ||
+      !branchesMatchMode ||
+      (flagsPresent && data.flags?.operation !== 'generic_flags') ||
+      (mappingsPresent && data.mappings?.operation !== 'generic_mapping')
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['mode'],
+        message: 'Official import preview branches do not match their mode',
+      });
+    }
+  });
+
+export const officialImportPreviewResponseSchema = z
+  .object({ data: officialImportPreviewDataSchema })
+  .strict();
+
 export type BulkPreviewResponse = z.infer<typeof bulkFormularyResponseSchema>['data'];
 export type DrugMasterDetail = z.infer<typeof drugMasterDetailSchema>;
 export type FormularyCopyPreviewResponse = z.infer<typeof formularyCopyResponseSchema>['data'];
@@ -1345,4 +1432,5 @@ export type FormularyUsageMismatchResponse = z.infer<
 export type GenericCandidateOption = z.infer<typeof genericCandidateSchema>;
 export type GenericRecommendation = z.infer<typeof genericRecommendationSchema>;
 export type IngredientGroupResponse = z.infer<typeof ingredientGroupResponseSchema>['data'];
+export type OfficialImportPreviewData = z.infer<typeof officialImportPreviewDataSchema>;
 export type PharmacySiteOption = z.infer<typeof pharmacySiteReferenceSchema>;

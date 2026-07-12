@@ -103,6 +103,7 @@ import {
   genericRecommendationsResponseSchema,
   ingredientGroupResponseSchema,
   officialDrugMasterImportResponseSchema,
+  officialImportPreviewResponseSchema,
   pharmacySiteReferencesResponseSchema,
 } from './drug-master-content-contracts';
 import {
@@ -139,7 +140,6 @@ import type {
   GenericCandidateOption,
   GenericRecommendation,
   ImportAction,
-  OfficialImportPreviewData,
   OfficialImportPreviewState,
   PharmacyDrugStockHistoryItem,
 } from './drug-master-content-types';
@@ -918,14 +918,25 @@ function DrugMasterOperationalContent({
           previewLimit: 5,
         }),
       });
-      const json = await readApiJson<{ data?: OfficialImportPreviewData }>(
-        res,
-        `${definition.label}の差分確認に失敗しました`,
-      );
+      const json = await readApiJson(res, {
+        fallbackMessage: `${definition.label}の差分確認に失敗しました`,
+        schema: officialImportPreviewResponseSchema,
+      });
+      const expectedMode = definition.body?.mode;
+      const hasExpectedShape =
+        action === 'mhlw-generic'
+          ? json.data.flags != null && json.data.mappings != null && json.data.preview === undefined
+          : json.data.preview !== undefined;
+      if (
+        !hasExpectedShape ||
+        (typeof expectedMode === 'string' && json.data.mode !== expectedMode)
+      ) {
+        throw new Error(`${definition.label}の差分確認に失敗しました`);
+      }
 
       setOfficialImportPreview({
         action,
-        data: (json?.data ?? {}) as OfficialImportPreviewData,
+        data: json.data,
       });
       toast.success(`${definition.label}の差分確認が完了しました`);
     } catch (error) {
