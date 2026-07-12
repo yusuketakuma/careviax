@@ -51,6 +51,32 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZROUTECOMPARESTRICT route compare readers (VERIFY_REQUIRED, 2026-07-13; implementation ready; shared clean-capacity build pending).
+  - current task / root cause:
+    Route Compareのday-board GETとroute-plan POST結果readersはcompile-time castだけで、別日board、count/identity/vehicle
+    aggregate drift、不正route geometry/order、requested scenario外scheduleやtravel mode driftを成功扱いし、車両選択・
+    route案比較・採用reorder stateへ進め得た。
+  - implementation / route safety boundary:
+    Day-board readerをrequested date factory schemaへ接続し、route-plan shared schemaをrequested schedule set/travel mode
+    factoryへ拡張してRoute Compareへ再利用した。Emergency Routeの既存generic schema behaviorは維持した。Route engine、
+    reorder/vehicle assignment payload、provider、auth/tenant/DB/UIは変更していない。非visual response parserのため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/schedules/route-compare/route-compare-content.tsx`,
+    `src/app/(dashboard)/schedules/route-compare/route-compare-content.test.tsx`,
+    `src/app/(dashboard)/schedules/emergency-route/emergency-route-response-schema.ts`,
+    `src/app/(dashboard)/schedules/emergency-route/emergency-route-response-schema.test.ts`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused Route Compare/Emergency Route/day-board Vitest passed 4 files / 25 tests. Exact ESLint, focused Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (282 backed / 81 allowlisted / 18 files), module boundary,
+    client PHI-log, API response shape, colors, and diff-check passed. Full build remains NOT_EXECUTED because the shared
+    machine has only about 4.3 GiB free while `.next` consumes 16 GiB; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Cross-date/cross-scenario route payloads now fail closed before operational route state is updated, and the file's
+    allowlist entry is removed. Network/DB calls, route computation/writes, auth/tenant, rendering, and dependencies are
+    unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZVISITBRIEFSTRICT patient visit-brief reader (VERIFY_REQUIRED, 2026-07-13; implementation `b409683fb`; shared clean-capacity build pending).
   - current task / root cause:
     Patient Visit BriefのGET readerはcompile-time castだけで、別患者、schedule context、不正archive/日時/action URL、

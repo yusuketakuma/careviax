@@ -68,6 +68,8 @@ type FetchCall = {
 const fetchCalls: FetchCall[] = [];
 let failTimePreferenceRoute = false;
 let failAllRouteScenarios = false;
+let returnWrongDayBoardDate = false;
+let returnOutOfScopeRoute = false;
 
 function renderRouteCompareContent() {
   const queryClient = createTestQueryClient();
@@ -293,7 +295,12 @@ function installFetchMock() {
         });
       }
       if (url.startsWith('/api/visit-schedules/day-board')) {
-        return jsonResponse({ data: boardFixture() });
+        return jsonResponse({
+          data: {
+            ...boardFixture(),
+            ...(returnWrongDayBoardDate ? { date: '2026-04-10' } : {}),
+          },
+        });
       }
       if (url === '/api/visit-routes') {
         const scenario = scenarioForBody(body);
@@ -304,17 +311,29 @@ function installFetchMock() {
           return jsonResponse({ message: '経路計算に失敗しました' }, 500);
         }
         if (scenario === 'time_preference') {
+          const orderedIds = ['visit-confirmed', 'visit-b', 'visit-a', 'visit-c'];
           return jsonResponse({
-            data: routePlan(['visit-confirmed', 'visit-b', 'visit-a', 'visit-c'], 31 * 60),
+            data: routePlan(
+              returnOutOfScopeRoute ? [...orderedIds, 'visit-foreign'] : orderedIds,
+              31 * 60,
+            ),
           });
         }
         if (scenario === 'emergency_slack') {
+          const orderedIds = ['visit-confirmed', 'visit-c', 'visit-b', 'visit-a'];
           return jsonResponse({
-            data: routePlan(['visit-confirmed', 'visit-c', 'visit-b', 'visit-a'], 35 * 60),
+            data: routePlan(
+              returnOutOfScopeRoute ? [...orderedIds, 'visit-foreign'] : orderedIds,
+              35 * 60,
+            ),
           });
         }
+        const orderedIds = ['visit-confirmed', 'visit-c', 'visit-a', 'visit-b'];
         return jsonResponse({
-          data: routePlan(['visit-confirmed', 'visit-c', 'visit-a', 'visit-b'], 23 * 60),
+          data: routePlan(
+            returnOutOfScopeRoute ? [...orderedIds, 'visit-foreign'] : orderedIds,
+            23 * 60,
+          ),
         });
       }
       if (url === '/api/visit-schedules/reorder') {
@@ -329,6 +348,8 @@ beforeEach(() => {
   fetchCalls.length = 0;
   failTimePreferenceRoute = false;
   failAllRouteScenarios = false;
+  returnWrongDayBoardDate = false;
+  returnOutOfScopeRoute = false;
   vi.clearAllMocks();
   installFetchMock();
 });
@@ -499,6 +520,28 @@ describe('RouteCompareContent', () => {
       expect(error).toBeInstanceOf(Error);
       expect((error as Error).message).toBe('車両リソースの閲覧権限がありません');
     });
+  });
+
+  it('rejects a day-board response for another date', async () => {
+    returnWrongDayBoardDate = true;
+    const { queryClient } = renderRouteCompareContent();
+
+    await waitFor(() => {
+      const error = queryClient
+        .getQueryCache()
+        .find({ queryKey: ['schedule-day-board', 'org_1', '2026-04-09'], exact: true })
+        ?.state.error;
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe('対象日の車両リソース取得に失敗しました');
+    });
+  });
+
+  it('rejects route plans containing schedules outside the requested scenario', async () => {
+    returnOutOfScopeRoute = true;
+    renderRouteCompareContent();
+
+    await screen.findAllByText(/採用不可: ルート計算の取得に失敗しました/);
+    expect(screen.queryByTestId('route-recommended-detail')).toBeNull();
   });
 
   it('does not render recommended route detail when every route-engine scenario fails', async () => {

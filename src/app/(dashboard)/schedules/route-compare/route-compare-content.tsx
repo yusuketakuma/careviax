@@ -15,6 +15,7 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
+import { buildScheduleDayBoardResponseSchema } from '@/lib/schedules/day-board-response-schema';
 import { messageFromError } from '@/lib/utils/error-message';
 import { timeIsoToMinutes } from '@/lib/visits/time-of-day';
 import { cn } from '@/lib/utils';
@@ -28,6 +29,7 @@ import {
 } from '../day-view.shared';
 import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
 import { applyVisitScheduleRouteUpdates } from '../visit-route-client';
+import { buildVisitRoutePlanResponseSchema } from '../emergency-route/emergency-route-response-schema';
 import { ScheduleDateNavigator } from '../schedule-date-navigator';
 import {
   buildRecommendedRouteDetail,
@@ -83,10 +85,10 @@ async function fetchScheduleDayBoard(args: { orgId: string; date: string }) {
   const res = await fetch(`/api/visit-schedules/day-board?date=${args.date}`, {
     headers: buildOrgHeaders(args.orgId),
   });
-  const json = await readApiJson<{ data: ScheduleDayBoardResponse }>(
-    res,
-    '対象日の車両リソース取得に失敗しました',
-  );
+  const json = await readApiJson<{ data: ScheduleDayBoardResponse }>(res, {
+    fallbackMessage: '対象日の車両リソース取得に失敗しました',
+    schema: buildScheduleDayBoardResponseSchema(args.date),
+  });
   return json.data;
 }
 
@@ -128,11 +130,13 @@ async function computeRoutePlan(args: {
       ...(args.vehicleResourceId ? { vehicle_resource_id: args.vehicleResourceId } : {}),
     }),
   });
-  const payload = await readApiJson<{ data: VisitRoutePlan }>(
-    res,
-    'ルート計算の取得に失敗しました',
-  );
-  return payload.data;
+  return readApiJson<VisitRoutePlan>(res, {
+    fallbackMessage: 'ルート計算の取得に失敗しました',
+    schema: buildVisitRoutePlanResponseSchema({
+      expectedScheduleIds: args.scheduleIds,
+      expectedTravelMode: args.travelMode,
+    }),
+  });
 }
 
 async function fetchRouteCompareScenarios(args: {

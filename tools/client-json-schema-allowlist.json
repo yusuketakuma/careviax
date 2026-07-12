@@ -79,12 +79,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/schedules/route-compare/route-compare-content.tsx",
-      "counts": {
-        "stringFallback": 2
-      }
-    },
-    {
       "path": "src/app/(dashboard)/visits/[id]/capture/capture-content.tsx",
       "counts": {
         "stringFallback": 2

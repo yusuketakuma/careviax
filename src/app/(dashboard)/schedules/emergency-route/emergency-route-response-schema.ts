@@ -78,7 +78,37 @@ const routePlanSchema = z
     }
   });
 
-export const emergencyRouteResponseSchema = z
-  .object({ data: routePlanSchema })
-  .strict()
-  .transform((payload) => payload.data);
+export function buildVisitRoutePlanResponseSchema(args?: {
+  expectedScheduleIds?: string[];
+  expectedTravelMode?: 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
+}) {
+  return z
+    .object({ data: routePlanSchema })
+    .strict()
+    .superRefine(({ data }, context) => {
+      if (args?.expectedTravelMode && data.travelMode !== args.expectedTravelMode) {
+        context.addIssue({
+          code: 'custom',
+          path: ['data', 'travelMode'],
+          message: 'Route plan travel mode drift',
+        });
+      }
+      if (args?.expectedScheduleIds) {
+        const expectedIds = new Set(args.expectedScheduleIds);
+        const returnedIds = new Set(data.orderedScheduleIds);
+        if (
+          expectedIds.size !== returnedIds.size ||
+          [...expectedIds].some((scheduleId) => !returnedIds.has(scheduleId))
+        ) {
+          context.addIssue({
+            code: 'custom',
+            path: ['data', 'orderedScheduleIds'],
+            message: 'Route plan schedule scope drift',
+          });
+        }
+      }
+    })
+    .transform((payload) => payload.data);
+}
+
+export const emergencyRouteResponseSchema = buildVisitRoutePlanResponseSchema();

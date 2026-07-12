@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { emergencyRouteResponseSchema } from './emergency-route-response-schema';
+import {
+  buildVisitRoutePlanResponseSchema,
+  emergencyRouteResponseSchema,
+} from './emergency-route-response-schema';
 
 function buildPayload() {
   return {
@@ -53,5 +56,21 @@ describe('emergencyRouteResponseSchema', () => {
     },
   ])('rejects malformed route-plan payload %#', (payload) => {
     expect(emergencyRouteResponseSchema.safeParse(payload).success).toBe(false);
+  });
+
+  it('rejects requested schedule or travel-mode drift', () => {
+    const schema = buildVisitRoutePlanResponseSchema({
+      expectedScheduleIds: ['schedule_1'],
+      expectedTravelMode: 'DRIVE',
+    });
+    expect(schema.safeParse(buildPayload()).success).toBe(true);
+    expect(
+      schema.safeParse({
+        data: { ...buildPayload().data, orderedScheduleIds: ['schedule_2'] },
+      }).success,
+    ).toBe(false);
+    expect(schema.safeParse({ data: { ...buildPayload().data, travelMode: 'WALK' } }).success).toBe(
+      false,
+    );
   });
 });
