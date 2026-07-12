@@ -51,6 +51,34 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZCOLLABOVERVIEWSTRICT collaboration minimal patient overview reader (VERIFY_REQUIRED, 2026-07-12; pending commit/push and shared clean-capacity build).
+  - current task / root cause:
+    Patient collaboration画面はheader文言に患者名1 fieldだけを使う一方、compile-time `PatientOverview` castで
+    full overviewをquery cacheへ保持し、住所、保険、アレルギー、連絡先、cases、visit、foundation等の
+    大量PHIを不要に到達可能にしていた。Legacy/wrong rootや空nameもsuccess stateへ入り得た。
+  - implementation / privacy boundary:
+    Strict `{ data: { name } }` response schemaを追加し、non-empty bounded nameを検証後 `{ name }`だけへ
+    transformした。Data object内のprovider fieldsはprojectionでstripし、rootはstrictにしてlegacy/debug rootを
+    拒否する。Overview provider、best-effort PHI read audit、assignment/tenant/no-store、presence heartbeat/SSE、
+    comments、refresh invalidation、patient path helper、UIは変更していない。Visual reconstructionではないため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/patients/[id]/collaboration/collaboration-overview-response-schema.ts`,
+    `src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/provider Vitest passed 2 files / 16 tests. Provider best-effort audit failure regression emitted
+    the expected fixed safe warning and passed. Exact ESLint with `--max-warnings=0`, Prettier, and diff-check passed.
+    `pnpm client-json-schema:check` passed at 207 schema-backed / 164 allowlisted schema-less calls / 55 files;
+    frontend contract, module boundary, aggregate typecheck, 8GB no-unused typecheck, client PHI-log, API response
+    shape, and colors passed. Full build was NOT_EXECUTED because the shared clean-capacity gate remains unresolved;
+    no generated cache was deleted or modified.
+  - security / performance / remaining:
+    Collaboration cache now contains only the patient name rather than the full overview PHI graph. Request count,
+    provider query/audit, realtime behavior, render behavior, and dependencies are unchanged. A clean-capacity runner
+    must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZHISTORYSTRICT patient prescription/visit history summary readers (VERIFY_REQUIRED, 2026-07-12; implementation `f108fd48c`, ledger `0a1568d4a`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Patient history summaryの処方/訪問readerがcompile-time castsだけを信頼し、legacy/wrong envelope、duplicate/

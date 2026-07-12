@@ -127,12 +127,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx",
       "counts": {
         "stringFallback": 5

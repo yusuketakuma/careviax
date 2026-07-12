@@ -315,6 +315,81 @@ describe('CollaborationContent realtime presence policy', () => {
     }
   });
 
+  it('projects only the patient name from the overview response', async () => {
+    const queryConfigs: Array<{ queryKey?: unknown[]; queryFn?: () => Promise<unknown> }> = [];
+    useQueryMock.mockImplementation(
+      (options: { queryKey?: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        queryConfigs.push(options);
+        const [scope] = options.queryKey ?? [];
+        if (scope === 'presence') return { data: [] };
+        if (scope === 'patient-overview') {
+          return { data: { name: '田中 一郎' }, isError: false, isLoading: false };
+        }
+        throw new Error(`Unexpected query key: ${JSON.stringify(options.queryKey)}`);
+      },
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: {
+            id: 'patient_1',
+            name: '田中 一郎',
+            address: 'provider-only-address',
+            allergy_info: [{ allergen: 'provider-only-allergy' }],
+            contacts: [{ phone: 'provider-only-phone' }],
+          },
+        }),
+      ),
+    );
+
+    try {
+      render(<CollaborationContent patientId="patient_1" />);
+      const overviewConfig = queryConfigs.find(
+        (config) => config.queryKey?.[0] === 'patient-overview',
+      );
+      await expect(overviewConfig?.queryFn?.()).resolves.toEqual({ name: '田中 一郎' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects legacy, empty-name, or extra-root successful overview payloads', async () => {
+    const queryConfigs: Array<{ queryKey?: unknown[]; queryFn?: () => Promise<unknown> }> = [];
+    useQueryMock.mockImplementation(
+      (options: { queryKey?: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        queryConfigs.push(options);
+        const [scope] = options.queryKey ?? [];
+        if (scope === 'presence') return { data: [] };
+        if (scope === 'patient-overview') {
+          return { data: { name: '田中 一郎' }, isError: false, isLoading: false };
+        }
+        throw new Error(`Unexpected query key: ${JSON.stringify(options.queryKey)}`);
+      },
+    );
+    render(<CollaborationContent patientId="patient_1" />);
+    const overviewConfig = queryConfigs.find(
+      (config) => config.queryKey?.[0] === 'patient-overview',
+    );
+
+    const payloads = [
+      { patient: { name: '田中 一郎' } },
+      { data: { name: '   ' } },
+      { data: { name: '田中 一郎' }, debug: { raw_patient: true } },
+    ];
+    try {
+      for (const payload of payloads) {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn(async () => jsonResponse(payload)),
+        );
+        await expect(overviewConfig?.queryFn?.()).rejects.toThrow('患者情報の取得に失敗しました');
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('renders the workflow back link through buildPatientHref', () => {
     const hostilePatientId = 'patient/1?tab=overview#frag';
 

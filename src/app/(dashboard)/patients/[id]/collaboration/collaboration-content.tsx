@@ -16,13 +16,16 @@ import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { useAuthStore } from '@/lib/stores/auth-store';
-import type { PatientOverview } from '../patient-detail.types';
 import {
   buildCollaborationDemoData,
   buildPresenceViews,
   PATIENT_PRESENCE_ENTITY_TYPE,
   type CollaborationDemoData,
 } from './collaboration.shared';
+import {
+  collaborationOverviewResponseSchema,
+  type CollaborationOverview,
+} from './collaboration-overview-response-schema';
 
 /**
  * p1_13 今だれが見ているか(design/images/P1/p1_13_realtime_collaboration_presence.png)。
@@ -68,17 +71,16 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
 
   // 患者名・ローディング/エラー表示と「最新を読み込む」の refetch 対象(card-workspace とキャッシュ共有)
   const overviewQueryKey = ['patient-overview', patientId, orgId];
-  const overviewQuery = useQuery<PatientOverview>({
+  const overviewQuery = useQuery<CollaborationOverview>({
     queryKey: overviewQueryKey,
     queryFn: async () => {
       const res = await fetch(buildPatientApiPath(patientId, '/overview'), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: PatientOverview }>(
-        res,
-        '患者情報の取得に失敗しました',
-      );
-      return payload.data;
+      return readApiJson(res, {
+        fallbackMessage: '患者情報の取得に失敗しました',
+        schema: collaborationOverviewResponseSchema,
+      });
     },
     enabled: Boolean(orgId),
   });
