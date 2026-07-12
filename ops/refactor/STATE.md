@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZCALPREVIEWSTRICT calendar billing-preview batch reader (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCALPREVIEWSTRICT calendar billing-preview batch reader (VERIFY_REQUIRED, 2026-07-13; implementation `08bd509f2`, shared clean-capacity build pending).
   - current task / root cause:
     Calendarは最大100 scheduleのread-only billing preview batchをcompile-time record castだけで読み、legacy root、
     schedule key欠落/混入、不正severity/dateをcadence warning表示へ流し得た。さらにCalendarが使うのはalert
