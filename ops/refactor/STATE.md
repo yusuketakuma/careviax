@@ -51,6 +51,35 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZEVIDENCESTRICT evidence gallery attachment reader (VERIFY_REQUIRED, 2026-07-12; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    証跡galleryのvisit-record attachment readerがoptional compile-time型だけを信頼し、legacy root、不正
+    datetime/kind、pagination drift、duplicate identityを表示モデルへ流し得た。さらにprovider上限を超えた
+    success dataをconsumerの`slice(0, 12)`で黙って切り捨て、証跡欠落を正常表示にしていた。Providerは
+    evidence-gallery専用narrow projection、canVisit、assignment/org scope、sensitive no-storeを既に強制する。
+  - implementation / evidence-privacy boundary:
+    Strict `{ data, meta }` schemaで12 records、record当たり100 attachments、bounded identifiers/file names、
+    ISO datetime、attachment kind、cursor/has-more relation、record/file identity一意を検証し、検証済みdataを
+    そのまま返す。Silent slice/optional empty fallbackを除去した。Provider projection/query、auth/authz、
+    assignment/tenant/no-store、offline draft storage/sync、render、UIは変更していない。Next.js同梱の
+    `01-app/01-getting-started/06-fetching-data.md`を確認した。Visual reconstructionではないため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/visits/evidence/evidence-gallery-response-schema.ts`,
+    `src/app/(dashboard)/visits/evidence/evidence-gallery-content.tsx`,
+    `src/app/(dashboard)/visits/evidence/evidence-gallery-content.test.ts`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/provider Vitest passed 3 files / 99 tests. Exact ESLint with `--max-warnings=0`, Prettier,
+    and scoped diff-check passed. `pnpm client-json-schema:check` passed at 209 schema-backed / 162 allowlisted
+    schema-less calls / 53 files; frontend contract, module boundary, aggregate typecheck, 8GB no-unused typecheck,
+    client PHI-log, API response shape, and colors passed. Full build was NOT_EXECUTED because the shared
+    clean-capacity gate remains unresolved; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed or silently truncated attachment summaries cannot produce a false-complete evidence gallery. Request
+    count remains one, provider narrow select/take, payload, offline behavior, render behavior, and dependencies are
+    unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZVISITPREPSTRICT today visit preparation board reader (VERIFY_REQUIRED, 2026-07-12; implementation `debbdb0aa`, ledger `13898b8e0`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     今日の訪問準備board readerがcompile-time `VisitPreparationBoardResponse` castだけを信頼し、legacy/mixed

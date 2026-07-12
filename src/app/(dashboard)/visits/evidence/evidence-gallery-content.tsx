@@ -27,6 +27,7 @@ import {
   type VisitRecordDetailForEvidence,
 } from './evidence-gallery.shared';
 import { buildEvidenceDemoItems } from './evidence-gallery.demo';
+import { evidenceGalleryResponseSchema } from './evidence-gallery-response-schema';
 
 /**
  * p0_33「画像・証跡」: 訪問で残した写真・文書を種類別に確認するギャラリー。
@@ -37,10 +38,6 @@ import { buildEvidenceDemoItems } from './evidence-gallery.demo';
 
 /** 添付を取りに行く訪問記録の最大件数(詳細 API の N+1 を抑える) */
 const MAX_RECORDS_FOR_ATTACHMENTS = 12;
-
-type VisitRecordListResponse = {
-  data?: VisitRecordDetailForEvidence[];
-};
 
 /** 証跡ギャラリー用に、添付 summary を含む訪問記録一覧を 1 回で取得する。 */
 export async function fetchVisitRecordsWithAttachments(
@@ -53,8 +50,10 @@ export async function fetchVisitRecordsWithAttachments(
       headers,
     },
   );
-  const list = await readApiJson<VisitRecordListResponse>(listRes, '訪問記録の取得に失敗しました');
-  return (list.data ?? []).slice(0, MAX_RECORDS_FOR_ATTACHMENTS);
+  return readApiJson(listRes, {
+    fallbackMessage: '訪問記録の取得に失敗しました',
+    schema: evidenceGalleryResponseSchema,
+  });
 }
 
 const SYNC_BADGE_CLASSES: Record<EvidenceGalleryItem['syncState'], string> = {

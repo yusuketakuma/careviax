@@ -265,12 +265,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/visits/evidence/evidence-gallery-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/workflow/workflow-dashboard-content.tsx",
       "counts": {
         "stringFallback": 1
