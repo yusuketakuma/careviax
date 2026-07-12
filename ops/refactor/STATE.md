@@ -51,6 +51,39 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZFACPACKETSTRICT facility visit packet reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Facility packet画面はvisit-preparationの巨大packから施設巡回contextだけを使う一方、compile-time castで
+    full responseをquery stateへ保持し、patient ID/生年月日/性別、薬剤期間、その他pack PHIを不要に到達
+    可能にしていた。Legacy/mixed root、duplicate route/schedule、current schedule不在も施設巡回・packet保存へ
+    流れ得て、scheduleIdをpreparation API/record hrefへ直接補間していた。ProviderはcanVisit、assignment/org
+    scope、sensitive no-storeを既に強制する。
+  - implementation / facility-PHI-route-integrity boundary:
+    Strict rootとminimal facility context projectionを追加し、bounded facility labels/notes、place enum、最大200
+    patients、patient display/status/blocker/record fields、positive route orderを検証した。Schedule identityとroute
+    orderを一意化し、current scheduleがrosterに存在することを固定。Data/pack/patient内のunused provider fieldsを
+    stripし、shared visit-preparation API path / visit-record href helpersへ接続した。Packet memo read/write、
+    facility batch ordering optimistic inputs、assignment/tenant/no-store、UIは変更していない。Visual reconstruction
+    ではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/visits/[id]/facility-packet/facility-packet-response-schema.ts`,
+    `src/app/(dashboard)/visits/[id]/facility-packet/facility-packet-response-schema.test.ts`,
+    `src/app/(dashboard)/visits/[id]/facility-packet/facility-packet-content.tsx`,
+    `src/app/(dashboard)/visits/[id]/facility-packet/facility-packet-content.test.tsx`,
+    `src/lib/visits/api-paths.ts`, `src/lib/visits/api-paths.test.ts`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/provider/path/schema Vitest passed 5 files / 69 tests. An initial exact-lint run found only stale
+    local type imports after schema inference; those were removed and exact ESLint with `--max-warnings=0` passed.
+    Prettier and scoped diff-check passed. `pnpm client-json-schema:check` passed at 214 schema-backed / 157 allowlisted
+    schema-less calls / 48 files; frontend contract, module boundary, aggregate typecheck, 8GB no-unused typecheck,
+    client PHI-log, API response shape, and colors passed. Full build was NOT_EXECUTED because only 2.9 GiB free
+    remains after the shared `.next/cache` capacity failure; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed facility roster/order and path injection cannot reach packet operations; query-state PHI is materially
+    reduced. Request count, provider query/payload, render behavior, packet write, and dependencies are unchanged.
+    A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZVOICEMEMOSTRICT voice memo visit-record detail reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `e732f914f`, ledger `be41425c7`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Voice memoの手入力/転写をSOAP主観へ追記する経路がfull visit-record detailをcompile-time unknown castで読み、

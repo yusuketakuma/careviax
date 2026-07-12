@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildVisitMedicationStockObservationsApiPath,
+  buildVisitPreparationApiPath,
   buildVisitRecordApiPath,
   buildVisitReflectedFieldsApiPath,
   buildVisitScheduleApiPath,
@@ -12,11 +13,15 @@ describe('visit API path helpers', () => {
     const id = 'visit/1?mode=x#fragment';
     expect(buildVisitRecordApiPath(id)).toBe(`/api/visit-records/${encodeURIComponent(id)}`);
     expect(buildVisitScheduleApiPath(id)).toBe(`/api/visit-schedules/${encodeURIComponent(id)}`);
+    expect(buildVisitPreparationApiPath(id)).toBe(
+      `/api/visit-preparations/${encodeURIComponent(id)}`,
+    );
   });
 
   it.each(['.', '..'])('rejects exact dot-segment record and schedule id %s', (id) => {
     expect(() => buildVisitRecordApiPath(id)).toThrow(RangeError);
     expect(() => buildVisitScheduleApiPath(id)).toThrow(RangeError);
+    expect(() => buildVisitPreparationApiPath(id)).toThrow(RangeError);
   });
 
   it('builds the medication stock observation path', () => {

@@ -15,6 +15,8 @@ import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { clientLog } from '@/lib/utils/client-log';
+import { buildVisitPreparationApiPath } from '@/lib/visits/api-paths';
+import { buildVisitRecordHref } from '@/lib/visits/navigation';
 import {
   FACILITY_PACKET_MEMO_FIELDS,
   facilityPacketMemoDisplayItems,
@@ -23,8 +25,11 @@ import {
   parseFacilityPacketMemo,
   sortFacilityPacketPatients,
   type FacilityPacketMemo,
-  type FacilityPacketPatient,
 } from '@/lib/visits/facility-packet';
+import {
+  facilityPacketResponseSchema,
+  type FacilityPacketSnapshot,
+} from './facility-packet-response-schema';
 
 /**
  * p0_24「施設モード・訪問パケット」: 施設の本日訪問(部屋カード列)、
@@ -34,22 +39,7 @@ import {
  * 構造化フォームで編集し、facility-visit-batches API へ保存する。
  */
 
-type FacilityParallelContext = {
-  label: string | null;
-  place_kind: 'facility' | 'home_group' | 'address' | null;
-  site_name: string | null;
-  common_notes: string | null;
-  current_schedule_id: string;
-  patients: FacilityPacketPatient[];
-};
-
-type PreparationSnapshot = {
-  data: {
-    pack: {
-      facility_parallel_context?: FacilityParallelContext | null;
-    };
-  };
-};
+type PreparationSnapshot = FacilityPacketSnapshot;
 
 export function FacilityPacketContent({ scheduleId }: { scheduleId: string }) {
   const orgId = useOrgId();
@@ -58,10 +48,13 @@ export function FacilityPacketContent({ scheduleId }: { scheduleId: string }) {
   const preparationQuery = useQuery<PreparationSnapshot>({
     queryKey: ['visit-preparation-facility-packet', scheduleId, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/visit-preparations/${scheduleId}`, {
+      const res = await fetch(buildVisitPreparationApiPath(scheduleId), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PreparationSnapshot>(res, '施設訪問パケットの取得に失敗しました');
+      return readApiJson<PreparationSnapshot>(res, {
+        fallbackMessage: '施設訪問パケットの取得に失敗しました',
+        schema: facilityPacketResponseSchema,
+      });
     },
     enabled: !!orgId && !!scheduleId,
   });
@@ -97,7 +90,7 @@ export function FacilityPacketContent({ scheduleId }: { scheduleId: string }) {
           この訪問は施設一括の対象ではありません。施設一括の設定はスケジュールから行えます。
         </p>
         <Link
-          href={`/visits/${scheduleId}/record`}
+          href={buildVisitRecordHref(scheduleId)}
           className={cn(buttonVariants({ variant: 'outline' }), 'mt-4 min-h-11')}
         >
           訪問記録へ戻る
@@ -165,7 +158,7 @@ export function FacilityPacketContent({ scheduleId }: { scheduleId: string }) {
         <h2 className="text-base font-bold text-foreground">次にやること</h2>
         <div className="mt-3 space-y-2.5">
           <Link
-            href={`/visits/${startScheduleId}/record`}
+            href={buildVisitRecordHref(startScheduleId)}
             className={cn(buttonVariants({ variant: 'default' }), 'min-h-11 w-full')}
           >
             訪問モードを開始

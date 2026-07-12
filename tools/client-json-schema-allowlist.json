@@ -235,12 +235,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/visits/[id]/facility-packet/facility-packet-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
       "counts": {
         "stringFallback": 5

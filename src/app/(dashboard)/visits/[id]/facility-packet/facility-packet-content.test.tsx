@@ -41,6 +41,7 @@ function buildFacilityPacketResponse() {
     data: {
       pack: {
         facility_parallel_context: {
+          batch_id: 'provider-only-batch-id',
           label: '青空ホーム',
           place_kind: 'facility',
           site_name: '青空ホーム',
@@ -49,6 +50,8 @@ function buildFacilityPacketResponse() {
           patients: [
             {
               schedule_id: 'schedule_1',
+              patient_id: 'provider-only-patient-id',
+              patient_birth_date: '1940-01-01',
               patient_name: '山田 花子',
               unit_name: '101',
               route_order: 1,
@@ -66,6 +69,28 @@ function buildFacilityPacketResponse() {
 describe('FacilityPacketContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('encodes hostile schedule ids in API and visit-record paths', async () => {
+    const scheduleId = 'schedule/1?patient=x#frag';
+    const encoded = encodeURIComponent(scheduleId);
+    const response = buildFacilityPacketResponse();
+    response.data.pack.facility_parallel_context.current_schedule_id = scheduleId;
+    response.data.pack.facility_parallel_context.patients[0]!.schedule_id = scheduleId;
+    const fetchMock = vi.fn(async () => jsonResponse(response));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<FacilityPacketContent scheduleId={scheduleId} />, {
+      wrapper: createQueryClientWrapper(),
+    });
+
+    expect(await screen.findByTestId('facility-packet-page')).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith(`/api/visit-preparations/${encoded}`, {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(screen.getByRole('link', { name: '訪問モードを開始' }).getAttribute('href')).toBe(
+      `/visits/${encoded}/record`,
+    );
   });
 
   afterEach(() => {
