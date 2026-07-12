@@ -46317,3 +46317,28 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   manual assistive-technology review. `FE-PATIENT-LIST-001` remains Partial for the bounded patient-board query/BFF and
   real-data payload budget tracked by `PERF-DB-PATIENT-BOARD-CURSOR`. No product/API/DB/auth/authz/PHI/audit behavior,
   push, deploy, external send, production-data mutation, migration application, or destructive operation occurred.
+
+## 2026-07-12 FE-PATIENT-LIST-001 — patient detail link report fresh verification and feature-branch push
+
+- completion audit / root cause:
+  Rechecked the user-reported patient-list link mismatch against the live HEAD. The regression was introduced by
+  `ea65ee168`, where the selected-preview `患者詳細` action reused `foundation_href` and therefore navigated to
+  `/patients/{id}#patient-foundation` while patient-name links opened the detail root. Commit `47586a637` corrected
+  card, compact-list, desktop-preview, and mobile-sheet detail actions to use `buildPatientHref(patient_id)` while
+  preserving the anchored `foundation_href` exclusively for `正本確認`. No additional product edit was required.
+- fresh verification:
+  Patient-board Vitest passed 1 file / 27 tests. Exact ESLint/Prettier, aggregate Next route type generation plus
+  TypeScript checks, frontend contract, client PHI-log, raw-state colors, module boundaries, and diff checks passed.
+  The first route-mocked Playwright command intentionally reused port 3012 but no server was running, so all four
+  project variants failed with `ERR_CONNECTION_REFUSED`; after starting the repository `dev:e2e:local` server, the
+  focused desktop and mobile Chromium navigation case passed 2/2 and proved both preview actions use the patient
+  detail root. The temporary server was then stopped. The current single-agent SSOT disables Oracle consultation, so
+  no external PHI-adjacent review was attempted; the evidence is local code, component, type, contract, and browser
+  verification only.
+- branch / push / remaining:
+  Because the local `main` was 100 commits ahead of `origin/main`, it was not pushed directly. The chain through
+  `b960d50da` was published as `origin/agent/continuous-improvement-20260712`; CI and production deployment are
+  configured for `main` pushes, while the AWS container workflow is manual-only, so this feature-branch push did not
+  trigger production deployment. Unrelated harness-memory changes and untracked personal artifacts remain excluded.
+  The reported link mismatch is fixed and verified. `FE-PATIENT-LIST-001` remains Partial only for its broader
+  bounded-query/payload and list-layout work, not for patient-detail link convergence.
