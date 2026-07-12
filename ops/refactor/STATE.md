@@ -47045,6 +47045,47 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZSHAREDVIEWER — (DONE)
+
+- current task / root cause:
+  The public OTP shared viewer still trusts its PHI-bearing response through a compile-time cast. Unsupported scope
+  keys/content, section/scope mismatches, malformed patient/archive/dates/counts, duplicate rows, and provider-only raw
+  inbound text/contact fields can therefore enter the public query cache without runtime validation.
+- baseline / corrected risk audit:
+  Focused external-access service and shared-viewer suites pass 2 files / 57 tests. A suspected legacy
+  `self_report_history` provider leak was disproved by the live tests: legacy scope requires a stored case boundary and,
+  with that boundary, the service does not query history and returns only an empty compatibility array. The server-side
+  root cause is already fail-closed, so this slice does not modify provider/auth/privacy policy. Current inventory is
+  196 schema-backed / 175 allowlisted calls across 64 files.
+- implementation plan:
+  Add a strict public response projection for supported scope keys and every displayed section, enforce provider caps,
+  identities, timestamps, archive/count relations, section/scope agreement, empty unsupported history, and controlled
+  inbound aggregates while stripping raw/provider fields. Connect `readApiJson`, synchronize provider-shaped fixtures,
+  add malformed/scope/raw-field regressions, and remove only this allowlist entry. This non-visual privacy/contract
+  boundary repair does not require imagegen; token/OTP/audit/no-store/case/report boundaries and self-report mutation
+  remain unchanged.
+- implementation / validation:
+  Added the strict public payload projection for supported scope keys, patient/archive identity, medications, visits,
+  reports, shared summary, and controlled inbound aggregates. It enforces section/scope agreement, provider caps,
+  unique IDs, ordered/archive/count invariants, an empty unsupported history, and aggregate count arithmetic. Raw inbound
+  text, sender contact, prompt/source fields, patient phone, grant metadata, and other provider-only fields are stripped
+  before the public query cache. Focused schema/viewer/provider suites pass 3 files / 65 tests. Client-schema inventory
+  passes at 197 schema-backed / 174 allowlisted calls across 63 files. Aggregate typecheck, 8 GB no-unused typecheck,
+  lint, frontend contract, module boundaries, API response shape, PHI client log/display, colors, typography, Plans,
+  format, and diff gates pass; lint retains only the two pre-existing unused-parameter warnings in
+  `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  Serialized `PHOS_DISABLE_WEBPACK_CACHE=1 pnpm build` passes: compile 93s, build TypeScript 61s, page data 1432ms,
+  static generation 311/311 in 832ms, traces 18.2s, and final optimization 20.9s. It emitted only the two known
+  generated-CSS optimizer warnings. The temporary local webpack cache hook was reverted, leaving no `next.config.ts`
+  diff; no generated artifacts were deleted.
+- commit / landing:
+  Scoped implementation commit `2a013fba9` contains only the public viewer schema/tests, reader fixture alignment, and
+  allowlist ratchet. Ledger commit and safe feature-branch push follow; unrelated dirty/untracked artifacts remain
+  excluded.
+- next action:
+  Close and push this slice, then continue the 174-call inventory with another disjoint high-value reader.
+
 ## 2026-07-12 API-CONTRACT-001FZCOMMUNITYFOLLOWUP — (DONE)
 
 - current task / root cause:
