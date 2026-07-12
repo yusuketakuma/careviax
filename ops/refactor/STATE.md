@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZTEMPLATEREADSTRICT document-template list/detail/body readers (VERIFY_REQUIRED, 2026-07-13; implementation `f75484d74`, shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZTEMPLATEREADSTRICT document-template list/detail/body readers (VERIFY_REQUIRED, 2026-07-13; implementation `f75484d74`, ledger `6089fdb77`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Document Templatesはmetadata list、full detail GET、Body Editor detail GET/PATCHの4 readersを別々の
     compile-time typesでcastし、legacy root、wrong list filter/count、duplicate/incorrect template identity、不正
