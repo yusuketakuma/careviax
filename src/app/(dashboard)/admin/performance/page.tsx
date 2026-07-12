@@ -34,6 +34,10 @@ import {
 } from '@/lib/realtime/workflow-invalidation-policy';
 import { StaffKpiPanel } from '@/app/(dashboard)/admin/staff/staff-kpi-panel';
 import { performanceScheduleSchema, type PerformanceSchedule } from './performance-schedule-schema';
+import {
+  performanceProposalsResponseSchema,
+  type PerformanceProposalsResponse,
+} from './performance-proposal-schema';
 
 type WorkflowData = {
   route_control: {
@@ -58,36 +62,6 @@ type WorkflowData = {
       callback_followups: number;
       facility_clusters: number;
     }>;
-  };
-};
-
-type Proposal = {
-  id: string;
-  proposed_date: string;
-  priority: 'normal' | 'urgent' | 'emergency';
-  proposal_status:
-    | 'proposed'
-    | 'patient_contact_pending'
-    | 'confirmed'
-    | 'rejected'
-    | 'superseded'
-    | 'expired'
-    | 'reschedule_pending';
-  patient_contact_status:
-    | 'pending'
-    | 'attempted'
-    | 'confirmed'
-    | 'declined'
-    | 'change_requested'
-    | 'unreachable';
-  assignment_mode: 'primary' | 'fallback';
-  route_distance_score: number | null;
-  proposal_reason: string;
-  visit_deadline_date: string | null;
-  case_: {
-    patient: {
-      name: string;
-    };
   };
 };
 
@@ -275,7 +249,10 @@ export default function PerformancePage() {
       const res = await fetch(`/api/visit-schedule-proposals?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: Proposal[] }>(res, '訪問候補の取得に失敗しました');
+      return readApiJson<PerformanceProposalsResponse>(res, {
+        fallbackMessage: '訪問候補の取得に失敗しました',
+        schema: performanceProposalsResponseSchema,
+      });
     },
     enabled: !!orgId,
     invalidateOn: SCHEDULE_WORKFLOW_INVALIDATION_EVENTS,

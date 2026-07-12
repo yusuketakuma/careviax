@@ -62,7 +62,7 @@
     {
       "path": "src/app/(dashboard)/admin/performance/page.tsx",
       "counts": {
-        "stringFallback": 3
+        "stringFallback": 2
       }
     },
     {
