@@ -160,6 +160,40 @@ describe('BillingCheckContent', () => {
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
   });
 
+  it.each([
+    ['legacy root', () => buildFixture()],
+    [
+      'review count drift',
+      () => ({
+        data: {
+          ...buildFixture(),
+          review_count: 0,
+        },
+      }),
+    ],
+    [
+      'external action URL',
+      () => {
+        const fixture = buildFixture();
+        return {
+          data: {
+            ...fixture,
+            rail: {
+              ...fixture.rail,
+              next_action: { ...fixture.rail.next_action, href: 'https://example.com/phish' },
+            },
+          },
+        };
+      },
+    ],
+  ])('rejects an invalid billing check response: %s', async (_label, payloadFactory) => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(payloadFactory())));
+
+    await expect(fetchBillingCheck('org_1', 'current')).rejects.toThrow(
+      '算定チェック集計の取得に失敗しました',
+    );
+  });
+
   it('renders the header row with month summary and the month toggle', () => {
     render(<BillingCheckContent />);
 

@@ -25,6 +25,7 @@ import type {
   BillingCheckResponse,
   BillingCheckReviewRow,
 } from '@/types/billing-check';
+import { billingCheckResponseSchema } from './billing-check-response-schema';
 
 /**
  * 11_billing の算定チェック(docs/design-gap-analysis-new.md)。
@@ -41,10 +42,10 @@ export async function fetchBillingCheck(
   const res = await fetch(`/api/billing-evidence/check?month=${month}`, {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: BillingCheckResponse }>(
-    res,
-    '算定チェック集計の取得に失敗しました',
-  );
+  const json = await readApiJson<{ data: BillingCheckResponse }>(res, {
+    fallbackMessage: '算定チェック集計の取得に失敗しました',
+    schema: billingCheckResponseSchema,
+  });
   return json.data;
 }
 

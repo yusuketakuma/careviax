@@ -51,6 +51,37 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZBILLCHECKSTRICT billing-check BFF reader (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, shared clean-capacity build pending).
+  - current task / root cause:
+    算定チェック画面はread-only BFFの3 KPI、疑義rows、根拠/操作link、右railをcompile-time
+    `BillingCheckResponse` castだけで読み、legacy root、負数、集計drift、重複identity、外部URLを算定確認UIへ
+    流し得た。ProviderはcanReport、org RLS、sensitive no-store、read timeoutを既に強制し、公開型を
+    `satisfies BillingCheckResponse`で固定している。
+  - implementation / billing safety boundary:
+    Strict data envelopeとconsumer契約schemaを追加し、offset timestamp、month enum、非負整数、最大10疑義row、
+    review count/row整合、review/blocked identity一意性、内部application path、最大3 blocked reasonsを検証した。
+    Provider-only fieldsはparse時にstripされる。算定可否、金額、ルール、candidate/query、BFF provider、UIは
+    変更していない。Visual reconstructionではないため`gpt-image-2`は使用していない。現行SSOTの単独運用・
+    Oracle不使用指示に従い、focused provider/consumer/schema testsとfull static gatesで代替した。
+  - files:
+    `src/app/(dashboard)/billing/billing-check-response-schema.ts`,
+    `src/app/(dashboard)/billing/billing-check-response-schema.test.ts`,
+    `src/app/(dashboard)/billing/billing-check-content.tsx`,
+    `src/app/(dashboard)/billing/billing-check-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/provider Vitest passed 3 files / 25 tests. Initial aggregate typecheck found only an empty
+    fixture array inferred as `never[]`; the fixture was annotated with the public response type, then focused tests,
+    aggregate typecheck, and 8GB no-unused typecheck passed. Exact ESLint with `--max-warnings=0`, Prettier, client schema
+    (218 backed / 153 allowlisted / 44 files), frontend contract, module boundary, client PHI-log, API response shape,
+    colors, and diff-check passed. Full build was NOT_EXECUTED because only about 2.9 GiB free remains after the shared
+    `.next/cache` capacity failure; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed billing display data and unsafe external navigation now fail closed before cache/UI; unused provider fields
+    are stripped. Request/query count, calculation, DB/provider work, auth/tenant boundary, render behavior, dependencies,
+    and billing decisions are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZUATSTRICT admin UAT endpoint response readers (VERIFY_REQUIRED, 2026-07-13; implementation `d5c1b2da7`, ledger `7ae890e39`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin UATの共通`fetchOrgJson<T>`は全7 endpoint familyをcompile-time genericへ直接castし、legacy/malformed
