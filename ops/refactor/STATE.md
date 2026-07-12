@@ -46830,6 +46830,7 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   response-contract and state-minimization repair covered at direct consumer and provider boundaries. Rollback is the
   three schemas, reader adapters, synchronized fixtures, three regressions, and client-schema ratchet hunk.
 - commit / push:
-  Pending scoped commit and push to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes
-  and untracked personal artifacts remain excluded, and the feature branch does not match the `main`-only production
-  deploy trigger.
+  Commit `6722d81f2` (`fix(API-CONTRACT-001): validate formulary workflow outcomes`) contains only the three outcome
+  schemas, reader adapters, synchronized fixtures, regressions, client-schema ratchet, Plans, and this ledger entry.
+  It was pushed to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked
+  personal artifacts were excluded, and the feature branch does not match the `main`-only production deploy trigger.
