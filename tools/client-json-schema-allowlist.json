@@ -103,12 +103,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/settings/operational-policy-content.tsx",
-      "counts": {
-        "stringFallback": 3
-      }
-    },
-    {
       "path": "src/app/(dashboard)/visits/[id]/capture/capture-content.tsx",
       "counts": {
         "stringFallback": 2

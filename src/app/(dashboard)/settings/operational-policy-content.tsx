@@ -25,6 +25,14 @@ import {
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
 import { readApiJson } from '@/lib/api/client-json';
+import {
+  buildUpdatedOperationalPolicyResponseSchema,
+  operationalPolicyResponseSchema,
+} from '@/lib/settings/operational-policy-response-schema';
+import {
+  dailyOpsCockpitResponseSchema,
+  type DailyOpsCockpitData,
+} from '@/lib/workspace/daily-ops-cockpit-response-schema';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
@@ -36,7 +44,6 @@ import {
   SYSTEM_SETTING_STATUS_LABELS,
   SYSTEM_SETTING_STATUS_TONE,
 } from '@/lib/settings/system-settings-inventory';
-import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 
 /**
  * new_14_settings(docs/design-gap-analysis-new.md 14_settings)の薬局運用ポリシー。
@@ -70,37 +77,38 @@ async function fetchOperationalPolicy(orgId: string): Promise<OperationalPolicyR
   const res = await fetch('/api/settings/operational-policy', {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: OperationalPolicyResponse }>(
-    res,
-    '運用ポリシーの取得に失敗しました',
-  );
+  const json = await readApiJson<{ data: OperationalPolicyResponse }>(res, {
+    fallbackMessage: '運用ポリシーの取得に失敗しました',
+    schema: operationalPolicyResponseSchema,
+  });
   return json.data;
 }
 
 async function patchOperationalPolicy(
   orgId: string,
   values: Partial<OperationalPolicy>,
+  previousChangeLogCount: number | null,
 ): Promise<OperationalPolicyResponse> {
   const res = await fetch('/api/settings/operational-policy', {
     method: 'PATCH',
     headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(values),
   });
-  const json = await readApiJson<{ data: OperationalPolicyResponse }>(
-    res,
-    '運用ポリシーの更新に失敗しました',
-  );
+  const json = await readApiJson<{ data: OperationalPolicyResponse }>(res, {
+    fallbackMessage: '運用ポリシーの更新に失敗しました',
+    schema: buildUpdatedOperationalPolicyResponseSchema({ values, previousChangeLogCount }),
+  });
   return json.data;
 }
 
-async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitResponse> {
+async function fetchCockpitForRail(orgId: string): Promise<DailyOpsCockpitData> {
   const res = await fetch('/api/dashboard/cockpit', {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: DashboardCockpitResponse }>(
-    res,
-    '当日の優先タスク取得に失敗しました',
-  );
+  const json = await readApiJson<{ data: DailyOpsCockpitData }>(res, {
+    fallbackMessage: '当日の優先タスク取得に失敗しました',
+    schema: dailyOpsCockpitResponseSchema,
+  });
   return json.data;
 }
 
@@ -527,7 +535,8 @@ export function OperationalPolicyContent() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (values: Partial<OperationalPolicy>) => patchOperationalPolicy(orgId, values),
+    mutationFn: (values: Partial<OperationalPolicy>) =>
+      patchOperationalPolicy(orgId, values, policyQuery.data?.change_log_count_this_month ?? null),
     onSuccess: (data) => {
       queryClient.setQueryData(['operational-policy', orgId], data);
       toast.success('運用ポリシーを更新しました');

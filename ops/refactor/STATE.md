@@ -51,6 +51,35 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZOPPOLICYSTRICT operational policy/daily-ops readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Operational PolicyのGET/PATCHとdaily-ops cockpit readersはcompile-time castだけで、欠損/未知policy、locked-item
+    identity drift、PATCH未反映、非editable update、change-log count drift、unsafe/malformed rail actionsを成功扱いし、
+    settings state・success toast・cache updateへ進め得た。Intakeに局所化されたcockpit projectionも再利用不能だった。
+  - implementation / safety boundary:
+    Policy schemaで全fieldsと固定3 locked identitiesを検証し、PATCH factoryでrequested values、`can_edit=true`、既知の
+    prior count +1を要求。Intake cockpit projectionをshared workspace schemaへ昇格し、settingsもaudit queue/today visits/
+    blocked reasonsだけをcacheするようにした。Policy write/audit、locked safety semantics、provider、auth/tenant/RLS/DB/UIは
+    変更していない。非visual parser/safety-policy境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/settings/operational-policy-response-schema.ts`,
+    `src/lib/settings/operational-policy-response-schema.test.ts`,
+    `src/lib/workspace/daily-ops-cockpit-response-schema.ts`,
+    `src/lib/prescriptions/intake-triage-response-schema.ts`,
+    `src/app/(dashboard)/settings/operational-policy-content.tsx`,
+    `src/app/(dashboard)/settings/operational-policy-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/policy-schema/intake-schema/provider Vitest passed 4 files / 24 tests. Exact ESLint, Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (268 backed / 95 allowlisted / 23 files), frontend
+    contract, module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build was
+    NOT_EXECUTED because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated
+    cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed/non-applied policy updates and unsafe rail payloads now fail closed; duplicated projection was removed.
+    Network/DB query count, policy/audit writes, auth/tenant/RLS, render behavior, and dependencies are unchanged.
+    A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZREPORTDELIVERYSTRICT report delivery analytics/reminder readers (VERIFY_REQUIRED, 2026-07-13; implementation `61c8cb26e`, ledger `d84e62251`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Report Delivery Dashboardのanalytics GETとreminder POST結果readersはcompile-time castだけで、current/monthly rate・

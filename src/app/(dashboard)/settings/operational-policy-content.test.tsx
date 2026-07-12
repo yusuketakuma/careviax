@@ -378,9 +378,11 @@ describe('OperationalPolicyContent', () => {
       const cockpitPayload = buildCockpitFixture();
       fetchMock.mockImplementation(async () => jsonResponse({ data: cockpitPayload }));
       fetchMock.mockClear();
-      await expect(queryConfigs.get('settings-rail-cockpit')!.queryFn()).resolves.toEqual(
-        cockpitPayload,
-      );
+      await expect(queryConfigs.get('settings-rail-cockpit')!.queryFn()).resolves.toEqual({
+        audit_queue: cockpitPayload.audit_queue,
+        today_visits: cockpitPayload.today_visits,
+        blocked_reasons: cockpitPayload.blocked_reasons,
+      });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [cockpitUrl, cockpitInit] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(cockpitUrl).toBe('/api/dashboard/cockpit');
@@ -405,7 +407,14 @@ describe('OperationalPolicyContent', () => {
     vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinel);
     const { mutationConfigs } = renderWithCapturedQueries();
     const fetchMock = stubFetch({
-      data: buildPolicyFixture({ policy: buildPolicyFixture().policy }),
+      data: buildPolicyFixture({
+        policy: {
+          ...buildPolicyFixture().policy,
+          safety_sign_sensitivity: 'high',
+          quiet_hours: false,
+        },
+        change_log_count_this_month: 4,
+      }),
     });
     const values: Partial<OperationalPolicy> = {
       safety_sign_sensitivity: 'high',
