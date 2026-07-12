@@ -51,6 +51,35 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZEMERGENCYROUTESTRICT emergency visit route-plan reader (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Emergency route画面は確定訪問を固定した2案の移動増・訪問順を比較して採用するが、`/api/visit-routes`
+    responseをcompile-time `VisitRoutePlan` castだけで信頼し、legacy/mixed root、不正travel mode/距離/時間、
+    duplicate/mismatched schedule orderを採用判断へ流し得た。Providerは最大50対象、canEditSchedule、
+    assignment/org/RLS scope、sensitive no-storeを既に強制する。
+  - implementation / patient-safety-route boundary:
+    Full route-plan strict schemaでstatus/travel mode、bounded note/path、origin座標、nonnegative distance/duration、
+    distance source、time windows、50 ordered schedules/stopsを検証した。Ordered schedule identity、stop identity、
+    optimized orderを一意化し、ordered set外stopを拒否する。Route engine、request/locked schedules、
+    assignment/tenant/RLS/no-store、2案比較、確定訪問保護、route-order PATCH、UIは変更していない。
+    Visual reconstructionではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/schedules/emergency-route/emergency-route-response-schema.ts`,
+    `src/app/(dashboard)/schedules/emergency-route/emergency-route-response-schema.test.ts`,
+    `src/app/(dashboard)/schedules/emergency-route/emergency-route-content.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/provider/UI/schema Vitest passed 3 files / 32 tests; provider sanitized-500 regression emitted
+    its expected fixed error log and passed. Exact ESLint with `--max-warnings=0`, Prettier, and scoped diff-check
+    passed. `pnpm client-json-schema:check` passed at 212 schema-backed / 159 allowlisted schema-less calls / 50 files;
+    frontend contract, module boundary, aggregate typecheck, 8GB no-unused typecheck, client PHI-log, API response
+    shape, and colors passed. Full build was NOT_EXECUTED because the shared clean-capacity gate remains unresolved;
+    generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed route geometry/order cannot enter emergency scenario state or influence route adoption. Request count,
+    provider DB/route-engine work, payload, render behavior, and dependencies are unchanged. A clean-capacity runner
+    must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZEVIDENCESYNCSTRICT offline evidence visit-record detail reader (VERIFY_REQUIRED, 2026-07-12; implementation `93955963d`, ledger `0fa032692`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Offline evidence syncがupload済みfile assetをvisit recordへ紐づける前に、visit-record detailの

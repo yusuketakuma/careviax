@@ -28,6 +28,7 @@ import {
   type VisitScheduleRouteUpdate,
 } from '../visit-route-client';
 import { ScheduleDateNavigator } from '../schedule-date-navigator';
+import { emergencyRouteResponseSchema } from './emergency-route-response-schema';
 
 /**
  * p0_20「緊急処方の割込・ルート再計算」:
@@ -185,11 +186,10 @@ async function computeRoutePlan(args: {
         : {}),
     }),
   });
-  const payload = await readApiJson<{ data: VisitRoutePlan }>(
-    res,
-    'ルート再計算の取得に失敗しました',
-  );
-  return payload.data;
+  return readApiJson<VisitRoutePlan>(res, {
+    fallbackMessage: 'ルート再計算の取得に失敗しました',
+    schema: emergencyRouteResponseSchema,
+  });
 }
 
 function deltaMinutes(scenarioSeconds: number | null, baselineSeconds: number | null) {
