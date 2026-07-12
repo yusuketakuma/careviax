@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZREALTIMESTRICT admin realtime workflow/notification readers (VERIFY_REQUIRED, 2026-07-12; implementation `e3816210b`, push and clean-capacity build pending).
+- codex: API-CONTRACT-001FZREALTIMESTRICT admin realtime workflow/notification readers (VERIFY_REQUIRED, 2026-07-12; implementation `e3816210b`, ledger `bc23ae391`, feature-branch push confirmed; clean-capacity build pending).
   - current task / root cause:
     `/admin/realtime` のworkflow KPI/workbenchとnotification listがcompile-time castsだけを信頼し、legacy root、
     負の運用件数、重複workbench identity、unsafe action/link、invalid timestamp、pagination driftを
