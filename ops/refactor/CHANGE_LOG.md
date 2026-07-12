@@ -154,8 +154,8 @@
 ## API-CONTRACT-001FZMASTERHUBSTRICT
 
 - Commit Group: `API-CONTRACT-001FZMASTERHUBSTRICT`
-- Commit: pending scoped implementation landing
-- Push Status: PENDING
+- Commit: `20d75daeb`
+- Push Status: PUSHED
 - Branch: `agent/continuous-improvement-20260712`
 - Scope: admin/master-hub aggregate response schema, consumer regressions, client-schema allowlist ratchet, and required ledgers.
 - Implementation: validate strict `{ data }`, exact 11 master keys, card count/status/action/date fields, right-rail next/blocked identity/severity/age/href, duplicate/completeness and status-count invariants, internal links, bounded non-negative values, and provider-only nested-field stripping; preserve aggregate provider, authorization, authorized in-app detail, and visual semantics.
@@ -163,4 +163,5 @@
 - DB/auth/tenant/audit impact: no DB, migration, provider, auth/authz, tenant, audit, mutation, production-data, or external-output change.
 - Verification: focused 2 files / 20 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and Next build passed; client-schema inventory is 171 schema-backed / 202 allowlisted / 78 files. Build emitted only the existing two CSS optimizer warnings and no ENOSPC warning; filesystem availability was 14 GiB before and 13 GiB after the build.
 - Rollback: revert the master-hub response schema, consumer adapter, regressions, allowlist removal, and ledger entries.
-- Remote: `origin/agent/continuous-improvement-20260712`; push evidence will be recorded after the scoped landing.
+- Remote: `origin/agent/continuous-improvement-20260712`
+- Push evidence: `cd707e2dd..20d75daeb` fast-forward push succeeded; local and remote heads match (`0 0`).

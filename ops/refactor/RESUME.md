@@ -7,33 +7,33 @@
 - Upstream: `origin/agent/continuous-improvement-20260712`
 - Remote: `origin`
 - Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
-- Current Phase: admin/master-hub response-contract hardening
-- Current Task ID: `API-CONTRACT-001FZMASTERHUBSTRICT`
-- Current Task Status: IMPLEMENTED, PENDING LANDING
-- Current Commit Group: `API-CONTRACT-001FZMASTERHUBSTRICT`
+- Current Phase: API-CONTRACT-001 allowlist rescan
+- Current Task ID: `API-CONTRACT-001-RESCAN`
+- Current Task Status: IN_PROGRESS
+- Current Commit Group: `API-CONTRACT-001-RESCAN`
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
-- Last Safe Checkpoint: Master-hub focused suites pass 2 files / 20 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized Next build passed; client-schema is 171 schema-backed / 202 allowlisted / 78 files; implementation commit is pending landing.
-- Last Completed Action: Implemented and validated the strict master-hub card/rail aggregate reader with provider-only nested-field stripping and fail-closed regressions.
-- Current Operation: land the validated master-hub implementation slice.
-- Exact Next Action: Inspect status, stage only owned master-hub/code/ledger paths, create the scoped implementation commit, push it, verify `HEAD...@{upstream}` parity, then write closure ledgers.
-- Exact Next Command: `git status --short --untracked-files=all && git diff --stat`
-- Changed Files: master-hub consumer/test/schema, client-schema allowlist, Plans, STATE, RESUME, RUN_LOCK, SESSION_SUMMARY, SCAN_LOG, and required implementation ledgers; preserve inherited harness-memory and personal artifacts.
+- Last Safe Checkpoint: Master-hub focused suites pass 2 files / 20 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized Next build passed; commit `20d75daeb` is pushed and local/upstream parity is `0 0`; client-schema is 171 schema-backed / 202 allowlisted / 78 files.
+- Last Completed Action: Implemented, validated, committed, and pushed the strict master-hub card/rail aggregate reader with provider-only nested-field stripping and fail-closed regressions.
+- Current Operation: rescan remaining API-CONTRACT-001 debt and choose the next disjoint safe slice.
+- Exact Next Action: Run the allowlist/inventory and patients-board cursor residual scan, rank candidates by blast radius, and select the next bounded consumer/provider pair without touching unrelated dirty paths.
+- Exact Next Command: `pnpm client-json-schema:check`
+- Changed Files: none for the rescan slice yet; preserve inherited harness-memory and personal artifacts.
 - Staged Files: none; facility-unit slice is committed and unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
 - Unpushed Commits: none
-- Push Status: PUSHED for packaging-method implementation (`aee2ca6d4`); local and remote heads match.
+- Push Status: PUSHED for master-hub implementation (`20d75daeb`); local and remote heads match.
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
 - Commands Completed: notification-bell baseline Vitest (2 files / 9 tests); facility focused Vitest; notifications focused Vitest; select-site focused Vitest; operations focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; typecheck; no-unused; lint; diff-check; build; provider/consumer scan.
-- Commands Pending: scoped implementation commit/push, parity verification, and closure-ledger update.
+- Commands Pending: remaining API-CONTRACT-001 allowlist scan, candidate ranking, next-slice baseline, and implementation planning.
 - Tests Completed: packaging-method slice 2 files / 26 tests, institutions slice 2 files / 43 tests, notification-bell slice 2 files / 12 tests, select-site slice 1 file / 6 tests, operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, and holiday slice 2 files / 39 tests passed.
-- Tests Pending: none for the implementation slice; closure bookkeeping remains.
+- Tests Pending: none for the completed master-hub slice; next candidate baseline is pending.
 - Build State: PASS for master-hub slice; Next 16.2.9 compiled in 2.4 minutes, TypeScript finished in 57 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0; no ENOSPC warning was emitted. Filesystem availability was 14 GiB before and 13 GiB after the build.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.
 - Migration State: NOT_APPLICABLE
-- Frontend State: notifications inbox, notification-bell summary/list, institutions GET, packaging-method GET, and master-hub GET consumers use strict runtime schemas; no visual change planned.
+- Frontend State: notifications inbox, notification-bell summary/list, institutions GET, packaging-method GET, and master-hub GET consumers use strict runtime schemas; next slice is not selected; no visual change planned.
 - Backend State: `/api/admin/master-hub` remains an org-scoped aggregate with master cards and right rail; provider queries and authz are out of scope.
 - FE/BE Alignment State: master-hub provider/consumer payload boundary is selected for hardening; authorized aggregate detail remains visible while malformed state fails closed and provider-only nested fields stay out of query state.
 - UI Verification State: no visual reconstruction; no browser run for this contract-only slice.
