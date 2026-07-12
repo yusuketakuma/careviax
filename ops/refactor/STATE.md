@@ -46915,6 +46915,7 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   because this is a non-visual shared error-boundary refactor covered by direct helper and consumer tests. Rollback is
   the helper, four import/callsite replacements, helper regressions, and client-schema inventory hunks.
 - commit / push:
-  Pending scoped commit and push to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes
-  and untracked personal artifacts remain excluded, and the feature branch does not match the `main`-only production
-  deploy trigger.
+  Commit `1ccd99983` (`refactor(API-CONTRACT-001): separate error-only responses`) contains only the shared helper and
+  tests, four callsite migrations, client-schema inventory, Plans, and this ledger entry. It was pushed to
+  `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
+  were excluded, and the feature branch does not match the `main`-only production deploy trigger.
