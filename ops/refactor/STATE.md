@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZREFLECTEDSTRICT visit reflected-fields provenance reader/path (VERIFY_REQUIRED, 2026-07-12; implementation `8c6ef6905`, push and shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZREFLECTEDSTRICT visit reflected-fields provenance reader/path (VERIFY_REQUIRED, 2026-07-12; implementation `8c6ef6905`, ledger `4258ad5c2`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Visit recordの「患者詳細へ反映した項目」cardがcompile-time service typeだけを信頼し、legacy root、
     duplicate/reverse-ordered revision、非許可fieldのraw PHIをprovenance表示へ流し得た。さらにrecordIdを
