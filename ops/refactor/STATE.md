@@ -47045,6 +47045,42 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZCOMMUNITYFOLLOWUP — (DONE)
+
+- current task / root cause:
+  The external dashboard's community follow-up reader still trusts a compile-time `{ data }` cast even though the
+  provider returns cursor metadata. False follow-up rows, duplicate identities, malformed dates/referral counts, excess
+  rows, cursor drift, and unused org/creator/free-text fields can therefore enter the dashboard cache before a second
+  client filter.
+- baseline / scope:
+  The focused external-viewer suite passes 1 file / 12 tests. The provider is `canReport`-gated, organization-filtered,
+  requests `follow_up_required=true&limit=8`, and returns `{ data, meta: { limit, has_more, next_cursor } }`; this slice
+  changes only the consuming projection. Current inventory is 195 schema-backed / 176 allowlisted calls across 65 files.
+- implementation plan:
+  Add a strict response schema for the six displayed activity fields, enforce true-only follow-up, nonnegative referral
+  counts, eight-row cap, unique IDs, ISO timestamps, and exact cursor/limit relation, strip unused provider fields,
+  connect `readApiJson`, add malformed/provider-only regressions, and remove only this allowlist entry. This non-visual
+  contract/cache-minimization repair does not require imagegen.
+- implementation / validation:
+  Added the strict eight-row follow-up projection with true-only filter semantics, unique IDs, ISO activity timestamps,
+  nonnegative referral counts, and exact limit/cursor relation. Organization, creator, description, and other unused
+  provider fields are stripped before the dashboard cache, and the redundant client filter was removed. Focused
+  schema/viewer suites pass 2 files / 20 tests. Client-schema inventory passes at 196 schema-backed / 175 allowlisted
+  calls across 64 files. Aggregate typecheck, 8 GB no-unused typecheck, lint, frontend contract, module boundaries, API
+  response shape, PHI client log/display, colors, typography, Plans, format, and diff gates pass; lint retains only the
+  two pre-existing unused-parameter warnings in `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  Serialized `PHOS_DISABLE_WEBPACK_CACHE=1 pnpm build` passes: compile 87s, build TypeScript 48s, page data 1382ms,
+  static generation 311/311 in 798ms, traces 17.5s, and final optimization 19.9s. It emitted only the two known
+  generated-CSS optimizer warnings. The temporary local webpack cache hook was reverted, leaving no `next.config.ts`
+  diff; no generated artifacts were deleted.
+- commit / landing:
+  Scoped implementation commit `9a549437d` contains only the follow-up schema/tests, external dashboard reader, and
+  allowlist ratchet. Ledger commit and safe feature-branch push follow; unrelated dirty/untracked artifacts remain
+  excluded.
+- next action:
+  Close and push this slice, then return to the 175-call inventory and patients-board cursor redesign.
+
 ## 2026-07-12 API-CONTRACT-001FZGENERICCANDIDATE — (DONE)
 
 - current task / root cause:
