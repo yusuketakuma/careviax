@@ -51,6 +51,40 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZTEMPLATEREADSTRICT document-template list/detail/body readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, shared clean-capacity build pending).
+  - current task / root cause:
+    Admin Document Templatesはmetadata list、full detail GET、Body Editor detail GET/PATCHの4 readersを別々の
+    compile-time typesでcastし、legacy root、wrong list filter/count、duplicate/incorrect template identity、不正
+    type/format/version/dateを編集state/cacheへ流し得た。Body Editorはid/name/contentだけを使う一方、providerの
+    full detail responseを将来そのまま保持し得る境界だった。ProvidersはcanAdmin、org-scoped RLS、sensitive
+    no-storeを既に強制する。
+  - implementation / document-content boundary:
+    Shared response schemaにtemplate type、metadata、full detail、body-editor minimal detailを定義。List schema
+    factoryはexpected template filter、count basis、total/visible/hidden/truncated算術、limit<=200、identity一意性を
+    検証し、detail factoriesはrequested template ID一致を強制する。Body Editorは`id/name/content`だけをparseし、
+    GET/PATCHで同じschemaを再利用。Local duplicate DTOsをschema inferへ置換し、PATCH fixtureをlive full response
+    shapeへ同期した。Writes/default behavior/provider/UIは変更していない。Visual reconstructionではないため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/lib/document-templates/response-schema.ts`,
+    `src/lib/document-templates/response-schema.test.ts`,
+    `src/app/(dashboard)/admin/document-templates/template-content.tsx`,
+    `src/app/(dashboard)/admin/document-templates/template-body-editor.tsx`,
+    `src/app/(dashboard)/admin/document-templates/template-content.test.tsx`,
+    `src/app/(dashboard)/admin/document-templates/template-body-editor.render.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/shared-schema/providers Vitest passed 6 files / 65 tests. Exact ESLint with
+    `--max-warnings=0`, Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (227 backed / 143
+    allowlisted / 38 files), frontend contract, module boundary, client PHI-log, API response shape, colors, and
+    diff-check passed. Full build was NOT_EXECUTED because only about 2.9 GiB free remains after the shared
+    `.next/cache` capacity failure; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Wrong-template responses and malformed list scope now fail closed before edit/cache; Body Editor avoids unused
+    metadata retention. Request/query count, DB/provider work, template content/default writes, auth/tenant/no-store,
+    render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZADMINUSERSSTRICT admin users/site-option readers (VERIFY_REQUIRED, 2026-07-13; implementation `bc9e4a0cc`, ledger `c7e0b77bb`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Usersは`include_collaborators=true` user一覧とsite optionsをcompile-time castだけで読み、legacy root、

@@ -39,6 +39,15 @@ import {
   buildDocumentTemplateApiPath,
   buildDocumentTemplatesApiPath,
 } from '@/lib/document-templates/api-paths';
+import {
+  buildDocumentTemplateDetailResponseSchema,
+  buildDocumentTemplatesResponseSchema,
+  type DocumentTemplateDetail as DocumentTemplateDetailRow,
+  type DocumentTemplateDetailResponse,
+  type DocumentTemplateMetadata as DocumentTemplateMetadataRow,
+  type DocumentTemplatesResponse,
+  type DocumentTemplateType as TemplateType,
+} from '@/lib/document-templates/response-schema';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
 import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
@@ -46,55 +55,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { PageSection } from '@/components/layout/page-section';
 import { TemplateBodyEditor } from './template-body-editor';
 
-type TemplateType =
-  | 'care_report'
-  | 'tracing_report'
-  | 'management_plan'
-  | 'medication_calendar'
-  | 'contract_document'
-  | 'important_matters'
-  | 'privacy_consent'
-  | 'consent_form';
-
 type TemplateFormat = 'html' | 'pdf';
-
-type DocumentTemplateMetadataRow = {
-  id: string;
-  name: string;
-  template_type: TemplateType;
-  target_role: string | null;
-  format: TemplateFormat;
-  version: number;
-  effective_from: string | null;
-  effective_to: string | null;
-  is_default: boolean;
-  created_at: string;
-  updated_at: string;
-};
-
-type DocumentTemplateDetailRow = DocumentTemplateMetadataRow & {
-  content: Record<string, unknown>;
-};
-
-type DocumentTemplatesResponse = {
-  data: DocumentTemplateMetadataRow[];
-  meta: {
-    total_count: number;
-    visible_count: number;
-    hidden_count: number;
-    truncated: boolean;
-    count_basis: 'templates';
-    filters_applied: {
-      template_type: TemplateType | null;
-      target_role: string | null;
-    };
-    limit: number;
-  };
-};
-
-type DocumentTemplateDetailResponse = {
-  data: DocumentTemplateDetailRow;
-};
 
 type TemplateForm = {
   name: string;
@@ -196,10 +157,10 @@ async function fetchDocumentTemplateDetail(orgId: string, templateId: string) {
   const res = await fetch(buildDocumentTemplateApiPath(templateId), {
     headers: buildOrgHeaders(orgId),
   });
-  const payload = await readApiJson<DocumentTemplateDetailResponse>(
-    res,
-    '文書テンプレート本文の取得に失敗しました',
-  );
+  const payload = await readApiJson<DocumentTemplateDetailResponse>(res, {
+    fallbackMessage: '文書テンプレート本文の取得に失敗しました',
+    schema: buildDocumentTemplateDetailResponseSchema(templateId),
+  });
   return payload.data;
 }
 
@@ -318,7 +279,10 @@ export function DocumentTemplateContent() {
       const res = await fetch(buildDocumentTemplatesApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<DocumentTemplatesResponse>(res, '文書テンプレートの取得に失敗しました');
+      return readApiJson<DocumentTemplatesResponse>(res, {
+        fallbackMessage: '文書テンプレートの取得に失敗しました',
+        schema: buildDocumentTemplatesResponseSchema(filterType === 'all' ? null : filterType),
+      });
     },
     enabled: !!orgId,
   });

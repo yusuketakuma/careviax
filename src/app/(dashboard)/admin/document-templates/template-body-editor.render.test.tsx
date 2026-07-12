@@ -45,6 +45,7 @@ describe('TemplateBodyEditor render hierarchy', () => {
           JSON.stringify({
             data: {
               id: url.split('/').pop(),
+              name: '主治医報告 基本',
               content: JSON.parse(String(init.body)).content,
             },
           }),
@@ -93,7 +94,16 @@ describe('TemplateBodyEditor render hierarchy', () => {
             { status: 200 },
           );
         }
-        return new Response(JSON.stringify({ data: { id: hostileId } }), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            data: {
+              id: hostileId,
+              name: '主治医報告 基本',
+              content: JSON.parse(String(init.body)).content,
+            },
+          }),
+          { status: 200 },
+        );
       }),
     );
     renderEditor(hostileId);

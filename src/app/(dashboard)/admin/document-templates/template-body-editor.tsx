@@ -7,6 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildDocumentTemplateApiPath } from '@/lib/document-templates/api-paths';
+import {
+  buildDocumentTemplateBodyEditorResponseSchema,
+  type DocumentTemplateBodyEditorResponse,
+} from '@/lib/document-templates/response-schema';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
@@ -66,14 +70,6 @@ type TemplateBodyEditorTemplate = {
   name: string;
 };
 
-type TemplateBodyEditorDetailResponse = {
-  data: {
-    id: string;
-    name: string;
-    content: Record<string, unknown>;
-  };
-};
-
 function getTemplateDetailQueryKey(orgId: string, templateId: string) {
   return ['document-template', orgId, templateId] as const;
 }
@@ -98,7 +94,10 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
       const res = await fetch(buildDocumentTemplateApiPath(selected.id), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<TemplateBodyEditorDetailResponse>(res, '文面の取得に失敗しました');
+      return readApiJson<DocumentTemplateBodyEditorResponse>(res, {
+        fallbackMessage: '文面の取得に失敗しました',
+        schema: buildDocumentTemplateBodyEditorResponseSchema(selected.id),
+      });
     },
     enabled: Boolean(orgId && selected),
   });
@@ -134,7 +133,10 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ content: { ...selectedContent, body_text: bodyText } }),
       });
-      return readApiJson<TemplateBodyEditorDetailResponse>(res, '文面の保存に失敗しました');
+      return readApiJson<DocumentTemplateBodyEditorResponse>(res, {
+        fallbackMessage: '文面の保存に失敗しました',
+        schema: buildDocumentTemplateBodyEditorResponseSchema(selected.id),
+      });
     },
     onSuccess: (payload) => {
       toast.success('文面を保存しました');
