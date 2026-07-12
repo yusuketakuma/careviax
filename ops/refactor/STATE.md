@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZCONSENTSTRICT consent record/template readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, feature-branch push pending; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCONSENTSTRICT consent record/template readers (VERIFY_REQUIRED, 2026-07-13; implementation `1986de54d`, feature-branch push pending; shared clean-capacity build pending).
   - current task / root cause:
     Patient Consent Recordsのtemplate list、consent list、create、update、revoke計5 readersはcompile-time castだけで、
     別患者・別record、重複/逆順、template relation、active/revoked状態、document URL可視性、件数/pagination drift、
