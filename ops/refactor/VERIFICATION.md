@@ -12,6 +12,27 @@
 - Browser/E2E: not run; this is a non-visual response-contract slice and no visual behavior changed.
 - Migration/auth/tenant: no migration or backend authorization change; no production data operation executed.
 
+## API-CONTRACT-001FZSERVICEAREASTRICT
+
+- Baseline: inherited admin/service-areas GET readers used compile-time site-option and counted-list casts; two
+  `stringFallback` allowlist entries covered the file. Provider returns `{ data }` for site options and `{ data, meta }`
+  for service areas.
+- Focused test: `pnpm exec vitest run 'src/app/(dashboard)/admin/service-areas/page.test.tsx' 'src/app/api/service-areas/route.test.ts' --reporter=dot --testTimeout=30000` — PASS, 2 files / 32 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`,
+  `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`,
+  `pnpm boundaries:check`, `pnpm plans:active:check`, `pnpm colors:check`, `pnpm typography:check`, and
+  `git diff --check` — PASS.
+- Client-schema result: 178 schema-backed, 195 allowlisted schema-less calls, 75 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.
+- Build: `NODE_OPTIONS=--max-old-space-size=8192 pnpm build` — PASS, exit code 0; Next 16.2.9 compiled in 83 seconds,
+  TypeScript finished in 59 seconds, 311/311 static pages and traces completed. Final `df -h .` reported 13 GiB
+  available; no cleanup was performed.
+- Browser/E2E: not run; this is a non-visual response-contract slice with no layout change, and `gpt-image-2` was
+  omitted for the same reason.
+- Migration/auth/tenant: no migration, provider, authorization, or tenant query change; no production data operation
+  executed.
+
 ## API-CONTRACT-001FZINSTITUTIONSSTRICT
 
 - Baseline: inherited admin/institutions GET reader used a compile-time `{ data: Institution[] }` cast while the provider returns an unfiltered `{ data }` root and a filtered `{ data, meta.limit, meta.has_more }` root; one `stringFallback` allowlist entry covered the reader.

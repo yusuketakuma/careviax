@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildServiceAreaApiPath } from '@/lib/service-areas/api-paths';
@@ -125,8 +125,8 @@ vi.mock('@/components/ui/select', async () => {
   };
 });
 
-function renderPage() {
-  return render(<ServiceAreasPage />, { wrapper: createQueryClientWrapper() });
+function renderPage(queryClient = createTestQueryClient()) {
+  return render(<ServiceAreasPage />, { wrapper: createQueryClientWrapper(queryClient) });
 }
 
 function getServiceAreaFormElement() {
@@ -135,6 +135,21 @@ function getServiceAreaFormElement() {
     throw new Error('service area form was not rendered');
   }
   return form;
+}
+
+function emptyServiceAreasPayload() {
+  return {
+    data: [],
+    meta: {
+      total_count: 0,
+      visible_count: 0,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'service_areas' as const,
+      filters_applied: { site_id: null },
+      limit: 100,
+    },
+  };
 }
 
 describe('ServiceAreasPage', () => {
@@ -319,7 +334,7 @@ describe('ServiceAreasPage', () => {
             { status: 200 },
           );
         }
-        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        return new Response(JSON.stringify(emptyServiceAreasPayload()), { status: 200 });
       }),
     );
 
@@ -341,6 +356,203 @@ describe('ServiceAreasPage', () => {
       expect(className).toContain('min-h-[44px]');
       expect(className).toContain('sm:min-h-[44px]');
     }
+  });
+
+  it('strips provider-only fields from service-area and site-option query state', async () => {
+    const queryClient = createTestQueryClient();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/pharmacy-sites') {
+          return new Response(
+            JSON.stringify({
+              data: [{ id: 'site_1', name: '本店', address: '東京都千代田区', org_id: 'org_1' }],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/service-areas') {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'area_1',
+                  site_id: 'site_1',
+                  name: '北多摩エリア',
+                  area_type: 'radius',
+                  geo_data: { match_keywords: ['北多摩'] },
+                  notes: '16km 圏確認済み',
+                  site: {
+                    id: 'site_1',
+                    name: '本店',
+                    address: '東京都千代田区',
+                    org_id: 'org_1',
+                  },
+                  org_id: 'org_1',
+                  created_at: '2026-07-12T00:00:00.000Z',
+                },
+              ],
+              meta: {
+                total_count: 1,
+                visible_count: 1,
+                hidden_count: 0,
+                truncated: false,
+                count_basis: 'service_areas',
+                filters_applied: { site_id: null },
+                limit: 100,
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderPage(queryClient);
+
+    await screen.findByText('北多摩エリア');
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['service-areas-sites', 'org_1'])).toBeTruthy();
+      expect(queryClient.getQueryData(['service-areas', 'org_1'])).toBeTruthy();
+    });
+
+    const siteData = queryClient.getQueryData<{
+      data: Array<Record<string, unknown>>;
+    }>(['service-areas-sites', 'org_1']);
+    expect(siteData?.data).toEqual([{ id: 'site_1', name: '本店' }]);
+
+    const areaData = queryClient.getQueryData<{
+      data: Array<Record<string, unknown>>;
+    }>(['service-areas', 'org_1']);
+    expect(areaData?.data[0]).not.toHaveProperty('org_id');
+    expect(areaData?.data[0]).not.toHaveProperty('created_at');
+    expect(areaData?.data[0]?.site).toEqual({ id: 'site_1', name: '本店' });
+  });
+
+  it('rejects duplicate site options before the editor uses them', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/pharmacy-sites') {
+          return new Response(
+            JSON.stringify({
+              data: [
+                { id: 'site_1', name: '本店' },
+                { id: 'site_1', name: '本店（重複）' },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/service-areas') {
+          return new Response(JSON.stringify(emptyServiceAreasPayload()), { status: 200 });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('拠点一覧を取得できませんでした')).toBeTruthy();
+    expect(screen.queryByRole('option', { name: '本店' })).toBeNull();
+  });
+
+  it('rejects duplicate, mismatched, and count-drifted service-area responses', async () => {
+    const baseArea = {
+      id: 'area_1',
+      site_id: 'site_1',
+      name: '北多摩エリア',
+      area_type: 'radius',
+      geo_data: { match_keywords: ['北多摩'] },
+      notes: null,
+      site: { id: 'site_1', name: '本店' },
+    };
+    const invalidPayloads = [
+      {
+        data: [baseArea, { ...baseArea }],
+        meta: {
+          total_count: 2,
+          visible_count: 2,
+          hidden_count: 0,
+          truncated: false,
+          count_basis: 'service_areas',
+          filters_applied: { site_id: null },
+          limit: 100,
+        },
+      },
+      {
+        data: [{ ...baseArea, site: { id: 'site_other', name: '別拠点' } }],
+        meta: {
+          total_count: 1,
+          visible_count: 1,
+          hidden_count: 0,
+          truncated: false,
+          count_basis: 'service_areas',
+          filters_applied: { site_id: null },
+          limit: 100,
+        },
+      },
+      {
+        data: [baseArea],
+        meta: {
+          total_count: 2,
+          visible_count: 1,
+          hidden_count: 0,
+          truncated: false,
+          count_basis: 'service_areas',
+          filters_applied: { site_id: null },
+          limit: 100,
+        },
+      },
+    ];
+
+    for (const payload of invalidPayloads) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url === '/api/pharmacy-sites') {
+            return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+              status: 200,
+            });
+          }
+          if (url === '/api/service-areas') {
+            return new Response(JSON.stringify(payload), { status: 200 });
+          }
+          return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+        }),
+      );
+
+      const { unmount } = renderPage();
+      expect(await screen.findByText('訪問エリアを取得できませんでした')).toBeTruthy();
+      unmount();
+    }
+  });
+
+  it('rejects a legacy service-area root before rendering a false-empty list', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/pharmacy-sites') {
+          return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+            status: 200,
+          });
+        }
+        if (url === '/api/service-areas') {
+          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('訪問エリアを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('まだ訪問エリアはありません。')).toBeNull();
   });
 
   // A fetch stub that serves the sites list and a single service area (with the given
@@ -454,7 +666,7 @@ describe('ServiceAreasPage', () => {
         });
       }
       if (url === '/api/service-areas' && !init?.method) {
-        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        return new Response(JSON.stringify(emptyServiceAreasPayload()), { status: 200 });
       }
       if (url === '/api/service-areas' && init?.method === 'POST') {
         return new Response(JSON.stringify({ message: '同じ訪問エリアが既に存在します' }), {
@@ -497,7 +709,7 @@ describe('ServiceAreasPage', () => {
           });
         }
         if (url === '/api/service-areas' && !init?.method) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(JSON.stringify(emptyServiceAreasPayload()), { status: 200 });
         }
         if (url === '/api/service-areas' && init?.method === 'POST') {
           return new Response(JSON.stringify({}), { status: 201 });
@@ -661,9 +873,9 @@ describe('ServiceAreasPage', () => {
           );
         }
         if (url === '/api/service-areas' && !init?.method) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(JSON.stringify(emptyServiceAreasPayload()), { status: 200 });
         }
-        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        return new Response(JSON.stringify(emptyServiceAreasPayload()), { status: 200 });
       }),
     );
     renderPage();
@@ -707,7 +919,7 @@ describe('ServiceAreasPage', () => {
             { status: 500 },
           );
         }
-        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        return new Response(JSON.stringify(emptyServiceAreasPayload()), { status: 200 });
       }),
     );
     renderPage();

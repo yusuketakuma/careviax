@@ -29,39 +29,18 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { SERVICE_AREAS_API_PATH, buildServiceAreaApiPath } from '@/lib/service-areas/api-paths';
+import {
+  type ServiceArea,
+  serviceAreasResponseSchema,
+  type ServiceAreasResponse,
+} from '@/lib/service-areas/response-schema';
+import {
+  pharmacySiteOptionsResponseSchema,
+  type PharmacySiteOptionsResponse,
+} from '@/lib/pharmacy-sites/response-schema';
 import { messageFromError } from '@/lib/utils/error-message';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
-
-type PharmacySite = {
-  id: string;
-  name: string;
-};
-
-type ServiceArea = {
-  id: string;
-  site_id: string;
-  name: string;
-  area_type: 'radius' | 'polygon';
-  geo_data: Record<string, unknown>;
-  notes: string | null;
-  site: PharmacySite;
-};
-
-type ServiceAreasResponse = {
-  data: ServiceArea[];
-  meta: {
-    total_count: number;
-    visible_count: number;
-    hidden_count: number;
-    truncated: boolean;
-    count_basis: 'service_areas';
-    filters_applied: {
-      site_id: string | null;
-    };
-    limit: number;
-  };
-};
 
 type ServiceAreaForm = {
   id: string;
@@ -191,7 +170,10 @@ export default function ServiceAreasPage() {
       const res = await fetch('/api/pharmacy-sites', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PharmacySite[] }>(res, '拠点一覧の取得に失敗しました');
+      return readApiJson<PharmacySiteOptionsResponse>(res, {
+        fallbackMessage: '拠点一覧の取得に失敗しました',
+        schema: pharmacySiteOptionsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -202,7 +184,10 @@ export default function ServiceAreasPage() {
       const res = await fetch(SERVICE_AREAS_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<ServiceAreasResponse>(res, '訪問エリアの取得に失敗しました');
+      return readApiJson<ServiceAreasResponse>(res, {
+        fallbackMessage: '訪問エリアの取得に失敗しました',
+        schema: serviceAreasResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

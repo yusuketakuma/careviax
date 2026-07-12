@@ -103,3 +103,14 @@
   before authorized settings/editor state; stale-version conflict and audit behavior remain unchanged.
 - Operational note: authorized operating-day configuration remains in-app only; no patient detail, provider metadata, or
   external output is introduced by this slice.
+
+## API-CONTRACT-001FZSERVICEAREASTRICT
+
+- Classification: Controlled admin master-data read, but not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets,
+  deployment, provider, mutation, or production data change.
+- Safety control: strict site-option and counted service-area schemas reject legacy roots, duplicate or blank identities,
+  mismatched nested sites, invalid area type/geo object, count arithmetic drift, and provider-only metadata before
+  authorized editor/list state; mutation acknowledgement behavior remains unchanged.
+- Operational note: authorized service-area configuration remains in-app only; no patient detail, provider metadata, or
+  external output is introduced by this slice. No cleanup was performed despite transient build filesystem pressure.

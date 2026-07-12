@@ -168,3 +168,16 @@
 | Errors / loading / empty    | Existing loading, error/retry, calendar, editor, conflict, and save behavior remains; malformed 2xx becomes query/mutation error rather than false settings/calendar state.                                          |
 | Tests                       | Operating-hours and vehicle consumer/provider suites: 4 files / 58 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                     |
 | Alignment                   | ALIGNED for this read slice; providers, authorization, mutation/audit semantics, and visual behavior intentionally unchanged.                                                                                        |
+
+## API-CONTRACT-001FZSERVICEAREASTRICT
+
+| Area                        | Evidence / status                                                                                                                                                                                     |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Authorized admin users access `/admin/service-areas`; pharmacy-site and service-area GETs retain existing `canVisit` authorization and no route boundary changed.                                     |
+| Frontend state / clients    | `service-areas/page.tsx` validates shared site options and counted service-area data before site selector, editor, or list state; provider-only fields are stripped from cache.                       |
+| Request / response contract | Site options return `{ data }`; service areas return `{ data, meta }`; schemas validate non-empty identity, nested site relation, area type/geo object, duplicate IDs, filters, and count arithmetic. |
+| Backend / DB                | Existing org-scoped service-area query, ordering, bounded limit/count, site include, no-store behavior, persistence, and provider routes are unchanged.                                               |
+| Auth / tenant / audit       | Existing `canVisit` reads, `canAdmin` mutations, org context, reference validation, and audit behavior remain; provider metadata is not externalized.                                                 |
+| Errors / loading / empty    | Existing loading, error/retry, empty, editor, and mutation behavior remains; malformed 2xx becomes query error rather than false site/list state.                                                     |
+| Tests                       | Service-area consumer/provider suite: 2 files / 32 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                      |
+| Alignment                   | ALIGNED for this read slice; providers, authorization, mutations, tenant/audit semantics, authorized detail, and visual behavior intentionally unchanged.                                             |

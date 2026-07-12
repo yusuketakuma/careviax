@@ -176,6 +176,30 @@
 - Next scan: rerun `pnpm client-json-schema:check`, inspect remaining one-entry and multi-entry consumers plus the
   patients board cursor residual, and choose the next bounded disjoint slice.
 
+## 2026-07-12 — API-CONTRACT-001FZSERVICEAREASTRICT selection
+
+- Rescan: `pnpm client-json-schema:check` passed with 176 schema-backed / 197 allowlisted schema-less calls across 76
+  files and 0 new debt.
+- Selection: admin/service-areas is the next bounded two-reader slice. Its pharmacy-site options and counted service-area
+  list still use compile-time casts; the provider returns `{ data }` for sites and `{ data, meta }` for service areas.
+- Baseline: focused consumer/provider command passed 2 files / 28 tests before implementation.
+- Planned boundary: reuse the shared pharmacy-site option schema, add strict service-area item/meta invariants and
+  provider-field stripping, remove only the two matching allowlist entries, and leave POST/PATCH/DELETE, provider/auth,
+  tenant, audit, authorized detail, and visual semantics unchanged. No image generation is needed for this parser-only
+  slice.
+
+## 2026-07-12 — API-CONTRACT-001FZSERVICEAREASTRICT implementation checkpoint
+
+- Implementation: added the service-area counted-list schema, reused shared pharmacy-site options, connected both GET
+  readers, synchronized provider fixtures, and removed two allowlist entries.
+- Regressions: provider-only site/area fields are stripped; duplicate site options, duplicate/mismatched area identity,
+  count drift, legacy roots, and invalid successful payloads fail closed before editor/list state.
+- Validation: focused consumer/provider suites pass 2 files / 32 tests; static gates, typecheck, no-unused typecheck,
+  lint, diff-check, and confirmed Next build exit 0 pass. Client-schema is 178 schema-backed / 195 allowlisted / 75
+  files. Build was Next 16.2.9 compile 83s, TypeScript 59s, 311/311 static pages, with final 13 GiB available.
+- Landing: implementation commit and closure ledger commit are pending; unrelated harness-memory and personal artifacts
+  remain excluded.
+
 ## 2026-07-12 — API-CONTRACT-001FZOPERATINGHOURSSTRICT selection
 
 - Scope: `src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx`, shared pharmacy-site option schema,

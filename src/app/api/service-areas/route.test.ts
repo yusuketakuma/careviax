@@ -51,6 +51,18 @@ function createMalformedJsonPostRequest() {
   });
 }
 
+function serviceAreaFixture(id = 'area_1') {
+  return {
+    id,
+    site_id: 'site_1',
+    name: '北多摩エリア',
+    area_type: 'radius',
+    geo_data: { match_keywords: ['北多摩'] },
+    notes: '16km 圏確認済み',
+    site: { id: 'site_1', name: '本店' },
+  };
+}
+
 describe('/api/service-areas', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,7 +73,7 @@ describe('/api/service-areas', () => {
         role: 'admin',
       },
     });
-    serviceAreaFindManyMock.mockResolvedValue([{ id: 'area_1' }]);
+    serviceAreaFindManyMock.mockResolvedValue([serviceAreaFixture()]);
     serviceAreaCountMock.mockResolvedValue(1);
     serviceAreaCreateMock.mockResolvedValue({ id: 'area_2' });
     validateOrgReferencesMock.mockResolvedValue({ ok: true, data: {} });
@@ -143,7 +155,7 @@ describe('/api/service-areas', () => {
   it('returns counted metadata when the bounded list is truncated', async () => {
     serviceAreaCountMock.mockResolvedValueOnce(205);
     serviceAreaFindManyMock.mockResolvedValueOnce(
-      Array.from({ length: 200 }, (_value, index) => ({ id: `area_${index + 1}` })),
+      Array.from({ length: 200 }, (_value, index) => serviceAreaFixture(`area_${index + 1}`)),
     );
 
     const response = (await GET(

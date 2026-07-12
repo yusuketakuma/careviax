@@ -212,3 +212,25 @@
   adjustment, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
 - Push evidence: `d4fc57505..725b480e4` fast-forward push succeeded; local and remote heads match (`0 0`).
+
+## API-CONTRACT-001FZSERVICEAREASTRICT
+
+- Commit Group: `API-CONTRACT-001FZSERVICEAREASTRICT`
+- Commit: pending scoped landing
+- Push Status: pending
+- Branch: `agent/continuous-improvement-20260712`
+- Scope: admin/service-areas site-option and counted service-area GET response schemas, consumer/provider regressions,
+  client-schema allowlist ratchet, and required ledgers.
+- Implementation: validate strict site options, service-area identity/site relation/area type/geo object, duplicate IDs,
+  counted-list arithmetic, and provider-only field stripping; preserve POST/PATCH/DELETE, provider query,
+  authorization, tenant, audit, and visual semantics.
+- FE/BE impact: `/admin/service-areas` now fails closed on malformed, legacy, duplicate, mismatched, or count-drifted 2xx
+  payloads before editor/list state; `/api/pharmacy-sites` and `/api/service-areas` remain unchanged.
+- DB/auth/tenant/audit impact: no DB, migration, provider, auth/authz, tenant, audit, mutation, production-data, or
+  external-output change.
+- Verification: focused 2 files / 32 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check,
+  and confirmed Next build passed; client-schema inventory is 178 schema-backed / 195 allowlisted / 75 files.
+- Rollback: revert the service-area response schema, consumer adapters, regressions, allowlist removal, and ledger
+  entries.
+- Remote: `origin/agent/continuous-improvement-20260712`
+- Push evidence: pending scoped implementation landing.

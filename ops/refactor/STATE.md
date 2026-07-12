@@ -47045,6 +47045,41 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZSERVICEAREASTRICT — service-area list contracts (IMPLEMENTED / PENDING SCOPED LANDING)
+
+- current task / root cause:
+  The admin service-areas page trusts compile-time casts for the pharmacy-site option GET and the counted service-area
+  GET. A legacy root, duplicate or blank identity, mismatched nested site, invalid area type/geo payload, provider-only
+  fields, or inconsistent total/visible/hidden metadata can therefore affect authorized editor/list state. Existing
+  POST/PATCH/DELETE mutations, provider query, authorization, tenant scope, audit behavior, and visual semantics are not
+  being changed.
+- baseline:
+  The focused service-areas consumer/provider suites pass 2 files / 28 tests before implementation. Current
+  client-schema inventory is 176 schema-backed / 197 allowlisted schema-less / 76 files. The target is two
+  `stringFallback` calls in `src/app/(dashboard)/admin/service-areas/page.tsx`.
+- implementation plan:
+  Reuse the shared pharmacy-site option schema; add a strict service-area item/count-meta response schema with bounded
+  identity/text, area-type/geo validation, nested site relation, duplicate identity detection, counted-list arithmetic,
+  provider-only field stripping, and malformed/legacy/duplicate/mismatched regressions. Remove only the two service-area
+  allowlist entries. No visual reconstruction or `gpt-image-2` is needed because this is a non-visual master-data parser
+  and authorized editor/list-state boundary repair.
+- safety boundary:
+  Mutation acknowledgement readers remain unchanged; provider/auth/tenant/audit behavior and the existing in-app
+  service-area detail remain the source of truth. No DB schema, migration, production data, or external-output change is
+  planned.
+- implementation / validation checkpoint:
+  Added `src/lib/service-areas/response-schema.ts`, reused the shared pharmacy-site option schema, connected both GET
+  readers, synchronized provider-shaped fixtures, removed the two service-area `stringFallback` allowlist entries, and
+  added provider-only field stripping plus duplicate-site-option, duplicate-area, mismatched-site, count-drift, and
+  legacy-root regressions. Focused consumer/provider suites pass 2 files / 32 tests. Static format, API response shape,
+  client JSON schema, frontend contract, PHI log/display, boundaries, Plans, colors, typography, and diff gates pass;
+  inventory is 178 schema-backed / 195 allowlisted schema-less / 75 files. `pnpm typecheck`, 8 GB no-unused typecheck,
+  and lint pass; lint retains only the two pre-existing break-glass warnings. Confirmed Next build exits 0 with Next
+  16.2.9 compile 83s, TypeScript 59s, 311/311 static pages, traces complete, and final filesystem availability 13 GiB.
+- image / browser boundary:
+  `gpt-image-2` and browser/E2E were omitted because this is a non-visual parser/cache boundary slice with no screen
+  reconstruction or layout change.
+
 ## 2026-07-12 API-CONTRACT-001FZOPERATINGHOURSSTRICT — operating-hours settings contracts (DONE)
 
 - current task / root cause:
