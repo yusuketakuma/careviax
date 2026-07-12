@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZRESIDUALCHARTSTRICT patient residual-medication chart reader (VERIFY_REQUIRED, 2026-07-12; pending commit/push and shared clean-capacity build).
+- codex: API-CONTRACT-001FZRESIDUALCHARTSTRICT patient residual-medication chart reader (VERIFY_REQUIRED, 2026-07-12; implementation `d7b4543ae`, push and shared clean-capacity build pending).
   - current task / root cause:
     Patient detailの残薬推移chartが`GET /api/residual-medications?patient_id=...&limit=100`を
     compile-time castだけで読み、legacy root、負/非整数余剰日数、不正日時、重複record、provider ordering
