@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZBILLRULEREADSTRICT billing-rule list/sync/create/update readers (VERIFY_REQUIRED, 2026-07-13; implementation `768b8083c`, ledger pending; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZBILLRULEREADSTRICT billing-rule list/sync/create/update readers (VERIFY_REQUIRED, 2026-07-13; implementation `768b8083c`, ledger `086602ff5`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Billing Rulesのlist、SSOT sync、create、update計4 readersはcompile-time castだけで、legacy/extra root、
     invalid rule enum/URL/timestamp、system-scope mismatch、duplicate identity、summary drift、wrong update identity、
