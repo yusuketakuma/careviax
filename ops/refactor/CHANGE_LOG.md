@@ -19,8 +19,8 @@
 ## API-CONTRACT-001FZJOBLISTSTRICT
 
 - Commit Group: `API-CONTRACT-001FZJOBLISTSTRICT`
-- Commit: pending
-- Push Status: NOT_STARTED
+- Commit: `1435465a2`
+- Push Status: PUSHED
 - Branch: `agent/continuous-improvement-20260712`
 - Scope: admin/jobs list response schema, consumer regression, and client-schema allowlist ratchet.
 - Implementation: validate the fixed job definition envelope, endpoint/job identity, latest run/export relation, supported status, bounded counts/timestamps, and fixed redacted error summary; retain the existing query, polling, rerun mutation, provider, and UI behavior.
@@ -29,4 +29,4 @@
 - Verification: focused 2 files / 16 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and Next build passed; client-schema inventory is 162 schema-backed / 211 allowlisted / 87 files.
 - Rollback: revert the jobs response schema, consumer adapter, regression, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
-- Push evidence: pending scoped commit.
+- Push evidence: `3215b2f02..1435465a2` fast-forward push succeeded; local and remote heads match.

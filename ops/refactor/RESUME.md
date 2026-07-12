@@ -7,28 +7,28 @@
 - Upstream: `origin/agent/continuous-improvement-20260712`
 - Remote: `origin`
 - Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
-- Current Phase: pre-landing checkpoint
-- Current Task ID: `API-CONTRACT-001FZJOBLISTSTRICT`
-- Current Task Status: IN_PROGRESS
-- Current Commit Group: `API-CONTRACT-001FZJOBLISTSTRICT`
+- Current Phase: incremental rescan / next-task selection
+- Current Task ID: `API-CONTRACT-001-RESCAN`
+- Current Task Status: READY_FOR_RESCAN
+- Current Commit Group: `API-CONTRACT-001-RESCAN`
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
-- Last Safe Checkpoint: Jobs focused tests, static contract gates, typecheck, no-unused, lint, diff-check, and build passed.
-- Last Completed Action: Connected the jobs runtime schema, passed 2 files / 16 focused tests, and completed the serialized Next.js build.
-- Current Operation: final diff review and scoped landing for the admin/jobs contract slice.
-- Exact Next Action: Inspect the jobs-owned diff, stage only owned paths, commit, push, and verify the remote branch.
-- Exact Next Command: `git diff --check && git diff --stat && git status --short --untracked-files=all`
+- Last Safe Checkpoint: Jobs focused tests, static contract gates, typecheck, no-unused, lint, diff-check, build, scoped commit, and push passed.
+- Last Completed Action: Landed jobs reader hardening as `1435465a2` and verified remote head plus zero ahead/behind.
+- Current Operation: rescan remaining API contract reader debt and select the next disjoint safe slice.
+- Exact Next Action: Run the client-schema inventory and inspect remaining API-CONTRACT allowlist entries before choosing the next task.
+- Exact Next Command: `pnpm client-json-schema:check && rg -n -C 5 'API-CONTRACT|schema-less|stringFallback' Plans.md ops/refactor tools/client-json-schema-allowlist.json`
 - Changed Files: admin/jobs consumer/test, jobs response schema, client schema allowlist, Plans, STATE, and checkpoint ledgers.
-- Staged Files: explicit jobs implementation, test, response schema, allowlist, Plans, STATE, and checkpoint/verification ledgers only; unrelated harness-memory and personal artifacts remain unstaged.
+- Staged Files: none; the jobs slice is committed and unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
 - Unpushed Commits: none
-- Push Status: PUSHED for `API-CONTRACT-001FZBUSINESSHOLIDAYSTRICT`
+- Push Status: PUSHED for `API-CONTRACT-001FZJOBLISTSTRICT` (`1435465a2`)
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
 - Commands Completed: jobs focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; typecheck; no-unused; lint; diff-check; build.
-- Commands Pending: final diff review; scoped commit/push; post-push status.
+- Commands Pending: client-schema residual inventory, provider/consumer scan, next-slice focused validation, and scoped landing.
 - Tests Completed: current jobs slice 2 files / 16 tests passed; previous holiday slice 2 files / 39 tests passed.
-- Tests Pending: full suite not run for this slice.
+- Tests Pending: no tests pending for the landed jobs slice; next task not selected yet.
 - Build State: PASS for current jobs slice; Next 16.2.9 compiled in 2.6 minutes, TypeScript finished in 55 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.

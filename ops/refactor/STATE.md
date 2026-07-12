@@ -47010,7 +47010,7 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   Rescan remaining API-CONTRACT allowlist entries and select the next safe residual without touching unrelated dirty
   paths.
 
-## 2026-07-12 API-CONTRACT-001FZJOBLISTSTRICT — admin jobs list contract (IN_PROGRESS)
+## 2026-07-12 API-CONTRACT-001FZJOBLISTSTRICT — admin jobs list contract (DONE)
 
 - current task / root cause:
   The admin/jobs GET consumer still used a compile-time response cast. A malformed or legacy success envelope, duplicate
@@ -47036,5 +47036,11 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `pnpm build` passed. Next 16.2.9 compiled successfully in 2.6 minutes, TypeScript finished in 55 seconds,
   311/311 static pages were generated, and page optimization/traces completed. The build emitted the same two
   existing CSS optimizer warnings for dynamic `var(...)` Tailwind classes but exited 0.
+- commit / push:
+  Scoped implementation commit `1435465a2` (`fix(API-CONTRACT-001FZJOBLISTSTRICT): validate jobs list reader`) was
+  pushed to `origin/agent/continuous-improvement-20260712`; remote head matches and `git rev-list --left-right --count
+HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts remain excluded; the feature branch
+  does not match the `main`-only production deploy trigger.
 - next action:
-  Inspect the jobs-owned diff and ledgers, stage only the jobs slice, then commit and push the validated group.
+  Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
+  disjoint safe slice without touching unrelated dirty paths.
