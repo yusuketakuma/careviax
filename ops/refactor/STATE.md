@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZEMERGENCYROUTESTRICT emergency visit route-plan reader (VERIFY_REQUIRED, 2026-07-13; implementation `360061e21`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZEMERGENCYROUTESTRICT emergency visit route-plan reader (VERIFY_REQUIRED, 2026-07-13; implementation `360061e21`, ledger `bf2f121e4`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Emergency route画面は確定訪問を固定した2案の移動増・訪問順を比較して採用するが、`/api/visit-routes`
     responseをcompile-time `VisitRoutePlan` castだけで信頼し、legacy/mixed root、不正travel mode/距離/時間、
