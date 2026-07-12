@@ -51,6 +51,30 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZDISPENSEWRITESTRICT dispensing workbench write readers (VERIFY_REQUIRED, 2026-07-13; implementation `ab2a62582`; shared clean-capacity build pending).
+  - current task / root cause:
+    Dispensing Workbenchの13 mutation呼出しは同一のschema-less generic writerを通り、2xx JSONなら要求と異なるgroup/line/task/
+    plan/batch/hold、欠損result/reused/barcode outcomeでも成功扱いとなり、optimistic UI後のinvalidate/recoveryへ進み得た。
+  - implementation / write safety boundary:
+    Groups、lines、dispense results/barcode/audit、set cell/bulk/generate/audit、cycle holdの11 endpoint-specific schemasを追加し、
+    request identity、OCC increment、batch集合、result/reused/barcode shapeを検証した。別hold解決と欠損generate outcomeの2xx rejectionを
+    回帰固定。Provider、DB、mutation payload、auth/assignment/tenant/audit/UIは変更していない。非visual response parser境界のため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/components/features/dispense-workbench/dispensing-workbench-response-schemas.ts`,
+    `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`,
+    `src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer + 11 provider contracts passed 12 files / 279 tests. Exact zero-warning ESLint, focused Prettier, aggregate typecheck,
+    8GB no-unused typecheck, client schema (292 backed / 72 allowlisted / 13 files), module boundary, client PHI-log, API response shape,
+    colors, and diff-check passed. Full build remains NOT_EXECUTED because the shared volume has only hundreds of MiB free while existing
+    `.next` consumes 16 GiB; shared generated/user files were not deleted.
+  - security / performance / remaining:
+    Malformed/cross-request 2xx mutation responses now fail closed before success-side invalidation/recovery, and the adapter's allowlist entry is
+    removed. Network/DB calls, writes, rendering, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues with 72 allowlisted calls across 13 files.
+
 - codex: API-CONTRACT-001FZDISPENSEREADSTRICT dispensing workbench read readers (VERIFY_REQUIRED, 2026-07-13; implementation `ba43fdda8`; shared clean-capacity build pending).
   - current task / root cause:
     Dispensing Workbenchの患者一覧、task workbench、set calendarは同一のschema-less generic GET readerを通り、別task/患者/plan、
