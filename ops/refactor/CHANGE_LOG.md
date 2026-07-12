@@ -216,8 +216,8 @@
 ## API-CONTRACT-001FZSERVICEAREASTRICT
 
 - Commit Group: `API-CONTRACT-001FZSERVICEAREASTRICT`
-- Commit: pending scoped landing
-- Push Status: pending
+- Commit: `147a8be16`
+- Push Status: PUSHED
 - Branch: `agent/continuous-improvement-20260712`
 - Scope: admin/service-areas site-option and counted service-area GET response schemas, consumer/provider regressions,
   client-schema allowlist ratchet, and required ledgers.
@@ -233,4 +233,4 @@
 - Rollback: revert the service-area response schema, consumer adapters, regressions, allowlist removal, and ledger
   entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
-- Push evidence: pending scoped implementation landing.
+- Push evidence: `f129948f9..147a8be16` fast-forward push succeeded; local and remote heads match (`0 0`).

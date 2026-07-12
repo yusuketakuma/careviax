@@ -197,8 +197,16 @@
 - Validation: focused consumer/provider suites pass 2 files / 32 tests; static gates, typecheck, no-unused typecheck,
   lint, diff-check, and confirmed Next build exit 0 pass. Client-schema is 178 schema-backed / 195 allowlisted / 75
   files. Build was Next 16.2.9 compile 83s, TypeScript 59s, 311/311 static pages, with final 13 GiB available.
-- Landing: implementation commit and closure ledger commit are pending; unrelated harness-memory and personal artifacts
-  remain excluded.
+- Landing: implementation commit `147a8be16` is pushed; closure ledger update remains in the next scoped commit. Unrelated
+  harness-memory and personal artifacts remain excluded.
+
+## 2026-07-12 — API-CONTRACT-001FZSERVICEAREASTRICT landed
+
+- Commit: `147a8be16` pushed to `origin/agent/continuous-improvement-20260712`; local/upstream parity is `0 0`.
+- Result: service-area site-option/count-list strict readers, provider fixtures, regressions, allowlist ratchet, and
+  validation ledgers landed; unrelated harness-memory and personal artifacts remain excluded.
+- Next scan: rerun `pnpm client-json-schema:check`, inspect remaining one-entry and multi-entry consumers plus the
+  patients board cursor residual, and choose the next bounded disjoint slice.
 
 ## 2026-07-12 — API-CONTRACT-001FZOPERATINGHOURSSTRICT selection
 
