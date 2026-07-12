@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZEVIDENCESTRICT evidence gallery attachment reader (VERIFY_REQUIRED, 2026-07-12; implementation `af855ee4a`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZEVIDENCESTRICT evidence gallery attachment reader (VERIFY_REQUIRED, 2026-07-12; implementation `af855ee4a`, ledger `dbe9bb97f`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     証跡galleryのvisit-record attachment readerがoptional compile-time型だけを信頼し、legacy root、不正
     datetime/kind、pagination drift、duplicate identityを表示モデルへ流し得た。さらにprovider上限を超えた
