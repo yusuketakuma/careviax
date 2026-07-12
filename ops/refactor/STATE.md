@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZADMINUSERSSTRICT admin users/site-option readers (VERIFY_REQUIRED, 2026-07-13; implementation `bc9e4a0cc`, shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZADMINUSERSSTRICT admin users/site-option readers (VERIFY_REQUIRED, 2026-07-13; implementation `bc9e4a0cc`, ledger `c7e0b77bb`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Usersは`include_collaborators=true` user一覧とsite optionsをcompile-time castだけで読み、legacy root、
     duplicate identity/email、不正role/account/timestamp/capacity、meta count/query-scope driftを権限・所属編集stateへ
