@@ -89,3 +89,34 @@ export const pharmacistMentionResponseSchema = z
   });
 
 export type PharmacistMentionResponse = z.infer<typeof pharmacistMentionResponseSchema>;
+
+const pharmacistAdminOptionSchema = pharmacistMentionSchema.extend({
+  site_name: z.string().max(500).nullable(),
+  role: z.enum(['owner', 'admin', 'pharmacist', 'pharmacist_trainee']),
+});
+
+export const pharmacistAdminOptionsResponseSchema = z
+  .object({
+    data: z.array(pharmacistAdminOptionSchema).max(500),
+    meta: pharmacistListMetaSchema,
+  })
+  .strict()
+  .superRefine(({ data, meta }, context) => {
+    if (
+      meta.filters_applied.site_id !== null ||
+      meta.filters_applied.include_collaborators ||
+      meta.count_basis !== 'memberships' ||
+      meta.visible_count !== data.length ||
+      meta.hidden_count !== meta.total_count - meta.visible_count ||
+      meta.truncated !== meta.hidden_count > 0
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['meta'],
+        message: 'Pharmacist option metadata does not match the unfiltered staff request',
+      });
+    }
+  });
+
+export type PharmacistAdminOption = z.infer<typeof pharmacistAdminOptionSchema>;
+export type PharmacistAdminOptionsResponse = z.infer<typeof pharmacistAdminOptionsResponseSchema>;

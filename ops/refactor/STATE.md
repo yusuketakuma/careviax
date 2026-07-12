@@ -51,6 +51,40 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZCREDENTIALSTRICT pharmacist credential/staff-option readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, shared clean-capacity build pending).
+  - current task / root cause:
+    Admin Pharmacist Credentialsはcredential listとstaff optionsをcompile-time castだけで読み、legacy root、
+    duplicate credential/patient、不正issue/expiry range・tenure/work hours、count drift、wrong staff scope/roleを
+    credential edit stateへ流し得た。Staff optionsはid/name/site/roleだけを使うのに、pharmacists providerのemail、
+    Cognito/account/capacity/credential metadata等をquery cacheへ保持していた。Credentials providerはcanAdmin/org
+    scope、staff providerはcanVisit/org scope/sensitive no-storeを強制する。
+  - implementation / credential-PII boundary:
+    Shared credential list schemaを追加し、bounded certification fields、offset dates、issue<=expiry、tenure 0-80、
+    weekly hours 0-168、credential/patient identity一意性、count envelope算術を検証した。Existing pharmacists
+    response-schemaへstaff-option projectionを追加し、default requestのsite=null、collaborators=false、membership
+    count basis、visible/hidden/truncated算術とallowed pharmacist rolesを検証。不要provider fieldsをstripし、local
+    DTOsをschema inferへ置換、fetch fixtureをlive meta契約へ同期した。Write/audit/provider/UIは変更していない。
+    Visual reconstructionではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/pharmacist-credentials/response-schema.ts`,
+    `src/lib/pharmacist-credentials/response-schema.test.ts`,
+    `src/lib/pharmacists/response-schema.ts`,
+    `src/lib/pharmacists/response-schema.test.ts`,
+    `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`,
+    `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/shared-schema/providers Vitest passed 5 files / 71 tests. Exact ESLint with
+    `--max-warnings=0`, Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (229 backed / 141
+    allowlisted / 37 files), frontend contract, module boundary, client PHI-log, API response shape, colors, and
+    diff-check passed. Full build was NOT_EXECUTED because only about 2.9 GiB free remains after the shared
+    `.next/cache` capacity failure; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed credential/consented-patient data and wrong-scope staff options now fail closed; unused staff PII/account
+    metadata is not cached. Request/query count, patient-consent/assignment extraction, DB/provider work, credential
+    writes/audit, auth/tenant/no-store, render behavior, and dependencies are unchanged. A clean-capacity runner must
+    complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZTEMPLATEREADSTRICT document-template list/detail/body readers (VERIFY_REQUIRED, 2026-07-13; implementation `f75484d74`, ledger `6089fdb77`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Document Templatesはmetadata list、full detail GET、Body Editor detail GET/PATCHの4 readersを別々の

@@ -236,7 +236,43 @@ describe('PharmacistCredentialsContent', () => {
     useQueryMock.mockImplementation(defaultUseQueryImpl);
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ data: {} }), { status: 200 })),
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method) {
+          return new Response(JSON.stringify({ data: {} }), { status: 200 });
+        }
+        if (String(input) === PHARMACIST_CREDENTIALS_API_PATH) {
+          return new Response(
+            JSON.stringify({
+              data: [],
+              meta: {
+                total_count: 0,
+                visible_count: 0,
+                hidden_count: 0,
+                truncated: false,
+                count_basis: 'pharmacist_credentials',
+                filters_applied: {},
+                limit: 100,
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            data: [],
+            meta: {
+              total_count: 0,
+              visible_count: 0,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'memberships',
+              filters_applied: { site_id: null, include_collaborators: false },
+              limit: 500,
+            },
+          }),
+          { status: 200 },
+        );
+      }),
     );
   });
 

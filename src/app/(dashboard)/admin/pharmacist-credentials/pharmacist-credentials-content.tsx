@@ -42,43 +42,16 @@ import {
   PHARMACIST_CREDENTIALS_API_PATH,
   buildPharmacistCredentialApiPath,
 } from '@/lib/pharmacist-credentials/api-paths';
+import {
+  pharmacistCredentialListResponseSchema,
+  type PharmacistCredential,
+  type PharmacistCredentialListResponse,
+} from '@/lib/pharmacist-credentials/response-schema';
 import { buildPharmacistsApiPath } from '@/lib/pharmacists/api-paths';
-
-type PharmacistCredential = {
-  id: string;
-  user_id: string;
-  user_name: string;
-  certification_type: string;
-  certification_number: string | null;
-  issued_date: string | null;
-  expiry_date: string | null;
-  tenure_years: number | null;
-  weekly_work_hours: number | null;
-  consented_patients: Array<{
-    id: string;
-    name: string;
-  }>;
-};
-
-type PharmacistOption = {
-  id: string;
-  name: string;
-  site_name: string | null;
-  role: string;
-};
-
-type PharmacistCredentialListResponse = {
-  data: PharmacistCredential[];
-  meta: {
-    total_count: number;
-    visible_count: number;
-    hidden_count: number;
-    truncated: boolean;
-    count_basis: 'pharmacist_credentials';
-    filters_applied: Record<string, never>;
-    limit: number;
-  };
-};
+import {
+  pharmacistAdminOptionsResponseSchema,
+  type PharmacistAdminOptionsResponse,
+} from '@/lib/pharmacists/response-schema';
 
 type CredentialForm = {
   user_id: string;
@@ -274,10 +247,10 @@ export function PharmacistCredentialsContent() {
       const response = await fetch(PHARMACIST_CREDENTIALS_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<PharmacistCredentialListResponse>(
-        response,
-        '薬剤師認定情報の取得に失敗しました',
-      );
+      return readApiJson<PharmacistCredentialListResponse>(response, {
+        fallbackMessage: '薬剤師認定情報の取得に失敗しました',
+        schema: pharmacistCredentialListResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -288,10 +261,10 @@ export function PharmacistCredentialsContent() {
       const response = await fetch(buildPharmacistsApiPath(), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PharmacistOption[] }>(
-        response,
-        'スタッフ一覧の取得に失敗しました',
-      );
+      return readApiJson<PharmacistAdminOptionsResponse>(response, {
+        fallbackMessage: 'スタッフ一覧の取得に失敗しました',
+        schema: pharmacistAdminOptionsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
