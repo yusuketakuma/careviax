@@ -47045,6 +47045,38 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZMYDAYVISITS — (DONE)
+
+- current task / root cause:
+  `/my-day` fetched assigned same-day visits with one direct GET and ignored the visit-schedules cursor metadata. The API
+  defaults to 50 rows, so a user with more than 50 assigned same-day schedules could silently lose visits from the daily
+  operational view. The same reader trusted a compile-time `VisitSchedule[]` cast and cached the full provider row even
+  though this screen only uses visit identity/type/status/time, preparation state, and patient name.
+- implementation:
+  Replaced the direct reader with the shared cursor collector at 100 rows/page and an exact item schema. All pages are
+  collected until `has_more=false`; malformed cursor envelopes already fail closed in the shared helper. The item schema
+  validates visit type/status, ordered time windows, preparation timestamp, and patient name, while projecting out
+  residences and other provider-only patient/schedule fields. Removed the my-day allowlist entry.
+- validation:
+  Focused my-day, item-schema, and cursor-helper suites pass 3 files / 36 tests. The initial two test failures came from
+  the test module's intentional cursor-helper mock: old assertions expected global fetch calls even though production now
+  delegates to the helper. Tests were corrected to assert exact path/date/pharmacist params, 100-row limit, org headers,
+  error copy, and item schema; multi-page behavior remains execution-tested in the shared helper suite. Exact ESLint/
+  Prettier, aggregate typecheck, 8 GB no-unused typecheck, client JSON schema, frontend contract, API shape, boundaries,
+  PHI client log/display, colors, typography, Plans, serialized production build, and diff gates pass. Inventory is 191
+  schema-backed / 181 allowlisted calls across 67 files. With the temporary cache-disable hook used only to avoid the
+  known `.next/cache` ENOSPC issue, Next 16.2.9 compiled in 96 seconds, TypeScript finished in 51 seconds, and 311/311
+  static pages generated. The build completed with only the two pre-existing CSS optimizer warnings; the hook was
+  reverted and `next.config.ts` has no final diff.
+- scope / safety:
+  No API/provider query, assignment authorization, tenant boundary, visit mutation, patient source data, route/href,
+  visual behavior, or status semantics changed. This non-visual data/pagination repair did not require `gpt-image-2`.
+- commit / landing:
+  Scoped implementation commit `83b31f677` contains only my-day consumer/tests, item schema/tests, and allowlist paths.
+  Ledger commit and safe feature-branch push follow; unrelated dirty/untracked artifacts remain excluded.
+- next action:
+  Close and push this slice, then continue the remaining allowlist/cursor scan.
+
 ## 2026-07-12 API-CONTRACT-001FZINVENTORYFORECAST — (DONE)
 
 - current task / root cause:
