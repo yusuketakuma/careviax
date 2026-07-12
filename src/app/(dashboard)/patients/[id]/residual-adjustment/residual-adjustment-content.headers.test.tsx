@@ -3,7 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 
@@ -46,9 +46,13 @@ type FetchCall = { url: string; init?: RequestInit };
 const DEFAULT_PATIENT_ID = 'patient_1';
 
 function renderContent(patientId = DEFAULT_PATIENT_ID) {
-  return render(<ResidualAdjustmentContent patientId={patientId} />, {
-    wrapper: createQueryClientWrapper(),
-  });
+  const queryClient = createTestQueryClient();
+  return {
+    ...render(<ResidualAdjustmentContent patientId={patientId} />, {
+      wrapper: createQueryClientWrapper(queryClient),
+    }),
+    queryClient,
+  };
 }
 
 describe('ResidualAdjustmentContent tenant headers', () => {
@@ -120,7 +124,7 @@ describe('ResidualAdjustmentContent tenant headers', () => {
 
     expect(calls.map((call) => call.url)).toEqual(
       expect.arrayContaining([
-        `/api/residual-medications?patient_id=${encodeURIComponent(patientId)}&limit=100`,
+        `/api/residual-medications?patient_id=${encodeURIComponent(patientId)}`,
         `/api/inquiry-records?patient_id=${encodeURIComponent(patientId)}&status=resolved`,
       ]),
     );
@@ -130,6 +134,76 @@ describe('ResidualAdjustmentContent tenant headers', () => {
         `/api/inquiry-records?patient_id=${patientId}&status=resolved`,
       ]),
     );
+  });
+
+  it('strips provider-only residual medication fields before query caching', async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/residual-medications')) {
+        return jsonResponse({
+          data: [
+            {
+              ...RESIDUAL_RECORD,
+              org_id: 'must-not-enter-cache',
+              drug_master_id: 'must-not-enter-cache',
+            },
+          ],
+        });
+      }
+      if (url.startsWith('/api/inquiry-records')) return jsonResponse({ data: [] });
+      throw new Error(`unexpected fetch ${url}`);
+    }) as unknown as typeof fetch;
+
+    const { queryClient } = renderContent();
+    await screen.findByTestId('residual-adjustment-page');
+
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryData(['residual-adjustment', 'org_1', DEFAULT_PATIENT_ID]),
+      ).toEqual({ data: [RESIDUAL_RECORD] });
+    });
+  });
+
+  it('fails closed when residual medication quantities are negative', async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/residual-medications')) {
+        return jsonResponse({ data: [{ ...RESIDUAL_RECORD, remaining_quantity: -1 }] });
+      }
+      if (url.startsWith('/api/inquiry-records')) return jsonResponse({ data: [] });
+      throw new Error(`unexpected fetch ${url}`);
+    }) as unknown as typeof fetch;
+
+    renderContent();
+    expect(await screen.findByText('残薬調整を表示できません')).toBeTruthy();
+  });
+
+  it('fails closed when the resolved-instruction endpoint returns an unresolved record', async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/residual-medications')) {
+        return jsonResponse({ data: [RESIDUAL_RECORD] });
+      }
+      if (url.startsWith('/api/inquiry-records')) {
+        return jsonResponse({
+          data: [
+            {
+              id: 'inquiry_1',
+              residual_adjustment: true,
+              result: 'pending',
+              change_detail: null,
+              inquiry_content: '残薬調整を確認',
+              inquired_at: '2026-01-01T00:00:00.000Z',
+              resolved_at: null,
+            },
+          ],
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }) as unknown as typeof fetch;
+
+    renderContent();
+    expect(await screen.findByText('医師の指示記録を取得できませんでした。')).toBeTruthy();
   });
 
   it('uses buildOrgJsonHeaders for internal POSTs but never leaks x-org-id to the external presigned PUT', async () => {

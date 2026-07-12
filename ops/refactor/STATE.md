@@ -46591,3 +46591,29 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   contract, bounded cursor reader, regressions, client-schema ratchet, Plans, and the two ledger entries above. It was
   pushed to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal
   artifacts were excluded, and the feature branch does not match the `main`-only production deploy trigger.
+
+## 2026-07-12 API-CONTRACT-001FZRESIDUALSTRICT — residual adjustment read contracts (DONE)
+
+- current task / root cause:
+  The residual-adjustment screen compile-time cast both residual-medication and resolved physician-instruction GETs.
+  It also added `limit=100` even though the residual provider intentionally treats an omitted limit as the
+  safety-preserving complete patient read. More than 100 residual records could therefore disappear silently, while
+  negative quantities, unresolved inquiries, duplicate IDs, invalid timestamps, and unused Prisma/clinical fields
+  could enter calculation or React Query state.
+- implementation / verification:
+  Promoted the two consumed record types in `residual-adjustment.shared.ts` to executable response schemas. Residual
+  records now validate nonnegative quantities/days, positive prescribed quantities, booleans, timestamps, and unique
+  IDs. The physician-instruction network boundary accepts only the provider's resolved `changed` / `unchanged` rows,
+  validates dates and unique IDs, while the pure selection helper retains defensive support for legacy/null inputs.
+  The client removed its artificial 100-record limit and now uses the provider's documented complete patient read.
+  Both schemas strip org, drug-master, display, audit, line, and other unused provider fields before caching. Four
+  regressions failed before implementation; content/shared and both provider suites passed 4 files / 61 tests after
+  the fix. Exact ESLint/Prettier, aggregate typecheck, no-unused typecheck, API response-shape, frontend contract,
+  client PHI-log/display, module-boundary, client-schema, and diff gates passed. The ratchet improved from
+  125 / 249 / 94 files to 127 / 247 / 93 files. The patient-scoped residual query may return more than 100 rows by
+  design, trading the old silent truncation for complete medication-safety input; the provider already documents this
+  fail-closed behavior. Full build was not repeated after the unchanged compile-stage shared-memory limitation; there
+  is no new build hypothesis. No provider, DB, auth/authz, tenant, audit, mutation, upload, intervention write, or
+  visual layout changed. Browser and image generation were omitted because this is a non-visual read-contract repair
+  covered by direct content and provider tests. Rollback is the two schemas, reader options/limit removal, regressions,
+  and client-schema ratchet hunk.

@@ -289,12 +289,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.tsx",
-      "counts": {
-        "stringFallback": 2
-      }
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/share/external-share-content.tsx",
       "counts": {
         "stringFallback": 5

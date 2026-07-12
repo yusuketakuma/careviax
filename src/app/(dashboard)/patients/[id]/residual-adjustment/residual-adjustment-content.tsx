@@ -19,7 +19,9 @@ import {
   buildAdjustmentConfirmDescription,
   buildResidualAdjustmentPlan,
   formatRemainingLabel,
+  physicianInstructionSourcesResponseSchema,
   pickPhysicianInstructions,
+  residualMedicationRecordsResponseSchema,
   resolveLatestVisitRecordId,
   type PhysicianInstructionSource,
   type ResidualAdjustmentRow,
@@ -72,14 +74,14 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
   const residualQuery = useQuery({
     queryKey: ['residual-adjustment', orgId, patientId],
     queryFn: async () => {
-      const params = new URLSearchParams({ patient_id: patientId, limit: '100' });
+      const params = new URLSearchParams({ patient_id: patientId });
       const res = await fetch(`/api/residual-medications?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: ResidualMedicationRecord[] }>(
-        res,
-        '残薬データの取得に失敗しました',
-      );
+      return readApiJson<{ data: ResidualMedicationRecord[] }>(res, {
+        fallbackMessage: '残薬データの取得に失敗しました',
+        schema: residualMedicationRecordsResponseSchema,
+      });
     },
     enabled: !!orgId && !!patientId,
   });
@@ -91,10 +93,10 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
       const res = await fetch(`/api/inquiry-records?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PhysicianInstructionSource[] }>(
-        res,
-        '医師の指示記録の取得に失敗しました',
-      );
+      return readApiJson<{ data: PhysicianInstructionSource[] }>(res, {
+        fallbackMessage: '医師の指示記録の取得に失敗しました',
+        schema: physicianInstructionSourcesResponseSchema,
+      });
     },
     enabled: !!orgId && !!patientId,
   });

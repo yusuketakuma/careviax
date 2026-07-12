@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * p0_31 残薬調整フローの表示モデル(純関数)。
  * ResidualMedication のフィールドだけから「残 N日」ラベル・調整案テーブル
@@ -13,18 +15,40 @@
  * - 減数禁止(麻薬/抗がん剤)はテーブルに載せず「止まっている理由」へ回す
  */
 
-export type ResidualMedicationRecord = {
-  id: string;
-  visit_record_id: string;
-  drug_name: string;
-  prescribed_quantity: number | null;
-  remaining_quantity: number;
-  remaining_days: number | null;
-  excess_days: number | null;
-  is_reduction_target: boolean;
-  is_prohibited_reduction: boolean;
-  created_at: string;
-};
+export const residualMedicationRecordSchema = z.object({
+  id: z.string().min(1),
+  visit_record_id: z.string().min(1),
+  drug_name: z.string().min(1),
+  prescribed_quantity: z.number().positive().nullable(),
+  remaining_quantity: z.number().nonnegative(),
+  remaining_days: z.number().int().nonnegative().nullable(),
+  excess_days: z.number().int().nonnegative().nullable(),
+  is_reduction_target: z.boolean(),
+  is_prohibited_reduction: z.boolean(),
+  created_at: z.string().datetime(),
+});
+
+const residualMedicationRecordsSchema = z
+  .array(residualMedicationRecordSchema)
+  .superRefine((records, context) => {
+    const ids = new Set<string>();
+    for (const [index, record] of records.entries()) {
+      if (ids.has(record.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: [index, 'id'],
+          message: 'Duplicate residual medication id',
+        });
+      }
+      ids.add(record.id);
+    }
+  });
+
+export const residualMedicationRecordsResponseSchema = z
+  .object({ data: residualMedicationRecordsSchema })
+  .strict();
+
+export type ResidualMedicationRecord = z.infer<typeof residualMedicationRecordSchema>;
 
 export type ResidualAdjustmentProposal =
   | { kind: 'stop_and_collect'; label: string }
@@ -139,6 +163,36 @@ export function buildAdjustmentConfirmDescription(rows: ResidualAdjustmentRow[])
   const detail = rows.map((row) => `${row.drugName}: ${row.proposal.label}`).join(' / ');
   return `残薬調整の調整案を確定。${detail}`;
 }
+
+export const physicianInstructionSourceSchema = z.object({
+  id: z.string().min(1),
+  residual_adjustment: z.boolean().nullable(),
+  result: z.enum(['changed', 'unchanged']),
+  change_detail: z.string().nullable(),
+  inquiry_content: z.string().min(1),
+  inquired_at: z.string().datetime(),
+  resolved_at: z.string().datetime().nullable(),
+});
+
+const physicianInstructionSourcesSchema = z
+  .array(physicianInstructionSourceSchema)
+  .superRefine((records, context) => {
+    const ids = new Set<string>();
+    for (const [index, record] of records.entries()) {
+      if (ids.has(record.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: [index, 'id'],
+          message: 'Duplicate physician instruction id',
+        });
+      }
+      ids.add(record.id);
+    }
+  });
+
+export const physicianInstructionSourcesResponseSchema = z
+  .object({ data: physicianInstructionSourcesSchema })
+  .strict();
 
 export type PhysicianInstructionSource = {
   id: string;
