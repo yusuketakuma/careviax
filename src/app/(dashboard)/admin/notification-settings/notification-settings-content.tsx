@@ -58,7 +58,9 @@ import {
   buildEscalationRulesApiPath,
 } from '@/lib/escalation-rules/api-paths';
 import {
+  escalationRuleResponseSchema,
   escalationRulesResponseSchema,
+  type EscalationRuleResponse,
   type EscalationRulesResponse,
 } from '@/lib/escalation-rules/response-schema';
 import {
@@ -538,15 +540,12 @@ export function NotificationSettingsContent() {
           headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify({ is_active: isActive }),
         });
-        const payload = await readApiJson<{ data?: EscalationRule }>(
-          response,
-          'エスカレーションルールの保存に失敗しました',
-        );
-        if (payload.data) {
-          setEscalationRules((prev) =>
-            prev.map((item) => (item.id === rule.id ? payload.data! : item)),
-          );
-        }
+        const payload = await readApiJson<EscalationRuleResponse>(response, {
+          fallbackMessage: 'エスカレーションルールの保存に失敗しました',
+          schema: escalationRuleResponseSchema,
+        });
+        const nextRule = payload.data;
+        setEscalationRules((prev) => prev.map((item) => (item.id === rule.id ? nextRule : item)));
         toast.success(
           isActive ? 'エスカレーションを有効化しました' : 'エスカレーションを停止しました',
         );
@@ -584,14 +583,12 @@ export function NotificationSettingsContent() {
           },
         }),
       });
-      const payload = await readApiJson<{ data?: EscalationRule }>(
-        response,
-        'エスカレーションルールの作成に失敗しました',
-      );
-      if (payload.data) {
-        setEscalationRules((prev) => [payload.data!, ...prev]);
-        setEscalationReloadKey((key) => key + 1);
-      }
+      const payload = await readApiJson<EscalationRuleResponse>(response, {
+        fallbackMessage: 'エスカレーションルールの作成に失敗しました',
+        schema: escalationRuleResponseSchema,
+      });
+      setEscalationRules((prev) => [payload.data, ...prev]);
+      setEscalationReloadKey((key) => key + 1);
       setNewEscalationOpen(false);
       setNewEscalationThresholdHours('24');
       setNewEscalationThresholdError(null);

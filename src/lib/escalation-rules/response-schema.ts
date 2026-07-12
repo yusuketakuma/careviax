@@ -98,4 +98,11 @@ export const escalationRulesResponseSchema = z
     }
   });
 
+export const escalationRuleResponseSchema = z
+  .object({
+    data: escalationRuleSchema,
+  })
+  .strict();
+
 export type EscalationRulesResponse = z.infer<typeof escalationRulesResponseSchema>;
+export type EscalationRuleResponse = z.infer<typeof escalationRuleResponseSchema>;
