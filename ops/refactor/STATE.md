@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZBRIEFREVIEWSTRICT visit-brief pharmacist review reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZBRIEFREVIEWSTRICT visit-brief pharmacist review reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `c29a55c4d`; shared clean-capacity build pending).
   - current task / root cause:
     Visit Brief pharmacist review画面は患者名、context、生成日時、AI/rule要約とrule sourceだけを使う一方、
     compile-time full `VisitBrief` castで薬剤、検査、患者変化、多職種連携、未解決事項等の大量PHIをquery
