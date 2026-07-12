@@ -35,17 +35,17 @@ const stockSummary: PatientMedicationStockSummaryResponse = {
   data: {
     patient_id: 'patient_1',
     summary: {
-      total_item_count: 2,
+      total_item_count: 3,
       visible_item_count: 2,
-      active_item_count: 2,
+      active_item_count: 3,
       urgent_count: 0,
       shortage_expected_count: 1,
       watch_count: 0,
-      unknown_risk_count: 0,
+      unknown_risk_count: 1,
       usage_unknown_count: 0,
       equivalence_review_count: 0,
       pending_external_observation_count: 0,
-      last_observed_at: '2026-07-07T00:00:00.000Z',
+      last_observed_at: '2026-07-06T10:30:00.000Z',
     },
     items: [
       {
@@ -220,6 +220,12 @@ describe('VisitMedicationStockObservationPanel', () => {
   it('fails closed when the summary marks a snapshot unit mismatch', async () => {
     const unitMismatchSummary: PatientMedicationStockSummaryResponse = {
       ...freshStockSummary(),
+      meta: {
+        ...stockSummary.meta,
+        generated_at: new Date().toISOString(),
+        visible_count: 1,
+        hidden_count: 0,
+      },
       data: {
         ...stockSummary.data,
         summary: {
@@ -383,6 +389,12 @@ describe('VisitMedicationStockObservationPanel', () => {
   it('uses controlled review labels and blocks only unresolved medication identities', async () => {
     const reviewSummary: PatientMedicationStockSummaryResponse = {
       ...freshStockSummary(),
+      meta: {
+        ...stockSummary.meta,
+        generated_at: new Date().toISOString(),
+        visible_count: 3,
+        hidden_count: 0,
+      },
       data: {
         ...stockSummary.data,
         summary: {
@@ -390,24 +402,28 @@ describe('VisitMedicationStockObservationPanel', () => {
           total_item_count: 3,
           visible_item_count: 3,
           active_item_count: 3,
+          shortage_expected_count: 2,
           equivalence_review_count: 2,
         },
         items: [
           {
             ...stockSummary.data.items[0],
             id: 'stock_needs_review',
+            display_id: 'STK-NEEDS-REVIEW',
             display_name: '名寄せ確認薬',
             equivalence_review_status: 'needs_review',
           },
           {
             ...stockSummary.data.items[1],
             id: 'stock_uncertain',
+            display_id: 'STK-UNCERTAIN',
             display_name: '名寄せ継続薬',
             equivalence_review_status: 'uncertain',
           },
           {
             ...stockSummary.data.items[0],
             id: 'stock_reviewed',
+            display_id: 'STK-REVIEWED',
             display_name: '名寄せ確認済み薬',
             equivalence_review_status: 'reviewed',
           },

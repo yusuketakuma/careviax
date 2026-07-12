@@ -32,6 +32,7 @@ import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { buildPatientMedicationStockApiPath } from '@/lib/patient/api-paths';
+import { buildPatientMedicationStockSummaryResponseSchema } from '@/lib/medication-stock/summary-response-schema';
 import { cn } from '@/lib/utils';
 import { isMedicationStockItemWriteAllowed } from '@/modules/pharmacy/medication-stock/domain/medication-equivalence';
 import type {
@@ -241,10 +242,14 @@ async function fetchMedicationStockSummary({
   const response = await fetch(buildMedicationStockPath(patientId, itemLimit), {
     headers: buildOrgHeaders(orgId),
   });
-  return readApiJson<PatientMedicationStockSummaryResponse>(
-    response,
-    '患者の残数管理情報の取得に失敗しました',
-  );
+  return readApiJson<PatientMedicationStockSummaryResponse>(response, {
+    fallbackMessage: '患者の残数管理情報の取得に失敗しました',
+    schema: buildPatientMedicationStockSummaryResponseSchema({
+      patientId,
+      itemLimit,
+      eventLimit: 0,
+    }),
+  });
 }
 
 function MedicationStockRiskBadge({ riskLevel }: { riskLevel: MedicationStockRiskLevelDto }) {

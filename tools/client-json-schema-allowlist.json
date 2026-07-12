@@ -169,12 +169,6 @@
       }
     },
     {
-      "path": "src/components/features/visits/visit-medication-stock-observation-panel.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/components/visit-brief/patient-visit-brief-section.tsx",
       "counts": {
         "stringFallback": 1

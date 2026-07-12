@@ -51,6 +51,35 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZSTOCKSUMMARYSTRICT patient medication-stock summary reader (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Visit Medication Stock Summary GET readerはcompile-time castだけで、別患者item、重複identity、request limit drift、
+    visible/hidden/active・risk/review集計drift、最新観測時刻drift、hidden itemへのevent参照、event順序不正を成功扱い
+    し得た。既存fixtureにもtotal/hidden/risk集計、最新観測時刻、派生fixture display identityの不整合があった。
+  - implementation / medication-safety boundary:
+    Requested patient/item/event limits factory schemaを追加し、strict root/item/snapshot/event shapes、患者scope、
+    item/display/event identity一意、count arithmetic、risk/usage/review aggregates、latest observation、event reference/
+    newest-first、空partial failuresを検証。既存UIがfail-close表示する`unit_mismatch` snapshotは互換性のため許容し、
+    aggregate算出から除外した。Fixtureを実provider contractへ同期した。Query、残数計算/snapshot write、provider、
+    UIは変更していない。非visual parser/medication-safety境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/medication-stock/summary-response-schema.ts`,
+    `src/lib/medication-stock/summary-response-schema.test.ts`,
+    `src/components/features/visits/visit-medication-stock-observation-panel.tsx`,
+    `src/components/features/visits/visit-medication-stock-observation-panel.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/provider/application Vitest passed 4 files / 22 tests. Exact ESLint, Prettier, aggregate
+    typecheck, 8GB no-unused typecheck, client schema (256 backed / 107 allowlisted / 28 files), frontend contract,
+    module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build was NOT_EXECUTED
+    because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated cache was not
+    deleted or modified.
+  - security / performance / remaining:
+    Cross-patient/aggregate/identity/event drift now fails closed before medication-stock state enters the query cache.
+    Request/query count, DB reads, medication-stock calculation/snapshot, assignment, auth/tenant, render behavior, and
+    dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN`
+    continues.
+
 - codex: API-CONTRACT-001FZSTOCKOBSRESULTSTRICT visit medication-stock observation result (VERIFY_REQUIRED, 2026-07-13; implementation `208c7e8b3`, ledger `58b7664de`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Visit Medication Stock Observation POST結果はcompile-time castだけで、legacy/wrong visit、empty/duplicate
