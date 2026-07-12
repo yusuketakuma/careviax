@@ -47045,6 +47045,39 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZFACILITYUNITSSTRICT — facility-unit list contract (IN_PROGRESS)
+
+- current task / root cause:
+  The admin facilities editor's unit GET consumer still trusts a compile-time `{ data: FacilityUnit[] }` cast even
+  though the provider returns an org-scoped `{ data }` projection containing patient counts. A legacy root, duplicate
+  unit identity, invalid unit type/text/count/capacity/display order, or provider-only field could therefore affect
+  occupancy and edit state. Existing facility/unit mutations, patient-count aggregation, authorization, and provider
+  semantics are not being changed.
+- baseline:
+  The focused facilities consumer/unit-provider suites pass 2 files / 22 tests before implementation. Current
+  client-schema inventory is 166 schema-backed / 207 allowlisted schema-less / 83 files. The target is one
+  `stringFallback` entry in `src/app/(dashboard)/admin/facilities/facilities-content.tsx`.
+- implementation plan:
+  Add a strict `{ data }` unit runtime schema with unique identity, supported type, bounded text and non-negative
+  numeric checks, strip provider-only fields, connect the unit query, add legacy/duplicate/invalid regressions, and
+  remove only the facilities allowlist entry. No visual reconstruction or `gpt-image-2` is needed because this is a
+  non-visual facility-unit parser and authorized occupancy-state repair.
+- implementation / validation checkpoint:
+  Added the strict unit schema in `facilities-content.tsx`, connected the unit GET reader, removed the one facilities
+  allowlist entry, and added legacy-root, negative-count, and duplicate-identity regressions. Focused facilities
+  consumer/unit-provider suites pass 2 files / 25 tests. Format, API shape, client-schema (167 schema-backed /
+  206 allowlisted / 82 files), frontend contract, PHI log/display, module boundary, Plans, diff-check, aggregate
+  typecheck, 8 GB no-unused typecheck, and lint pass. Lint retains only the two pre-existing unused-parameter warnings
+  in `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  `pnpm build` completed successfully. Next 16.2.9 compiled in 3.7 minutes, TypeScript finished in 63 seconds,
+  311/311 static pages were generated, and route optimization/traces completed. The build emitted the two existing CSS
+  optimizer warnings and exited 0; no ENOSPC warning was emitted in this run. Filesystem usage was 93% / 14 GiB free
+  after the build; no generated-artifact cleanup was performed.
+- next action:
+  Inspect the validated facility-unit-owned diff, stage only this slice and its ledgers, then commit and push it while
+  preserving unrelated harness-memory and personal artifacts.
+
 ## 2026-07-12 API-CONTRACT-001FZNOTIFICATIONSREADSTRICT — notifications list contract (DONE)
 
 - current task / root cause:

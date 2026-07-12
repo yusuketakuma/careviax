@@ -90,3 +90,18 @@
 - Rollback: revert the notifications response schema, consumer/realtime type adapter, fixtures/regressions, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
 - Push evidence: `e39ede0ff..64ccfd492` fast-forward push succeeded; local and remote heads match.
+
+## API-CONTRACT-001FZFACILITYUNITSSTRICT
+
+- Commit Group: `API-CONTRACT-001FZFACILITYUNITSSTRICT`
+- Commit: pending
+- Push Status: NOT_STARTED
+- Branch: `agent/continuous-improvement-20260712`
+- Scope: admin facilities unit-list response schema, facility editor consumer regressions, and client-schema allowlist ratchet.
+- Implementation: validate strict `{ data }`, unique unit identities, supported unit type, non-empty bounded identity/text, non-negative patient/capacity/order values, and strip provider-only fields; preserve facility/unit mutations, patient-count aggregation, authorization, and editor behavior.
+- FE/BE impact: `/api/admin/facilities/[id]/units` remains unchanged; the facility editor rejects malformed or legacy 2xx payloads before occupancy and unit-edit state.
+- DB/auth/tenant/audit impact: no DB, migration, provider, auth/authz, tenant, audit, mutation, or production-data change; authorized patient-count aggregate remains in the operational facility surface only.
+- Verification: focused 2 files / 25 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and Next build passed; client-schema inventory is 167 schema-backed / 206 allowlisted / 82 files. Build emitted existing CSS optimizer warnings and exited 0.
+- Rollback: revert the unit response schema, consumer adapter, regressions, allowlist removal, and ledger entries.
+- Remote: `origin/agent/continuous-improvement-20260712`
+- Push evidence: pending scoped commit.

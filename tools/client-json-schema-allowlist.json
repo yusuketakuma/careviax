@@ -60,12 +60,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/facilities/facilities-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/incidents/incidents-content.tsx",
       "counts": {
         "stringFallback": 4

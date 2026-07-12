@@ -163,7 +163,7 @@
 
 **Current execution slice (2026-07-12)**:
 
-- `API-CONTRACT-001FZNOTIFICATIONSREADSTRICT` は landing 済み。次は残存 `API-CONTRACT-001` allowlist と patients board cursor residual を再スキャンする。
+- `API-CONTRACT-001FZFACILITYUNITSSTRICT`: **IN_PROGRESS**。施設編集シートのユニット一覧 GET `{ data }` を consumed runtime schema へ接続し、legacy root、duplicate unit、invalid unit type/identity/count/capacity/display order を facility-unit state へ流入させない。Acceptance: (1) consumer が provider current shape の schema-backed reader を使う、(2) unit identity/type/text/numeric invariants を検証する、(3) malformed/legacy 2xx が unit editor state 前に fail-closed、(4) focused tests / typecheck / lint / contract gates を通し scoped commit/push を記録する。既存 facility/unit mutations、patient-count provider aggregation、authz/provider semantics は変更しない。
 
 **Implementation-ready queue — 未実装 / Partial 残スコープのみ**:
 

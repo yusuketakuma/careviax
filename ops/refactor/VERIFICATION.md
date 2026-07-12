@@ -24,6 +24,18 @@
 - Browser/E2E: not run; this is a non-visual notification-data contract slice with no layout change. `gpt-image-2` was omitted for the same reason.
 - Migration/auth/tenant: no migration, provider, authorization, or tenant query change; no production data operation executed.
 
+## API-CONTRACT-001FZFACILITYUNITSSTRICT
+
+- Baseline: inherited facilities editor unit GET reader used a compile-time `{ data: FacilityUnit[] }` cast while `/api/admin/facilities/[id]/units` returns a projected `{ data }` list with patient counts; facility list, unit mutations, and authz were already covered and remain unchanged.
+- Focused test: `pnpm exec vitest run 'src/app/(dashboard)/admin/facilities/facilities-content.test.tsx' 'src/app/api/admin/facilities/[id]/units/route.test.ts' --reporter=dot --testTimeout=30000` — PASS, 2 files / 25 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`, `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`, `pnpm boundaries:check`, `pnpm plans:active:check`, `git diff --check` — PASS.
+- Client-schema result: 167 schema-backed, 206 allowlisted schema-less calls, 82 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS with the same two pre-existing warnings in `src/lib/platform/break-glass.test.ts`.
+- Build: `pnpm build` — PASS; Next 16.2.9 compiled in 3.7 minutes, TypeScript finished in 63 seconds, 311/311 static pages, and traces completed. Two existing CSS optimizer warnings did not fail the build; no ENOSPC warning was emitted.
+- Browser/E2E: not run; this is a non-visual facility-unit data-contract slice with no layout change. `gpt-image-2` was omitted for the same reason.
+- Migration/auth/tenant: no migration, provider, authorization, or tenant query change; no production data operation executed.
+
 ## API-CONTRACT-001FZSTAFFMETRICSSTRICT
 
 - Baseline: inherited admin/staff KPI reader used a compile-time response cast and one `stringFallback` allowlist entry; provider returned `{ data: { month, summary, items } }` from the existing authorized organization-scoped aggregate route.

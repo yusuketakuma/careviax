@@ -457,6 +457,33 @@ describe('FacilitiesContent', () => {
     });
   });
 
+  it.each([
+    ['legacy unit root', { units: [unitFixture()] }],
+    ['negative patient count', { data: [{ ...unitFixture(), patient_count: -1 }] }],
+    ['duplicate unit identity', { data: [unitFixture(), unitFixture()] }],
+  ])('fails closed on %s successful unit payloads', async (_label, unitsPayload) => {
+    const facility = facilityFixture();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/admin/facilities?' && !init?.method) {
+          return new Response(JSON.stringify(facilitiesResponse([facility])), { status: 200 });
+        }
+        if (url === '/api/admin/facilities/facility_1/units' && !init?.method) {
+          return new Response(JSON.stringify(unitsPayload), { status: 200 });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderContent();
+    fireEvent.click(await screen.findByRole('button', { name: 'グリーンヒル を編集' }));
+
+    expect(await screen.findByText('ユニットを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('2F 東')).toBeNull();
+  });
+
   it('uses a named skeleton while facility units are loading', async () => {
     const facility = facilityFixture();
     let resolveUnits: (response: Response) => void = () => {};

@@ -65,6 +65,19 @@
 | Tests                       | Select-site focused suite: 1 file / 6 tests; static contract gates, typechecks, lint, diff-check, and build passed.                                            |
 | Alignment                   | ALIGNED for this read slice; PUT acknowledgement, provider membership filtering, and visual/navigation semantics intentionally unchanged.                      |
 
+## API-CONTRACT-001FZFACILITYUNITSSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Admin facilities editor at `/admin/facilities`; `/api/admin/facilities/[id]/units` remains under existing facility reference/auth context and unit mutation permissions.  |
+| Frontend state / clients    | Unit query in `facilities-content.tsx`; strict `{ data }` schema runs before occupancy counts or unit-edit state enters the facility sheet.                               |
+| Request / response contract | Provider returns projected `{ data }` unit rows; consumer validates identity, type, text, capacity, patient count, display order, and duplicate IDs.                      |
+| Backend / DB                | Existing org-scoped facility/unit lookup, residence count aggregation, ordering, no-store behavior, persistence, and provider route are unchanged.                        |
+| Auth / tenant / audit       | Existing `canVisit` GET authorization and unit mutation/audit semantics remain; authorized occupancy aggregate is not sent to public/external boundaries by this slice.   |
+| Errors / loading / empty    | Existing facility-sheet loading, unit error, empty, edit, and mutation behavior remains; malformed/legacy 2xx becomes unit query error rather than false occupancy state. |
+| Tests                       | Facilities consumer/unit-provider suite: 2 files / 25 tests; static contract gates, typechecks, lint, diff-check, and build passed.                                       |
+| Alignment                   | ALIGNED for this read slice; provider aggregation, unit mutations, facility editor visuals, and authorization semantics intentionally unchanged.                          |
+
 ## API-CONTRACT-001FZNOTIFICATIONSREADSTRICT
 
 | Area                        | Evidence / status                                                                                                                                                                            |

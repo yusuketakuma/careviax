@@ -111,6 +111,42 @@ type FacilityUnitsResponse = {
   data: FacilityUnit[];
 };
 
+const NON_EMPTY_FACILITY_UNIT_TEXT = z.string().refine((value) => value.trim().length > 0, {
+  message: 'Expected non-empty facility unit text',
+});
+
+const facilityUnitSchema: z.ZodType<FacilityUnit> = z
+  .object({
+    id: NON_EMPTY_FACILITY_UNIT_TEXT.max(200),
+    name: NON_EMPTY_FACILITY_UNIT_TEXT.max(200),
+    floor: z.string().max(100).nullable(),
+    unit_type: z.enum(['floor', 'wing', 'unit']),
+    capacity: z.number().finite().int().nonnegative().nullable(),
+    notes: z.string().max(2_000).nullable(),
+    display_order: z.number().finite().int().nonnegative(),
+    patient_count: z.number().finite().int().nonnegative(),
+  })
+  .strip();
+
+const facilityUnitsResponseSchema: z.ZodType<FacilityUnitsResponse> = z
+  .object({
+    data: z.array(facilityUnitSchema).max(500),
+  })
+  .strict()
+  .superRefine(({ data }, context) => {
+    const unitIds = new Set<string>();
+    for (const [index, unit] of data.entries()) {
+      if (unitIds.has(unit.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['data', index, 'id'],
+          message: 'Duplicate facility unit identity',
+        });
+      }
+      unitIds.add(unit.id);
+    }
+  });
+
 type ContactForm = {
   id?: string;
   name: string;
@@ -511,7 +547,10 @@ export function FacilitiesContent() {
       const response = await fetch(buildAdminFacilityUnitsApiPath(editingFacility.id), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<FacilityUnitsResponse>(response, '施設ユニットの取得に失敗しました');
+      return readApiJson<FacilityUnitsResponse>(response, {
+        fallbackMessage: '施設ユニットの取得に失敗しました',
+        schema: facilityUnitsResponseSchema,
+      });
     },
     enabled: !!orgId && !!editingFacility && sheetOpen,
   });

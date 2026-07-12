@@ -35,6 +35,13 @@
 - Safety control: legacy root, missing pagination metadata, duplicate site identity, multiple current sites, negative visit count, or empty identity fails closed before site cards and switch navigation state.
 - Operational note: existing PUT acknowledgement and provider membership authorization remain the source of truth; no client-side permission weakening was introduced.
 
+## API-CONTRACT-001FZFACILITYUNITSSTRICT
+
+- Classification: Controlled facility/occupancy operational read, but not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets, deployment, or production data mutation changed.
+- Safety/privacy control: legacy root, duplicate unit identity, unsupported type, blank identity/text, negative patient/capacity/order value, or provider-only field is rejected or stripped before authorized facility-sheet state is used; patient-count aggregate remains in-app only.
+- Operational note: facility/unit mutations, residence aggregation, GET authorization, no-store behavior, and provider semantics remain the source of truth; no occupancy data is logged or externalized by this slice.
+
 ## API-CONTRACT-001FZNOTIFICATIONSREADSTRICT
 
 - Classification: Controlled PHI-adjacent operational notification read, but not a high-risk controlled change.

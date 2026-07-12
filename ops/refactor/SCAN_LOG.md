@@ -80,3 +80,21 @@
 - Landed: implementation commit `64ccfd492` passed 2 files / 29 focused tests, all contract/type/lint/diff gates, and
   serialized Next build; client-schema inventory moved to 166 schema-backed / 207 allowlisted / 83 files. Next scan:
   remaining API-CONTRACT allowlist entries and patients board cursor residual.
+
+## 2026-07-12 — API-CONTRACT-001FZFACILITYUNITSSTRICT selection
+
+- Scope: facilities consumer allowlist, `src/app/(dashboard)/admin/facilities/facilities-content.tsx`,
+  `/api/admin/facilities/[id]/units`, and consumer/provider tests.
+- Candidate ranking: selected the one-reader facility-unit list because the facility list already has a schema-backed
+  reader and the provider projects eight unit fields; deferred billing, patient-detail, inventory, and mutation-heavy
+  candidates with broader controlled-data impact.
+- Finding: the unit provider returns `{ data }` with patient counts, while the facility editor trusts a data-only
+  compile-time cast before rendering occupancy and editing state.
+- Baseline: focused facilities consumer/unit-provider suites pass 2 files / 22 tests; client-schema is 166
+  schema-backed / 207 allowlisted / 83 files.
+- Planned fix: strict unit envelope, identity/type/text/numeric checks, unique IDs, malformed/legacy/duplicate
+  regressions, and one allowlist ratchet removal. Facility/unit mutations, patient-count aggregation, authz, and visual
+  semantics stay fixed.
+- Implemented/validated: focused consumer/unit-provider suites pass 2 files / 25 tests; client-schema inventory moved to
+  167 schema-backed / 206 allowlisted / 82 files; all static/type/lint/diff gates and serialized Next build passed.
+  Scoped commit/push remains pending.
