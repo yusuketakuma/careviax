@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZFIELDREVSTRICT patient field-revision timeline reader (VERIFY_REQUIRED, 2026-07-12; implementation `30a775e9a`, push and shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZFIELDREVSTRICT patient field-revision timeline reader (VERIFY_REQUIRED, 2026-07-12; implementation `30a775e9a`, ledger `ffcda1d56`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Patient detailのfield revision timelineがcompile-time service typeだけを信頼し、legacy root、meta arithmetic/
     filter drift、重複identity、逆順日時を表示/cacheへ流し得た。Provider serviceはPHI raw-value allowlistで
