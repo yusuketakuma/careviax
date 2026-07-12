@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZTEMPLATEREADSTRICT document-template list/detail/body readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZTEMPLATEREADSTRICT document-template list/detail/body readers (VERIFY_REQUIRED, 2026-07-13; implementation `f75484d74`, shared clean-capacity build pending).
   - current task / root cause:
     Admin Document Templatesはmetadata list、full detail GET、Body Editor detail GET/PATCHの4 readersを別々の
     compile-time typesでcastし、legacy root、wrong list filter/count、duplicate/incorrect template identity、不正
@@ -70,7 +70,6 @@
     `src/lib/document-templates/response-schema.test.ts`,
     `src/app/(dashboard)/admin/document-templates/template-content.tsx`,
     `src/app/(dashboard)/admin/document-templates/template-body-editor.tsx`,
-    `src/app/(dashboard)/admin/document-templates/template-content.test.tsx`,
     `src/app/(dashboard)/admin/document-templates/template-body-editor.render.test.tsx`,
     `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
   - validation:
