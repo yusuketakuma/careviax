@@ -9,13 +9,14 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildVisitReflectedFieldsApiPath } from '@/lib/visits/api-paths';
 import { cn } from '@/lib/utils';
 import {
   REVISION_CATEGORY_LABELS,
   revisionChangeTypeMeta,
   revisionDetailText,
 } from '@/components/features/patients/patient-field-revision-presentation';
-import type { PatientFieldRevisionListItem } from '@/server/services/patient-field-revision-list';
+import { visitReflectedFieldsResponseSchema } from './visit-reflected-fields-response-schema';
 
 /**
  * ⑤ 反映導線の「訪問側」provenance(read 専用)。
@@ -28,13 +29,13 @@ export function VisitReflectedFieldsCard({ recordId }: { recordId: string }) {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['visit-reflected-fields', recordId, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/visit-records/${recordId}/reflected-fields`, {
+      const res = await fetch(buildVisitReflectedFieldsApiPath(recordId), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PatientFieldRevisionListItem[] }>(
-        res,
-        '反映項目の取得に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: '反映項目の取得に失敗しました',
+        schema: visitReflectedFieldsResponseSchema,
+      });
     },
     enabled: !!orgId && !!recordId,
   });

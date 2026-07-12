@@ -265,12 +265,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/visits/[id]/visit-reflected-fields-card.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.tsx",
       "counts": {
         "stringFallback": 1

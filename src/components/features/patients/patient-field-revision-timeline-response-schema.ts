@@ -13,7 +13,7 @@ const rawValueAllowedFieldKeys = new Set([
 const maskedPresenceSchema = z.union([z.null(), z.literal('〔記録あり〕')]);
 const nonEmptyText = (max: number) => z.string().trim().min(1).max(max);
 
-const revisionItemSchema = z
+export const patientFieldRevisionPresentationItemSchema = z
   .object({
     id: nonEmptyText(255),
     category: z.enum(PATIENT_FIELD_REVISION_CATEGORIES),
@@ -51,7 +51,7 @@ const revisionItemSchema = z
 export function createPatientFieldRevisionTimelineResponseSchema(expectedCategory: string | null) {
   return z
     .object({
-      data: z.array(revisionItemSchema).max(50),
+      data: z.array(patientFieldRevisionPresentationItemSchema).max(50),
       meta: z
         .object({
           total_count: z.number().finite().int().nonnegative(),
@@ -112,4 +112,6 @@ export function createPatientFieldRevisionTimelineResponseSchema(expectedCategor
     });
 }
 
-export type PatientFieldRevisionTimelineItem = z.infer<typeof revisionItemSchema>;
+export type PatientFieldRevisionTimelineItem = z.infer<
+  typeof patientFieldRevisionPresentationItemSchema
+>;

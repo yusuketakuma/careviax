@@ -51,6 +51,37 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZREFLECTEDSTRICT visit reflected-fields provenance reader/path (VERIFY_REQUIRED, 2026-07-12; pending commit/push and shared clean-capacity build).
+  - current task / root cause:
+    Visit recordの「患者詳細へ反映した項目」cardがcompile-time service typeだけを信頼し、legacy root、
+    duplicate/reverse-ordered revision、非許可fieldのraw PHIをprovenance表示へ流し得た。さらにrecordIdを
+    `/api/visit-records/${recordId}/reflected-fields`へ直接補間し、path segment boundaryを委譲していなかった。
+    ProviderはcanVisit、visit assignment、org scope、sensitive no-store、source visit filterを既に強制する。
+  - implementation / privacy-security boundary:
+    Timelineで導入したPHI-safe minimal revision item schemaをexport/reuseし、専用strict `{ data }` envelopeで
+    100件上限、identity一意、created_at降順を検証した。UI未使用のrevision internalsをcacheからstripし、
+    non-allowlisted value label/raw previous/currentのpresence-only境界を共有した。`buildVisitReflectedFieldsApiPath`
+    を既存visits path helperへ追加し、hostile IDを1 segmentへencode、exact `.`/`..`をfail-closed化した。
+    Revision write/audit、visit assignment/tenant/no-store、service query/take、UI/retryは変更していない。
+    Visual reconstructionではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/visits/[id]/visit-reflected-fields-response-schema.ts`,
+    `src/app/(dashboard)/visits/[id]/visit-reflected-fields-card.tsx`,
+    `src/app/(dashboard)/visits/[id]/visit-reflected-fields-card.test.tsx`,
+    `src/components/features/patients/patient-field-revision-timeline-response-schema.ts`,
+    `src/lib/visits/api-paths.ts`, `src/lib/visits/api-paths.test.ts`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/provider/service/shared-schema/path-helper Vitest passed 5 files / 37 tests. Exact ESLint/Prettier
+    and diff-check passed. `pnpm client-json-schema:check` passed at 204 schema-backed / 167 allowlisted schema-less
+    calls / 57 files; frontend contract, module boundary, aggregate typecheck, 8GB no-unused typecheck, client PHI-log,
+    API response shape, and colors passed. Full build was NOT_EXECUTED because the shared clean-capacity gate remains
+    unresolved; no generated cache was deleted or modified.
+  - security / performance / remaining:
+    Raw PHI masking regressions and path injection cannot reach this card. Cached fields are reduced; request count,
+    provider query/take, render behavior, and dependencies are unchanged. A clean-capacity runner must complete
+    `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZFIELDREVSTRICT patient field-revision timeline reader (VERIFY_REQUIRED, 2026-07-12; implementation `30a775e9a`, ledger `ffcda1d56`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Patient detailのfield revision timelineがcompile-time service typeだけを信頼し、legacy root、meta arithmetic/

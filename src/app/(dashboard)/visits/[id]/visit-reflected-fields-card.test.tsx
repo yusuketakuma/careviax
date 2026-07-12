@@ -65,7 +65,9 @@ describe('VisitReflectedFieldsCard', () => {
           category: 'basic',
           field_key: 'phone',
           field_label: '電話番号',
-          value_label: '090-1111-2222',
+          value_label: null,
+          previous: '〔記録あり〕',
+          current: '〔記録あり〕',
         },
       ],
     });
@@ -75,6 +77,64 @@ describe('VisitReflectedFieldsCard', () => {
     await screen.findByTestId('visit-reflected-fields-card');
     expect(screen.getByText('電話番号')).toBeTruthy();
     expect(screen.queryByText('090-1111-2222')).toBeNull();
+  });
+
+  it('hostile visit record ids are encoded as one path segment', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ data: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const recordId = 'vr/1?patient=x#fragment';
+
+    render(<VisitReflectedFieldsCard recordId={recordId} />, {
+      wrapper: createQueryClientWrapper(),
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/visit-records/${encodeURIComponent(recordId)}/reflected-fields`,
+      { headers: { 'x-org-id': 'org_1' } },
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      `/api/visit-records/${recordId}/reflected-fields`,
+      expect.anything(),
+    );
+  });
+
+  it('legacy, duplicate, reverse-ordered, or unmasked successful data fails closed', async () => {
+    const sensitiveRevision = {
+      ...revision,
+      id: 'rev_sensitive',
+      category: 'contacts',
+      field_key: 'phone',
+      field_label: '電話番号',
+      value_label: null,
+      previous: '〔記録あり〕',
+      current: '〔記録あり〕',
+    };
+    const payloads = [
+      { revisions: [] },
+      { data: [sensitiveRevision, sensitiveRevision] },
+      {
+        data: [
+          { ...revision, id: 'rev_new', created_at: '2026-06-15T00:00:00.000Z' },
+          { ...revision, id: 'rev_old', created_at: '2026-06-16T00:00:00.000Z' },
+        ],
+      },
+      { data: [{ ...sensitiveRevision, current: '090-1111-2222' }] },
+    ];
+
+    for (const payload of payloads) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse(payload)),
+      );
+      const { unmount } = render(<VisitReflectedFieldsCard recordId="vr_1" />, {
+        wrapper: createQueryClientWrapper(),
+      });
+
+      expect(await screen.findByTestId('visit-reflected-fields-card-error')).toBeTruthy();
+      expect(screen.queryByText('090-1111-2222')).toBeNull();
+      unmount();
+    }
   });
 
   it('反映が無ければカードを描画しない', async () => {

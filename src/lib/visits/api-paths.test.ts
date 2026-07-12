@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildVisitMedicationStockObservationsApiPath } from './api-paths';
+import {
+  buildVisitMedicationStockObservationsApiPath,
+  buildVisitReflectedFieldsApiPath,
+} from './api-paths';
 
 describe('visit API path helpers', () => {
   it('builds the medication stock observation path', () => {
@@ -18,5 +21,16 @@ describe('visit API path helpers', () => {
 
   it.each(['.', '..'])('rejects exact dot-segment visit record id %s', (id) => {
     expect(() => buildVisitMedicationStockObservationsApiPath(id)).toThrow(RangeError);
+  });
+
+  it('builds an encoded reflected-fields path', () => {
+    const id = 'visit/1?mode=x#fragment';
+    expect(buildVisitReflectedFieldsApiPath(id)).toBe(
+      `/api/visit-records/${encodeURIComponent(id)}/reflected-fields`,
+    );
+  });
+
+  it.each(['.', '..'])('rejects exact dot-segment reflected-fields id %s', (id) => {
+    expect(() => buildVisitReflectedFieldsApiPath(id)).toThrow(RangeError);
   });
 });
