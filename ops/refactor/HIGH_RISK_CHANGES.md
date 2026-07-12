@@ -137,3 +137,14 @@
   before conflict analysis and Plan A candidate state.
 - Operational note: authorized pharmacist identity candidates remain in-app only; schedule reorder/reconfirmation,
   patient detail, and PHI/audit behavior are unchanged. No external output or cleanup was performed.
+
+## API-CONTRACT-001FZSAVEDVIEWSSTRICT
+
+- Classification: Low-risk authorized settings/read-projection contract, not a high-risk controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets,
+  deployment, provider, preference/saved-view mutation, production-data, or external-send operation changed.
+- Safety control: minimal preferences and schedules-scoped saved-view schemas reject legacy roots, invalid condition/date/
+  scope/order fields, duplicate identities, and oversized lists; provider-only preference/view metadata is stripped before
+  query state while opaque filters/sort are preserved as JSON objects.
+- Operational note: saved conditions and named-view metadata remain authorized in-app settings only; no patient records,
+  external shares, audit events, or mutation payload semantics are changed. No external output or cleanup was performed.

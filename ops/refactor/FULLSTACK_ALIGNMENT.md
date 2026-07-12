@@ -207,3 +207,16 @@
 | Errors / loading / empty    | Existing loading, lookup error/retry, conflict, no-conflict, and mutation recovery behavior remains; malformed 2xx becomes a query error rather than false candidate/conflict state.                     |
 | Tests                       | Conflict consumer/provider suite: 2 files / 36 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                             |
 | Alignment                   | ALIGNED for this read slice; schedule providers, authorization, mutations, patient/PHI behavior, audit semantics, and visual behavior intentionally unchanged.                                           |
+
+## API-CONTRACT-001FZSAVEDVIEWSSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| User roles / routes         | Authorized users access `/views`; `/api/me/preferences` and scoped `/api/saved-views` retain their existing authenticated org/user boundaries.                                                                           |
+| Frontend state / clients    | `saved-views-content.tsx` validates preferences GET/PATCH and the schedules-scoped list before condition-chip or named-view state; provider-only fields are stripped from cache.                                         |
+| Request / response contract | Preferences return `{ data }` with optional saved conditions; scoped saved views return `{ data }`; schemas validate condition/value, schedules scope, identity/date/order fields, duplicate IDs, and bounded list size. |
+| Backend / DB                | Existing preference merge, saved-view list/create/update/delete queries, opaque filters/sort normalization, persistence, and route handlers are unchanged.                                                               |
+| Auth / tenant / audit       | Existing authenticated user/org visibility, shared-view ownership flags, audit events, and in-app detail remain unchanged; no provider metadata is externalized.                                                         |
+| Errors / loading / empty    | Existing loading, empty, stale, error/retry, and mutation recovery behavior remains; malformed 2xx becomes a query error rather than false default/view state.                                                           |
+| Tests                       | Saved-views/preferences consumer/provider suite: 3 files / 39 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                              |
+| Alignment                   | ALIGNED for this read slice; provider/auth/audit/mutation semantics, opaque filters/sort, patient detail, external output, and visual behavior intentionally unchanged.                                                  |

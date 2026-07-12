@@ -163,7 +163,7 @@
 
 **Current execution slice (2026-07-12)**:
 
-- `API-CONTRACT-001-RESCAN`: **IN_PROGRESS**。スケジュール競合画面の pharmacist reader を `ba2831aea` としてローカル実装コミット済み。残る `API-CONTRACT-001` allowlist と patients board cursor residual を再走査し、次の disjoint safe slice を選定する。既存の患者詳細リンク収束、provider/auth semantics、authorized in-app detail、visual behavior は再実装しない。
+- `API-CONTRACT-001-RESCAN`: **IN_PROGRESS**。`/views` の preferences/named-view reader を `696518892` としてローカル実装コミット済み。残る `API-CONTRACT-001` allowlist と patients board cursor residual を再走査し、次の disjoint safe slice を選定する。既存の患者詳細リンク収束、provider/auth semantics、authorized in-app detail、visual behavior は再実装しない。
 
 **Implementation-ready queue — 未実装 / Partial 残スコープのみ**:
 
@@ -266,6 +266,7 @@
 - `API-CONTRACT-001FZSERVICEAREASTRICT`: admin/service-areas の pharmacy-site option GET と counted service-area GET を strict runtime schema へ接続し、site/area identity、nested site relation、area type/geo object、duplicate ID、counted-list arithmetic を検証して provider-only fields を strip。malformed・legacy・duplicate・mismatched・count-drifted 2xx が editor/list state へ流入しない fail-closed reader 化。既存 mutation/provider/auth/tenant/audit/visual semantics は維持（commit `147a8be16`、feature branch push済み）。
 - `API-CONTRACT-001FZMENTIONSTRICT`: comments の `MentionInput` staff lookup を strict runtime schema へ接続し、staff identity/name、counted metadata、provider-only staff field stripping、legacy/conflicting-repeat/count-drift regressions を追加する。既存 `/api/pharmacists` provider/auth、comment mutation/mention IDs、PHI-safe recovery、visual behavior は維持（commit `55ffe485a`、feature branch push済み）。
 - `API-CONTRACT-001FZCONFLICTPHARMACIST`: schedules/conflicts の `/api/pharmacists` reader を既存の strict counted pharmacist schema へ接続し、id/name のみを conflict candidate state へ投影。provider-only staff fields、legacy/count-drift/conflicting-repeat 2xx を fail-closed 化し、schedule provider/auth、reorder/reconfirmation mutation、patient detail、visual behavior は維持（implementation commit `ba2831aea`、pushは未実施）。
+- `API-CONTRACT-001FZSAVEDVIEWSSTRICT`: `/views` の preferences GET/PATCH と schedules-scoped saved-view GET reader を strict runtime schema へ接続し、saved conditions/view identity/scope/date/order/count を検証、provider-only fields を strip、legacy/wrong-scope/duplicate/malformed 2xx を fail-closed 化（implementation commit `696518892`、pushは未実施）。provider/auth/audit/mutation/opaque filter semantics、patient detail、visual behavior は維持。
 - `ROUTE-CTRLFLOW-RETHROW-001`: 広域 `catch` から sanitized 500 を返す10 API route / 12 handlerで、`unstable_rethrow` をfallback前に実行し、Next.jsの`redirect()` / `notFound()`等の内部制御フローを保持する契約テストを固定。
 - `SEC-EVENT-PATH-PII-SANITIZE-001`: AuditLog target/dedup pathのemail、電話、OTP、credential/opaque tokenをredactし、実在static routeの可読性とtoken-parent境界をtestで固定（commit `d084dccc8`）。
 - `PUSH-SUB-ATOMICITY-001`: push subscription POST/DELETE を `withOrgContext` 内の tx mutation に寄せ、RLS context 未適用の base Prisma write を除去（commit `db63de58a`）。

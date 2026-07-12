@@ -47084,6 +47084,46 @@ Pharmacist[] }` cast does not reject a legacy root, count drift, conflicting rep
   Return to `API-CONTRACT-001-RESCAN`, rerun the client-schema inventory and patients board cursor residual scan, and
   select the next disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZSAVEDVIEWSSTRICT — saved-views read contracts (DONE)
+
+- current task / selection:
+  `/views` still has three `stringFallback` readers: `/api/me/preferences` GET, `/api/me/preferences` PATCH, and the
+  scoped `/api/saved-views?scope=schedules` GET. The page consumes only `saved_view` conditions and the six-field
+  `schedules` named-view record projection, while preferences and saved-view providers return broader JSON. The current
+  casts can admit legacy/malformed envelopes, wrong scope, duplicate view identity, invalid dates/counts, or provider-only
+  preference fields into React Query state.
+- scope / safety boundary:
+  Add consumed strict response schemas and connect only these three readers. Preserve the existing preferences merge,
+  saved-view create/rename/share/delete mutations, audit/auth/provider semantics, opaque filters/sort behavior, patient
+  detail, external output, and visual behavior. No DB schema, migration, production data, or `gpt-image-2` is needed for
+  this non-visual settings/read-projection slice.
+- implementation plan:
+  Baseline the saved-views/preferences consumer/provider suites, add minimal preferences and scoped saved-view response
+  schemas with provider-field stripping and duplicate/date/count invariants, connect both preferences call sites and the
+  saved-view list reader, synchronize fixtures, add legacy/provider-field/malformed regressions, and remove only the
+  three saved-views allowlist debt calls.
+- implementation / validation checkpoint:
+  Added `src/lib/views/response-schema.ts`, connected the preferences GET/PATCH and scoped saved-view GET readers,
+  projected provider-only preference/view fields out of query state, removed the three saved-views allowlist calls, and
+  added provider-field, legacy-root, wrong-scope, duplicate-identity, and invalid-envelope regressions. Focused
+  saved-views/preferences consumer/provider suites pass 3 files / 39 tests. Format, API response shape, client JSON
+  schema, frontend contract, PHI log/display, boundaries, Plans, colors, typography, and diff gates pass; inventory is
+  183 schema-backed / 190 allowlisted schema-less calls across 72 files. `pnpm typecheck`, 8 GB no-unused typecheck,
+  and lint pass. Confirmed Next build exits 0 with Next 16.2.9 compile 7.1 minutes under transient 100% filesystem use,
+  TypeScript 58 seconds, 311/311 static pages, existing two CSS optimizer warnings, and 12 GiB available after build.
+- safety / limits:
+  `/api/me/preferences` and `/api/saved-views` provider/auth/audit semantics, preferences merge, create/rename/share/
+  delete mutations, opaque filters/sort behavior, patient detail, external output, and visual behavior remain unchanged.
+  Only the consumed saved conditions and schedules-scoped view projection enter query state; malformed 2xx fails closed.
+  No migration, production data operation, external send, or image generation was required.
+- commit / landing:
+  Scoped implementation commit `696518892` (`fix(API-CONTRACT-001FZSAVEDVIEWSSTRICT): validate saved-view readers`)
+  was created locally with only the saved-view schema, consumer/test, and allowlist paths staged. Push was not performed
+  because no current user instruction requested remote publication; the ledger closure is recorded locally.
+- next action:
+  Return to `API-CONTRACT-001-RESCAN`, rerun the client-schema inventory and patients board cursor residual scan, and
+  select the next disjoint safe slice without touching unrelated dirty paths.
+
 ## 2026-07-12 API-CONTRACT-001FZMENTIONSTRICT — comment staff-mention lookup (DONE)
 
 - current task / root cause:

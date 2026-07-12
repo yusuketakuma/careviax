@@ -12,6 +12,19 @@
 - Browser/E2E: not run; this is a non-visual response-contract slice and no visual behavior changed.
 - Migration/auth/tenant: no migration or backend authorization change; no production data operation executed.
 
+## API-CONTRACT-001FZSAVEDVIEWSSTRICT
+
+- Baseline: inherited `/views` readers used compile-time preferences and saved-view casts, with three remaining
+  `stringFallback` calls; the providers return broader user-preference and named-view envelopes.
+- Focused test: `pnpm exec vitest run 'src/app/(dashboard)/views/saved-views-content.test.tsx' 'src/app/api/saved-views/route.test.ts' 'src/app/api/me/preferences/route.test.ts' --reporter=dot --testTimeout=30000` — PASS, 3 files / 39 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`, `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`, `pnpm boundaries:check`, `pnpm plans:active:check`, `pnpm colors:check`, `pnpm typography:check`, `git diff --check` — PASS.
+- Client-schema result: 183 schema-backed, 190 allowlisted schema-less calls, 72 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS.
+- Build: `NODE_OPTIONS=--max-old-space-size=8192 pnpm build` — PASS; Next 16.2.9 compiled in 7.1 minutes under transient 100% filesystem use, TypeScript finished in 58 seconds, 311/311 static pages and traces completed. The two existing CSS optimizer warnings did not fail the build; 12 GiB filesystem availability remained after build.
+- Browser/E2E: not run; this is a non-visual settings/read-projection slice with no layout change. `gpt-image-2` was omitted for the same reason.
+- Migration/auth/tenant: no migration, provider, authorization, tenant, audit, mutation, external-send, or production-data operation executed.
+
 ## API-CONTRACT-001FZCONFLICTPHARMACIST
 
 - Baseline: inherited schedule-conflict pharmacist lookup used a compile-time `{ data: Pharmacist[] }` cast while the

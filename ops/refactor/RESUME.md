@@ -14,33 +14,32 @@
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
-- Last Safe Checkpoint: Conflict consumer/provider suites pass 2 files / 36 tests; static contract gates, typecheck, no-unused, lint, diff-check, and confirmed serialized Next build passed; client-schema is 180 schema-backed / 193 allowlisted / 73 files; implementation commit `ba2831aea` is local.
-- Last Completed Action: Connected, validated, and locally committed the schedule-conflict pharmacist lookup to the existing strict counted pharmacist schema, stripping provider-only fields and rejecting malformed/count-drift/conflicting-repeat payloads.
+- Last Safe Checkpoint: Saved-views/preferences consumer/provider suites pass 3 files / 39 tests; static contract gates, typecheck, no-unused, lint, diff-check, and confirmed serialized Next build passed; client-schema is 183 schema-backed / 190 allowlisted / 72 files; implementation commit `696518892` is local.
+- Last Completed Action: Connected, validated, and locally committed the `/views` preferences GET/PATCH and schedules-scoped saved-view GET readers, stripping provider-only fields and rejecting malformed/wrong-scope/duplicate payloads.
 - Current Operation: rescan remaining API-CONTRACT-001 debt and the patients board cursor residual, then choose the next disjoint safe slice.
 - Exact Next Action: run the client-schema inventory and cursor residual scan, rank remaining candidates by blast radius, and select the next bounded consumer/provider pair without touching unrelated dirty paths.
 - Exact Next Command: `pnpm client-json-schema:check`
-- Changed Files: none for the rescan slice; the previous conflict implementation is committed in `ba2831aea`; preserve inherited harness-memory and personal artifacts.
+- Changed Files: none for the rescan slice; previous saved-views implementation is committed in `696518892`; preserve inherited harness-memory and personal artifacts.
 - Staged Files: none; facility-unit slice is committed and unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
-- Unpushed Commits: `ba2831aea` (implementation commit; push not requested)
-- Push Status: local implementation commit `ba2831aea`; remote publication not requested, so local/upstream parity is not 0/0.
+- Unpushed Commits: `ba2831aea`, `696518892` (implementation commits; push not requested)
+- Push Status: local implementation commits `ba2831aea`, `696518892`; remote publication not requested, so local/upstream parity is not 0/0.
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
 - Commands Completed: notification-bell baseline Vitest (2 files / 9 tests); facility focused Vitest; notifications focused Vitest; select-site focused Vitest; operations focused Vitest; service-areas focused Vitest (2 files / 32 tests); format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; colors; typography; typecheck; no-unused; lint; diff-check; confirmed Next build; provider/consumer scan.
-- Commands Pending: next API-CONTRACT-001 rescan and candidate baseline.
-- Tests Completed: packaging-method slice 2 files / 26 tests, institutions slice 2 files / 43 tests, notification-bell slice 2 files / 12 tests, select-site slice 1 file / 6 tests, operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, holiday slice 2 files / 39 tests, service-areas slice 2 files / 32 tests, MentionInput 2 files / 34 tests, and schedule-conflict/pharmacist provider 2 files / 36 tests passed.
-- Tests Pending: next candidate baseline.
-- Build State: PASS for schedule-conflict slice; Next 16.2.9 compiled in 2.4 minutes, TypeScript finished in 62 seconds, and 311/311 static pages plus traces completed with exit code 0. Existing CSS optimizer warnings exited 0; final filesystem availability was 12 GiB.
+- Commands Pending: closure ledger commit and next API-CONTRACT-001 rescan.
+- Tests Completed: packaging-method slice 2 files / 26 tests, institutions slice 2 files / 43 tests, notification-bell slice 2 files / 12 tests, select-site slice 1 file / 6 tests, operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, holiday slice 2 files / 39 tests, service-areas slice 2 files / 32 tests, MentionInput 2 files / 34 tests, schedule-conflict/pharmacist provider 2 files / 36 tests, and saved-views/preferences provider 3 files / 39 tests passed.
+- Tests Pending: none for the implemented saved-views slice; closure and next rescan remain.
+- Build State: PASS for saved-views slice; Next 16.2.9 compiled in 7.1 minutes under transient 100% filesystem use, TypeScript finished in 58 seconds, and 311/311 static pages plus traces completed with exit code 0. Existing CSS optimizer warnings exited 0; final filesystem availability was 12 GiB.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.
 - Migration State: NOT_APPLICABLE
-- Frontend State: notifications inbox, notification-bell summary/list, institutions GET, packaging-method GET, master-hub GET, vehicle GET, operating-hours GET/PUT, service-areas GET, MentionInput staff lookup, and schedule-conflict pharmacist lookup consumers use strict runtime schemas; no visual change planned.
+- Frontend State: notifications inbox, notification-bell summary/list, institutions GET, packaging-method GET, master-hub GET, vehicle GET, operating-hours GET/PUT, service-areas GET, MentionInput staff lookup, schedule-conflict pharmacist lookup, and saved-views preferences/named-view readers use strict runtime schemas; no visual change planned.
 - Backend State: `/api/pharmacists` remains an org-scoped counted staff list with existing canVisit/authz and provider fields; provider query/authz are out of scope.
-- FE/BE Alignment State: MentionInput and schedule-conflict lookup consume only strict id/name data from the existing pharmacist envelope; provider-only staff contact/account/capacity/credential fields remain out of query state and comment/schedule mutation semantics are unchanged.
+- FE/BE Alignment State: pharmacist readers consume strict id/name projections, and saved-views consumes only validated saved conditions and schedules-scoped view fields; provider-only data remains out of query state and comment/schedule/preferences/saved-view mutation semantics are unchanged.
 - UI Verification State: no visual reconstruction; no browser run for this contract-only slice.
 - Browser Verification State: NOT_EXECUTED
-- High-Risk Change State: low-risk authorized staff-identity lookup read reused in conflict analysis; no DB/auth/tenant/migration/provider/reorder/reconfirmation mutation change made; invalid staff/count payloads fail closed.
-- Rollback Point: revert `ba2831aea` for the schedule-conflict consumer/test/allowlist slice; the shared pharmacist
-  response schema remains owned by the MentionInput contract slice.
+- High-Risk Change State: low-risk authorized settings/read projection; no DB/auth/tenant/migration/provider/audit/preferences/saved-view mutation change made; invalid saved-view/preference payloads fail closed.
+- Rollback Point: revert `696518892` for the saved-views schema/consumer/test/allowlist slice; the previous conflict implementation remains in `ba2831aea`.
 - Resume Preconditions: confirm no target-file writer, preserve unrelated dirty paths, keep build/typecheck serialized.
 - Known Blockers: none; mention candidates remain authorized in-app staff identity data only.
 - External Changes Detected: none in target files during the checkpoint.

@@ -277,3 +277,24 @@
   pharmacist schema remains owned by the MentionInput slice.
 - Push evidence: not performed because no current user instruction requested remote publication; local branch is one
   implementation commit ahead of `origin/agent/continuous-improvement-20260712`.
+
+## API-CONTRACT-001FZSAVEDVIEWSSTRICT
+
+- Commit Group: `API-CONTRACT-001FZSAVEDVIEWSSTRICT`
+- Commit: `696518892`
+- Push Status: NOT_REQUESTED
+- Branch: `agent/continuous-improvement-20260712`
+- Scope: `/views` preferences GET/PATCH and schedules-scoped saved-view GET response schemas, consumer regressions,
+  client-schema allowlist ratchet, and required ledgers.
+- Implementation: validate consumed saved conditions and named-view identity/scope/date/count fields, strip provider-only
+  preference/view metadata before query state, and reject legacy/malformed/wrong-scope/duplicate success payloads while
+  preserving preferences merge, opaque filters/sort, and saved-view mutations.
+- FE/BE impact: `/views` now fails closed before current-condition chips and named-view list state; `/api/me/preferences`
+  and `/api/saved-views` provider/auth/audit semantics remain unchanged.
+- DB/auth/tenant/audit impact: no DB, migration, provider, auth/authz, tenant, audit, mutation, production-data, or
+  external-output change.
+- Verification: focused 3 files / 39 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check,
+  and confirmed Next build passed; client-schema inventory is 183 schema-backed / 190 allowlisted / 72 files.
+- Rollback: revert the saved-view response schema, consumer adapters, regressions, allowlist removal, and ledger entries.
+- Push evidence: not performed because no current user instruction requested remote publication; local branch is two
+  implementation commits ahead of `origin/agent/continuous-improvement-20260712`.

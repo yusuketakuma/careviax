@@ -268,6 +268,42 @@
 - Next scan: return to `API-CONTRACT-001-RESCAN`, inspect remaining allowlist entries and patients board cursor residual,
   and select the next bounded disjoint safe slice.
 
+## 2026-07-12 — API-CONTRACT-001FZSAVEDVIEWSSTRICT selection
+
+- Rescan: live `pnpm client-json-schema:check` passes with 180 schema-backed / 193 allowlisted schema-less calls across
+  73 files and 0 new debt.
+- Selection: `src/app/(dashboard)/views/saved-views-content.tsx` has three remaining `stringFallback` readers: the
+  preferences GET/PATCH envelope and the scoped named saved-view GET. The page consumes only saved-view conditions and
+  the six-field `schedules` view record projection; filters/sort remain intentionally opaque JSON.
+- Safety boundary: add consumed strict response schemas, strip preference/provider-only fields before React Query state,
+  enforce scoped saved-view identity/duplicate/date/count bounds, and reject malformed/legacy 2xx. No provider/auth,
+  audit, saved-view mutation, opaque filter behavior, patient detail, external output, or visual change is planned.
+- Baseline: focused saved-views/preferences consumer/provider suites passed 3 files / 37 tests before implementation;
+  unrelated harness-memory and personal artifacts remain excluded.
+
+## 2026-07-12 — API-CONTRACT-001FZSAVEDVIEWSSTRICT implementation checkpoint
+
+- Implementation: added minimal preferences and schedules-scoped saved-view response schemas, connected both preference
+  readers and the saved-view list reader, stripped provider-only fields, synchronized fixtures, added malformed/wrong-
+  scope/duplicate/provider-field regressions, and removed three allowlist calls.
+- Validation: focused consumer/provider suites pass 3 files / 39 tests; static contract gates, typecheck, no-unused,
+  lint, diff-check, and confirmed Next build pass. Client-schema is 183 schema-backed / 190 allowlisted schema-less calls
+  across 72 files. Build is Next 16.2.9 compile 7.1 minutes under transient 100% filesystem use, TypeScript 58 seconds,
+  311/311 static pages, two existing CSS optimizer warnings, and 12 GiB available after build.
+- Landing: implementation commit and closure ledger commit are pending; provider/auth/audit/mutation/opaque-filter and
+  visual behavior were not changed and unrelated harness-memory and personal artifacts remain excluded.
+
+## 2026-07-12 — API-CONTRACT-001FZSAVEDVIEWSSTRICT landed locally
+
+- Commit: `696518892` (`fix(API-CONTRACT-001FZSAVEDVIEWSSTRICT): validate saved-view readers`) contains only the saved-
+  view schema, consumer/test, and allowlist removal; unrelated paths remain unstaged.
+- Result: 183 schema-backed / 190 allowlisted schema-less calls across 72 files, focused 3 files / 39 tests, all static
+  gates, type gates, lint, diff-check, and confirmed Next build pass.
+- Push: not performed because no current user instruction requested remote publication; the branch is intentionally two
+  local implementation commits ahead of `origin/agent/continuous-improvement-20260712` (including `ba2831aea`).
+- Next scan: return to `API-CONTRACT-001-RESCAN`, inspect remaining allowlist entries and patients board cursor residual,
+  and select the next bounded disjoint safe slice.
+
 ## 2026-07-12 — API-CONTRACT-001FZOPERATINGHOURSSTRICT selection
 
 - Scope: `src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx`, shared pharmacy-site option schema,
