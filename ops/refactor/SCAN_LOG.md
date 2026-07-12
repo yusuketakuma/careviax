@@ -135,6 +135,7 @@
   invariants, provider-field stripping, malformed/legacy/duplicate/negative/invalid-date regressions, and one allowlist
   ratchet removal. POST/PATCH/DELETE, provider/auth, and visual semantics stay fixed.
 
-- Landed locally: shared institution item/root schemas now guard both provider list shapes; focused suites pass 2 files /
-  43 tests; static/type/no-unused/lint/diff/build gates pass; client-schema inventory moved to 169 schema-backed / 204
-  allowlisted / 80 files. Scoped commit/push and closure ledger remain.
+- Landed: shared institution item/root schemas now guard both provider list shapes; focused suites pass 2 files / 43 tests;
+  static/type/no-unused/lint/diff/build gates pass; client-schema inventory moved to 169 schema-backed / 204 allowlisted /
+  80 files. Commit `f906abede` is pushed. Next scan: remaining API-CONTRACT allowlist entries and patients board cursor
+  residual.

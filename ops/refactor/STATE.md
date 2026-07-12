@@ -47045,7 +47045,7 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
-## 2026-07-12 API-CONTRACT-001FZINSTITUTIONSSTRICT — prescriber-institutions list contract (IMPLEMENTED, PENDING LANDING)
+## 2026-07-12 API-CONTRACT-001FZINSTITUTIONSSTRICT — prescriber-institutions list contract (DONE)
 
 - current task / root cause:
   The admin institutions GET reader still trusts a compile-time `{ data: Institution[] }` cast while the provider
@@ -47072,9 +47072,14 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   204 allowlisted schema-less / 80 files; typecheck and no-unused typecheck pass; lint exits 0 with the two pre-existing
   break-glass warnings; Next 16.2.9 build passes with 311/311 static pages, the two existing CSS optimizer warnings,
   and no ENOSPC warning. Filesystem availability was 14 GiB before and 13 GiB after the build.
+- commit / push:
+  Scoped implementation commit `f906abede` (`fix(API-CONTRACT-001FZINSTITUTIONSSTRICT): validate institutions
+reader`) was pushed to `origin/agent/continuous-improvement-20260712`; remote head matches and
+  `git rev-list --left-right --count HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts
+  remain excluded.
 - next action:
-  Update the landing ledgers, inspect explicit owned paths, create the scoped implementation commit, push it, verify
-  local/remote parity, then add the closure ledger.
+  Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
+  disjoint safe slice without touching unrelated dirty paths.
 
 ## 2026-07-12 API-CONTRACT-001FZNOTIFICATIONBELLSTRICT — notification-bell summary/list contract (DONE)
 

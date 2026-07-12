@@ -7,36 +7,35 @@
 - Upstream: `origin/agent/continuous-improvement-20260712`
 - Remote: `origin`
 - Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
-- Current Phase: admin/institutions response-contract hardening
-- Current Task ID: `API-CONTRACT-001FZINSTITUTIONSSTRICT`
-- Current Task Status: IMPLEMENTED_PENDING_LANDING
-- Current Commit Group: `API-CONTRACT-001FZINSTITUTIONSSTRICT`
+- Current Phase: incremental rescan / next-task selection
+- Current Task ID: `API-CONTRACT-001-RESCAN`
+- Current Task Status: READY_FOR_RESCAN
+- Current Commit Group: `API-CONTRACT-001-RESCAN`
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
-- Last Safe Checkpoint: Notification-bell focused suites pass 2 files / 12 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized Next build passed; commit `8a9956f0d` is pushed and local/upstream parity is `0 0`; client-schema is 168 schema-backed / 205 allowlisted / 81 files.
 - Last Safe Checkpoint: Institutions focused suites pass 2 files / 43 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized Next build passed; client-schema is 169 schema-backed / 204 allowlisted / 80 files.
-- Last Completed Action: Implemented strict prescriber-institutions unfiltered/filtered GET parsing and fail-closed regressions while preserving POST/PATCH/DELETE, provider, authorization, and visual behavior.
-- Current Operation: landing the validated institutions response-contract slice.
-- Exact Next Action: Inspect explicit owned paths, stage only the institutions implementation/test/schema/allowlist and ledgers, commit, push, verify parity, and write closure state.
-- Exact Next Command: `git status --short --untracked-files=all && git diff --check && git diff --stat`
-- Changed Files: institutions consumer/test, prescriber-institution response schema, client-schema allowlist, Plans, STATE, and checkpoint/verification ledgers; preserve inherited harness-memory and personal artifacts.
+- Last Completed Action: Landed strict prescriber-institutions unfiltered/filtered GET parsing and fail-closed regressions while preserving POST/PATCH/DELETE, provider, authorization, and visual behavior.
+- Current Operation: rescan remaining API contract reader debt and patients board cursor residual.
+- Exact Next Action: Run the client-schema inventory and inspect remaining API-CONTRACT allowlist entries before choosing the next disjoint task.
+- Exact Next Command: `pnpm client-json-schema:check && rg -n -C 5 'API-CONTRACT|schema-less|stringFallback' Plans.md ops/refactor tools/client-json-schema-allowlist.json`
+- Changed Files: no current implementation files; preserve inherited harness-memory and personal artifacts while selecting the next owned slice.
 - Staged Files: none; facility-unit slice is committed and unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
 - Unpushed Commits: none
-- Push Status: PUSHED for notification-bell implementation (`8a9956f0d`); local and remote heads match.
+- Push Status: PUSHED for institutions implementation (`f906abede`); local and remote heads match.
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
 - Commands Completed: notification-bell baseline Vitest (2 files / 9 tests); facility focused Vitest; notifications focused Vitest; select-site focused Vitest; operations focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; typecheck; no-unused; lint; diff-check; build; provider/consumer scan.
-- Commands Pending: scoped commit/push, remote parity verification, and closure-ledger update.
-- Tests Completed: notification-bell slice 2 files / 12 tests, select-site slice 1 file / 6 tests, operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, and holiday slice 2 files / 39 tests passed.
-- Tests Pending: none for the validated institutions slice; only scoped landing and closure-ledger work remain.
-- Build State: PASS for current notification-bell slice; Next 16.2.9 compiled in 2.5 minutes, TypeScript finished in 65 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0; no ENOSPC warning was emitted in this run.
+- Commands Pending: client-schema residual inventory, provider/consumer scan, and next-slice focused validation.
+- Tests Completed: institutions slice 2 files / 43 tests, notification-bell slice 2 files / 12 tests, select-site slice 1 file / 6 tests, operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, and holiday slice 2 files / 39 tests passed.
+- Tests Pending: no current test target; the next rescan has not selected a new slice.
+- Build State: PASS for current institutions slice; Next 16.2.9 compiled in 4.5 minutes, TypeScript finished in 73 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0; no ENOSPC warning was emitted in this run.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.
 - Migration State: NOT_APPLICABLE
 - Frontend State: notifications inbox, notification-bell summary/list, and institutions GET consumers use strict runtime schemas; no visual change.
 - Backend State: `/api/prescriber-institutions` remains org-scoped with unfiltered/filtered list shapes; POST/PATCH/DELETE and authz are out of scope.
-- FE/BE Alignment State: institutions provider/consumer payload boundary is selected for hardening; authorized master data remains visible while malformed state fails closed and provider-only fields stay out of query state.
+- FE/BE Alignment State: institutions provider/consumer payload boundary is hardened; authorized master data remains visible while malformed state fails closed and provider-only fields stay out of query state.
 - UI Verification State: no visual reconstruction; no browser run for this contract-only slice.
 - Browser Verification State: NOT_EXECUTED
 - High-Risk Change State: controlled institution master read; no DB/auth/tenant/migration/provider/mutation change; invalid identity/count/date/page payloads fail closed.
