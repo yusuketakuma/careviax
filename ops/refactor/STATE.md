@@ -51,6 +51,36 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZSHIFTREADSTRICT admin shift/support readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, ledger pending; shared clean-capacity build pending).
+  - current task / root cause:
+    Admin Shiftsのsite/member、当月/前月shift、templates、apply result計6 readersはcompile-time castを残し、legacy
+    root、month drift、duplicate user-date/template、relation ID drift、不正time range、負applied countを勤務stateへ
+    流し得た。Site responseは画面未使用のaddress等を保持し、account status型はproviderの全状態に未同期だった。
+  - implementation / workforce boundary:
+    Existing pharmacy-site minimal schemaとadmin-users strict schemaを再利用。Shared shift schemasでexpected month、
+    limit/meta、date/time ordering、user/site relation、shift/user-date identity、template user-weekday identity、
+    applied_count非負を検証。当月/前月は同じfactoryを各monthで使用し、siteをid/nameへstrip、account status型を
+    pending/cognito-failed含むprovider enumへ同期した。勤務write、holiday、member/Cognito action、provider/UIは
+    変更していない。非visual parser/privacy境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/pharmacist-shifts/response-schema.ts`,
+    `src/lib/pharmacist-shifts/response-schema.test.ts`,
+    `src/app/(dashboard)/admin/shifts/shifts-content.tsx`,
+    `src/app/(dashboard)/admin/shifts/shifts-content.shared.ts`,
+    `src/app/(dashboard)/admin/shifts/shifts-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/providers Vitest passed 5 files / 53 tests. Exact ESLint with `--max-warnings=0`,
+    Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (246 backed / 122 allowlisted / 32 files),
+    frontend contract, module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build
+    was NOT_EXECUTED because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated
+    cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed/cross-month workforce data and relation drift now fail closed; unused site fields are not cached. Query
+    count, DB/provider work, shift/template writes, member/Cognito actions, holiday logic, auth/tenant, render behavior,
+    and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZINCIDENTSTRICT incident list/create/update/status readers (VERIFY_REQUIRED, 2026-07-13; implementation `fe660d73c`, ledger `805e379f2`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Incidentsのlist、memo PATCH、status PATCH、createの4 readersはcompile-time castだけで、legacy root、未知

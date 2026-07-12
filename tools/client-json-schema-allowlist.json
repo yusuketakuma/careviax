@@ -18,12 +18,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/shifts/shifts-content.tsx",
-      "counts": {
-        "stringFallback": 6
-      }
-    },
-    {
       "path": "src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx",
       "counts": {
         "stringFallback": 5

@@ -579,11 +579,22 @@ describe('ShiftsContent', () => {
         return Response.json({ data: [{ id: 'site_1', name: '本店', address: '東京都' }] });
       }
       if (url === '/api/pharmacists?include_collaborators=true') {
-        return Response.json({ data: [] });
+        return Response.json({
+          data: [],
+          meta: {
+            total_count: 0,
+            visible_count: 0,
+            hidden_count: 0,
+            truncated: false,
+            count_basis: 'unique_users',
+            filters_applied: { site_id: null, include_collaborators: true },
+            limit: 500,
+          },
+        });
       }
       if (url.startsWith('/api/pharmacist-shifts?')) {
         expect(url).toContain('limit=400');
-        return Response.json({ data: [] });
+        return Response.json({ data: [], meta: { limit: 400, has_more: false } });
       }
       if (url.startsWith('/api/business-holidays?')) {
         expect(url).toContain('date_from=');
@@ -602,10 +613,24 @@ describe('ShiftsContent', () => {
     const queryByKey = (key: string) => queryConfigs.find((query) => query.queryKey[0] === key);
 
     await expect(queryByKey('pharmacy-sites')?.queryFn?.()).resolves.toEqual({
-      data: [{ id: 'site_1', name: '本店', address: '東京都' }],
+      data: [{ id: 'site_1', name: '本店' }],
     });
-    await expect(queryByKey('pharmacists')?.queryFn?.()).resolves.toEqual({ data: [] });
-    await expect(queryByKey('pharmacist-shifts')?.queryFn?.()).resolves.toEqual({ data: [] });
+    await expect(queryByKey('pharmacists')?.queryFn?.()).resolves.toEqual({
+      data: [],
+      meta: {
+        total_count: 0,
+        visible_count: 0,
+        hidden_count: 0,
+        truncated: false,
+        count_basis: 'unique_users',
+        filters_applied: { site_id: null, include_collaborators: true },
+        limit: 500,
+      },
+    });
+    await expect(queryByKey('pharmacist-shifts')?.queryFn?.()).resolves.toEqual({
+      data: [],
+      meta: { limit: 400, has_more: false },
+    });
     await expect(queryByKey('business-holidays')?.queryFn?.()).resolves.toEqual({ data: [] });
     await expect(queryByKey('pharmacist-shift-templates')?.queryFn?.()).resolves.toEqual({
       data: [],

@@ -55,6 +55,13 @@ import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { buildBusinessHolidayListResponseSchema } from '@/lib/business-holidays/response-schema';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { adminUsersResponseSchema } from '@/lib/pharmacists/admin-users-response-schema';
+import {
+  buildPharmacistShiftsResponseSchema,
+  pharmacistShiftApplyResponseSchema,
+  pharmacistShiftTemplatesResponseSchema,
+} from '@/lib/pharmacist-shifts/response-schema';
+import { pharmacySiteOptionsResponseSchema } from '@/lib/pharmacy-sites/response-schema';
 import {
   buildShiftGrid,
   cellKey,
@@ -71,9 +78,7 @@ import {
   type BusinessHoliday,
   type Pharmacist,
   type PharmacistAction,
-  type PharmacySite,
   type ShiftCell,
-  type ShiftRecord,
   type ShiftTemplate,
 } from './shifts-content.shared';
 
@@ -190,7 +195,10 @@ export function ShiftsContent() {
       const res = await fetch('/api/pharmacy-sites', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PharmacySite[] }>(res, '店舗情報の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '店舗情報の取得に失敗しました',
+        schema: pharmacySiteOptionsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -206,7 +214,10 @@ export function ShiftsContent() {
       const res = await fetch('/api/pharmacists?include_collaborators=true', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: Pharmacist[] }>(res, 'メンバー一覧の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: 'メンバー一覧の取得に失敗しました',
+        schema: adminUsersResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -223,7 +234,10 @@ export function ShiftsContent() {
       const res = await fetch(`/api/pharmacist-shifts?month=${month}&limit=400`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: ShiftRecord[] }>(res, 'シフトの取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: 'シフトの取得に失敗しました',
+        schema: buildPharmacistShiftsResponseSchema(format(currentMonth, 'yyyy-MM')),
+      });
     },
     enabled: !!orgId,
   });
@@ -271,7 +285,10 @@ export function ShiftsContent() {
       const res = await fetch('/api/pharmacist-shift-templates', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: ShiftTemplate[] }>(res, '定型シフトの取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '定型シフトの取得に失敗しました',
+        schema: pharmacistShiftTemplatesResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -708,7 +725,10 @@ export function ShiftsContent() {
           headers: buildOrgHeaders(orgId),
         },
       );
-      return readApiJson<{ data: ShiftRecord[] }>(res, '前月シフトの取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '前月シフトの取得に失敗しました',
+        schema: buildPharmacistShiftsResponseSchema(format(sourceMonth, 'yyyy-MM')),
+      });
     },
     onSuccess: (payload) => {
       const sourceShiftByUserAndDay = new Map(
@@ -805,10 +825,10 @@ export function ShiftsContent() {
           user_id: templateApplyUserId === 'all' ? undefined : templateApplyUserId,
         }),
       });
-      return readApiJson<{ data: { applied_count: number } }>(
-        res,
-        '定型シフトの反映に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: '定型シフトの反映に失敗しました',
+        schema: pharmacistShiftApplyResponseSchema,
+      });
     },
     onSuccess: async (payload) => {
       toast.success(`${payload.data.applied_count}件のシフトを反映しました`);

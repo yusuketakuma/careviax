@@ -18,7 +18,13 @@ export type Pharmacist = {
   site_id: string | null;
   site_name: string | null;
   is_active: boolean;
-  account_status: 'invited' | 'active' | 'suspended' | 'retired';
+  account_status:
+    | 'pending_cognito'
+    | 'invited'
+    | 'active'
+    | 'suspended'
+    | 'retired'
+    | 'cognito_failed';
   invited_at: string | null;
   last_invited_at: string | null;
   activated_at: string | null;
@@ -35,7 +41,6 @@ export type Pharmacist = {
 export type PharmacySite = {
   id: string;
   name: string;
-  address: string;
 };
 
 export type ShiftRecord = {
