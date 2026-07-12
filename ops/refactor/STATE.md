@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZWORKFLOWSTRICT workflow dashboard reader (VERIFY_REQUIRED, 2026-07-13; implementation ready; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZWORKFLOWSTRICT workflow dashboard reader (VERIFY_REQUIRED, 2026-07-13; implementation `ab8147fa2`; shared clean-capacity build pending).
   - current task / root cause:
     Workflow Dashboardのfull GET readerはcompile-time castだけで、約30 sectionの欠損/未知field、不正enum/count/date/
     action URL、aggregate/identity driftを成功扱いし、患者risk・疑義照会・連絡・訪問・在宅機能を含むPHI-bearing
