@@ -32,6 +32,11 @@ import {
 } from '@/components/ui/select';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { readApiJson } from '@/lib/api/client-json';
+import {
+  buildConsentListResponseSchema,
+  buildConsentRecordResponseSchema,
+  consentTemplateListResponseSchema,
+} from '@/lib/consents/response-schemas';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
@@ -74,6 +79,15 @@ type ConsentListResponse = {
 
 type ConsentTemplateListResponse = {
   data: Array<{ id: string; name: string; version: number; is_default: boolean }>;
+  meta: {
+    total_count: number;
+    visible_count: number;
+    hidden_count: 0;
+    truncated: false;
+    count_basis: 'templates';
+    filters_applied: { template_type: 'consent_form'; target_role: null };
+    limit: number;
+  };
 };
 
 // --- Constants ---
@@ -96,7 +110,10 @@ export async function fetchConsentTemplates(orgId: string): Promise<ConsentTempl
   const res = await fetch('/api/templates?template_type=consent_form', {
     headers: buildOrgHeaders(orgId),
   });
-  return readApiJson<ConsentTemplateListResponse>(res, '同意書テンプレートの取得に失敗しました');
+  return readApiJson<ConsentTemplateListResponse>(res, {
+    fallbackMessage: '同意書テンプレートの取得に失敗しました',
+    schema: consentTemplateListResponseSchema,
+  });
 }
 
 export async function fetchConsentRecords(
@@ -106,7 +123,10 @@ export async function fetchConsentRecords(
   const res = await fetch(`/api/consent-records?patient_id=${patientId}`, {
     headers: buildOrgHeaders(orgId),
   });
-  return readApiJson<ConsentListResponse>(res, '同意記録の取得に失敗しました');
+  return readApiJson<ConsentListResponse>(res, {
+    fallbackMessage: '同意記録の取得に失敗しました',
+    schema: buildConsentListResponseSchema(patientId),
+  });
 }
 
 function inferConsentDocumentMimeType(file: File) {
@@ -377,7 +397,10 @@ function CreateConsentDialog({
           ...(documentFileId ? { document_file_id: documentFileId } : {}),
         }),
       });
-      return readApiJson<{ data: ConsentRecord }>(res, '同意記録の登録に失敗しました');
+      return readApiJson<{ data: ConsentRecord }>(res, {
+        fallbackMessage: '同意記録の登録に失敗しました',
+        schema: buildConsentRecordResponseSchema({ patientId, expectedActive: true }),
+      });
     },
     onSuccess: async () => {
       toast.success('同意記録を登録しました');
@@ -604,7 +627,14 @@ function EditConsentDialog({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(body),
       });
-      return readApiJson<{ data: ConsentRecord }>(res, '同意記録の更新に失敗しました');
+      return readApiJson<{ data: ConsentRecord }>(res, {
+        fallbackMessage: '同意記録の更新に失敗しました',
+        schema: buildConsentRecordResponseSchema({
+          patientId: record.patient_id,
+          recordId: record.id,
+          expectedActive: record.is_active,
+        }),
+      });
     },
     onSuccess: async () => {
       toast.success('同意記録を更新しました');
@@ -694,7 +724,14 @@ function RevokeConsentDialog({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ reason: reason || undefined }),
       });
-      return readApiJson<{ data: ConsentRecord }>(res, '同意撤回に失敗しました');
+      return readApiJson<{ data: ConsentRecord }>(res, {
+        fallbackMessage: '同意撤回に失敗しました',
+        schema: buildConsentRecordResponseSchema({
+          patientId: record.patient_id,
+          recordId: record.id,
+          expectedActive: false,
+        }),
+      });
     },
     onSuccess: async () => {
       toast.success('同意を撤回しました');

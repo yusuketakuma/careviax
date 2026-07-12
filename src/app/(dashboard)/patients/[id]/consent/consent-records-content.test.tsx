@@ -137,7 +137,21 @@ function stubFetch(records: TestConsentRecord[] = [defaultConsentRecord]) {
       });
     }
     if (url === '/api/templates?template_type=consent_form') {
-      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          data: [],
+          meta: {
+            total_count: 0,
+            visible_count: 0,
+            hidden_count: 0,
+            truncated: false,
+            count_basis: 'templates',
+            filters_applied: { template_type: 'consent_form', target_role: null },
+            limit: 100,
+          },
+        }),
+        { status: 200 },
+      );
     }
     if (url === '/api/files/presigned-upload') {
       return new Response(
@@ -165,10 +179,10 @@ function stubFetch(records: TestConsentRecord[] = [defaultConsentRecord]) {
       );
     }
     if (url === '/api/consent-records') {
-      return new Response(JSON.stringify({ data: { id: 'consent_1' } }), { status: 201 });
+      return new Response(JSON.stringify({ data: defaultConsentRecord }), { status: 201 });
     }
     if (url === '/api/consent-records/consent_1' && init?.method === 'PATCH') {
-      return new Response(JSON.stringify({ data: { id: 'consent_1' } }), { status: 200 });
+      return new Response(JSON.stringify({ data: defaultConsentRecord }), { status: 200 });
     }
     return new Response('not found', { status: 404 });
   });
@@ -397,7 +411,7 @@ describe('ConsentRecordsContent', () => {
       {
         ...defaultConsentRecord,
         id: 'consent_expired',
-        expiry_date: '2026-01-01T00:00:00.000Z',
+        expiry_date: '2026-07-01T00:00:00.000Z',
       },
       {
         ...defaultConsentRecord,

@@ -51,6 +51,34 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZCONSENTSTRICT consent record/template readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, feature-branch push pending; shared clean-capacity build pending).
+  - current task / root cause:
+    Patient Consent Recordsのtemplate list、consent list、create、update、revoke計5 readersはcompile-time castだけで、
+    別患者・別record、重複/逆順、template relation、active/revoked状態、document URL可視性、件数/pagination drift、
+    legacy rootを成功扱いし、同意・文書を含むPHI-bearing stateやmutation成功処理へ流し得た。
+  - implementation / consent-safety boundary:
+    Template listは完全なcount/filter/limit envelopeとoption identityを検証して使用4 fieldsへprojection。同意recordは
+    patient/record scope、template relation、取得/失効/撤回日時、active状態、audited file URL/redaction、complete page、
+    newest-first、一意性を検証し、5 readersへ接続した。Prisma Dateの実レスポンスであるISO datetimeも受理する。
+    Consent request payload、file upload、provider、assignment/auth/tenant/RLS/audit/DB/UIは変更していない。
+    非visual parser/PHI境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/consents/response-schemas.ts`, `src/lib/consents/response-schemas.test.ts`,
+    `src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx`,
+    `src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/templates/consent providers Vitest passed 6 files / 76 tests. Exact ESLint, Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (278 backed / 85 allowlisted / 21 files), frontend
+    contract, module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build was
+    NOT_EXECUTED because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated
+    cache was not deleted or modified.
+  - security / performance / remaining:
+    Cross-patient/state-inconsistent consent payloads and unsafe/legacy document URLs now fail closed; provider-only
+    template fields are excluded and the consent file allowlist entry is removed. Network/DB query count, writes,
+    authorization, RLS, rendering, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`,
+    then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZHANDOFFSTRICT handoff board/task/comment readers (VERIFY_REQUIRED, 2026-07-13; implementation `2f06c5b3f`, ledger `d95e3ff28`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Handoff Workspaceに残るboard、pending confirmation/supervision tasks、recent comments 3 GET readersはcompile-time

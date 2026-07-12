@@ -31,12 +31,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx",
-      "counts": {
-        "stringFallback": 5
-      }
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/share/external-share-content.tsx",
       "counts": {
         "stringFallback": 5
