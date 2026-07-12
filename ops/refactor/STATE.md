@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZCOLLABOVERVIEWSTRICT collaboration minimal patient overview reader (VERIFY_REQUIRED, 2026-07-12; pending commit/push and shared clean-capacity build).
+- codex: API-CONTRACT-001FZCOLLABOVERVIEWSTRICT collaboration minimal patient overview reader (VERIFY_REQUIRED, 2026-07-12; implementation `df995da78`, push and shared clean-capacity build pending).
   - current task / root cause:
     Patient collaboration画面はheader文言に患者名1 fieldだけを使う一方、compile-time `PatientOverview` castで
     full overviewをquery cacheへ保持し、住所、保険、アレルギー、連絡先、cases、visit、foundation等の
