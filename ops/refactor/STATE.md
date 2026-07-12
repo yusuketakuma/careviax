@@ -47074,11 +47074,13 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   changed. Malformed successful responses now surface the existing fixed fallback error and do not report success.
 - commit / landing:
   Scoped implementation commit `e6949e99e` (`fix(API-CONTRACT-001FZESCALATIONMUTSTRICT): validate escalation
-  mutations`) contains only the shared schema/test, consumer, and allowlist paths. Ledger commit and push follow;
-  unrelated harness-memory and personal artifacts remain excluded.
+mutations`) contains only the shared schema/test, consumer, and allowlist paths. Ledger commit `341a5894b` recorded the
+  completed slice. Both commits and the preceding notification mutation group were pushed without force to
+  `origin/agent/continuous-improvement-20260712`; the production deploy workflow is main-only and was not triggered.
+  Unrelated harness-memory and personal artifacts remain excluded.
 - next action:
-  Commit this Plans/STATE ledger update, push the safe feature branch, then rescan remaining `API-CONTRACT-001` allowlist
-  entries and the patients-board cursor residual.
+  Rescan remaining `API-CONTRACT-001` allowlist entries and the patients-board cursor residual, then select the next
+  disjoint safe slice.
 
 ## 2026-07-12 API-CONTRACT-001FZNOTIFICATIONMUTSTRICT — (DONE)
 
@@ -47121,7 +47123,8 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
 - commit / landing:
   Scoped implementation commit `c5d21827c` (`fix(API-CONTRACT-001FZNOTIFICATIONMUTSTRICT): validate notification
 mutation response`) was created locally with only the shared notification response schema, consumer/test, and allowlist
-  paths staged. Push remains unrequested; unrelated harness-memory and personal artifacts remain excluded.
+  paths staged. It and ledger commit `f01db9d7b` were pushed without force to
+  `origin/agent/continuous-improvement-20260712`; unrelated harness-memory and personal artifacts remain excluded.
 - next action:
   Commit this scoped ledger update, then return to `API-CONTRACT-001-RESCAN` and choose the next disjoint safe slice
   without touching unrelated dirty paths.
