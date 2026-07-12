@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZVOICEMEMOSTRICT voice memo visit-record detail reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `e732f914f`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZVOICEMEMOSTRICT voice memo visit-record detail reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `e732f914f`, ledger `be41425c7`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Voice memoの手入力/転写をSOAP主観へ追記する経路がfull visit-record detailをcompile-time unknown castで読み、
     legacy/mixed root、不正version/subjectiveでもpatch-body builderまで進めた。画面に不要な患者・添付等の
