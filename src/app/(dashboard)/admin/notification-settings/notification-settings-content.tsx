@@ -45,11 +45,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  escalationActionTypes,
-  escalationNotifyRoles,
-  escalationTriggerTypes,
-} from '@/lib/validations/escalation-rule';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -63,6 +58,10 @@ import {
   buildEscalationRulesApiPath,
 } from '@/lib/escalation-rules/api-paths';
 import {
+  escalationRulesResponseSchema,
+  type EscalationRulesResponse,
+} from '@/lib/escalation-rules/response-schema';
+import {
   notificationRulesResponseSchema,
   type NotificationRulesResponse,
 } from '@/lib/notification-rules/response-schema';
@@ -71,32 +70,7 @@ import { parseEscalationThresholdHoursInput } from './escalation-threshold';
 
 type NotificationRule = NotificationRulesResponse['data'][number];
 
-type EscalationRule = {
-  id: string;
-  trigger_type: (typeof escalationTriggerTypes)[number];
-  condition: {
-    threshold_hours: number;
-    severity?: 'normal' | 'high' | 'urgent';
-    status_in?: string[];
-  } | null;
-  action: (typeof escalationActionTypes)[number];
-  notify_role: (typeof escalationNotifyRoles)[number] | null;
-  is_active: boolean;
-  created_at: string;
-};
-
-type EscalationRulesResponse = {
-  data?: EscalationRule[];
-  meta?: {
-    total_count?: number;
-    visible_count?: number;
-    hidden_count?: number;
-    truncated?: boolean;
-    count_basis?: string;
-    filters_applied?: Record<string, unknown>;
-    limit?: number;
-  };
-};
+type EscalationRule = EscalationRulesResponse['data'][number];
 
 type NotificationRuleResponse = {
   data: NotificationRule;
@@ -404,29 +378,22 @@ export function NotificationSettingsContent() {
       headers: buildOrgHeaders(orgId),
     })
       .then(async (response) => {
-        return readApiJson<EscalationRulesResponse>(
-          response,
-          'エスカレーションルールの取得に失敗しました',
-        );
+        return readApiJson<EscalationRulesResponse>(response, {
+          fallbackMessage: 'エスカレーションルールの取得に失敗しました',
+          schema: escalationRulesResponseSchema,
+        });
       })
       .then((payload) => {
         if (!active) return;
-        const rows = payload.data ?? [];
+        const rows = payload.data;
         const meta = payload.meta;
-        const totalCount = typeof meta?.total_count === 'number' ? meta.total_count : rows.length;
-        const visibleCount =
-          typeof meta?.visible_count === 'number' ? meta.visible_count : rows.length;
-        const hiddenCount =
-          typeof meta?.hidden_count === 'number'
-            ? meta.hidden_count
-            : Math.max(totalCount - visibleCount, 0);
         setEscalationRules(rows);
         setEscalationListMeta({
-          totalCount,
-          visibleCount,
-          hiddenCount,
-          truncated: meta?.truncated ?? hiddenCount > 0,
-          limit: typeof meta?.limit === 'number' ? meta.limit : null,
+          totalCount: meta.total_count,
+          visibleCount: meta.visible_count,
+          hiddenCount: meta.hidden_count,
+          truncated: meta.truncated,
+          limit: meta.limit,
         });
         setEscalationLoadError(false);
         setEscalationLoadedOrgId(orgId);

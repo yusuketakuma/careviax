@@ -86,6 +86,39 @@ const NOTIFICATION_RULE_META = {
   limit: 100,
 };
 
+const EMPTY_ESCALATION_RULES_RESPONSE = {
+  data: [],
+  meta: {
+    total_count: 0,
+    visible_count: 0,
+    hidden_count: 0,
+    truncated: false,
+    count_basis: 'escalation_rules',
+    filters_applied: {},
+    limit: 100,
+  },
+};
+
+const ESCALATION_RULE = {
+  id: 'rule_1',
+  trigger_type: 'communication_response_overdue',
+  condition: { threshold_hours: 24, severity: 'high' },
+  action: 'in_app_notification',
+  notify_role: 'admin',
+  is_active: true,
+  created_at: '2026-06-19T10:00:00.000Z',
+};
+
+const ESCALATION_RULE_META = {
+  total_count: 1,
+  visible_count: 1,
+  hidden_count: 0,
+  truncated: false,
+  count_basis: 'escalation_rules',
+  filters_applied: {},
+  limit: 100,
+};
+
 describe('NotificationSettingsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -243,7 +276,7 @@ describe('NotificationSettingsContent', () => {
         }
 
         if (url === '/__test__/escalation-rules' && !init?.method) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(JSON.stringify(EMPTY_ESCALATION_RULES_RESPONSE), { status: 200 });
         }
 
         return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
@@ -298,7 +331,7 @@ describe('NotificationSettingsContent', () => {
         }
 
         if (url === '/__test__/escalation-rules' && !init?.method) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(JSON.stringify(EMPTY_ESCALATION_RULES_RESPONSE), { status: 200 });
         }
 
         return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
@@ -309,6 +342,92 @@ describe('NotificationSettingsContent', () => {
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('通知設定の取得に失敗しました');
+    });
+  });
+
+  it('strips provider-only escalation rule fields before escalation state', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === '/__test__/notification-rules' && !init?.method) {
+          return new Response(JSON.stringify(EMPTY_NOTIFICATION_RULES_RESPONSE), { status: 200 });
+        }
+
+        if (url === '/__test__/escalation-rules' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  ...ESCALATION_RULE,
+                  org_id: 'org_1',
+                  display_id: 'erul_1',
+                  updated_at: '2026-06-19T11:00:00.000Z',
+                },
+              ],
+              meta: ESCALATION_RULE_META,
+            }),
+            { status: 200 },
+          );
+        }
+
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    render(<NotificationSettingsContent />);
+
+    await screen.findByText('連携返信期限超過');
+    expect(screen.getByText('しきい時間: 24 時間')).toBeTruthy();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['legacy data-only envelope', { data: [ESCALATION_RULE] }],
+    [
+      'malformed condition',
+      {
+        data: [{ ...ESCALATION_RULE, condition: { threshold_hours: 0 } }],
+        meta: ESCALATION_RULE_META,
+      },
+    ],
+    [
+      'duplicate rule identity',
+      {
+        data: [ESCALATION_RULE, { ...ESCALATION_RULE }],
+        meta: { ...ESCALATION_RULE_META, total_count: 2, visible_count: 2, limit: 2 },
+      },
+    ],
+    [
+      'count drift',
+      {
+        data: [ESCALATION_RULE],
+        meta: { ...ESCALATION_RULE_META, total_count: 2, hidden_count: 0 },
+      },
+    ],
+  ])('fails closed on %s escalation-rule success payloads', async (_label, payload) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === '/__test__/notification-rules' && !init?.method) {
+          return new Response(JSON.stringify(EMPTY_NOTIFICATION_RULES_RESPONSE), { status: 200 });
+        }
+
+        if (url === '/__test__/escalation-rules' && !init?.method) {
+          return new Response(JSON.stringify(payload), { status: 200 });
+        }
+
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    render(<NotificationSettingsContent />);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('エスカレーションルールの取得に失敗しました');
     });
   });
 
@@ -346,7 +465,7 @@ describe('NotificationSettingsContent', () => {
         }
 
         if (url === '/__test__/escalation-rules' && !init?.method) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(JSON.stringify(EMPTY_ESCALATION_RULES_RESPONSE), { status: 200 });
         }
 
         if (url === '/__test__/notification-rules/rule_1' && init?.method === 'PATCH') {
@@ -405,7 +524,7 @@ describe('NotificationSettingsContent', () => {
         }
 
         if (url === '/__test__/escalation-rules' && !init?.method) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(JSON.stringify(EMPTY_ESCALATION_RULES_RESPONSE), { status: 200 });
         }
 
         if (url === '/__test__/notification-rules' && init?.method === 'POST') {
@@ -651,7 +770,7 @@ describe('NotificationSettingsContent', () => {
         }
 
         if (url === '/__test__/escalation-rules' && !init?.method) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(JSON.stringify(EMPTY_ESCALATION_RULES_RESPONSE), { status: 200 });
         }
 
         return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
