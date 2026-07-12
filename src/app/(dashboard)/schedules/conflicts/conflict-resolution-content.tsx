@@ -19,8 +19,12 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { timeIsoToMinutes } from '@/lib/visits/time-of-day';
 import { messageFromError } from '@/lib/utils/error-message';
+import {
+  pharmacistMentionResponseSchema,
+  type PharmacistMentionResponse,
+} from '@/lib/pharmacists/response-schema';
 import { ScheduleDateNavigator } from '../schedule-date-navigator';
-import type { Pharmacist, VisitSchedule } from '../day-view.shared';
+import type { VisitSchedule } from '../day-view.shared';
 import { applyVisitScheduleRouteUpdates } from '../visit-route-client';
 import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
 import {
@@ -88,7 +92,7 @@ type ConflictPlanAdoptionDraft =
       ok: true;
       plan: AdjustmentPlan;
       targetSchedule: VisitSchedule;
-      targetPharmacist: Pharmacist;
+      targetPharmacist: ConflictPharmacist;
       routeOrder: number;
     }
   | {
@@ -96,6 +100,8 @@ type ConflictPlanAdoptionDraft =
       plan: AdjustmentPlan | null;
       reason: string;
     };
+
+type ConflictPharmacist = PharmacistMentionResponse['data'][number];
 
 function isoTimeToMinutes(value: string | null): number | null {
   return timeIsoToMinutes(value);
@@ -117,7 +123,7 @@ function schedulesOverlap(left: VisitSchedule, right: VisitSchedule) {
 function findConflictPlanAdoptionDraft(args: {
   plan: AdjustmentPlan | null;
   schedules: VisitSchedule[];
-  pharmacists: Pharmacist[];
+  pharmacists: ConflictPharmacist[];
   targetDate: string;
 }): ConflictPlanAdoptionDraft {
   if (!args.plan) {
@@ -281,7 +287,10 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
     queryKey: ['pharmacists', orgId, 'conflicts'],
     queryFn: async () => {
       const res = await fetch('/api/pharmacists', { headers: buildOrgHeaders(orgId) });
-      return readApiJson<{ data: Pharmacist[] }>(res, '薬剤師一覧の取得に失敗しました');
+      return readApiJson<PharmacistMentionResponse>(res, {
+        fallbackMessage: '薬剤師一覧の取得に失敗しました',
+        schema: pharmacistMentionResponseSchema,
+      });
     },
     enabled: !!orgId,
     staleTime: 60_000,

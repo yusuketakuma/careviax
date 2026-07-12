@@ -84,6 +84,21 @@ function buildConflictingSchedule(over: Record<string, unknown>) {
   };
 }
 
+function pharmacistListPayload(data: Array<Record<string, unknown>>) {
+  return {
+    data,
+    meta: {
+      total_count: data.length,
+      visible_count: data.length,
+      hidden_count: 0,
+      truncated: false,
+      count_basis: 'memberships' as const,
+      filters_applied: { site_id: null, include_collaborators: false },
+      limit: 500,
+    },
+  };
+}
+
 const conflictingSchedules = [
   buildConflictingSchedule({ id: 'sch_1', case_: { patient: { name: '患者A' } } }),
   buildConflictingSchedule({
@@ -125,10 +140,10 @@ describe('ConflictResolutionContent', () => {
       if (queryKey[0] === 'pharmacists') {
         return {
           data: {
-            data: [
+            ...pharmacistListPayload([
               { id: 'ph_1', name: '薬剤師A' },
               { id: 'ph_2', name: '薬剤師B' },
-            ],
+            ]),
           },
           isLoading: false,
         };
@@ -198,6 +213,59 @@ describe('ConflictResolutionContent', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/pharmacists', {
       headers: buildOrgHeaders('org_1'),
     });
+  });
+
+  it('strips provider-only pharmacist fields before conflict analysis receives candidates', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        pharmacistListPayload([
+          {
+            id: 'ph_1',
+            name: '薬剤師A',
+            email: 'pharmacist@example.com',
+            phone: '03-1111-2222',
+            account_status: 'active',
+            max_daily_visits: 8,
+            credential_types: ['認定薬剤師'],
+          },
+        ]),
+      ),
+    );
+
+    render(<ConflictResolutionContent initialDate="2026-04-09" />);
+
+    const pharmacistsConfig = queryConfigs.find((config) => config.queryKey[0] === 'pharmacists');
+    const result = await pharmacistsConfig?.queryFn?.();
+
+    expect(result).toEqual(pharmacistListPayload([{ id: 'ph_1', name: '薬剤師A' }]));
+  });
+
+  it('rejects legacy, count-drifted, and conflicting repeated pharmacist payloads', async () => {
+    const invalidPayloads = [
+      { data: [{ id: 'ph_1', name: '薬剤師A' }] },
+      {
+        ...pharmacistListPayload([{ id: 'ph_1', name: '薬剤師A' }]),
+        meta: {
+          ...pharmacistListPayload([{ id: 'ph_1', name: '薬剤師A' }]).meta,
+          visible_count: 0,
+        },
+      },
+      pharmacistListPayload([
+        { id: 'ph_1', name: '薬剤師A' },
+        { id: 'ph_1', name: '別名' },
+      ]),
+    ];
+
+    for (const payload of invalidPayloads) {
+      fetchMock.mockResolvedValueOnce(jsonResponse(payload));
+      const { unmount } = render(<ConflictResolutionContent initialDate="2026-04-09" />);
+      const pharmacistsConfig = queryConfigs[queryConfigs.length - 1];
+
+      await expect(pharmacistsConfig?.queryFn?.()).rejects.toThrow(
+        '薬剤師一覧の取得に失敗しました',
+      );
+      unmount();
+    }
   });
 
   it('persists Plan A adoption through the visit schedule reorder API', async () => {

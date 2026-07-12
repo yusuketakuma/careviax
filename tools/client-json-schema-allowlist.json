@@ -253,12 +253,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/schedules/emergency-route/emergency-route-content.tsx",
       "counts": {
         "stringFallback": 1
