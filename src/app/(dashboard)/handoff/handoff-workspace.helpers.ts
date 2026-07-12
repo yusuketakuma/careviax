@@ -13,7 +13,7 @@ import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { STATUS_TOKENS } from '@/lib/constants/status-tokens';
 import { familyNameOf as sharedFamilyNameOf } from '@/lib/utils/person-name';
-import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
+import type { DailyOpsCockpitData } from '@/lib/workspace/daily-ops-cockpit-response-schema';
 
 /**
  * new_12_handoff(ハンドオフ=責任の移動)の表示用ヘルパー。
@@ -283,7 +283,7 @@ export function buildItemEntityAction(
  * 共通文言のまま据え置き(画面の主操作はヘッダー側 1 つ)。
  */
 export function buildWorkspaceNextAction(
-  cockpit: DashboardCockpitResponse | null,
+  cockpit: DailyOpsCockpitData | null,
 ): NextActionPanelProps {
   const visitCount = cockpit?.today_visits.length ?? 0;
   return buildDailyOpsNextAction(cockpit, {
@@ -297,9 +297,7 @@ export function buildWorkspaceNextAction(
 }
 
 /** 止まっている理由: cockpit の blocked_reasons をレール表示形へ変換 */
-export function buildWorkspaceBlockedReasons(
-  cockpit: DashboardCockpitResponse | null,
-): BlockedReason[] {
+export function buildWorkspaceBlockedReasons(cockpit: DailyOpsCockpitData | null): BlockedReason[] {
   return buildDailyOpsBlockedReasons(cockpit);
 }
 

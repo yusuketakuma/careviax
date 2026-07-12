@@ -30,6 +30,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { GuardedWorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { HandoffConfirmPanel } from '@/components/features/visits/handoff-confirm-panel';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
+import {
+  dailyOpsCockpitResponseSchema,
+  type DailyOpsCockpitData,
+} from '@/lib/workspace/daily-ops-cockpit-response-schema';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -39,7 +43,6 @@ import { buildCommunicationRequestsHref } from '@/lib/communications/navigation'
 import { cn } from '@/lib/utils';
 import { messageFromError } from '@/lib/utils/error-message';
 import type { VisitHandoffOverrideReasonOption } from '@/lib/visits/handoff-override-reasons';
-import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { VisitHandoff } from '@/types/visit-brief';
 import {
   buildHandoffEvidence,
@@ -121,14 +124,14 @@ function isHandoffBoardInvalidationEvent(event: unknown) {
   );
 }
 
-export async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitResponse> {
+export async function fetchOperationCockpit(orgId: string): Promise<DailyOpsCockpitData> {
   const res = await fetch('/api/dashboard/cockpit', {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: DashboardCockpitResponse }>(
-    res,
-    '当日オペレーション情報の取得に失敗しました',
-  );
+  const json = await readApiJson<{ data: DailyOpsCockpitData }>(res, {
+    fallbackMessage: '当日オペレーション情報の取得に失敗しました',
+    schema: dailyOpsCockpitResponseSchema,
+  });
   return json.data;
 }
 

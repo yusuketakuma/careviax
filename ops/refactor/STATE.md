@@ -51,6 +51,31 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZDAILYOPSCONSUMERS handoff/schedule cockpit consumers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Handoff WorkspaceとSchedule Team Boardはshared daily-ops railを使う一方、cockpit GETをcompile-time full response castで
+    読み、実際にはaudit queue/today visits/blocked reasonsしか使わないのにcomments/team/count等をcacheしていた。
+    Malformed/unsafe rail payloadもworkspace action stateへ流入し得た。
+  - implementation / privacy boundary:
+    両readerと関連helper/component typeをshared `dailyOpsCockpitResponseSchema` / `DailyOpsCockpitData`へ接続し、
+    使用3領域だけをvalidate/project。Handoff board/tasks/commentsとSchedule day-board等の固有readers、mutation、provider、
+    auth/tenant/DB/UIは変更していない。非visual parser/PHI minimization境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/handoff/handoff-workspace.tsx`,
+    `src/app/(dashboard)/handoff/handoff-workspace.helpers.ts`,
+    `src/app/(dashboard)/schedules/schedule-team-board.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused Handoff/Schedule/intake-schema Vitest passed 3 files / 78 tests. Exact ESLint, Prettier, aggregate typecheck,
+    8GB no-unused typecheck, client schema (270 backed / 93 allowlisted / 23 files), frontend contract, module boundary,
+    client PHI-log, API response shape, colors, and diff-check passed. Full build was NOT_EXECUTED because only about
+    2.5 GiB free remains after the shared `.next/cache` capacity failure; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Unsafe/malformed cockpit data now fails closed and unused full-cockpit fields no longer enter these two caches.
+    Network/DB query count, handoff/schedule writes, auth/tenant, render behavior, and dependencies are unchanged. The
+    remaining file-specific readers stay in the ratchet for dedicated schemas. A clean-capacity runner must complete
+    `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZOPPOLICYSTRICT operational policy/daily-ops readers (VERIFY_REQUIRED, 2026-07-13; implementation `07a5cc1bd`, ledger `6306c4aae`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Operational PolicyのGET/PATCHとdaily-ops cockpit readersはcompile-time castだけで、欠損/未知policy、locked-item

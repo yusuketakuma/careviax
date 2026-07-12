@@ -30,6 +30,10 @@ import {
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
+import {
+  dailyOpsCockpitResponseSchema,
+  type DailyOpsCockpitData,
+} from '@/lib/workspace/daily-ops-cockpit-response-schema';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -40,7 +44,6 @@ import { buildDailyOpsBlockedReasons } from '@/lib/workspace/daily-ops-rail';
 import { familyNameOf } from '@/lib/utils/person-name';
 import { cn } from '@/lib/utils';
 import type { ScheduleStatus } from '@/lib/validations/visit-schedule';
-import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type {
   DayBoardInboundScheduleRequest,
   DayBoardPendingProposal,
@@ -87,14 +90,14 @@ async function fetchScheduleDayBoard(
   return json.data;
 }
 
-async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitResponse> {
+async function fetchCockpitForRail(orgId: string): Promise<DailyOpsCockpitData> {
   const res = await fetch('/api/dashboard/cockpit', {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: DashboardCockpitResponse }>(
-    res,
-    '当日の優先タスク取得に失敗しました',
-  );
+  const json = await readApiJson<{ data: DailyOpsCockpitData }>(res, {
+    fallbackMessage: '当日の優先タスク取得に失敗しました',
+    schema: dailyOpsCockpitResponseSchema,
+  });
   return json.data;
 }
 
@@ -1253,7 +1256,7 @@ function TeamGanttCard({
   onRetryCockpit,
 }: {
   board: ScheduleDayBoardResponse;
-  cockpit: DashboardCockpitResponse | null;
+  cockpit: DailyOpsCockpitData | null;
   cockpitLoading: boolean;
   cockpitError: boolean;
   dateLabel: string;
@@ -1841,7 +1844,7 @@ function ScheduleOperationalTasksCard({
 // ---------------------------------------------------------------------------
 
 function buildNextAction(
-  cockpit: DashboardCockpitResponse | null,
+  cockpit: DailyOpsCockpitData | null,
   board: ScheduleDayBoardResponse | null,
 ): NextActionPanelProps {
   const topAudit = cockpit?.audit_queue[0] ?? null;
