@@ -51,6 +51,31 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZWORKFLOWSTRICT workflow dashboard reader (VERIFY_REQUIRED, 2026-07-13; implementation ready; shared clean-capacity build pending).
+  - current task / root cause:
+    Workflow Dashboardのfull GET readerはcompile-time castだけで、約30 sectionの欠損/未知field、不正enum/count/date/
+    action URL、aggregate/identity driftを成功扱いし、患者risk・疑義照会・連絡・訪問・在宅機能を含むPHI-bearing
+    operational stateへ流し得た。また画面未使用のconference follow-up countsもquery cacheへ保持していた。
+  - implementation / workflow safety boundary:
+    Providerの全top-level sectionをstrict consumed schemaへ接続し、field型・bounds・internal href、patient risk/facility/
+    holiday/home-care aggregateと主要identityを検証。Provider-only `conference_follow_ups`はschema検証後にprojectionから
+    除外した。Workflow query/build/server cache、mutation、auth/assignment/tenant/DB/UIは変更していない。非visual response
+    parser/PHI境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/workflow/workflow-dashboard-response-schema.ts`,
+    `src/app/(dashboard)/workflow/workflow-dashboard-content.tsx`,
+    `src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/view/provider/route Vitest passed 4 files / 49 tests. Exact zero-warning ESLint, focused Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (283 backed / 80 allowlisted / 17 files), module boundary,
+    client PHI-log, API response shape, colors, and diff-check passed. Full build remains NOT_EXECUTED because the shared
+    machine has only about 4.3 GiB free while `.next` consumes 16 GiB; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed workflow payloads now fail closed before PHI-bearing operational state is updated; unused provider counts no
+    longer enter the client cache and the file's allowlist entry is removed. Network/DB calls, server cache, writes, rendering,
+    and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZROUTECOMPARESTRICT route compare readers (VERIFY_REQUIRED, 2026-07-13; implementation `6857139b9`; shared clean-capacity build pending).
   - current task / root cause:
     Route Compareのday-board GETとroute-plan POST結果readersはcompile-time castだけで、別日board、count/identity/vehicle

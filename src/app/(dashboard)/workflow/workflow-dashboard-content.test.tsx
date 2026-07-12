@@ -32,6 +32,7 @@ vi.mock('@/components/home-care/home-care-feature-board', () => ({
 }));
 
 import { WorkflowDashboardContent } from './workflow-dashboard-content';
+import { workflowDashboardResponseSchema } from './workflow-dashboard-response-schema';
 
 setupDomTestEnv();
 
@@ -133,6 +134,13 @@ function buildWorkflowData() {
   };
 }
 
+function buildWorkflowProviderData() {
+  return {
+    ...buildWorkflowData(),
+    conference_follow_ups: { pending_tasks: 0, undelivered_reports: 0 },
+  };
+}
+
 describe('WorkflowDashboardContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -170,7 +178,7 @@ describe('WorkflowDashboardContent', () => {
   });
 
   it('fetches workflow dashboard data with org headers and the shared JSON reader contract', async () => {
-    const fetchMock = stubJsonFetch({ data: buildWorkflowData() });
+    const fetchMock = stubJsonFetch({ data: buildWorkflowProviderData() });
     let captured:
       | {
           queryKey: unknown[];
@@ -221,6 +229,23 @@ describe('WorkflowDashboardContent', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('rejects malformed workflow aggregates and strips unused provider sections', () => {
+    expect(workflowDashboardResponseSchema.parse({ data: buildWorkflowProviderData() })).toEqual({
+      data: buildWorkflowData(),
+    });
+    expect(
+      workflowDashboardResponseSchema.safeParse({
+        data: {
+          ...buildWorkflowProviderData(),
+          patient_risk_queue: {
+            high_risk_count: 1,
+            items: [],
+          },
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it('keeps API errors and rejects legacy successful workflow mutation responses', async () => {

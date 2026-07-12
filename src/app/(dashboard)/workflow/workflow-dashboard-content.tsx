@@ -21,6 +21,7 @@ import type {
   InquiryWorkbenchItem,
   WorkflowData,
 } from './workflow-dashboard.types';
+import { workflowDashboardResponseSchema } from './workflow-dashboard-response-schema';
 import { WorkflowDashboardView } from './workflow-dashboard-view';
 
 function buildInquiryEditState(item: InquiryWorkbenchItem): InquiryEditState {
@@ -75,7 +76,10 @@ export function WorkflowDashboardContent({
       const res = await fetch('/api/dashboard/workflow', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: WorkflowData }>(res, 'ダッシュボードの取得に失敗しました');
+      return readApiJson<{ data: WorkflowData }>(res, {
+        fallbackMessage: 'ダッシュボードの取得に失敗しました',
+        schema: workflowDashboardResponseSchema,
+      });
     },
     enabled: !!orgId,
     fallbackRefetchInterval: 60_000,
