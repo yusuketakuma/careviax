@@ -301,7 +301,34 @@ describe('ReportDeliveryDashboard', () => {
   it('fetches delivery analytics with the org-header helper and stable query key', async () => {
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
-    const analyticsPayload = { data: {} };
+    const analyticsPayload = {
+      data: {
+        summary: {
+          current_month: '2026-04',
+          current_month_attempted_count: 0,
+          current_month_success_rate: 0,
+          current_month_failed_count: 0,
+          current_month_confirmed_rate: 0,
+          overdue_waiting_count: 0,
+          overdue_threshold_days: 7,
+        },
+        monthly_trend: [
+          {
+            month: '2026-04',
+            attempted_count: 0,
+            success_count: 0,
+            failed_count: 0,
+            confirmed_count: 0,
+            response_waiting_count: 0,
+            success_rate: 0,
+            confirmed_rate: 0,
+          },
+        ],
+        physician_breakdown: [],
+        channel_breakdown: [],
+        overdue_waiting: [],
+      },
+    };
     const fetchMock = stubJsonFetch(analyticsPayload);
     primeDashboard();
 
@@ -329,7 +356,16 @@ describe('ReportDeliveryDashboard', () => {
       'x-test-helper': 'buildOrgJsonHeaders',
     };
     vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelHeaders);
-    const fetchMock = stubJsonFetch({ data: { queued_count: 2 } });
+    const fetchMock = stubJsonFetch({
+      data: {
+        queued_count: 2,
+        reminder_task_count: 2,
+        queued_delivery_count: 2,
+        delivery_ids: ['delivery_1', 'delivery_2'],
+        skipped_snoozed_count: 0,
+        skipped_snoozed_dedupe_keys: [],
+      },
+    });
     primeDashboard();
 
     render(<ReportDeliveryDashboard />);
@@ -449,7 +485,16 @@ describe('ReportDeliveryDashboard', () => {
       'x-test-helper': 'buildOrgJsonHeaders',
     };
     vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelHeaders);
-    const fetchMock = stubJsonFetch({ data: { queued_count: 1 } });
+    const fetchMock = stubJsonFetch({
+      data: {
+        queued_count: 1,
+        reminder_task_count: 1,
+        queued_delivery_count: 1,
+        delivery_ids: ['delivery_1'],
+        skipped_snoozed_count: 0,
+        skipped_snoozed_dedupe_keys: [],
+      },
+    });
     primeDashboard();
 
     render(<ReportDeliveryDashboard />);

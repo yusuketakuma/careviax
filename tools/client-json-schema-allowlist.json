@@ -73,12 +73,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/reports/report-delivery-dashboard.tsx",
-      "counts": {
-        "stringFallback": 2
-      }
-    },
-    {
       "path": "src/app/(dashboard)/reports/report-share-workspace.tsx",
       "counts": {
         "stringFallback": 2

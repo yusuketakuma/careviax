@@ -13,6 +13,10 @@ import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { StatCard } from '@/components/ui/stat-card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiJson } from '@/lib/api/client-json';
+import {
+  buildDeliveryAnalyticsResponseSchema,
+  buildReminderMutationResponseSchema,
+} from '@/lib/reports/delivery-analytics-response-schemas';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   CHANNEL_LABELS,
@@ -116,7 +120,10 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
           headers: buildOrgHeaders(orgId),
         },
       );
-      return readApiJson<DeliveryAnalyticsResponse>(response, '報告書分析の取得に失敗しました');
+      return readApiJson<DeliveryAnalyticsResponse>(response, {
+        fallbackMessage: '報告書分析の取得に失敗しました',
+        schema: buildDeliveryAnalyticsResponseSchema(normalizedOverdueDays),
+      });
     },
     enabled: !!orgId,
   });
@@ -132,7 +139,10 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
           ...(input.snoozeUntil ? { snooze_until: input.snoozeUntil } : {}),
         }),
       });
-      return readApiJson<ReminderMutationResponse>(response, 'リマインド起票に失敗しました');
+      return readApiJson<ReminderMutationResponse>(response, {
+        fallbackMessage: 'リマインド起票に失敗しました',
+        schema: buildReminderMutationResponseSchema(input.deliveryIds),
+      });
     },
     onSuccess: async (payload, variables) => {
       toast.success(

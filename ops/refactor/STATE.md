@@ -51,6 +51,33 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZREPORTDELIVERYSTRICT report delivery analytics/reminder readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Report Delivery Dashboardのanalytics GETとreminder POST結果readersはcompile-time castだけで、current/monthly rate・
+    count drift、duplicate/unordered months/deliveries、閾値未満のoverdue、unrequested delivery reminder、queued/skipped
+    count driftを成功扱いし、送達KPI・未確認follow-up・success toast・cache invalidationへ進め得た。
+  - implementation / delivery-safety boundary:
+    Analytics factory schemaでrequested overdue threshold、current/monthly/breakdown算術、month/order/identity、overdue
+    count/threshold/orderを検証。Reminder factory schemaでrequested delivery IDs subset、task/delivery/skipped countとidentityを
+    検証し、UI使用`queued_count`だけへprojectionした。送達処理、reminder request、dedupe/snooze/task upsert、provider、
+    auth/tenant/RLS/DB/UIは変更していない。非visual parser/送達安全境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/reports/delivery-analytics-response-schemas.ts`,
+    `src/lib/reports/delivery-analytics-response-schemas.test.ts`,
+    `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`,
+    `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/analytics/reminder/service Vitest passed 5 files / 40 tests. Exact ESLint, Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (265 backed / 98 allowlisted / 24 files), frontend
+    contract, module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build was
+    NOT_EXECUTED because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated
+    cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed/cross-delivery analytics and reminder outcomes now fail closed before operational follow-up state changes.
+    Network/DB query count, delivery/reminder logic, auth/tenant/RLS, render behavior, and dependencies are unchanged.
+    A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZCOMMENTSTRICT comment thread readers (VERIFY_REQUIRED, 2026-07-13; implementation `6b05ea0ba`, ledger `81f53083b`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Comment ThreadのGET/POST/DELETE readersはcompile-time castまたはuntyped JSONで、duplicate/reordered comments、
