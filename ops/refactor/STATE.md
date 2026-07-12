@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZCONTACTREADSTRICT admin contact-profiles strict list reader (DONE, 2026-07-12; implementation commit `fbb0d31eb`, push pending).
+- codex: API-CONTRACT-001FZCONTACTREADSTRICT admin contact-profiles strict list reader (DONE, 2026-07-12; implementation `fbb0d31eb`, ledger `f112fd17b`, feature-branch push confirmed).
   - result / scope:
     `/admin/contact-profiles` の一覧consumerをprovider準拠のstrict `{ data }` Zod schemaへ接続した。
     Legacy root、余分なroot/profile field、重複profile ID、負または非整数の集計値、欠損reliability、
