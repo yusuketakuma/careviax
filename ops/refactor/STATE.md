@@ -46617,3 +46617,8 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   visual layout changed. Browser and image generation were omitted because this is a non-visual read-contract repair
   covered by direct content and provider tests. Rollback is the two schemas, reader options/limit removal, regressions,
   and client-schema ratchet hunk.
+- commit / push:
+  Commit `35c73559a` (`fix(API-CONTRACT-001): validate residual adjustment reads`) contains only the two consumed
+  schemas, reader wiring/limit correction, regressions, client-schema ratchet, Plans, and this ledger entry. It was
+  pushed to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal
+  artifacts were excluded, and the feature branch does not match the `main`-only production deploy trigger.
