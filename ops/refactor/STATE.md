@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZREPORTWORKSPACESTRICT report share workspace readers (VERIFY_REQUIRED, 2026-07-13; implementation ready; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZREPORTWORKSPACESTRICT report share workspace readers (VERIFY_REQUIRED, 2026-07-13; implementation `ff5a6d2c6`; shared clean-capacity build pending).
   - current task / root cause:
     Report Share Workspaceのtoday-workspace GETとinbound candidate decision PATCH結果readersはcompile-time castだけで、
     malformed/cross-section rows、count/visible/hidden/identity drift、unsafe action href、requested signal/actionと異なる
