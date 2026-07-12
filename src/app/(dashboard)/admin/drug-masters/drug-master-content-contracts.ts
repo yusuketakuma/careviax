@@ -39,6 +39,56 @@ export const drugMasterImportLogsResponseSchema = z
 
 export type DrugMasterImportLog = z.infer<typeof drugMasterImportLogSchema>;
 
+export const pharmacySiteReferenceSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    address: z.string().trim().min(1),
+  })
+  .strip();
+
+export const pharmacySiteReferencesResponseSchema = z
+  .object({ data: z.array(pharmacySiteReferenceSchema) })
+  .strict()
+  .superRefine((payload, context) => {
+    const ids = new Set<string>();
+    for (const [index, site] of payload.data.entries()) {
+      if (ids.has(site.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['data', index, 'id'],
+          message: 'Duplicate pharmacy site id',
+        });
+      }
+      ids.add(site.id);
+    }
+  });
+
+export const formularyTemplateItemSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    item_count: z.number().int().nonnegative(),
+  })
+  .strip();
+
+export const formularyTemplateListResponseSchema = z
+  .object({ data: z.array(formularyTemplateItemSchema) })
+  .strict()
+  .superRefine((payload, context) => {
+    const ids = new Set<string>();
+    for (const [index, template] of payload.data.entries()) {
+      if (ids.has(template.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['data', index, 'id'],
+          message: 'Duplicate formulary template id',
+        });
+      }
+      ids.add(template.id);
+    }
+  });
+
 const apiDateSchema = z.union([z.string().date(), z.string().datetime()]);
 const nullableApiNumberSchema = z
   .union([z.number(), z.string().trim().min(1)])
@@ -325,6 +375,8 @@ export const ingredientGroupResponseSchema = z
   }));
 
 export type DrugMasterDetail = z.infer<typeof drugMasterDetailSchema>;
+export type FormularyTemplateItem = z.infer<typeof formularyTemplateItemSchema>;
 export type GenericCandidateOption = z.infer<typeof genericCandidateSchema>;
 export type GenericRecommendation = z.infer<typeof genericRecommendationSchema>;
 export type IngredientGroupResponse = z.infer<typeof ingredientGroupResponseSchema>['data'];
+export type PharmacySiteOption = z.infer<typeof pharmacySiteReferenceSchema>;

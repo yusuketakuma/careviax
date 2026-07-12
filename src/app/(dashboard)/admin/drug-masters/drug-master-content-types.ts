@@ -3,9 +3,11 @@ import type { ImpactQueueKey } from './drug-master-formulary-view-model';
 export type {
   DrugMasterDetail,
   DrugMasterImportLog,
+  FormularyTemplateItem,
   GenericCandidateOption,
   GenericRecommendation,
   IngredientGroupResponse,
+  PharmacySiteOption,
 } from './drug-master-content-contracts';
 
 export type DrugMasterRow = {
@@ -36,12 +38,6 @@ export type DrugMasterRow = {
 
 export type ImportAction = 'ssk' | 'mhlw-price' | 'mhlw-generic' | 'hot' | 'pmda';
 export type FormularyExportPurpose = 'operations' | 'audit' | 'posting' | 'pharmacist_review';
-
-export type PharmacySiteOption = {
-  id: string;
-  name: string;
-  address: string;
-};
 
 export type PreferredGenericSummary = {
   id: string;
@@ -321,15 +317,6 @@ export type OfficialImportPreviewData = {
 export type OfficialImportPreviewState = {
   action: ImportAction;
   data: OfficialImportPreviewData;
-};
-
-export type FormularyTemplateItem = {
-  id: string;
-  name: string;
-  description: string | null;
-  source_site_id: string | null;
-  item_count: number;
-  created_at: string;
 };
 
 export type PharmacyDrugStockHistoryItem = {

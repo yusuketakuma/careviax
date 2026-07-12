@@ -1424,7 +1424,7 @@ describe('DrugMasterContent', () => {
       if (String(input).endsWith('/api/pharmacy-drug-stock-templates') && init?.method === 'POST') {
         return jsonResponse(
           {
-            data: { id: 'template_created', name: '現在の拠点セット' },
+            data: { id: 'template_created', name: '現在の拠点セット', item_count: 12 },
             meta: { site: { id: 'site_1', name: '本店' } },
           },
           201,
@@ -1433,7 +1433,7 @@ describe('DrugMasterContent', () => {
       if (String(input).includes('__helper_template__') && init?.method === 'DELETE') {
         return jsonResponse(
           {
-            data: { id: 'template_1', name: '在宅内科 標準セット' },
+            data: { id: 'template_1', name: '在宅内科 標準セット', item_count: 12 },
             meta: { deleted: true },
           },
           200,
@@ -1451,7 +1451,7 @@ describe('DrugMasterContent', () => {
       });
       fireEvent.click(screen.getByRole('button', { name: '現在の拠点から作成' }));
       await expect(lastMutationOptions.current!.mutationFn!()).resolves.toMatchObject({
-        data: { id: 'template_created', name: '現在の拠点セット' },
+        data: { id: 'template_created', name: '現在の拠点セット', item_count: 12 },
         meta: { site: { id: 'site_1', name: '本店' } },
       });
 
@@ -3412,6 +3412,106 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
       await expect(latestQueryFnFor('ingredient-group')()).rejects.toThrow(
         '同一成分グループの取得に失敗しました',
       );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects duplicate pharmacy-site ids in formulary setup options', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: [
+            { id: 'site_1', name: '本店', address: '東京都' },
+            { id: 'site_1', name: '支店', address: '神奈川県' },
+          ],
+        }),
+      ),
+    );
+    render(<DrugMasterContent variant="formulary" />);
+
+    try {
+      await expect(queryFnFor('pharmacy-sites')()).rejects.toThrow('拠点一覧の取得に失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('minimizes pharmacy-site options before formulary query caching', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: [
+            {
+              id: 'site_1',
+              name: '本店',
+              address: '東京都',
+              phone: '03-0000-0000',
+              fax: '03-0000-0001',
+              lat: 35,
+              lng: 139,
+            },
+          ],
+        }),
+      ),
+    );
+    render(<DrugMasterContent variant="formulary" />);
+
+    try {
+      await expect(queryFnFor('pharmacy-sites')()).resolves.toEqual({
+        data: [{ id: 'site_1', name: '本店', address: '東京都' }],
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects negative formulary-template item counts', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: [{ id: 'template_1', name: '在宅標準', item_count: -1 }],
+        }),
+      ),
+    );
+    render(<DrugMasterContent variant="formulary" />);
+
+    try {
+      await expect(queryFnFor('pharmacy-drug-stock-templates')()).rejects.toThrow(
+        '採用品テンプレートの取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('minimizes formulary templates before query caching', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: [
+            {
+              id: 'template_1',
+              name: '在宅標準',
+              item_count: 12,
+              description: 'provider-only description',
+              source_site_id: 'site_1',
+              created_at: '2026-07-12T00:00:00.000Z',
+            },
+          ],
+        }),
+      ),
+    );
+    render(<DrugMasterContent variant="formulary" />);
+
+    try {
+      await expect(queryFnFor('pharmacy-drug-stock-templates')()).resolves.toEqual({
+        data: [{ id: 'template_1', name: '在宅標準', item_count: 12 }],
+      });
     } finally {
       vi.unstubAllGlobals();
     }

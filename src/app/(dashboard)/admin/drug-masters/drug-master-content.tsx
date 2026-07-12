@@ -88,9 +88,12 @@ import { FormularyOperationsPanel } from './drug-master-formulary-operations-pan
 import {
   drugMasterDetailResponseSchema,
   drugMasterImportLogsResponseSchema,
+  formularyTemplateItemSchema,
+  formularyTemplateListResponseSchema,
   genericCandidatePageSchema,
   genericRecommendationsResponseSchema,
   ingredientGroupResponseSchema,
+  pharmacySiteReferencesResponseSchema,
 } from './drug-master-content-contracts';
 import {
   CATEGORY_OPTIONS,
@@ -123,7 +126,6 @@ import type {
   FormularyExportPurpose,
   FormularyImpactResponse,
   FormularyRequestDecisionTarget,
-  FormularyTemplateItem,
   FormularyTemplatePreviewResponse,
   FormularyUsageMismatchResponse,
   GenericCandidateOption,
@@ -133,7 +135,6 @@ import type {
   OfficialImportPreviewState,
   PharmacyDrugStockConfig,
   PharmacyDrugStockHistoryItem,
-  PharmacySiteOption,
 } from './drug-master-content-types';
 
 // parseReorderPointInput は既存テスト（drug-master-content.test.tsx）が本モジュールから
@@ -177,12 +178,6 @@ const drugMasterListPageSchema = z
     hasMore: meta.has_more,
     ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
   }));
-
-const formularyTemplateItemSchema = z.custom<FormularyTemplateItem>((value) => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const item = value as Record<string, unknown>;
-  return typeof item.id === 'string' && typeof item.name === 'string';
-});
 
 const createFormularyTemplateResponseSchema = z
   .object({
@@ -496,7 +491,10 @@ function DrugMasterOperationalContent({
       const res = await fetch('/api/pharmacy-sites', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PharmacySiteOption[] }>(res, '拠点一覧の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '拠点一覧の取得に失敗しました',
+        schema: pharmacySiteReferencesResponseSchema,
+      });
     },
     enabled: !!orgId,
     staleTime: 300_000,
@@ -805,10 +803,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(buildPharmacyDrugStockTemplatesApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: FormularyTemplateItem[] }>(
-        res,
-        '採用品テンプレートの取得に失敗しました',
-      );
+      return readApiJson(res, {
+        fallbackMessage: '採用品テンプレートの取得に失敗しました',
+        schema: formularyTemplateListResponseSchema,
+      });
     },
     enabled: variant === 'formulary' && !!orgId,
     staleTime: 60_000,

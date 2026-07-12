@@ -46715,3 +46715,26 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   client-schema ratchet, Plans, and this ledger entry. It was pushed to
   `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
   were excluded, and the feature branch does not match the `main`-only production deploy trigger.
+
+## 2026-07-12 API-CONTRACT-001FZDRUGREFSTRICT — formulary reference-list contracts (DONE)
+
+- current task / root cause:
+  The drug-master formulary screen compile-time cast pharmacy-site and formulary-template GET responses. Duplicate or
+  blank IDs, a negative template item count, or malformed names could enter selection state. The site query also
+  retained unconsumed phone, fax, coordinates, and operational flags, while template cache entries retained
+  description, source-site, and persistence timestamps not used by this screen.
+- implementation / verification:
+  Added consumed site and template item schemas with strict response roots, unique IDs, required labels/addresses,
+  and nonnegative integer item counts. Site cache entries now contain only ID, name, and address; template entries
+  contain only ID, name, and item count. Template list, create, and delete paths reuse the same executable item schema,
+  and mutation fixtures were synchronized with the provider's required `item_count`. Existing endpoints, query keys,
+  headers, API error messages, provider projections, selection behavior, template writes, and rendered UI remain
+  unchanged. Four regressions failed before implementation; content and both provider suites passed 3 files / 135
+  tests afterward. Exact ESLint/Prettier, aggregate typecheck, no-unused typecheck, API response-shape, frontend
+  contract, client PHI-log/display, module-boundary, active Plans, client-schema, and diff gates passed. The
+  client-schema ratchet improved from 137 schema-backed / 237 allowlisted schema-less / 92 files to 139 / 235 / 92.
+  Full build was not repeated after the unchanged compile-stage shared-memory limitation; there is no new build
+  hypothesis. No provider, DB, auth/authz, tenant, audit, mutation behavior, clinical data, or visual layout changed.
+  Browser and image generation were omitted because this is a non-visual parser and cache-minimization repair covered
+  at direct query-function and provider boundaries. Rollback is the two schemas, reader adapters, inferred reference
+  types, fixture alignment, regressions, and client-schema ratchet hunk.
