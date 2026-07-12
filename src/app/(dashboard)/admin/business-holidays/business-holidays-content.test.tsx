@@ -63,7 +63,7 @@ function holidayFixture(id = 'holiday_1') {
     id,
     org_id: 'org_1',
     site_id: 'site_1',
-    date: '2026-01-01',
+    date: `${currentMonthDate(1)}T00:00:00.000Z`,
     name: '年始休業',
     holiday_type: 'site_closure',
     is_closed: true,
@@ -76,6 +76,10 @@ function currentMonthDate(day: number) {
   return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
     day,
   ).padStart(2, '0')}`;
+}
+
+function holidayAccessibleSummary() {
+  return `${currentMonthDate(1)} 年始休業（本店 / 薬局休業日 / 休業）`;
 }
 
 function getHolidaySheetForm() {
@@ -200,6 +204,15 @@ describe('BusinessHolidaysContent', () => {
     expect(holidaysPathCall).toBeTruthy();
     expect((holidaysPathCall![0] as URLSearchParams).toString()).toContain('date_from=');
     expect((holidaysPathCall![0] as URLSearchParams).toString()).toContain('date_to=');
+    expect((holidaysPathCall![0] as URLSearchParams).get('limit')).toBe('400');
+    const dateFrom = (holidaysPathCall![0] as URLSearchParams).get('date_from');
+    const dateTo = (holidaysPathCall![0] as URLSearchParams).get('date_to');
+    expect(dateFrom).toMatch(/^\d{4}-\d{2}-01$/);
+    expect(dateTo).toBe(
+      currentMonthDate(
+        new Date(Number(dateFrom?.slice(0, 4)), Number(dateFrom?.slice(5, 7)), 0).getDate(),
+      ),
+    );
     expect(fetchMock).toHaveBeenCalledWith('/api/pharmacy-sites', {
       headers: buildOrgHeaders('org_1'),
     });
@@ -217,7 +230,7 @@ describe('BusinessHolidaysContent', () => {
 
     fireEvent.click(
       await screen.findByRole('button', {
-        name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を編集',
+        name: `${holidayAccessibleSummary()}を編集`,
       }),
     );
 
@@ -227,7 +240,7 @@ describe('BusinessHolidaysContent', () => {
     fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
     fireEvent.click(
       await screen.findByRole('button', {
-        name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を削除',
+        name: `${holidayAccessibleSummary()}を削除`,
       }),
     );
 
@@ -238,7 +251,7 @@ describe('BusinessHolidaysContent', () => {
     expect(screen.getByRole('alertdialog', { name: '休日設定を削除しますか' })).toBeTruthy();
     expect(
       screen.getByText(
-        '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を削除します。この操作は取り消せません。シフト表と訪問可能日の表示にも反映されます。',
+        `${holidayAccessibleSummary()}を削除します。この操作は取り消せません。シフト表と訪問可能日の表示にも反映されます。`,
       ),
     ).toBeTruthy();
 
@@ -271,10 +284,10 @@ describe('BusinessHolidaysContent', () => {
     expect(screen.getByRole('button', { name: '前月を表示' }).className).toContain('sm:size-11');
     expect(screen.getByLabelText('店舗フィルタ').className).toContain('sm:min-h-[44px]');
     expect(screen.getByRole('button', { name: '一括登録' }).className).toContain('sm:min-h-[44px]');
-    await screen.findByText('年始休業');
+    expect((await screen.findAllByText('年始休業')).length).toBeGreaterThanOrEqual(1);
     expect(
       screen.getByRole('button', {
-        name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を編集',
+        name: `${holidayAccessibleSummary()}を編集`,
       }).className,
     ).toContain('sm:min-h-[44px]');
   });
@@ -457,7 +470,7 @@ describe('BusinessHolidaysContent', () => {
 
     fireEvent.click(
       await screen.findByRole('button', {
-        name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を編集',
+        name: `${holidayAccessibleSummary()}を編集`,
       }),
     );
     fireEvent.click(screen.getByRole('button', { name: '更新する' }));
@@ -477,7 +490,7 @@ describe('BusinessHolidaysContent', () => {
     const init = patchCall![1] as RequestInit;
     expect(JSON.parse(init.body as string)).toEqual({
       site_id: 'site_1',
-      date: '2026-01-01',
+      date: currentMonthDate(1),
       name: '年始休業',
       holiday_type: 'site_closure',
       is_closed: true,
@@ -490,7 +503,7 @@ describe('BusinessHolidaysContent', () => {
 
     fireEvent.click(
       await screen.findByRole('button', {
-        name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を編集',
+        name: `${holidayAccessibleSummary()}を編集`,
       }),
     );
     fireEvent.click(screen.getByRole('button', { name: '更新する' }));
@@ -509,7 +522,7 @@ describe('BusinessHolidaysContent', () => {
 
     fireEvent.click(
       await screen.findByRole('button', {
-        name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を削除',
+        name: `${holidayAccessibleSummary()}を削除`,
       }),
     );
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
@@ -546,7 +559,7 @@ describe('BusinessHolidaysContent', () => {
 
     fireEvent.click(
       await screen.findByRole('button', {
-        name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を削除',
+        name: `${holidayAccessibleSummary()}を削除`,
       }),
     );
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
@@ -570,7 +583,7 @@ describe('BusinessHolidaysContent', () => {
 
     fireEvent.click(
       await screen.findByRole('button', {
-        name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を削除',
+        name: `${holidayAccessibleSummary()}を削除`,
       }),
     );
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
@@ -648,6 +661,60 @@ describe('BusinessHolidaysContent', () => {
     expect(await screen.findByText('店舗一覧を読み込めませんでした')).toBeTruthy();
     // 休日データ自体は取得できているので休日エラーは出ない。
     expect(screen.queryByText('休日設定を読み込めませんでした')).toBeNull();
-    expect(await screen.findByText('年始休業')).toBeTruthy();
+    expect((await screen.findAllByText('年始休業')).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('rejects a successful holiday list containing another organization record', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/pharmacy-sites') {
+          return Response.json({ data: [{ id: 'site_1', name: '本店' }] });
+        }
+        if (url.startsWith(`${BUSINESS_HOLIDAYS_API_PATH}?`)) {
+          const params = new URL(url, 'http://localhost').searchParams;
+          return Response.json({
+            data: [
+              {
+                ...holidayFixture('foreign_holiday'),
+                org_id: 'org_other',
+                date: `${params.get('date_from')}T00:00:00.000Z`,
+              },
+            ],
+          });
+        }
+        return Response.json({ message: `Unhandled ${url}` }, { status: 500 });
+      }),
+    );
+    renderContent();
+
+    expect(await screen.findByText('休日設定を読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByText('年始休業')).toBeNull();
+  });
+
+  it('rejects a successful site list with duplicate identifiers', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/pharmacy-sites') {
+          return Response.json({
+            data: [
+              { id: 'site_1', name: '本店' },
+              { id: 'site_1', name: '重複店舗' },
+            ],
+          });
+        }
+        if (url.startsWith(`${BUSINESS_HOLIDAYS_API_PATH}?`)) {
+          return Response.json({ data: [] });
+        }
+        return Response.json({ message: `Unhandled ${url}` }, { status: 500 });
+      }),
+    );
+    renderContent();
+
+    expect(await screen.findByText('店舗一覧を読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByRole('option', { name: '重複店舗' })).toBeNull();
   });
 });

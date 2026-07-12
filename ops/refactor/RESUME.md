@@ -1,0 +1,46 @@
+# Resume Checkpoint
+
+- Resume Status: ACTIVE
+- Run ID: `019f54af-bde2-7b40-ae01-9348fefaa8cd`
+- Repository Root: `/Users/yusuke/workspace/careviax`
+- Git Branch: `agent/continuous-improvement-20260712`
+- Upstream: `origin/agent/continuous-improvement-20260712`
+- Remote: `origin`
+- Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
+- Current Phase: implementation / verification checkpoint
+- Current Task ID: `API-CONTRACT-001FZBUSINESSHOLIDAYSTRICT`
+- Current Task Status: IN_PROGRESS
+- Current Commit Group: `API-CONTRACT-001FZBUSINESSHOLIDAYSTRICT`
+- Pause Reason: none
+- Paused At: not paused
+- Retry-After: none
+- Last Safe Checkpoint: Focused tests, static contract gates, typecheck, no-unused, lint, diff-check, and build passed.
+- Last Completed Action: Serialized Next.js build completed successfully (311/311 static pages).
+- Current Operation: Pre-commit owned-path review.
+- Exact Next Action: Verify the staged diff and staged path list, then create the scoped commit.
+- Exact Next Command: `git diff --cached --check && git diff --cached --stat && git diff --cached --name-only`
+- Changed Files: business-holidays consumer/test, shifts consumer/test, business-holidays response schema, client schema allowlist, Plans, STATE, checkpoint files.
+- Staged Files: Plans.md; ops/refactor/{STATE,RESUME,RUN_LOCK,SESSION_SUMMARY,CHANGE_LOG,VERIFICATION,SCAN_LOG,FULLSTACK_ALIGNMENT,HIGH_RISK_CHANGES}.md; business-holidays and shifts consumers/tests; business-holidays response schema; client JSON schema allowlist.
+- Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
+- Unpushed Commits: none
+- Push Status: NOT_STARTED for current commit group
+- Target Remote Branch: `origin/agent/continuous-improvement-20260712`
+- Commands Completed: focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; colors; typography; typecheck; no-unused; lint; diff-check.
+- Commands Pending: staged diff review; scoped commit; push; post-push status.
+- Tests Completed: 2 files / 39 tests passed.
+- Tests Pending: no focused tests pending; full suite not run for this slice.
+- Build State: PASS (`pnpm plans:active:check && pnpm build`; Next 16.2.9, 311/311 pages).
+- Typecheck State: PASS
+- Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.
+- Migration State: NOT_APPLICABLE
+- Frontend State: consumer runtime schema connected; visual behavior unchanged.
+- Backend State: provider unchanged and already returns bounded `{ data }` list.
+- FE/BE Alignment State: provider/consumer payload boundary hardened; mutation paths unchanged.
+- UI Verification State: no visual reconstruction; no browser run for this contract-only slice.
+- Browser Verification State: NOT_EXECUTED
+- High-Risk Change State: no DB/auth/tenant/migration change; org-scope validation is fail-closed at the client boundary.
+- Rollback Point: revert the schema, two consumer adapters, test regressions, allowlist removal, and ledger entries.
+- Resume Preconditions: confirm no target-file writer, preserve unrelated dirty paths, keep build/typecheck serialized.
+- Known Blockers: none for this slice; build emitted two existing CSS optimizer warnings but exited 0.
+- External Changes Detected: none in target files during the checkpoint.
+- Notes: The patient-list/detail link issue is already fresh-verified in STATE; do not duplicate that fix.

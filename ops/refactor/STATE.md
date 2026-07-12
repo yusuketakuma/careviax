@@ -46973,3 +46973,38 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   Scoped implementation commit `ce04e5744` (`fix(API-CONTRACT-001): validate signal tuning contracts`) was pushed to
   `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
   remain excluded, and the feature branch does not match the `main`-only production deploy trigger.
+
+## 2026-07-12 API-CONTRACT-001FZBUSINESSHOLIDAYSTRICT — business holiday list contracts (IN_PROGRESS)
+
+- current task / root cause:
+  The business-holidays admin page and the shifts support query still trusted compile-time list casts. A successful
+  response containing another organization, a duplicate site/holiday identity, a record outside the requested month,
+  an inconsistent site relation, or a list that reached the provider cap could therefore affect calendar and shift
+  availability state. The business-holidays page also queried the first day of the next month, while the provider uses
+  an inclusive date-at-midnight bound.
+- implementation checkpoint:
+  The inherited working-tree slice adds `src/lib/business-holidays/response-schema.ts`, connects the schema to the
+  business-holidays and shifts consumers, bounds both reads at 400, changes the calendar end date to the inclusive last
+  day of the viewed month, removes the business-holidays and shifts entries from the client-schema allowlist, and adds
+  cross-org, duplicate-site, legacy-acknowledgement, and request-bound regressions. No provider, DB, auth/authz,
+  tenant, audit, mutation, or visual behavior was intentionally changed.
+- validation checkpoint:
+  Focused Vitest passed 2 files / 39 tests. `pnpm format:check`, `pnpm api-response-shape:check`,
+  `pnpm client-json-schema:check` (161 schema-backed / 212 allowlisted / 88 files),
+  `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`,
+  `pnpm boundaries:check`, `pnpm plans:active:check`, `pnpm colors:check`, `pnpm typography:check`,
+  `pnpm typecheck`, `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`,
+  `pnpm lint`, and `git diff --check` passed. `pnpm lint` reports only two pre-existing unused-parameter warnings
+  in `src/lib/platform/break-glass.test.ts`.
+- build checkpoint:
+  `pnpm plans:active:check && pnpm build` passed. Next 16.2.9 compiled successfully in 4.1 minutes, TypeScript
+  finished in 57 seconds, 311/311 static pages were generated, and page optimization/traces completed. The build
+  emitted two existing CSS optimizer warnings for dynamic `var(...)` Tailwind classes but exited 0. No new build
+  failure or route-generation regression was observed.
+- commit / push:
+  Commit and feature-branch push are the remaining landing actions for this validated group. Explicit owned paths
+  are limited to the two consumers/tests, response schema, client-schema allowlist, Plans, STATE, and the checkpoint /
+  verification ledgers. Harness-memory and personal untracked artifacts remain excluded.
+- next action:
+  Inspect the complete diff, stage only the owned paths, verify the staged diff, create the scoped commit, push the
+  feature branch, and record the remote result.

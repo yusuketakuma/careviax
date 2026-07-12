@@ -24,12 +24,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx",
-      "counts": {
-        "stringFallback": 2
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx",
       "counts": {
         "stringFallback": 1
@@ -170,7 +164,7 @@
     {
       "path": "src/app/(dashboard)/admin/shifts/shifts-content.tsx",
       "counts": {
-        "stringFallback": 7
+        "stringFallback": 6
       }
     },
     {

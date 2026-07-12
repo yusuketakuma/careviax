@@ -39,21 +39,16 @@ import {
   buildBusinessHolidayApiPath,
   buildBusinessHolidaysApiPath,
 } from '@/lib/business-holidays/api-paths';
+import {
+  buildBusinessHolidayListResponseSchema,
+  type BusinessHolidayListItem,
+} from '@/lib/business-holidays/response-schema';
 import { formatDateKey } from '@/lib/date-key';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { messageFromError } from '@/lib/utils/error-message';
 
-type Holiday = {
-  id: string;
-  org_id: string;
-  site_id: string | null;
-  date: string;
-  name: string;
-  holiday_type: string;
-  is_closed: boolean;
-  site?: { id: string; name: string } | null;
-};
+type Holiday = BusinessHolidayListItem;
 
 type SiteOption = {
   id: string;
@@ -78,6 +73,33 @@ const EMPTY_FORM: HolidayForm = {
 
 const EMPTY_HOLIDAYS: Holiday[] = [];
 const EMPTY_SITES: SiteOption[] = [];
+const BUSINESS_HOLIDAY_LIST_LIMIT = 400;
+
+const siteOptionsResponseSchema = z
+  .object({
+    data: z.array(
+      z
+        .object({
+          id: z.string().trim().min(1),
+          name: z.string().trim().min(1),
+        })
+        .strip(),
+    ),
+  })
+  .strict()
+  .superRefine(({ data }, context) => {
+    const ids = new Set<string>();
+    for (const [index, site] of data.entries()) {
+      if (ids.has(site.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['data', index, 'id'],
+          message: 'Duplicate pharmacy site id',
+        });
+      }
+      ids.add(site.id);
+    }
+  });
 
 const HOLIDAY_TYPE_OPTIONS = [
   ['public_holiday', '祝日'],
@@ -190,9 +212,7 @@ export function BusinessHolidaysContent() {
   }
 
   const dateFrom = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-01`;
-  const dateToMonth = viewMonth === 11 ? 0 : viewMonth + 1;
-  const dateToYear = viewMonth === 11 ? viewYear + 1 : viewYear;
-  const dateTo = `${dateToYear}-${String(dateToMonth + 1).padStart(2, '0')}-01`;
+  const dateTo = formatDateKey(new Date(viewYear, viewMonth + 1, 0));
 
   const {
     data,
@@ -202,12 +222,25 @@ export function BusinessHolidaysContent() {
   } = useQuery({
     queryKey: ['business-holidays', orgId, dateFrom, dateTo, filterSiteId],
     queryFn: async () => {
-      const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+      const params = new URLSearchParams({
+        date_from: dateFrom,
+        date_to: dateTo,
+        limit: String(BUSINESS_HOLIDAY_LIST_LIMIT),
+      });
       if (filterSiteId) params.set('site_id', filterSiteId);
       const response = await fetch(buildBusinessHolidaysApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: Holiday[] }>(response, '休日設定の取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '休日設定の取得に失敗しました',
+        schema: buildBusinessHolidayListResponseSchema({
+          orgId,
+          dateFrom,
+          dateTo,
+          ...(filterSiteId ? { siteId: filterSiteId } : {}),
+          limit: BUSINESS_HOLIDAY_LIST_LIMIT,
+        }),
+      });
     },
     enabled: !!orgId,
   });
@@ -218,7 +251,10 @@ export function BusinessHolidaysContent() {
       const response = await fetch('/api/pharmacy-sites', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: SiteOption[] }>(response, '店舗一覧の取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '店舗一覧の取得に失敗しました',
+        schema: siteOptionsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

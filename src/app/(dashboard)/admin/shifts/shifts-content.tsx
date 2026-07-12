@@ -52,6 +52,7 @@ import {
   type ManageableMemberRole,
 } from '@/lib/auth/member-roles';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
+import { buildBusinessHolidayListResponseSchema } from '@/lib/business-holidays/response-schema';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
@@ -242,11 +243,20 @@ export function ShiftsContent() {
       const params = new URLSearchParams({
         date_from: format(monthStart, 'yyyy-MM-dd'),
         date_to: format(monthEnd, 'yyyy-MM-dd'),
+        limit: '400',
       });
       const res = await fetch(`/api/business-holidays?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: BusinessHoliday[] }>(res, '休日設定の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '休日設定の取得に失敗しました',
+        schema: buildBusinessHolidayListResponseSchema({
+          orgId,
+          dateFrom: format(monthStart, 'yyyy-MM-dd'),
+          dateTo: format(monthEnd, 'yyyy-MM-dd'),
+          limit: 400,
+        }),
+      });
     },
     enabled: !!orgId,
   });

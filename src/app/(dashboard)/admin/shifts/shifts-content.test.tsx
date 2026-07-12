@@ -588,6 +588,7 @@ describe('ShiftsContent', () => {
       if (url.startsWith('/api/business-holidays?')) {
         expect(url).toContain('date_from=');
         expect(url).toContain('date_to=');
+        expect(url).toContain('limit=400');
         return Response.json({ data: [] });
       }
       if (url === '/api/pharmacist-shift-templates') {
@@ -625,5 +626,34 @@ describe('ShiftsContent', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/pharmacist-shift-templates', {
       headers: { 'x-org-id': 'org_1' },
     });
+  });
+
+  it('rejects another organization holiday from a successful list response', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (!url.startsWith('/api/business-holidays?')) {
+        throw new Error(`Unexpected fetch: ${url}`);
+      }
+      const params = new URL(url, 'http://localhost').searchParams;
+      return Response.json({
+        data: [
+          {
+            id: 'foreign_holiday',
+            org_id: 'org_other',
+            site_id: null,
+            date: `${params.get('date_from')}T00:00:00.000Z`,
+            name: '別組織の休業日',
+            holiday_type: 'org_event',
+            is_closed: true,
+            site: null,
+          },
+        ],
+      });
+    });
+
+    render(<ShiftsContent />);
+    const holidaysQuery = queryConfigs.find((query) => query.queryKey[0] === 'business-holidays');
+
+    await expect(holidaysQuery?.queryFn?.()).rejects.toThrow('休日設定の取得に失敗しました');
   });
 });
