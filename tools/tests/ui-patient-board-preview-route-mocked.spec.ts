@@ -44,7 +44,11 @@ const BOARD_RESPONSE = {
       status_text: '外部からの回答を待っています',
       status_tone: 'external',
       operation_summary: [],
-      foundation_summary: null,
+      foundation_summary: {
+        status: 'ready',
+        label: '情報確認済み',
+        items: [],
+      },
       foundation_issue_keys: [],
       foundation_href: '/patients/preview_patient_b#patient-foundation',
       link_label: '連携を確認',

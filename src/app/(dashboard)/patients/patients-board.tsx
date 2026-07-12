@@ -4,6 +4,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { z } from 'zod';
 import {
   AlertTriangle,
   CalendarDays,
@@ -64,6 +65,200 @@ import { PatientBoardLoadingShell } from './patient-board-loading';
  * 文言ルール: ブロッカー→「止まっている理由」/ Next Action→「次にやること」。
  */
 
+const nonNegativeIntegerSchema = z.number().int().nonnegative();
+const internalHrefSchema = z
+  .string()
+  .min(1)
+  .regex(/^\/(?!\/)[^\u0000-\u001f]*$/u);
+const patientFoundationIssueSchema = z.enum([
+  'missing_contact',
+  'missing_consent_plan',
+  'missing_parking',
+  'missing_care_level',
+  'missing_insurance',
+  'missing_care_team',
+]);
+const patientBoardCardSchema = z
+  .object({
+    patient_id: z
+      .string()
+      .min(1)
+      .refine((value) => value !== '.' && value !== '..'),
+    name: z.string().min(1),
+    age: nonNegativeIntegerSchema.max(150).nullable(),
+    residence_kind: z.enum(['home', 'facility', 'hospital']),
+    residence_label: z.string().min(1),
+    attention: z.enum([
+      'urgent_now',
+      'wait_release',
+      'acceptance',
+      'visit_today',
+      'external_wait',
+      'checking',
+      'reply_wait',
+      'steady',
+      'paused',
+    ]),
+    safety_tags: z.array(z.string().min(1)),
+    next_visit_date: z.string().date().nullable(),
+    next_visit_time: z
+      .string()
+      .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u)
+      .nullable(),
+    next_visit_label: z.string().nullable(),
+    current_step: z
+      .enum([
+        'intake',
+        'entry',
+        'decision',
+        'dispense',
+        'audit',
+        'set',
+        'visit',
+        'report',
+        'billing',
+      ])
+      .nullable(),
+    status_text: z.string().min(1),
+    status_tone: z.enum(['critical', 'positive', 'caution', 'info', 'external', 'neutral']),
+    operation_summary: z.array(z.string().min(1)),
+    foundation_summary: z
+      .object({
+        status: z.enum(['ready', 'needs_confirmation', 'missing']),
+        label: z.string().min(1),
+        items: z.array(z.string().min(1)),
+      })
+      .strict(),
+    foundation_issue_keys: z.array(patientFoundationIssueSchema),
+    foundation_href: internalHrefSchema,
+    link_label: z.string().min(1),
+    link_href: internalHrefSchema,
+  })
+  .strict()
+  .superRefine((card, context) => {
+    if (card.foundation_href !== `${buildPatientHref(card.patient_id)}#patient-foundation`) {
+      context.addIssue({
+        code: 'custom',
+        path: ['foundation_href'],
+        message: 'Foundation href must target the same patient',
+      });
+    }
+  });
+const patientBoardChipCountsSchema = z
+  .object({
+    urgent_now: nonNegativeIntegerSchema,
+    external_wait: nonNegativeIntegerSchema,
+    visit_today: nonNegativeIntegerSchema,
+    paused: nonNegativeIntegerSchema,
+  })
+  .strict();
+const patientBoardFoundationIssueCountsSchema = z
+  .object({
+    needs_confirmation: nonNegativeIntegerSchema,
+    missing_contact: nonNegativeIntegerSchema,
+    missing_consent_plan: nonNegativeIntegerSchema,
+    missing_parking: nonNegativeIntegerSchema,
+    missing_care_level: nonNegativeIntegerSchema,
+    missing_insurance: nonNegativeIntegerSchema,
+    missing_care_team: nonNegativeIntegerSchema,
+  })
+  .strict();
+const patientBoardPageResponseSchema = z
+  .object({
+    data: z.array(patientBoardCardSchema),
+    meta: z
+      .object({
+        generated_at: z.string().datetime(),
+        scope: z.enum(['mine', 'all']),
+        limit: z.number().int().min(1).max(100),
+        returned_count: nonNegativeIntegerSchema,
+        has_more: z.boolean(),
+        next_cursor: z.string().min(1).nullable(),
+        total_count: nonNegativeIntegerSchema,
+        count_basis: z
+          .object({
+            total_count: z.literal('filtered_result_exact'),
+            chip_counts: z.literal('scope_search_foundation_exact'),
+            foundation_issue_counts: z.literal(
+              'scope_search_without_active_foundation_issue_exact',
+            ),
+            board_summary: z.literal('scope_search_foundation_exact'),
+          })
+          .strict(),
+        filters_applied: z
+          .object({
+            scope: z.enum(['mine', 'all']),
+            q_present: z.boolean(),
+            foundation_issue: z
+              .union([z.literal('needs_confirmation'), patientFoundationIssueSchema])
+              .nullable(),
+            card_filter: z.enum(['all', 'wait_release', 'external', 'visit_today', 'paused']),
+            sort: z.enum(['priority', 'next_visit', 'name']),
+          })
+          .strict(),
+        facets: z
+          .object({
+            chip_counts: patientBoardChipCountsSchema,
+            foundation_issue_counts: patientBoardFoundationIssueCountsSchema,
+            today_facility_patient_count: nonNegativeIntegerSchema,
+            today_visit_count: nonNegativeIntegerSchema,
+            safety_tagged_count: nonNegativeIntegerSchema,
+          })
+          .strict(),
+        rail: z
+          .object({
+            next_action: z
+              .object({
+                patient_name: z.string().min(1),
+                due_at: z.string().datetime().nullable(),
+                has_narcotic: z.boolean(),
+              })
+              .strict()
+              .nullable(),
+            blocked_reasons: z.array(
+              z
+                .object({
+                  id: z.string().min(1),
+                  label: z.string().min(1),
+                  severity: z.enum(['critical', 'warning']),
+                  category: z.string().min(1),
+                  age_minutes: nonNegativeIntegerSchema,
+                  action_label: z.string().min(1),
+                  action_href: internalHrefSchema,
+                })
+                .strict(),
+            ),
+          })
+          .strict(),
+        assigned_total: nonNegativeIntegerSchema,
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((payload, context) => {
+    if (payload.meta.returned_count !== payload.data.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['meta', 'returned_count'],
+        message: 'Returned count must match data length',
+      });
+    }
+    if (payload.meta.has_more !== Boolean(payload.meta.next_cursor)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['meta', 'next_cursor'],
+        message: 'Cursor presence must match has_more',
+      });
+    }
+    if (payload.meta.filters_applied.scope !== payload.meta.scope) {
+      context.addIssue({
+        code: 'custom',
+        path: ['meta', 'filters_applied', 'scope'],
+        message: 'Applied scope must match response scope',
+      });
+    }
+  });
+
 export async function fetchPatientBoard(
   orgId: string,
   scope: 'mine' | 'all',
@@ -91,7 +286,10 @@ export async function fetchPatientBoard(
   const res = await fetch(`/api/patients/board?${params}`, {
     headers: buildOrgHeaders(orgId),
   });
-  return readApiJson<PatientBoardPageResponse>(res, '患者一覧の取得に失敗しました');
+  return readApiJson<PatientBoardPageResponse>(res, {
+    fallbackMessage: '患者一覧の取得に失敗しました',
+    schema: patientBoardPageResponseSchema,
+  });
 }
 
 type BoardScope = 'mine' | 'all';

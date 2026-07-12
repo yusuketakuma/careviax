@@ -331,12 +331,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/patients/patients-board.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.tsx",
       "counts": {
         "stringFallback": 1

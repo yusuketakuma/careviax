@@ -46342,3 +46342,30 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   trigger production deployment. Unrelated harness-memory changes and untracked personal artifacts remain excluded.
   The reported link mismatch is fixed and verified. `FE-PATIENT-LIST-001` remains Partial only for its broader
   bounded-query/payload and list-layout work, not for patient-detail link convergence.
+
+## 2026-07-12 API-CONTRACT-001FZPATBOARDSTRICT — patient-board runtime contract (DONE)
+
+- current task / root cause:
+  The patient-board provider returns a bounded `data + meta` cursor envelope, but `fetchPatientBoard` currently casts
+  successful JSON directly to `PatientBoardPageResponse`. Malformed card enums/dates/counts, inconsistent cursor
+  metadata, or a patient-mismatched `foundation_href` can therefore enter the patient list and its detail actions.
+- accepted implementation boundary:
+  Add a consumer-side exact runtime schema for the existing provider payload, including card/meta nested fields,
+  internal hrefs, `returned_count === data.length`, `has_more`/`next_cursor` consistency, and the existing
+  `patient_id`/foundation anchor relationship. Keep provider queries, payload fields, UI, API path, DB, auth/authz,
+  PHI projection, audit, and pagination behavior unchanged. Add direct fetch regressions that fail before the schema
+  is wired, then run the focused component/provider and contract gates. Rollback is the schema/options/test/ratchet
+  hunk only.
+- implementation / verification:
+  Added an exact nested Zod schema at the patient-board consumer boundary. It validates card enum/date/time/count/link
+  fields, the full meta/facet/rail contract, internal hrefs, matching `patient_id` foundation anchors,
+  `returned_count === data.length`, cursor presence versus `has_more`, and response/applied scope consistency. The
+  four malformed 2xx regressions failed before the schema was connected and the full component file then passed 32/32.
+  Provider route/card-model suites passed 39/39. The route-mocked Chromium fixture exposed one stale nullable
+  `foundation_summary` that the provider never emits; after aligning the fixture to the live contract, desktop and
+  mobile navigation passed 2/2 and retained the patient-detail root assertions. Exact ESLint/Prettier, aggregate
+  typecheck, API response shape, frontend contract, client PHI-log, raw-state colors, module boundaries, active Plans,
+  and diff checks passed. The client schema ratchet improved from 116 / 258 / 102 files to 117 / 257 / 101 files.
+  No product layout, provider/API payload, query/DB, auth/authz, PHI projection, audit, migration, or deployment
+  behavior changed. Full build was not rerun because the focused Next/browser/type gates cover this consumer-only
+  slice and the documented local build memory constraint remains.

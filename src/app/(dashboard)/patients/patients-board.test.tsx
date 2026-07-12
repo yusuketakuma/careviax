@@ -37,7 +37,12 @@ vi.mock('@/lib/patient/navigation', async (importActual) => {
   return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
 });
 
-import { PatientsBoard, formatNextVisitLabel, selectVisibleSafetyTags } from './patients-board';
+import {
+  PatientsBoard,
+  fetchPatientBoard,
+  formatNextVisitLabel,
+  selectVisibleSafetyTags,
+} from './patients-board';
 import { PatientBoardLoadingShell } from './patient-board-loading';
 
 function latestRealtimeQueryOptions() {
@@ -58,7 +63,7 @@ function localIso(hours: number, minutes = 0) {
 }
 
 function card(overrides: Partial<PatientBoardCard>): PatientBoardCard {
-  return {
+  const result: PatientBoardCard = {
     patient_id: 'pt_default',
     name: '患者 既定',
     age: 80,
@@ -84,6 +89,10 @@ function card(overrides: Partial<PatientBoardCard>): PatientBoardCard {
     link_href: '/set',
     ...overrides,
   };
+  if (!Object.hasOwn(overrides, 'foundation_href')) {
+    result.foundation_href = `${buildPatientHref(result.patient_id)}#patient-foundation`;
+  }
+  return result;
 }
 
 type PatientBoardFixtureOverrides = {
@@ -283,6 +292,77 @@ describe('PatientsBoard', () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it('accepts the current patient-board provider contract', async () => {
+    const payload = buildFixture();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Promise.resolve(
+          new Response(JSON.stringify(payload), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        ),
+      ),
+    );
+
+    await expect(fetchPatientBoard('org_1', 'mine')).resolves.toEqual(payload);
+  });
+
+  it.each([
+    [
+      'mixed root fields',
+      () => ({
+        ...buildFixture(),
+        legacy_cards: [],
+      }),
+    ],
+    [
+      'patient-mismatched foundation link',
+      () => {
+        const payload = buildFixture();
+        payload.data[0] = {
+          ...payload.data[0],
+          foundation_href: '/patients/another_patient#patient-foundation',
+        };
+        return payload;
+      },
+    ],
+    [
+      'returned count drift',
+      () => {
+        const payload = buildFixture();
+        payload.meta.returned_count += 1;
+        return payload;
+      },
+    ],
+    [
+      'missing continuation cursor',
+      () => {
+        const payload = buildFixture();
+        payload.meta.has_more = true;
+        payload.meta.next_cursor = null;
+        return payload;
+      },
+    ],
+  ])('rejects malformed patient-board 2xx payloads: %s', async (_label, buildPayload) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Promise.resolve(
+          new Response(JSON.stringify(buildPayload()), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        ),
+      ),
+    );
+
+    await expect(fetchPatientBoard('org_1', 'mine')).rejects.toThrow(
+      '患者一覧の取得に失敗しました',
+    );
   });
 
   it('renders the header with the color legend, scope toggle and filter chips', () => {
