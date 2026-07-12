@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { FileQuestion } from 'lucide-react';
+import { z } from 'zod';
 import { buttonVariants } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
@@ -15,11 +16,11 @@ import { buildPatientHref } from '@/lib/patient/navigation';
 import { cn } from '@/lib/utils';
 import type { PatientBoardPageResponse } from '@/types/patient-board';
 import { fetchPatientBoard } from '../patients-board';
-import type { PatientOverview } from '../[id]/patient-detail.types';
 import {
   deriveCompareCardView,
   selectDefaultComparePatients,
   type CompareCardView,
+  type CompareWorkspaceInput,
 } from './compare-card-helpers';
 
 /**
@@ -30,11 +31,90 @@ import {
  * /api/patients/[id]/overview(カード作業台と同じ workspace)を患者ごとに並列取得する。
  */
 
-async function fetchPatientOverview(orgId: string, patientId: string): Promise<PatientOverview> {
+type ComparePatientOverview = {
+  id: string;
+  name: string;
+  workspace: CompareWorkspaceInput | null;
+};
+
+const nullableIdSchema = z.string().min(1).nullable();
+const nullableIsoDateTimeSchema = z.string().datetime().nullable();
+const medicationPeriodSchema = z.object({
+  start: nullableIsoDateTimeSchema,
+  end: nullableIsoDateTimeSchema,
+});
+const compareWorkspaceSchema = z.object({
+  overall_status: z.string().min(1),
+  exception_status: z.string().nullable(),
+  action_context: z.object({
+    patient_id: z.string().min(1),
+    prescription_intake_id: nullableIdSchema,
+    visit_schedule_id: nullableIdSchema,
+    visit_record_id: nullableIdSchema,
+    report_id: nullableIdSchema,
+  }),
+  current_intake: z
+    .object({
+      id: z.string().min(1),
+      prescribed_date: z.string().datetime(),
+      prescription_category: z.string().min(1),
+    })
+    .nullable(),
+  today_tasks: z.array(
+    z.object({
+      time_label: z.string().min(1),
+      label: z.string().min(1),
+      due_time: z
+        .string()
+        .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u)
+        .nullable(),
+    }),
+  ),
+  open_exceptions: z.array(
+    z.object({
+      id: z.string().min(1),
+      description: z.string().min(1),
+      severity: z.enum(['critical', 'warning']),
+    }),
+  ),
+  previous_medication: medicationPeriodSchema.nullable(),
+  current_medication: medicationPeriodSchema.nullable(),
+});
+const comparePatientOverviewResponseSchema = z
+  .object({
+    data: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      workspace: compareWorkspaceSchema.nullable(),
+    }),
+  })
+  .strict()
+  .superRefine((payload, context) => {
+    if (
+      payload.data.workspace &&
+      payload.data.workspace.action_context.patient_id !== payload.data.id
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['data', 'workspace', 'action_context', 'patient_id'],
+        message: 'Workspace patient must match overview patient',
+      });
+    }
+  });
+
+async function fetchPatientOverview(
+  orgId: string,
+  patientId: string,
+): Promise<ComparePatientOverview> {
   const res = await fetch(buildPatientApiPath(patientId, '/overview'), {
     headers: buildOrgHeaders(orgId),
   });
-  const payload = await readApiJson<{ data: PatientOverview }>(res, '患者情報の取得に失敗しました');
+  const fallbackMessage = '患者情報の取得に失敗しました';
+  const payload = await readApiJson<{ data: ComparePatientOverview }>(res, {
+    fallbackMessage,
+    schema: comparePatientOverviewResponseSchema,
+  });
+  if (payload.data.id !== patientId) throw new Error(fallbackMessage);
   return payload.data;
 }
 

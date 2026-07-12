@@ -58,6 +58,56 @@ const overview = {
   workspace: null,
 } as PatientOverview;
 
+function buildOverviewPayload() {
+  return {
+    id: 'patient_1',
+    name: '佐藤 花子',
+    unused_sensitive_field: 'must-not-enter-compare-cache',
+    workspace: {
+      overall_status: 'dispensed',
+      exception_status: null,
+      action_context: {
+        patient_id: 'patient_1',
+        prescription_intake_id: 'intake_1',
+        visit_schedule_id: null,
+        visit_record_id: null,
+        report_id: null,
+      },
+      current_intake: {
+        id: 'intake_1',
+        prescribed_date: '2026-07-12T00:00:00.000Z',
+        prescription_category: 'regular',
+        unused_prescriber: 'must-not-enter-compare-cache',
+      },
+      today_tasks: [
+        {
+          time_label: '期限 12:00',
+          label: '調剤監査',
+          due_time: '12:00',
+          unused_href: '/audit',
+        },
+      ],
+      open_exceptions: [
+        {
+          id: 'exception_1',
+          description: '監査待ち',
+          severity: 'warning',
+          unused_type: 'audit_pending',
+        },
+      ],
+      previous_medication: {
+        start: '2026-06-01T00:00:00.000Z',
+        end: '2026-06-30T00:00:00.000Z',
+      },
+      current_medication: {
+        start: '2026-07-01T00:00:00.000Z',
+        end: '2026-07-31T00:00:00.000Z',
+      },
+      unused_safety: { allergy: 'must-not-enter-compare-cache' },
+    },
+  };
+}
+
 function mockBoard() {
   useOrgIdMock.mockReturnValue('org_1');
   useQueryMock.mockReturnValue({
@@ -68,6 +118,117 @@ function mockBoard() {
 }
 
 describe('CompareBoard', () => {
+  it('retains only the patient overview fields consumed by comparison cards', async () => {
+    mockBoard();
+    let capturedQueries: QueryConfig[] = [];
+    useQueriesMock.mockImplementation(({ queries }: { queries: QueryConfig[] }) => {
+      capturedQueries = queries;
+      return queries.map(() => ({ data: undefined, isLoading: true, error: null }));
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: buildOverviewPayload() })),
+    );
+
+    try {
+      render(<CompareBoard requestedPatientIds={['patient_1']} />);
+
+      await expect(capturedQueries[0]?.queryFn()).resolves.toEqual({
+        id: 'patient_1',
+        name: '佐藤 花子',
+        workspace: {
+          overall_status: 'dispensed',
+          exception_status: null,
+          action_context: {
+            patient_id: 'patient_1',
+            prescription_intake_id: 'intake_1',
+            visit_schedule_id: null,
+            visit_record_id: null,
+            report_id: null,
+          },
+          current_intake: {
+            id: 'intake_1',
+            prescribed_date: '2026-07-12T00:00:00.000Z',
+            prescription_category: 'regular',
+          },
+          today_tasks: [{ time_label: '期限 12:00', label: '調剤監査', due_time: '12:00' }],
+          open_exceptions: [{ id: 'exception_1', description: '監査待ち', severity: 'warning' }],
+          previous_medication: {
+            start: '2026-06-01T00:00:00.000Z',
+            end: '2026-06-30T00:00:00.000Z',
+          },
+          current_medication: {
+            start: '2026-07-01T00:00:00.000Z',
+            end: '2026-07-31T00:00:00.000Z',
+          },
+        },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each([
+    [
+      'mixed root fields',
+      () => ({ data: buildOverviewPayload(), legacy_patient: buildOverviewPayload() }),
+    ],
+    [
+      'patient-mismatched workspace context',
+      () => {
+        const payload = buildOverviewPayload();
+        payload.workspace.action_context.patient_id = 'another_patient';
+        return { data: payload };
+      },
+    ],
+    [
+      'unexpected overview patient',
+      () => {
+        const payload = buildOverviewPayload();
+        payload.id = 'another_patient';
+        payload.workspace.action_context.patient_id = 'another_patient';
+        return { data: payload };
+      },
+    ],
+    [
+      'invalid prescription timestamp',
+      () => {
+        const payload = buildOverviewPayload();
+        payload.workspace.current_intake.prescribed_date = 'not-a-timestamp';
+        return { data: payload };
+      },
+    ],
+    [
+      'unknown exception severity',
+      () => {
+        const payload = buildOverviewPayload();
+        payload.workspace.open_exceptions[0] = {
+          ...payload.workspace.open_exceptions[0],
+          severity: 'unknown',
+        };
+        return { data: payload };
+      },
+    ],
+  ])('rejects malformed compare overview 2xx payloads: %s', async (_label, buildPayload) => {
+    mockBoard();
+    let capturedQueries: QueryConfig[] = [];
+    useQueriesMock.mockImplementation(({ queries }: { queries: QueryConfig[] }) => {
+      capturedQueries = queries;
+      return queries.map(() => ({ data: undefined, isLoading: true, error: null }));
+    });
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(buildPayload())));
+
+    try {
+      render(<CompareBoard requestedPatientIds={['patient_1']} />);
+
+      await expect(capturedQueries[0]?.queryFn()).rejects.toThrow('患者情報の取得に失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
   it('routes patient overview fetches through the shared patient API path helper', async () => {
     const patientId = 'pt/1?x=y#z';
     mockBoard();
@@ -79,7 +240,9 @@ describe('CompareBoard', () => {
       return queries.map(() => ({ data: undefined, isLoading: true, error: null }));
     });
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: overview }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ data: { ...overview, id: patientId } }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {

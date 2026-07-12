@@ -46375,3 +46375,32 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   `origin/agent/continuous-improvement-20260712`; the branch is synchronized with its upstream. Unrelated
   harness-memory changes and untracked personal artifacts were excluded. This feature-branch push does not match the
   repository's `main`-only production deployment trigger.
+
+## 2026-07-12 API-CONTRACT-001FZPATCOMPARESTRICT — patient compare overview contract (DONE)
+
+- current task / root cause:
+  The multi-patient comparison screen reads the full `/api/patients/{id}/overview` response through a compile-time
+  cast even though it only consumes patient `id`, `name`, and a bounded workspace subset. A malformed 2xx payload can
+  therefore mix the requested patient with another workspace context, and unconsumed PHI-bearing overview fields are
+  retained in each parallel React Query cache entry.
+- accepted implementation boundary:
+  Add an exact response root with a consumed-data schema that strips all unused overview fields, validates the
+  workspace fields used by `deriveCompareCardView`, and rejects a workspace `action_context.patient_id` that differs
+  from the overview patient ID. Preserve the overview provider, request path/headers, error-message behavior,
+  parallel fetching, rendered comparison cards, DB queries, auth/authz, PHI projection, read audit, and no-store
+  behavior. Add pre-fix regressions for field minimization and malformed/mismatched 2xx responses. Rollback is the
+  consumer schema/test/ratchet hunk only.
+- implementation / verification:
+  Added a strict response root plus a consumed overview/workspace schema. Successful responses now retain only
+  patient `id`, `name`, and the fields read by `deriveCompareCardView`; unconsumed overview, intake, task, exception,
+  and safety fields are stripped before React Query caching. The reader rejects mixed roots, malformed timestamps or
+  severities, a workspace patient mismatch, and an overview patient ID different from the requested route patient.
+  Six new tests failed before the schema and passed after it. The schema also exposed an existing path-helper fixture
+  that requested one patient while returning another; the fixture was corrected without weakening the product check.
+  Compare board/helper/page and overview route suites passed 4 files / 34 tests. API response-shape, frontend
+  contract, client PHI-log/display, module-boundary, client-schema, exact ESLint/Prettier, aggregate typecheck,
+  no-unused typecheck, active Plans, and diff gates passed. The ratchet improved from 117 / 257 / 101 files to
+  118 / 256 / 100 files. No provider response, request/error behavior, screen layout, parallel query behavior,
+  API/DB/auth/authz/read-audit/no-store, or external output changed. Browser and image generation were omitted because
+  this is a non-visual runtime-validation/data-minimization slice and the direct query-function regressions execute
+  both the network parser and rendered-query wiring.
