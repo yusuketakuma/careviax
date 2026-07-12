@@ -313,12 +313,6 @@
       }
     },
     {
-      "path": "src/components/features/patients/patient-field-revision-timeline.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/components/features/patients/patient-form.tsx",
       "counts": {
         "stringFallback": 6

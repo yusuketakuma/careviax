@@ -24,6 +24,19 @@ vi.mock('@/lib/patient/api-paths', async (importActual) => {
   return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
 });
 
+function revisionMeta(category: string | null, visibleCount = 0, hiddenCount = 0) {
+  return {
+    total_count: visibleCount + hiddenCount,
+    visible_count: visibleCount,
+    hidden_count: hiddenCount,
+    truncated: hiddenCount > 0,
+    count_basis: 'patient_field_revisions',
+    filters_applied: { category },
+    sort_basis: 'created_at_desc',
+    limit: 50,
+  };
+}
+
 describe('PatientFieldRevisionTimeline', () => {
   it('renders a PH-OS skeleton while field revisions load', () => {
     useOrgIdMock.mockReturnValue('org_1');
@@ -105,7 +118,9 @@ describe('PatientFieldRevisionTimeline', () => {
       },
     );
 
-    const fetchMock = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ data: [] })));
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(JSON.stringify({ data: [], meta: revisionMeta('basic') })),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -160,6 +175,114 @@ describe('PatientFieldRevisionTimeline', () => {
     try {
       render(<PatientFieldRevisionTimeline patientId="patient_1" />);
       await expect(capturedQuery?.queryFn()).rejects.toThrow('変更履歴の閲覧権限がありません');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('validates and minimizes field revision data before it reaches the timeline cache', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    let capturedQuery: { queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation((config: { queryFn: () => Promise<unknown> }) => {
+      capturedQuery = config;
+      return { data: { data: [], meta: revisionMeta(null) }, isLoading: false, error: null };
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'rev_1',
+                  category: 'basic',
+                  field_key: 'gender',
+                  field_label: '性別',
+                  value_label: 'male → female',
+                  previous: 'male',
+                  current: 'female',
+                  source: 'patient_detail_edit',
+                  updated_by_name: '田中',
+                  created_at: '2026-06-16T01:00:00.000Z',
+                  change_reason: 'provider-only sensitive detail',
+                  updated_by: 'user_u',
+                },
+              ],
+              meta: revisionMeta(null, 1),
+            }),
+          ),
+      ),
+    );
+
+    try {
+      render(<PatientFieldRevisionTimeline patientId="patient_1" />);
+      await expect(capturedQuery?.queryFn()).resolves.toEqual({
+        data: [
+          {
+            id: 'rev_1',
+            category: 'basic',
+            field_key: 'gender',
+            field_label: '性別',
+            value_label: 'male → female',
+            previous: 'male',
+            current: 'female',
+            source: 'patient_detail_edit',
+            updated_by_name: '田中',
+            created_at: '2026-06-16T01:00:00.000Z',
+          },
+        ],
+        meta: revisionMeta(null, 1),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('rejects legacy, inconsistent, or unmasked successful revision payloads', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    let capturedQuery: { queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation((config: { queryFn: () => Promise<unknown> }) => {
+      capturedQuery = config;
+      return { data: { data: [], meta: revisionMeta(null) }, isLoading: false, error: null };
+    });
+    render(<PatientFieldRevisionTimeline patientId="patient_1" />);
+
+    const sensitiveRevision = {
+      id: 'rev_sensitive',
+      category: 'contacts',
+      field_key: 'phone',
+      field_label: '電話番号',
+      value_label: null,
+      previous: '〔記録あり〕',
+      current: '〔記録あり〕',
+      source: 'patient_detail_edit',
+      updated_by_name: '田中',
+      created_at: '2026-06-16T01:00:00.000Z',
+    };
+    const payloads = [
+      { revisions: [], meta: revisionMeta(null) },
+      { data: [], meta: { ...revisionMeta(null), visible_count: 1 } },
+      {
+        data: [{ ...sensitiveRevision, current: '090-1234-5678' }],
+        meta: revisionMeta(null, 1),
+      },
+      {
+        data: [sensitiveRevision, { ...sensitiveRevision, id: 'rev_sensitive' }],
+        meta: revisionMeta(null, 2),
+      },
+    ];
+
+    try {
+      for (const payload of payloads) {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 })),
+        );
+        await expect(capturedQuery?.queryFn()).rejects.toThrow('変更履歴の取得に失敗しました');
+      }
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

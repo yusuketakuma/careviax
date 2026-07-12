@@ -1,5 +1,11 @@
-import type { PatientFieldRevisionListItem } from '@/server/services/patient-field-revision-list';
 import { PATIENT_FIELD_REVISION_CATEGORY_LABELS } from '@/lib/patient/field-revision-categories';
+
+type RevisionPresentationItem = {
+  field_key: string;
+  previous: unknown;
+  current: unknown;
+  value_label: string | null;
+};
 
 // 変更履歴タイムラインと反映 provenance カードで共有する表示定義(二重実装回避)。
 
@@ -21,7 +27,7 @@ export interface RevisionChangeTypeMeta {
   className: string;
 }
 
-export function revisionChangeTypeMeta(item: PatientFieldRevisionListItem): RevisionChangeTypeMeta {
+export function revisionChangeTypeMeta(item: RevisionPresentationItem): RevisionChangeTypeMeta {
   const hasPrev = item.previous != null && item.previous !== '';
   const hasCur = item.current != null && item.current !== '';
   // 変更種別は「状態」ではなく識別。警告色(amber)を非警告に流用せず、追加のみ情報タグ(青)で強調し、
@@ -35,7 +41,7 @@ export function revisionChangeTypeMeta(item: PatientFieldRevisionListItem): Revi
   return { label: '変更', className: 'border-border bg-muted text-muted-foreground' };
 }
 
-export function revisionDetailText(item: PatientFieldRevisionListItem): string | null {
+export function revisionDetailText(item: RevisionPresentationItem): string | null {
   if (SENSITIVE_FIELD_KEYS.has(item.field_key)) return null; // 生値を出さず変更の事実のみ
   return item.value_label;
 }

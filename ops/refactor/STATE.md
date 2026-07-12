@@ -51,6 +51,37 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZFIELDREVSTRICT patient field-revision timeline reader (VERIFY_REQUIRED, 2026-07-12; pending commit/push and shared clean-capacity build).
+  - current task / root cause:
+    Patient detailのfield revision timelineがcompile-time service typeだけを信頼し、legacy root、meta arithmetic/
+    filter drift、重複identity、逆順日時を表示/cacheへ流し得た。Provider serviceはPHI raw-value allowlistで
+    maskingするが、client側に回帰防止がなく、非許可fieldのraw previous/currentやvalue labelが復活しても
+    timelineまで到達できた。
+  - implementation / privacy-audit boundary:
+    Expected categoryごとのstrict `{ data, meta }` schema factoryを追加し、50件上限、category enum、
+    count/truncation arithmetic、requested filter、created_at降順、identity一意を検証した。Service allowlistと
+    同じ7 low-sensitivity field以外は`value_label=null`かつprevious/currentをnullまたは固定presence markerに
+    制限し、raw PHI driftをfail-closed化した。Consumer未使用のchange reason、actor ID、validity metadata、
+    confirmation internalsはquery cacheからstrip。Presentation helperは必要な最小structural typeへ縮小し、
+    visit reflected cardとの共有互換を維持した。Revision write/audit semantics、assignment/tenant/no-store、
+    filter UI、表示文言は変更していない。Visual reconstructionではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/components/features/patients/patient-field-revision-timeline-response-schema.ts`,
+    `src/components/features/patients/patient-field-revision-timeline.tsx`,
+    `src/components/features/patients/patient-field-revision-timeline.test.tsx`,
+    `src/components/features/patients/patient-field-revision-presentation.ts`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/provider/service/shared-presentation Vitest passed 4 files / 28 tests. Exact ESLint/Prettier and
+    diff-check passed. `pnpm client-json-schema:check` passed at 203 schema-backed / 168 allowlisted schema-less calls /
+    58 files; frontend contract, module boundary, aggregate typecheck, 8GB no-unused typecheck, client PHI-log, API
+    response shape, and colors passed. Full build was NOT_EXECUTED because the shared clean-capacity gate remains
+    unresolved; no generated cache was deleted or modified.
+  - security / performance / remaining:
+    Provider masking regressions cannot expose raw non-allowlisted revision values through this timeline. Cached fields
+    are reduced; request count, polling, provider query/take, and dependencies are unchanged. A clean-capacity runner
+    must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZRESIDUALCHARTSTRICT patient residual-medication chart reader (VERIFY_REQUIRED, 2026-07-12; implementation `d7b4543ae`, ledger `52aa41595`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Patient detailの残薬推移chartが`GET /api/residual-medications?patient_id=...&limit=100`を

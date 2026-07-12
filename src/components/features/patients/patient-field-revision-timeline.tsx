@@ -10,16 +10,13 @@ import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
-import type {
-  PatientFieldRevisionListItem,
-  PatientFieldRevisionListMeta,
-} from '@/server/services/patient-field-revision-list';
 import {
   REVISION_CATEGORY_LABELS as CATEGORY_LABELS,
   REVISION_SOURCE_LABELS as SOURCE_LABELS,
   revisionChangeTypeMeta as changeTypeMeta,
   revisionDetailText as detailText,
 } from './patient-field-revision-presentation';
+import { createPatientFieldRevisionTimelineResponseSchema } from './patient-field-revision-timeline-response-schema';
 
 function FilterChip({
   active,
@@ -45,11 +42,6 @@ function FilterChip({
     </button>
   );
 }
-
-type PatientFieldRevisionTimelineResponse = {
-  data: PatientFieldRevisionListItem[];
-  meta?: PatientFieldRevisionListMeta;
-};
 
 function PatientFieldRevisionLoadingState() {
   return (
@@ -84,10 +76,10 @@ export function PatientFieldRevisionTimeline({ patientId }: { patientId: string 
           headers: buildOrgHeaders(orgId),
         },
       );
-      return readApiJson<PatientFieldRevisionTimelineResponse>(
-        response,
-        '変更履歴の取得に失敗しました',
-      );
+      return readApiJson(response, {
+        fallbackMessage: '変更履歴の取得に失敗しました',
+        schema: createPatientFieldRevisionTimelineResponseSchema(category),
+      });
     },
     enabled: !!orgId,
   });
