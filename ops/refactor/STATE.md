@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZADMINSETTINGSSTRICT admin settings/profile/site readers (VERIFY_REQUIRED, 2026-07-13; implementation `3bf68e892`, ledger pending; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZADMINSETTINGSSTRICT admin settings/profile/site readers (VERIFY_REQUIRED, 2026-07-13; implementation `3bf68e892`, ledger `6e5083010`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Settingsは設定GET/PATCH、current profile、site optionの4 responsesをcompile-time castだけで読み、legacy
     root、duplicate setting key、不正scope/type/range、過大な文字列/配列をquery/edit stateへ流し得た。Profile画面は
