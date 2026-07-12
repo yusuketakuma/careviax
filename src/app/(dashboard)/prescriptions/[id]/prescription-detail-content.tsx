@@ -34,67 +34,14 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
-import {
-  normalizeJahisSupplementalRecords,
-  type JahisSupplementalRecordDbView,
-} from '@/lib/pharmacy/jahis-supplemental-records-view';
+import { normalizeJahisSupplementalRecords } from '@/lib/pharmacy/jahis-supplemental-records-view';
 import { SOURCE_LABELS } from '../new/prescription-form.shared';
 import {
   CYCLE_STATUS_CONFIG,
-  type InquiryRecord,
+  prescriptionIntakeDetailResponseSchema,
+  type PrescriptionIntakeDetail,
   type PrescriptionLine,
 } from '../prescription.shared';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type PrescriberInstitutionRef = {
-  id: string;
-  name: string;
-  institution_code: string | null;
-  phone: string | null;
-  fax: string | null;
-};
-
-type PrescriptionIntakeDetail = {
-  id: string;
-  display_id: string | null;
-  cycle_id: string;
-  source_type: string;
-  prescribed_date: string;
-  prescriber_name: string | null;
-  prescriber_institution: string | null;
-  prescriber_institution_id: string | null;
-  prescriber_institution_ref: PrescriberInstitutionRef | null;
-  prescription_expiry_date: string | null;
-  original_document_url: string | null;
-  refill_remaining_count: number | null;
-  refill_next_dispense_date: string | null;
-  split_dispense_total: number | null;
-  split_dispense_current: number | null;
-  split_next_dispense_date: string | null;
-  created_at: string;
-  jahis_supplemental_records: JahisSupplementalRecordDbView[];
-  lines: PrescriptionLine[];
-  cycle: {
-    id: string;
-    display_id: string | null;
-    overall_status: string;
-    patient_id: string;
-    case_id: string;
-    case_: {
-      patient: {
-        id: string;
-        name: string;
-        name_kana: string;
-        birth_date: string | null;
-        gender: string | null;
-      };
-    };
-    inquiries: InquiryRecord[];
-  };
-};
 
 const INQUIRY_RESULT_CONFIG: Record<
   string,
@@ -311,13 +258,12 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
       const res = await fetch(buildPrescriptionIntakeApiPath(intakeId), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data?: PrescriptionIntakeDetail }>(
-        res,
-        '処方受付の取得に失敗しました',
-      );
-      if (!payload.data || typeof payload.data.id !== 'string') {
-        throw new Error('処方受付の取得に失敗しました');
-      }
+      const fallbackMessage = '処方受付の取得に失敗しました';
+      const payload = await readApiJson<{ data: PrescriptionIntakeDetail }>(res, {
+        fallbackMessage,
+        schema: prescriptionIntakeDetailResponseSchema,
+      });
+      if (payload.data.id !== intakeId) throw new Error(fallbackMessage);
       return payload.data;
     },
     enabled: !!orgId,

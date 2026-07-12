@@ -46492,3 +46492,27 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   response regressions, client-schema ratchet, Plans, and this ledger entry. It was pushed to
   `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
   were excluded, and the feature branch does not match the `main`-only production deployment trigger.
+
+## 2026-07-12 API-CONTRACT-001FZRXDETAILSTRICT — shared prescription detail contract (DONE)
+
+- current task / root cause:
+  The full-page and inline prescription-intake detail consumers share the same endpoint and React Query key but kept
+  separate compile-time response types and schema-less readers. Mixed-root or malformed 2xx data could enter either
+  view, the requested intake was not matched to the response, cycle and patient identities were not cross-checked,
+  and unused provider fields were retained in the shared PHI-bearing cache.
+- implementation / verification:
+  Added one executable response SSOT in `prescription.shared.ts` for intake metadata, patient identity, medication
+  lines, inquiry records, and JAHIS supplemental records. Both consumers now use the same strict root and data shape,
+  verify response ID against the requested intake, and reject cycle ID or patient ID mismatches. The schema validates
+  date, count, medication-line, and inquiry contracts and strips unconsumed original-document URL, institution/case
+  identifiers, provider columns, and audit-like extras before caching. Existing endpoint, query key, request headers,
+  rendered fields, JAHIS display, error messages, provider response, auth/authz, and no-store behavior are preserved.
+  Five regressions failed before the fix; full-page, inline, and provider suites passed 3 files / 54 tests afterward,
+  including additional invalid prescribed-date and patient-gender coverage.
+  Exact ESLint/Prettier, aggregate typecheck, no-unused typecheck, API response-shape, frontend contract, client
+  PHI-log/display, module-boundary, active Plans, client-schema, and diff gates passed. The ratchet improved from
+  121 / 253 / 97 files to 123 / 251 / 95 files. Full build was not repeated after the unchanged compile-stage shared
+  memory limitation recorded above; there is no new build hypothesis. No DB, provider, auth/authz, tenant, audit,
+  mutation, visual layout, or clinical workflow changed. Browser and image generation were omitted because this is a
+  non-visual shared parser/cache-boundary repair with direct query-function coverage in both consumers. Rollback is
+  the shared schema, two consumer adapters, regressions, and ratchet hunk.

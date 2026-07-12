@@ -201,7 +201,7 @@ describe('PrescriptionInlineDetail', () => {
 
     useOrgIdMock.mockReturnValue('org_1');
     vi.mocked(buildOrgHeaders).mockReturnValueOnce(sentinelHeaders);
-    fetchMock.mockResolvedValue(jsonResponse({ data: { id: hostileId } }));
+    fetchMock.mockResolvedValue(jsonResponse({ data: buildDetailData(hostileId, 'patient_1') }));
     useQueryMock.mockImplementation((config: QueryConfig) => {
       queryConfig = config;
       return {
@@ -279,16 +279,15 @@ describe('PrescriptionInlineDetail', () => {
       prescribed_date: '2026-04-20T00:00:00.000Z',
       prescriber_name: '佐藤医師',
       prescriber_institution: '佐藤医院',
-      prescriber_institution_id: null,
       prescriber_institution_ref: null,
       prescription_expiry_date: null,
-      original_document_url: null,
       refill_remaining_count: null,
       refill_next_dispense_date: null,
       split_dispense_total: null,
       split_dispense_current: null,
       split_next_dispense_date: null,
       created_at: '2026-04-20T09:00:00.000Z',
+      jahis_supplemental_records: [],
       lines: [
         {
           id: 'line_1',
@@ -312,7 +311,6 @@ describe('PrescriptionInlineDetail', () => {
         display_id: null,
         overall_status: 'intake_received',
         patient_id: patientId,
-        case_id: 'case_1',
         case_: {
           patient: {
             id: patientId,

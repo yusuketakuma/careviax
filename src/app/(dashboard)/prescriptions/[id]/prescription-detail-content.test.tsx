@@ -64,19 +64,17 @@ type QueryConfig = {
   queryFn: () => Promise<unknown>;
 };
 
-function buildPrescriptionDetail(patientId = 'patient_1') {
+function buildPrescriptionDetail(patientId = 'patient_1', intakeId = 'intake_1') {
   return {
-    id: 'intake_1',
+    id: intakeId,
     display_id: null,
     cycle_id: 'cycle_1',
     source_type: 'paper',
     prescribed_date: '2026-06-01T00:00:00.000Z',
     prescriber_name: null,
     prescriber_institution: null,
-    prescriber_institution_id: null,
     prescriber_institution_ref: null,
     prescription_expiry_date: null,
-    original_document_url: null,
     refill_remaining_count: null,
     refill_next_dispense_date: null,
     split_dispense_total: null,
@@ -90,7 +88,6 @@ function buildPrescriptionDetail(patientId = 'patient_1') {
       display_id: null,
       overall_status: 'pending',
       patient_id: patientId,
-      case_id: 'case_1',
       case_: {
         patient: {
           id: patientId,
@@ -140,7 +137,9 @@ describe('PrescriptionDetailContent', () => {
 
     useOrgIdMock.mockReturnValue('org_1');
     buildOrgHeadersMock.mockReturnValueOnce(sentinelHeaders);
-    fetchMock.mockResolvedValue(jsonResponse({ data: { id: hostileId } }));
+    fetchMock.mockResolvedValue(
+      jsonResponse({ data: buildPrescriptionDetail('patient_1', hostileId) }),
+    );
     useQueryMock.mockImplementation((config: QueryConfig) => {
       queryConfig = config;
       return {
@@ -183,6 +182,83 @@ describe('PrescriptionDetailContent', () => {
 
     if (!queryConfig) throw new Error('query config was not captured');
     await expect(queryConfig.queryFn()).resolves.toEqual(detail);
+    await expect(queryConfig.queryFn()).rejects.toThrow('処方受付の取得に失敗しました');
+  });
+
+  it('retains only fields consumed by the shared prescription detail cache contract', async () => {
+    let queryConfig: QueryConfig | undefined;
+    const detail = buildPrescriptionDetail();
+
+    useOrgIdMock.mockReturnValue('org_1');
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        data: {
+          ...detail,
+          original_document_url: '/api/files/file_1/download',
+          prescriber_institution_id: 'institution_1',
+          unused_audit_context: { actor_name: 'must-not-enter-prescription-cache' },
+        },
+      }),
+    );
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      queryConfig = config;
+      return { data: null, isLoading: true, error: null };
+    });
+
+    render(<PrescriptionDetailContent intakeId="intake_1" />);
+
+    if (!queryConfig) throw new Error('query config was not captured');
+    await expect(queryConfig.queryFn()).resolves.toEqual(detail);
+  });
+
+  it.each([
+    [
+      'mixed root fields',
+      () => ({ data: buildPrescriptionDetail(), legacy_intake: buildPrescriptionDetail() }),
+    ],
+    [
+      'unexpected intake id',
+      () => ({ data: buildPrescriptionDetail('patient_1', 'another_intake') }),
+    ],
+    [
+      'cycle id mismatch',
+      () => ({
+        data: { ...buildPrescriptionDetail(), cycle_id: 'another_cycle' },
+      }),
+    ],
+    [
+      'patient id mismatch',
+      () => {
+        const detail = buildPrescriptionDetail();
+        detail.cycle.patient_id = 'another_patient';
+        return { data: detail };
+      },
+    ],
+    [
+      'invalid prescribed date',
+      () => ({ data: { ...buildPrescriptionDetail(), prescribed_date: 'not-a-date' } }),
+    ],
+    [
+      'invalid patient gender',
+      () => {
+        const detail = buildPrescriptionDetail();
+        detail.cycle.case_.patient.gender = 'unknown';
+        return { data: detail };
+      },
+    ],
+  ])('rejects malformed prescription detail 2xx payloads: %s', async (_label, buildPayload) => {
+    let queryConfig: QueryConfig | undefined;
+
+    useOrgIdMock.mockReturnValue('org_1');
+    fetchMock.mockResolvedValue(jsonResponse(buildPayload()));
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      queryConfig = config;
+      return { data: null, isLoading: true, error: null };
+    });
+
+    render(<PrescriptionDetailContent intakeId="intake_1" />);
+
+    if (!queryConfig) throw new Error('query config was not captured');
     await expect(queryConfig.queryFn()).rejects.toThrow('処方受付の取得に失敗しました');
   });
 

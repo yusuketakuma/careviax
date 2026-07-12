@@ -307,12 +307,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/prescriptions/intake/intake-triage-content.tsx",
       "counts": {
         "stringFallback": 2
@@ -320,12 +314,6 @@
     },
     {
       "path": "src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
-      "path": "src/app/(dashboard)/prescriptions/prescription-inline-detail.tsx",
       "counts": {
         "stringFallback": 1
       }

@@ -25,57 +25,10 @@ import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import { SOURCE_LABELS } from './new/prescription-form.shared';
 import {
   CYCLE_STATUS_CONFIG,
-  type InquiryRecord,
+  prescriptionIntakeDetailResponseSchema,
+  type PrescriptionIntakeDetail,
   type PrescriptionLine,
 } from './prescription.shared';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type IntakeDetail = {
-  id: string;
-  display_id: string | null;
-  cycle_id: string;
-  source_type: string;
-  prescribed_date: string;
-  prescriber_name: string | null;
-  prescriber_institution: string | null;
-  prescriber_institution_id: string | null;
-  prescriber_institution_ref: {
-    id: string;
-    name: string;
-    institution_code: string | null;
-    phone: string | null;
-    fax: string | null;
-  } | null;
-  prescription_expiry_date: string | null;
-  original_document_url: string | null;
-  refill_remaining_count: number | null;
-  refill_next_dispense_date: string | null;
-  split_dispense_total: number | null;
-  split_dispense_current: number | null;
-  split_next_dispense_date: string | null;
-  created_at: string;
-  lines: PrescriptionLine[];
-  cycle: {
-    id: string;
-    display_id: string | null;
-    overall_status: string;
-    patient_id: string;
-    case_id: string;
-    case_: {
-      patient: {
-        id: string;
-        name: string;
-        name_kana: string;
-        birth_date: string | null;
-        gender: string | null;
-      };
-    };
-    inquiries: InquiryRecord[];
-  };
-};
 
 const INQUIRY_RESULT_CONFIG: Record<string, { label: string; role: StatusRole }> = {
   changed: { label: '処方変更', role: 'info' },
@@ -175,10 +128,12 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
       const res = await fetch(buildPrescriptionIntakeApiPath(intakeId), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data?: IntakeDetail }>(res, '取得失敗');
-      if (!payload.data || typeof payload.data.id !== 'string') {
-        throw new Error('取得失敗');
-      }
+      const fallbackMessage = '取得失敗';
+      const payload = await readApiJson<{ data: PrescriptionIntakeDetail }>(res, {
+        fallbackMessage,
+        schema: prescriptionIntakeDetailResponseSchema,
+      });
+      if (payload.data.id !== intakeId) throw new Error(fallbackMessage);
       return payload.data;
     },
     enabled: !!orgId && !!intakeId,
