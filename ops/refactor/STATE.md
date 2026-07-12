@@ -51,6 +51,34 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZRESIDUALCHARTSTRICT patient residual-medication chart reader (VERIFY_REQUIRED, 2026-07-12; pending commit/push and shared clean-capacity build).
+  - current task / root cause:
+    Patient detailの残薬推移chartが`GET /api/residual-medications?patient_id=...&limit=100`を
+    compile-time castだけで読み、legacy root、負/非整数余剰日数、不正日時、重複record、provider ordering
+    driftをJST日次集計へ流し得た。ProviderはcanVisit、assignment/org scope、no-store、created_at昇順、
+    requested take=100を既に強制している。
+  - implementation / medical-safety boundary:
+    Exact `{ data }` chart response schemaを追加し、最大100件、bounded identity/drug name、nullable non-negative
+    integer excess days、ISO timestamp、identity一意、実時刻ベースの単調昇順を検証した。Provider rowから
+    chartが使わないremaining quantity、patient/provider fieldsをstripしてquery cacheを最小化した。
+    残薬write、残数/単位/余剰日数計算、assignment/tenant、JST grouping、7日threshold、表示・retryは
+    変更していない。Visual reconstructionではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/components/features/patients/residual-medication-chart-response-schema.ts`,
+    `src/components/features/patients/residual-medication-chart.tsx`,
+    `src/components/features/patients/residual-medication-chart.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/provider Vitest passed 2 files / 31 tests. Exact ESLint/Prettier and diff-check passed.
+    `pnpm client-json-schema:check` passed at 202 schema-backed / 169 allowlisted schema-less calls / 59 files;
+    frontend contract, module boundary, aggregate typecheck, 8GB no-unused typecheck, client PHI-log, API response
+    shape, and colors passed. Full build was NOT_EXECUTED because the shared clean-capacity gate remains unresolved;
+    no generated cache was deleted or modified.
+  - security / performance / remaining:
+    Malformed PHI-adjacent chart input cannot fabricate negative trends, invalid dates, or duplicate totals. Query count,
+    take=100, polling, render shape, and dependencies are unchanged; cached fields are reduced. A clean-capacity runner
+    must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZSTRUCTCARESTRICT patient structured-care active-state reader (VERIFY_REQUIRED, 2026-07-12; implementation `769528a2f`, ledger `78fc3f7c2`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Patient detailの在宅医療処置・麻薬panelがcompile-time `PatientStructuredCareList` castだけを信頼し、

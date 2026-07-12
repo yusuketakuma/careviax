@@ -8,13 +8,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 import { ErrorState } from '@/components/ui/error-state';
 import { SkeletonRows } from '@/components/ui/loading';
-
-type ResidualRecord = {
-  id: string;
-  drug_name: string;
-  excess_days: number | null;
-  created_at: string;
-};
+import { residualMedicationChartResponseSchema } from './residual-medication-chart-response-schema';
 
 type ChartDataPoint = {
   date: string;
@@ -33,7 +27,10 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
       const res = await fetch(`/api/residual-medications?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: ResidualRecord[] }>(res, '残薬データの取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '残薬データの取得に失敗しました',
+        schema: residualMedicationChartResponseSchema,
+      });
     },
     enabled: !!orgId && !!patientId,
   });

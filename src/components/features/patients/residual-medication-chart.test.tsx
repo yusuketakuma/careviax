@@ -80,6 +80,103 @@ describe('ResidualMedicationChart', () => {
     }
   });
 
+  it('validates and minimizes residual medication records before chart aggregation', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    let capturedQuery: { queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation((config: { queryFn: () => Promise<unknown> }) => {
+      capturedQuery = config;
+      return { data: { data: [] }, isLoading: false };
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: [
+            {
+              id: 'residual_1',
+              drug_name: '薬A',
+              excess_days: 3,
+              created_at: '2026-06-11T23:00:00.000Z',
+              remaining_quantity: 12,
+              patient_id: 'provider-only-patient',
+            },
+          ],
+        }),
+      ),
+    );
+
+    try {
+      render(<ResidualMedicationChart patientId="pt_1" />);
+
+      await expect(capturedQuery?.queryFn()).resolves.toEqual({
+        data: [
+          {
+            id: 'residual_1',
+            drug_name: '薬A',
+            excess_days: 3,
+            created_at: '2026-06-11T23:00:00.000Z',
+          },
+        ],
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('rejects malformed successful residual medication payloads before chart aggregation', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    let capturedQuery: { queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation((config: { queryFn: () => Promise<unknown> }) => {
+      capturedQuery = config;
+      return { data: { data: [] }, isLoading: false };
+    });
+    render(<ResidualMedicationChart patientId="pt_1" />);
+
+    const payloads = [
+      { residual_medications: [] },
+      {
+        data: [
+          {
+            id: 'residual_1',
+            drug_name: '薬A',
+            excess_days: -1,
+            created_at: '2026-06-12T00:00:00.000Z',
+          },
+        ],
+      },
+      {
+        data: [
+          {
+            id: 'residual_1',
+            drug_name: '薬A',
+            excess_days: 1,
+            created_at: '2026-06-12T00:00:00.000Z',
+          },
+          {
+            id: 'residual_1',
+            drug_name: '薬A',
+            excess_days: 2,
+            created_at: '2026-06-11T00:00:00.000Z',
+          },
+        ],
+      },
+    ];
+
+    try {
+      for (const payload of payloads) {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn(async () => jsonResponse(payload)),
+        );
+        await expect(capturedQuery?.queryFn()).rejects.toThrow('残薬データの取得に失敗しました');
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
   it('uses an announced skeleton instead of visible plain loading text', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({
