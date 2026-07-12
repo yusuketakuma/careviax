@@ -1,5 +1,7 @@
 import type { ImpactQueueKey } from './drug-master-formulary-view-model';
 
+export type { DrugMasterImportLog } from './drug-master-content-contracts';
+
 export type DrugMasterRow = {
   id: string;
   yj_code: string;
@@ -24,20 +26,6 @@ export type DrugMasterRow = {
   lasa_group_key: string | null;
   max_administration_days: number | null;
   stock_config: PharmacyDrugStockConfig | null;
-};
-
-export type DrugMasterImportLog = {
-  id: string;
-  source: 'ssk' | 'pmda' | 'mhlw_price' | 'mhlw_generic' | 'hot' | 'manual_clinical';
-  imported_at: string;
-  record_count: number;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  error_log: string | null;
-  source_url: string | null;
-  source_file_hash: string | null;
-  source_published_at: string | null;
-  import_mode: string | null;
-  change_summary: unknown | null;
 };
 
 export type ImportAction = 'ssk' | 'mhlw-price' | 'mhlw-generic' | 'hot' | 'pmda';

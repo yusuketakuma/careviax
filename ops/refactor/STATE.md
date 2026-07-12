@@ -46655,3 +46655,26 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   workspace contract, four reader adapters, regressions, client-schema ratchet, Plans, and this ledger entry. It was
   pushed to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal
   artifacts were excluded, and the feature branch does not match the `main`-only production deploy trigger.
+
+## 2026-07-12 API-CONTRACT-001FZDRUGIMPORTSTRICT — drug-master import observability contracts (DONE)
+
+- current task / root cause:
+  The drug-master admin screen compile-time cast the import freshness/status and import-log GET responses. A missing
+  source, impossible coverage percentage, inconsistent recent-run counters, invalid enum/timestamp, or duplicate log
+  could therefore enter the operational freshness dashboard. Import-log persistence timestamps not consumed by the
+  screen were also retained in React Query cache.
+- implementation / verification:
+  Promoted the import-status type to an executable shared schema and added a consumed import-log response schema.
+  Status parsing now requires all six import sources exactly once, bounds coverage to 0–100, validates nonnegative
+  counts, recent failure-count consistency, paired latest status/timestamp, source metadata, freshness, and checked
+  timestamps. Log parsing validates source/status/count/date fields and unique IDs while stripping provider-only
+  persistence timestamps before caching. Existing endpoints, filters, headers, provider projections, API error
+  messages, and dashboard rendering remain unchanged. Four regressions failed before implementation; content and
+  both provider suites passed 3 files / 135 tests afterward. Exact ESLint/Prettier, aggregate typecheck, no-unused
+  typecheck, API response-shape, frontend contract, client PHI-log/display, module-boundary, active Plans,
+  client-schema, and diff gates passed. The client-schema ratchet improved from 131 schema-backed / 243 allowlisted
+  schema-less / 92 files to 133 / 241 / 92. Full build was not repeated after the unchanged compile-stage shared-memory
+  limitation; there is no new build hypothesis. No import execution, provider, DB, auth/authz, tenant, audit, clinical
+  data, mutation, or visual layout changed. Browser and image generation were omitted because this is a non-visual
+  parser/cache-minimization repair covered at direct query-function and provider boundaries. Rollback is the shared
+  status schema, local log schema, two reader adapters, regressions, and client-schema ratchet hunk.

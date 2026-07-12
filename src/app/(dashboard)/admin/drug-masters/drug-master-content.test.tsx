@@ -3072,6 +3072,155 @@ describe('DrugMasterContent supporting-query fetch-error handling', () => {
     }
   }
 
+  function buildImportStatus(overrides: Record<string, unknown> = {}) {
+    const sources = [
+      'ssk',
+      'mhlw_price',
+      'mhlw_generic',
+      'hot',
+      'pmda',
+      'manual_clinical',
+    ] as const;
+    return {
+      sources: sources.map((source) => ({
+        source,
+        label: source,
+        is_free: source === 'ssk' || source === 'mhlw_price' || source === 'mhlw_generic',
+        threshold_days: 30,
+        last_success: null,
+        last_failure: null,
+        recent_runs_30d: {
+          total: 0,
+          failed: 0,
+          failure_streak: 0,
+          latest_status: null,
+          latest_imported_at: null,
+        },
+        freshness: 'never',
+      })),
+      totals: {
+        drug_master_count: 100,
+        drug_package_count: 80,
+        drug_package_coverage: 80,
+        hot_code_coverage: 60,
+        package_insert_count: 50,
+        interaction_count: 40,
+        active_alert_rule_count: 30,
+        generic_mapping_count: 20,
+      },
+      checked_at: '2026-07-12T00:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  function buildImportLog(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'log_1',
+      source: 'ssk',
+      imported_at: '2026-07-12T00:00:00.000Z',
+      record_count: 100,
+      status: 'completed',
+      error_log: null,
+      source_url: 'https://example.test/source.csv',
+      source_file_hash: 'hash_1',
+      source_published_at: '2026-07-11T00:00:00.000Z',
+      import_mode: 'full',
+      change_summary: null,
+      ...overrides,
+    };
+  }
+
+  function queryFnFor(queryName: string) {
+    const option = capturedQueryOptions.find((config) => config.queryKey[0] === queryName);
+    expect(option?.queryFn).toBeTruthy();
+    return option!.queryFn!;
+  }
+
+  it('rejects impossible drug-master import coverage metrics', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: buildImportStatus({
+            totals: {
+              ...buildImportStatus().totals,
+              drug_package_coverage: 101,
+            },
+          }),
+        }),
+      ),
+    );
+    render(<DrugMasterContent />);
+
+    try {
+      await expect(queryFnFor('drug-master-status')()).rejects.toThrow(
+        'マスターステータスの取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a drug-master import status response with a missing source', async () => {
+    const status = buildImportStatus();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ data: { ...status, sources: status.sources.slice(0, 5) } })),
+    );
+    render(<DrugMasterContent />);
+
+    try {
+      await expect(queryFnFor('drug-master-status')()).rejects.toThrow(
+        'マスターステータスの取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects malformed drug-master import log timestamps', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({ data: [buildImportLog({ imported_at: 'not-a-timestamp' })] }),
+      ),
+    );
+    render(<DrugMasterContent />);
+
+    try {
+      await expect(queryFnFor('drug-master-import-logs')()).rejects.toThrow(
+        '取込履歴の取得に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('strips unconsumed import-log persistence timestamps before query caching', async () => {
+    const log = buildImportLog();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: [
+            {
+              ...log,
+              created_at: '2026-07-12T00:00:00.000Z',
+              updated_at: '2026-07-12T00:00:00.000Z',
+            },
+          ],
+        }),
+      ),
+    );
+    render(<DrugMasterContent />);
+
+    try {
+      await expect(queryFnFor('drug-master-import-logs')()).resolves.toEqual({ data: [log] });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('normalizes the current drug-master meta page and rejects legacy root cursor fields', async () => {
     const currentRow = {
       id: 'drug_1',

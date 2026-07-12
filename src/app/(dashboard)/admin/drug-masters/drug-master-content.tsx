@@ -70,7 +70,7 @@ import {
   buildPharmacyDrugStockUsageMismatchApiPath,
 } from '@/lib/pharmacy-drug-stocks/api-paths';
 import { PageScaffold } from '@/components/layout/page-scaffold';
-import type { DrugMasterImportStatusResponse } from '@/types/drug-master-import-status';
+import { drugMasterImportStatusResponseSchema } from '@/types/drug-master-import-status';
 import {
   buildBulkPreviewViewModel,
   buildDrugMasterFilterViewModel,
@@ -85,6 +85,7 @@ import {
 import { baseColumns } from './drug-master-content-columns';
 import { DrugMasterDetailSheet } from './drug-master-detail-sheet';
 import { FormularyOperationsPanel } from './drug-master-formulary-operations-panel';
+import { drugMasterImportLogsResponseSchema } from './drug-master-content-contracts';
 import {
   CATEGORY_OPTIONS,
   CLIPBOARD_COPY_ERROR_MESSAGE,
@@ -551,10 +552,10 @@ function DrugMasterOperationalContent({
       const res = await fetch('/api/drug-master-imports/status', {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: DrugMasterImportStatusResponse }>(
-        res,
-        'マスターステータスの取得に失敗しました',
-      );
+      const payload = await readApiJson(res, {
+        fallbackMessage: 'マスターステータスの取得に失敗しました',
+        schema: drugMasterImportStatusResponseSchema,
+      });
       return payload.data;
     },
     enabled: !!orgId,
@@ -575,7 +576,10 @@ function DrugMasterOperationalContent({
       const res = await fetch(`/api/drug-master-import-logs?${logParams}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: DrugMasterImportLog[] }>(res, '取込履歴の取得に失敗しました');
+      return readApiJson(res, {
+        fallbackMessage: '取込履歴の取得に失敗しました',
+        schema: drugMasterImportLogsResponseSchema,
+      });
     },
     enabled: !!orgId,
     staleTime: 300_000,
