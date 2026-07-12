@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZHANDOFFSTRICT handoff board/task/comment readers (VERIFY_REQUIRED, 2026-07-13; implementation `2f06c5b3f`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZHANDOFFSTRICT handoff board/task/comment readers (VERIFY_REQUIRED, 2026-07-13; implementation `2f06c5b3f`, ledger `d95e3ff28`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Handoff Workspaceに残るboard、pending confirmation/supervision tasks、recent comments 3 GET readersはcompile-time
     castだけで、duplicate/reordered/legacy board items、progress/aggregate drift、truncated/wrong-type/unrelated tasks、
