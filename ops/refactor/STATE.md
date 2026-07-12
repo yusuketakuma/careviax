@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZCAPTURESTRICT visit capture readers (VERIFY_REQUIRED, 2026-07-13; implementation ready; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCAPTURESTRICT visit capture readers (VERIFY_REQUIRED, 2026-07-13; implementation `707081cb8`; shared clean-capacity build pending).
   - current task / root cause:
     Visit Captureのpatient-name detail raw JSON、patient safety header、visit-end PATCH結果readersはmanual/compile-time
     extractionだけで、別患者、不正/欠損safety、別record、未反映version/ended-atを成功扱いし、患者安全tag表示・撮影許可・
