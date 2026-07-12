@@ -51,6 +51,31 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZDISPENSEREADSTRICT dispensing workbench read readers (VERIFY_REQUIRED, 2026-07-13; implementation `ba43fdda8`; shared clean-capacity build pending).
+  - current task / root cause:
+    Dispensing Workbenchの患者一覧、task workbench、set calendarは同一のschema-less generic GET readerを通り、別task/患者/plan、
+    不正な工程filter/count/cursor、clinical/count row、calendar/generation/classification driftを成功扱いし、調剤・監査・セットの
+    PHI-bearing operational stateとwrite contextへ流し得た。
+  - implementation / safety boundary:
+    3 GET経路をrequest-aware strict schemasへ接続し、患者一覧の工程/include-set-plan/limit/count/cursor、workbenchのrequested
+    task/patientと麻薬集計、calendarのrequested plan/day/slot/narcotic classificationを検証した。別task、別plan、患者件数driftの
+    回帰を追加。Write mutations、provider query、DB、auth/assignment/tenant/audit/UIは変更していない。非visual response parser/
+    PHI境界のため`gpt-image-2`は使用していない。gbrain recallは直接関連する既存判断を返さず、live repo/providerを優先した。
+  - files:
+    `src/components/features/dispense-workbench/dispensing-workbench-response-schemas.ts`,
+    `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`,
+    `src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/patients/workbench/calendar provider Vitest passed 4 files / 74 tests. Exact zero-warning ESLint, focused Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (291 backed / 73 allowlisted / 14 files), module boundary, client PHI-log,
+    API response shape, colors, and diff-check passed. Full build remains NOT_EXECUTED because only 226 MiB is free while existing `.next`
+    consumes 16 GiB; shared generated/user files were not deleted.
+  - security / performance / remaining:
+    Cross-task/cross-patient/cross-plan and malformed aggregate payloads now fail closed before PHI-bearing state/write anchors update.
+    Network/DB calls, rendering, and dependencies are unchanged. The same adapter's generic write reader remains 1 allowlisted call and is the
+    next schema slice. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZCAPTURESTRICT visit capture readers (VERIFY_REQUIRED, 2026-07-13; implementation `707081cb8`; shared clean-capacity build pending).
   - current task / root cause:
     Visit Captureのpatient-name detail raw JSON、patient safety header、visit-end PATCH結果readersはmanual/compile-time
