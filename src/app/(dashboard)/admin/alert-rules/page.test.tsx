@@ -698,4 +698,130 @@ describe('AlertRulesPage', () => {
     expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
     expect(JSON.parse(init.body as string)).toEqual({ cycleId: 'cycle_42' });
   });
+
+  it('rejects a successful alert-rule list with inconsistent visible counts', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'rule_1',
+                  org_id: 'org_1',
+                  alert_type: 'interaction',
+                  condition: {},
+                  severity: 'warning',
+                  message: '相互作用候補を確認してください',
+                  is_active: true,
+                  updated_at: '2026-06-19T10:00:00.000Z',
+                },
+              ],
+              meta: buildDrugAlertRulesMeta({
+                total_count: 2,
+                visible_count: 2,
+                hidden_count: 0,
+              }),
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('処方安全アラートルールを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('相互作用候補を確認してください')).toBeNull();
+  });
+
+  it('rejects a successful alert-rule delete response for another rule', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/drug-alert-rules' && !init?.method) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'rule_1',
+                org_id: 'org_1',
+                alert_type: 'interaction',
+                condition: {},
+                severity: 'warning',
+                message: '相互作用候補を確認してください',
+                is_active: true,
+                updated_at: '2026-06-19T10:00:00.000Z',
+              },
+            ],
+            meta: buildDrugAlertRulesMeta(),
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/drug-alert-rules/rule_1' && init?.method === 'DELETE') {
+        return new Response(JSON.stringify({ data: { id: 'rule_other' } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ message: 'Unhandled request' }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: '相互作用 の処方安全アラートルールを削除' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('削除に失敗しました'));
+    expect(toast.success).not.toHaveBeenCalledWith('処方安全アラートルールを削除しました');
+  });
+
+  it('rejects a successful CDS test response with an invalid alert severity', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/drug-alert-rules' && !init?.method) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'rule_1',
+                org_id: 'org_1',
+                alert_type: 'interaction',
+                condition: {},
+                severity: 'warning',
+                message: '相互作用候補を確認してください',
+                is_active: true,
+                updated_at: '2026-06-19T10:00:00.000Z',
+              },
+            ],
+            meta: buildDrugAlertRulesMeta(),
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/cds/check' && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            data: {
+              alerts: [{ type: 'interaction', severity: 'danger', message: '不正な重要度' }],
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ message: 'Unhandled request' }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+    renderPage();
+
+    await screen.findByRole('button', { name: '相互作用 の処方安全アラートルールを削除' });
+    fireEvent.change(screen.getByLabelText('サイクル ID'), { target: { value: 'cycle_42' } });
+    fireEvent.click(screen.getByRole('button', { name: 'テスト実行' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('テスト実行に失敗しました'));
+    expect(toast.success).not.toHaveBeenCalledWith('テスト実行完了: 1件のアラート');
+  });
 });

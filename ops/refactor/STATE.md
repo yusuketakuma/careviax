@@ -46919,3 +46919,30 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   tests, four callsite migrations, client-schema inventory, Plans, and this ledger entry. It was pushed to
   `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
   were excluded, and the feature branch does not match the `main`-only production deploy trigger.
+
+## 2026-07-12 API-CONTRACT-001FZALERTRULESTRICT — alert-rule and CDS test contracts (DONE)
+
+- current task / root cause:
+  The alert-rule admin page compile-time cast its list, delete, and CDS test responses. A list containing another
+  organization's rule, duplicate IDs, inconsistent visible/hidden/truncated counts, a DELETE result for another rule,
+  or an invalid CDS severity/message could therefore be rendered or announced as successful. The CDS test mutation
+  also retained full alert messages/details although the page only displays the number of returned alerts.
+- implementation / verification:
+  Added consumed runtime schemas for all three readers. The list schema validates rule enums, condition object,
+  timestamps, unique IDs, exact visible/hidden/total/truncated arithmetic, limit, and count basis; the reader rejects
+  non-global rules outside the active organization. DELETE parsing requires the requested ID. CDS parsing validates
+  type, clinical severity enum, message, and optional details, then retains only `alertCount` in mutation state. Three
+  regressions failed before implementation and passed afterward; the page plus list/detail/CDS providers passed 4
+  files / 43 tests. Aggregate and 8 GB no-unused typechecks passed. Exact ESLint/Prettier, API response-shape,
+  frontend contract, client PHI-log/display, module-boundary, active Plans, client-schema, and diff gates passed. The
+  client-schema ratchet improved from 151 schema-backed / 219 allowlisted schema-less / 91 files to 154 / 216 / 90.
+  Full build was not repeated after the existing compile-stage memory limitation; no new build hypothesis remains
+  after both typecheck gates passed. No provider, CDS calculation, DB, auth/authz, tenant, audit semantics, mutation,
+  clinical rule definition, or visual layout changed. Browser and image generation were omitted because this is a
+  non-visual response-contract, organization-boundary, identity, and state-minimization repair covered at consumer and
+  provider boundaries. Rollback is the three schemas, reader adapters, inferred rule type, three regressions, and
+  client-schema ratchet hunk.
+- commit / push:
+  Pending scoped commit and push to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes
+  and untracked personal artifacts remain excluded, and the feature branch does not match the `main`-only production
+  deploy trigger.

@@ -39,33 +39,100 @@ import { ActionRail } from '@/components/ui/action-rail';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 
-type DrugAlertRule = {
-  id: string;
-  org_id: string | null;
-  alert_type: string;
-  condition: Record<string, unknown>;
-  severity: 'critical' | 'warning' | 'info';
-  message: string;
-  is_active: boolean;
-  updated_at: string;
-};
+const drugAlertTypeSchema = z.enum([
+  'interaction',
+  'duplicate',
+  'allergy_cross',
+  'renal_dose',
+  'pim_elderly',
+  'high_risk',
+  'narcotic',
+  'max_days',
+]);
 
-type DrugAlertRulesResponse = {
-  data: DrugAlertRule[];
-  meta: {
-    total_count: number;
-    visible_count: number;
-    hidden_count: number;
-    truncated: boolean;
-    count_basis: 'drug_alert_rules';
-    filters_applied: { alert_type: string | null };
-    limit: number;
-  };
-};
+const drugAlertSeveritySchema = z.enum(['critical', 'warning', 'info']);
 
-type DrugAlertRuleDeleteResponse = {
-  data: { id: string };
-};
+const drugAlertRuleSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    org_id: z.string().trim().min(1).nullable(),
+    alert_type: drugAlertTypeSchema,
+    condition: z.record(z.string(), z.unknown()),
+    severity: drugAlertSeveritySchema,
+    message: z.string().trim().min(1),
+    is_active: z.boolean(),
+    updated_at: z.string().datetime(),
+  })
+  .strip();
+
+type DrugAlertRule = z.infer<typeof drugAlertRuleSchema>;
+
+const drugAlertRulesResponseSchema = z
+  .object({
+    data: z.array(drugAlertRuleSchema),
+    meta: z
+      .object({
+        total_count: z.number().int().nonnegative(),
+        visible_count: z.number().int().nonnegative(),
+        hidden_count: z.number().int().nonnegative(),
+        truncated: z.boolean(),
+        count_basis: z.literal('drug_alert_rules'),
+        filters_applied: z.object({ alert_type: drugAlertTypeSchema.nullable() }).strict(),
+        limit: z.number().int().positive().max(500),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((payload, context) => {
+    const ids = new Set<string>();
+    for (const [index, rule] of payload.data.entries()) {
+      if (ids.has(rule.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['data', index, 'id'],
+          message: 'Duplicate drug alert rule id',
+        });
+      }
+      ids.add(rule.id);
+    }
+    const meta = payload.meta;
+    if (
+      meta.visible_count !== payload.data.length ||
+      meta.total_count !== meta.visible_count + meta.hidden_count ||
+      meta.truncated !== meta.hidden_count > 0 ||
+      meta.visible_count > meta.limit
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['meta'],
+        message: 'Drug alert rule list counts are inconsistent',
+      });
+    }
+  });
+
+const drugAlertRuleDeleteResponseSchema = z
+  .object({ data: z.object({ id: z.string().trim().min(1) }).strict() })
+  .strict();
+
+const cdsTestResponseSchema = z
+  .object({
+    data: z
+      .object({
+        alerts: z.array(
+          z
+            .object({
+              type: z.string().trim().min(1),
+              severity: drugAlertSeveritySchema,
+              message: z.string().trim().min(1),
+              details: z.record(z.string(), z.unknown()).optional(),
+            })
+            .strip(),
+        ),
+      })
+      .strict(),
+  })
+  .strict()
+  .transform(({ data }) => ({ alertCount: data.alerts.length }));
 
 type AlertRuleForm = {
   id: string;
@@ -215,7 +282,14 @@ export default function AlertRulesPage() {
       const res = await fetch(DRUG_ALERT_RULES_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<DrugAlertRulesResponse>(res, '処方安全アラートルールの取得に失敗しました');
+      const payload = await readApiJson(res, {
+        fallbackMessage: '処方安全アラートルールの取得に失敗しました',
+        schema: drugAlertRulesResponseSchema,
+      });
+      if (payload.data.some((rule) => rule.org_id !== null && rule.org_id !== orgId)) {
+        throw new Error('処方安全アラートルールの取得に失敗しました');
+      }
+      return payload;
     },
     enabled: !!orgId,
     staleTime: 300_000,
@@ -272,10 +346,14 @@ export default function AlertRulesPage() {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<DrugAlertRuleDeleteResponse>(
-        res,
-        '処方安全アラートルールの削除に失敗しました',
-      );
+      const payload = await readApiJson(res, {
+        fallbackMessage: '処方安全アラートルールの削除に失敗しました',
+        schema: drugAlertRuleDeleteResponseSchema,
+      });
+      if (payload.data.id !== id) {
+        throw new Error('処方安全アラートルールの削除に失敗しました');
+      }
+      return payload;
     },
     onSuccess: async (_data, deletedId) => {
       toast.success('処方安全アラートルールを削除しました');
@@ -297,13 +375,13 @@ export default function AlertRulesPage() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ cycleId: testCycleId }),
       });
-      const payload = await readApiJson<{
-        data: { alerts: Array<{ message: string; severity: string }> };
-      }>(res, '処方安全チェックの実行に失敗しました');
-      return payload.data;
+      return readApiJson(res, {
+        fallbackMessage: '処方安全チェックの実行に失敗しました',
+        schema: cdsTestResponseSchema,
+      });
     },
     onSuccess: (payload) => {
-      toast.success(`テスト実行完了: ${payload.alerts.length}件のアラート`);
+      toast.success(`テスト実行完了: ${payload.alertCount}件のアラート`);
     },
     onError: (error) => {
       toast.error(messageFromError(error, 'テスト実行に失敗しました'));
