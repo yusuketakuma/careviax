@@ -49,8 +49,8 @@
 ## API-CONTRACT-001FZOPSINSIGHTSTRICT
 
 - Commit Group: `API-CONTRACT-001FZOPSINSIGHTSTRICT`
-- Commit: pending
-- Push Status: NOT_STARTED
+- Commit: `47fcaf80f`
+- Push Status: PUSHED
 - Branch: `agent/continuous-improvement-20260712`
 - Scope: admin/operations-insights aggregate response schema, consumer regressions, and client-schema allowlist ratchet.
 - Implementation: validate strict `{ data }` root, chronological unique month buckets, bounded counts, unique supported process keys, non-negative durations, and non-empty bounded hints; preserve provider aggregation, empty state, query error, and visual derivation behavior.
@@ -59,4 +59,4 @@
 - Verification: focused 2 files / 14 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and Next build passed; client-schema inventory is 164 schema-backed / 209 allowlisted / 85 files. Build emitted existing CSS optimizer warnings and exited 0; filesystem pressure was recorded in STATE.
 - Rollback: revert the operations-insights response schema, consumer adapter, regressions, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
-- Push evidence: pending scoped commit.
+- Push evidence: `cec54a5d9..47fcaf80f` fast-forward push succeeded; local and remote heads match.

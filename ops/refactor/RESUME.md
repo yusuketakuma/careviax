@@ -7,28 +7,28 @@
 - Upstream: `origin/agent/continuous-improvement-20260712`
 - Remote: `origin`
 - Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
-- Current Phase: implementation planning / contract hardening
-- Current Task ID: `API-CONTRACT-001FZOPSINSIGHTSTRICT`
-- Current Task Status: IN_PROGRESS
-- Current Commit Group: `API-CONTRACT-001FZOPSINSIGHTSTRICT`
+- Current Phase: incremental rescan / next-task selection
+- Current Task ID: `API-CONTRACT-001-RESCAN`
+- Current Task Status: READY_FOR_RESCAN
+- Current Commit Group: `API-CONTRACT-001-RESCAN`
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
-- Last Safe Checkpoint: Operations focused tests, static contract gates, typecheck, no-unused, lint, diff-check, and build passed; only the scoped landing remains.
-- Last Completed Action: Implemented the operations-insights schema, passed 2 files / 14 focused tests, and completed the serialized Next.js build.
-- Current Operation: final diff review and scoped landing for the operations-insights contract slice.
-- Exact Next Action: Inspect the operations-insights-owned diff, stage only owned paths, commit, push, and verify the remote branch.
-- Exact Next Command: `git diff --check && git diff --stat && git status --short --untracked-files=all`
-- Changed Files: current operations-insights consumer/test, analytics response schema, client schema allowlist, Plans, STATE, and checkpoint/verification ledgers.
-- Staged Files: explicit operations implementation, test, response schema, allowlist, Plans, STATE, and checkpoint/verification ledgers only; unrelated harness-memory and personal artifacts remain unstaged.
+- Last Safe Checkpoint: Operations focused tests, static contract gates, typecheck, no-unused, lint, diff-check, build, scoped commit, and push passed.
+- Last Completed Action: Landed operations-insights reader hardening as `47fcaf80f` and verified remote head plus zero ahead/behind.
+- Current Operation: rescan remaining API contract reader debt and select the next disjoint safe slice.
+- Exact Next Action: Run the client-schema inventory and inspect remaining API-CONTRACT allowlist entries before choosing the next task.
+- Exact Next Command: `pnpm client-json-schema:check && rg -n -C 5 'API-CONTRACT|schema-less|stringFallback' Plans.md ops/refactor tools/client-json-schema-allowlist.json`
+- Changed Files: current operations-insights slice is landed; next work must preserve the inherited harness-memory and personal artifacts.
+- Staged Files: explicit closure ledgers Plans, STATE, RESUME, RUN_LOCK, SESSION_SUMMARY, CHANGE_LOG, and SCAN_LOG only; unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
 - Unpushed Commits: none
-- Push Status: PUSHED for previous `API-CONTRACT-001FZSTAFFMETRICSSTRICT` (`6e1454401`); current operations slice pending scoped commit.
+- Push Status: PUSHED for `API-CONTRACT-001FZOPSINSIGHTSTRICT` (`47fcaf80f`)
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
 - Commands Completed: operations focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; typecheck; no-unused; lint; diff-check; build.
-- Commands Pending: final diff review, scoped commit/push, closure-ledger update, and post-push status.
-- Tests Completed: operations slice 2 files / 14 tests passed; staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, and holiday slice 2 files / 39 tests also passed.
-- Tests Pending: no focused tests pending for this slice; full suite not run.
+- Commands Pending: client-schema residual inventory, provider/consumer scan, next-slice focused validation, and scoped landing.
+- Tests Completed: operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, and holiday slice 2 files / 39 tests passed.
+- Tests Pending: no tests pending for the landed operations slice; next task not selected yet.
 - Build State: PASS for current operations slice; Next 16.2.9 compiled in 5.0 minutes, TypeScript finished in 67 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0; filesystem peaked at 99% usage during compilation and no cleanup was performed.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.

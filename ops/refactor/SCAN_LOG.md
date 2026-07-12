@@ -44,3 +44,6 @@
   / 86 files.
 - Planned fix: strict envelope, chronological/unique bucket checks, process identity/duration bounds, hint bounds,
   malformed 2xx regressions, and one allowlist ratchet removal. Provider/DB/auth/UI behavior stays fixed.
+- Landed: implementation commit `47fcaf80f` passed 2 files / 14 focused tests, all contract/type/lint/diff gates, and
+  serialized Next build; client-schema inventory moved to 164 schema-backed / 209 allowlisted / 85 files. Next scan:
+  remaining API-CONTRACT allowlist entries and patients board cursor residual.

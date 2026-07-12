@@ -163,7 +163,7 @@
 
 **Current execution slice (2026-07-12)**:
 
-- `API-CONTRACT-001FZOPSINSIGHTSTRICT`: **IN_PROGRESS**。admin/operations-insights の5か月訪問 bucket・工程 duration GET を consumed runtime schema へ接続し、unknown root、月bucket重複/逆順、負数 count、duplicate process、invalid duration、過剰 hints が aggregate query state へ流入させない。Acceptance: (1) consumer が strict schema-backed reader を使う、(2) current provider shape と empty-state shape を検証する、(3) malformed 2xx regression が fail-closed、(4) relevant tests / typecheck / lint / contract gates を通し scoped commit/push を記録する。Provider/DB/auth/UI semantics は変更しない。
+- `API-CONTRACT-001FZOPSINSIGHTSTRICT` は landing 済み。次は残存 `API-CONTRACT-001` allowlist と patients board cursor residual を再スキャンする。
 
 **Implementation-ready queue — 未実装 / Partial 残スコープのみ**:
 
@@ -253,6 +253,7 @@
 - `API-CONTRACT-001FZBUSINESSHOLIDAYSTRICT`: business-holidays の一覧を org/date/site/ordering/duplicate/cap 整合付き runtime schema へ接続し、business-holidays と shifts の consumers が malformed・cross-org・truncated 2xx payload を営業日/シフト状態へ流入させないよう fail-closed 化（commit `c4d0b015e`、feature branch push済み）。
 - `API-CONTRACT-001FZJOBLISTSTRICT`: admin/jobs の固定 job 定義・latest run/export DTO を strict runtime schema へ接続し、定義重複、unsafe endpoint、別job run、未定義 status、invalid count/timestamp、raw error metadata を operational state へ流入させない fail-closed reader 化（commit `1435465a2`、feature branch push済み）。
 - `API-CONTRACT-001FZSTAFFMETRICSSTRICT`: admin/staff KPI の expected-month runtime schema、staff identity／summary 算術整合、KPI 数値境界、provider-only email/capacity field strip を接続し、wrong-month・duplicate・malformed 2xx が query state へ流入しない fail-closed reader 化（commit `6e1454401`、feature branch push済み）。
+- `API-CONTRACT-001FZOPSINSIGHTSTRICT`: admin/operations-insights の `{ data }` aggregate reader を strict runtime schema へ接続し、月 bucket の chronology/identity、process duration、hint bounds を検証して malformed 2xx が trend/bottleneck state へ流入しない fail-closed reader 化（commit `47fcaf80f`、feature branch push済み）。
 - `ROUTE-CTRLFLOW-RETHROW-001`: 広域 `catch` から sanitized 500 を返す10 API route / 12 handlerで、`unstable_rethrow` をfallback前に実行し、Next.jsの`redirect()` / `notFound()`等の内部制御フローを保持する契約テストを固定。
 - `SEC-EVENT-PATH-PII-SANITIZE-001`: AuditLog target/dedup pathのemail、電話、OTP、credential/opaque tokenをredactし、実在static routeの可読性とtoken-parent境界をtestで固定（commit `d084dccc8`）。
 - `PUSH-SUB-ATOMICITY-001`: push subscription POST/DELETE を `withOrgContext` 内の tx mutation に寄せ、RLS context 未適用の base Prisma write を除去（commit `db63de58a`）。
