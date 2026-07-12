@@ -283,9 +283,23 @@ describe('UsersContent', () => {
   it('delegates users and site fetches to shared path and org-header helpers', async () => {
     queryFnRunKeysMock.add('admin-users');
     queryFnRunKeysMock.add('pharmacy-sites');
-    const fetchMock = vi.fn(
-      async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
-    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const payload = String(input).startsWith('/api/pharmacists')
+        ? {
+            data: [],
+            meta: {
+              total_count: 0,
+              visible_count: 0,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'unique_users',
+              filters_applied: { site_id: null, include_collaborators: true },
+              limit: 500,
+            },
+          }
+        : { data: [] };
+      return new Response(JSON.stringify(payload), { status: 200 });
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     render(<UsersContent />);

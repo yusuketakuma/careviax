@@ -51,6 +51,38 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZADMINUSERSSTRICT admin users/site-option readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, shared clean-capacity build pending).
+  - current task / root cause:
+    Admin Usersは`include_collaborators=true` user一覧とsite optionsをcompile-time castだけで読み、legacy root、
+    duplicate identity/email、不正role/account/timestamp/capacity、meta count/query-scope driftを権限・所属編集stateへ
+    流し得た。Site readerはfull pharmacy-site provider payloadをoptions cacheへ保持していた。Pharmacists providerは
+    admin-only collaborator access、org scope、unique-user dedupe、sensitive no-storeを、sites providerはcanVisit/org
+    scopeを既に強制し、writesはstrict acknowledgement/Cognito/audit境界を持つ。
+  - implementation / identity-access boundary:
+    Shared `admin-users-response-schema`を追加し、known owner/manageable roles、account states、offset timestamps、
+    nonnegative capacities/count、bounded lists、user ID/email一意性を検証。Provider固定scopeの
+    `count_basis=unique_users`、include collaborators、site filter null、limit<=500とtotal/visible/hidden/truncated算術も
+    strict化した。Site optionsは既存`pharmacySiteOptionsResponseSchema`へ接続しfull provider fieldsをstrip。Local
+    duplicate response typesをschema inferへ置換し、fetch helper testをlive meta契約へ同期した。Writes/provider/UIは
+    変更していない。Visual reconstructionではないため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/pharmacists/admin-users-response-schema.ts`,
+    `src/lib/pharmacists/admin-users-response-schema.test.ts`,
+    `src/app/(dashboard)/admin/users/users-content.tsx`,
+    `src/app/(dashboard)/admin/users/users-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/shared schemas/providers Vitest passed 5 files / 62 tests. Exact ESLint with
+    `--max-warnings=0`, Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (223 backed / 147
+    allowlisted / 40 files), frontend contract, module boundary, client PHI-log, API response shape, colors, and
+    diff-check passed. Full build was NOT_EXECUTED because only about 2.9 GiB free remains after the shared
+    `.next/cache` capacity failure; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed/duplicate identity and wrong-scope membership metadata now fail closed before access-management UI;
+    full site metadata is not cached as options. Request/query count, dedupe, DB/provider work, invite/update/account
+    actions, auth/tenant/audit/Cognito, render behavior, and dependencies are unchanged. A clean-capacity runner must
+    complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZPHARMACYSITESTRICT admin pharmacy-site/config readers (VERIFY_REQUIRED, 2026-07-13; implementation `13c66a05c`, ledger `65e072c54`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Pharmacy Sitesは拠点一覧と選択拠点のinsurance configsをcompile-time castだけで読み、legacy root、

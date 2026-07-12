@@ -51,61 +51,17 @@ import {
   buildPharmacistApiPath,
   buildPharmacistsApiPath,
 } from '@/lib/pharmacists/api-paths';
+import {
+  adminUsersResponseSchema,
+  type AdminUser as UserItem,
+  type AdminUsersResponse,
+} from '@/lib/pharmacists/admin-users-response-schema';
 import { PHARMACY_SITES_API_PATH } from '@/lib/pharmacy-sites/api-paths';
+import {
+  pharmacySiteOptionsResponseSchema,
+  type PharmacySiteOptionsResponse,
+} from '@/lib/pharmacy-sites/response-schema';
 import { messageFromError } from '@/lib/utils/error-message';
-
-type UserItem = {
-  id: string;
-  cognito_linked: boolean;
-  name: string;
-  name_kana: string | null;
-  email: string;
-  phone: string | null;
-  role: ManageableMemberRole | 'owner';
-  site_id: string | null;
-  site_name: string | null;
-  is_active: boolean;
-  account_status: string;
-  invited_at: string | null;
-  last_invited_at: string | null;
-  activated_at: string | null;
-  deactivated_at: string | null;
-  deactivation_reason: string | null;
-  last_active_at: string | null;
-  max_daily_visits: number | null;
-  max_weekly_visits: number | null;
-  max_travel_minutes: number | null;
-  can_accept_emergency: boolean;
-  visit_specialties: string[] | null;
-  coverage_area: string[] | null;
-  can_dispense: boolean;
-  can_audit_dispense: boolean;
-  can_set: boolean;
-  can_audit_set: boolean;
-  credential_types: string[];
-  monthly_visit_count: number;
-};
-
-type UsersListResponse = {
-  data: UserItem[];
-  meta?: {
-    total_count?: number;
-    visible_count?: number;
-    hidden_count?: number;
-    truncated?: boolean;
-    count_basis?: 'memberships' | 'unique_users';
-    filters_applied?: {
-      site_id: string | null;
-      include_collaborators: boolean;
-    };
-    limit?: number;
-  };
-};
-
-type SiteOption = {
-  id: string;
-  name: string;
-};
 
 type InviteForm = {
   name: string;
@@ -334,7 +290,10 @@ export function UsersContent() {
         buildPharmacistsApiPath(new URLSearchParams({ include_collaborators: 'true' })),
         { headers: buildOrgHeaders(orgId) },
       );
-      return readApiJson<UsersListResponse>(response, 'ユーザー一覧の取得に失敗しました');
+      return readApiJson<AdminUsersResponse>(response, {
+        fallbackMessage: 'ユーザー一覧の取得に失敗しました',
+        schema: adminUsersResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -345,7 +304,10 @@ export function UsersContent() {
       const response = await fetch(PHARMACY_SITES_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: SiteOption[] }>(response, '店舗一覧の取得に失敗しました');
+      return readApiJson<PharmacySiteOptionsResponse>(response, {
+        fallbackMessage: '店舗一覧の取得に失敗しました',
+        schema: pharmacySiteOptionsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

@@ -66,12 +66,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/users/users-content.tsx",
-      "counts": {
-        "stringFallback": 2
-      }
-    },
-    {
       "path": "src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx",
       "counts": {
         "stringFallback": 5
