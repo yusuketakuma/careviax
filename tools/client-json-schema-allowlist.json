@@ -253,12 +253,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/workflow/workflow-dashboard-content.tsx",
       "counts": {
         "stringFallback": 1

@@ -51,6 +51,38 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZVOICEMEMOSTRICT voice memo visit-record detail reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`; shared clean-capacity build pending).
+  - current task / root cause:
+    Voice memoの手入力/転写をSOAP主観へ追記する経路がfull visit-record detailをcompile-time unknown castで読み、
+    legacy/mixed root、不正version/subjectiveでもpatch-body builderまで進めた。画面に不要な患者・添付等の
+    detail PHIも到達可能で、schedule/record IDをAPI pathへ直接補間していた。ProvidersはcanVisit、
+    assignment/org scope、sensitive no-storeを既に強制する。
+  - implementation / voice-PHI-integrity boundary:
+    Strict rootとminimal `{ data: { version, soap_subjective } }` projectionを追加し、positive integer version、
+    nullable bounded SOAP subjectiveを検証した。Data内のunused provider fieldsをstripし、prescription pathと
+    同じ`encodePathSegment`規律でgeneral visit-record / visit-schedule path helpersを追加。二段解決、detail GET、
+    PATCHをhelperへ接続した。Encrypted IndexedDB音声/手入力draft、MediaRecorder、STT stub、transcript append、
+    optimistic PATCH、fixed clientLog context、UIは変更していない。Visual reconstructionではないため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-response-schema.ts`,
+    `src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-response-schema.test.ts`,
+    `src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.tsx`,
+    `src/app/(dashboard)/visits/[id]/voice-memo/voice-memo-content.test.tsx`,
+    `src/lib/visits/api-paths.ts`, `src/lib/visits/api-paths.test.ts`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/providers/path/schema Vitest passed 5 files / 141 tests. Exact ESLint with `--max-warnings=0`,
+    Prettier, and scoped diff-check passed. `pnpm client-json-schema:check` passed at 213 schema-backed / 158
+    allowlisted schema-less calls / 49 files; frontend contract, module boundary, aggregate typecheck, 8GB no-unused
+    typecheck, client PHI-log, API response shape, and colors passed. Full build was NOT_EXECUTED because only 2.9 GiB
+    free remains after the shared `.next/cache` capacity failure; generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Invalid optimistic-lock/subjective state and path injection cannot reach SOAP PATCH, while unused visit-record PHI
+    is stripped before the mutation pipeline. Request count, provider query/payload, recording flow, render behavior,
+    and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZEMERGENCYROUTESTRICT emergency visit route-plan reader (VERIFY_REQUIRED, 2026-07-13; implementation `360061e21`, ledger `bf2f121e4`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Emergency route画面は確定訪問を固定した2案の移動増・訪問順を比較して採用するが、`/api/visit-routes`

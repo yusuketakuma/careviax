@@ -19,6 +19,7 @@ import {
   saveVoiceMemoManualTranscript,
 } from '@/lib/offline/voice-memo-drafts';
 import { cn } from '@/lib/utils';
+import { buildVisitRecordApiPath, buildVisitScheduleApiPath } from '@/lib/visits/api-paths';
 import {
   MAX_VOICE_MEMO_SECONDS,
   VOICE_MEMO_DEMO_DURATION_SECONDS,
@@ -34,6 +35,7 @@ import {
   pickPreferredAudioMimeType,
   type VoiceMemoPhase,
 } from './voice-memo.shared';
+import { voiceMemoVisitRecordDetailResponseSchema } from './voice-memo-response-schema';
 
 /**
  * p1_11「音声メモ・文字起こし」: 訪問中の口頭メモを録音し、端末に暗号化保存して
@@ -325,12 +327,12 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
 
       let recordId: string | null = null;
       let visitResolved = false;
-      const scheduleRes = await fetch(`/api/visit-schedules/${visitId}`, { headers });
+      const scheduleRes = await fetch(buildVisitScheduleApiPath(visitId), { headers });
       if (scheduleRes.ok) {
         visitResolved = true;
         recordId = resolveScheduleVisitRecordId(await scheduleRes.json().catch(() => null));
       } else {
-        const recordRes = await fetch(`/api/visit-records/${visitId}`, { headers });
+        const recordRes = await fetch(buildVisitRecordApiPath(visitId), { headers });
         if (recordRes.ok) {
           visitResolved = true;
           recordId = visitId;
@@ -344,17 +346,18 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
         );
       }
 
-      const detailRes = await fetch(`/api/visit-records/${recordId}`, { headers });
+      const visitRecordApiPath = buildVisitRecordApiPath(recordId);
+      const detailRes = await fetch(visitRecordApiPath, { headers });
       if (!detailRes.ok) throw new Error('訪問記録の取得に失敗しました');
-      const detailPayload = await readApiJson<{ data: unknown }>(
-        detailRes,
-        '訪問記録の取得に失敗しました',
-      );
+      const detail = await readApiJson(detailRes, {
+        fallbackMessage: '訪問記録の取得に失敗しました',
+        schema: voiceMemoVisitRecordDetailResponseSchema,
+      });
 
-      const body = buildVoiceMemoRecordPatchBody(detailPayload.data, transcript);
+      const body = buildVoiceMemoRecordPatchBody(detail, transcript);
       if (!body) throw new Error('訪問記録の取得に失敗しました');
 
-      const patchRes = await fetch(`/api/visit-records/${recordId}`, {
+      const patchRes = await fetch(visitRecordApiPath, {
         method: 'PATCH',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(body),
