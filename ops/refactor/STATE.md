@@ -46437,3 +46437,27 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   consumer/schema/tests, live ratchet, Plans, and this ledger entry. It was pushed to
   `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
   were excluded, and the feature branch does not match the `main`-only production deployment trigger.
+
+## 2026-07-12 API-CONTRACT-001FZPATEDITSTRICT — patient edit overview contract (DONE)
+
+- current task / root cause:
+  The patient edit form read the PHI-heavy overview BFF through a compile-time `PatientOverview` cast. It neither
+  validated that the returned patient ID matched the requested route patient nor bounded the fields retained in the
+  React Query cache. A malformed or mixed-root 2xx could therefore pre-populate an edit form with an invalid gender,
+  a different patient context, or unrelated overview/workspace data.
+- implementation / verification:
+  Added a strict response root and consumed-data schema for only the fields used to build edit defaults: patient
+  identity and update token, contact/insurance flags, allergy/notes, assigned staff, residence selection, case intake,
+  and scheduling preferences. The reader now reuses the canonical patient gender schema, rejects mixed roots and a
+  response ID different from the requested route patient, and strips unrelated overview/workspace fields before
+  query caching. Provider path/headers and API error-message behavior remain unchanged. Four regressions failed before
+  the fix; patient edit fetch/default and overview provider suites passed 3 files / 19 tests afterward. Exact ESLint
+  and Prettier, aggregate typecheck, no-unused typecheck, API response-shape, frontend contract, client PHI-log/display,
+  module-boundary, client-schema, and diff gates passed. The ratchet improved from 119 / 255 / 99 files to
+  120 / 254 / 98 files. `pnpm build` was attempted twice in isolation but did not complete: both runs exited during
+  webpack compile/minification without a Next diagnostic or final build artifacts; the captured second run returned
+  exit 1, `.next/diagnostics/build-diagnostics.json` remained at `buildStage: compile`, and the 16GB shared host showed
+  heavy swap pressure. This matches the existing environment-level build-memory limitation, but build is honestly
+  NOT_VERIFIED for this slice. No provider, DB, auth/authz, PHI projection, read audit, mutation, form layout, or
+  visual behavior changed. Browser and image generation were omitted because this is a non-visual parser/cache-boundary
+  repair covered at the direct query-function boundary. Rollback is the consumer schema/test/ratchet hunk.

@@ -40,6 +40,31 @@ import { PatientEditContent } from './patient-edit-content';
 
 setupDomTestEnv();
 
+function buildPatientEditPayload(patientId = 'patient_1') {
+  return {
+    id: patientId,
+    name: '患者',
+    name_kana: 'カンジャ',
+    birth_date: '1980-01-01T00:00:00.000Z',
+    gender: 'male',
+    phone: null,
+    medical_insurance_number: null,
+    care_insurance_number: null,
+    billing_support_flag: false,
+    allergy_info: null,
+    notes: null,
+    updated_at: '2026-03-30T09:00:00.000Z',
+    primary_pharmacist_id: null,
+    backup_pharmacist_id: null,
+    primary_staff_id: null,
+    backup_staff_id: null,
+    residences: [],
+    cases: [],
+    scheduling_preference: null,
+    workspace: { unused: 'must-not-enter-patient-edit-cache' },
+  };
+}
+
 describe('PatientEditContent patient overview fetch', () => {
   it('shows a patient-edit skeleton instead of a generic spinner while loading', () => {
     useOrgIdMock.mockReturnValue('org_1');
@@ -111,7 +136,9 @@ describe('PatientEditContent patient overview fetch', () => {
       },
     );
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: {} }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ data: buildPatientEditPayload(patientId) }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -197,7 +224,9 @@ describe('PatientEditContent patient overview fetch', () => {
       },
     );
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: {} }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ data: buildPatientEditPayload(hostileId) }));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -266,6 +295,83 @@ describe('PatientEditContent patient overview fetch', () => {
       render(<PatientEditContent patientId="patient_1" />);
 
       await expect(captured?.queryFn?.()).rejects.toThrow('患者編集APIからの詳細エラー');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('retains only fields consumed by patient edit defaults', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+
+    let captured: { queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation((config: { queryFn: () => Promise<unknown> }) => {
+      captured = config;
+      return { data: undefined, isLoading: true, error: null };
+    });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse({
+          data: buildPatientEditPayload(),
+        }),
+      ),
+    );
+
+    try {
+      render(<PatientEditContent patientId="patient_1" />);
+      await expect(captured?.queryFn?.()).resolves.toEqual({
+        id: 'patient_1',
+        name: '患者',
+        name_kana: 'カンジャ',
+        birth_date: '1980-01-01T00:00:00.000Z',
+        gender: 'male',
+        phone: null,
+        medical_insurance_number: null,
+        care_insurance_number: null,
+        billing_support_flag: false,
+        allergy_info: null,
+        notes: null,
+        updated_at: '2026-03-30T09:00:00.000Z',
+        primary_pharmacist_id: null,
+        backup_pharmacist_id: null,
+        primary_staff_id: null,
+        backup_staff_id: null,
+        residences: [],
+        cases: [],
+        scheduling_preference: null,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each([
+    [
+      'mixed root fields',
+      () => ({ data: buildPatientEditPayload(), legacy_patient: buildPatientEditPayload() }),
+    ],
+    ['unexpected overview patient', () => ({ data: buildPatientEditPayload('another_patient') })],
+    [
+      'invalid patient gender',
+      () => ({ data: { ...buildPatientEditPayload(), gender: 'unknown' } }),
+    ],
+  ])('rejects malformed patient edit 2xx payloads: %s', async (_label, buildPayload) => {
+    useOrgIdMock.mockReturnValue('org_1');
+
+    let captured: { queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation((config: { queryFn: () => Promise<unknown> }) => {
+      captured = config;
+      return { data: undefined, isLoading: true, error: null };
+    });
+
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(buildPayload())));
+
+    try {
+      render(<PatientEditContent patientId="patient_1" />);
+      await expect(captured?.queryFn?.()).rejects.toThrow('患者情報の取得に失敗しました');
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

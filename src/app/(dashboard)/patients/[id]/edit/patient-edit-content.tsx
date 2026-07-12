@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { FileQuestion } from 'lucide-react';
+import { z } from 'zod';
 import { PatientForm } from '@/components/features/patients/patient-form';
 import { Skeleton } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -12,9 +13,8 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
-import type { CreatePatientInput } from '@/lib/validations/patient';
+import { patientGenderSchema, type CreatePatientInput } from '@/lib/validations/patient';
 import { allergyEntrySchema, type AllergyEntry } from '@/lib/validations/patient-allergy';
-import type { PatientOverview } from '../patient-detail.types';
 
 function PatientEditLoadingState() {
   return (
@@ -68,7 +68,56 @@ export function normalizeAllergyInfoForPatientForm(
   return parsed.success ? parsed.data : undefined;
 }
 
-function buildDefaultValues(patient: PatientOverview): Partial<CreatePatientInput> {
+const patientEditSchedulingPreferenceSchema = z.object({
+  primary_contact_preference: z.string().nullable(),
+  visit_before_contact_required: z.boolean().nullable(),
+  first_visit_preferred_date: z.string().nullable(),
+  first_visit_time_slot: z.string().nullable(),
+  first_visit_time_note: z.string().nullable(),
+  care_level: z.string().nullable(),
+  adl_level: z.string().nullable(),
+  dementia_level: z.string().nullable(),
+  parking_available: z.boolean().nullable(),
+  mcs_linked: z.boolean().nullable(),
+  swallowing_route: z.string().nullable(),
+  infection_isolation: z.boolean(),
+});
+
+const patientEditOverviewSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  name_kana: z.string(),
+  birth_date: z.union([z.string().date(), z.string().datetime()]),
+  gender: patientGenderSchema,
+  phone: z.string().nullable(),
+  medical_insurance_number: z.string().nullable(),
+  care_insurance_number: z.string().nullable(),
+  billing_support_flag: z.boolean(),
+  allergy_info: z.unknown().nullable(),
+  notes: z.string().nullable(),
+  updated_at: z.string().datetime(),
+  primary_pharmacist_id: z.string().nullable(),
+  backup_pharmacist_id: z.string().nullable(),
+  primary_staff_id: z.string().nullable(),
+  backup_staff_id: z.string().nullable(),
+  residences: z.array(
+    z.object({
+      address: z.string(),
+      building_id: z.string().nullable(),
+      facility_id: z.string().nullable(),
+      facility_unit_id: z.string().nullable(),
+      unit_name: z.string().nullable(),
+      is_primary: z.boolean(),
+    }),
+  ),
+  cases: z.array(z.object({ required_visit_support: z.unknown().nullable() })),
+  scheduling_preference: patientEditSchedulingPreferenceSchema.nullable(),
+});
+const patientEditResponseSchema = z.object({ data: patientEditOverviewSchema }).strict();
+
+type PatientEditOverview = z.infer<typeof patientEditOverviewSchema>;
+
+function buildDefaultValues(patient: PatientEditOverview): Partial<CreatePatientInput> {
   const primaryResidence = patient.residences.find((residence) => residence.is_primary) ?? null;
   const intakeCase =
     patient.cases.find((careCase) => getHomeVisitIntake(careCase.required_visit_support)) ?? null;
@@ -168,7 +217,7 @@ function buildDefaultValues(patient: PatientOverview): Partial<CreatePatientInpu
     name: patient.name,
     name_kana: patient.name_kana,
     birth_date: patient.birth_date.slice(0, 10),
-    gender: patient.gender as CreatePatientInput['gender'],
+    gender: patient.gender,
     phone: patient.phone ?? undefined,
     medical_insurance_number: patient.medical_insurance_number ?? undefined,
     care_insurance_number: patient.care_insurance_number ?? undefined,
@@ -205,16 +254,18 @@ function buildDefaultValues(patient: PatientOverview): Partial<CreatePatientInpu
 export function PatientEditContent({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
 
-  const patientQuery = useQuery<PatientOverview>({
+  const patientQuery = useQuery<PatientEditOverview>({
     queryKey: ['patient-overview', patientId, orgId],
     queryFn: async () => {
       const response = await fetch(buildPatientApiPath(patientId, '/overview'), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
-      const payload = await readApiJson<{ data: PatientOverview }>(
-        response,
-        '患者情報の取得に失敗しました',
-      );
+      const fallbackMessage = '患者情報の取得に失敗しました';
+      const payload = await readApiJson<{ data: PatientEditOverview }>(response, {
+        fallbackMessage,
+        schema: patientEditResponseSchema,
+      });
+      if (payload.data.id !== patientId) throw new Error(fallbackMessage);
       return payload.data;
     },
     enabled: Boolean(orgId),
