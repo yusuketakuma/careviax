@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZDAILYOPSCONSUMERS handoff/schedule cockpit consumers (VERIFY_REQUIRED, 2026-07-13; implementation `017c605c7`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZDAILYOPSCONSUMERS handoff/schedule cockpit consumers (VERIFY_REQUIRED, 2026-07-13; implementation `017c605c7`, ledger `8925ad38c`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Handoff WorkspaceとSchedule Team Boardはshared daily-ops railを使う一方、cockpit GETをcompile-time full response castで
     読み、実際にはaudit queue/today visits/blocked reasonsしか使わないのにcomments/team/count等をcacheしていた。
