@@ -46738,3 +46738,9 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   Browser and image generation were omitted because this is a non-visual parser and cache-minimization repair covered
   at direct query-function and provider boundaries. Rollback is the two schemas, reader adapters, inferred reference
   types, fixture alignment, regressions, and client-schema ratchet hunk.
+- commit / push:
+  Commit `e27e419dd` (`fix(API-CONTRACT-001): validate formulary reference lists`) contains only the site/template
+  reference schemas, reader adapters, inferred reference types, mutation fixture alignment, regressions,
+  client-schema ratchet, Plans, and this ledger entry. It was pushed to
+  `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
+  were excluded, and the feature branch does not match the `main`-only production deploy trigger.
