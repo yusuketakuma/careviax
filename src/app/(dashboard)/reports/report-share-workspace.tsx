@@ -21,6 +21,10 @@ import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-c
 import type { GeneratedCareReportSummary } from '@/lib/reports/generate-from-visit-contract';
 import { displayDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
 import { buildReportHref } from '@/lib/reports/navigation';
+import {
+  buildReportInboundCandidateDecisionResponseSchema,
+  reportsTodayWorkspaceResponseSchema,
+} from '@/lib/reports/today-workspace-response-schema';
 import { cn } from '@/lib/utils';
 import { messageFromError } from '@/lib/utils/error-message';
 import { timeIsoToString } from '@/lib/visits/time-of-day';
@@ -120,10 +124,10 @@ async function fetchReportsTodayWorkspace(orgId: string): Promise<ReportsTodayWo
   const res = await fetch('/api/care-reports/today-workspace', {
     headers: buildOrgHeaders(orgId),
   });
-  const json = await readApiJson<{ data: ReportsTodayWorkspaceResponse }>(
-    res,
-    '報告ワークスペースの取得に失敗しました',
-  );
+  const json = await readApiJson<{ data: ReportsTodayWorkspaceResponse }>(res, {
+    fallbackMessage: '報告ワークスペースの取得に失敗しました',
+    schema: reportsTodayWorkspaceResponseSchema,
+  });
   return json.data;
 }
 
@@ -142,7 +146,13 @@ async function decideReportInboundCandidate(
       body: JSON.stringify({ action: input.action }),
     },
   );
-  const json = await readApiJson<{ data: unknown }>(res, '報告候補の更新に失敗しました');
+  const json = await readApiJson(res, {
+    fallbackMessage: '報告候補の更新に失敗しました',
+    schema: buildReportInboundCandidateDecisionResponseSchema({
+      signalId: input.signalId,
+      action: input.action,
+    }),
+  });
   return json.data;
 }
 

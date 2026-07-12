@@ -51,6 +51,31 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZREPORTWORKSPACESTRICT report share workspace readers (VERIFY_REQUIRED, 2026-07-13; implementation ready; shared clean-capacity build pending).
+  - current task / root cause:
+    Report Share Workspaceのtoday-workspace GETとinbound candidate decision PATCH結果readersはcompile-time castだけで、
+    malformed/cross-section rows、count/visible/hidden/identity drift、unsafe action href、requested signal/actionと異なる
+    decision outcomeを成功扱いし、報告候補・送達失敗・患者/受信summaryを含むPHI-bearing operational stateへ流し得た。
+  - implementation / workspace safety boundary:
+    全workspace sections、actions、count metadata、identityをstrict schemaへ接続し、candidate rowはprovider-only raw sender/
+    contact/attachment fieldsをcache前にstrip。Decision factory schemaでrequested signal IDとaction別expected review/action status、
+    metaを検証した。Report generation/send、inbound review write/task closure、provider queries、auth/tenant/audit/DB/UIは変更して
+    いない。非visual parser/PHI境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/reports/today-workspace-response-schema.ts`,
+    `src/app/(dashboard)/reports/report-share-workspace.tsx`,
+    `src/app/(dashboard)/reports/report-share-workspace.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/today-workspace provider/inbound-signal provider Vitest passed 3 files / 81 tests. Exact zero-warning
+    ESLint, focused Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (287 backed / 76 allowlisted /
+    15 files), module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build remains
+    NOT_EXECUTED because the shared machine has only about 4.3 GiB free while `.next` consumes 16 GiB.
+  - security / performance / remaining:
+    Malformed/cross-scope workspace and decision results now fail closed; raw sender/contact/attachment metadata no longer
+    enters the client cache and the file's allowlist entry is removed. Network/DB calls, writes, rendering, and dependencies
+    are unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZREPORTDETAILSTRICT care-report detail readers (VERIFY_REQUIRED, 2026-07-13; implementation `c5ce1223c`; shared clean-capacity build pending).
   - current task / root cause:
     Care Report detail GETとexternal-professional suggestions GET readersはcompile-time castだけで、別report/patient、

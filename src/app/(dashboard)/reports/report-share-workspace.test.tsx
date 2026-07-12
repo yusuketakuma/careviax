@@ -7,7 +7,11 @@ import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
-import type { ReportsTodayWorkspaceResponse } from '@/types/reports-today-workspace';
+import type {
+  ReportInboundCandidateAction,
+  ReportsTodayWorkspaceResponse,
+} from '@/types/reports-today-workspace';
+import { reportsTodayWorkspaceResponseSchema } from '@/lib/reports/today-workspace-response-schema';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { ReportShareWorkspace } from './report-share-workspace';
@@ -358,12 +362,17 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
   },
 };
 
+it('keeps the workspace fixture aligned with the strict provider contract', () => {
+  const result = reportsTodayWorkspaceResponseSchema.safeParse({ data: TODAY_WORKSPACE });
+  expect(result.success, result.success ? undefined : result.error.toString()).toBe(true);
+});
+
 function stubFetch(
   workspace: ReportsTodayWorkspaceResponse = TODAY_WORKSPACE,
   generatedReportId = 'rep_generated',
   generateFailure?: Response,
 ) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.includes('/api/care-reports/today-workspace')) {
       return new Response(JSON.stringify({ data: workspace }), { status: 200 });
@@ -390,16 +399,19 @@ function stubFetch(
       );
     }
     if (url.includes('/api/communications/inbound/signals/')) {
+      const action = JSON.parse(String(init?.body)) as { action: ReportInboundCandidateAction };
+      const include = action.action === 'include_in_report';
       return new Response(
         JSON.stringify({
           data: {
             signal_id: decodeURIComponent(url.split('/').pop() ?? ''),
             inbound_event_id: 'event_report_1',
-            review_status: 'accepted',
-            action_status: 'not_linked',
+            review_status: include ? 'accepted' : 'record_only',
+            action_status: include ? 'not_linked' : 'ignored',
             reviewed_at: '2026-06-11T01:20:00.000Z',
             review_task_closure_count: 1,
           },
+          meta: { generated_at: '2026-06-11T01:20:00.000Z' },
         }),
         { status: 200 },
       );
@@ -885,6 +897,14 @@ describe('ReportShareWorkspace', () => {
         },
       ],
       counts: { ...TODAY_WORKSPACE.counts, open_issues: 1 },
+      count_metadata: {
+        ...TODAY_WORKSPACE.count_metadata,
+        open_issues: {
+          ...TODAY_WORKSPACE.count_metadata.open_issues,
+          total_count: 1,
+          visible_count: 1,
+        },
+      },
     });
     renderWorkspace();
 
@@ -910,6 +930,14 @@ describe('ReportShareWorkspace', () => {
       },
     ];
     workspace.counts = { ...workspace.counts, to_write: 1 };
+    workspace.count_metadata = {
+      ...workspace.count_metadata,
+      to_write: {
+        ...workspace.count_metadata.to_write,
+        total_count: 1,
+        visible_count: 1,
+      },
+    };
 
     stubFetch(workspace);
     renderWorkspace();
@@ -938,6 +966,11 @@ describe('ReportShareWorkspace', () => {
     workspace.counts = { ...workspace.counts, created: 2, report_candidates: 0 };
     workspace.count_metadata = {
       ...workspace.count_metadata,
+      created: {
+        ...workspace.count_metadata.created,
+        total_count: 2,
+        visible_count: 2,
+      },
       report_candidates: {
         ...workspace.count_metadata.report_candidates,
         total_count: 0,
