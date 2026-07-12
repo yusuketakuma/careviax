@@ -47045,7 +47045,7 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
-## 2026-07-12 API-CONTRACT-001FZFACILITYUNITSSTRICT — facility-unit list contract (IN_PROGRESS)
+## 2026-07-12 API-CONTRACT-001FZFACILITYUNITSSTRICT — facility-unit list contract (DONE)
 
 - current task / root cause:
   The admin facilities editor's unit GET consumer still trusts a compile-time `{ data: FacilityUnit[] }` cast even
@@ -47074,9 +47074,14 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   311/311 static pages were generated, and route optimization/traces completed. The build emitted the two existing CSS
   optimizer warnings and exited 0; no ENOSPC warning was emitted in this run. Filesystem usage was 93% / 14 GiB free
   after the build; no generated-artifact cleanup was performed.
+- commit / push:
+  Scoped implementation commit `bde744e93` (`fix(API-CONTRACT-001FZFACILITYUNITSSTRICT): validate facility unit reader`)
+  was pushed to `origin/agent/continuous-improvement-20260712`; remote head matches and
+  `git rev-list --left-right --count HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts
+  remain excluded; the feature branch does not match the `main`-only production deploy trigger.
 - next action:
-  Inspect the validated facility-unit-owned diff, stage only this slice and its ledgers, then commit and push it while
-  preserving unrelated harness-memory and personal artifacts.
+  Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
+  disjoint safe slice without touching unrelated dirty paths.
 
 ## 2026-07-12 API-CONTRACT-001FZNOTIFICATIONSREADSTRICT — notifications list contract (DONE)
 

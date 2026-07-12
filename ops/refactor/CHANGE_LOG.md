@@ -94,8 +94,8 @@
 ## API-CONTRACT-001FZFACILITYUNITSSTRICT
 
 - Commit Group: `API-CONTRACT-001FZFACILITYUNITSSTRICT`
-- Commit: pending
-- Push Status: NOT_STARTED
+- Commit: `bde744e93`
+- Push Status: PUSHED
 - Branch: `agent/continuous-improvement-20260712`
 - Scope: admin facilities unit-list response schema, facility editor consumer regressions, and client-schema allowlist ratchet.
 - Implementation: validate strict `{ data }`, unique unit identities, supported unit type, non-empty bounded identity/text, non-negative patient/capacity/order values, and strip provider-only fields; preserve facility/unit mutations, patient-count aggregation, authorization, and editor behavior.
@@ -104,4 +104,4 @@
 - Verification: focused 2 files / 25 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and Next build passed; client-schema inventory is 167 schema-backed / 206 allowlisted / 82 files. Build emitted existing CSS optimizer warnings and exited 0.
 - Rollback: revert the unit response schema, consumer adapter, regressions, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
-- Push evidence: pending scoped commit.
+- Push evidence: `b70da7085..bde744e93` fast-forward push succeeded; local and remote heads match.

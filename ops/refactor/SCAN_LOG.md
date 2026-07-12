@@ -95,6 +95,6 @@
 - Planned fix: strict unit envelope, identity/type/text/numeric checks, unique IDs, malformed/legacy/duplicate
   regressions, and one allowlist ratchet removal. Facility/unit mutations, patient-count aggregation, authz, and visual
   semantics stay fixed.
-- Implemented/validated: focused consumer/unit-provider suites pass 2 files / 25 tests; client-schema inventory moved to
-  167 schema-backed / 206 allowlisted / 82 files; all static/type/lint/diff gates and serialized Next build passed.
-  Scoped commit/push remains pending.
+- Landed: implementation commit `bde744e93` passed 2 files / 25 focused tests, all contract/type/lint/diff gates, and
+  serialized Next build; client-schema inventory moved to 167 schema-backed / 206 allowlisted / 82 files. Next scan:
+  remaining API-CONTRACT allowlist entries and patients board cursor residual.
