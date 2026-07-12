@@ -207,6 +207,31 @@ function fetchCallsForMethod(method: string) {
     .mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === method);
 }
 
+function billingRuleResponseFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'rule_1',
+    billing_scope: 'custom',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: null,
+    provider_scope: null,
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    name: '夜間加算',
+    code: 'YAKAN',
+    conditions: {},
+    evidence_requirements: {},
+    amount: 100,
+    source_url: null,
+    source_note: null,
+    is_system: false,
+    is_active: true,
+    created_at: '2026-06-19T00:00:00.000Z',
+    updated_at: '2026-06-19T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
 function expectNoSensitiveToastLeak(rawId: string, ...sensitiveValues: string[]) {
   expect(vi.mocked(toast.error)).toHaveBeenCalled();
   const message = String(vi.mocked(toast.error).mock.calls.at(-1)?.[0] ?? '');
@@ -232,7 +257,19 @@ describe('BillingRulesPage', () => {
     queryStateMock.isError = false;
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ data: { message: 'ok' } }), { status: 200 })),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [billingRuleResponseFixture()],
+              meta: {
+                source: null,
+                summary: { ssot_rule_count: 0, custom_rule_count: 1 },
+              },
+            }),
+            { status: 200 },
+          ),
+      ),
     );
   });
 
@@ -345,7 +382,6 @@ describe('BillingRulesPage', () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          message: 'legacy root sync message must not be read',
           data: { message: 'SSOT sync done', seeded: 16 },
         }),
         { status: 201 },
@@ -364,7 +400,6 @@ describe('BillingRulesPage', () => {
       }),
     );
     expect(result).toMatchObject({ message: 'SSOT sync done' });
-    expect(result).not.toMatchObject({ message: 'legacy root sync message must not be read' });
   });
 
   it('uses the SSOT sync fallback when mutation rejection is not an Error', async () => {
@@ -406,8 +441,7 @@ describe('BillingRulesPage', () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          id: 'legacy_root_rule_must_not_be_read',
-          data: { id: 'created_rule', conditions: {}, evidence_requirements: {} },
+          data: billingRuleResponseFixture({ id: 'created_rule' }),
         }),
         { status: 201 },
       ),
@@ -425,7 +459,6 @@ describe('BillingRulesPage', () => {
       }),
     );
     expect(result).toMatchObject({ id: 'created_rule' });
-    expect(result).not.toMatchObject({ id: 'legacy_root_rule_must_not_be_read' });
   });
 
   it('keeps server error envelopes and fallbacks for billing rule creation failures', async () => {
@@ -458,13 +491,10 @@ describe('BillingRulesPage', () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          id: 'legacy_root_rule_must_not_be_read',
-          data: {
-            id: 'updated_rule',
+          data: billingRuleResponseFixture({
+            id: ruleId,
             updated_at: '2026-06-19T00:02:00.000Z',
-            conditions: {},
-            evidence_requirements: {},
-          },
+          }),
         }),
         { status: 200 },
       ),
@@ -488,8 +518,7 @@ describe('BillingRulesPage', () => {
         }),
       }),
     );
-    expect(result).toMatchObject({ id: 'updated_rule' });
-    expect(result).not.toMatchObject({ id: 'legacy_root_rule_must_not_be_read' });
+    expect(result).toMatchObject({ id: ruleId });
   });
 
   it('keeps server messages and fallbacks for billing rule update failures', async () => {

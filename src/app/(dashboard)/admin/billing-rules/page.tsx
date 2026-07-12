@@ -41,54 +41,16 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { BILLING_RULES_API_PATH, buildBillingRuleApiPath } from '@/lib/billing-rules/api-paths';
+import {
+  billingRulesResponseSchema,
+  billingSsotSyncResponseSchema,
+  buildBillingRuleResponseSchema,
+  type BillingRuleResponseItem as BillingRule,
+  type BillingRulesResponse,
+} from '@/lib/billing-rules/response-schema';
 import { messageFromError } from '@/lib/utils/error-message';
 
 // --- Types ---
-
-type BillingRule = {
-  id: string;
-  org_id: string;
-  billing_scope: string;
-  rule_type: 'base' | 'addition' | 'regional_addition' | 'reduction';
-  service_type: string;
-  payer_basis: string | null;
-  provider_scope: string | null;
-  selection_mode: string;
-  calculation_unit: string;
-  name: string;
-  code: string | null;
-  conditions: Record<string, unknown>;
-  evidence_requirements: Record<string, unknown>;
-  amount: number | null;
-  source_url: string | null;
-  source_note: string | null;
-  is_system: boolean;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-};
-
-type BillingRulesResponse = {
-  data: BillingRule[];
-  meta: {
-    source: {
-      source_of_truth: string;
-      sync_direction: string | null;
-      recovery_procedure: string | null;
-    } | null;
-    summary: {
-      ssot_rule_count: number;
-      custom_rule_count: number;
-    };
-  };
-};
-
-type BillingSsotSyncResponse = {
-  data: {
-    message: string;
-    seeded?: number;
-  };
-};
 
 type RuleFormData = {
   rule_type: 'addition' | 'regional_addition' | 'reduction';
@@ -112,7 +74,10 @@ const DEFAULT_FORM: RuleFormData = {
 
 async function fetchBillingRules(): Promise<BillingRulesResponse> {
   const res = await fetch(BILLING_RULES_API_PATH);
-  return readApiJson<BillingRulesResponse>(res, 'Failed to fetch billing rules');
+  return readApiJson(res, {
+    fallbackMessage: 'Failed to fetch billing rules',
+    schema: billingRulesResponseSchema,
+  });
 }
 
 async function syncBillingSsot(): Promise<{ message: string }> {
@@ -121,7 +86,10 @@ async function syncBillingSsot(): Promise<{ message: string }> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'seed_home_care_ssot' }),
   });
-  const payload = await readApiJson<BillingSsotSyncResponse>(res, 'Failed to sync billing SSOT');
+  const payload = await readApiJson(res, {
+    fallbackMessage: 'Failed to sync billing SSOT',
+    schema: billingSsotSyncResponseSchema,
+  });
   return payload.data;
 }
 
@@ -131,7 +99,10 @@ async function createBillingRule(body: object): Promise<BillingRule> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const payload = await readApiJson<{ data: BillingRule }>(res, 'Failed to create billing rule');
+  const payload = await readApiJson(res, {
+    fallbackMessage: 'Failed to create billing rule',
+    schema: buildBillingRuleResponseSchema(),
+  });
   return payload.data;
 }
 
@@ -145,7 +116,10 @@ async function updateBillingRule(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...body, expected_updated_at: expectedUpdatedAt }),
   });
-  const payload = await readApiJson<{ data: BillingRule }>(res, 'Failed to update billing rule');
+  const payload = await readApiJson(res, {
+    fallbackMessage: 'Failed to update billing rule',
+    schema: buildBillingRuleResponseSchema(id),
+  });
   return payload.data;
 }
 

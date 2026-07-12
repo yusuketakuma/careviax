@@ -51,6 +51,36 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZBILLRULEREADSTRICT billing-rule list/sync/create/update readers (VERIFY_REQUIRED, 2026-07-13; implementation `PENDING`, ledger pending; shared clean-capacity build pending).
+  - current task / root cause:
+    Admin Billing Rulesのlist、SSOT sync、create、update計4 readersはcompile-time castだけで、legacy/extra root、
+    invalid rule enum/URL/timestamp、system-scope mismatch、duplicate identity、summary drift、wrong update identity、
+    negative seeded countを算定master stateへ流し得た。org/display-order/effective/SSOT key等のUI未使用fieldsも
+    query/mutation resultへ保持されていた。
+  - implementation / billing boundary:
+    Shared rule item/list/detail/sync schemasを追加し、strict billing enums、integer amount、JSON object envelopes、
+    source URL、updated>=created、system iff home_care_ssot、identity一意、visible custom count、update requested ID、
+    seeded非負を検証。UI利用fieldsだけへstripし、create/updateで同じitem schemaを再利用した。Legacy rootを含む
+    stale fixturesをstrict provider envelopeへ同期。算定条件・金額・SSOT seed、楽観lock、audit/provider/UIは変更
+    していない。非visual parser/security境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/billing-rules/response-schema.ts`,
+    `src/lib/billing-rules/response-schema.test.ts`,
+    `src/app/(dashboard)/admin/billing-rules/page.tsx`,
+    `src/app/(dashboard)/admin/billing-rules/page.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/providers Vitest passed 4 files / 53 tests. Exact ESLint with `--max-warnings=0`,
+    Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (250 backed / 118 allowlisted / 31 files),
+    frontend contract, module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build
+    was NOT_EXECUTED because only about 2.5 GiB free remains after the shared `.next/cache` capacity failure; generated
+    cache was not deleted or modified.
+  - security / performance / remaining:
+    Malformed/wrong-identity billing responses now fail closed; unused tenant/calculation metadata is not cached. Query
+    count, DB/provider work, rule writes, calculation values, SSOT seed, optimistic concurrency, audit, auth/tenant,
+    render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZSHIFTREADSTRICT admin shift/support readers (VERIFY_REQUIRED, 2026-07-13; implementation `a6b7d2257`, ledger `4f04ee79f`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Shiftsのsite/member、当月/前月shift、templates、apply result計6 readersはcompile-time castを残し、legacy
