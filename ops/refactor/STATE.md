@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZFACPACKETSTRICT facility visit packet reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `9e474fff1`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZFACPACKETSTRICT facility visit packet reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `9e474fff1`, ledger `39d24994c`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Facility packet画面はvisit-preparationの巨大packから施設巡回contextだけを使う一方、compile-time castで
     full responseをquery stateへ保持し、patient ID/生年月日/性別、薬剤期間、その他pack PHIを不要に到達
