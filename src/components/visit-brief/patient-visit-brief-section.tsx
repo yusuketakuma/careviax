@@ -9,6 +9,7 @@ import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useStaleAfterRefetchError } from '@/lib/hooks/use-stale-after-refetch-error';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { buildPatientVisitBriefResponseSchema } from '@/lib/visits/visit-brief-response-schema';
 import type { VisitBrief } from '@/types/visit-brief';
 
 function PatientVisitBriefLoadingState({ compact }: { compact: boolean }) {
@@ -55,7 +56,10 @@ export function PatientVisitBriefSection({
       const response = await fetch(buildPatientApiPath(patientId, '/visit-brief'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: VisitBrief }>(response, '患者要約の取得に失敗しました');
+      return readApiJson<{ data: VisitBrief }>(response, {
+        fallbackMessage: '患者要約の取得に失敗しました',
+        schema: buildPatientVisitBriefResponseSchema(patientId),
+      });
     },
     enabled: !!orgId,
   });

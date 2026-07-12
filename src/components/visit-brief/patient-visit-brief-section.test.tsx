@@ -52,6 +52,59 @@ vi.mock('@/lib/patient/api-paths', async (importActual) => {
 
 setupDomTestEnv();
 
+function buildVisitBrief(patientId: string) {
+  return {
+    patient: {
+      id: patientId,
+      name: '患者A',
+      archive: { status: 'active', archived: false, archived_at: null },
+    },
+    context: 'patient',
+    generated_at: '2026-07-13T00:00:00.000Z',
+    last_prescribed_date: null,
+    baseline_context: null,
+    medication_changes: [],
+    patient_changes: [],
+    medications: [],
+    dispensing_items: [],
+    delivery_status: [],
+    dosage_form_support: [],
+    multidisciplinary_updates: [],
+    jahis_supplemental_records: [],
+    latest_labs: [],
+    unresolved_items: [],
+    must_check_today: [],
+    rule_summary: {
+      generation_id: 'rule_1',
+      headline: 'ルール要約',
+      bullets: [],
+      must_check_today: [],
+      source_refs: [],
+      generated_at: '2026-07-13T00:00:00.000Z',
+    },
+    ai_summary: {
+      generation_id: 'ai_1',
+      provider: 'rule',
+      requested_provider: 'disabled',
+      is_fallback: true,
+      model: null,
+      fallback_reason: 'provider_unavailable',
+      headline: 'AI要約',
+      bullets: [],
+      must_check_today: [],
+      source_refs: [],
+      generated_at: '2026-07-13T00:00:00.000Z',
+      duration_ms: null,
+      recent_generation_count_24h: 1,
+      recent_failure_count_24h: 1,
+      recent_failure_rate_24h: 100,
+    },
+    conference_summary: null,
+    facility_context: null,
+    drug_cautions: [],
+  };
+}
+
 describe('PatientVisitBriefSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,7 +114,7 @@ describe('PatientVisitBriefSection', () => {
   it('routes the visit brief fetch through the shared patient API path helper', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      text: async () => JSON.stringify({ data: { patient: { id: 'patient_1?x=1#frag' } } }),
+      text: async () => JSON.stringify({ data: buildVisitBrief('patient_1?x=1#frag') }),
     });
     vi.stubGlobal('fetch', fetchMock);
     vi.mocked(buildPatientApiPath).mockReturnValueOnce(

@@ -51,6 +51,32 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZVISITBRIEFSTRICT patient visit-brief reader (VERIFY_REQUIRED, 2026-07-13; implementation ready; shared clean-capacity build pending).
+  - current task / root cause:
+    Patient Visit BriefのGET readerはcompile-time castだけで、別患者、schedule context、不正archive/日時/action URL、
+    欠損/過大clinical data、重複identity、AI生成・失敗count/rateやfallback状態driftを成功扱いし、患者・処方・検査・
+    多職種連携を含むPHI-bearing briefをquery cacheへ流し得た。
+  - implementation / visit-brief safety boundary:
+    Requested patient準拠のstrict consumed schemaを追加し、current providerの全VisitBrief fields、array/text bounds、
+    archive整合、内部URL、日付、medication period、action pair、conference aggregate、clinical identity、AI count/rate・
+    fallback算術を検証してconsumerへ接続した。Brief generation/AI/audit、provider projection/query、assignment/auth/tenant/
+    DB/UIは変更していない。非visual response parser/PHI境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/lib/visits/visit-brief-response-schema.ts`,
+    `src/lib/visits/visit-brief-response-schema.test.ts`,
+    `src/components/visit-brief/patient-visit-brief-section.tsx`,
+    `src/components/visit-brief/patient-visit-brief-section.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/route/service Vitest passed 4 files / 28 tests. Exact ESLint, focused Prettier, aggregate typecheck,
+    client schema (280 backed / 83 allowlisted / 19 files), module boundary, client PHI-log, API response shape, colors, and
+    diff-check passed. Full build was NOT_EXECUTED because only 4.3 GiB free remains while shared `.next` consumes 16 GiB;
+    generated cache was not deleted or modified.
+  - security / performance / remaining:
+    Cross-patient/malformed brief payloads now fail closed before PHI-bearing query state is updated, and the file's allowlist
+    entry is removed. Network/DB query count, generation/audit writes, auth/tenant, rendering, and dependencies are unchanged.
+    A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZSCHEDULEBOARDSTRICT schedule day-board reader (VERIFY_REQUIRED, 2026-07-13; implementation `616752932`, ledger `9b2696f3d`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Schedule Team Boardのday-board GET readerはcompile-time castだけで、別日、重複identity、不正日時/関係、

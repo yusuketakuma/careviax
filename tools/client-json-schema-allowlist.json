@@ -119,12 +119,6 @@
       "counts": {
         "stringFallback": 6
       }
-    },
-    {
-      "path": "src/components/visit-brief/patient-visit-brief-section.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
     }
   ]
 }
