@@ -235,6 +235,70 @@ describe('MedicationsContent url/header convergence', () => {
     };
   }
 
+  function buildMedicationProfile(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'profile_1',
+      patient_id: 'patient_1',
+      drug_name: 'アムロジピン錠5mg',
+      dose: '1錠',
+      frequency: '朝食後',
+      start_date: '2026-06-01T00:00:00.000Z',
+      end_date: null,
+      prescriber: '佐藤医師',
+      is_current: true,
+      source: 'manual',
+      created_at: '2026-06-01T00:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  function buildPatientSummary(patientId = 'patient_1', overrides: Record<string, unknown> = {}) {
+    return {
+      data: {
+        id: patientId,
+        name: '山田花子',
+        name_kana: 'ヤマダハナコ',
+        birth_date: '1950-04-01T00:00:00.000Z',
+        gender: 'female',
+        allergy_info: [],
+        ...overrides,
+      },
+    };
+  }
+
+  function buildInquiry(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'inquiry_1',
+      reason: '残薬調整',
+      inquiry_to_physician: '佐藤医師',
+      inquiry_content: '残薬7日分を調整してよいか',
+      result: 'pending',
+      proposal_origin: 'post_inquiry',
+      residual_adjustment: true,
+      change_detail: null,
+      inquired_at: '2026-06-01T00:00:00.000Z',
+      resolved_at: null,
+      line: { drug_name: 'アムロジピン錠5mg', line_number: 1 },
+      ...overrides,
+    };
+  }
+
+  function buildResidualMedication(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'residual_1',
+      visit_record_id: 'visit_1',
+      drug_name: 'アムロジピン錠5mg',
+      prescribed_quantity: 28,
+      remaining_quantity: 7,
+      remaining_days: 7,
+      excess_days: 7,
+      is_reduction_target: false,
+      is_prohibited_reduction: false,
+      created_at: '2026-06-01T00:00:00.000Z',
+      ...overrides,
+    };
+  }
+
   function renderMeds({
     patientId = HOSTILE,
     issues = [] as ReturnType<typeof buildIssue>[],
@@ -276,14 +340,21 @@ describe('MedicationsContent url/header convergence', () => {
     return { queryConfigs, mutationConfigs, invalidateQueries };
   }
 
-  function stubFetch() {
+  function stubFetch(patientSummaryId = HOSTILE) {
     const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
       const url = String(input);
-      return jsonResponse(
-        url.includes('/api/medication-issues')
-          ? { data: [], meta: { has_more: false, next_cursor: null } }
-          : { data: [] },
-      );
+      if (url.includes('/api/medication-issues')) {
+        return jsonResponse({ data: [], meta: { has_more: false, next_cursor: null } });
+      }
+      if (url.includes('/api/medication-profiles')) {
+        return jsonResponse({
+          data: [],
+          meta: { limit: 100, has_more: false, next_cursor: null },
+        });
+      }
+      if (url.includes('/api/patients/'))
+        return jsonResponse(buildPatientSummary(patientSummaryId));
+      return jsonResponse({ data: [] });
     });
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
@@ -291,6 +362,178 @@ describe('MedicationsContent url/header convergence', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('aggregates all current-medication cursor pages without silent truncation', async () => {
+    const { queryConfigs } = renderMeds({ patientId: 'patient_1' });
+    const current = buildMedicationProfile({ id: 'profile_current' });
+    const older = buildMedicationProfile({
+      id: 'profile_older',
+      created_at: '2026-05-01T00:00:00.000Z',
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [current],
+          meta: { limit: 100, has_more: true, next_cursor: 'cursor_2' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [older],
+          meta: { limit: 100, has_more: false, next_cursor: null },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      await expect(queryConfigs.get('medication-profiles')!.queryFn()).resolves.toEqual({
+        data: [current, older],
+      });
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        '/api/medication-profiles?patient_id=patient_1&is_current=true&limit=100',
+        expect.anything(),
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        '/api/medication-profiles?patient_id=patient_1&is_current=true&limit=100&cursor=cursor_2',
+        expect.anything(),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects current-medication rows from a different patient', async () => {
+    const { queryConfigs } = renderMeds({ patientId: 'patient_1' });
+    const fetchMock = stubJsonFetch({
+      data: [buildMedicationProfile({ patient_id: 'patient_other' })],
+      meta: { limit: 100, has_more: false, next_cursor: null },
+    });
+    try {
+      await expect(queryConfigs.get('medication-profiles')!.queryFn()).rejects.toThrow(
+        '取得に失敗しました',
+      );
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a repeated current-medication cursor instead of looping', async () => {
+    const { queryConfigs } = renderMeds({ patientId: 'patient_1' });
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        data: [],
+        meta: { limit: 100, has_more: true, next_cursor: 'cursor_loop' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await expect(queryConfigs.get('medication-profiles')!.queryFn()).rejects.toThrow(
+        '取得に失敗しました',
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects duplicate current-medication ids across cursor pages', async () => {
+    const { queryConfigs } = renderMeds({ patientId: 'patient_1' });
+    const duplicate = buildMedicationProfile({ id: 'profile_duplicate' });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [duplicate],
+          meta: { limit: 100, has_more: true, next_cursor: 'cursor_2' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [duplicate],
+          meta: { limit: 100, has_more: false, next_cursor: null },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await expect(queryConfigs.get('medication-profiles')!.queryFn()).rejects.toThrow(
+        '取得に失敗しました',
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('validates patient-summary identity and strips the unconsumed patient workspace', async () => {
+    const { queryConfigs } = renderMeds({ patientId: 'patient_1' });
+    const fetchMock = stubJsonFetch(
+      buildPatientSummary('patient_1', {
+        notes: 'must-not-enter-cache',
+        cases: [{ id: 'case_1' }],
+      }),
+    );
+    try {
+      await expect(queryConfigs.get('patient-medication-summary')!.queryFn()).resolves.toEqual({
+        id: 'patient_1',
+        name: '山田花子',
+        name_kana: 'ヤマダハナコ',
+        birth_date: '1950-04-01T00:00:00.000Z',
+        gender: 'female',
+        allergy_info: [],
+      });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a patient summary for a different route patient', async () => {
+    const { queryConfigs } = renderMeds({ patientId: 'patient_1' });
+    const fetchMock = stubJsonFetch(buildPatientSummary('patient_other'));
+    try {
+      await expect(queryConfigs.get('patient-medication-summary')!.queryFn()).rejects.toThrow(
+        '患者情報の取得に失敗しました',
+      );
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects malformed inquiry timestamps before calculating the response backlog', async () => {
+    const { queryConfigs } = renderMeds({ patientId: 'patient_1' });
+    const fetchMock = stubJsonFetch({ data: [buildInquiry({ inquired_at: 'not-a-timestamp' })] });
+    try {
+      await expect(queryConfigs.get('inquiry-records')!.queryFn()).rejects.toThrow(
+        '疑義照会の取得に失敗しました',
+      );
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('loads the complete residual history and rejects negative quantities', async () => {
+    const { queryConfigs } = renderMeds({ patientId: 'patient_1' });
+    const fetchMock = stubJsonFetch({
+      data: [buildResidualMedication({ remaining_quantity: -1 })],
+    });
+    try {
+      await expect(queryConfigs.get('residual-medications')!.queryFn()).rejects.toThrow(
+        '残薬データの取得に失敗しました',
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/residual-medications?patient_id=patient_1',
+        expect.anything(),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('adopts buildOrgHeaders on every GET; query-filter values stay raw via URLSearchParams, patient path is single-encoded', async () => {
@@ -370,7 +613,7 @@ describe('MedicationsContent url/header convergence', () => {
 
   it('patient summary GET consumes the shared patient API path helper return value', async () => {
     const { queryConfigs } = renderMeds({ patientId: 'patient_1' });
-    const fetchMock = stubFetch();
+    const fetchMock = stubFetch('patient_1');
     vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__');
 
     try {

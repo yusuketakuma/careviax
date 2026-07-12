@@ -46622,3 +46622,31 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   schemas, reader wiring/limit correction, regressions, client-schema ratchet, Plans, and this ledger entry. It was
   pushed to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal
   artifacts were excluded, and the feature branch does not match the `main`-only production deploy trigger.
+
+## 2026-07-12 API-CONTRACT-001FZMEDICATIONSSTRICT — patient medications read contracts (DONE)
+
+- current task / root cause:
+  The patient medications workspace compile-time cast four GET payloads. Current medication profiles used only the
+  provider's first default 50-row cursor page while ignoring metadata; patient summary cached the full PHI-heavy root
+  patient DTO without checking route identity; inquiry records accepted malformed timestamps; and residual records
+  imposed an artificial `limit=100` even though the provider's omitted-limit contract is the complete safety read.
+  This could silently hide active medications or residuals, mix another patient's data into the workspace, and feed
+  invalid quantities or dates into operational summaries.
+- implementation / verification:
+  Added consumed runtime schemas for current medication profiles, patient medication summary, and inquiry records,
+  and reused the residual-adjustment record schema. The profile reader now follows 100-row cursor pages up to an
+  explicit five-page bound and rejects repeated cursors, duplicate IDs, non-current rows, and patient-ID mismatch.
+  Patient summary keeps only identity, QR fields, and minimized allergy fields and verifies response versus route
+  identity. Inquiry records validate dates/enums/unique IDs, while the residual query removes its truncating limit
+  and validates the provider's complete data envelope. Provider-only fields are stripped before React Query caching.
+  Six regressions failed before implementation; final content and four provider suites passed 5 files / 140 tests,
+  including cursor-loop and cross-page duplicate rejection. Exact ESLint/Prettier, aggregate typecheck, no-unused
+  typecheck, API response-shape, frontend contract, client PHI-log/display, module-boundary, active Plans,
+  client-schema, and diff gates passed. The client-schema ratchet improved from 127 schema-backed / 247 allowlisted
+  schema-less / 93 files to 131 / 243 / 92. Additional network requests occur only above 100 active medications and
+  are bounded at five requests; residual reads intentionally favor complete medication-safety input over the old
+  silent truncation. Full build was not repeated after the unchanged compile-stage shared-memory limitation recorded
+  above; there is no new build hypothesis. No provider, DB, auth/authz, tenant, audit, mutation, clinical calculation,
+  or visual layout changed. Browser and image generation were omitted because this is a non-visual parser,
+  pagination, and cache-minimization repair covered at direct query-function and provider boundaries. Rollback is the
+  local contract, four reader adapters, regressions, and client-schema ratchet hunk.

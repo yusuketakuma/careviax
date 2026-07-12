@@ -59,52 +59,15 @@ import { buildJahisQRText, type JahisPatient } from '@/lib/pharmacy/jahis-qr';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import { toast } from 'sonner';
 import { messageFromError } from '@/lib/utils/error-message';
-
-type MedicationProfile = {
-  id: string;
-  patient_id: string;
-  drug_name: string;
-  dose: string | null;
-  frequency: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  prescriber: string | null;
-  is_current: boolean;
-  source: string | null;
-  created_at: string;
-};
+import {
+  inquiryRecordsResponseSchema,
+  medicationProfilesCursorResponseSchema,
+  patientMedicationSummaryResponseSchema,
+  type MedicationProfile,
+} from './medications.contract';
+import { residualMedicationRecordsResponseSchema } from '../residual-adjustment/residual-adjustment.shared';
 
 type MedicationIssue = MedicationIssueListItem;
-
-type ResidualMedication = {
-  id: string;
-  visit_record_id: string;
-  drug_name: string;
-  drug_code: string | null;
-  prescribed_quantity: number | null;
-  remaining_quantity: number;
-  excess_days: number | null;
-  is_reduction_target: boolean;
-  is_prohibited_reduction: boolean;
-  created_at: string;
-};
-
-type InquiryRecord = {
-  id: string;
-  reason: string;
-  inquiry_to_physician: string;
-  inquiry_content: string;
-  result: 'changed' | 'unchanged' | 'pending' | null;
-  proposal_origin: 'post_inquiry' | 'pre_issuance' | null;
-  residual_adjustment: boolean | null;
-  change_detail: string | null;
-  inquired_at: string;
-  resolved_at: string | null;
-  line: {
-    drug_name: string | null;
-    line_number: number | null;
-  } | null;
-};
 
 type IssueFormData = {
   title: string;
@@ -167,6 +130,50 @@ const issueStatusLabel: Record<MedicationIssue['status'], string> = {
 };
 
 const clinicalActionSizeClass = 'h-auto min-h-[44px] sm:h-auto sm:min-h-[44px]';
+const MEDICATION_PROFILE_PAGE_LIMIT = 100;
+const MEDICATION_PROFILE_MAX_PAGES = 5;
+const MEDICATION_PROFILE_FALLBACK = '取得に失敗しました';
+
+async function fetchCurrentMedicationProfiles(orgId: string, patientId: string) {
+  const profiles: MedicationProfile[] = [];
+  const profileIds = new Set<string>();
+  const visitedCursors = new Set<string>();
+  const headers = buildOrgHeaders(orgId);
+  let cursor: string | undefined;
+
+  for (let pageNumber = 0; pageNumber < MEDICATION_PROFILE_MAX_PAGES; pageNumber += 1) {
+    const searchParams = new URLSearchParams({
+      patient_id: patientId,
+      is_current: 'true',
+      limit: String(MEDICATION_PROFILE_PAGE_LIMIT),
+      ...(cursor ? { cursor } : {}),
+    });
+    const response = await fetch(`/api/medication-profiles?${searchParams}`, { headers });
+    const page = await readApiJson(response, {
+      fallbackMessage: MEDICATION_PROFILE_FALLBACK,
+      schema: medicationProfilesCursorResponseSchema,
+    });
+
+    for (const profile of page.data) {
+      if (profile.patient_id !== patientId || profileIds.has(profile.id)) {
+        throw new Error(MEDICATION_PROFILE_FALLBACK);
+      }
+      profileIds.add(profile.id);
+      profiles.push(profile);
+    }
+
+    if (!page.hasMore) return { data: profiles };
+
+    const nextCursor = page.nextCursor;
+    if (!nextCursor || visitedCursors.has(nextCursor)) {
+      throw new Error(MEDICATION_PROFILE_FALLBACK);
+    }
+    visitedCursors.add(nextCursor);
+    cursor = nextCursor;
+  }
+
+  throw new Error(MEDICATION_PROFILE_FALLBACK);
+}
 
 function formatMedicationDate(value: string | null) {
   if (!value) return '—';
@@ -684,13 +691,7 @@ export function MedicationsContent({
     refetch: refetchProfiles,
   } = useQuery({
     queryKey: ['medication-profiles', orgId, patientId],
-    queryFn: async () => {
-      const response = await fetch(
-        `/api/medication-profiles?${new URLSearchParams({ patient_id: patientId, is_current: 'true' })}`,
-        { headers: buildOrgHeaders(orgId) },
-      );
-      return readApiJson<{ data: MedicationProfile[] }>(response, '取得に失敗しました');
-    },
+    queryFn: () => fetchCurrentMedicationProfiles(orgId, patientId),
     enabled: !!orgId,
   });
 
@@ -700,15 +701,13 @@ export function MedicationsContent({
       const response = await fetch(buildPatientApiPath(patientId), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{
-        data: {
-          name: string;
-          name_kana: string;
-          birth_date: string;
-          gender: string;
-          allergy_info: string[] | null;
-        };
-      }>(response, '患者情報の取得に失敗しました');
+      const payload = await readApiJson(response, {
+        fallbackMessage: '患者情報の取得に失敗しました',
+        schema: patientMedicationSummaryResponseSchema,
+      });
+      if (payload.data.id !== patientId) {
+        throw new Error('患者情報の取得に失敗しました');
+      }
       return payload.data;
     },
     enabled: !!orgId && !hasPatientContext,
@@ -736,7 +735,10 @@ export function MedicationsContent({
         `/api/inquiry-records?${new URLSearchParams({ patient_id: patientId })}`,
         { headers: buildOrgHeaders(orgId) },
       );
-      return readApiJson<{ data: InquiryRecord[] }>(response, '疑義照会の取得に失敗しました');
+      return readApiJson(response, {
+        fallbackMessage: '疑義照会の取得に失敗しました',
+        schema: inquiryRecordsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -745,13 +747,13 @@ export function MedicationsContent({
     queryKey: ['residual-medications', orgId, patientId],
     queryFn: async () => {
       const response = await fetch(
-        `/api/residual-medications?${new URLSearchParams({ patient_id: patientId, limit: '100' })}`,
+        `/api/residual-medications?${new URLSearchParams({ patient_id: patientId })}`,
         { headers: buildOrgHeaders(orgId) },
       );
-      return readApiJson<{ data: ResidualMedication[] }>(
-        response,
-        '残薬データの取得に失敗しました',
-      );
+      return readApiJson(response, {
+        fallbackMessage: '残薬データの取得に失敗しました',
+        schema: residualMedicationRecordsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });

@@ -283,12 +283,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/medications/medications-content.tsx",
-      "counts": {
-        "stringFallback": 4
-      }
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/share/external-share-content.tsx",
       "counts": {
         "stringFallback": 5
