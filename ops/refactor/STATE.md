@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZINTERVENTIONSTRICT medication intervention readers (VERIFY_REQUIRED, 2026-07-13; implementation `c3db5e73f`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZINTERVENTIONSTRICT medication intervention readers (VERIFY_REQUIRED, 2026-07-13; implementation `c3db5e73f`, ledger `92c180066`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Medication Intervention Panelの患者/服薬課題別GETとPOST結果readerはcompile-time castだけで、別患者/別課題、
     重複identity、reverse order、invalid type/date、実施前の作成日時、silent 50件truncationを成功扱いし得た。
