@@ -313,7 +313,9 @@ describe('PerformancePage polling policy', () => {
           slow_request_rate: 0,
           overall_p50_ms: 20,
           overall_p95_ms: 50,
+          overall_p99_ms: 70,
           overall_p95_payload_bytes: null,
+          overall_p95_query_count: null,
           critical_routes: 0,
           payload_budgeted_routes: 0,
           routes_over_payload_budget: 0,
@@ -321,6 +323,7 @@ describe('PerformancePage polling policy', () => {
           routes_over_target: 0,
         },
         routes: [],
+        raw_store: { samples: [{ route: 'provider-only' }] },
       },
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -375,7 +378,15 @@ describe('PerformancePage polling policy', () => {
     });
     await expect(schedulesQuery?.queryFn?.()).resolves.toEqual({ data: [], hasMore: false });
     await expect(proposalsQuery?.queryFn?.()).resolves.toEqual(proposalsPayload);
-    await expect(runtimeQuery?.queryFn?.()).resolves.toEqual(runtimePayload);
+    await expect(runtimeQuery?.queryFn?.()).resolves.toEqual({
+      data: {
+        scope: runtimePayload.data.scope,
+        target_ms: runtimePayload.data.target_ms,
+        collected_since: runtimePayload.data.collected_since,
+        summary: runtimePayload.data.summary,
+        routes: [],
+      },
+    });
 
     expect(fetchMock).toHaveBeenCalledWith('/api/dashboard/workflow?view=performance', {
       headers: { 'x-org-id': 'org_1' },

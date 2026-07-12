@@ -60,12 +60,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/performance/page.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx",
       "counts": {
         "stringFallback": 2

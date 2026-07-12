@@ -39,66 +39,17 @@ import {
   type PerformanceProposalsResponse,
 } from './performance-proposal-schema';
 import {
+  performanceRuntimeResponseSchema,
+  type PerformanceRuntimeResponse,
+} from './performance-runtime-schema';
+import {
   performanceWorkflowResponseSchema,
   type PerformanceWorkflowResponse,
 } from './performance-workflow-schema';
 
-type RuntimePerformanceSnapshot = {
-  scope: 'current-process';
-  target_ms: number;
-  collected_since: string;
-  summary: {
-    route_count: number;
-    total_requests: number;
-    slow_requests: number;
-    error_requests: number;
-    slow_request_rate: number;
-    overall_p50_ms: number;
-    overall_p95_ms: number;
-    overall_p99_ms: number;
-    overall_p95_payload_bytes: number | null;
-    overall_p95_query_count: number | null;
-    critical_routes: number;
-    payload_budgeted_routes: number;
-    routes_over_payload_budget: number;
-    routes_with_unconfigured_payload_budget: number;
-    routes_over_target: number;
-  };
-  routes: Array<{
-    route: string;
-    method: string;
-    org_scope: 'with_org' | 'without_org' | 'mixed';
-    critical_route: boolean;
-    critical_route_family: string | null;
-    request_count: number;
-    error_count: number;
-    slow_count: number;
-    slow_rate: number;
-    average_ms: number;
-    p50_ms: number;
-    p95_ms: number;
-    p99_ms: number;
-    max_ms: number;
-    payload_sample_count: number;
-    average_payload_bytes: number | null;
-    p95_payload_bytes: number | null;
-    max_payload_bytes: number | null;
-    query_count_sample_count: number;
-    average_query_count: number | null;
-    p95_query_count: number | null;
-    max_query_count: number | null;
-    payload_budget_bytes: number | null;
-    payload_budget_status: 'unconfigured' | 'unmeasured' | 'within_budget' | 'over_budget';
-    payload_budget_met: boolean | null;
-    payload_budget_over_count: number;
-    last_seen_at: string | null;
-    last_status: number | null;
-    last_payload_bytes: number | null;
-    target_met: boolean;
-  }>;
-};
+type RuntimePerformanceRoute = PerformanceRuntimeResponse['data']['routes'][number];
 
-function formatPayloadBudget(route: RuntimePerformanceSnapshot['routes'][number]) {
+function formatPayloadBudget(route: RuntimePerformanceRoute) {
   if (route.payload_budget_bytes == null) return '未設定';
   const budget = `${route.payload_budget_bytes.toLocaleString()}B`;
   switch (route.payload_budget_status) {
@@ -114,7 +65,7 @@ function formatPayloadBudget(route: RuntimePerformanceSnapshot['routes'][number]
   }
 }
 
-function payloadBudgetBadge(route: RuntimePerformanceSnapshot['routes'][number]) {
+function payloadBudgetBadge(route: RuntimePerformanceRoute) {
   switch (route.payload_budget_status) {
     case 'within_budget':
       return { label: 'payload OK', variant: 'secondary' as const };
@@ -246,10 +197,10 @@ export default function PerformancePage() {
       const res = await fetch('/api/admin/performance-metrics?top=6', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: RuntimePerformanceSnapshot }>(
-        res,
-        'API 応答指標の取得に失敗しました',
-      );
+      return readApiJson<PerformanceRuntimeResponse>(res, {
+        fallbackMessage: 'API 応答指標の取得に失敗しました',
+        schema: performanceRuntimeResponseSchema,
+      });
     },
     enabled: !!orgId,
     refetchInterval: 60_000,
