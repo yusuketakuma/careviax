@@ -99,13 +99,30 @@ describe('InventoryForecastContent', () => {
                   facilityPatientCount: 5,
                   shortagePatientCount: 2,
                   dataBackedPatientCount: 2,
-                  shortageDrugKeys: ['酸化Mg'],
+                  shortageDrugKeys: ['アムロジピン'],
                   runOutDateKey: '2026-06-30',
                   runOutBasis: 'line_start_date_plus_days',
                   urgency: 'warning',
-                  shortageDetails: [],
+                  shortageDetails: [
+                    {
+                      drugIdentityKey: 'code:YJ_AMLO',
+                      drugCode: 'YJ_AMLO',
+                      drugKey: 'アムロジピン',
+                      requiredQty: 14,
+                      stockQty: 4,
+                      unit: '錠',
+                      status: 'order_required',
+                      stockRegistered: true,
+                      stockEvidence: 'registered_stock',
+                      affectedPatientCount: 2,
+                      runOutDateKey: '2026-06-30',
+                      runOutBasis: 'line_start_date_plus_days',
+                      urgency: 'warning',
+                    },
+                  ],
                 },
               ],
+              unresolvedDrugs: [],
             },
           }),
           { status: 200 },
@@ -157,7 +174,7 @@ describe('InventoryForecastContent', () => {
     // 個人カード: critical=至急バッジ + 処方終了日由来の薬切れ見込み(推定注記なし)。
     expect(screen.getByText('至急')).toBeTruthy();
     expect(screen.getByText('薬切れ見込み 06/23')).toBeTruthy();
-    expect(screen.getByText('不足薬: アムロジピン')).toBeTruthy();
+    expect(screen.getAllByText('不足薬: アムロジピン')).toHaveLength(2);
     // 施設バッチ: warning=要注意 + 開始日+日数の推定注記 + 「5名中 2名に不足/在庫登録確認」の被覆明示。
     expect(screen.getByText('要注意')).toBeTruthy();
     expect(screen.getByText('薬切れ見込み 06/30（処方日数から推定）')).toBeTruthy();
@@ -202,9 +219,26 @@ describe('InventoryForecastContent', () => {
                   runOutDateKey: null,
                   runOutBasis: 'unknown',
                   urgency: 'unknown',
-                  shortageDetails: [],
+                  shortageDetails: [
+                    {
+                      drugIdentityKey: 'code:YJ_AMLO',
+                      drugCode: 'YJ_AMLO',
+                      drugKey: 'アムロジピン',
+                      requiredQty: 14,
+                      stockQty: 4,
+                      unit: '錠',
+                      status: 'order_required',
+                      stockRegistered: true,
+                      stockEvidence: 'registered_stock',
+                      affectedPatientCount: 1,
+                      runOutDateKey: null,
+                      runOutBasis: 'unknown',
+                      urgency: 'unknown',
+                    },
+                  ],
                 },
               ],
+              unresolvedDrugs: [],
             },
           }),
           { status: 200 },

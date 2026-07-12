@@ -18,25 +18,23 @@ import {
   DRUG_FORECAST_STATUS_LABELS,
   coveragePercent,
   summarizeInventoryForecast,
-  type AffectedPatientCard,
   type DrugForecastRow,
   type DrugForecastStatus,
   type InventoryForecastRunOutBasis,
   type InventoryForecastUrgency,
   type UnresolvedDrugForecastRow,
 } from '@/lib/analytics/inventory-forecast';
+import {
+  inventoryForecastResponseSchema,
+  type InventoryForecastResponse,
+} from '@/lib/analytics/inventory-forecast-response-schema';
 
 /**
  * p1_07「在庫と定期処方の予測」: 来週(翌週月〜日)の訪問予定と定期処方から
  * 薬剤別の必要量見込みを在庫と突合し、不足または在庫登録確認が必要な薬剤と影響患者を一覧する。
  */
 
-type InventoryForecast = {
-  week: { start_date: string; end_date: string };
-  drugs: DrugForecastRow[];
-  patients: AffectedPatientCard[];
-  unresolvedDrugs?: UnresolvedDrugForecastRow[];
-};
+type InventoryForecast = InventoryForecastResponse['data'];
 
 // 警告 3 段階の規約内: 要発注=blocked(赤) / 発注候補=confirm(橙) / 余裕あり=中立(既定 Badge)
 const STATUS_ROLE: Record<DrugForecastStatus, StatusRole | 'neutral'> = {
@@ -203,11 +201,11 @@ export function InventoryForecastContent() {
       const res = await fetch('/api/admin/inventory-forecast', {
         headers: buildOrgHeaders(orgId),
       });
-      const json = await readApiJson<{ data: InventoryForecast }>(
-        res,
-        '在庫予測の取得に失敗しました',
-      );
-      return json.data as InventoryForecast;
+      const json = await readApiJson<InventoryForecastResponse>(res, {
+        fallbackMessage: '在庫予測の取得に失敗しました',
+        schema: inventoryForecastResponseSchema,
+      });
+      return json.data;
     },
     enabled: !!orgId,
   });
