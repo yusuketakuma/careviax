@@ -18,7 +18,6 @@ import {
 } from '@/lib/offline/evidence-drafts';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
-import type { PatientHeaderSummary } from '@/server/services/patient-detail';
 import { VisitHeaderSafetyTags, type VisitHeaderSafety } from '../record/visit-step-nav';
 import { pickVisitPatientId } from '../brief/visit-brief-review.shared';
 import type { EvidenceCategoryId } from '../../evidence/evidence-gallery.shared';
@@ -28,9 +27,14 @@ import {
   buildCaptureStatusSummary,
   buildEvidenceDraftFileName,
   resolveCapturePatientContext,
-  resolveCapturePatientSafety,
   type CapturePatientContext,
+  type CapturePatientSafety,
 } from './capture.shared';
+import {
+  buildCapturePatientNameResponseSchema,
+  buildCaptureVisitEndResponseSchema,
+  capturePatientSafetyResponseSchema,
+} from './capture-response-schemas';
 
 /**
  * p0_48「スマホで写真・証跡を撮る」: 訪問先で証跡写真を撮るモバイル没入型画面。
@@ -99,12 +103,12 @@ export function EvidenceCaptureContent({
         const patientId = pickVisitPatientId(record);
         if (patientId) {
           const patientRes = await fetch(buildPatientApiPath(patientId), { headers });
-          const patientPayload = patientRes.ok ? await patientRes.json().catch(() => null) : null;
-          const patient =
-            patientPayload && typeof patientPayload === 'object' && 'data' in patientPayload
-              ? patientPayload.data
-              : patientPayload;
-          const patientName = typeof patient?.name === 'string' ? patient.name : null;
+          const patientName = patientRes.ok
+            ? await readApiJson<string>(patientRes, {
+                fallbackMessage: '患者情報の取得に失敗しました',
+                schema: buildCapturePatientNameResponseSchema(patientId),
+              }).catch(() => null)
+            : null;
           return {
             patientId,
             patientName,
@@ -126,20 +130,17 @@ export function EvidenceCaptureContent({
   });
   const patientContext = patientQuery.data ?? null;
   const resolvedPatientId = patientContext?.patientId ?? null;
-  const patientSafetyQuery = useQuery<PatientHeaderSummary>({
+  const patientSafetyQuery = useQuery<CapturePatientSafety>({
     queryKey: ['patient-header-summary', resolvedPatientId, orgId],
     queryFn: async () => {
       if (!resolvedPatientId) throw new Error('患者IDが未解決です');
       const res = await fetch(buildPatientApiPath(resolvedPatientId, '/header-summary'), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: PatientHeaderSummary }>(
-        res,
-        '患者安全タグの取得に失敗しました',
-      );
-      const safety = resolveCapturePatientSafety(payload);
-      if (!safety) throw new Error('患者安全タグの形式が不正です');
-      return payload.data;
+      return readApiJson<CapturePatientSafety>(res, {
+        fallbackMessage: '患者安全タグの取得に失敗しました',
+        schema: capturePatientSafetyResponseSchema,
+      });
     },
     enabled: !!orgId && !!resolvedPatientId,
     retry: false,
@@ -147,7 +148,7 @@ export function EvidenceCaptureContent({
   const patientLoading = !orgId || patientQuery.isPending;
   const patientUnresolved =
     !patientLoading && (patientQuery.isError || !resolvedPatientId || !patientContext?.patientName);
-  const resolvedSafety = resolveCapturePatientSafety(patientSafetyQuery.data);
+  const resolvedSafety = patientSafetyQuery.data ?? null;
   const safetyLoading =
     !patientUnresolved &&
     Boolean(orgId) &&
@@ -350,12 +351,15 @@ export function EvidenceCaptureContent({
         const body = await response.json().catch(() => null);
         throw new Error(body?.message ?? '訪問終了を記録できませんでした');
       }
-      const payload = await readApiJson<{
-        data?: { visit_ended_at?: unknown };
-      }>(response, '訪問終了を記録できませんでした');
-      setRecordedVisitEndedAt(
-        typeof payload.data?.visit_ended_at === 'string' ? payload.data.visit_ended_at : endedAt,
-      );
+      const recordedEndedAt = await readApiJson<string>(response, {
+        fallbackMessage: '訪問終了を記録できませんでした',
+        schema: buildCaptureVisitEndResponseSchema({
+          recordId,
+          expectedVersion: recordVersion,
+          endedAt,
+        }),
+      });
+      setRecordedVisitEndedAt(recordedEndedAt);
       toast.success('訪問終了を記録しました');
     } catch (error) {
       clientLog.warn('visit_capture.visit_end_failed', error, {

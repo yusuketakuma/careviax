@@ -102,10 +102,8 @@ describe('EvidenceCaptureContent', () => {
             data: safetyError
               ? undefined
               : {
-                  safety: {
-                    visible_safety_tags: safetyTags,
-                    hidden_safety_tag_count: hiddenSafetyTagCount,
-                  },
+                  tags: safetyTags,
+                  hiddenCount: hiddenSafetyTagCount,
                 },
             isPending: safetyPending,
             isError: safetyError,
@@ -244,7 +242,7 @@ describe('EvidenceCaptureContent', () => {
         return jsonResponse({ data: { patient_id: patientId } });
       }
       if (url === '/api/patients/__helper_pt__') {
-        return jsonResponse({ data: { name: '田中 一郎' } });
+        return jsonResponse({ data: { id: patientId, name: '田中 一郎' } });
       }
       return jsonResponse({}, 500);
     });
@@ -309,7 +307,7 @@ describe('EvidenceCaptureContent', () => {
     try {
       render(<EvidenceCaptureContent visitId="visit_1" />);
 
-      await expect(safetyQueryFn?.()).resolves.toEqual(headerSummary);
+      await expect(safetyQueryFn?.()).resolves.toEqual({ tags: ['allergy'], hiddenCount: 1 });
       expect(safetyQueryKey).toEqual(['patient-header-summary', 'patient_1', 'org_1']);
       expect(buildPatientApiPath).toHaveBeenCalledWith('patient_1', '/header-summary');
     } finally {
@@ -337,7 +335,14 @@ describe('EvidenceCaptureContent', () => {
           version: 3,
           visit_ended_at: '2026-04-09T01:45:00.000Z',
         });
-        return jsonResponse({ data: { visit_ended_at: '2026-04-09T01:45:00.000Z' } });
+        return jsonResponse({
+          data: {
+            id: 'record_1',
+            version: 4,
+            visit_started_at: '2026-04-09T01:00:00.000Z',
+            visit_ended_at: '2026-04-09T01:45:00.000Z',
+          },
+        });
       }
       return jsonResponse({}, 500);
     });

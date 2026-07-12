@@ -51,6 +51,33 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZCAPTURESTRICT visit capture readers (VERIFY_REQUIRED, 2026-07-13; implementation ready; shared clean-capacity build pending).
+  - current task / root cause:
+    Visit Captureのpatient-name detail raw JSON、patient safety header、visit-end PATCH結果readersはmanual/compile-time
+    extractionだけで、別患者、不正/欠損safety、別record、未反映version/ended-atを成功扱いし、患者安全tag表示・撮影許可・
+    訪問終了success stateへ進め得た。Full patient/header/visit record payloadもconsumerへ残していた。
+  - implementation / capture safety boundary:
+    Patient nameをrequested patient ID、safetyをvisible tags/hidden count projection、visit-endをrequested record ID、OCC
+    version +1、requested ended-at完全一致のfactory schemasへ接続。Provider-only fieldsをcache/state前にstripし、duplicate
+    safety tagsを正規化した。Camera/evidence encrypted draft/sync、visit-record write payload、provider、auth/assignment/tenant/
+    audit/DB/UIは変更していない。非visual parser/患者安全境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/visits/[id]/capture/capture-response-schemas.ts`,
+    `src/app/(dashboard)/visits/[id]/capture/capture-response-schemas.test.ts`,
+    `src/app/(dashboard)/visits/[id]/capture/capture-content.tsx`,
+    `src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Focused consumer/schema/shared/header provider/visit-record provider Vitest passed 5 files / 125 tests. Exact zero-warning
+    ESLint, focused Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (290 backed / 74 allowlisted /
+    14 files), module boundary, client PHI-log, API response shape, colors, and diff-check passed. Full build remains
+    NOT_EXECUTED because the shared machine has only about 4.3 GiB free while `.next` consumes 16 GiB.
+  - security / performance / remaining:
+    Cross-patient/malformed safety and stale/unapplied visit-end responses now fail closed before capture/visit completion state
+    changes; full provider payloads no longer enter client state and the file's allowlist entry is removed. Network/DB calls,
+    writes, rendering, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues.
+
 - codex: API-CONTRACT-001FZREPORTWORKSPACESTRICT report share workspace readers (VERIFY_REQUIRED, 2026-07-13; implementation `ff5a6d2c6`; shared clean-capacity build pending).
   - current task / root cause:
     Report Share Workspaceのtoday-workspace GETとinbound candidate decision PATCH結果readersはcompile-time castだけで、
