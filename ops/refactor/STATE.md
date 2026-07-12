@@ -47078,9 +47078,11 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   reverted, leaving no `next.config.ts` diff; no generated artifacts were deleted.
 - commit / landing:
   Scoped implementation commit `a4e7d517e` contains only the performance reader/schema/tests and allowlist ratchet.
-  Ledger commit and safe feature-branch push follow; unrelated dirty/untracked artifacts remain excluded.
+  Ledger commit `23204f105` records the completed slice. Both commits were pushed without force to
+  `origin/agent/continuous-improvement-20260712`; the main-only production deploy workflow was not triggered.
+  Unrelated dirty/untracked artifacts remain excluded.
 - next action:
-  Close and push this slice, then harden the final performance runtime reader or select a higher-value residual.
+  Harden the final performance runtime reader or select a higher-value residual from the 178-call allowlist inventory.
 
 ## 2026-07-12 API-CONTRACT-001FZPERFPROPOSALS — (DONE)
 
