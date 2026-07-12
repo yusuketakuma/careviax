@@ -47045,6 +47045,41 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZAUDITREVIEWSTRICT — (DONE)
+
+- current task / root cause:
+  The audit-log list GET was already schema-backed, but its review PATCH still trusted a compile-time response cast. A
+  successful response naming another audit log, an invalid review state, a legacy root, or an unexpected envelope could
+  therefore report review success and refetch the list even though the response did not prove the requested target was
+  updated. The provider transaction, audit write, authorization, and tenant scope remain authoritative and unchanged.
+- implementation:
+  Added `auditLogReviewResponseSchemaFor(expectedAuditLogId)`, connected the PATCH reader, and removed the final
+  audit-logs content allowlist entry. The schema validates the exact requested audit-log identity and review state,
+  rejects malformed/legacy envelopes, and strips provider-only reviewed-at/by/reason metadata from client state. Added
+  direct schema tests plus a component regression proving a wrong-target 2xx produces the existing fixed failure message,
+  no success toast, and no post-success list refetch.
+- validation:
+  Focused Vitest passed 3 files / 30 tests, including the provider route suite. Exact ESLint and Prettier, aggregate
+  typecheck, 8 GB no-unused typecheck, client JSON schema, frontend contract, API response shape, module boundaries, PHI
+  client log/display, colors, typography, Plans active-board, serialized production build, and diff checks passed. Client schema inventory improved
+  from 188 schema-backed / 185 allowlisted calls across 71 files to 189 schema-backed / 184 allowlisted calls across 70
+  files. The first production build attempt ended without a success summary after webpack emitted an ENOSPC cache-write
+  warning (`.next/cache` was 15 GiB; filesystem had 9 GiB free), so it was not counted as passed. Without deleting any
+  generated artifact, a temporary uncommitted `next.config.ts` hook disabled webpack's filesystem cache only for the
+  retry. That retry compiled in 90 seconds, completed TypeScript in 56 seconds, generated 311/311 static pages, and
+  finished successfully with only the two pre-existing CSS optimizer warnings. The temporary hook was then reverted;
+  `next.config.ts` has no final diff.
+- scope / safety:
+  No request payload, API route, DB/schema/migration, audit-log write, auth/authz, tenant boundary, PHI projection,
+  export, list query, or visual behavior changed. This non-visual response-contract repair did not require `gpt-image-2`.
+- commit / landing:
+  Scoped implementation commit `415ff5da2` (`fix(API-CONTRACT-001FZAUDITREVIEWSTRICT): validate audit review
+response`) contains only the consumer/test, shared response schema/test, and allowlist paths. Ledger commit and safe
+  feature-branch push follow; unrelated dirty and untracked artifacts remain excluded.
+- next action:
+  Close and push this slice, then continue the residual contract scan with the next disjoint highest-value reader and
+  keep the patients-board cursor residual queued separately.
+
 ## 2026-07-12 API-CONTRACT-001FZESCALATIONMUTSTRICT — (DONE)
 
 - current task / selection:
