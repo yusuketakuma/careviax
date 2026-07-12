@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZPHARMACYSITESTRICT admin pharmacy-site/config readers (VERIFY_REQUIRED, 2026-07-13; implementation `13c66a05c`, shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZPHARMACYSITESTRICT admin pharmacy-site/config readers (VERIFY_REQUIRED, 2026-07-13; implementation `13c66a05c`, ledger `65e072c54`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin Pharmacy Sitesは拠点一覧と選択拠点のinsurance configsをcompile-time castだけで読み、legacy root、
     duplicate/cross-site config、不正insurance/date rangeをedit stateへ流し得た。拠点readerはUI未使用の座標を、
