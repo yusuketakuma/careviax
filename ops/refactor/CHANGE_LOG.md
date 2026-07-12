@@ -192,8 +192,8 @@
 ## API-CONTRACT-001FZOPERATINGHOURSSTRICT
 
 - Commit Group: `API-CONTRACT-001FZOPERATINGHOURSSTRICT`
-- Commit: pending scoped implementation landing
-- Push Status: PENDING
+- Commit: `725b480e4`
+- Push Status: PUSHED
 - Branch: `agent/continuous-improvement-20260712`
 - Scope: shared pharmacy-site option schema extraction, admin/operating-hours GET/PUT response schemas, consumer
   regressions, vehicle import adjustment, client-schema allowlist ratchet, and required ledgers.
@@ -210,4 +210,5 @@
   availability was 14 GiB before and 13 GiB after the build.
 - Rollback: revert the shared site/operating-hours response schemas, consumer adapters, regressions, vehicle import
   adjustment, allowlist removal, and ledger entries.
-- Remote: `origin/agent/continuous-improvement-20260712`; push evidence will be recorded after the scoped landing.
+- Remote: `origin/agent/continuous-improvement-20260712`
+- Push evidence: `d4fc57505..725b480e4` fast-forward push succeeded; local and remote heads match (`0 0`).

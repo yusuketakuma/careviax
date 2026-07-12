@@ -264,3 +264,12 @@
 - Tests: operating-hours plus vehicle consumer/provider suites pass 4 files / 58 tests.
 - Validation: static gates, typecheck, no-unused typecheck, lint, diff-check, and Next build pass; inventory is 176
   schema-backed / 197 allowlisted / 76 files. Implementation commit is pending scoped landing.
+
+## 2026-07-12 — API-CONTRACT-001FZOPERATINGHOURSSTRICT landed
+
+- Commit: `725b480e4` pushed to `origin/agent/continuous-improvement-20260712`; parity is `0 0`.
+- Result: shared pharmacy-site option schema, operating-hours GET/PUT strict readers, regressions, vehicle import
+  adjustment, allowlist ratchet, and validation ledgers landed; unrelated harness-memory and personal untracked
+  artifacts remain excluded.
+- Next scan: rerun `pnpm client-json-schema:check`, inspect remaining one-entry and multi-entry consumers plus the
+  patients board cursor residual, and choose the next bounded disjoint slice.

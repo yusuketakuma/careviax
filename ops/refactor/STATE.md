@@ -47045,7 +47045,7 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
-## 2026-07-12 API-CONTRACT-001FZOPERATINGHOURSSTRICT — operating-hours settings contracts (IMPLEMENTED, PENDING LANDING)
+## 2026-07-12 API-CONTRACT-001FZOPERATINGHOURSSTRICT — operating-hours settings contracts (DONE)
 
 - current task / root cause:
   The admin operating-hours editor trusts compile-time `SiteOption` and `OperatingHoursResponse` casts for the pharmacy
@@ -47074,10 +47074,14 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   no-unused typecheck pass; lint exits 0 with the two pre-existing break-glass warnings; Next 16.2.9 build passes with
   311/311 static pages, the two existing CSS optimizer warnings, and no ENOSPC warning. Filesystem availability was
   14 GiB before and 13 GiB after the build.
+- commit / push:
+  Scoped implementation commit `725b480e4` (`fix(API-CONTRACT-001FZOPERATINGHOURSSTRICT): validate operating hours
+readers`) was pushed to `origin/agent/continuous-improvement-20260712`; `git rev-list --left-right --count
+HEAD...origin/agent/continuous-improvement-20260712` is `0 0`. Harness-memory and personal untracked artifacts
+  remain excluded.
 - next action:
-  Inspect status, stage only the operating-hours/shared-schema implementation/tests, vehicle import adjustment, allowlist,
-  Plans, and required ledger paths, then create and push the scoped implementation commit while preserving unrelated
-  harness-memory and personal artifacts.
+  Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
+  disjoint safe slice without touching unrelated dirty paths.
 
 ## 2026-07-12 API-CONTRACT-001FZVEHICLESTRICT — vehicle master GET contracts (DONE)
 
