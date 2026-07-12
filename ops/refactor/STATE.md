@@ -47045,7 +47045,7 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
-## 2026-07-12 API-CONTRACT-001FZNOTIFICATIONBELLSTRICT — notification-bell summary/list contract (IMPLEMENTED, PENDING LANDING)
+## 2026-07-12 API-CONTRACT-001FZNOTIFICATIONBELLSTRICT — notification-bell summary/list contract (DONE)
 
 - current task / root cause:
   The notification bell summary and drawer refreshes still use optional compile-time payload casts even though the
@@ -47072,9 +47072,14 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   typecheck pass; lint exits 0 with the two pre-existing break-glass warnings; Next 16.2.9 build passes with 311/311
   static pages, existing CSS optimizer warnings, and no ENOSPC warning. Filesystem availability was 14 GiB before and
   after the build.
+- commit / push:
+  Scoped implementation commit `8a9956f0d` (`fix(API-CONTRACT-001FZNOTIFICATIONBELLSTRICT): validate notification
+bell readers`) was pushed to `origin/agent/continuous-improvement-20260712`; remote head matches and
+  `git rev-list --left-right --count HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts
+  remain excluded.
 - next action:
-  Update the landing ledgers, inspect explicit owned paths, create the scoped implementation commit, push it, verify
-  local/remote parity, then add the closure ledger.
+  Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
+  disjoint safe slice without touching unrelated dirty paths.
 
 ## 2026-07-12 API-CONTRACT-001FZFACILITYUNITSSTRICT — facility-unit list contract (DONE)
 

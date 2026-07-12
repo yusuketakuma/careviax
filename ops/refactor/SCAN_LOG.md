@@ -114,6 +114,7 @@
   regressions, and one allowlist ratchet removal. PATCH, SSE-safe redaction, OS notification minimization, provider/auth,
   and visual semantics stay fixed.
 
-- Landed locally: `notificationSummaryResponseSchema` and the shared `notificationsResponseSchema` now guard both
-  refresh readers; focused suites pass 2 files / 12 tests; static/type/no-unused/lint/diff/build gates pass; client-schema
-  inventory moved to 168 schema-backed / 205 allowlisted / 81 files. Scoped commit/push and closure ledger remain.
+- Landed: `notificationSummaryResponseSchema` and the shared `notificationsResponseSchema` now guard both refresh
+  readers; focused suites pass 2 files / 12 tests; static/type/no-unused/lint/diff/build gates pass; client-schema
+  inventory moved to 168 schema-backed / 205 allowlisted / 81 files. Commit `8a9956f0d` is pushed. Next scan: remaining
+  API-CONTRACT allowlist entries and patients board cursor residual.

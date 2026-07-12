@@ -109,8 +109,8 @@
 ## API-CONTRACT-001FZNOTIFICATIONBELLSTRICT
 
 - Commit Group: `API-CONTRACT-001FZNOTIFICATIONBELLSTRICT`
-- Commit: PENDING
-- Push Status: NOT_STARTED
+- Commit: `8a9956f0d`
+- Push Status: PUSHED
 - Branch: `agent/continuous-improvement-20260712`
 - Scope: notification-bell summary/list response schemas, consumer regressions, shared notification-list reuse, and client-schema allowlist ratchet.
 - Implementation: validate strict `{ data: { unreadCount } }` summary and `{ data, meta }` list envelopes, non-negative counts, notification identity/content/date/read state, duplicate identities, pagination relation, and internal links; strip provider-only list fields before badge/drawer state.
@@ -119,4 +119,4 @@
 - Verification: focused 2 files / 12 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and Next build passed; client-schema inventory is 168 schema-backed / 205 allowlisted / 81 files. Build emitted only the existing two CSS optimizer warnings and no ENOSPC warning.
 - Rollback: revert the summary schema, bell reader adapter, regressions, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
-- Push evidence: pending scoped commit and push.
+- Push evidence: `bde744e93..8a9956f0d` fast-forward push succeeded; local and remote heads match (`0 0`).
