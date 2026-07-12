@@ -113,32 +113,4 @@ export const visitVehicleResourcesResponseSchema = z
     }
   });
 
-const pharmacySiteOptionSchema = z
-  .object({
-    id: VEHICLE_ID,
-    name: nonEmptyText(500),
-  })
-  .strip();
-
-export const pharmacySiteOptionsResponseSchema = z
-  .object({
-    data: z.array(pharmacySiteOptionSchema),
-  })
-  .strict()
-  .superRefine(({ data }, context) => {
-    const siteIds = new Set<string>();
-    for (const [index, site] of data.entries()) {
-      if (siteIds.has(site.id)) {
-        context.addIssue({
-          code: 'custom',
-          path: ['data', index, 'id'],
-          message: 'Duplicate pharmacy site option identity',
-        });
-      }
-      siteIds.add(site.id);
-    }
-  });
-
 export type VisitVehicleResourcesResponse = z.infer<typeof visitVehicleResourcesResponseSchema>;
-export type PharmacySiteOption = z.infer<typeof pharmacySiteOptionSchema>;
-export type PharmacySiteOptionsResponse = z.infer<typeof pharmacySiteOptionsResponseSchema>;

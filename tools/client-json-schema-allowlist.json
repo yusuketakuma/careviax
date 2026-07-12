@@ -78,12 +78,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx",
-      "counts": {
-        "stringFallback": 3
-      }
-    },
-    {
       "path": "src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx",
       "counts": {
         "stringFallback": 9

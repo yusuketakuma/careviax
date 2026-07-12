@@ -3,7 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { toast } from 'sonner';
 
@@ -113,8 +113,8 @@ function stubFetch() {
   return fetchMock;
 }
 
-function renderContent() {
-  return render(<OperatingHoursContent />, { wrapper: createQueryClientWrapper() });
+function renderContent(queryClient = createTestQueryClient()) {
+  return render(<OperatingHoursContent />, { wrapper: createQueryClientWrapper(queryClient) });
 }
 
 describe('OperatingHoursContent', () => {
@@ -184,6 +184,161 @@ describe('OperatingHoursContent', () => {
       String(input).startsWith('/api/pharmacy-operating-hours?'),
     );
     expect((ohGet?.[1] as RequestInit | undefined)?.headers).toEqual(buildOrgHeaders('org_1'));
+  });
+
+  it('strips provider-only site and weekly metadata before editor state', async () => {
+    const queryClient = createTestQueryClient();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(
+          JSON.stringify({
+            data: [{ id: 'site_1', name: '本店', address: '東京都千代田区1-1', org_id: 'org_1' }],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.startsWith('/api/pharmacy-operating-hours?')) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              site_id: 'site_1',
+              weekly: weeklyFixture().map((row) => ({
+                ...row,
+                updated_at: '2026-06-27T00:00:00.000Z',
+              })),
+              weekly_updated_at: '2026-06-27T00:00:00.000Z',
+              resolved_days: [],
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent(queryClient);
+
+    await screen.findByLabelText('月曜日の開始時刻');
+    const siteData = queryClient.getQueryData<{ data: Array<Record<string, unknown>> }>([
+      'pharmacy-sites',
+      'org_1',
+    ]);
+    expect(siteData?.data).toEqual([{ id: 'site_1', name: '本店' }]);
+
+    const operatingQuery = queryClient
+      .getQueryCache()
+      .findAll({ queryKey: ['pharmacy-operating-hours', 'org_1', 'site_1'] })[0];
+    const operatingData = operatingQuery?.state.data as
+      | { data: { weekly: Array<Record<string, unknown>> } }
+      | undefined;
+    expect(operatingData?.data.weekly[1]).not.toHaveProperty('updated_at');
+  });
+
+  it('rejects duplicate or mismatched weekly rows before rendering calendar state', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url.startsWith('/api/pharmacy-operating-hours?')) {
+        const weekly = weeklyFixture().map((row) => ({ ...row }));
+        weekly[1] = { ...weekly[1], weekday: 0, site_id: 'site_2' };
+        return new Response(
+          JSON.stringify({
+            data: { site_id: 'site_1', weekly, weekly_updated_at: null, resolved_days: [] },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    expect(await screen.findByText('営業時間設定を取得できませんでした。')).toBeTruthy();
+    expect(screen.queryByText('営業日')).toBeNull();
+  });
+
+  it('rejects duplicate site options before enabling the operating-hours editor', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              { id: 'site_1', name: '本店' },
+              { id: 'site_1', name: '本店重複' },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ message: `Unexpected ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    expect(await screen.findByText('薬局拠点を取得できませんでした。')).toBeTruthy();
+  });
+
+  it('rejects malformed successful PUT response instead of reporting a save success', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url.startsWith('/api/pharmacy-operating-hours?')) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              site_id: 'site_1',
+              weekly: weeklyFixture(),
+              weekly_updated_at: '2026-06-27T00:00:00.000Z',
+              resolved_days: [],
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/pharmacy-operating-hours' && init?.method === 'PUT') {
+        return new Response(
+          JSON.stringify({
+            data: {
+              site_id: 'site_1',
+              weekly: weeklyFixture(),
+              weekly_updated_at: '2026-06-28T00:00:00.000Z',
+              holidays: [],
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+
+    renderContent();
+
+    const mondayOpen = (await screen.findByLabelText('月曜日の開始時刻')) as HTMLInputElement;
+    fireEvent.change(mondayOpen, { target: { value: '10:00' } });
+    const saveButton = await screen.findByRole('button', { name: '保存' });
+    await waitFor(() => expect((saveButton as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(saveButton);
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('営業時間設定の保存に失敗しました'),
+    );
+    expect(toast.success).not.toHaveBeenCalledWith('営業時間設定を保存しました');
   });
 
   it('keeps save disabled until a change makes the form dirty', async () => {

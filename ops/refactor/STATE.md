@@ -47045,6 +47045,40 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   Rescan the remaining `API-CONTRACT-001` allowlist entries and patients board cursor residual, then select the next
   disjoint safe slice without touching unrelated dirty paths.
 
+## 2026-07-12 API-CONTRACT-001FZOPERATINGHOURSSTRICT — operating-hours settings contracts (IMPLEMENTED, PENDING LANDING)
+
+- current task / root cause:
+  The admin operating-hours editor trusts compile-time `SiteOption` and `OperatingHoursResponse` casts for the pharmacy
+  site option GET, weekly/resolved-calendar GET, and PUT success response. A legacy root, duplicate/mismatched site or
+  weekday, malformed time/source state, invalid holiday/resolved day, or provider-only site metadata can therefore
+  affect authorized operating-day editor/calendar state. Existing site/operating-hours providers, authorization,
+  mutation/audit behavior, and visual semantics are not being changed.
+- baseline:
+  The focused operating-hours consumer/provider suites pass 2 files / 21 tests before implementation. Current
+  client-schema inventory is 173 schema-backed / 200 allowlisted schema-less / 77 files. The target is three
+  allowlisted `stringFallback` calls in `src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx`.
+- implementation plan:
+  Extract the shared pharmacy-site option schema for reuse by the landed vehicle reader; add strict operating-hours GET
+  and PUT response schemas with weekly completeness/site/time/source invariants, optional holiday/resolved-day bounds,
+  provider-only field stripping, and malformed/legacy/duplicate/invalid regressions. Remove only the operating-hours
+  allowlist entry. No visual reconstruction or `gpt-image-2` is needed because this is a non-visual settings parser and
+  authorized editor-state boundary repair.
+- implementation / validation:
+  Extracted the shared pharmacy-site option schema for vehicle and operating-hours readers; added strict operating-hours
+  GET/PUT response schemas with weekly 0-6 completeness/site relation, source/configured/identity, time-pair/order,
+  optional holiday/resolved-day bounds, and provider-only field stripping. The three operating-hours GET/PUT readers now
+  reject malformed/legacy/duplicate/invalid 2xx before site/editor/calendar state; provider, authorization, mutation/audit,
+  and visual semantics are unchanged. Focused operating-hours and vehicle suites pass 4 files / 58 tests; format,
+  API-shape, client-schema, frontend contract, PHI log/display, boundaries, Plans, colors, typography, and diff-check
+  gates pass; client-schema inventory is 176 schema-backed / 197 allowlisted schema-less / 76 files; typecheck and
+  no-unused typecheck pass; lint exits 0 with the two pre-existing break-glass warnings; Next 16.2.9 build passes with
+  311/311 static pages, the two existing CSS optimizer warnings, and no ENOSPC warning. Filesystem availability was
+  14 GiB before and 13 GiB after the build.
+- next action:
+  Inspect status, stage only the operating-hours/shared-schema implementation/tests, vehicle import adjustment, allowlist,
+  Plans, and required ledger paths, then create and push the scoped implementation commit while preserving unrelated
+  harness-memory and personal artifacts.
+
 ## 2026-07-12 API-CONTRACT-001FZVEHICLESTRICT — vehicle master GET contracts (DONE)
 
 - current task / root cause:

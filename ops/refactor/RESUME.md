@@ -7,28 +7,28 @@
 - Upstream: `origin/agent/continuous-improvement-20260712`
 - Remote: `origin`
 - Working Tree State: Inherited product diff plus harness-memory and untracked personal artifacts; preserve and exclude unrelated paths.
-- Current Phase: API-CONTRACT-001 allowlist rescan
-- Current Task ID: `API-CONTRACT-001-RESCAN`
+- Current Phase: admin/operating-hours response-contract hardening
+- Current Task ID: `API-CONTRACT-001FZOPERATINGHOURSSTRICT`
 - Current Task Status: IN_PROGRESS
-- Current Commit Group: `API-CONTRACT-001-RESCAN`
+- Current Commit Group: `API-CONTRACT-001FZOPERATINGHOURSSTRICT`
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
 - Last Safe Checkpoint: Vehicle focused suites pass 2 files / 33 tests; static contract gates, typecheck, no-unused, lint, diff-check, and serialized Next build passed; commit `575696825` is pushed and local/upstream parity is `0 0`; client-schema is 173 schema-backed / 200 allowlisted / 77 files.
-- Last Completed Action: Implemented, validated, committed, and pushed strict vehicle-resource counted-list and pharmacy-site option GET readers with provider-only field stripping and fail-closed regressions.
-- Current Operation: rescan remaining API-CONTRACT-001 debt and choose the next disjoint safe slice.
-- Exact Next Action: Run the allowlist/inventory and patients-board cursor residual scan, rank candidates by blast radius, and select the next bounded consumer/provider pair without touching unrelated dirty paths.
-- Exact Next Command: `pnpm client-json-schema:check`
-- Changed Files: none for the rescan slice yet; preserve inherited harness-memory and personal artifacts.
+- Last Completed Action: Selected admin/operating-hours as the next bounded settings slice after rescanning the allowlist and confirming the patients-board cursor item is a separate DB take follow-up.
+- Current Operation: implement strict pharmacy-site option and operating-hours GET/PUT response parsing.
+- Exact Next Action: Extract the shared site-option schema, connect operating-hours GET/PUT readers, add malformed/legacy/duplicate/invalid regressions, and remove only the operating-hours allowlist entry.
+- Exact Next Command: `sed -n '1,320p' 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx' && sed -n '1,260p' src/app/api/pharmacy-operating-hours/route.ts`
+- Changed Files: planned operating-hours consumer/test/schema, shared pharmacy-site response schema, vehicle import adjustment, client-schema allowlist, Plans, STATE, and checkpoint/scan ledgers; preserve inherited harness-memory and personal artifacts.
 - Staged Files: none; facility-unit slice is committed and unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
 - Unpushed Commits: none
-- Push Status: PUSHED for vehicle implementation (`575696825`); local and remote heads match.
+- Push Status: PUSHED for vehicle implementation (`575696825`); local and remote heads match before operating-hours slice.
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
 - Commands Completed: notification-bell baseline Vitest (2 files / 9 tests); facility focused Vitest; notifications focused Vitest; select-site focused Vitest; operations focused Vitest; format; API shape; client schema; frontend contract; PHI log/display; boundaries; Plans; typecheck; no-unused; lint; diff-check; build; provider/consumer scan.
-- Commands Pending: remaining API-CONTRACT-001 allowlist scan, candidate ranking, next-slice baseline, and implementation planning.
+- Commands Pending: operating-hours implementation, focused regressions, static gates, typechecks, lint, diff-check, build, scoped commit/push, and closure-ledger update.
 - Tests Completed: packaging-method slice 2 files / 26 tests, institutions slice 2 files / 43 tests, notification-bell slice 2 files / 12 tests, select-site slice 1 file / 6 tests, operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, and holiday slice 2 files / 39 tests passed.
-- Tests Pending: none for the completed vehicle slice; next candidate baseline is pending.
+- Tests Pending: operating-hours schema-backed reader regressions and full gates.
 - Build State: PASS for master-hub slice; Next 16.2.9 compiled in 2.4 minutes, TypeScript finished in 57 seconds, and 311/311 static pages were generated. Existing CSS optimizer warnings exited 0; no ENOSPC warning was emitted. Filesystem availability was 14 GiB before and 13 GiB after the build.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.

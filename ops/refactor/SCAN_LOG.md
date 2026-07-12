@@ -176,6 +176,25 @@
 - Next scan: rerun `pnpm client-json-schema:check`, inspect remaining one-entry and multi-entry consumers plus the
   patients board cursor residual, and choose the next bounded disjoint slice.
 
+## 2026-07-12 — API-CONTRACT-001FZOPERATINGHOURSSTRICT selection
+
+- Scope: `src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx`, shared pharmacy-site option schema,
+  operating-hours response schemas, operating-hours consumer/provider tests, vehicle import adjustment, and the three
+  matching client-schema allowlist entries.
+- Candidate ranking: selected bounded org/site settings after the vehicle landing; deferred billing analytics, audit logs,
+  contact/external/document delivery, inventory/medication, patient/visit, notification, and shared-token readers with
+  broader billing, PHI, audit, or outbound-data impact.
+- Finding: the consumer trusts compile-time site-option and operating-hours response casts for a weekly seven-row editor,
+  optional resolved calendar, and PUT success envelope; legacy roots, duplicate/mismatched site or weekday, malformed
+  time/source state, invalid calendar rows, and provider-only site metadata can affect authorized settings state.
+- Baseline: focused operating-hours consumer/provider suites pass 2 files / 21 tests; client-schema is 173 schema-backed /
+  200 allowlisted / 77 files. The patients-board cursor item remains a separate declared-vs-implemented DB query-take
+  follow-up, not a client JSON schema gap.
+- Planned fix: extract shared site-option item/root schema, add exact operating-hours GET/PUT schemas with weekly/site/
+  time/source/calendar invariants and provider-field stripping, add malformed/legacy/duplicate/invalid regressions, and
+  remove the three operating-hours allowlist entries. Provider/auth/mutation/audit/visual semantics stay fixed; no image
+  generation is needed for this non-visual settings parser slice.
+
 ## 2026-07-12 — API-CONTRACT-001FZVEHICLESTRICT selection
 
 - Scope: `src/app/(dashboard)/admin/vehicles/vehicles-content.tsx`, vehicle response schema, vehicle consumer/provider
@@ -233,3 +252,15 @@
   26 tests; static/type/no-unused/lint/diff/build gates pass; client-schema inventory moved to 170 schema-backed / 203
   allowlisted / 79 files. Commit `aee2ca6d4` is pushed. Next scan: remaining API-CONTRACT allowlist entries and patients
   board cursor residual.
+
+## 2026-07-12 — API-CONTRACT-001FZOPERATINGHOURSSTRICT implementation checkpoint
+
+- Implementation: extracted the shared pharmacy-site option schema for vehicle and operating-hours consumers, added exact
+  operating-hours GET/PUT response schemas, connected all three readers, added regressions for provider-only fields,
+  duplicate/mismatched weekly rows, duplicate site options, and malformed PUT success, and removed three allowlist entries.
+- Safety contract: site identity, weekly 0-6 completeness/site relation/source/configured/time invariants, optional
+  holiday/resolved-day validation, and provider-only field stripping now guard settings/editor/calendar state. Existing
+  providers, auth, mutation/audit, and visual semantics are unchanged.
+- Tests: operating-hours plus vehicle consumer/provider suites pass 4 files / 58 tests.
+- Validation: static gates, typecheck, no-unused typecheck, lint, diff-check, and Next build pass; inventory is 176
+  schema-backed / 197 allowlisted / 76 files. Implementation commit is pending scoped landing.

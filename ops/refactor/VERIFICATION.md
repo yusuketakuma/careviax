@@ -75,6 +75,25 @@
   was omitted for the same reason.
 - Migration/auth/tenant: no migration, provider, authorization, or tenant query change; no production data operation executed.
 
+## API-CONTRACT-001FZOPERATINGHOURSSTRICT
+
+- Baseline: inherited admin/operating-hours readers used compile-time site-option and `OperatingHoursResponse` casts for
+  site options, weekly/resolved-calendar GET, and PUT success; three `stringFallback` allowlist entries covered the file.
+- Focused test: `pnpm exec vitest run 'src/app/(dashboard)/admin/operating-hours/operating-hours-content.test.tsx' 'src/app/api/pharmacy-operating-hours/route.test.ts' 'src/app/(dashboard)/admin/vehicles/vehicles-content.test.tsx' 'src/app/api/visit-vehicle-resources/route.test.ts' --reporter=dot --testTimeout=30000` — PASS, 4 files / 58 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`,
+  `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`,
+  `pnpm boundaries:check`, `pnpm plans:active:check`, `pnpm colors:check`, `pnpm typography:check`, and
+  `git diff --check` — PASS.
+- Client-schema result: 176 schema-backed, 197 allowlisted schema-less calls, 76 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS with the same two pre-existing warnings in `src/lib/platform/break-glass.test.ts`.
+- Build: `NODE_OPTIONS=--max-old-space-size=8192 pnpm build` — PASS; Next 16.2.9 compiled in 2.7 minutes, TypeScript
+  finished in 60 seconds, 311/311 static pages, and traces completed. Two existing CSS optimizer warnings did not fail
+  the build; no ENOSPC warning was emitted and `df -h .` reported 14 GiB available before and 13 GiB after.
+- Browser/E2E: not run; this is a non-visual settings response-contract slice with no layout change. `gpt-image-2` was
+  omitted for the same reason.
+- Migration/auth/tenant: no migration, provider, authorization, or tenant query change; no production data operation executed.
+
 ## API-CONTRACT-001FZNOTIFICATIONBELLSTRICT
 
 - Baseline: inherited notification-bell summary/list refreshes used optional compile-time payload casts and one `stringFallback` allowlist entry; provider returns a bounded `{ data: { unreadCount } }` summary and `{ data, meta }` list envelope.

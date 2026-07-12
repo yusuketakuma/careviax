@@ -23,43 +23,27 @@ import { MonthGrid, MonthGridNav } from '@/components/ui/month-grid';
 import { PageSection } from '@/components/layout/page-section';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  type OperatingHoursResolvedDay,
+  type OperatingHoursWeeklyRow,
+  pharmacyOperatingHoursGetResponseSchema,
+  pharmacyOperatingHoursPutResponseSchema,
+  type PharmacyOperatingHoursGetResponse,
+  type PharmacyOperatingHoursPutResponse,
+} from '@/lib/calendar/operating-hours-response-schema';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { isValidOperatingWindow } from '@/lib/calendar/operating-day';
+import {
+  pharmacySiteOptionsResponseSchema,
+  type PharmacySiteOption,
+  type PharmacySiteOptionsResponse,
+} from '@/lib/pharmacy-sites/response-schema';
 import { messageFromError } from '@/lib/utils/error-message';
 import type { StatusRole } from '@/lib/constants/status-tokens';
 
-type SiteOption = { id: string; name: string };
-
-type WeeklyRow = {
-  id: string | null;
-  site_id: string;
-  weekday: number;
-  is_open: boolean;
-  open_time: string | null;
-  close_time: string | null;
-  note: string | null;
-  configured: boolean;
-  source: 'stored' | 'default';
-  updated_at?: string | null;
-};
-
-type ResolvedDay = {
-  date: string;
-  open: boolean;
-  source: 'holiday' | 'weekly' | 'default';
-  reason?: 'holiday' | 'regular_closed';
-  from: string | null;
-  to: string | null;
-};
-
-type OperatingHoursResponse = {
-  data: {
-    site_id: string;
-    weekly: WeeklyRow[];
-    weekly_updated_at: string | null;
-    resolved_days?: ResolvedDay[];
-  };
-};
+type SiteOption = PharmacySiteOption;
+type WeeklyRow = OperatingHoursWeeklyRow;
+type ResolvedDay = OperatingHoursResolvedDay;
 
 type EditableRow = {
   weekday: number;
@@ -214,7 +198,10 @@ export function OperatingHoursContent() {
       const response = await fetch('/api/pharmacy-sites', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: SiteOption[] }>(response, '薬局拠点の取得に失敗しました');
+      return readApiJson<PharmacySiteOptionsResponse>(response, {
+        fallbackMessage: '薬局拠点の取得に失敗しました',
+        schema: pharmacySiteOptionsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -236,7 +223,10 @@ export function OperatingHoursContent() {
       const response = await fetch(`/api/pharmacy-operating-hours?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<OperatingHoursResponse>(response, '営業時間設定の取得に失敗しました');
+      return readApiJson<PharmacyOperatingHoursGetResponse>(response, {
+        fallbackMessage: '営業時間設定の取得に失敗しました',
+        schema: pharmacyOperatingHoursGetResponseSchema,
+      });
     },
     enabled: !!orgId && !!activeSiteId,
   });
@@ -270,10 +260,10 @@ export function OperatingHoursContent() {
         }),
       });
       try {
-        return await readApiJson<OperatingHoursResponse>(
-          response,
-          '営業時間設定の保存に失敗しました',
-        );
+        return await readApiJson<PharmacyOperatingHoursPutResponse>(response, {
+          fallbackMessage: '営業時間設定の保存に失敗しました',
+          schema: pharmacyOperatingHoursPutResponseSchema,
+        });
       } catch (error) {
         throw new OperatingHoursSaveError(
           messageFromError(error, '営業時間設定の保存に失敗しました'),

@@ -155,3 +155,16 @@
 | Errors / loading / empty    | Existing loading, error/retry, empty, editor, and mutation behavior remains; malformed 2xx becomes query error rather than false vehicle/editor state.                                                                   |
 | Tests                       | Vehicle consumer/provider suite: 2 files / 33 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                                              |
 | Alignment                   | ALIGNED for this read slice; providers, authorization, mutation acknowledgements, and visual behavior intentionally unchanged.                                                                                           |
+
+## API-CONTRACT-001FZOPERATINGHOURSSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                                                                    |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User roles / routes         | Authorized admins access `/admin/operating-hours`; site options and operating-hours GET/PUT retain existing `canAdmin` authorization and no route boundary changed.                                                  |
+| Frontend state / clients    | `operating-hours-content.tsx` validates shared site options, weekly GET/calendar payloads, and PUT success payloads before site/editor/calendar state; provider-only site/row fields are stripped.                   |
+| Request / response contract | Site options return `{ data }`; operating-hours GET returns weekly rows plus optional holidays/resolved days; PUT returns weekly rows; schemas validate site/weekday/time/source/configured and calendar invariants. |
+| Backend / DB                | Existing org-scoped site/operating-hours queries, date-boundary resolution, bounded 7-row weekly and 366-day calendar behavior, no-store handling, persistence, and provider routes are unchanged.                   |
+| Auth / tenant / audit       | Existing admin authorization, org context, optimistic version/conflict behavior, audit entry, and in-app settings display remain; no provider metadata is externalized.                                              |
+| Errors / loading / empty    | Existing loading, error/retry, calendar, editor, conflict, and save behavior remains; malformed 2xx becomes query/mutation error rather than false settings/calendar state.                                          |
+| Tests                       | Operating-hours and vehicle consumer/provider suites: 4 files / 58 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                     |
+| Alignment                   | ALIGNED for this read slice; providers, authorization, mutation/audit semantics, and visual behavior intentionally unchanged.                                                                                        |

@@ -188,3 +188,26 @@
 - Rollback: revert the vehicle response schema, consumer adapters, regressions, allowlist removal, and ledger entries.
 - Remote: `origin/agent/continuous-improvement-20260712`
 - Push evidence: `cf7f9a35f..575696825` fast-forward push succeeded; local and remote heads match (`0 0`).
+
+## API-CONTRACT-001FZOPERATINGHOURSSTRICT
+
+- Commit Group: `API-CONTRACT-001FZOPERATINGHOURSSTRICT`
+- Commit: pending scoped implementation landing
+- Push Status: PENDING
+- Branch: `agent/continuous-improvement-20260712`
+- Scope: shared pharmacy-site option schema extraction, admin/operating-hours GET/PUT response schemas, consumer
+  regressions, vehicle import adjustment, client-schema allowlist ratchet, and required ledgers.
+- Implementation: validate strict site options, weekly 0-6 completeness/site relation/source/configured/time state,
+  optional holiday/resolved-day bounds, and separate GET/PUT settings envelopes; strip provider-only site/row metadata;
+  preserve operating-hours/site providers, authorization, mutation/audit behavior, and visual semantics.
+- FE/BE impact: `/admin/operating-hours` now fails closed on malformed, legacy, duplicate, mismatched, or invalid 2xx
+  payloads before site/editor/calendar state; `/api/pharmacy-sites` and `/api/pharmacy-operating-hours` remain unchanged.
+- DB/auth/tenant/audit impact: no DB, migration, provider, auth/authz, tenant, audit, mutation, production-data, or
+  external-output change.
+- Verification: focused operating-hours and vehicle suites pass 4 files / 58 tests, static contract gates, typecheck,
+  no-unused typecheck, lint, diff-check, and Next build passed; client-schema inventory is 176 schema-backed / 197
+  allowlisted / 76 files. Build emitted only the existing two CSS optimizer warnings and no ENOSPC warning; filesystem
+  availability was 14 GiB before and 13 GiB after the build.
+- Rollback: revert the shared site/operating-hours response schemas, consumer adapters, regressions, vehicle import
+  adjustment, allowlist removal, and ledger entries.
+- Remote: `origin/agent/continuous-improvement-20260712`; push evidence will be recorded after the scoped landing.

@@ -37,11 +37,13 @@ import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 import { messageFromError } from '@/lib/utils/error-message';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { PHARMACY_SITES_API_PATH } from '@/lib/pharmacy-sites/api-paths';
 import {
   pharmacySiteOptionsResponseSchema,
   type PharmacySiteOption,
   type PharmacySiteOptionsResponse,
+} from '@/lib/pharmacy-sites/response-schema';
+import { PHARMACY_SITES_API_PATH } from '@/lib/pharmacy-sites/api-paths';
+import {
   visitVehicleResourcesResponseSchema,
   type VisitVehicleResourcesResponse,
 } from '@/lib/visit-vehicle-resources/response-schema';

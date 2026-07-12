@@ -91,3 +91,15 @@
   editor state; nested provider metadata is stripped.
 - Operational note: authorized vehicle configuration remains in-app only; no patient detail, provider metadata, or external
   output is introduced by this slice.
+
+## API-CONTRACT-001FZOPERATINGHOURSSTRICT
+
+- Classification: Controlled operating-day/settings operational read/write response boundary, but not a high-risk
+  controlled change.
+- Scope decision: no DB schema/migration, auth/authz implementation, tenant query, audit semantics, billing, secrets,
+  deployment, provider, mutation implementation, or production data change.
+- Safety control: strict site-option and operating-hours GET/PUT schemas reject legacy roots, duplicate/mismatched site or
+  weekday identity, malformed time/source/configuration state, invalid resolved calendar rows, and provider-only metadata
+  before authorized settings/editor state; stale-version conflict and audit behavior remain unchanged.
+- Operational note: authorized operating-day configuration remains in-app only; no patient detail, provider metadata, or
+  external output is introduced by this slice.
