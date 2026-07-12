@@ -86,10 +86,13 @@ import { baseColumns } from './drug-master-content-columns';
 import { DrugMasterDetailSheet } from './drug-master-detail-sheet';
 import { FormularyOperationsPanel } from './drug-master-formulary-operations-panel';
 import {
+  bulkFormularyResponseSchema,
   drugMasterDetailResponseSchema,
   drugMasterImportLogsResponseSchema,
   formularyImpactResponseSchema,
+  formularyCopyResponseSchema,
   formularyTemplateItemSchema,
+  formularyTemplateApplyResponseSchema,
   formularyTemplateListResponseSchema,
   formularyUsageMismatchResponseSchema,
   genericCandidatePageSchema,
@@ -1166,14 +1169,16 @@ function DrugMasterOperationalContent({
         dry_run: dryRun,
       }),
     });
-    const body = await readApiJson<{
-      data: {
-        importedCount: number;
-        unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>;
-        invalidRows: Array<{ rowNumber: number; reason: string }>;
-        preview?: BulkPreviewResponse['preview'];
-      };
-    }>(res, '採用薬リストの一括登録に失敗しました');
+    const body = await readApiJson(res, {
+      fallbackMessage: '採用薬リストの一括登録に失敗しました',
+      schema: bulkFormularyResponseSchema,
+    });
+    if (
+      body.siteId !== effectiveSelectedSiteId ||
+      body.data.importedCount !== (dryRun ? 0 : body.data.preview.summary.processableRows)
+    ) {
+      throw new Error('採用薬リストの一括登録に失敗しました');
+    }
     return body.data;
   };
 
@@ -1265,10 +1270,18 @@ function DrugMasterOperationalContent({
           dry_run: dryRun,
         }),
       });
-      const body = await readApiJson<{ data: FormularyCopyPreviewResponse }>(
-        res,
-        '採用薬リストのコピーに失敗しました',
-      );
+      const body = await readApiJson(res, {
+        fallbackMessage: '採用薬リストのコピーに失敗しました',
+        schema: formularyCopyResponseSchema,
+      });
+      if (
+        body.sourceSiteId !== requestSourceSiteId ||
+        body.targetSiteId !== requestTargetSiteId ||
+        body.data.overwrite !== requestOverwrite ||
+        body.data.dryRun !== dryRun
+      ) {
+        throw new Error('採用薬リストのコピーに失敗しました');
+      }
       return {
         ...body.data,
         requestTargetSiteId,
@@ -1354,10 +1367,18 @@ function DrugMasterOperationalContent({
           dry_run: dryRun,
         }),
       });
-      const json = await readApiJson<{ data: FormularyTemplatePreviewResponse }>(
-        res,
-        '採用品テンプレートの適用に失敗しました',
-      );
+      const json = await readApiJson(res, {
+        fallbackMessage: '採用品テンプレートの適用に失敗しました',
+        schema: formularyTemplateApplyResponseSchema,
+      });
+      if (
+        json.templateId !== requestTemplateId ||
+        json.targetSiteId !== requestTargetSiteId ||
+        json.data.overwrite !== requestOverwrite ||
+        json.data.dryRun !== dryRun
+      ) {
+        throw new Error('採用品テンプレートの適用に失敗しました');
+      }
       return {
         ...json.data,
         requestTargetSiteId,

@@ -46774,3 +46774,32 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   Plans, and this ledger entry. It was pushed to `origin/agent/continuous-improvement-20260712`; unrelated
   harness-memory changes and untracked personal artifacts were excluded, and the feature branch does not match the
   `main`-only production deploy trigger.
+
+## 2026-07-12 API-CONTRACT-001FZFORMULARYBULKSTRICT — formulary bulk-operation contracts (DONE)
+
+- current task / root cause:
+  The drug-master CSV bulk import, site-copy, and template-apply mutation readers trusted compile-time response casts.
+  A successful response for another site/source/template, an overwrite or dry-run mode that differed from the
+  request, duplicate operation rows, or impossible preview/apply/skip/import counts could therefore be rendered and
+  used as the basis for a subsequent formulary mutation. Provider-only site/template/source metadata also remained in
+  local mutation results.
+- implementation / verification:
+  Added consumed runtime schemas for all three responses. They verify request versus response site, source, template,
+  overwrite, and dry-run identity; drug identity and unique operation rows; CSV row-number uniqueness; exact status,
+  unmatched, invalid, processable, action, apply, skip, and imported-count arithmetic; and template source/invalid
+  item totals. Parsing strips provider-only context and unused row before/after values before state storage. Four
+  regressions failed before implementation and passed afterward; consumer plus bulk/copy/template providers passed 4
+  files / 161 tests. Aggregate typecheck passed. No-unused typecheck first exhausted the default 4 GB Node heap with
+  exit 134, then the unchanged command passed with `NODE_OPTIONS=--max-old-space-size=8192`. Exact ESLint/Prettier,
+  API response-shape, frontend contract, client PHI-log/display, module-boundary, active Plans, client-schema, and
+  diff gates passed. The client-schema ratchet improved from 141 schema-backed / 233 allowlisted schema-less / 92
+  files to 144 / 230 / 92. Full build was not repeated after the existing compile-stage memory limitation; no new
+  build hypothesis remains after both typecheck gates passed. No provider, DB, auth/authz, tenant, audit, mutation
+  calculation, clinical data, or visual layout changed. Browser and image generation were omitted because this is a
+  non-visual response-contract, context-identity, count-integrity, and state-minimization repair covered at direct
+  consumer and provider boundaries. Rollback is the three schemas, reader adapters, inferred DTOs, synchronized
+  fixtures, four regressions, and client-schema ratchet hunk.
+- commit / push:
+  Pending scoped commit and push to `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes
+  and untracked personal artifacts remain excluded, and the feature branch does not match the `main`-only production
+  deploy trigger.

@@ -1,10 +1,13 @@
 export type {
+  BulkPreviewResponse,
   DrugMasterDetail,
   DrugMasterImportLog,
+  FormularyCopyPreviewResponse,
   FormularyImpactResponse,
   FormularyRecentChange,
   FormularyStockSummaryRow,
   FormularyTemplateItem,
+  FormularyTemplatePreviewResponse,
   FormularyUsageMismatchResponse,
   GenericCandidateOption,
   GenericRecommendation,
@@ -65,102 +68,6 @@ export type PharmacyDrugStockConfig = {
   follow_up_resolved_at: string | null;
   updated_at: string;
   preferred_generic: PreferredGenericSummary | null;
-};
-
-export type BulkPreviewResponse = {
-  importedCount: number;
-  unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>;
-  invalidRows: Array<{
-    rowNumber: number;
-    reason: string;
-    candidates?: Array<{
-      id: string;
-      yj_code: string;
-      drug_name: string;
-      generic_name: string | null;
-    }>;
-  }>;
-  preview: {
-    summary: {
-      totalRows: number;
-      processableRows: number;
-      createCount: number;
-      updateCount: number;
-      deactivateCount: number;
-      noChangeCount: number;
-      unmatchedCount: number;
-      invalidCount: number;
-    };
-    rows: Array<{
-      rowNumber: number;
-      status: 'create' | 'update' | 'deactivate' | 'no_change' | 'unmatched' | 'invalid';
-      yj_code?: string;
-      drug_name?: string;
-      reason?: string;
-      candidates?: Array<{
-        id: string;
-        yj_code: string;
-        drug_name: string;
-        generic_name: string | null;
-      }>;
-    }>;
-  };
-};
-
-export type FormularyCopyPreviewResponse = {
-  sourceCount: number;
-  copiedCount: number;
-  skippedCount: number;
-  overwrite: boolean;
-  dryRun: boolean;
-  preview: {
-    summary: {
-      source_count: number;
-      create_count: number;
-      update_count: number;
-      skip_existing_count: number;
-      apply_count: number;
-    };
-    rows: Array<{
-      action: 'create' | 'update' | 'skip_existing';
-      drug_master_id: string;
-      reorder_point: number | null;
-      preferred_generic_id: string | null;
-      drug_master: {
-        id: string;
-        yj_code: string;
-        drug_name: string;
-      };
-    }>;
-  };
-};
-
-export type FormularyTemplatePreviewResponse = {
-  itemCount: number;
-  appliedCount: number;
-  skippedCount: number;
-  overwrite: boolean;
-  dryRun: boolean;
-  preview: {
-    summary: {
-      item_count: number;
-      create_count: number;
-      update_count: number;
-      skip_existing_count: number;
-      apply_count: number;
-    };
-    rows: Array<{
-      action: 'create' | 'update' | 'skip_existing';
-      drug_master_id: string;
-      reorder_point: number | null;
-      preferred_generic_id: string | null;
-      drug_master: {
-        id: string;
-        yj_code: string;
-        drug_name: string;
-      };
-    }>;
-  };
 };
 
 export type OfficialImportPreviewData = {

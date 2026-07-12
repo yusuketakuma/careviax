@@ -816,11 +816,402 @@ export const ingredientGroupResponseSchema = z
     },
   }));
 
+const formularyOperationSiteSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+  })
+  .strip();
+
+const formularyOperationDrugSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    yj_code: z.string().trim().min(1),
+    drug_name: z.string().trim().min(1),
+  })
+  .strip();
+
+const formularyOperationActionSchema = z.enum(['create', 'update', 'skip_existing']);
+
+const formularyOperationPreviewRowSchema = z
+  .object({
+    action: formularyOperationActionSchema,
+    drug_master_id: z.string().trim().min(1),
+    reorder_point: z.number().int().nonnegative().nullable(),
+    preferred_generic_id: z.string().trim().min(1).nullable(),
+    drug_master: formularyOperationDrugSchema,
+  })
+  .strip()
+  .superRefine((row, context) => {
+    if (row.drug_master_id !== row.drug_master.id) {
+      context.addIssue({
+        code: 'custom',
+        path: ['drug_master_id'],
+        message: 'Formulary operation drug identity mismatch',
+      });
+    }
+  });
+
+const formularyCopyPreviewSummarySchema = z
+  .object({
+    source_count: z.number().int().nonnegative(),
+    create_count: z.number().int().nonnegative(),
+    update_count: z.number().int().nonnegative(),
+    skip_existing_count: z.number().int().nonnegative(),
+    apply_count: z.number().int().nonnegative(),
+  })
+  .strict();
+
+function countFormularyActions(rows: Array<z.infer<typeof formularyOperationPreviewRowSchema>>) {
+  return {
+    create: rows.filter((row) => row.action === 'create').length,
+    update: rows.filter((row) => row.action === 'update').length,
+    skipExisting: rows.filter((row) => row.action === 'skip_existing').length,
+  };
+}
+
+function addFormularyOperationPreviewIssues(
+  input: {
+    itemCount: number;
+    appliedCount: number;
+    skippedCount: number;
+    overwrite: boolean;
+    dryRun: boolean;
+    summary: z.infer<typeof formularyCopyPreviewSummarySchema>;
+    rows: Array<z.infer<typeof formularyOperationPreviewRowSchema>>;
+  },
+  context: z.RefinementCtx,
+) {
+  const actions = countFormularyActions(input.rows);
+  const ids = new Set<string>();
+  for (const [index, row] of input.rows.entries()) {
+    if (ids.has(row.drug_master_id)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['preview', 'rows', index, 'drug_master_id'],
+        message: 'Duplicate formulary operation drug id',
+      });
+    }
+    ids.add(row.drug_master_id);
+  }
+
+  if (
+    input.itemCount !== input.rows.length ||
+    input.summary.source_count !== input.itemCount ||
+    input.summary.create_count !== actions.create ||
+    input.summary.update_count !== actions.update ||
+    input.summary.skip_existing_count !== actions.skipExisting ||
+    input.summary.apply_count !== actions.create + actions.update ||
+    input.skippedCount !== input.itemCount - input.summary.apply_count ||
+    input.appliedCount !== (input.dryRun ? 0 : input.summary.apply_count) ||
+    (input.overwrite && input.summary.skip_existing_count !== 0) ||
+    (!input.overwrite && input.summary.update_count !== 0)
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['preview', 'summary'],
+      message: 'Formulary operation preview counts are inconsistent',
+    });
+  }
+}
+
+const formularyCopyDataSchema = z
+  .object({
+    sourceSite: formularyOperationSiteSchema,
+    targetSite: formularyOperationSiteSchema,
+    sourceCount: z.number().int().nonnegative(),
+    copiedCount: z.number().int().nonnegative(),
+    skippedCount: z.number().int().nonnegative(),
+    overwrite: z.boolean(),
+    dryRun: z.boolean(),
+    preview: z
+      .object({
+        summary: formularyCopyPreviewSummarySchema,
+        rows: z.array(formularyOperationPreviewRowSchema),
+      })
+      .strict(),
+  })
+  .strip()
+  .superRefine((data, context) => {
+    if (data.sourceSite.id === data.targetSite.id) {
+      context.addIssue({
+        code: 'custom',
+        path: ['targetSite', 'id'],
+        message: 'Formulary copy source and target sites must differ',
+      });
+    }
+    addFormularyOperationPreviewIssues(
+      {
+        itemCount: data.sourceCount,
+        appliedCount: data.copiedCount,
+        skippedCount: data.skippedCount,
+        overwrite: data.overwrite,
+        dryRun: data.dryRun,
+        summary: data.preview.summary,
+        rows: data.preview.rows,
+      },
+      context,
+    );
+  });
+
+export const formularyCopyResponseSchema = z
+  .object({ data: formularyCopyDataSchema })
+  .strict()
+  .transform(({ data }) => ({
+    sourceSiteId: data.sourceSite.id,
+    targetSiteId: data.targetSite.id,
+    data: {
+      sourceCount: data.sourceCount,
+      copiedCount: data.copiedCount,
+      skippedCount: data.skippedCount,
+      overwrite: data.overwrite,
+      dryRun: data.dryRun,
+      preview: data.preview,
+    },
+  }));
+
+const formularyTemplatePreviewSummarySchema = z
+  .object({
+    item_count: z.number().int().nonnegative(),
+    source_item_count: z.number().int().nonnegative(),
+    invalid_item_count: z.number().int().nonnegative(),
+    create_count: z.number().int().nonnegative(),
+    update_count: z.number().int().nonnegative(),
+    skip_existing_count: z.number().int().nonnegative(),
+    apply_count: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const formularyTemplateApplyDataSchema = z
+  .object({
+    template: z.object({ id: z.string().trim().min(1), name: z.string().trim().min(1) }).strip(),
+    targetSite: formularyOperationSiteSchema,
+    itemCount: z.number().int().nonnegative(),
+    sourceItemCount: z.number().int().nonnegative(),
+    invalidItemCount: z.number().int().nonnegative(),
+    appliedCount: z.number().int().nonnegative(),
+    skippedCount: z.number().int().nonnegative(),
+    overwrite: z.boolean(),
+    dryRun: z.boolean(),
+    preview: z
+      .object({
+        summary: formularyTemplatePreviewSummarySchema,
+        rows: z.array(formularyOperationPreviewRowSchema),
+      })
+      .strict(),
+  })
+  .strip()
+  .superRefine((data, context) => {
+    const summary = data.preview.summary;
+    if (
+      data.itemCount !== summary.item_count ||
+      data.sourceItemCount !== summary.source_item_count ||
+      data.invalidItemCount !== summary.invalid_item_count ||
+      data.sourceItemCount !== data.itemCount + data.invalidItemCount
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['preview', 'summary'],
+        message: 'Formulary template source counts are inconsistent',
+      });
+    }
+    addFormularyOperationPreviewIssues(
+      {
+        itemCount: data.itemCount,
+        appliedCount: data.appliedCount,
+        skippedCount: data.skippedCount,
+        overwrite: data.overwrite,
+        dryRun: data.dryRun,
+        summary: {
+          source_count: summary.item_count,
+          create_count: summary.create_count,
+          update_count: summary.update_count,
+          skip_existing_count: summary.skip_existing_count,
+          apply_count: summary.apply_count,
+        },
+        rows: data.preview.rows,
+      },
+      context,
+    );
+  });
+
+export const formularyTemplateApplyResponseSchema = z
+  .object({ data: formularyTemplateApplyDataSchema })
+  .strict()
+  .transform(({ data }) => ({
+    templateId: data.template.id,
+    targetSiteId: data.targetSite.id,
+    data: {
+      itemCount: data.itemCount,
+      appliedCount: data.appliedCount,
+      skippedCount: data.skippedCount,
+      overwrite: data.overwrite,
+      dryRun: data.dryRun,
+      preview: {
+        summary: {
+          item_count: data.preview.summary.item_count,
+          create_count: data.preview.summary.create_count,
+          update_count: data.preview.summary.update_count,
+          skip_existing_count: data.preview.summary.skip_existing_count,
+          apply_count: data.preview.summary.apply_count,
+        },
+        rows: data.preview.rows,
+      },
+    },
+  }));
+
+const bulkPreviewCandidateSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    yj_code: z.string().trim().min(1),
+    drug_name: z.string().trim().min(1),
+    generic_name: z.string().nullable(),
+  })
+  .strip();
+
+const bulkPreviewStatusSchema = z.enum([
+  'create',
+  'update',
+  'deactivate',
+  'no_change',
+  'unmatched',
+  'invalid',
+]);
+
+const bulkPreviewRowSchema = z
+  .object({
+    rowNumber: z.number().int().positive(),
+    status: bulkPreviewStatusSchema,
+    yj_code: z.string().optional(),
+    drug_name: z.string().optional(),
+    reason: z.string().optional(),
+    candidates: z.array(bulkPreviewCandidateSchema).optional(),
+  })
+  .strip();
+
+const bulkUnmatchedRowSchema = z
+  .object({
+    rowNumber: z.number().int().positive(),
+    yj_code: z.string().optional(),
+    drug_name: z.string().optional(),
+  })
+  .strip();
+
+const bulkInvalidRowSchema = z
+  .object({
+    rowNumber: z.number().int().positive(),
+    reason: z.string().trim().min(1),
+    candidates: z.array(bulkPreviewCandidateSchema).optional(),
+  })
+  .strip();
+
+const bulkPreviewSummarySchema = z
+  .object({
+    totalRows: z.number().int().nonnegative(),
+    processableRows: z.number().int().nonnegative(),
+    createCount: z.number().int().nonnegative(),
+    updateCount: z.number().int().nonnegative(),
+    deactivateCount: z.number().int().nonnegative(),
+    noChangeCount: z.number().int().nonnegative(),
+    unmatchedCount: z.number().int().nonnegative(),
+    invalidCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const bulkFormularyDataSchema = z
+  .object({
+    site: formularyOperationSiteSchema,
+    importedCount: z.number().int().nonnegative(),
+    unmatchedRows: z.array(bulkUnmatchedRowSchema),
+    invalidRows: z.array(bulkInvalidRowSchema),
+    preview: z
+      .object({
+        summary: bulkPreviewSummarySchema,
+        rows: z.array(bulkPreviewRowSchema),
+      })
+      .strict(),
+  })
+  .strip()
+  .superRefine((data, context) => {
+    const summary = data.preview.summary;
+    const counts = Object.fromEntries(
+      bulkPreviewStatusSchema.options.map((status) => [
+        status,
+        data.preview.rows.filter((row) => row.status === status).length,
+      ]),
+    ) as Record<z.infer<typeof bulkPreviewStatusSchema>, number>;
+    const rowNumbers = new Set<number>();
+    for (const [index, row] of data.preview.rows.entries()) {
+      if (rowNumbers.has(row.rowNumber)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['preview', 'rows', index, 'rowNumber'],
+          message: 'Duplicate bulk preview row number',
+        });
+      }
+      rowNumbers.add(row.rowNumber);
+    }
+    const unmatchedRowNumbers = data.unmatchedRows
+      .map((row) => row.rowNumber)
+      .sort((a, b) => a - b);
+    const previewUnmatchedRowNumbers = data.preview.rows
+      .filter((row) => row.status === 'unmatched')
+      .map((row) => row.rowNumber)
+      .sort((a, b) => a - b);
+    const invalidRowNumbers = data.invalidRows.map((row) => row.rowNumber).sort((a, b) => a - b);
+    const previewInvalidRowNumbers = data.preview.rows
+      .filter((row) => row.status === 'invalid')
+      .map((row) => row.rowNumber)
+      .sort((a, b) => a - b);
+    const processableCount = counts.create + counts.update + counts.deactivate + counts.no_change;
+    if (
+      summary.totalRows !== data.preview.rows.length ||
+      summary.processableRows !== processableCount ||
+      summary.createCount !== counts.create ||
+      summary.updateCount !== counts.update ||
+      summary.deactivateCount !== counts.deactivate ||
+      summary.noChangeCount !== counts.no_change ||
+      summary.unmatchedCount !== counts.unmatched ||
+      summary.invalidCount !== counts.invalid ||
+      summary.totalRows !==
+        summary.processableRows + summary.unmatchedCount + summary.invalidCount ||
+      summary.unmatchedCount !== data.unmatchedRows.length ||
+      summary.invalidCount !== data.invalidRows.length ||
+      unmatchedRowNumbers.join(',') !== previewUnmatchedRowNumbers.join(',') ||
+      invalidRowNumbers.join(',') !== previewInvalidRowNumbers.join(',') ||
+      ![0, summary.processableRows].includes(data.importedCount)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['preview', 'summary'],
+        message: 'Bulk formulary preview counts are inconsistent',
+      });
+    }
+  });
+
+export const bulkFormularyResponseSchema = z
+  .object({ data: bulkFormularyDataSchema })
+  .strict()
+  .transform(({ data }) => ({
+    siteId: data.site.id,
+    data: {
+      importedCount: data.importedCount,
+      unmatchedRows: data.unmatchedRows,
+      invalidRows: data.invalidRows,
+      preview: data.preview,
+    },
+  }));
+
+export type BulkPreviewResponse = z.infer<typeof bulkFormularyResponseSchema>['data'];
 export type DrugMasterDetail = z.infer<typeof drugMasterDetailSchema>;
+export type FormularyCopyPreviewResponse = z.infer<typeof formularyCopyResponseSchema>['data'];
 export type FormularyImpactResponse = z.infer<typeof formularyImpactResponseSchema>['data'];
 export type FormularyRecentChange = z.infer<typeof formularyRecentChangeSchema>;
 export type FormularyStockSummaryRow = z.infer<typeof formularyImpactStockSchema>;
 export type FormularyTemplateItem = z.infer<typeof formularyTemplateItemSchema>;
+export type FormularyTemplatePreviewResponse = z.infer<
+  typeof formularyTemplateApplyResponseSchema
+>['data'];
 export type FormularyUsageMismatchResponse = z.infer<
   typeof formularyUsageMismatchResponseSchema
 >['data'];

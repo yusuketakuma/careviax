@@ -1439,6 +1439,45 @@ describe('DrugMasterContent', () => {
           200,
         );
       }
+      if (String(input).includes('__helper_template__/apply') && init?.method === 'POST') {
+        return jsonResponse({
+          data: {
+            template: { id: 'template_1', name: '在宅内科 標準セット' },
+            targetSite: { id: 'site_1', name: '本店' },
+            itemCount: 1,
+            sourceItemCount: 1,
+            invalidItemCount: 0,
+            appliedCount: 0,
+            skippedCount: 0,
+            overwrite: false,
+            dryRun: true,
+            preview: {
+              summary: {
+                item_count: 1,
+                source_item_count: 1,
+                invalid_item_count: 0,
+                create_count: 1,
+                update_count: 0,
+                skip_existing_count: 0,
+                apply_count: 1,
+              },
+              rows: [
+                {
+                  action: 'create',
+                  drug_master_id: 'drug_1',
+                  reorder_point: null,
+                  preferred_generic_id: null,
+                  drug_master: {
+                    id: 'drug_1',
+                    yj_code: '111111111111',
+                    drug_name: 'テンプレ薬',
+                  },
+                },
+              ],
+            },
+          },
+        });
+      }
       return jsonResponse({ data: { request: { status: 'approved' }, stock: null } }, 200);
     });
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
@@ -1560,6 +1599,194 @@ describe('DrugMasterContent', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('rejects a successful bulk preview returned for another site', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByLabelText('CSV一括登録'), {
+      target: { value: '222222222200,CSV薬1,1,,,' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^差分確認$/ }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: {
+            site: { id: 'site_2', name: '別拠点' },
+            importedCount: 0,
+            unmatchedRows: [],
+            invalidRows: [],
+            preview: {
+              summary: {
+                totalRows: 1,
+                processableRows: 1,
+                createCount: 1,
+                updateCount: 0,
+                deactivateCount: 0,
+                noChangeCount: 0,
+                unmatchedCount: 0,
+                invalidCount: 0,
+              },
+              rows: [{ rowNumber: 1, status: 'create', drug_name: 'CSV薬1' }],
+            },
+          },
+        }),
+      ),
+    );
+    try {
+      await expect(runCurrentMutation()).rejects.toThrow('採用薬リストの一括登録に失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a successful bulk preview with inconsistent summary counts', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByLabelText('CSV一括登録'), {
+      target: { value: '222222222200,CSV薬1,1,,,' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^差分確認$/ }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: {
+            site: { id: 'site_1', name: '本店' },
+            importedCount: 0,
+            unmatchedRows: [],
+            invalidRows: [],
+            preview: {
+              summary: {
+                totalRows: 2,
+                processableRows: 2,
+                createCount: 2,
+                updateCount: 0,
+                deactivateCount: 0,
+                noChangeCount: 0,
+                unmatchedCount: 0,
+                invalidCount: 0,
+              },
+              rows: [{ rowNumber: 1, status: 'create', drug_name: 'CSV薬1' }],
+            },
+          },
+        }),
+      ),
+    );
+    try {
+      await expect(runCurrentMutation()).rejects.toThrow('採用薬リストの一括登録に失敗しました');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a successful formulary copy preview returned for another source site', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'コピー元拠点' }), {
+      target: { value: 'site_2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /コピー差分確認/ }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: {
+            sourceSite: { id: 'site_other', name: '別コピー元' },
+            targetSite: { id: 'site_1', name: '本店' },
+            sourceCount: 1,
+            copiedCount: 0,
+            skippedCount: 0,
+            overwrite: false,
+            dryRun: true,
+            preview: {
+              summary: {
+                source_count: 1,
+                create_count: 1,
+                update_count: 0,
+                skip_existing_count: 0,
+                apply_count: 1,
+              },
+              rows: [
+                {
+                  action: 'create',
+                  drug_master_id: 'drug_1',
+                  reorder_point: null,
+                  preferred_generic_id: null,
+                  drug_master: { id: 'drug_1', yj_code: '111111111111', drug_name: 'コピー薬' },
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    );
+    try {
+      await expect(runCurrentMutation({ dryRun: true })).rejects.toThrow(
+        '採用薬リストのコピーに失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects a successful template preview returned for another template', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '適用する採用品テンプレート' }), {
+      target: { value: 'template_1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /適用差分確認/ }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          data: {
+            template: { id: 'template_other', name: '別テンプレート' },
+            targetSite: { id: 'site_1', name: '本店' },
+            itemCount: 1,
+            sourceItemCount: 1,
+            invalidItemCount: 0,
+            appliedCount: 0,
+            skippedCount: 0,
+            overwrite: false,
+            dryRun: true,
+            preview: {
+              summary: {
+                item_count: 1,
+                source_item_count: 1,
+                invalid_item_count: 0,
+                create_count: 1,
+                update_count: 0,
+                skip_existing_count: 0,
+                apply_count: 1,
+              },
+              rows: [
+                {
+                  action: 'create',
+                  drug_master_id: 'drug_1',
+                  reorder_point: null,
+                  preferred_generic_id: null,
+                  drug_master: {
+                    id: 'drug_1',
+                    yj_code: '111111111111',
+                    drug_name: 'テンプレ薬',
+                  },
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    );
+    try {
+      await expect(runCurrentMutation({ dryRun: true })).rejects.toThrow(
+        '採用品テンプレートの適用に失敗しました',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('DrugMasterContent formulary select migration (slice4a)', () => {
@@ -1592,18 +1819,24 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
   // mutationFn (R3) instead of hand-injecting those fields.
   const makeTemplateServerResponse = () => ({
     data: {
-      itemCount: 12,
+      template: { id: 'template_1', name: '在宅内科 標準セット' },
+      targetSite: { id: 'site_1', name: '本店' },
+      itemCount: 1,
+      sourceItemCount: 1,
+      invalidItemCount: 0,
       appliedCount: 0,
       skippedCount: 0,
       overwrite: false,
       dryRun: true,
       preview: {
         summary: {
-          item_count: 12,
-          create_count: 3,
-          update_count: 1,
+          item_count: 1,
+          source_item_count: 1,
+          invalid_item_count: 0,
+          create_count: 1,
+          update_count: 0,
           skip_existing_count: 0,
-          apply_count: 4,
+          apply_count: 1,
         },
         rows: [
           {
@@ -1620,18 +1853,20 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
 
   const makeCopyServerResponse = () => ({
     data: {
-      sourceCount: 5,
+      sourceSite: { id: 'site_2', name: '支店' },
+      targetSite: { id: 'site_1', name: '本店' },
+      sourceCount: 1,
       copiedCount: 0,
       skippedCount: 0,
       overwrite: false,
       dryRun: true,
       preview: {
         summary: {
-          source_count: 5,
-          create_count: 2,
+          source_count: 1,
+          create_count: 1,
           update_count: 0,
           skip_existing_count: 0,
-          apply_count: 2,
+          apply_count: 1,
         },
         rows: [
           {
@@ -1648,6 +1883,7 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
 
   const makeBulkServerResponse = (rowCount = 1) => ({
     data: {
+      site: { id: 'site_1', name: '本店' },
       importedCount: 0,
       unmatchedRows: [] as Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>,
       invalidRows: [] as Array<{ rowNumber: number; reason: string }>,
@@ -1674,26 +1910,41 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
 
   const makeBulkServerResponseWithCandidate = () => ({
     data: {
+      site: { id: 'site_1', name: '本店' },
       importedCount: 0,
       unmatchedRows: [] as Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>,
-      invalidRows: [] as Array<{ rowNumber: number; reason: string }>,
+      invalidRows: [
+        {
+          rowNumber: 1,
+          reason: '候補が複数あります',
+          candidates: [
+            {
+              id: 'candidate_1',
+              yj_code: '555555555555',
+              drug_name: '候補薬A',
+              generic_name: 'ロキソプロフェン',
+            },
+          ],
+        },
+      ],
       preview: {
         summary: {
           totalRows: 1,
-          processableRows: 1,
+          processableRows: 0,
           createCount: 0,
           updateCount: 0,
           deactivateCount: 0,
           noChangeCount: 0,
-          unmatchedCount: 1,
-          invalidCount: 0,
+          unmatchedCount: 0,
+          invalidCount: 1,
         },
         rows: [
           {
             rowNumber: 1,
-            status: 'unmatched' as const,
+            status: 'invalid' as const,
             yj_code: '444444444444',
             drug_name: 'CSV未照合薬',
+            reason: '候補が複数あります',
             candidates: [
               {
                 id: 'candidate_1',
