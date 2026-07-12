@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZVISITBRIEFSTRICT patient visit-brief reader (VERIFY_REQUIRED, 2026-07-13; implementation ready; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZVISITBRIEFSTRICT patient visit-brief reader (VERIFY_REQUIRED, 2026-07-13; implementation `b409683fb`; shared clean-capacity build pending).
   - current task / root cause:
     Patient Visit BriefのGET readerはcompile-time castだけで、別患者、schedule context、不正archive/日時/action URL、
     欠損/過大clinical data、重複identity、AI生成・失敗count/rateやfallback状態driftを成功扱いし、患者・処方・検査・
