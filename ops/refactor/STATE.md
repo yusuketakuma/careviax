@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZPCAPUMPSTRICT PCA pump/rental/institution readers (VERIFY_REQUIRED, 2026-07-13; implementation `8ac7b7b16`, ledger pending; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZPCAPUMPSTRICT PCA pump/rental/institution readers (VERIFY_REQUIRED, 2026-07-13; implementation `8ac7b7b16`, ledger `86c20009b`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Admin PCA Pumpsのpump list、open/pending-inspection rentals、institution options 4 GETとpump/rental create/update/
     inspection 5 mutation readersがcompile-time castを残し、lifecycle/date/relation/inspection driftを医療機器stateへ
