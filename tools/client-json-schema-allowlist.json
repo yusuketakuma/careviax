@@ -289,12 +289,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx",
-      "counts": {
-        "stringFallback": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx",
       "counts": {
         "stringFallback": 2

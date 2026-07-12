@@ -55,6 +55,21 @@ function externalProfessionalOptionsResponse(data: unknown[] = []) {
   };
 }
 
+function externalProfessionalOption() {
+  return {
+    id: 'external_1',
+    profession_type: 'physician',
+    name: '佐藤医師',
+    organization_name: '千代田クリニック',
+    department: '在宅診療',
+    phone: '03-0000-0000',
+    email: null,
+    fax: null,
+    address: null,
+    notes: null,
+  };
+}
+
 function careTeamSaveResponse(
   warnings: Array<{ code: string; severity: 'warning'; message: string }> = [],
 ) {
@@ -369,7 +384,7 @@ describe('PatientCareTeamPanel', () => {
 
   it('posts a quick-create master with JSON org headers (static path)', async () => {
     const { mutationConfigs } = captureConfigs();
-    const fetchMock = okFetch({ data: { id: 'external_1' } });
+    const fetchMock = okFetch({ data: externalProfessionalOption() });
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -394,6 +409,61 @@ describe('PatientCareTeamPanel', () => {
         address: '',
         notes: '',
       });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('retains only quick-create fields consumed by the care-team draft', async () => {
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch({
+      data: {
+        ...externalProfessionalOption(),
+        facility_id: 'facility_1',
+        facility_name: '千代田クリニック',
+        preferred_contact_method: 'fax',
+        created_at: '2026-07-12T00:00:00.000Z',
+        updated_at: '2026-07-12T00:00:00.000Z',
+      },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientCareTeamPanel patientId="patient_1" orgId="org_1" cases={buildCases()} />);
+
+      await expect(mutationConfigs[0]?.mutationFn?.()).resolves.toEqual({
+        data: externalProfessionalOption(),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each([
+    [
+      'mixed root fields',
+      () => ({ data: externalProfessionalOption(), legacy_professional: { id: 'external_1' } }),
+    ],
+    [
+      'missing required name',
+      () => {
+        const professional: Record<string, unknown> = externalProfessionalOption();
+        delete professional.name;
+        return { data: professional };
+      },
+    ],
+  ])('rejects malformed quick-create 2xx payloads: %s', async (_label, buildPayload) => {
+    const { mutationConfigs } = captureConfigs();
+    vi.stubGlobal('fetch', okFetch(buildPayload()));
+
+    try {
+      render(<PatientCareTeamPanel patientId="patient_1" orgId="org_1" cases={buildCases()} />);
+
+      await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(
+        '他職種マスターの登録に失敗しました',
+      );
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

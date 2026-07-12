@@ -46466,3 +46466,24 @@ src/app/(dashboard)/prescriptions/intake/intake-triage-loading.test.tsx --report
   consumer/schema regressions, client-schema ratchet, Plans, and this ledger entry. It was pushed to
   `origin/agent/continuous-improvement-20260712`; unrelated harness-memory changes and untracked personal artifacts
   were excluded, and the feature branch does not match the `main`-only production deployment trigger.
+
+## 2026-07-12 API-CONTRACT-001FZCARETEAMCREATESTRICT — care-team master create contract (DONE)
+
+- current task / root cause:
+  The patient care-team panel already validated its external-professional GET and care-team PUT, but quick creation
+  of an external-professional master still compile-time cast the POST body. Mixed-root or structurally incomplete 2xx
+  data could therefore enter the mutation success path, while the shared option schema preserved provider-only fields
+  not consumed by the care-team draft.
+- implementation / verification:
+  Added a strict quick-create response root using the existing consumed external-professional option schema and made
+  that option schema strip provider-only facility, contact-preference, timestamp, and count fields for both GET cache
+  entries and POST mutation results. The reader now rejects mixed roots and missing required identity/display fields,
+  while preserving the request body, static path, org headers, provider response, safe error copy, draft application,
+  invalidation, and toast behavior. Three regressions failed before the fix; panel and provider route suites passed
+  2 files / 36 tests afterward. Exact ESLint/Prettier, aggregate typecheck, no-unused typecheck, API response-shape,
+  frontend contract, client PHI-log/display, module-boundary, active Plans, client-schema, and diff gates passed. The
+  ratchet improved from 120 / 254 / 98 files to 121 / 253 / 97 files. Full build was not repeated after the unchanged
+  compile-stage shared-memory failure recorded immediately above; there is no new build hypothesis. No DB, provider,
+  auth/authz, tenant, audit, mutation request, visual layout, or patient data changed. Browser and image generation
+  were omitted because this is a non-visual mutation-response/data-minimization repair covered at the direct mutation
+  boundary. Rollback is the response schema/test/ratchet hunk.

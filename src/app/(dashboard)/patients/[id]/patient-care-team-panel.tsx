@@ -104,20 +104,22 @@ const reliabilityWarningSchema = z
   })
   .strict();
 
-const externalProfessionalOptionSchema = z
-  .object({
-    id: z.string(),
-    profession_type: z.string(),
-    name: z.string(),
-    organization_name: z.string().nullable(),
-    department: z.string().nullable(),
-    phone: z.string().nullable(),
-    email: z.string().nullable(),
-    fax: z.string().nullable(),
-    address: z.string().nullable(),
-    notes: z.string().nullable(),
-  })
-  .passthrough();
+const externalProfessionalOptionSchema = z.object({
+  id: z.string(),
+  profession_type: z.string(),
+  name: z.string(),
+  organization_name: z.string().nullable(),
+  department: z.string().nullable(),
+  phone: z.string().nullable(),
+  email: z.string().nullable(),
+  fax: z.string().nullable(),
+  address: z.string().nullable(),
+  notes: z.string().nullable(),
+});
+
+const externalProfessionalCreateResponseSchema = z
+  .object({ data: externalProfessionalOptionSchema })
+  .strict();
 
 const externalProfessionalOptionsResponseSchema: z.ZodType<ExternalProfessionalOptionsResponse> = z
   .object({
@@ -294,10 +296,10 @@ export function PatientCareTeamPanel({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(quickCreateDraft),
       });
-      return readApiJson<{ data: ExternalProfessionalOption }>(
-        response,
-        '他職種マスターの登録に失敗しました',
-      );
+      return readApiJson<{ data: ExternalProfessionalOption }>(response, {
+        fallbackMessage: '他職種マスターの登録に失敗しました',
+        schema: externalProfessionalCreateResponseSchema,
+      });
     },
     onSuccess: async (payload) => {
       toast.success('他職種マスターを登録しました');
