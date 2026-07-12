@@ -47080,10 +47080,11 @@ HEAD...@{upstream}` is `0 0`. Harness-memory and personal untracked artifacts re
   diff; no generated artifacts were deleted.
 - commit / landing:
   Scoped implementation commit `57a2b4d07` contains only the generic-candidate schema/tests, prescription form reader,
-  and allowlist ratchet. Ledger commit and safe feature-branch push follow; unrelated dirty/untracked artifacts remain
-  excluded.
+  and allowlist ratchet. Ledger commit `52107d8c7` records the completed slice. Both commits were pushed without force
+  to `origin/agent/continuous-improvement-20260712`; the main-only production deploy workflow was not triggered.
+  Unrelated dirty/untracked artifacts remain excluded.
 - next action:
-  Close and push this slice, then return to the 176-call inventory while keeping the patients-board keyset redesign open.
+  Return to the 176-call inventory while keeping the patients-board keyset redesign open.
 
 ## 2026-07-12 API-CONTRACT-001FZPERFRUNTIME — (DONE)
 
