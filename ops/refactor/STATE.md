@@ -51,7 +51,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZREPORTDELIVERYSTRICT report delivery analytics/reminder readers (VERIFY_REQUIRED, 2026-07-13; implementation `61c8cb26e`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZREPORTDELIVERYSTRICT report delivery analytics/reminder readers (VERIFY_REQUIRED, 2026-07-13; implementation `61c8cb26e`, ledger `d84e62251`, feature-branch push confirmed; shared clean-capacity build pending).
   - current task / root cause:
     Report Delivery Dashboardのanalytics GETとreminder POST結果readersはcompile-time castだけで、current/monthly rate・
     count drift、duplicate/unordered months/deliveries、閾値未満のoverdue、unrequested delivery reminder、queued/skipped
