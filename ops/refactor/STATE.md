@@ -51,6 +51,32 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZVISITFORMSTRICT visit record form readers (VERIFY_REQUIRED, 2026-07-13; implementation `93f80829a`; shared clean-capacity build pending).
+  - current task / root cause:
+    Visit Record FormのCDS alerts、schedule detail、patient safety header、record create、attachment PATCH計5 readersはstring fallbackだけで、
+    malformed alert、別schedule/patient/record、患者安全tag算術drift、OCC version非進行を成功状態へ流し得た。各providerは画面が使わない
+    schedule/患者/記録fieldsも返していた。
+  - implementation / visit safety boundary:
+    5 request-aware consumed runtime schemasを追加し、requested schedule/patient/record identity、nested patient relation、safety tag集合/count、
+    create patient relation、attachment PATCH version進行を検証。Provider-only schedule/header/record fieldsをclient state前にstripした。
+    CDS calculation、record/attachment payload、provider query/write、auth/assignment/tenant/audit/DB/UIは変更していない。非visual parser/PHI境界のため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form-response-schemas.ts`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form-response-schemas.test.ts`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`,
+    `src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Schema/consumer Vitest passed 2 files / 55 tests. Exact zero-warning ESLint, focused Prettier, aggregate typecheck, 8GB no-unused typecheck,
+    client schema (338 backed / 26 allowlisted / 6 files), module boundary, client PHI-log/display, API response shape, colors, format, and diff-check passed.
+    An initial command stopped only because the script was mistyped as `patient-phi-display:check`; the correct `client-phi-display:check` passed.
+    Full build remains NOT_EXECUTED because only 237 MiB is free while existing `.next` consumes 16 GiB; shared generated/user files were not deleted.
+  - security / performance / remaining:
+    Cross-schedule/patient/record and malformed clinical/safety/mutation responses now fail closed; unused PHI-adjacent provider fields no longer enter
+    client state. Network/DB calls, writes, rendering, and dependencies are unchanged. API-CONTRACT-001-RESCAN continues with 26 calls across 6 files.
+    A clean-capacity runner must complete `pnpm build`.
+
 - codex: API-CONTRACT-001FZPATIENTFORMSTRICT patient form candidate readers (VERIFY_REQUIRED, 2026-07-13; implementation `0655c4d97`; shared clean-capacity build pending).
   - current task / root cause:
     Patient Formのduplicate check、facilities、facility units、service areas、pharmacists、staff計6 candidate readersはstring fallbackだけで、
