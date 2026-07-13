@@ -54,6 +54,59 @@
 
 ## 直近の作業
 
+- codex1: MEDPROFILE-SYNC-RACE-001 MedicationProfile sync serialization (DONE, 2026-07-13; implementation `30fcf954e`, PUSHED).
+  - current task / root cause / inspected:
+    Prescription intakeのpost-create hookがMedicationProfileのcurrent snapshotをglobal Prismaで読み、create/update/discontinueを
+    別statementで実行していた。MedicationProfileにはdrug identity単位のcurrent-row unique constraintがないため、同一患者・
+    同一薬剤の同時取込が同じstale snapshotを読み、重複current profileを作成してCDS/allergy/interaction入力を不整合にできた。
+    Intake transaction境界、post-create hooks、DrugMaster code解決、MedicationProfile schema/readers/writers、advisory lock helper、
+    RLS policy、QR/facility batch影響、関連route/service testsを確認した。
+  - implementation / medical safety / privacy result:
+    Global DrugMaster code解決はpatient lock前に維持し、MedicationProfileのread-modify-write全体を`withOrgContext`単一transactionへ
+    移した。`acquireAdvisoryTxLock`をnamespace `medication_profile_sync`、key `${orgId}:${patientId}`で取得後にcurrent rowsを再読込し、createMany、
+    refresh updateMany、discontinue updateManyを同じtxで実行する。org/patient明示filterはRLS内でも二重防御として維持した。
+    同一患者・同一薬剤の同時2 hookでcurrent 1件、created `[0,1]`、global MedicationProfile delegate未使用を実memory testで固定。
+    生の患者・薬剤情報をlog/audit/gbrainへ追加せず、medical/privacy reviewerはAPPROVE、blockerなし。
+  - performance audit / rejected approach:
+    `PERF-DB-RX-INTAKE-DRUGCODE-001`も再監査し、候補列ごと最大3回（明示ID込みでも定数回）のindexed lookupで、入力行数比例の
+    N+1ではないと確認した。multi-column ORは既存代表queryで33.7秒のsequential scanを起こすため変更せず、RejectedApproachへ
+    固定した。Global code解決をlock外に置き、patient lockの保持時間も不要に延ばしていない。
+  - validation / branch / ownership:
+    Focused advisory/service/route 3 files / 121 tests PASS。共有working treeでfull Vitest 1549 files PASS / 3 skipped、16078 tests
+    PASS / 13 skipped、8 GiB typecheck/no-unused、scoped ESLint/Prettier、`git diff --check`、DB query-shape 0/0、raw-read org guard
+    117/0、task registry 78/144、API shape 0/0、route auth 176/252/0、Next production build 311/311 pages PASS。既存generated CSS
+    warning 2件は非阻害・本差分外。Owned 3 code/test pathsだけを`30fcf954e`へscoped commitし、feature branchへnon-force pushした。
+    既存dirty ops/harness/personal filesは未stage・未変更。Rollbackは`git revert 30fcf954e`、DB/data rollback不要。
+  - remaining / next action / gbrain:
+    異なる処方内容の同一患者同時取込はlock順依存のlast-writerとなるため、臨床freshness policyを
+    `MEDPROFILE-SYNC-FRESHNESS-001` Human gateへ分離。Post-hook失敗のPHI-safe metric/retry/reconciliation、manual/OTC writerの
+    invariant共有、既存重複inventory/repairは`OPS-MEDPROFILE-SYNC-RECOVERY-001`へ分離し、production mutationはhuman gate。
+    gbrain: `projects/careviax/decisions/2026-07-13/serialize-medication-profile-sync`、
+    `projects/careviax/rejected/2026-07-13/collapse-drugmaster-code-lookups-into-multicolumn-or`。
+
+- codex2 + codex1 integration: AUTHZ-HANDOFF-SUPERVISION-GENERIC-WRITE-001 (DONE, 2026-07-13; implementation `82f506f50`, RLS hardening `f5c71f85c`, PUSHED).
+  - coordination / ownership / root cause:
+    `agmsg` team `phos`でcodex2へTasks/handoff exact 12 pathsを委譲し、codex1はPrescription Intake 3 pathsを並列所有した。
+    Generic task POST/PATCH/inline/bulk経路がlegacy/canonical handoff supervision taskを作成・再割当・完了でき、専用confirmも
+    dedicated request provenance、current schedule assignment、exact observed task rowを一つのtransactionで再検証していなかった。
+  - implementation / security result:
+    Generic createとnon-null reassignment、inline/bulk completionを両task aliasでfail-closed化した。専用confirmはtype/dedupe/
+    visit/schedule/trainee/supervisor/version metadataとcurrent scheduleを検証し、legacy/canonicalのexact observed typeをserviceへ渡す。
+    Serviceは同じorg transaction内で専用request AuditLog provenanceをmutation前に読み、task claim、VisitRecord version+schedule
+    conditional update、task resolution、sanitized auditをatomicに実行する。欠落provenanceはtyped no-store 403、競合は409。
+    Null assignment clearは既存不正rowのremediation用に維持し、新規/再割当だけを閉じた。
+  - integration finding / repair:
+    初回`82f506f50`受領後、codex1が現HEADでroute test 14件中3件FAILを再現し、AuditLog FORCE RLS読取とroute/service test境界の
+    不整合をblocking findingとしてagmsgで返却した。Codex2は履歴rewriteせず`f5c71f85c`を追補し、provenance readを
+    `withOrgContext` txへ移動、typed error mappingとpositive/negative tx proofを追加。Codex1の差分reviewと独立security再reviewは
+    ともにAPPROVEし、RLS bypass、generic workflow bypass、PHI leak、mutation-before-rejectionは残っていない。
+  - validation / branch / rollback / gbrain:
+    Route+service 2 files / 44、focused 7 files / 173 tests PASS。共有full Vitest 1549 files PASS / 3 skipped、16078 tests PASS /
+    13 skipped。8 GiB typecheck/no-unused、scoped ESLint/Prettier/diff、task registry、API shape、route auth、DB guards、Next build
+    311/311 pages PASS。Codex2は12 owned pathsだけを2 scoped commitsとしてfeature branchへnon-force pushし、Plans/STATE/gbrainは
+    codex1が統合した。Rollbackは`git revert f5c71f85c 82f506f50`の順、DB/data rollback不要。gbrain:
+    `projects/careviax/decisions/2026-07-13/protect-handoff-supervision-task-flow`。
+
 - codex1: AUTHZ-SHARE-FOLLOWUP-ELIGIBILITY-001 share follow-up task eligibility (DONE, 2026-07-13; implementation `dcff0860c`, PUSHED).
   - current task / root cause / inspected:
     Patient/report share workspaces could enable a follow-up-task CTA for pharmacist/trainee actors who may read a
