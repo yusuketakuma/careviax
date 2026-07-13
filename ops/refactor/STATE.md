@@ -51,6 +51,32 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZPATCARDDOCHEADERSTRICT patient card documents/header readers (VERIFY_REQUIRED, 2026-07-13; implementation `6059fa6f6`; shared clean-capacity build pending).
+  - current task / root cause:
+    Patient Cardのdocumentsとheader-summary readersはcompile-time型だけで、別患者、文書readiness件数/status、重複文書identity、
+    unsafe action href、header safety tag projection driftを2xx成功扱いし、文書・連絡先・患者安全情報を含むPHI-bearing query stateへ
+    流し得た。
+  - implementation / patient safety boundary:
+    2 request-aware strict schemasを追加し、requested patient ID、文書readiness算術、重複identity、internal href、header safety tag
+    inclusion/countを検証。Providerが返すISO datetime birth_dateへschemaを同期し、cross-patient/count/tag driftのnegative testsを追加した。
+    Provider query、文書write、auth/assignment/tenant/audit/DB/UIは変更していない。非visual response parser/PHI境界のため
+    `gpt-image-2`は使用していない。gbrain recallは直接関連する既存判断を返さず、live provider/type/testsを優先した。
+  - files:
+    `src/app/(dashboard)/patients/[id]/card-workspace-response-schemas.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace-response-schemas.test.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Schema/consumer/provider Vitest passed 4 files / 233 tests; checker passed 1 file / 7 tests. Exact zero-warning ESLint, focused Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (316 backed / 48 allowlisted / 10 files), module boundary, client PHI-log/display,
+    API response shape, colors, format, and diff-check passed. Full build remains NOT_EXECUTED because only 278 MiB is free while existing
+    `.next` consumes 16 GiB; shared generated/user files were not deleted.
+  - security / performance / remaining:
+    Cross-patient and malformed document/header responses now fail closed before PHI-bearing state updates. Network/DB calls, writes,
+    rendering, and dependencies are unchanged. Patient Card still has overview/home-operations plus three risk/task outcome string readers;
+    the next safe slice continues those remaining 5 calls. A clean-capacity runner must complete `pnpm build`.
+
 - codex: API-CONTRACT-001FZCONFERENCESTRICT conference readers (VERIFY_REQUIRED, 2026-07-13; implementation `aaaed63d1`; shared clean-capacity build pending).
   - current task / root cause:
     Conferencesのnote detail、external professionals、prescriber institution suggestion、community activity create、action-item task、
