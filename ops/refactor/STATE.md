@@ -51,6 +51,32 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZCONFERENCESTRICT conference readers (VERIFY_REQUIRED, 2026-07-13; implementation `aaaed63d1`; shared clean-capacity build pending).
+  - current task / root cause:
+    Conferencesのnote detail、external professionals、prescriber institution suggestion、community activity create、action-item task、
+    report generation 6 readersはcompile-time型だけで、別note、不正participant/action conversion、duplicate professional、不完全
+    activity/task/report outcomeを成功扱いし、患者会議・連絡先・報告/タスク状態へ流し得た。
+  - implementation / conference safety boundary:
+    6 endpoint-specific strict schemasを追加し、requested note、participant/action relation、professional identity、institution date、
+    activity nonnegative counts、task ID、report/queued countを検証。Mutation test fixtureをendpoint別live responseへ同期した。
+    Cursor list、note/report/task/activity writes、auth/assignment/tenant/audit/DB/UIは変更していない。非visual parser/PHI境界のため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/conferences/conference-response-schemas.ts`,
+    `src/app/(dashboard)/conferences/conference-response-schemas.test.ts`,
+    `src/app/(dashboard)/conferences/conferences-content.tsx`,
+    `src/app/(dashboard)/conferences/conferences-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Schema/consumer/providers Vitest passed 8 files / 85 tests. Exact zero-warning ESLint, focused Prettier, aggregate typecheck, 8GB
+    no-unused typecheck, client schema (314 backed / 50 allowlisted / 10 files), module boundary, client PHI-log, API response shape, colors,
+    and diff-check passed. Full build remains NOT_EXECUTED because only 287 MiB is free while existing `.next` consumes 16 GiB; shared
+    generated/user files were not deleted.
+  - security / performance / remaining:
+    Cross-note, malformed conference/contact/activity/task/report responses now fail closed before PHI-bearing operational state/success effects.
+    Network/DB calls, writes, rendering, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
+    `API-CONTRACT-001-RESCAN` continues with 50 calls across 10 files.
+
 - codex: API-CONTRACT-001FZWEEKOPTSTRICT schedule weekly optimizer readers (VERIFY_REQUIRED, 2026-07-13; implementation `4176ead5c`; shared clean-capacity build pending).
   - current task / root cause:
     Weekly Optimizerのcases/検索、週間proposals、shifts、vehicle、billing、mixed route 7 readersはcompile-time型だけで、別週、
