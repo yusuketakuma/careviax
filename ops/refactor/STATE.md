@@ -55,6 +55,27 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-003A (DONE; parent remains Partial, 2026-07-14; implementation `0f49030ab`).
+  - current task / files inspected / root cause:
+    Request correlation push/parity後、shared response helper/tests、route固有`error()` / `externalError()` callsites、error response schema、label dictionary
+    fallback、Plans/archiveの`API-CONTRACT-003`受入条件を監査した。Shared validation/auth/internal/not-found/conflict/rate-limit codeは複数helperで
+    codeとHTTP statusを別々指定し、log level/retryability/recovery actionを参照できるcanonical sourceがなかった。一方、route固有・動的codeは
+    provider/causeによりstatusが変わるものを含み、一括登録は誤契約化になるためshared foundationと残移行を分離した。
+  - files changed / bugs found / correctness / security / privacy / performance:
+    `error-codes.ts`にshared 8コードのcanonical typed registryを追加し、400/401/403/404/409/429/500のHTTP status、info/warn/error、
+    retryability、typed recovery action、message labelを必須化した。Registryはinline snapshotで固定し、`getApiErrorDefinition`はunknown stringを
+    `RangeError`で拒否、`registeredError`はunknown literalを型エラーで拒否する。Shared validation/internal/not-found/forbidden/conflict/
+    rate-limit/auth response helperはregistryからstatus/labelを解決し、従来のcode/message/details/status/Retry-After/localization fallbackを不変にした。
+    Route固有の互換`error()` / `externalError()`は今回変更せず、raw provider errorやPHIをregistry/log/bodyへ追加していない。DB/network/
+    response payload sizeに新規の実質コストはなく、shared lookupは小さな凍結objectの同期参照のみ。
+  - validation results / remaining work / next action / rollback:
+    Registry/response/auth/protected route 8 files / 670 tests、exact ESLint/Prettier、8 GiB aggregate typecheck/no-unused、route-auth 150 allowlisted /
+    214 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、client schema 361 backed /
+    0 allowlisted、Plans/format/diffをPASS。新規security/privacy/medical/performance issueなし。Schema/migration/production mutation/deploy/Oracleなし。
+    非視覚server/API変更のためimagegen/browserなし。親`API-CONTRACT-003`にはroute固有・動的codeのstatus/recovery棚卸しと段階移行、
+    `API-CONTRACT-002`にはbody/一般AuditLog/job/outbox伝播が残る。次はliteral code/statusの実測matrixを作り、同一codeのstatus driftと高頻度
+    familyを優先順付けする。Rollbackは`0f49030ab`のrevertでDB/data rollback不要。
+
 - codex1: API-CONTRACT-002A (DONE; parent remains Partial, 2026-07-14; implementation `d11727a20`).
   - current task / files inspected / root cause:
     Direct-auth success cache境界の0 routes収束後、shared response/auth/request ALS/logger/security event/audit、PHOS Lambdaの既存correlation実装、
