@@ -51,6 +51,32 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZPATCARDRISKSTRICT patient card case-risk readers (VERIFY_REQUIRED, 2026-07-13; implementation `374682a78`; shared clean-capacity build pending).
+  - current task / root cause:
+    Patient Cardのcase-risk cockpit GET、task sync、task waiver計3 readersはstring fallbackだけで、別case/patient/task、section/finding
+    relation、active severity aggregate、sync task ref count、waiver audit outcome driftを2xx成功扱いし、患者リスク表示・タスク同期・
+    免除success stateへ流し得た。
+  - implementation / risk task safety boundary:
+    3 request-aware strict schemasを追加し、requested case/task/patient identity、section domain/finding relation、active severity aggregate、
+    sync task ref counts、single audited waiverを検証。UI未使用task refsをparse時にstripし、cross relation/count/audit driftのnegative
+    testsを追加した。Risk computation/task writes、auth/assignment/tenant/audit/DB/UIは変更していない。非visual parser/患者リスク境界の
+    ため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/patients/[id]/card-workspace-response-schemas.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace-response-schemas.test.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Schema/consumer/provider Vitest passed 8 files / 139 tests; checker passed 1 file / 7 tests. Exact zero-warning ESLint, focused Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (319 backed / 45 allowlisted / 10 files), module boundary, client PHI-log/display,
+    API response shape, colors, format, and diff-check passed. Full build remains NOT_EXECUTED because only 278 MiB is free while existing
+    `.next` consumes 16 GiB; shared generated/user files were not deleted.
+  - security / performance / remaining:
+    Cross-case/patient/task and malformed aggregate/outcome responses now fail closed before PHI-bearing risk state or task success effects;
+    unused task refs no longer enter UI state. Network/DB calls, writes, rendering, and dependencies are unchanged. Patient Card still has
+    overview/home-operations 2 object readers; the next safe slice continues those calls. A clean-capacity runner must complete `pnpm build`.
+
 - codex: API-CONTRACT-001FZPATCARDDOCHEADERSTRICT patient card documents/header readers (VERIFY_REQUIRED, 2026-07-13; implementation `6059fa6f6`; shared clean-capacity build pending).
   - current task / root cause:
     Patient Cardのdocumentsとheader-summary readersはcompile-time型だけで、別患者、文書readiness件数/status、重複文書identity、
