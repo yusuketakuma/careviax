@@ -47,6 +47,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'sign_in',
     messageLabel: 'api.error.auth.unauthenticated',
   },
+  EXTERNAL_JOB_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.external.job_failed',
+  },
   EXTERNAL_PDF_RENDER_FAILED: {
     httpStatus: 500,
     logLevel: 'error',

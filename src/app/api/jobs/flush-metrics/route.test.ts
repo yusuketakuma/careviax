@@ -76,7 +76,7 @@ describe('/api/jobs/flush-metrics POST', () => {
 
       expect(response.status).toBe(500);
       const body = await response.json();
-      expect(body).toMatchObject({
+      expect(body).toEqual({
         code: 'EXTERNAL_JOB_FAILED',
         message: 'ジョブの実行に失敗しました',
       });

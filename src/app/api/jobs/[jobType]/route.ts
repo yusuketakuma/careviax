@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { error, registeredError, success, validationError } from '@/lib/api/response';
+import { registeredError, success, validationError } from '@/lib/api/response';
 import { requireApiKeyOrAuthContext } from '@/lib/auth/context';
 import { logger } from '@/lib/utils/logger';
 import {
@@ -227,6 +227,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
       },
       err,
     );
-    return error('EXTERNAL_JOB_FAILED', 'ジョブの実行に失敗しました', 500) as NextResponse;
+    return registeredError('EXTERNAL_JOB_FAILED', 'ジョブの実行に失敗しました') as NextResponse;
   }
 }

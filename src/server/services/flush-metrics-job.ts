@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { error, success } from '@/lib/api/response';
+import { registeredError, success } from '@/lib/api/response';
 import { logger } from '@/lib/utils/logger';
 import { flushPerformanceMetricsToCloudWatch } from '@/lib/utils/performance';
 
@@ -32,6 +32,6 @@ export async function runFlushMetricsJob<TPayload extends Record<string, unknown
       },
       err,
     );
-    return error(FLUSH_METRICS_FAILURE_CODE, failureMessage, 500);
+    return registeredError(FLUSH_METRICS_FAILURE_CODE, failureMessage);
   }
 }
