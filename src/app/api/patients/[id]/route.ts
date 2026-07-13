@@ -1086,6 +1086,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
             id: true,
             report_type: true,
             status: true,
+            pdf_url: true,
             created_by: true,
             created_at: true,
             delivery_records: {
@@ -1360,7 +1361,10 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
           visit_schedules: visitSchedules,
           monthly_visit_count: currentMonthVisitCount,
           visit_records: visitRecords,
-          care_reports: careReports,
+          care_reports: careReports.map(({ pdf_url, ...report }) => ({
+            ...report,
+            has_pdf: typeof pdf_url === 'string' && pdf_url.trim().length > 0,
+          })),
           self_reports: selfReports,
           external_shares: externalShares.map((item) => ({
             ...item,

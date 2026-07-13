@@ -159,6 +159,7 @@ describe('/api/patients/[id]/care-team', () => {
     expect(body).toMatchObject({
       data: [{ id: 'link_1', role: 'physician', name: '佐藤医師' }],
       meta: {
+        patient_id: 'patient_1',
         case_id: 'case_active',
         cases: [
           { id: 'case_active', status: 'active' },

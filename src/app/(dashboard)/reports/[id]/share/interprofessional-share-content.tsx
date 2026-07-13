@@ -21,19 +21,29 @@ import {
   buildCommunicationRequestApiPath,
   buildCommunicationRequestsApiPath,
 } from '@/lib/communications/api-paths';
+import { fetchAllShareCommunicationRequests } from '@/lib/communications/share-workspace-client';
+import {
+  buildShareCareTeamResponseSchema,
+  buildShareContactsResponseSchema,
+  buildShareReplyDetailResponseSchema,
+  type ShareCareTeamResponse,
+  type ShareContactsResponse,
+  type ShareReplyDetailResponse,
+} from '@/lib/communications/share-workspace-response-schemas';
 import {
   createCommunicationRequestResponseSchema,
   type CreateCommunicationRequestResponse,
 } from '@/lib/communications/response-schemas';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { isActiveReplyRequestStatus } from '@/lib/communications/request-status';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
 import { buildReportHref } from '@/lib/reports/navigation';
+import { isShareableCareReportStatus } from '@/lib/reports/shareability';
 import { buildTasksApiPath } from '@/lib/tasks/api-paths';
 import { clientLog } from '@/lib/utils/client-log';
-import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
-import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 import {
   buildAudienceShareSections,
   buildNextCheckTaskInput,
@@ -43,11 +53,12 @@ import {
   pickLatestAudienceRequest,
   pickLatestAudienceReplyRequest,
   shareAudienceLabel,
-  type CareTeamMemberSummary,
-  type ContactPartySummary,
   type ShareAudienceKey,
-  type ShareCommunicationRequest,
 } from './interprofessional-share.helpers';
+import {
+  buildInterprofessionalShareReportResponseSchema,
+  type InterprofessionalShareReport,
+} from './interprofessional-share-response-schema';
 
 /**
  * p1_05「他職種向け共有ページ」。
@@ -55,33 +66,6 @@ import {
  * 「誰に・何が見えるか」をプレビューし、相手からの返信を次回タスクへつなげる画面。
  * 3 カラム: 共有する相手 / 相手に見える内容 / 返信・確認(主操作=次回タスクにする)。
  */
-
-type ShareCareReport = {
-  id: string;
-  patient_id: string;
-  case_id?: string | null;
-  report_type: string;
-  updated_at: string;
-  status: string;
-  content: unknown;
-  pdf_url: string | null;
-  patient_summary?: {
-    id: string;
-    name: string | null;
-    archive?: PatientArchiveSummary | null;
-  } | null;
-  permissions?: CareReportActionPermissions;
-};
-
-type ShareReplyDetail = {
-  id: string;
-  responses: Array<{
-    id: string;
-    responder_name: string;
-    content: string;
-    responded_at: string;
-  }>;
-};
 
 const FOLLOWUP_TASK_FAILURE_MESSAGE = '次回タスクの作成に失敗しました。もう一度お試しください。';
 const FOLLOWUP_TASK_CONFLICT_MESSAGE =
@@ -245,6 +229,16 @@ function InterprofessionalShareLoadingState() {
 
 export function InterprofessionalShareContent({ reportId }: { reportId: string }) {
   const orgId = useOrgId();
+  return (
+    <InterprofessionalShareWorkspace
+      key={JSON.stringify([orgId, reportId])}
+      reportId={reportId}
+      orgId={orgId}
+    />
+  );
+}
+
+function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string; orgId: string }) {
   const queryClient = useQueryClient();
   const isBootstrappingOrg = !orgId;
 
@@ -263,7 +257,10 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       const res = await fetch(buildCareReportApiPath(reportId), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: ShareCareReport }>(res, '報告書の取得に失敗しました');
+      return readApiJson<{ data: InterprofessionalShareReport }>(res, {
+        fallbackMessage: '報告書の取得に失敗しました',
+        schema: buildInterprofessionalShareReportResponseSchema(reportId),
+      });
     },
     enabled: !!orgId && !!reportId,
   });
@@ -271,9 +268,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const patientId = report?.patient_id ?? null;
   const canSendReport = report?.permissions?.can_send === true;
   const canCreateExternalShare = report?.permissions?.can_create_external_share === true;
-  const isShareableReportStatus = report
-    ? ['confirmed', 'sent', 'response_waiting'].includes(report.status)
-    : false;
+  const isShareableReportStatus = report ? isShareableCareReportStatus(report.status) : false;
   const canUseShareOutput = canSendReport && canCreateExternalShare && isShareableReportStatus;
   const canCreateFollowupTask = report?.permissions?.can_create_followup_task === true;
   const canViewPatient = report?.permissions?.can_view_patient === true;
@@ -294,7 +289,15 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
           headers: buildOrgHeaders(orgId),
         },
       );
-      return readApiJson<{ data: CareTeamMemberSummary[] }>(res, 'ケアチームの取得に失敗しました');
+      return readApiJson<ShareCareTeamResponse>(res, {
+        fallbackMessage: 'ケアチームの取得に失敗しました',
+        schema: buildShareCareTeamResponseSchema({
+          expectedPatientId: patientId,
+          // Legacy case-less reports intentionally use the patient's default active case
+          // for recipient discovery; patient_id still binds the response to this report.
+          expectedCaseId: report?.case_id ?? undefined,
+        }),
+      });
     },
     enabled: !!orgId && canLoadPatientSupport,
   });
@@ -306,7 +309,10 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       const res = await fetch(buildPatientApiPath(patientId, '/contacts'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: ContactPartySummary[] }>(res, '連絡先の取得に失敗しました');
+      return readApiJson<ShareContactsResponse>(res, {
+        fallbackMessage: '連絡先の取得に失敗しました',
+        schema: buildShareContactsResponseSchema(patientId),
+      });
     },
     enabled: !!orgId && canLoadPatientSupport,
   });
@@ -314,22 +320,19 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const requestsQuery = useQuery({
     queryKey: ['communication-requests', 'care_report', reportId, orgId],
     queryFn: async () => {
-      const res = await fetch(
-        buildCommunicationRequestsApiPath({
-          requestType: 'care_report_reply_request',
-          relatedEntityType: 'care_report',
-          relatedEntityId: reportId,
-        }),
-        {
-          headers: buildOrgHeaders(orgId),
+      if (!patientId) throw new Error('患者IDがありません');
+      return fetchAllShareCommunicationRequests({
+        orgId,
+        scope: {
+          expectedPatientId: patientId,
+          expectedRequestType: 'care_report_reply_request',
+          expectedRelatedEntityType: 'care_report',
+          expectedRelatedEntityId: reportId,
         },
-      );
-      return readApiJson<{ data: ShareCommunicationRequest[] }>(
-        res,
-        '返信状況の取得に失敗しました',
-      );
+        errorMessage: '返信状況の取得に失敗しました',
+      });
     },
-    enabled: !!orgId && !!reportId && canUseShareOutput,
+    enabled: !!orgId && !!reportId && !!patientId && canUseShareOutput,
   });
 
   const audience = selectedAudience ?? defaultAudienceForReportType(report?.report_type ?? null);
@@ -340,7 +343,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   );
   const selectedAudienceCard = audienceCards.find((card) => card.key === audience) ?? null;
   const sections = buildAudienceShareSections(report?.content ?? null, audience, {
-    hasPdf: Boolean(report && canUseShareOutput),
+    hasPdf: Boolean(report?.has_pdf && canUseShareOutput),
   });
   const audienceRequest = pickLatestAudienceRequest(requestsQuery.data?.data ?? [], audience);
   const replyRequest = pickLatestAudienceReplyRequest(requestsQuery.data?.data ?? [], audience);
@@ -354,7 +357,17 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       const res = await fetch(buildCommunicationRequestApiPath(requestId), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: ShareReplyDetail }>(res, '返信内容の取得に失敗しました');
+      if (!patientId) throw new Error('患者IDがありません');
+      return readApiJson<ShareReplyDetailResponse>(res, {
+        fallbackMessage: '返信内容の取得に失敗しました',
+        schema: buildShareReplyDetailResponseSchema({
+          expectedRequestId: requestId,
+          expectedPatientId: patientId,
+          expectedRequestType: 'care_report_reply_request',
+          expectedRelatedEntityType: 'care_report',
+          expectedRelatedEntityId: reportId,
+        }),
+      });
     },
     enabled: !!orgId && !!replyRequest?.id && canUseShareOutput,
   });
@@ -362,7 +375,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const taskCreated = Boolean(latestReply && createdResponseIds.includes(latestReply.id));
   const requestCreated = createdRequestAudiences.includes(audience);
   const activeAudienceRequest =
-    audienceRequest && audienceRequest.status !== 'closed' ? audienceRequest : null;
+    audienceRequest && isActiveReplyRequestStatus(audienceRequest.status) ? audienceRequest : null;
   const hasActiveAudienceRequest = Boolean(activeAudienceRequest);
   const focusedReplyRequestId =
     activeAudienceRequest?.id ?? createdRequestIdsByAudience[audience] ?? null;

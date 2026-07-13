@@ -190,6 +190,32 @@ describe('cursor-pagination-client', () => {
     expect(payload.nextCursor).toBe('cursor_2');
   });
 
+  it('rejects a cursor cycle instead of repeating pages until the page cap', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ id: 'row_1' }],
+          meta: { has_more: true, next_cursor: 'cursor_1' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ id: 'row_2' }],
+          meta: { has_more: true, next_cursor: 'cursor_1' },
+        }),
+      );
+
+    await expect(
+      fetchAllCursorPages({
+        path: '/api/example',
+        errorMessage: 'failed',
+        fetchImpl,
+      }),
+    ).rejects.toThrow('failed');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects meta cursor pages that expose next_cursor when has_more is false', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({

@@ -1,5 +1,6 @@
 import type { CareManagerReportContent, PhysicianReportContent } from '@/types/care-report-content';
 import type { AudienceReportContent } from '@/types/care-report-content';
+import type { ShareCommunicationRequest } from '@/lib/communications/share-workspace-response-schemas';
 import {
   audienceKeyFromRecipientRole,
   defaultAudienceForReportType,
@@ -17,6 +18,7 @@ export {
   shareAudienceLabel,
 };
 export type { ShareAudience, ShareAudienceKey };
+export type { ShareCommunicationRequest };
 
 /**
  * p1_05「他職種向け共有ページ」の表示射影(純関数)。
@@ -265,14 +267,16 @@ export function buildAudienceShareSections(
     audience === 'physician'
       ? (facts.physicianRequest ?? facts.careRequest)
       : (facts.careRequest ?? facts.physicianRequest);
-  const attachmentsBody = options.hasPdf ? '訪問報告書PDF(最新の確定版)' : null;
+  const attachmentsBody = options.hasPdf
+    ? '訪問報告書PDF（最新の確定版）あり。この返信依頼には自動添付されません。'
+    : null;
 
   const sections: Array<{ key: ShareSectionKey; title: string; body: string | null }> = [
     { key: 'medication_status', title: '服薬状況', body: medicationBody },
     { key: 'residual', title: '残薬', body: facts.residual },
     { key: 'pharmacist_request', title: '薬剤師からのお願い', body: requestBody },
     { key: 'next_check', title: '次回確認すること', body: facts.nextCheck },
-    { key: 'attachments', title: '添付資料', body: attachmentsBody },
+    { key: 'attachments', title: '関連資料', body: attachmentsBody },
   ];
 
   return sections.map((section) => ({
@@ -280,7 +284,7 @@ export function buildAudienceShareSections(
     title: section.title,
     body:
       section.body ??
-      (section.key === 'attachments' ? '添付資料はまだありません。' : SHARE_SECTION_EMPTY_BODY),
+      (section.key === 'attachments' ? '関連資料はありません。' : SHARE_SECTION_EMPTY_BODY),
     isEmpty: section.body == null,
   }));
 }
@@ -288,22 +292,6 @@ export function buildAudienceShareSections(
 // ---------------------------------------------------------------------------
 // 返信・確認
 // ---------------------------------------------------------------------------
-
-export type ShareReplyMeta = {
-  id: string;
-  responder_name: string;
-  responded_at: string;
-};
-
-export type ShareCommunicationRequest = {
-  id: string;
-  recipient_name: string | null;
-  recipient_role: string | null;
-  status: string;
-  subject: string;
-  requested_at: string;
-  responses: ShareReplyMeta[];
-};
 
 /** 選択中の相手宛てで、作成日時が最も新しい連携依頼を選ぶ */
 export function pickLatestAudienceRequest(

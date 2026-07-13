@@ -768,6 +768,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
         },
       ],
       meta: {
+        patient_id: 'patient_1',
         expected_updated_at: CURRENT_UPDATED_AT,
         version_basis: 'patient_updated_at',
       },

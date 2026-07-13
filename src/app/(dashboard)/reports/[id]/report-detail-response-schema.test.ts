@@ -67,6 +67,14 @@ function report(overrides: Record<string, unknown> = {}) {
 }
 
 describe('report detail response schemas', () => {
+  it('accepts the canonical stored-file PDF path returned by the provider', () => {
+    const parsed = buildCareReportDetailResponseSchema('report_1').parse({
+      data: report({ pdf_url: '/api/files/file_1/download' }),
+    });
+
+    expect(parsed.data.pdf_url).toBe('/api/files/file_1/download');
+  });
+
   it('validates the report scope and strips unused provider metadata', () => {
     const parsed = buildCareReportDetailResponseSchema('report_1').parse({ data: report() });
     expect(parsed.data.id).toBe('report_1');

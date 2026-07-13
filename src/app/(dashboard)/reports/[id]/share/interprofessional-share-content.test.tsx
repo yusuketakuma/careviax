@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { createQueryClientWrapper } from '@/test/query-client-test-utils';
@@ -20,13 +20,14 @@ import { InterprofessionalShareContent } from './interprofessional-share-content
 setupDomTestEnv();
 
 const clientLogWarnMock = vi.hoisted(() => vi.fn());
+const useOrgIdMock = vi.hoisted(() => vi.fn(() => 'org_1'));
 
 const REPORT_UPDATED_AT_ISO = '2026-06-18T01:02:03.000Z';
 
 type ReportFixture = {
   id: string;
   patient_id: string;
-  case_id: string;
+  case_id: string | null;
   report_type: string;
   updated_at: string;
   status: string;
@@ -34,20 +35,21 @@ type ReportFixture = {
   patient_summary: {
     id: string;
     name: string | null;
-    archive: PatientArchiveSummary | null;
-  };
+    archive: PatientArchiveSummary;
+  } | null;
   permissions: {
+    can_edit: boolean;
     can_send: boolean;
     can_create_external_share: boolean;
     can_create_followup_task: boolean;
     can_view_patient: boolean;
     can_view_related_requests: boolean;
   };
-  content: Record<string, unknown>;
+  content?: Record<string, unknown>;
 };
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
-  useOrgId: () => 'org_1',
+  useOrgId: useOrgIdMock,
 }));
 
 vi.mock('@/lib/utils/client-log', () => ({
@@ -101,7 +103,7 @@ vi.mock('@/lib/tasks/api-paths', async (importActual) => {
   return { ...actual, buildTasksApiPath: vi.fn(actual.buildTasksApiPath) };
 });
 
-const REPORT: ReportFixture = {
+const REPORT = {
   id: 'rep_1',
   patient_id: 'pt_1',
   case_id: 'case_1',
@@ -112,9 +114,14 @@ const REPORT: ReportFixture = {
   patient_summary: {
     id: 'pt_1',
     name: '加藤 ミサ',
-    archive: null as PatientArchiveSummary | null,
+    archive: {
+      status: 'active',
+      archived: false,
+      archived_at: null,
+    } as PatientArchiveSummary,
   },
   permissions: {
+    can_edit: true,
     can_send: true,
     can_create_external_share: true,
     can_create_followup_task: true,
@@ -154,11 +161,18 @@ const REPORT: ReportFixture = {
     next_visit_plan: { followup_items: ['昼分の服薬状況を確認'] },
     warnings: [],
   },
-};
+} satisfies ReportFixture;
 
 const CARE_TEAM = [
-  { role: 'physician', name: '山本 健', organization_name: 'やまもと内科', is_primary: true },
   {
+    id: 'member_physician',
+    role: 'physician',
+    name: '山本 健',
+    organization_name: 'やまもと内科',
+    is_primary: true,
+  },
+  {
+    id: 'member_care_manager',
     role: 'care_manager',
     name: '中島 桜',
     organization_name: 'きたきゅうケアプラン',
@@ -167,14 +181,24 @@ const CARE_TEAM = [
 ];
 
 const CONTACTS = [
-  { relation: 'child', name: '加藤 直子', organization_name: null, is_primary: true },
+  {
+    id: 'contact_child',
+    relation: 'child',
+    name: '加藤 直子',
+    organization_name: null,
+    is_primary: true,
+  },
 ];
 
 const REQUESTS = [
   {
     id: 'req_1',
+    patient_id: 'pt_1',
+    request_type: 'care_report_reply_request',
     recipient_name: '中島 桜',
     recipient_role: 'care_manager',
+    related_entity_type: 'care_report',
+    related_entity_id: 'rep_1',
     status: 'responded',
     subject: 'ケアマネへの服薬状況報告(共有)',
     requested_at: '2026-06-10T06:30:00.000Z',
@@ -190,6 +214,10 @@ const REQUESTS = [
 
 const REQUEST_DETAIL = {
   id: 'req_1',
+  patient_id: 'pt_1',
+  request_type: 'care_report_reply_request',
+  related_entity_type: 'care_report',
+  related_entity_id: 'rep_1',
   responses: [
     {
       id: 'res_1',
@@ -204,8 +232,10 @@ function stubFetch(
   options: {
     failCareTeam?: boolean;
     failRequests?: boolean;
-    report?: typeof REPORT;
+    report?: ReportFixture;
+    reportsById?: Record<string, ReportFixture>;
     requests?: typeof REQUESTS;
+    requestPages?: Array<typeof REQUESTS>;
     refetchedRequests?: typeof REQUESTS;
     requestDetail?: typeof REQUEST_DETAIL;
     failRequestPost?: Response;
@@ -217,7 +247,13 @@ function stubFetch(
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith('/api/care-reports/')) {
-      return new Response(JSON.stringify({ data: options.report ?? REPORT }), { status: 200 });
+      const requestedReportId = decodeURIComponent(url.split('/').at(-1) ?? '');
+      return new Response(
+        JSON.stringify({
+          data: options.reportsById?.[requestedReportId] ?? options.report ?? REPORT,
+        }),
+        { status: 200 },
+      );
     }
     // match by suffix so a hostile report.patient_id API path still stubs ok
     // (the href behavior, not fetch plumbing, is what these tests exercise).
@@ -225,10 +261,30 @@ function stubFetch(
       if (options.failCareTeam) {
         return new Response('server error', { status: 500 });
       }
-      return new Response(JSON.stringify({ data: CARE_TEAM }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          data: CARE_TEAM,
+          meta: {
+            patient_id: decodeURIComponent(url.split('/')[3] ?? ''),
+            case_id: 'case_1',
+            cases: [{ id: 'case_1', status: 'active' }],
+          },
+        }),
+        { status: 200 },
+      );
     }
     if (url.includes('/contacts')) {
-      return new Response(JSON.stringify({ data: CONTACTS }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          data: CONTACTS,
+          meta: {
+            patient_id: decodeURIComponent(url.split('/')[3] ?? ''),
+            expected_updated_at: REPORT_UPDATED_AT_ISO,
+            version_basis: 'patient_updated_at',
+          },
+        }),
+        { status: 200 },
+      );
     }
     if (
       url.includes('/api/communication-requests?') ||
@@ -237,11 +293,26 @@ function stubFetch(
       if (options.failRequests) {
         return new Response('server error', { status: 500 });
       }
-      const requests =
-        communicationRequestListReads++ > 0
+      const pageCursor = new URL(url, 'http://localhost').searchParams.get('cursor');
+      const pageIndex = pageCursor ? Number(pageCursor.replace('cursor_', '')) : 0;
+      const requestPages = options.requestPages;
+      const requests = requestPages
+        ? (requestPages[pageIndex] ?? [])
+        : communicationRequestListReads++ > 0
           ? (options.refetchedRequests ?? options.requests ?? REQUESTS)
           : (options.requests ?? REQUESTS);
-      return new Response(JSON.stringify({ data: requests }), { status: 200 });
+      const hasMore = Boolean(requestPages && pageIndex < requestPages.length - 1);
+      return new Response(
+        JSON.stringify({
+          data: requests,
+          meta: {
+            limit: 100,
+            has_more: hasMore,
+            next_cursor: hasMore ? `cursor_${pageIndex + 1}` : null,
+          },
+        }),
+        { status: 200 },
+      );
     }
     if (
       (url === '/api/communication-requests' || url === '/api/communication-requests__sentinel') &&
@@ -341,6 +412,10 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+beforeEach(() => {
+  useOrgIdMock.mockReturnValue('org_1');
+});
+
 describe('InterprofessionalShareContent', () => {
   it('shows a share workspace skeleton instead of a generic spinner while loading', () => {
     vi.stubGlobal(
@@ -392,9 +467,11 @@ describe('InterprofessionalShareContent', () => {
       '残薬',
       '薬剤師からのお願い',
       '次回確認すること',
-      '添付資料',
+      '関連資料',
     ]);
     expect(screen.getByText(/昼分の飲み忘れが週2回/)).toBeTruthy();
+    expect(screen.getByText('関連資料はありません。')).toBeTruthy();
+    expect(screen.queryByText(/訪問報告書PDF/)).toBeNull();
 
     // 右: ケアマネからの返信と主操作
     expect(screen.getByText('ケアマネからの返信')).toBeTruthy();
@@ -405,6 +482,19 @@ describe('InterprofessionalShareContent', () => {
     });
     expect(screen.getByTestId('share-open-request-link').getAttribute('href')).toBe(
       '/communications/requests?status=responded&request_type=care_report_reply_request&patient_id=pt_1&request_id=req_1&related_entity_type=care_report&related_entity_id=rep_1',
+    );
+  });
+
+  it('case-less legacy report uses the patient default care case without losing recipient discovery', async () => {
+    stubFetch({ report: { ...REPORT, case_id: null }, requests: [] });
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getByText('中島 桜(きたきゅうケアプラン)')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('share-supporting-data-warning')).toBeNull();
+    expect((screen.getByTestId('share-create-request-button') as HTMLButtonElement).disabled).toBe(
+      false,
     );
   });
 
@@ -480,6 +570,55 @@ describe('InterprofessionalShareContent', () => {
     const button = screen.getByTestId('share-next-task-button') as HTMLButtonElement;
     expect(button.disabled).toBe(true);
   });
+
+  it('2ページ目の対象audience requestを取得してfalse-emptyと重複起票を防ぐ', async () => {
+    const physicianRequest = {
+      ...REQUESTS[0],
+      id: 'req_physician_page_2',
+      recipient_name: '山本 健',
+      recipient_role: 'physician',
+      status: 'sent',
+      requested_at: '2026-06-09T06:30:00.000Z',
+      responses: [],
+    };
+    const fetchMock = stubFetch({ requestPages: [REQUESTS, [physicianRequest]] });
+    renderShare();
+
+    await waitFor(() => expect(screen.getAllByTestId('share-audience-card')).toHaveLength(5));
+    fireEvent.click(
+      screen
+        .getAllByTestId('share-audience-card')
+        .find((card) => card.getAttribute('data-audience') === 'physician')!,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('share-create-request-button').textContent).toContain(
+        '返信依頼起票済み',
+      );
+    });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('cursor=cursor_1'))).toBe(
+      true,
+    );
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input) === '/api/communication-requests' && init?.method === 'POST',
+      ),
+    ).toBe(false);
+  });
+
+  it.each(['closed', 'cancelled', 'expired'] as const)(
+    'terminal request status %s does not block a new reply request',
+    async (status) => {
+      stubFetch({ requests: [{ ...REQUESTS[0], status, responses: [] }] });
+      renderShare();
+
+      const button = await screen.findByTestId('share-create-request-button');
+      await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+      expect(button.textContent).toContain('返信依頼を起票');
+      expect(button.textContent).not.toContain('返信依頼起票済み');
+    },
+  );
 
   it('報告書取得失敗時は見つからない扱いにせず再読み込み可能なエラー状態を表示する', async () => {
     const fetchMock = vi.fn(async () => new Response('server error', { status: 500 }));
@@ -606,6 +745,20 @@ describe('InterprofessionalShareContent', () => {
     expect(body.content).toContain('主治医向けに共有する報告内容です');
     expect(body.content).toContain('【薬剤師からのお願い】');
     expect(body.content).toContain('昼分はヘルパー訪問時の声かけ');
+    expect(body.content).toContain('【関連資料】\n関連資料はありません。');
+    expect(body.content).not.toContain('訪問報告書PDF');
+  });
+
+  it('PDF参照が実在するときだけ確定版PDFのavailabilityを表示する', async () => {
+    stubFetch({ report: { ...REPORT, pdf_url: '/api/files/file_1/download' } });
+    renderShare();
+
+    expect(
+      await screen.findByText(
+        '訪問報告書PDF（最新の確定版）あり。この返信依頼には自動添付されません。',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('関連資料はありません。')).toBeNull();
   });
 
   it('attributes a pending reply request to the submitted audience after the preview changes', async () => {
@@ -649,6 +802,66 @@ describe('InterprofessionalShareContent', () => {
         '返信依頼起票済み',
       );
     });
+  });
+
+  it('reportまたはorganization切替時に旧共有request stateを同期的に破棄する', async () => {
+    const reportTwo = {
+      ...REPORT,
+      id: 'rep_2',
+      patient_id: 'pt_2',
+      patient_summary: { ...REPORT.patient_summary, id: 'pt_2', name: '佐藤 花子' },
+    };
+    stubFetch({
+      reportsById: { rep_1: REPORT, rep_2: reportTwo },
+      requests: [],
+    });
+    const view = renderShare('rep_1');
+
+    await waitFor(() => expect(screen.getAllByTestId('share-audience-card')).toHaveLength(5));
+    fireEvent.click(
+      screen
+        .getAllByTestId('share-audience-card')
+        .find((card) => card.getAttribute('data-audience') === 'physician')!,
+    );
+    fireEvent.click(await screen.findByTestId('share-create-request-button'));
+    await waitFor(() => expect(screen.getByText('返信依頼起票済み')).toBeTruthy());
+    expect(screen.getByTestId('share-open-request-link').getAttribute('href')).toContain(
+      'request_id=req_new',
+    );
+
+    view.rerender(<InterprofessionalShareContent reportId="rep_2" />);
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: '患者詳細' }).getAttribute('href')).toBe(
+        '/patients/pt_2',
+      );
+    });
+    expect(screen.getByTestId('share-create-request-button').textContent).toContain(
+      '返信依頼を起票',
+    );
+    expect(screen.queryByTestId('share-open-request-link')).toBeNull();
+    expect(
+      screen
+        .getAllByTestId('share-audience-card')
+        .find((card) => card.getAttribute('aria-pressed') === 'true')
+        ?.getAttribute('data-audience'),
+    ).toBe('care_manager');
+
+    fireEvent.click(
+      screen
+        .getAllByTestId('share-audience-card')
+        .find((card) => card.getAttribute('data-audience') === 'physician')!,
+    );
+    fireEvent.click(await screen.findByTestId('share-create-request-button'));
+    await waitFor(() => expect(screen.getByText('返信依頼起票済み')).toBeTruthy());
+
+    useOrgIdMock.mockReturnValue('org_2');
+    view.rerender(<InterprofessionalShareContent reportId="rep_2" />);
+    await waitFor(() => {
+      expect(screen.getByTestId('share-create-request-button').textContent).toContain(
+        '返信依頼を起票',
+      );
+    });
+    expect(screen.queryByTestId('share-open-request-link')).toBeNull();
   });
 
   it('rejects a legacy-root 2xx reply-request response and leaves retry available', async () => {
@@ -809,16 +1022,20 @@ describe('InterprofessionalShareContent', () => {
         { status: 409 },
       ),
       refetchedRequests: [
-        ...REQUESTS,
         {
           id: 'req_physician_conflict',
+          patient_id: 'pt_1',
+          request_type: 'care_report_reply_request',
           recipient_name: '山本 健',
           recipient_role: 'physician',
+          related_entity_type: 'care_report',
+          related_entity_id: 'rep_1',
           status: 'sent',
           subject: '主治医向け報告書共有',
           requested_at: '2026-06-12T07:40:00.000Z',
           responses: [],
         },
+        ...REQUESTS,
       ],
     });
     renderShare();
@@ -966,8 +1183,20 @@ describe('InterprofessionalShareContent', () => {
         patient_id: hostilePatientId,
         patient_summary: { ...REPORT.patient_summary, id: hostilePatientId },
       },
-      requests: [{ ...REQUESTS[0], id: hostileRequestId }],
-      requestDetail: { ...REQUEST_DETAIL, id: hostileRequestId },
+      requests: [
+        {
+          ...REQUESTS[0],
+          id: hostileRequestId,
+          patient_id: hostilePatientId,
+          related_entity_id: hostileReportId,
+        },
+      ],
+      requestDetail: {
+        ...REQUEST_DETAIL,
+        id: hostileRequestId,
+        patient_id: hostilePatientId,
+        related_entity_id: hostileReportId,
+      },
     });
     renderShare(hostileReportId);
 
@@ -1008,6 +1237,7 @@ describe('InterprofessionalShareContent', () => {
       report: {
         ...REPORT,
         permissions: {
+          can_edit: true,
           can_send: true,
           can_create_external_share: true,
           can_create_followup_task: false,
@@ -1040,7 +1270,10 @@ describe('InterprofessionalShareContent', () => {
     const fetchMock = stubFetch({
       report: {
         ...REPORT,
+        content: undefined,
+        patient_summary: null,
         permissions: {
+          can_edit: false,
           can_send: false,
           can_create_external_share: false,
           can_create_followup_task: false,
@@ -1080,7 +1313,9 @@ describe('InterprofessionalShareContent', () => {
       failRequests: true,
       report: {
         ...REPORT,
+        patient_summary: null,
         permissions: {
+          can_edit: true,
           can_send: true,
           can_create_external_share: true,
           can_create_followup_task: true,

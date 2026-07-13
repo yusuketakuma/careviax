@@ -5,6 +5,7 @@ import type {
   PhysicianReportContent,
 } from '@/types/care-report-content';
 import type { CareReport, ExternalProfessionalSuggestion } from './page';
+import { careReportPdfReferenceSchema } from '@/lib/reports/pdf-reference-schema';
 
 const text = (max = 1_000) => z.string().trim().min(1).max(max);
 const nullableText = (max = 1_000) => z.string().max(max).nullable();
@@ -136,7 +137,7 @@ const reportProviderSchema = z
     status: z.enum(['draft', 'sent', 'failed', 'confirmed', 'response_waiting']),
     content: reportContentSchema.optional(),
     template_id: nullableText(255),
-    pdf_url: z.string().url().max(2_000).nullable(),
+    pdf_url: careReportPdfReferenceSchema.nullable(),
     created_by: text(255),
     created_at: dateTime,
     updated_at: dateTime,

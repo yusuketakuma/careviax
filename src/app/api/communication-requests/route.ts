@@ -27,6 +27,7 @@ import {
   trimStringOrUndefined,
 } from '@/lib/validations/communication-request';
 import { pickCommunicationRecipientCandidate } from '@/lib/contact-profiles';
+import { ACTIVE_REPLY_REQUEST_STATUSES } from '@/lib/communications/request-status';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
 import {
   buildCommunicationRequestAssignmentWhere,
@@ -57,14 +58,6 @@ const DUPLICATE_GUARDED_REPLY_REQUEST_TYPES = new Set([
   'patient_share_reply_request',
 ]);
 
-const ACTIVE_REPLY_REQUEST_STATUSES = [
-  RequestStatus.draft,
-  RequestStatus.sent,
-  RequestStatus.received,
-  RequestStatus.in_progress,
-  RequestStatus.responded,
-  RequestStatus.escalated,
-];
 const COMMUNICATION_QUEUE_SOURCE = 'communication_queue';
 
 const reusableCommunicationRequestSelect = {
@@ -591,7 +584,7 @@ const authenticatedPOST = withAuthContext(
               recipient_role: effectiveRecipientRole,
               related_entity_type,
               related_entity_id,
-              status: { in: ACTIVE_REPLY_REQUEST_STATUSES },
+              status: { in: [...ACTIVE_REPLY_REQUEST_STATUSES] },
             },
             select: {
               id: true,
@@ -630,7 +623,7 @@ const authenticatedPOST = withAuthContext(
               recipient_role: effectiveRecipientRole,
               related_entity_type: related_entity_type ?? null,
               related_entity_id: related_entity_id ?? null,
-              status: { in: ACTIVE_REPLY_REQUEST_STATUSES },
+              status: { in: [...ACTIVE_REPLY_REQUEST_STATUSES] },
               context_snapshot: { path: ['source'], equals: COMMUNICATION_QUEUE_SOURCE },
             },
             select: reusableCommunicationRequestSelect,

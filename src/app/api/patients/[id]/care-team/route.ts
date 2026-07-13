@@ -189,6 +189,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   return success({
     data: cases.find((careCase) => careCase.id === caseId)?.care_team_links ?? [],
     meta: {
+      patient_id: id,
       case_id: caseId,
       cases: cases.map((careCase) => ({
         id: careCase.id,

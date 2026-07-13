@@ -177,7 +177,7 @@ describe('ExternalShareContent', () => {
         return new Response(
           JSON.stringify({
             data: [],
-            meta: { case_id: null, cases: [] },
+            meta: { patient_id: patientId, case_id: null, cases: [] },
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
@@ -187,6 +187,7 @@ describe('ExternalShareContent', () => {
           JSON.stringify({
             data: [],
             meta: {
+              patient_id: patientId,
               expected_updated_at: '2026-06-01T00:00:00.000Z',
               version_basis: 'patient_updated_at',
             },
@@ -348,6 +349,60 @@ describe('ExternalShareContent', () => {
     expect(vi.mocked(buildCommunicationRequestApiPath)).toHaveBeenCalledWith(requestId);
   });
 
+  it('patient share request query follows a second cursor page before declaring the list complete', async () => {
+    const queryConfigs: QueryConfig[] = [];
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input), 'http://localhost');
+      expect(init?.headers).toEqual({ 'x-org-id': 'org_1' });
+      const cursor = url.searchParams.get('cursor');
+      const row = {
+        id: cursor ? 'request_1' : 'request_2',
+        patient_id: 'patient_1',
+        request_type: 'patient_share_reply_request',
+        recipient_name: '田中',
+        recipient_role: 'care_manager',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+        status: 'sent',
+        subject: '共有確認',
+        requested_at: cursor ? '2026-07-11T00:00:00.000Z' : '2026-07-12T00:00:00.000Z',
+        responses: [],
+      };
+      return new Response(
+        JSON.stringify({
+          data: [row],
+          meta: {
+            limit: 100,
+            has_more: !cursor,
+            next_cursor: cursor ? null : 'cursor_1',
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      queryConfigs.push(config);
+      return {
+        data: config.queryKey?.[0] === 'communication-requests' ? { data: [] } : {},
+        isLoading: false,
+        isError: false,
+      };
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+    const requestQuery = queryConfigs.find(
+      (config) => config.queryKey?.[0] === 'communication-requests',
+    );
+    const result = (await requestQuery?.queryFn?.()) as { data: Array<{ id: string }> };
+
+    expect(result.data.map((item) => item.id)).toEqual(['request_2', 'request_1']);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('cursor=cursor_1');
+  });
+
   it('surfaces API messages from patient share read queries', async () => {
     const patientId = 'patient_1';
     const requestId = 'request_1';
@@ -446,7 +501,7 @@ describe('ExternalShareContent', () => {
     await expect(overviewQuery?.queryFn?.()).rejects.toThrow('共有状況の閲覧権限がありません');
     await expect(careTeamQuery?.queryFn?.()).rejects.toThrow('ケアチームの閲覧権限がありません');
     await expect(contactsQuery?.queryFn?.()).rejects.toThrow('連絡先の閲覧権限がありません');
-    await expect(requestsQuery?.queryFn?.()).rejects.toThrow('返信状況の閲覧権限がありません');
+    await expect(requestsQuery?.queryFn?.()).rejects.toThrow('返信状況の取得に失敗しました');
     await expect(replyDetailQuery?.queryFn?.()).rejects.toThrow('返信内容の閲覧権限がありません');
   });
 
@@ -506,6 +561,59 @@ describe('ExternalShareContent', () => {
     });
     expect(screen.queryByLabelText('OTP')).toBeNull();
     expect(screen.getByText(/OTPは画面には表示されません/)).toBeTruthy();
+  });
+
+  it('patientまたはorganization切替時に旧共有URL・OTP・宛先stateを同期的に破棄する', async () => {
+    const mutationConfigs: MutationConfig[] = [];
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return { mutate: vi.fn(), isPending: false };
+    });
+    useQueryMock.mockReturnValue({
+      data: {
+        name: '佐藤 花子',
+        external_shares: [],
+        self_reports: [],
+        current_medications: [],
+        visit_schedules: [],
+        care_reports: [],
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    const view = render(<ExternalShareContent patientId="patient_1" />);
+    fireEvent.change(screen.getByLabelText('共有先氏名'), { target: { value: '田中 太郎' } });
+    fireEvent.change(screen.getByLabelText('共有先連絡先（任意）'), {
+      target: { value: '090-0000-0000' },
+    });
+    await act(async () => {
+      await mutationConfigs[0]?.onSuccess?.({
+        data: {
+          shareUrl: 'https://example.test/shared/patient-1-token',
+          otp: '123456',
+          expiresAt: '2026-07-20T00:00:00.000Z',
+          otpDelivery: 'manual',
+          otpDeliveryDestination: null,
+        },
+      });
+    });
+    expect((screen.getByLabelText('共有URL') as HTMLInputElement).value).toContain(
+      'patient-1-token',
+    );
+    expect((screen.getByLabelText('OTP') as HTMLInputElement).value).toBe('123456');
+
+    view.rerender(<ExternalShareContent patientId="patient_2" />);
+    expect(screen.queryByLabelText('共有URL')).toBeNull();
+    expect(screen.queryByLabelText('OTP')).toBeNull();
+    expect((screen.getByLabelText('共有先氏名') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('共有先連絡先（任意）') as HTMLInputElement).value).toBe('');
+
+    fireEvent.change(screen.getByLabelText('共有先氏名'), { target: { value: '別組織の宛先' } });
+    useOrgIdMock.mockReturnValue('org_2');
+    view.rerender(<ExternalShareContent patientId="patient_2" />);
+    expect((screen.getByLabelText('共有先氏名') as HTMLInputElement).value).toBe('');
   });
 
   it('creates a patient-scoped reply request for the selected audience', async () => {
@@ -569,6 +677,7 @@ describe('ExternalShareContent', () => {
               report_type: 'care_manager_report',
               created_at: '2026-06-10T08:00:00.000Z',
               status: 'sent',
+              has_pdf: true,
             },
           ],
         },

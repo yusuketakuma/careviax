@@ -81,6 +81,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       address: privacy.addressFieldsMasked ? maskAddressDetail(contact.address) : contact.address,
     })),
     meta: {
+      patient_id: id,
       expected_updated_at: patient.updated_at.toISOString(),
       version_basis: 'patient_updated_at',
     },

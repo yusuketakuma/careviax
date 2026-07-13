@@ -4,12 +4,5 @@
   "debtId": "API-CONTRACT-001FZCLIENTRATCHET",
   "reason": "Existing production readers still trust compile-time types without a runtime schema.",
   "plannedAction": "Migrate bounded provider/consumer families to exact runtime response schemas.",
-  "entries": [
-    {
-      "path": "src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx",
-      "counts": {
-        "stringFallback": 5
-      }
-    }
-  ]
+  "entries": []
 }

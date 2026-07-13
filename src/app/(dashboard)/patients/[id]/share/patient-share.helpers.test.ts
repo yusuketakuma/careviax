@@ -16,6 +16,7 @@ const SNAPSHOT: PatientShareSnapshot = {
       report_type: 'care_manager_report',
       created_at: '2026-06-10T08:00:00.000Z',
       status: 'sent',
+      has_pdf: true,
     },
   ],
   selfReports: [
@@ -26,7 +27,6 @@ const SNAPSHOT: PatientShareSnapshot = {
       created_at: '2026-06-12T01:00:00.000Z',
     },
   ],
-  hasShareableReport: true,
 };
 
 describe('buildPatientShareSections', () => {
@@ -38,19 +38,62 @@ describe('buildPatientShareSections', () => {
       '残薬',
       '薬剤師からのお願い',
       '次回確認すること',
-      '添付資料',
+      '関連資料',
     ]);
     expect(sections[0].body).toContain('服薬中 2剤');
     expect(sections[1].body).toContain('残薬が余っている');
     expect(sections[2].body).toContain('服薬状況・残薬');
     expect(sections[3].body).toContain('次回訪問予定');
     expect(sections[4].body).toContain('訪問報告書PDF');
+    expect(sections[4].body).toContain('この返信依頼には自動添付されません');
   });
 
   it('家族向けは薬剤師からのお願いをやさしい表現へ切り替える', () => {
     const sections = buildPatientShareSections(SNAPSHOT, 'family');
 
     expect(sections[2].body).toContain('お気軽に薬局までご連絡ください');
+  });
+
+  it('確定済み報告書でもPDF実体がなければ添付可能と表示しない', () => {
+    const sections = buildPatientShareSections(
+      {
+        ...SNAPSHOT,
+        careReports: SNAPSHOT.careReports.map((report) => ({ ...report, has_pdf: false })),
+      },
+      'care_manager',
+    );
+
+    expect(sections[4]).toMatchObject({
+      title: '関連資料',
+      body: '関連資料はありません。',
+      isEmpty: true,
+    });
+    expect(
+      buildPatientShareCommunicationRequestInput({
+        audience: 'care_manager',
+        patientId: 'patient_1',
+        patientName: '佐藤 花子',
+        recipientName: '田中 ケアマネ',
+        recipientOrganizationName: '北区ケアプラン',
+        sections,
+      }).content,
+    ).not.toContain('訪問報告書PDF');
+  });
+
+  it('response_waitingの確定版PDFも関連資料として扱う', () => {
+    const sections = buildPatientShareSections(
+      {
+        ...SNAPSHOT,
+        careReports: SNAPSHOT.careReports.map((report) => ({
+          ...report,
+          status: 'response_waiting',
+        })),
+      },
+      'care_manager',
+    );
+
+    expect(sections[4].body).toContain('訪問報告書PDF');
+    expect(sections[4].body).toContain('自動添付されません');
   });
 });
 

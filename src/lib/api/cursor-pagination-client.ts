@@ -28,6 +28,7 @@ export async function fetchAllCursorPages<T>(args: {
   const limit = normalizePageLimit(args.limit);
   const maxPages = normalizeMaxPages(args.maxPages);
   const aggregated: T[] = [];
+  const seenCursors = new Set<string>();
   let cursor: string | undefined;
   const pageSchema = apiCursorPageSchema(args.itemSchema ?? (z.unknown() as ZodType<T>), {
     allowAdditionalMeta: true,
@@ -53,7 +54,12 @@ export async function fetchAllCursorPages<T>(args: {
       cursor = undefined;
       break;
     }
-    cursor = pagePayload.data.nextCursor;
+    const nextCursor = pagePayload.data.nextCursor;
+    if (seenCursors.has(nextCursor)) {
+      throw new Error(args.errorMessage);
+    }
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
   }
 
   return {

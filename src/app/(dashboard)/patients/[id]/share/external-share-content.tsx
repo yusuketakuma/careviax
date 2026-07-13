@@ -52,11 +52,21 @@ import {
   buildCommunicationRequestApiPath,
   buildCommunicationRequestsApiPath,
 } from '@/lib/communications/api-paths';
+import { fetchAllShareCommunicationRequests } from '@/lib/communications/share-workspace-client';
+import {
+  buildShareCareTeamResponseSchema,
+  buildShareContactsResponseSchema,
+  buildShareReplyDetailResponseSchema,
+  type ShareCareTeamResponse,
+  type ShareContactsResponse,
+  type ShareReplyDetailResponse,
+} from '@/lib/communications/share-workspace-response-schemas';
 import {
   createCommunicationRequestResponseSchema,
   type CreateCommunicationRequestResponse,
 } from '@/lib/communications/response-schemas';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { isActiveReplyRequestStatus } from '@/lib/communications/request-status';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildTasksApiPath } from '@/lib/tasks/api-paths';
 import {
@@ -66,16 +76,8 @@ import {
 } from './patient-share.helpers';
 import {
   buildExternalShareOverviewResponseSchema,
-  buildExternalShareReplyDetailResponseSchema,
-  buildExternalShareRequestsResponseSchema,
   createExternalShareGrantResponseSchema,
-  externalShareCareTeamResponseSchema,
-  externalShareContactsResponseSchema,
-  type ExternalShareCareTeamResponse,
-  type ExternalShareContactsResponse,
   type ExternalShareOverview,
-  type ExternalShareReplyDetailResponse,
-  type ExternalShareRequestsResponse,
 } from './external-share-response-schemas';
 
 /**
@@ -175,6 +177,16 @@ const EXPIRY_OPTIONS = [
 
 export function ExternalShareContent({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
+  return (
+    <ExternalShareWorkspace
+      key={JSON.stringify([orgId, patientId])}
+      patientId={patientId}
+      orgId={orgId}
+    />
+  );
+}
+
+function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId: string }) {
   const queryClient = useQueryClient();
   const isBootstrappingOrg = !orgId;
   const [selectedAudience, setSelectedAudience] = useState<ShareAudienceKey>('care_manager');
@@ -227,9 +239,9 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       const res = await fetch(buildPatientApiPath(patientId, '/care-team'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<ExternalShareCareTeamResponse>(res, {
+      return readApiJson<ShareCareTeamResponse>(res, {
         fallbackMessage: 'ケアチームの取得に失敗しました',
-        schema: externalShareCareTeamResponseSchema,
+        schema: buildShareCareTeamResponseSchema({ expectedPatientId: patientId }),
       });
     },
   });
@@ -241,9 +253,9 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       const res = await fetch(buildPatientApiPath(patientId, '/contacts'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<ExternalShareContactsResponse>(res, {
+      return readApiJson<ShareContactsResponse>(res, {
         fallbackMessage: '連絡先の取得に失敗しました',
-        schema: externalShareContactsResponseSchema,
+        schema: buildShareContactsResponseSchema(patientId),
       });
     },
   });
@@ -253,19 +265,15 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     queryKey: ['communication-requests', 'patient', patientId, orgId],
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
-      const res = await fetch(
-        buildCommunicationRequestsApiPath({
-          requestType: 'patient_share_reply_request',
-          relatedEntityType: 'patient',
-          relatedEntityId: patientId,
-        }),
-        {
-          headers: buildOrgHeaders(orgId),
+      return fetchAllShareCommunicationRequests({
+        orgId,
+        scope: {
+          expectedPatientId: patientId,
+          expectedRequestType: 'patient_share_reply_request',
+          expectedRelatedEntityType: 'patient',
+          expectedRelatedEntityId: patientId,
         },
-      );
-      return readApiJson<ExternalShareRequestsResponse>(res, {
-        fallbackMessage: '返信状況の取得に失敗しました',
-        schema: buildExternalShareRequestsResponseSchema(patientId),
+        errorMessage: '返信状況の取得に失敗しました',
       });
     },
   });
@@ -332,6 +340,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         report_type: item.report_type,
         created_at: item.created_at,
         status: item.status,
+        has_pdf: item.has_pdf,
       })),
       selfReports: (overview?.self_reports ?? []).map((item) => ({
         subject: item.subject,
@@ -339,9 +348,6 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         content: item.content ?? '',
         created_at: item.created_at,
       })),
-      hasShareableReport: careReports.some(
-        (report) => report.status === 'sent' || report.status === 'confirmed',
-      ),
     };
   }, [overviewQuery.data]);
 
@@ -363,11 +369,14 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       const res = await fetch(buildCommunicationRequestApiPath(requestId), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<ExternalShareReplyDetailResponse>(res, {
+      return readApiJson<ShareReplyDetailResponse>(res, {
         fallbackMessage: '返信内容の取得に失敗しました',
-        schema: buildExternalShareReplyDetailResponseSchema({
+        schema: buildShareReplyDetailResponseSchema({
           expectedRequestId: requestId,
           expectedPatientId: patientId,
+          expectedRequestType: 'patient_share_reply_request',
+          expectedRelatedEntityType: 'patient',
+          expectedRelatedEntityId: patientId,
         }),
       });
     },
@@ -376,7 +385,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
   const taskCreated = Boolean(latestReply && createdResponseIds.includes(latestReply.id));
   const requestCreated = createdRequestAudiences.includes(audience);
   const activeAudienceRequest =
-    audienceRequest && audienceRequest.status !== 'closed' ? audienceRequest : null;
+    audienceRequest && isActiveReplyRequestStatus(audienceRequest.status) ? audienceRequest : null;
   const hasActiveAudienceRequest = Boolean(activeAudienceRequest);
   const focusedReplyRequestId =
     activeAudienceRequest?.id ?? createdRequestIdsByAudience[audience] ?? null;

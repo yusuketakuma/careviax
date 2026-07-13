@@ -42,6 +42,7 @@ import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
 import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { buildReportHref } from '@/lib/reports/navigation';
+import { isShareableCareReportStatus } from '@/lib/reports/shareability';
 import { formatDateLabel } from '@/lib/ui/date-format';
 import {
   REPORT_TYPE_LABELS,
@@ -1006,9 +1007,7 @@ export default function ReportDetailPage() {
   const canCreateExternalShare = report.permissions?.can_create_external_share === true;
   const canUseDeliverySupport = canSendReport;
   const canOutputReport = canSendReport;
-  const isShareableReport = ['confirmed', 'sent', 'failed', 'response_waiting'].includes(
-    report.status,
-  );
+  const isShareableReport = isShareableCareReportStatus(report.status);
   const canUseExternalShare = canSendReport && canCreateExternalShare && isShareableReport;
   const canViewPatientShortcut = report.permissions?.can_view_patient === true;
   const canViewRelatedRequestsShortcut = report.permissions?.can_view_related_requests === true;

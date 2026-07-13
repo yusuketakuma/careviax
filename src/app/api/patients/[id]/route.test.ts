@@ -727,6 +727,51 @@ describe('/api/patients/[id]', () => {
     expect(billingEvidenceFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('projects care report PDF presence without exposing storage references', async () => {
+    careReportFindManyMock.mockResolvedValue([
+      {
+        id: 'report_without_pdf',
+        report_type: 'care_manager_report',
+        status: 'sent',
+        pdf_url: null,
+        created_by: 'user_1',
+        created_at: new Date('2026-06-10T00:00:00.000Z'),
+        delivery_records: [],
+      },
+      {
+        id: 'report_with_pdf',
+        report_type: 'physician_report',
+        status: 'confirmed',
+        pdf_url: '/api/files/file_1/download',
+        created_by: 'user_1',
+        created_at: new Date('2026-06-09T00:00:00.000Z'),
+        delivery_records: [],
+      },
+    ]);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'corg1234567890123456789012',
+          patient_id: 'patient_1',
+        }),
+        select: expect.objectContaining({ pdf_url: true }),
+      }),
+    );
+    const payload = await response.json();
+    expect(payload.data.care_reports).toEqual([
+      expect.objectContaining({ id: 'report_without_pdf', has_pdf: false }),
+      expect.objectContaining({ id: 'report_with_pdf', has_pdf: true }),
+    ]);
+    expect(JSON.stringify(payload.data.care_reports)).not.toContain('pdf_url');
+    expect(JSON.stringify(payload.data.care_reports)).not.toContain('/api/files/');
+  });
+
   it('rejects blank patient ids before loading patient detail', async () => {
     const response = await GET(
       createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),

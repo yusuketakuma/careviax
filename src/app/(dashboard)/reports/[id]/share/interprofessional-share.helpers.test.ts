@@ -138,7 +138,7 @@ describe('buildAudienceShareSections', () => {
       '残薬',
       '薬剤師からのお願い',
       '次回確認すること',
-      '添付資料',
+      '関連資料',
     ]);
     expect(sections[0].body).toContain('昼分の飲み忘れ');
     expect(sections[0].body).toContain('自己管理: 一部介助(ヘルパー声かけあり)');
@@ -148,6 +148,7 @@ describe('buildAudienceShareSections', () => {
     expect(sections[2].body).toContain('ヘルパー訪問時の声かけ');
     expect(sections[3].body).toContain('昼分の服薬状況を確認');
     expect(sections[4].body).toContain('訪問報告書PDF');
+    expect(sections[4].body).toContain('この返信依頼には自動添付されません');
     expect(sections.every((section) => !section.isEmpty)).toBe(true);
   });
 
@@ -164,7 +165,7 @@ describe('buildAudienceShareSections', () => {
       hasPdf: false,
     });
     expect(sections[2].body).toContain('次回診察での評価');
-    expect(sections[4].body).toBe('添付資料はまだありません。');
+    expect(sections[4].body).toBe('関連資料はありません。');
     expect(sections[4].isEmpty).toBe(true);
   });
 
@@ -236,43 +237,29 @@ describe('pickLatestAudienceReplyRequest', () => {
   const requests: ShareCommunicationRequest[] = [
     {
       id: 'req_physician',
-      recipient_name: '山本 健',
       recipient_role: 'physician',
       status: 'responded',
-      subject: '医師への照会',
       requested_at: '2026-06-09T06:00:00.000Z',
-      responses: [
-        { id: 'res_phys', responder_name: '山本 健', responded_at: '2026-06-10T01:00:00.000Z' },
-      ],
+      responses: [{ responded_at: '2026-06-10T01:00:00.000Z' }],
     },
     {
       id: 'req_cm_old',
-      recipient_name: '中島 桜',
       recipient_role: 'care_manager',
       status: 'responded',
-      subject: '前回の共有',
       requested_at: '2026-06-01T06:00:00.000Z',
-      responses: [
-        { id: 'res_cm_old', responder_name: '中島 桜', responded_at: '2026-06-02T01:00:00.000Z' },
-      ],
+      responses: [{ responded_at: '2026-06-02T01:00:00.000Z' }],
     },
     {
       id: 'req_cm_new',
-      recipient_name: '中島 桜',
       recipient_role: 'care_manager',
       status: 'responded',
-      subject: '今回の共有',
       requested_at: '2026-06-09T06:00:00.000Z',
-      responses: [
-        { id: 'res_cm_new', responder_name: '中島 桜', responded_at: '2026-06-12T01:00:00.000Z' },
-      ],
+      responses: [{ responded_at: '2026-06-12T01:00:00.000Z' }],
     },
     {
       id: 'req_cm_no_reply',
-      recipient_name: '中島 桜',
       recipient_role: 'care_manager',
       status: 'sent',
-      subject: '返信待ちの共有',
       requested_at: '2026-06-12T06:00:00.000Z',
       responses: [],
     },

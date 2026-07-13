@@ -6,11 +6,12 @@
 > validation、remaining/next action はこのファイルへ集約する。
 > 再開手順: このファイル → `git status --short --untracked-files=all` → `git log --oneline -15`。
 
-## 体制（2026-07-10 最新ユーザー指示）
+## 体制（2026-07-13 最新ユーザー指示）
 
 - 現行は Codex 本体が計画、編集、validation、台帳更新、scoped commit の最終責任を持つ単一制御運用。
-- 2026-07-10 の最新ユーザー指示により、subagent、agmsg、codex2/codex3/codex4、
-  Claude などの外部 maker/checker を使わず、Codex 単独で進める。
+- 2026-07-13 の最新ユーザー指示により、subagent は bounded な読取調査・計画レビュー・医療安全・
+  privacy・verificationへ再投入可。編集、統合、validation、台帳更新、scoped commit/pushはCodex本体が
+  最終責任を持つ。agmsg、codex2/codex3/codex4、Claudeは再有効化されていない。
 - 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
   直接の影響範囲確認、focused/full gate で代替する。
 - 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
@@ -50,6 +51,50 @@
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex: API-CONTRACT-001FZINTERPROSHARESTRICT PHI share workspace contracts (VERIFY_REQUIRED, 2026-07-13; commit pending).
+  - current task / root cause:
+    Live `client-json-schema:check` は360 schema-backed / 5 allowlisted schema-less / 1 fileで、残件は
+    `reports/[id]/share/interprofessional-share-content.tsx` のcare report、care-team、contacts、communication
+    request list/detail GET。2つの患者共有consumerはrequest listの`meta.has_more/next_cursor`を捨てるため、
+    2ページ目の返信/active requestをfalse-emptyとして扱い得る。さらに`pdf_url=null`でも「最新の確定版PDF」を
+    表示・POST本文へ含め、report/patient/org切替でも共有URL/OTP・宛先・created request/response local stateが
+    component lifetime内に残り得る。
+  - frame / decision / scope:
+    Shared consumed response schemasとbounded cursor readerをcommunications SSOTへ置き、両consumerで再利用する。
+    Report固有schemaはrequested report/patient/case/permissionを検証し、PDF URL自体はcacheせず実在booleanへ投影する。
+    Workspaceは`orgId + entityId` keyed boundaryで同期的にremountする。Provider auth/RLS/no-store/write、POST側
+    advisory-lock/409 dedupe、DBは変更しない。Provider responseは患者scopeを検証できる`meta.patient_id`と、
+    PDF URLを露出しない`has_pdf` booleanだけを加える。Cross-audience fallbackと4,000字切詰めpolicyは既存testで
+    意図的に固定されており、根拠未批准のため`MEDSAFE-SHARE-AUDIENCE-001` Human gateへ分離する。
+  - implementation / root-cause result:
+    Shared consumed schemasはcare-team/contact/request list/detailをrequested patient/case/type/entityへbindし、
+    Query cacheへは表示に必要なrole/status/timestamp/latest replyだけを投影する。Shared cursor readerは100件×5頁を
+    完全走査し、cursor cycle、cross-page duplicate、timestamp/id順序、残存`has_more`をfail-closeする。
+    `ACTIVE_REPLY_REQUEST_STATUSES`とcare report shareabilityをprovider/UI共通SSOTへ統合し、closed/cancelled/expired後の
+    再依頼を許可、未知statusは重複writeを防ぐ。PDF参照はcanonical file download/http(s)だけ許可し、共有cacheでは
+    boolean化。資料は「自動添付されない」と明示し、実在しないPDFを表示/本文へ含めない。
+  - audit / verification result:
+    Focused 16 files / 199 tests PASS、communication request provider 1 file / 44 tests PASS。Scoped ESLint、Prettier、
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`、同`typecheck:no-unused` PASS。既定4 GiB typecheckはNode OOM
+    (exit 134)後、8 GiB再実行でtest fixture nullable型3件を検出し修正、再実行PASS。`client-json-schema:check`は
+    363 schema-backed / 0 allowlisted / 0 new debt、route auth 176/252/0、raw-read org guard 117/0、module boundary
+    0 new violations。Serialized `pnpm build`はNext 16.2.9 webpack、311 static pagesでPASS。CSS optimizerの既存
+    arbitrary `var(...)` warning 2件はbuild非阻害・本差分外。Browser mobile/tablet/keyboard/forced-colors smokeは
+    local seeded auth runtimeを起動しておらず未実施。
+  - safety / design / ownership:
+    PHI共有境界のためsubagent 3名のspec/medical/privacy read-only reviewを実施し、編集はCodex本体だけが行う。
+    見た目の再構築を伴わない事実表示・state ownership・consumer contract修復のため`gpt-image-2`は使用しない。
+    既存dirtyなharness state、補助ops台帳、personal untracked filesは所有外として変更・stageしない。
+  - residual / next:
+    Client projection前のtransport overfetchは`PRIVACY-SHARE-MINREAD-001`、長時間openした患者共有snapshotの
+    expected patient version不足は`DATA-SHARE-SNAPSHOT-OCC-001`へDISCOVERED登録。Cross-audience policyは
+    `MEDSAFE-SHARE-AUDIENCE-001` BLOCKED。次はexplicit diff/secrets確認後にscoped commit/pushし、
+    `MEDSAFE-ARCHIVE-WRITE-001`へ進む。
+  - branch / push / rollback:
+    `agent/continuous-improvement-20260712`、HEAD `36642a5d6`、upstream比0 behind / 45 ahead。Feature branch pushは
+    main-only production workflowを起動しない。検証後はexplicit owned pathsだけcommitしnon-force pushする。
+    Rollbackはscoped commit revert、DB/data rollback不要。
 
 - codex: API-CONTRACT-001FZBILLINGDASHSTRICT billing candidate dashboard readers (VERIFY_REQUIRED, 2026-07-13; implementation `9f716326f`; shared clean-capacity build pending).
   - current task / root cause:

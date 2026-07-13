@@ -8,6 +8,7 @@ import {
   shareAudienceLabel,
   type ShareAudienceKey,
 } from '@/lib/communications/share-audience';
+import { isShareableCareReportStatus } from '@/lib/reports/shareability';
 
 /**
  * p1_05「他職種向け共有ページ」(患者文脈 /patients/[id]/share)の表示射影(純関数)。
@@ -40,6 +41,7 @@ export type PatientShareCareReport = {
   report_type: string;
   created_at: string;
   status: string;
+  has_pdf: boolean;
 };
 
 export type PatientShareSelfReport = {
@@ -54,8 +56,6 @@ export type PatientShareSnapshot = {
   visits: PatientShareVisit[];
   careReports: PatientShareCareReport[];
   selfReports: PatientShareSelfReport[];
-  /** 添付できる確定済み報告書(PDF 送付対象)があるか */
-  hasShareableReport: boolean;
 };
 
 function trimOrNull(value: string | null | undefined): string | null {
@@ -149,8 +149,10 @@ export function buildPatientShareSections(
       : null,
   ]);
 
-  const attachmentsBody = snapshot.hasShareableReport
-    ? '訪問報告書PDF（最新の確定版）を共有できます。'
+  const attachmentsBody = snapshot.careReports.some(
+    (report) => report.has_pdf && isShareableCareReportStatus(report.status),
+  )
+    ? '訪問報告書PDF（最新の確定版）あり。この返信依頼には自動添付されません。'
     : null;
 
   const sections: Array<{ key: ShareSectionKey; title: string; body: string | null }> = [
@@ -158,7 +160,7 @@ export function buildPatientShareSections(
     { key: 'residual', title: '残薬', body: residualBody },
     { key: 'pharmacist_request', title: '薬剤師からのお願い', body: pharmacistRequestBody },
     { key: 'next_check', title: '次回確認すること', body: nextCheckBody },
-    { key: 'attachments', title: '添付資料', body: attachmentsBody },
+    { key: 'attachments', title: '関連資料', body: attachmentsBody },
   ];
 
   return sections.map((section) => ({
@@ -166,7 +168,7 @@ export function buildPatientShareSections(
     title: section.title,
     body:
       section.body ??
-      (section.key === 'attachments' ? '添付資料はまだありません。' : SHARE_SECTION_EMPTY_BODY),
+      (section.key === 'attachments' ? '関連資料はありません。' : SHARE_SECTION_EMPTY_BODY),
     isEmpty: section.body == null,
   }));
 }
