@@ -48,13 +48,43 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `Plans.md` + 本STATEの003D/003E evidence同期、
-  `codex2`: 次候補選定中（`API-CONTRACT-003D/003E` 5 pathsはcommit `c0b4fcc04`でRELEASE済み）。`codex3/codex4`は停止のまま。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: 本docsの`API-CONTRACT-002B` evidence同期、
+  `codex2`: `API-CONTRACT-003G`のerror registry/jobs 7 paths。`codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: API-CONTRACT-002B (DONE; parent remains Partial, 2026-07-14; implementation `284616d92`).
+  - current task / files inspected / root cause:
+    `002A`後もshared general AuditLog writerがAuthContextのrequest/correlation IDを捨て、request/response/security logから一般業務監査へ相関できなかった。
+    既存callerはdomain `request_id`、任意Prisma JSON、PHI-bearing業務差分を持つため、top-level key衝突やshape変更を避ける必要があった。
+  - files changed / bugs found / correctness / security / privacy / medical safety / performance:
+    検証済みIDだけを予約`changes.request_trace`へ浅くmergeし、caller提供の同namespaceを上書き/除去。Domain `request_id`、配列/scalar、`toJSON()`
+    serializationを保持し、changesなしはtrace-only objectとした。初回typecheckがPrisma readonly JSONへの代入を検出したためimmutable構築へ修正。
+    DB schema/query/network/retryなし、最大2 ID validation + object shallow copyのみ。Raw provider error、patient data、secretは追加していない。
+  - validation results / remaining work / next action / rollback:
+    Audit/request-correlation/auth/security + representative routes 5 files / 112 tests、独立subagentとcodex2 review APPROVED、exact ESLint/Prettier、
+    typecheck/no-unused、module/API/auth/privacy/Plans ratchets、diffをPASS。Full Vitestは16,254 pass / 14 failを収集し、002B起因6件はexpectation更新後PASS。
+    残8件は002A set-batches requestContext expectation 4件と並行003G一時不整合4件で、次のroot-cause groupとして再検証する。Build/E2E/demoはGoal最終batchへ残る。
+    Rollbackは`284616d92`のrevertでDB/data rollback不要。Oracleは現行SSOTの利用停止指示により未使用。
+
+- codex2: API-CONTRACT-003F (DONE; parent remains Partial, 2026-07-14; implementation `d3842e07b`).
+  - current task / files inspected / root cause:
+    `003D/003E`後のliteral matrixから、MFA recoveryのmissing userとrecovery code mismatchが同一`AUTH_RECOVERY_CODE_INVALID` / 400 /
+    固定messageを返す2 callsitesを選定。両経路はユーザー列挙を防ぐ同一応答契約だが、code/statusを重複指定し、missing-user経路の
+    exact body/downstream-zero回帰がなかった。
+  - files changed / bugs found / correctness / security / privacy / medical safety / performance:
+    Registryへ`AUTH_RECOVERY_CODE_INVALID` = 400/warn/non-retryable/correct_input/`api.error.auth.recovery_code_invalid`を追加し、
+    2 callsitesをtyped `registeredError()`へ移行。Missing userとcode mismatchの双方でexact code/message/400を固定し、missing user時に
+    recovery reservation、Cognito TOTP無効化、clear/restoreを実行しないanti-enumeration回帰を追加した。既存user lookup、recovery transaction、
+    Cognito補償、rate-limit、raw provider/secret非公開は不変。DB/network/query/payload/retryの追加なし。
+  - validation results / remaining work / next action / rollback:
+    MFA recovery + registry/response 3 files / 24 tests、exact ESLint/Prettier、8 GiB typecheck/no-unused、route-auth 150 allowlisted / 214 direct /
+    0 new、API shape 0/0、API authz 0、module boundary 0/0、client schema 361 backed / 0 allowlisted、Plans/format/diffをPASS。
+    Registryは10 codes、direct `AUTH_RECOVERY_CODE_INVALID` status指定は2→0。Schema/migration/production mutation/deploy/Oracle/imagegen/browserなし。
+    Commitはfeature branchへpush済み。Rollbackは`d3842e07b`のrevertでDB/data rollback不要。
 
 - codex2: API-CONTRACT-003D/003E (DONE; parent remains Partial, 2026-07-14; implementation `c0b4fcc04`).
   - current task / files inspected / root cause:
