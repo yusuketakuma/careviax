@@ -13,6 +13,11 @@ describe('external share response schemas', () => {
       data: {
         id: 'patient_1',
         name: '佐藤 花子',
+        archived_at: null,
+        patient_share_permissions: {
+          can_create_external_share: true,
+          can_create_reply_request: true,
+        },
         external_shares: [
           {
             id: 'grant_1',
@@ -48,12 +53,42 @@ describe('external share response schemas', () => {
 
     const parsed = schema.parse(payload);
     expect(parsed.data).not.toHaveProperty('org_id');
+    expect(parsed.data).not.toHaveProperty('archived_at');
+    expect(parsed.data.archive).toEqual({
+      status: 'active',
+      archived: false,
+      archived_at: null,
+    });
+    expect(parsed.data.patient_share_permissions).toEqual({
+      can_create_external_share: true,
+      can_create_reply_request: true,
+    });
     expect(parsed.data.external_shares[0]).not.toHaveProperty('token_hash');
     expect(parsed.data.care_reports?.[0]).toMatchObject({ has_pdf: true });
     expect(parsed.data.care_reports?.[0]).not.toHaveProperty('pdf_url');
     expect(
       schema.safeParse({ ...payload, data: { ...payload.data, id: 'patient_2' } }).success,
     ).toBe(false);
+    expect(
+      schema.parse({
+        ...payload,
+        data: { ...payload.data, archived_at: at(12), archived_by: 'must-be-stripped' },
+      }).data,
+    ).toMatchObject({
+      archive: { status: 'archived', archived: true, archived_at: at(12) },
+    });
+    expect(
+      schema.safeParse({
+        ...payload,
+        data: { ...payload.data, archived_at: 'not-a-date' },
+      }).success,
+    ).toBe(false);
+    const missingArchiveState: Partial<typeof payload.data> = { ...payload.data };
+    delete missingArchiveState.archived_at;
+    expect(schema.safeParse({ ...payload, data: missingArchiveState }).success).toBe(false);
+    const missingPermissions: Partial<typeof payload.data> = { ...payload.data };
+    delete missingPermissions.patient_share_permissions;
+    expect(schema.safeParse({ ...payload, data: missingPermissions }).success).toBe(false);
     expect(
       schema.safeParse({
         ...payload,

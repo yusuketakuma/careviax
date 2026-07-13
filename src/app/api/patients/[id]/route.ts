@@ -913,6 +913,10 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
   const canManageBilling = hasPermission(ctx.role, 'canManageBilling');
+  const patientSharePermissions = {
+    can_create_external_share: hasPermission(ctx.role, 'canManagePatientSharing'),
+    can_create_reply_request: hasPermission(ctx.role, 'canReport'),
+  };
 
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
@@ -1418,6 +1422,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
             address_fields_masked: privacy.addressFieldsMasked,
             can_view_detail: privacy.canViewDetail,
           },
+          patient_share_permissions: patientSharePermissions,
         },
       });
     },

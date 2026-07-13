@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { buildPatientArchiveSummary } from '@/lib/patient/archive-summary';
 
 const idSchema = z.string().trim().min(1).max(200);
 const textSchema = z.string().trim().min(1).max(2_000);
@@ -16,6 +17,13 @@ export function buildExternalShareOverviewResponseSchema(expectedPatientId: stri
         .object({
           id: z.literal(expectedPatientId),
           name: nullableTextSchema.optional(),
+          archived_at: dateTimeSchema.nullable(),
+          patient_share_permissions: z
+            .object({
+              can_create_external_share: z.boolean(),
+              can_create_reply_request: z.boolean(),
+            })
+            .strip(),
           external_shares: z
             .array(
               z
@@ -80,7 +88,16 @@ export function buildExternalShareOverviewResponseSchema(expectedPatientId: stri
         })
         .strip(),
     })
-    .strip();
+    .strip()
+    .transform(({ data }) => {
+      const { archived_at, ...overview } = data;
+      return {
+        data: {
+          ...overview,
+          archive: buildPatientArchiveSummary(archived_at),
+        },
+      };
+    });
 }
 
 const safeTokenSchema = z

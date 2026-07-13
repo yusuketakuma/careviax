@@ -60,6 +60,7 @@ const {
   contactPartyDeleteManyMock,
   contactPartyCreateManyMock,
   validateOrgReferencesMock,
+  auditLogCreateMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -119,6 +120,7 @@ const {
   contactPartyDeleteManyMock: vi.fn(),
   contactPartyCreateManyMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -317,6 +319,7 @@ describe('/api/patients/[id]', () => {
     });
     careCaseUpdateMock.mockResolvedValue({ id: 'case_1' });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     medicationProfileFindManyMock.mockResolvedValue([]);
     visitScheduleFindManyMock.mockResolvedValue([]);
     visitScheduleCountMock.mockResolvedValue(0);
@@ -506,6 +509,9 @@ describe('/api/patients/[id]', () => {
           findMany: patientNarcoticUseFindManyMock,
           create: patientNarcoticUseCreateMock,
           updateMany: patientNarcoticUseUpdateManyMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
         },
       }),
     );
@@ -1031,6 +1037,35 @@ describe('/api/patients/[id]', () => {
           sensitive_fields_masked: true,
           address_fields_masked: true,
           can_view_detail: false,
+        },
+        patient_share_permissions: {
+          can_create_external_share: false,
+          can_create_reply_request: false,
+        },
+      },
+    });
+  });
+
+  it('projects patient share action permissions from the authenticated role', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'corg1234567890123456789012',
+        userId: 'user_trainee',
+        role: 'pharmacist_trainee',
+      },
+    });
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        patient_share_permissions: {
+          can_create_external_share: false,
+          can_create_reply_request: true,
         },
       },
     });

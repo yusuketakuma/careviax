@@ -8,12 +8,19 @@ import { ja } from 'date-fns/locale';
 import { AlertTriangle, CheckCircle2, ListTodo, MessageCircle, Send, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
+import {
+  PatientWriteAvailabilityNotice,
+  PATIENT_WRITE_AVAILABILITY_DESCRIPTION_ID,
+} from '@/components/features/patients/patient-write-availability-notice';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
-import { StateBadge } from '@/components/ui/state-badge';
 import { Skeleton } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { readApiJson, type ApiJsonSchema } from '@/lib/api/client-json';
+import {
+  canRetainCachedDataAfterPrimaryQueryError,
+  fetchPrimaryQueryJson,
+} from '@/lib/api/primary-query-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -37,7 +44,11 @@ import {
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { isActiveReplyRequestStatus } from '@/lib/communications/request-status';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
-import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
+import {
+  isPatientArchivedWriteConflictPayload,
+  isPatientArchiveWritable,
+  PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+} from '@/lib/patient/archive-summary';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
 import { buildReportHref } from '@/lib/reports/navigation';
@@ -55,10 +66,7 @@ import {
   shareAudienceLabel,
   type ShareAudienceKey,
 } from './interprofessional-share.helpers';
-import {
-  buildInterprofessionalShareReportResponseSchema,
-  type InterprofessionalShareReport,
-} from './interprofessional-share-response-schema';
+import { buildInterprofessionalShareReportResponseSchema } from './interprofessional-share-response-schema';
 
 /**
  * p1_05「他職種向け共有ページ」。
@@ -89,6 +97,7 @@ class ShareMutationResponseError extends Error {
   constructor(
     readonly status: number,
     fallbackMessage: string,
+    readonly kind: 'patient_archived' | null = null,
   ) {
     super(fallbackMessage);
     this.name = 'ShareMutationResponseError';
@@ -101,13 +110,28 @@ async function readShareMutationResponse<T>(
   schema?: ApiJsonSchema<T>,
 ): Promise<T> {
   if (!response.ok) {
-    throw new ShareMutationResponseError(response.status, fallbackMessage);
+    const payload = await response.json().catch(() => null);
+    throw new ShareMutationResponseError(
+      response.status,
+      fallbackMessage,
+      response.status === 409 && isPatientArchivedWriteConflictPayload(payload)
+        ? 'patient_archived'
+        : null,
+    );
   }
   return readApiJson<T>(response, { fallbackMessage, schema });
 }
 
 function getShareMutationResponseStatus(error: unknown): number | null {
   return error instanceof ShareMutationResponseError ? error.status : null;
+}
+
+function isPatientArchivedWriteError(error: unknown): error is ShareMutationResponseError {
+  return error instanceof ShareMutationResponseError && error.kind === 'patient_archived';
+}
+
+function isDuplicateShareMutationConflict(error: unknown): boolean {
+  return getShareMutationResponseStatus(error) === 409 && !isPatientArchivedWriteError(error);
 }
 
 function tryBuildPatientHref(patientId: string, suffix = ''): string | null {
@@ -127,31 +151,6 @@ function canBuildPatientApiPath(patientId: string): boolean {
     if (err instanceof RangeError) return false;
     throw err;
   }
-}
-
-function ArchivedPatientShareNotice({
-  archive,
-  patientName,
-}: {
-  archive?: PatientArchiveSummary | null;
-  patientName: string | null;
-}) {
-  if (!archive?.archived) return null;
-  return (
-    <div className="rounded-lg border-l-4 border-border/70 border-l-state-blocked bg-card p-4 text-sm text-state-blocked">
-      <div className="flex flex-wrap items-center gap-2">
-        <StateBadge role="readonly" className="font-bold">
-          アーカイブ中
-        </StateBadge>
-        <p className="font-semibold">
-          {patientName ? `${patientName} 様は` : 'この患者は'}閲覧専用の患者正本です。
-        </p>
-      </div>
-      <p className="mt-1 text-xs leading-5 text-state-blocked/90">
-        復元するまで新規作業・共有・更新には使わないでください。外部共有の発行前に、対象患者と共有目的を再確認してください。
-      </p>
-    </div>
-  );
 }
 
 function InterprofessionalShareLoadingState() {
@@ -250,22 +249,41 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
   const [createdRequestIdsByAudience, setCreatedRequestIdsByAudience] = useState<
     Partial<Record<ShareAudienceKey, string>>
   >({});
+  const [archiveConflictDetected, setArchiveConflictDetected] = useState(false);
 
   const reportQuery = useQuery({
     queryKey: ['care-report', reportId, orgId],
     queryFn: async () => {
-      const res = await fetch(buildCareReportApiPath(reportId), {
-        headers: buildOrgHeaders(orgId),
-      });
-      return readApiJson<{ data: InterprofessionalShareReport }>(res, {
-        fallbackMessage: '報告書の取得に失敗しました',
-        schema: buildInterprofessionalShareReportResponseSchema(reportId),
-      });
+      return fetchPrimaryQueryJson(
+        () =>
+          fetch(buildCareReportApiPath(reportId), {
+            headers: buildOrgHeaders(orgId),
+            cache: 'no-store',
+          }),
+        {
+          fallbackMessage: '報告書の取得に失敗しました',
+          schema: buildInterprofessionalShareReportResponseSchema(reportId),
+        },
+      );
     },
     enabled: !!orgId && !!reportId,
   });
+  const canRetainCachedReport =
+    reportQuery.isRefetchError && canRetainCachedDataAfterPrimaryQueryError(reportQuery.error);
   const report = reportQuery.data?.data ?? null;
   const patientId = report?.patient_id ?? null;
+  const patientArchive = report?.patient_summary?.archive ?? null;
+  const effectivePatientArchive =
+    archiveConflictDetected || canRetainCachedReport ? null : patientArchive;
+  const isPatientWritable = isPatientArchiveWritable(effectivePatientArchive);
+
+  async function reconcilePatientArchiveAfterConflict() {
+    setArchiveConflictDetected(true);
+    const refreshed = await reportQuery.refetch().catch(() => null);
+    if (refreshed?.isSuccess && refreshed.data.data.patient_summary?.archive) {
+      setArchiveConflictDetected(false);
+    }
+  }
   const canSendReport = report?.permissions?.can_send === true;
   const canCreateExternalShare = report?.permissions?.can_create_external_share === true;
   const isShareableReportStatus = report ? isShareableCareReportStatus(report.status) : false;
@@ -399,6 +417,13 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
 
   const createTaskMutation = useMutation({
     mutationFn: async (input: FollowupTaskMutationInput) => {
+      if (!isPatientWritable) {
+        throw new ShareMutationResponseError(
+          409,
+          PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+          'patient_archived',
+        );
+      }
       const res = await fetch(buildTasksApiPath(), {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
@@ -410,19 +435,31 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
       setCreatedResponseIds((prev) => [...prev, input.responseId]);
       toast.success('次回訪問の確認タスクを作成しました');
     },
-    onError: (error) => {
+    onError: async (error) => {
       const status = getShareMutationResponseStatus(error);
       clientLog.warn('care_report.interprofessional_share_followup_task_failed', error, {
         route: '/reports/:id/share',
         entityType: 'care_report_followup_task',
         status,
       });
+      if (isPatientArchivedWriteError(error)) {
+        await reconcilePatientArchiveAfterConflict();
+        toast.error(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+        return;
+      }
       toast.error(status === 409 ? FOLLOWUP_TASK_CONFLICT_MESSAGE : FOLLOWUP_TASK_FAILURE_MESSAGE);
     },
   });
 
   const createReplyRequestMutation = useMutation({
     mutationFn: async (input: ReplyRequestMutationInput) => {
+      if (!isPatientWritable) {
+        throw new ShareMutationResponseError(
+          409,
+          PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+          'patient_archived',
+        );
+      }
       const res = await fetch(buildCommunicationRequestsApiPath(), {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
@@ -452,6 +489,11 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
         entityType: 'care_report_reply_request',
         status,
       });
+      if (isPatientArchivedWriteError(error)) {
+        await reconcilePatientArchiveAfterConflict();
+        toast.error(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+        return;
+      }
       if (status === 409) {
         await requestsQuery.refetch().catch(() => undefined);
         toast.error(REPLY_REQUEST_CONFLICT_MESSAGE);
@@ -462,6 +504,7 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
   });
 
   const createFollowupTask = () => {
+    if (!isPatientWritable) return;
     if (!canCreateFollowupTask) return;
     if (!report || !latestReply || !replyRequest) return;
     createTaskMutation.mutate({
@@ -479,6 +522,7 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
   };
 
   const createReplyRequest = () => {
+    if (!isPatientWritable) return;
     if (!report || !patientId || !selectedAudienceCard?.recipientName) return;
     if (requestsQuery.isLoading || requestsQuery.isError) return;
     if (hasActiveAudienceRequest || requestCreated) return;
@@ -503,7 +547,7 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
     return <InterprofessionalShareLoadingState />;
   }
 
-  if (reportQuery.error) {
+  if (reportQuery.error && (!report || !canRetainCachedReport)) {
     return (
       <PageScaffold>
         <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-4 text-state-confirm">
@@ -537,7 +581,6 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
   }
 
   const patientName = report.patient_summary?.name ?? null;
-  const patientArchive = report.patient_summary?.archive ?? null;
   const patientDetailHref = patientId && canViewPatient ? tryBuildPatientHref(patientId) : null;
   const patientShareHref =
     patientId && canViewPatient && canUseShareOutput
@@ -549,13 +592,30 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
     { href: '/external', label: '外部連携' },
   ];
   const externalShareAction = patientShareHref ? (
-    <Link
-      href={patientShareHref}
-      className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'min-h-[44px] sm:min-h-0')}
-    >
-      <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
-      外部共有リンクの発行
-    </Link>
+    isPatientWritable ? (
+      <Link
+        href={patientShareHref}
+        className={cn(
+          buttonVariants({ variant: 'outline', size: 'sm' }),
+          'min-h-[44px] sm:min-h-0',
+        )}
+      >
+        <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
+        外部共有リンクの発行
+      </Link>
+    ) : (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled
+        className="min-h-[44px] sm:min-h-0"
+        aria-describedby={PATIENT_WRITE_AVAILABILITY_DESCRIPTION_ID}
+      >
+        <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
+        外部共有リンクの発行
+      </Button>
+    )
   ) : null;
 
   if (!canUseShareOutput) {
@@ -577,7 +637,23 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
             shortcuts={introShortcuts}
             actions={externalShareAction}
           />
-          <ArchivedPatientShareNotice archive={patientArchive} patientName={patientName} />
+          {patientArchive?.archived || archiveConflictDetected || canRetainCachedReport ? (
+            <PatientWriteAvailabilityNotice
+              archive={effectivePatientArchive}
+              patientName={patientName}
+              unavailableReason={canViewPatient ? 'unknown' : 'permission_denied'}
+              onRetry={
+                archiveConflictDetected || reportQuery.isRefetchError
+                  ? () => void reconcilePatientArchiveAfterConflict()
+                  : undefined
+              }
+              isRetrying={reportQuery.isRefetching}
+              isShowingCachedData={Boolean(
+                reportQuery.data && (archiveConflictDetected || canRetainCachedReport),
+              )}
+              cachedDataUpdatedAt={reportQuery.dataUpdatedAt}
+            />
+          ) : null}
           <div
             className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-4 text-state-confirm"
             data-testid="share-permission-warning"
@@ -609,7 +685,21 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
           actions={externalShareAction}
         />
 
-        <ArchivedPatientShareNotice archive={patientArchive} patientName={patientName} />
+        <PatientWriteAvailabilityNotice
+          archive={effectivePatientArchive}
+          patientName={patientName}
+          unavailableReason={canViewPatient ? 'unknown' : 'permission_denied'}
+          onRetry={
+            archiveConflictDetected || reportQuery.isRefetchError
+              ? () => void reconcilePatientArchiveAfterConflict()
+              : undefined
+          }
+          isRetrying={reportQuery.isRefetching}
+          isShowingCachedData={Boolean(
+            reportQuery.data && (archiveConflictDetected || canRetainCachedReport),
+          )}
+          cachedDataUpdatedAt={reportQuery.dataUpdatedAt}
+        />
 
         {supportingDataErrors.length > 0 ? (
           <div
@@ -769,12 +859,16 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
               data-testid="share-create-request-button"
               className="mt-4 w-full bg-background"
               disabled={
+                !isPatientWritable ||
                 !selectedAudienceCard?.recipientName ||
                 requestsQuery.isLoading ||
                 requestsQuery.isError ||
                 createReplyRequestMutation.isPending ||
                 hasActiveAudienceRequest ||
                 requestCreated
+              }
+              aria-describedby={
+                isPatientWritable ? undefined : PATIENT_WRITE_AVAILABILITY_DESCRIPTION_ID
               }
               onClick={createReplyRequest}
             >
@@ -791,24 +885,43 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
               )}
             </Button>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              {!selectedAudienceCard?.recipientName
-                ? 'ケアチームまたは連絡先に共有相手を登録すると、返信依頼を起票できます。'
-                : requestsQuery.isError
-                  ? '返信状況を取得できないため、重複防止のため起票を停止しています。'
-                  : hasActiveAudienceRequest || requestCreated
-                    ? 'この相手への返信依頼は既に連携依頼キューにあります。'
-                    : '選択中の相手に、表示中の共有内容を確認してもらう返信待ち依頼を作成します。'}
+              {!isPatientWritable
+                ? '患者が利用中と確認できるまで、返信依頼は起票できません。'
+                : !selectedAudienceCard?.recipientName
+                  ? 'ケアチームまたは連絡先に共有相手を登録すると、返信依頼を起票できます。'
+                  : requestsQuery.isError
+                    ? '返信状況を取得できないため、重複防止のため起票を停止しています。'
+                    : hasActiveAudienceRequest || requestCreated
+                      ? 'この相手への返信依頼は既に連携依頼キューにあります。'
+                      : '選択中の相手に、表示中の共有内容を確認してもらう返信待ち依頼を作成します。'}
             </p>
             {createReplyRequestMutation.isError &&
             createReplyRequestMutation.variables?.audience === audience &&
-            getShareMutationResponseStatus(createReplyRequestMutation.error) !== 409 ? (
+            !isDuplicateShareMutationConflict(createReplyRequestMutation.error) &&
+            !(
+              isPatientWritable && isPatientArchivedWriteError(createReplyRequestMutation.error)
+            ) ? (
               <ErrorState
                 className="mt-3"
-                title="返信依頼を起票できませんでした"
-                cause="選択した共有相手への返信依頼は完了していません。"
-                nextAction="連携依頼の状態を確認して、同じ依頼をもう一度起票してください。"
-                onRetry={() =>
-                  createReplyRequestMutation.mutate(createReplyRequestMutation.variables)
+                title={
+                  isPatientArchivedWriteError(createReplyRequestMutation.error)
+                    ? '患者がアーカイブされています'
+                    : '返信依頼を起票できませんでした'
+                }
+                cause={
+                  isPatientArchivedWriteError(createReplyRequestMutation.error)
+                    ? '患者の利用状態が変わったため、返信依頼は作成されていません。'
+                    : '選択した共有相手への返信依頼は完了していません。'
+                }
+                nextAction={
+                  isPatientArchivedWriteError(createReplyRequestMutation.error)
+                    ? '患者を復元した後に、この画面を再読み込みしてください。'
+                    : '連携依頼の状態を確認して、同じ依頼をもう一度起票してください。'
+                }
+                onRetry={
+                  isPatientArchivedWriteError(createReplyRequestMutation.error)
+                    ? undefined
+                    : () => createReplyRequestMutation.mutate(createReplyRequestMutation.variables)
                 }
                 retryLabel="返信依頼を再試行"
                 headingLevel={3}
@@ -833,10 +946,14 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
               data-testid="share-next-task-button"
               className="mt-4 w-full"
               disabled={
+                !isPatientWritable ||
                 !canCreateFollowupTask ||
                 !latestReply ||
                 createTaskMutation.isPending ||
                 taskCreated
+              }
+              aria-describedby={
+                isPatientWritable ? undefined : PATIENT_WRITE_AVAILABILITY_DESCRIPTION_ID
               }
               onClick={createFollowupTask}
             >
@@ -853,23 +970,35 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
               )}
             </Button>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              {canCreateFollowupTask
-                ? '返信内容を次回訪問の確認タスク(運用タスク)として登録します。登録後はダッシュボードのタスク一覧に表示されます。'
-                : '運用タスクの作成権限がないため、返信内容は閲覧のみできます。'}
+              {!isPatientWritable
+                ? '患者が利用中と確認できるまで、次回タスクは作成できません。'
+                : canCreateFollowupTask
+                  ? '返信内容を次回訪問の確認タスク(運用タスク)として登録します。登録後はダッシュボードのタスク一覧に表示されます。'
+                  : '運用タスクの作成権限がないため、返信内容は閲覧のみできます。'}
             </p>
-            {createTaskMutation.isError && createTaskMutation.variables?.audience === audience ? (
+            {createTaskMutation.isError &&
+            createTaskMutation.variables?.audience === audience &&
+            !(isPatientWritable && isPatientArchivedWriteError(createTaskMutation.error)) ? (
               <ErrorState
                 className="mt-3"
                 title={
-                  getShareMutationResponseStatus(createTaskMutation.error) === 409
-                    ? '次回タスクの作成状態を確認してください'
-                    : '次回タスクを作成できませんでした'
+                  isPatientArchivedWriteError(createTaskMutation.error)
+                    ? '患者がアーカイブされています'
+                    : getShareMutationResponseStatus(createTaskMutation.error) === 409
+                      ? '次回タスクの作成状態を確認してください'
+                      : '次回タスクを作成できませんでした'
                 }
-                cause="確認中の返信を次回訪問のタスクに登録できたか確認できていません。"
+                cause={
+                  isPatientArchivedWriteError(createTaskMutation.error)
+                    ? '患者の利用状態が変わったため、次回タスクは作成されていません。'
+                    : '確認中の返信を次回訪問のタスクに登録できたか確認できていません。'
+                }
                 nextAction={
-                  getShareMutationResponseStatus(createTaskMutation.error) === 409
-                    ? 'タスク一覧で重複がないか確認してから操作してください。'
-                    : 'タスク一覧を確認して、同じ返信からもう一度作成してください。'
+                  isPatientArchivedWriteError(createTaskMutation.error)
+                    ? '患者を復元した後に、この画面を再読み込みしてください。'
+                    : getShareMutationResponseStatus(createTaskMutation.error) === 409
+                      ? 'タスク一覧で重複がないか確認してから操作してください。'
+                      : 'タスク一覧を確認して、同じ返信からもう一度作成してください。'
                 }
                 onRetry={
                   getShareMutationResponseStatus(createTaskMutation.error) === 409

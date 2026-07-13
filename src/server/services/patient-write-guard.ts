@@ -2,6 +2,7 @@ import { conflict, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import type { AuthContext } from '@/lib/auth/context';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE } from '@/lib/patient/archive-summary';
 import type { NextResponse } from 'next/server';
 
 type DbClient = Pick<typeof prisma, 'patient'>;
@@ -27,7 +28,7 @@ export async function requireWritablePatient(
 
   if (patient.archived_at) {
     return {
-      response: conflict('アーカイブ中の患者は復元するまで更新できません'),
+      response: conflict(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE),
     };
   }
 

@@ -52,6 +52,56 @@
 
 ## 直近の作業
 
+- codex: MEDSAFE-ARCHIVE-WRITE-001 archived patient share write gates (COMMIT_READY, 2026-07-13; commit group `CG-MEDSAFE-ARCHIVE-WRITE-001`).
+  - current task / root cause:
+    Report共有はarchive警告を表示しながら外部共有リンク・返信依頼・次回タスクを有効化し、患者共有はproviderの
+    `archived_at`をconsumer schemaでstripしていた。Backendは`requireWritablePatient`によりexternal access、
+    communication request、taskの全POSTを副作用前409拒否済みで、frontend affordanceとerror recoveryだけがdrift。
+    Medical/privacy reviewでは、primary refetchの全失敗を同一`Error`へ畳むため、session/role/assignment失効後の
+    401/403/404でも患者名・薬剤・共有履歴・報告本文をcached DOMに残すHighを追加検出した。
+  - frame / decision:
+    既存`PatientArchiveSummary`をclient lifecycle SSOTとし、role permissionとは直交した「既知active AND permission」
+    eligibilityを2画面へ適用する。共通notice、disabled/form/link、handler/mutation guard、canonical archive conflict分類を
+    実装し、stale 409ではduplicate扱いせずprimary queryを再取得する。既存共有・返信・preview・履歴はread-onlyで維持。
+    Cache継続はnetwork/5xxだけに限定し、4xxと2xx contract failureはcached PHIを非表示にする。縮退時は「前回取得データ」
+    と最終成功時刻を明示する。全面early return、permission値の書換え、既存grant自動revoke、既存request/task取消は採用しない。
+    External share/reply permissionだけをproviderへ投影し、assignmentを見ない粗いtask permission追加は取り下げて別taskへ分離した。
+  - evidence / validation plan:
+    Read-only subagent 3名のcode map、medical/privacy safety、spec reviewが同案を推奨。Baselineは患者/report UI・schemaと
+    external-access/communication-requests/tasks provider計6 files / 184 tests PASS。HR gateとしてactive/archived/unknown、
+    POST非発火、archive→active、stale 409、backend副作用前拒否、lint/type/no-unused/buildを確認する。
+  - design / image generation:
+    `docs/ui-ux-design-guidelines.md`のAction beside evidence、disabled理由、色だけに依存しない状態表示、44px操作面を維持。
+    新規layout/visual reconstructionではなく既存部品のlifecycle状態追加のため`gpt-image-2`は省略する。
+  - branch / rollback:
+    `agent/continuous-improvement-20260712`、upstream同期済み。Owned pathsだけstage/commitしnon-force pushする。
+    Rollbackはscoped commit revert、DB/data rollback不要。
+  - implementation / audit checkpoint:
+    `PatientArchiveSummary`へshare-adjacent canonical 409 code/message、既知active write eligibility、archive conflict
+    workspace latchを集約。患者共有はstrict patient GET schemaで`archived_at`を必須nullable datetimeとして検証し、
+    form・外部共有・返信依頼・次回タスクを同じgateへ接続。報告書共有も外部共有linkをdisabled buttonへ置換し、
+    permission-hiddenを一時取得失敗と混同しないcopyへ分離した。Archive 409検出からprimary refetch完了まで全writeを
+    cross-path停止し、明示archive状態の再取得成功時だけlatch解除。任意409本文/PHIはUIへ出さず、duplicate競合と分離。
+    `fetchPrimaryQueryJson`はprovider本文を表示せずstatusとcache継続可否だけを保持し、401/403/404/429・schema failureは
+    cached PHIを全面errorへ切替、network/5xxは最終更新時刻付きread-only cacheへ縮退する。
+  - verification checkpoint:
+    UI/schema/helperとexternal-access/communication-requests/tasks providerを合わせ10 files / 255 tests PASS（stderr warning 0）。
+    Provider archive拒否testは409 status・canonical code/message・token/OTP/SMS/request/task副作用0を同時固定。
+    Scoped ESLint、Prettier、`NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`、同
+    `typecheck:no-unused`、client schema 362/0、frontend contract、PHI log/display、module boundary、API shape、
+    route auth、raw-read org guard、colors、diff-checkはPASS。Serialized Next 16.2.9 webpack buildも311 pagesでPASS。
+    CSS optimizerの既存`var(...)` warning 2件は非阻害・本差分外。Browser smokeはport 3012 listenerとseeded auth runtimeがなく
+    未実施。jsdomでdisabled理由、archive/unknown/permission、401/403時PHI不在、5xx read-only/stale表示を検証した。
+  - independent review / residual:
+    Read-only contract reviewerはarchive latch/error復旧を確認し、medical/privacy reviewerが検出した
+    `PRIVACY-SHARE-CACHE-AUTH-001` Highとstale時刻不足Medium、reply permission false test gapはcommit前に修正した。
+    Task assignment eligibility driftはserver authzを維持したまま`AUTHZ-SHARE-FOLLOWUP-ELIGIBILITY-001`へ分離。
+    Final verifierのLowだったreport primary fetchの明示`cache: 'no-store'`は即時修正し、request init testで固定。
+    Task assignee role/capability driftは`AUTHZ-TASK-ASSIGNEE-ELIGIBILITY-001`へ別Mediumとして登録。
+    既存grant archive policyは`PRIVACY-ARCHIVE-GRANT-LIFECYCLE-001`
+    Human gate、guard後並行archive TOCTOUは`DATA-ARCHIVE-WRITE-SERIALIZATION-001` HR、患者context barは
+    `MEDSAFE-PATIENT-CONTEXT-SHARE-001`、他archive error literalは`ARCH-ARCHIVE-CONFLICT-SSOT-001`へ分離した。
+
 - codex: API-CONTRACT-001FZINTERPROSHARESTRICT PHI share workspace contracts (DONE, 2026-07-13; implementation `268d1c1e3`, PUSHED).
   - current task / root cause:
     Live `client-json-schema:check` は360 schema-backed / 5 allowlisted schema-less / 1 fileで、残件は

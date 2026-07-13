@@ -18,6 +18,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ActionRail } from '@/components/ui/action-rail';
+import {
+  PatientWriteAvailabilityNotice,
+  PATIENT_WRITE_AVAILABILITY_DESCRIPTION_ID,
+} from '@/components/features/patients/patient-write-availability-notice';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -33,9 +37,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { messageFromError } from '@/lib/utils/error-message';
+import { messageFromError, SafeClientMessageError } from '@/lib/utils/error-message';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
+import {
+  canRetainCachedDataAfterPrimaryQueryError,
+  fetchPrimaryQueryJson,
+} from '@/lib/api/primary-query-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   buildNextCheckTaskInput,
@@ -68,6 +76,11 @@ import {
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { isActiveReplyRequestStatus } from '@/lib/communications/request-status';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import {
+  isPatientArchivedWriteConflictPayload,
+  isPatientArchiveWritable,
+  PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+} from '@/lib/patient/archive-summary';
 import { buildTasksApiPath } from '@/lib/tasks/api-paths';
 import {
   buildPatientShareCommunicationRequestInput,
@@ -111,6 +124,24 @@ type ShareFormErrors = {
   grantedToName?: string;
   scope?: string;
 };
+
+async function throwIfPatientArchivedWriteConflict(response: Response): Promise<void> {
+  if (response.status !== 409) return;
+  const payload = await response
+    .clone()
+    .json()
+    .catch(() => null);
+  if (isPatientArchivedWriteConflictPayload(payload)) {
+    throw SafeClientMessageError.fromReviewed(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+  }
+}
+
+function isPatientArchivedWriteError(error: unknown): error is SafeClientMessageError {
+  return (
+    error instanceof SafeClientMessageError &&
+    error.message === PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE
+  );
+}
 
 function ExternalShareLoadingState() {
   return (
@@ -173,6 +204,12 @@ const EXPIRY_OPTIONS = [
   { value: '72', label: '72時間' },
 ];
 
+const EXTERNAL_SHARE_PERMISSION_DESCRIPTION_ID = 'external-share-permission-description';
+const REPLY_REQUEST_PERMISSION_DESCRIPTION_ID = 'reply-request-permission-description';
+const FOLLOWUP_TASK_DESCRIPTION_ID = 'followup-task-description';
+const EXTERNAL_SHARE_PERMISSION_MESSAGE = '外部共有リンクの発行権限がありません';
+const REPLY_REQUEST_PERMISSION_MESSAGE = '返信依頼の起票権限がありません';
+
 // --- Main ---
 
 export function ExternalShareContent({ patientId }: { patientId: string }) {
@@ -203,24 +240,29 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
     Partial<Record<ShareAudienceKey, string>>
   >({});
   const [shareFormErrors, setShareFormErrors] = useState<ShareFormErrors>({});
+  const [archiveConflictDetected, setArchiveConflictDetected] = useState(false);
 
   const overviewQuery = useQuery<ExternalShareOverview>({
     queryKey: ['external-share-overview', patientId, orgId],
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
-      const response = await fetch(buildPatientApiPath(patientId), {
-        headers: buildOrgHeaders(orgId),
-        cache: 'no-store',
-      });
-
-      const payload = await readApiJson(response, {
-        fallbackMessage: '共有状況を取得できませんでした',
-        schema: buildExternalShareOverviewResponseSchema(patientId),
-      });
+      const payload = await fetchPrimaryQueryJson(
+        () =>
+          fetch(buildPatientApiPath(patientId), {
+            headers: buildOrgHeaders(orgId),
+            cache: 'no-store',
+          }),
+        {
+          fallbackMessage: '共有状況を取得できませんでした',
+          schema: buildExternalShareOverviewResponseSchema(patientId),
+        },
+      );
       const overview = payload.data;
       return {
         id: overview.id,
         name: overview.name ?? null,
+        archive: overview.archive,
+        patient_share_permissions: overview.patient_share_permissions,
         external_shares: overview.external_shares ?? [],
         self_reports: overview.self_reports ?? [],
         current_medications: overview.current_medications ?? [],
@@ -229,6 +271,30 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
       };
     },
   });
+  const canRetainCachedOverview =
+    overviewQuery.isRefetchError && canRetainCachedDataAfterPrimaryQueryError(overviewQuery.error);
+  const patientArchive = overviewQuery.data?.archive ?? null;
+  const effectivePatientArchive =
+    archiveConflictDetected || canRetainCachedOverview ? null : patientArchive;
+  const isPatientWritable = isPatientArchiveWritable(effectivePatientArchive);
+  const patientSharePermissions = overviewQuery.data?.patient_share_permissions;
+  const canIssueExternalShare =
+    isPatientWritable && patientSharePermissions?.can_create_external_share === true;
+  const canCreateReplyRequest =
+    isPatientWritable && patientSharePermissions?.can_create_reply_request === true;
+  const externalShareDisabledDescriptionId = !isPatientWritable
+    ? PATIENT_WRITE_AVAILABILITY_DESCRIPTION_ID
+    : !canIssueExternalShare
+      ? EXTERNAL_SHARE_PERMISSION_DESCRIPTION_ID
+      : undefined;
+
+  async function reconcilePatientArchiveAfterConflict() {
+    setArchiveConflictDetected(true);
+    const refreshed = await overviewQuery.refetch().catch(() => null);
+    if (refreshed?.isSuccess && refreshed.data.archive) {
+      setArchiveConflictDetected(false);
+    }
+  }
 
   // 共有する相手カード(主治医/ケアマネ/訪問看護/施設/家族)の該当者名を埋めるための
   // ケアチーム + 連絡先。報告書文脈(/reports/[id]/share)と同じ taxonomy を再利用する。
@@ -280,6 +346,12 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
 
   const generateMutation = useMutation({
     mutationFn: async () => {
+      if (!isPatientWritable) {
+        throw SafeClientMessageError.fromReviewed(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+      }
+      if (!patientSharePermissions?.can_create_external_share) {
+        throw SafeClientMessageError.fromReviewed(EXTERNAL_SHARE_PERMISSION_MESSAGE);
+      }
       const res = await fetch('/api/external-access', {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
@@ -293,6 +365,7 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
           expires_hours: parseInt(expiryHours, 10),
         }),
       });
+      await throwIfPatientArchivedWriteConflict(res);
       const payload = await readApiJson(res, {
         fallbackMessage: '共有リンクの生成に失敗しました',
         schema: createExternalShareGrantResponseSchema,
@@ -311,7 +384,12 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
       setGenerated(result.data);
       toast.success('共有リンクを発行しました');
     },
-    onError: () => toast.error('共有リンクの生成に失敗しました'),
+    onError: async (error: unknown) => {
+      if (isPatientArchivedWriteError(error)) {
+        await reconcilePatientArchiveAfterConflict();
+      }
+      toast.error(messageFromError(error, '共有リンクの生成に失敗しました'));
+    },
   });
 
   const audience = selectedAudience;
@@ -408,6 +486,9 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
 
   const createTaskMutation = useMutation({
     mutationFn: async () => {
+      if (!isPatientWritable) {
+        throw SafeClientMessageError.fromReviewed(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+      }
       if (!latestReply || !replyRequest) {
         throw new Error('タスク化できる返信がありません');
       }
@@ -425,6 +506,7 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
       });
+      await throwIfPatientArchivedWriteConflict(res);
       await readApiAcknowledgement(res, '次回タスクの作成に失敗しました');
     },
     onSuccess: () => {
@@ -433,11 +515,22 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
       }
       toast.success('次回訪問の確認タスクを作成しました');
     },
-    onError: (err: Error) => toast.error(messageFromError(err, '次回タスクの作成に失敗しました')),
+    onError: async (error: unknown) => {
+      if (isPatientArchivedWriteError(error)) {
+        await reconcilePatientArchiveAfterConflict();
+      }
+      toast.error(messageFromError(error, '次回タスクの作成に失敗しました'));
+    },
   });
 
   const createReplyRequestMutation = useMutation({
     mutationFn: async () => {
+      if (!isPatientWritable) {
+        throw SafeClientMessageError.fromReviewed(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+      }
+      if (!patientSharePermissions?.can_create_reply_request) {
+        throw SafeClientMessageError.fromReviewed(REPLY_REQUEST_PERMISSION_MESSAGE);
+      }
       if (!selectedAudienceCard?.recipientName) {
         throw new Error('共有相手が未登録です');
       }
@@ -460,6 +553,7 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
       });
+      await throwIfPatientArchivedWriteConflict(res);
       return readApiJson<CreateCommunicationRequestResponse>(res, {
         fallbackMessage: '返信依頼の起票に失敗しました',
         schema: createCommunicationRequestResponseSchema,
@@ -476,7 +570,12 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
         queryKey: ['communication-requests', 'patient', patientId, orgId],
       });
     },
-    onError: (err: Error) => toast.error(messageFromError(err, '返信依頼の起票に失敗しました')),
+    onError: async (error: unknown) => {
+      if (isPatientArchivedWriteError(error)) {
+        await reconcilePatientArchiveAfterConflict();
+      }
+      toast.error(messageFromError(error, '返信依頼の起票に失敗しました'));
+    },
   });
 
   function toggleScope(key: string) {
@@ -517,6 +616,14 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
   }
 
   function handleGenerate() {
+    if (!isPatientWritable) {
+      toast.error(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+      return;
+    }
+    if (!patientSharePermissions?.can_create_external_share) {
+      toast.error(EXTERNAL_SHARE_PERMISSION_MESSAGE);
+      return;
+    }
     const nextErrors: ShareFormErrors = {};
 
     if (!grantedToName.trim()) {
@@ -541,7 +648,7 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
     return <ExternalShareLoadingState />;
   }
 
-  if (overviewQuery.isError) {
+  if (overviewQuery.isError && (!overviewQuery.data || !canRetainCachedOverview)) {
     return (
       <div className="rounded-lg border border-border/70 bg-card p-4">
         <ErrorState
@@ -560,6 +667,21 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
 
   return (
     <div className="space-y-4">
+      <PatientWriteAvailabilityNotice
+        archive={effectivePatientArchive}
+        patientName={overviewQuery.data?.name ?? null}
+        onRetry={
+          archiveConflictDetected || overviewQuery.isRefetchError
+            ? () => void reconcilePatientArchiveAfterConflict()
+            : undefined
+        }
+        isRetrying={overviewQuery.isRefetching}
+        isShowingCachedData={Boolean(
+          overviewQuery.data && (archiveConflictDetected || canRetainCachedOverview),
+        )}
+        cachedDataUpdatedAt={overviewQuery.dataUpdatedAt}
+      />
+
       {/* Warning */}
       <div className="flex items-start gap-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
         <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -659,6 +781,15 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
                 <h2 className="font-heading text-base leading-snug font-medium">共有設定</h2>
               </CardHeader>
               <CardContent className="space-y-4">
+                {!isPatientWritable || canIssueExternalShare ? null : (
+                  <p
+                    id={EXTERNAL_SHARE_PERMISSION_DESCRIPTION_ID}
+                    role="status"
+                    className="text-sm leading-5 text-state-blocked"
+                  >
+                    外部共有リンクの発行権限がないため、共有設定は閲覧のみです。
+                  </p>
+                )}
                 <div className="space-y-1.5">
                   <Label htmlFor="granted-to-name">共有先氏名</Label>
                   <Input
@@ -671,9 +802,12 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
                       }
                     }}
                     placeholder="例: 田中ケアマネジャー"
+                    disabled={!canIssueExternalShare}
                     aria-invalid={Boolean(shareFormErrors.grantedToName)}
                     aria-describedby={
-                      shareFormErrors.grantedToName ? 'granted-to-name-error' : undefined
+                      shareFormErrors.grantedToName
+                        ? 'granted-to-name-error'
+                        : externalShareDisabledDescriptionId
                     }
                   />
                   {shareFormErrors.grantedToName ? (
@@ -689,13 +823,17 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
                     value={grantedToContact}
                     onChange={(e) => setGrantedToContact(e.target.value)}
                     placeholder="電話番号またはメールアドレス"
+                    disabled={!canIssueExternalShare}
+                    aria-describedby={externalShareDisabledDescriptionId}
                   />
                 </div>
 
                 <div
                   role="group"
                   aria-labelledby="share-scope-label"
-                  aria-describedby={shareFormErrors.scope ? 'share-scope-error' : undefined}
+                  aria-describedby={
+                    shareFormErrors.scope ? 'share-scope-error' : externalShareDisabledDescriptionId
+                  }
                   className="space-y-2"
                 >
                   <Label id="share-scope-label">共有する情報</Label>
@@ -705,6 +843,7 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
                         id={`scope-${item.key}`}
                         checked={selectedScope.has(item.key)}
                         onCheckedChange={() => toggleScope(item.key)}
+                        disabled={!canIssueExternalShare}
                       />
                       <label htmlFor={`scope-${item.key}`} className="cursor-pointer space-y-0.5">
                         <span className="text-sm font-medium">{item.label}</span>
@@ -721,8 +860,15 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
 
                 <div className="space-y-1.5">
                   <Label htmlFor="expiry">有効期限</Label>
-                  <Select value={expiryHours} onValueChange={(v) => setExpiryHours(v ?? '72')}>
-                    <SelectTrigger id="expiry">
+                  <Select
+                    value={expiryHours}
+                    onValueChange={(v) => setExpiryHours(v ?? '72')}
+                    disabled={!canIssueExternalShare}
+                  >
+                    <SelectTrigger
+                      id="expiry"
+                      aria-describedby={externalShareDisabledDescriptionId}
+                    >
                       <SelectValue>
                         {EXPIRY_OPTIONS.find((opt) => opt.value === expiryHours)?.label}
                       </SelectValue>
@@ -738,7 +884,11 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
                 </div>
 
                 <ActionRail>
-                  <Button onClick={handleGenerate} disabled={generateMutation.isPending}>
+                  <Button
+                    onClick={handleGenerate}
+                    disabled={!canIssueExternalShare || generateMutation.isPending}
+                    aria-describedby={externalShareDisabledDescriptionId}
+                  >
                     <Link2 className="mr-1.5 size-4" aria-hidden="true" />
                     {generateMutation.isPending ? '生成中...' : '共有リンクを発行'}
                   </Button>
@@ -748,7 +898,7 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
           )}
 
           {/* Generated result */}
-          {generated && (
+          {generated && canIssueExternalShare && (
             <Card className="border-state-done/30">
               <CardHeader>
                 <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium text-state-done">
@@ -909,12 +1059,20 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
               data-testid="share-create-request-button"
               className="mt-4 w-full bg-background"
               disabled={
+                !canCreateReplyRequest ||
                 !selectedAudienceCard?.recipientName ||
                 requestsQuery.isLoading ||
                 requestsQuery.isError ||
                 createReplyRequestMutation.isPending ||
                 hasActiveAudienceRequest ||
                 requestCreated
+              }
+              aria-describedby={
+                !isPatientWritable
+                  ? PATIENT_WRITE_AVAILABILITY_DESCRIPTION_ID
+                  : !canCreateReplyRequest
+                    ? REPLY_REQUEST_PERMISSION_DESCRIPTION_ID
+                    : undefined
               }
               onClick={() => createReplyRequestMutation.mutate()}
             >
@@ -930,14 +1088,21 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
                 </>
               )}
             </Button>
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              {!selectedAudienceCard?.recipientName
-                ? 'ケアチームまたは連絡先に共有相手を登録すると、返信依頼を起票できます。'
-                : requestsQuery.isError
-                  ? '返信状況を取得できないため、重複防止のため起票を停止しています。'
-                  : hasActiveAudienceRequest || requestCreated
-                    ? 'この相手への返信依頼は既に連携依頼キューにあります。'
-                    : '選択中の相手に、表示中の患者共有内容を確認してもらう返信待ち依頼を作成します。'}
+            <p
+              id={REPLY_REQUEST_PERMISSION_DESCRIPTION_ID}
+              className="mt-2 text-xs leading-5 text-muted-foreground"
+            >
+              {!isPatientWritable
+                ? '患者が利用中と確認できるまで、返信依頼は起票できません。'
+                : !patientSharePermissions?.can_create_reply_request
+                  ? '返信依頼の起票権限がないため、既存の依頼と返信は閲覧のみできます。'
+                  : !selectedAudienceCard?.recipientName
+                    ? 'ケアチームまたは連絡先に共有相手を登録すると、返信依頼を起票できます。'
+                    : requestsQuery.isError
+                      ? '返信状況を取得できないため、重複防止のため起票を停止しています。'
+                      : hasActiveAudienceRequest || requestCreated
+                        ? 'この相手への返信依頼は既に連携依頼キューにあります。'
+                        : '選択中の相手に、表示中の患者共有内容を確認してもらう返信待ち依頼を作成します。'}
             </p>
             {replyRequestQueueHref ? (
               <Link
@@ -957,7 +1122,10 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
               type="button"
               data-testid="share-next-task-button"
               className="mt-4 w-full"
-              disabled={!latestReply || createTaskMutation.isPending || taskCreated}
+              disabled={
+                !isPatientWritable || !latestReply || createTaskMutation.isPending || taskCreated
+              }
+              aria-describedby={FOLLOWUP_TASK_DESCRIPTION_ID}
               onClick={() => createTaskMutation.mutate()}
             >
               {taskCreated ? (
@@ -972,8 +1140,13 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
                 </>
               )}
             </Button>
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              返信内容を次回訪問の確認タスク（運用タスク）として登録します。登録後はダッシュボードのタスク一覧に表示されます。
+            <p
+              id={FOLLOWUP_TASK_DESCRIPTION_ID}
+              className="mt-2 text-xs leading-5 text-muted-foreground"
+            >
+              {!isPatientWritable
+                ? '患者が利用中と確認できるまで、次回タスクは作成できません。'
+                : '返信内容を次回訪問の確認タスク（運用タスク）として登録します。登録後はダッシュボードのタスク一覧に表示されます。'}
             </p>
           </div>
 

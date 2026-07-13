@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   buildCommunicationRequestApiPath,
@@ -14,7 +14,11 @@ import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildTasksApiPath } from '@/lib/tasks/api-paths';
-import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
+import {
+  PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+  PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+  type PatientArchiveSummary,
+} from '@/lib/patient/archive-summary';
 import { InterprofessionalShareContent } from './interprofessional-share-content';
 
 setupDomTestEnv();
@@ -233,6 +237,8 @@ function stubFetch(
     failCareTeam?: boolean;
     failRequests?: boolean;
     report?: ReportFixture;
+    refetchedReport?: ReportFixture;
+    reportRefetchPromise?: Promise<Response>;
     reportsById?: Record<string, ReportFixture>;
     requests?: typeof REQUESTS;
     requestPages?: Array<typeof REQUESTS>;
@@ -244,13 +250,21 @@ function stubFetch(
   } = {},
 ) {
   let communicationRequestListReads = 0;
+  let reportReads = 0;
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith('/api/care-reports/')) {
       const requestedReportId = decodeURIComponent(url.split('/').at(-1) ?? '');
+      const reportReadIndex = reportReads++;
+      if (reportReadIndex > 0 && options.reportRefetchPromise) {
+        return options.reportRefetchPromise;
+      }
       return new Response(
         JSON.stringify({
-          data: options.reportsById?.[requestedReportId] ?? options.report ?? REPORT,
+          data:
+            reportReadIndex > 0 && options.refetchedReport
+              ? options.refetchedReport
+              : (options.reportsById?.[requestedReportId] ?? options.report ?? REPORT),
         }),
         { status: 200 },
       );
@@ -498,8 +512,8 @@ describe('InterprofessionalShareContent', () => {
     );
   });
 
-  it('surfaces archived patient state before creating external share links', async () => {
-    stubFetch({
+  it('keeps archived patient context readable while blocking every new share write', async () => {
+    const fetchMock = stubFetch({
       report: {
         ...REPORT,
         patient_summary: {
@@ -516,7 +530,59 @@ describe('InterprofessionalShareContent', () => {
 
     expect(await screen.findByText('アーカイブ中')).toBeTruthy();
     expect(screen.getByText('加藤 ミサ 様は閲覧専用の患者正本です。')).toBeTruthy();
-    expect(screen.getByText(/外部共有の発行前に、対象患者と共有目的を再確認/)).toBeTruthy();
+    expect(
+      screen.getByText(/復元するまで新しい外部共有リンク、返信依頼、次回タスクは作成できません/),
+    ).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /外部共有リンクの発行/ })).toBeNull();
+    expect(
+      (screen.getByRole('button', { name: /外部共有リンクの発行/ }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      screen.getByRole('button', { name: /外部共有リンクの発行/ }).getAttribute('aria-describedby'),
+    ).toBe('patient-write-availability-description');
+    expect(document.getElementById('patient-write-availability-description')).toBeTruthy();
+    expect((screen.getByTestId('share-create-request-button') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect((screen.getByTestId('share-next-task-button') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('share-preview-column')).toBeTruthy();
+    expect(await screen.findByTestId('share-reply-card')).toBeTruthy();
+    expect(screen.getByTestId('share-open-request-link')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('share-create-request-button'));
+    fireEvent.click(screen.getByTestId('share-next-task-button'));
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          (String(input) === '/api/communication-requests' || String(input) === '/api/tasks') &&
+          init?.method === 'POST',
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps the archived-patient lifecycle notice when report sharing is unavailable', async () => {
+    stubFetch({
+      report: {
+        ...REPORT,
+        status: 'draft',
+        patient_summary: {
+          ...REPORT.patient_summary,
+          archive: {
+            status: 'archived',
+            archived: true,
+            archived_at: '2026-06-30T09:00:00.000Z',
+          },
+        },
+      },
+    });
+    renderShare();
+
+    expect(await screen.findByTestId('share-permission-warning')).toBeTruthy();
+    expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+      'アーカイブ中',
+    );
+    expect(screen.getByText(/下書きの報告書は外部共有できません/)).toBeTruthy();
+    expect(screen.queryByTestId('share-preview-column')).toBeNull();
   });
 
   it('uses the org header on every share GET request', async () => {
@@ -529,6 +595,9 @@ describe('InterprofessionalShareContent', () => {
 
     const orgHeader = buildOrgHeaders('org_1');
     expectFetchHeaders(fetchMock, (url) => url.startsWith('/api/care-reports/'), orgHeader);
+    expect(
+      fetchMock.mock.calls.find(([input]) => String(input).startsWith('/api/care-reports/'))?.[1],
+    ).toMatchObject({ cache: 'no-store' });
     expectFetchHeaders(fetchMock, (url) => url.includes('/care-team'), orgHeader);
     expectFetchHeaders(fetchMock, (url) => url.includes('/contacts'), orgHeader);
     expectFetchHeaders(
@@ -947,6 +1016,190 @@ describe('InterprofessionalShareContent', () => {
     expect(document.body.textContent).not.toContain(rawMessage);
   });
 
+  it('refreshes patient state and blocks writes when a task POST detects archival', async () => {
+    const archivedReport: ReportFixture = {
+      ...REPORT,
+      patient_summary: {
+        ...REPORT.patient_summary,
+        archive: {
+          status: 'archived',
+          archived: true,
+          archived_at: '2026-07-13T00:00:00.000Z',
+        },
+      },
+    };
+    let resolveReportRefetch!: (response: Response) => void;
+    const reportRefetchPromise = new Promise<Response>((resolve) => {
+      resolveReportRefetch = resolve;
+    });
+    const fetchMock = stubFetch({
+      failTaskPost: new Response(
+        JSON.stringify({
+          code: PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+          message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+        }),
+        { status: 409 },
+      ),
+      reportRefetchPromise,
+    });
+    renderShare();
+
+    const button = await screen.findByTestId('share-next-task-button');
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText('状態未確認')).toBeTruthy();
+      expect(screen.queryByRole('link', { name: /外部共有リンクの発行/ })).toBeNull();
+      expect(
+        (screen.getByRole('button', { name: /外部共有リンクの発行/ }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+    });
+    expect(toast.error).not.toHaveBeenCalledWith(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+
+    resolveReportRefetch(
+      new Response(JSON.stringify({ data: archivedReport }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+      expect(screen.getByText('アーカイブ中')).toBeTruthy();
+      expect(screen.getByText('患者がアーカイブされています')).toBeTruthy();
+    });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/care-reports/')),
+    ).toHaveLength(2);
+    expect(screen.queryByText('次回タスクの作成状態を確認してください')).toBeNull();
+    expect(screen.queryByRole('button', { name: '次回タスク作成を再試行' })).toBeNull();
+  });
+
+  it('keeps cached report history visible and writes locked when archive reconciliation fails', async () => {
+    const fetchMock = stubFetch({
+      failTaskPost: new Response(
+        JSON.stringify({
+          code: PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+          message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+        }),
+        { status: 409 },
+      ),
+      reportRefetchPromise: Promise.resolve(new Response('server error', { status: 500 })),
+    });
+    renderShare();
+
+    const taskButton = await screen.findByTestId('share-next-task-button');
+    await waitFor(() => expect((taskButton as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(taskButton);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+      expect(screen.getByText('状態未確認')).toBeTruthy();
+    });
+    expect(screen.getByTestId('share-preview-column')).toBeTruthy();
+    expect(screen.getByTestId('share-reply-card')).toBeTruthy();
+    expect(screen.getByTestId('share-open-request-link')).toBeTruthy();
+    expect((taskButton as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('share-create-request-button') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(
+      (screen.getByRole('button', { name: /外部共有リンクの発行/ }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getByRole('button', { name: '患者状態を再取得' })).toBeTruthy();
+    expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+      '前回取得データを表示中です',
+    );
+    expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+      '最終更新:',
+    );
+    expect(
+      fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/care-reports/')),
+    ).toHaveLength(2);
+  });
+
+  it('hides cached report PHI when archive reconciliation confirms access loss', async () => {
+    const fetchMock = stubFetch({
+      failTaskPost: new Response(
+        JSON.stringify({
+          code: PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+          message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+        }),
+        { status: 409 },
+      ),
+      reportRefetchPromise: Promise.resolve(new Response('forbidden', { status: 403 })),
+    });
+    renderShare();
+
+    const taskButton = await screen.findByTestId('share-next-task-button');
+    await waitFor(() => expect((taskButton as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(taskButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('報告書を取得できませんでした')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('share-preview-column')).toBeNull();
+    expect(screen.queryByTestId('share-reply-card')).toBeNull();
+    expect(screen.queryByText('佐藤 花子')).toBeNull();
+    expect(screen.queryByTestId('patient-write-availability-notice')).toBeNull();
+    expect(
+      fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/care-reports/')),
+    ).toHaveLength(2);
+  });
+
+  it('clears an archived task error after an explicit active reconciliation', async () => {
+    stubFetch({
+      failTaskPost: new Response(
+        JSON.stringify({
+          code: PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+          message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+        }),
+        { status: 409 },
+      ),
+      refetchedReport: REPORT,
+    });
+    renderShare();
+
+    const taskButton = await screen.findByTestId('share-next-task-button');
+    await waitFor(() => expect((taskButton as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(taskButton);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+      expect((taskButton as HTMLButtonElement).disabled).toBe(false);
+    });
+    expect(screen.queryByText('患者がアーカイブされています')).toBeNull();
+    expect(screen.queryByRole('button', { name: '患者状態を再取得' })).toBeNull();
+  });
+
+  it('clears an archived reply-request error after an explicit active reconciliation', async () => {
+    stubFetch({
+      requests: [],
+      failRequestPost: new Response(
+        JSON.stringify({
+          code: PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+          message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+        }),
+        { status: 409 },
+      ),
+      refetchedReport: REPORT,
+    });
+    renderShare();
+
+    const requestButton = await screen.findByTestId('share-create-request-button');
+    await waitFor(() => expect((requestButton as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(requestButton);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+      expect((requestButton as HTMLButtonElement).disabled).toBe(false);
+    });
+    expect(screen.queryByText('患者がアーカイブされています')).toBeNull();
+    expect(screen.queryByRole('button', { name: '患者状態を再取得' })).toBeNull();
+  });
+
   it('keeps a 500 reply request failure PHI-safe and leaves retry available', async () => {
     const rawMessage = '患者A 090-1234-5678 token=secret-request-token の起票に失敗しました';
     stubFetch({
@@ -1072,6 +1325,51 @@ describe('InterprofessionalShareContent', () => {
     expect((screen.getByTestId('share-create-request-button') as HTMLButtonElement).disabled).toBe(
       true,
     );
+  });
+
+  it('does not misclassify an archived-patient reply 409 as a duplicate request', async () => {
+    const archivedReport: ReportFixture = {
+      ...REPORT,
+      patient_summary: {
+        ...REPORT.patient_summary,
+        archive: {
+          status: 'archived',
+          archived: true,
+          archived_at: '2026-07-13T00:00:00.000Z',
+        },
+      },
+    };
+    const fetchMock = stubFetch({
+      requests: [],
+      failRequestPost: new Response(
+        JSON.stringify({
+          code: PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+          message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+        }),
+        { status: 409 },
+      ),
+      refetchedReport: archivedReport,
+    });
+    renderShare();
+
+    const button = await screen.findByTestId('share-create-request-button');
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+      expect(screen.getByText('アーカイブ中')).toBeTruthy();
+      expect(screen.getByText('患者がアーカイブされています')).toBeTruthy();
+    });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/care-reports/')),
+    ).toHaveLength(2);
+    expect(toast.error).not.toHaveBeenCalledWith(
+      '返信依頼は既に起票されている可能性があります。連携依頼の状態を確認しています。',
+    );
+    expect(screen.queryByText('返信依頼起票済み')).toBeNull();
+    expect(screen.queryByRole('button', { name: '返信依頼を再試行' })).toBeNull();
   });
 
   it('communication request and task mutations consume shared API helper return values', async () => {
@@ -1290,6 +1588,7 @@ describe('InterprofessionalShareContent', () => {
 
     expect(screen.queryByRole('link', { name: /外部共有リンクの発行/ })).toBeNull();
     expect(screen.queryByRole('link', { name: '患者詳細' })).toBeNull();
+    expect(screen.queryByTestId('patient-write-availability-notice')).toBeNull();
     expect(
       screen.getByText(
         'この報告書の外部共有または送付権限がないため、共有プレビューと返信確認は表示できません。',
@@ -1306,6 +1605,39 @@ describe('InterprofessionalShareContent', () => {
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes('/api/communication-requests')),
     ).toBe(false);
+  });
+
+  it('marks a non-shareable cached report stale after a retryable refetch failure', async () => {
+    const queryClient = createTestQueryClient();
+    stubFetch({
+      report: {
+        ...REPORT,
+        permissions: {
+          ...REPORT.permissions,
+          can_send: false,
+          can_create_external_share: false,
+        },
+      },
+      reportRefetchPromise: Promise.resolve(new Response('server error', { status: 500 })),
+    });
+    render(<InterprofessionalShareContent reportId="rep_1" />, {
+      wrapper: createQueryClientWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(screen.getByTestId('share-permission-warning')).toBeTruthy());
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ['care-report', 'rep_1', 'org_1'] });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+        '前回取得データを表示中です',
+      );
+    });
+    expect(screen.getByTestId('share-permission-warning')).toBeTruthy();
+    expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+      '最終更新:',
+    );
   });
 
   it('does not manually refetch patient support queries from retry when patient viewing is denied', async () => {
@@ -1329,6 +1661,16 @@ describe('InterprofessionalShareContent', () => {
     await waitFor(() => {
       expect(screen.getByTestId('share-supporting-data-warning')).toBeTruthy();
     });
+    expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+      '状態確認権限なし',
+    );
+    expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+      '権限を持つ担当者へ確認してください',
+    );
+    expect((screen.getByTestId('share-create-request-button') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect((screen.getByTestId('share-next-task-button') as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: '再取得' }));
 

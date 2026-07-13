@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import {
+  PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+  PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+} from '@/lib/patient/archive-summary';
 
 const {
   requireAuthContextMock,
@@ -802,6 +806,10 @@ describe('/api/tasks', () => {
 
     expect(response.status).toBe(409);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+      message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+    });
     expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(allocateDisplayIdMock).not.toHaveBeenCalled();
@@ -827,6 +835,10 @@ describe('/api/tasks', () => {
 
     expect(response.status).toBe(409);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+      message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+    });
     expect(careCaseFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'case_1',

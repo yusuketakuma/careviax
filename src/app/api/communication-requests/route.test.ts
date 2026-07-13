@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import {
+  PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+  PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+} from '@/lib/patient/archive-summary';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
@@ -866,6 +870,10 @@ describe('/api/communication-requests', () => {
     ))!;
 
     expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+      message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+    });
     expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
     expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();

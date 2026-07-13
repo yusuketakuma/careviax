@@ -4,6 +4,26 @@ export type PatientArchiveSummary = {
   archived_at: string | null;
 };
 
+/** Canonical 409 contract emitted by requireWritablePatient for share-adjacent writes. */
+export const PATIENT_ARCHIVED_WRITE_CONFLICT_CODE = 'WORKFLOW_CONFLICT';
+export const PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE =
+  'アーカイブ中の患者は復元するまで更新できません';
+
+export function isPatientArchiveWritable(
+  archive: PatientArchiveSummary | null | undefined,
+): boolean {
+  return archive?.status === 'active' && archive.archived === false && archive.archived_at === null;
+}
+
+export function isPatientArchivedWriteConflictPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+  const object = payload as Record<string, unknown>;
+  return (
+    object.code === PATIENT_ARCHIVED_WRITE_CONFLICT_CODE &&
+    object.message === PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE
+  );
+}
+
 function toIsoString(value: Date | string | null | undefined) {
   if (!value) return null;
   if (typeof value === 'string') {

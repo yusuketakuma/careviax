@@ -5,10 +5,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { PrimaryQueryError } from '@/lib/api/primary-query-json';
 import {
   buildCommunicationRequestApiPath,
   buildCommunicationRequestsApiPath,
 } from '@/lib/communications/api-paths';
+import {
+  PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+  PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+  type PatientArchiveSummary,
+} from '@/lib/patient/archive-summary';
 import { buildTasksApiPath } from '@/lib/tasks/api-paths';
 
 const useMutationMock = vi.hoisted(() => vi.fn());
@@ -69,8 +75,25 @@ type QueryConfig = {
 type MutationConfig = {
   mutationFn?: () => Promise<unknown>;
   onSuccess?: (data: unknown) => Promise<void> | void;
-  onError?: (error: unknown) => void;
+  onError?: (error: unknown) => Promise<void> | void;
 };
+
+const ACTIVE_PATIENT_ARCHIVE = {
+  status: 'active',
+  archived: false,
+  archived_at: null,
+} as const;
+
+const ARCHIVED_PATIENT_ARCHIVE = {
+  status: 'archived',
+  archived: true,
+  archived_at: '2026-06-30T09:00:00.000Z',
+} as const;
+
+const FULL_PATIENT_SHARE_PERMISSIONS = {
+  can_create_external_share: true,
+  can_create_reply_request: true,
+} as const;
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -101,6 +124,8 @@ describe('ExternalShareContent', () => {
     useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     useQueryMock.mockReturnValue({
       data: {
+        archive: ACTIVE_PATIENT_ARCHIVE,
+        patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
         external_shares: [
           {
             id: 'share_1',
@@ -139,6 +164,8 @@ describe('ExternalShareContent', () => {
     useMutationMock.mockReturnValue({ mutate, isPending: false });
     useQueryMock.mockReturnValue({
       data: {
+        archive: ACTIVE_PATIENT_ARCHIVE,
+        patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
         external_shares: [],
         self_reports: [],
       },
@@ -201,6 +228,8 @@ describe('ExternalShareContent', () => {
             data: {
               id: patientId,
               name: '佐藤 花子',
+              archived_at: null,
+              patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
               external_shares: [],
               self_reports: [],
               current_medications: [],
@@ -291,6 +320,8 @@ describe('ExternalShareContent', () => {
       return {
         data: {
           name: '佐藤 花子',
+          archive: ACTIVE_PATIENT_ARCHIVE,
+          patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
           external_shares: [],
           self_reports: [],
           current_medications: [],
@@ -403,7 +434,7 @@ describe('ExternalShareContent', () => {
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain('cursor=cursor_1');
   });
 
-  it('surfaces API messages from patient share read queries', async () => {
+  it('keeps the primary patient query error generic while surfacing supporting-query messages', async () => {
     const patientId = 'patient_1';
     const requestId = 'request_1';
     const queryConfigs: QueryConfig[] = [];
@@ -469,6 +500,8 @@ describe('ExternalShareContent', () => {
       return {
         data: {
           name: '佐藤 花子',
+          archive: ACTIVE_PATIENT_ARCHIVE,
+          patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
           external_shares: [],
           self_reports: [],
           current_medications: [],
@@ -498,7 +531,7 @@ describe('ExternalShareContent', () => {
       (config) => config.queryKey?.[0] === 'communication-request',
     );
 
-    await expect(overviewQuery?.queryFn?.()).rejects.toThrow('共有状況の閲覧権限がありません');
+    await expect(overviewQuery?.queryFn?.()).rejects.toThrow('共有状況を取得できませんでした');
     await expect(careTeamQuery?.queryFn?.()).rejects.toThrow('ケアチームの閲覧権限がありません');
     await expect(contactsQuery?.queryFn?.()).rejects.toThrow('連絡先の閲覧権限がありません');
     await expect(requestsQuery?.queryFn?.()).rejects.toThrow('返信状況の取得に失敗しました');
@@ -533,6 +566,8 @@ describe('ExternalShareContent', () => {
     useQueryMock.mockReturnValue({
       data: {
         name: '佐藤 花子',
+        archive: ACTIVE_PATIENT_ARCHIVE,
+        patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
         external_shares: [],
         self_reports: [],
         current_medications: [],
@@ -573,6 +608,8 @@ describe('ExternalShareContent', () => {
     useQueryMock.mockReturnValue({
       data: {
         name: '佐藤 花子',
+        archive: ACTIVE_PATIENT_ARCHIVE,
+        patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
         external_shares: [],
         self_reports: [],
         current_medications: [],
@@ -614,6 +651,587 @@ describe('ExternalShareContent', () => {
     useOrgIdMock.mockReturnValue('org_2');
     view.rerender(<ExternalShareContent patientId="patient_2" />);
     expect((screen.getByLabelText('共有先氏名') as HTMLInputElement).value).toBe('');
+  });
+
+  it('archived patients remain readable but block every new share write until restored', async () => {
+    let archive: PatientArchiveSummary = ARCHIVED_PATIENT_ARCHIVE;
+    const mutationConfigs: MutationConfig[] = [];
+    const mutationCalls = [vi.fn(), vi.fn(), vi.fn()];
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      const index = mutationConfigs.length % 3;
+      mutationConfigs.push(config);
+      return { mutate: mutationCalls[index], isPending: false };
+    });
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      const scope = config.queryKey?.[0];
+      if (scope === 'patient-care-team') {
+        return {
+          data: {
+            data: [
+              {
+                role: 'care_manager',
+                name: '田中ケアマネ',
+                organization_name: '北区ケアプラン',
+                is_primary: true,
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+        };
+      }
+      if (scope === 'patient-contacts') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      if (scope === 'communication-requests') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'request_1',
+                recipient_role: 'care_manager',
+                recipient_name: '田中ケアマネ',
+                status: 'responded',
+                subject: '共有確認',
+                requested_at: '2026-06-01T00:00:00.000Z',
+                responses: [{ id: 'response_1', responded_at: '2026-06-02T00:00:00.000Z' }],
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+        };
+      }
+      if (scope === 'communication-request') {
+        return {
+          data: {
+            data: {
+              id: 'request_1',
+              responses: [
+                {
+                  id: 'response_1',
+                  responder_name: '田中ケアマネ',
+                  content: '既存の返信内容',
+                  responded_at: '2026-06-02T00:00:00.000Z',
+                },
+              ],
+            },
+          },
+          isLoading: false,
+          isError: false,
+        };
+      }
+      return {
+        data: {
+          name: '佐藤 花子',
+          archive,
+          patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
+          external_shares: [
+            {
+              id: 'share_1',
+              granted_to_name: '既存共有先',
+              expires_at: '2026-07-20T00:00:00.000Z',
+              accessed_at: null,
+            },
+          ],
+          self_reports: [
+            {
+              id: 'report_1',
+              subject: '既存の自己報告',
+              created_at: '2026-06-01T00:00:00.000Z',
+              status: 'open',
+            },
+          ],
+          current_medications: [],
+          visit_schedules: [],
+          care_reports: [],
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      };
+    });
+
+    const view = render(<ExternalShareContent patientId="patient_1" />);
+
+    expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+      'アーカイブ中',
+    );
+    expect((screen.getByLabelText('共有先氏名') as HTMLInputElement).disabled).toBe(true);
+    expect(
+      (screen.getByRole('button', { name: /共有リンクを発行/ }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect((screen.getByTestId('share-create-request-button') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect((screen.getByTestId('share-next-task-button') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('既存共有先')).toBeTruthy();
+    expect(screen.getByText('既存の自己報告')).toBeTruthy();
+    expect(screen.getByText('既存の返信内容')).toBeTruthy();
+    expect(screen.getByTestId('share-open-request-link')).toBeTruthy();
+
+    for (const config of mutationConfigs.slice(0, 3)) {
+      await expect(config.mutationFn?.()).rejects.toThrow(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mutationCalls.every((mutate) => mutate.mock.calls.length === 0)).toBe(true);
+
+    archive = ACTIVE_PATIENT_ARCHIVE;
+    view.rerender(<ExternalShareContent patientId="patient_1" />);
+
+    expect(screen.queryByTestId('patient-write-availability-notice')).toBeNull();
+    expect((screen.getByLabelText('共有先氏名') as HTMLInputElement).disabled).toBe(false);
+    expect(
+      (screen.getByRole('button', { name: /共有リンクを発行/ }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    // The existing responded request remains a separate deduplication gate after restore.
+    expect((screen.getByTestId('share-create-request-button') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(screen.getByTestId('share-create-request-button').textContent).toContain(
+      '返信依頼起票済み',
+    );
+    expect((screen.getByTestId('share-next-task-button') as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+  });
+
+  it('fails closed when patient archive state is unavailable', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockReturnValue({
+      data: {
+        name: '佐藤 花子',
+        patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
+        external_shares: [],
+        self_reports: [],
+        current_medications: [],
+        visit_schedules: [],
+        care_reports: [],
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+      '状態未確認',
+    );
+    expect(
+      (screen.getByRole('button', { name: /共有リンクを発行/ }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it('uses provider action permissions to disable external share issuance', async () => {
+    const mutationConfigs: MutationConfig[] = [];
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return { mutate: vi.fn(), isPending: false };
+    });
+    useQueryMock.mockReturnValue({
+      data: {
+        name: '佐藤 花子',
+        archive: ACTIVE_PATIENT_ARCHIVE,
+        patient_share_permissions: {
+          ...FULL_PATIENT_SHARE_PERMISSIONS,
+          can_create_external_share: false,
+        },
+        external_shares: [],
+        self_reports: [],
+        current_medications: [],
+        visit_schedules: [],
+        care_reports: [],
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    expect(screen.queryByTestId('patient-write-availability-notice')).toBeNull();
+    expect(
+      screen.getByText('外部共有リンクの発行権限がないため、共有設定は閲覧のみです。'),
+    ).toBeTruthy();
+    expect((screen.getByLabelText('共有先氏名') as HTMLInputElement).disabled).toBe(true);
+    expect(
+      screen.getByRole('button', { name: /共有リンクを発行/ }).getAttribute('aria-describedby'),
+    ).toBe('external-share-permission-description');
+    await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(
+      '外部共有リンクの発行権限がありません',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks reply-request creation at the CTA and mutation boundary without permission', async () => {
+    const mutationConfigs: MutationConfig[] = [];
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return { mutate: vi.fn(), isPending: false };
+    });
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      const scope = config.queryKey?.[0];
+      if (scope === 'patient-care-team') {
+        return {
+          data: {
+            data: [
+              {
+                role: 'care_manager',
+                name: '田中ケアマネ',
+                organization_name: '北区ケアプラン',
+                is_primary: true,
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+        };
+      }
+      if (scope === 'patient-contacts' || scope === 'communication-requests') {
+        return { data: { data: [] }, isLoading: false, isError: false };
+      }
+      return {
+        data: {
+          name: '佐藤 花子',
+          archive: ACTIVE_PATIENT_ARCHIVE,
+          patient_share_permissions: {
+            ...FULL_PATIENT_SHARE_PERMISSIONS,
+            can_create_reply_request: false,
+          },
+          external_shares: [],
+          self_reports: [],
+          current_medications: [],
+          visit_schedules: [],
+          care_reports: [],
+        },
+        isLoading: false,
+        isError: false,
+      };
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    const button = screen.getByTestId('share-create-request-button') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-describedby')).toBe('reply-request-permission-description');
+    expect(
+      screen.getByText('返信依頼の起票権限がないため、既存の依頼と返信は閲覧のみできます。'),
+    ).toBeTruthy();
+    await expect(mutationConfigs[2]?.mutationFn?.()).rejects.toThrow(
+      '返信依頼の起票権限がありません',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('maps only the canonical archived-patient 409 to reviewed recovery copy', async () => {
+    const mutationConfigs: MutationConfig[] = [];
+    const refetchOverview = vi.fn().mockResolvedValue({
+      data: { archive: ACTIVE_PATIENT_ARCHIVE },
+      isSuccess: true,
+    });
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+            message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+          }),
+          {
+            status: 409,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: 'unreviewed-provider-detail' }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return { mutate: vi.fn(), isPending: false };
+    });
+    useQueryMock.mockReturnValue({
+      data: {
+        name: '佐藤 花子',
+        archive: ACTIVE_PATIENT_ARCHIVE,
+        patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
+        external_shares: [],
+        self_reports: [],
+        current_medications: [],
+        visit_schedules: [],
+        care_reports: [],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: refetchOverview,
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    let archivedError: unknown;
+    try {
+      await mutationConfigs[0]?.mutationFn?.();
+    } catch (error) {
+      archivedError = error;
+    }
+    await act(async () => {
+      await mutationConfigs[0]?.onError?.(archivedError);
+    });
+    expect(toast.error).toHaveBeenLastCalledWith(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
+    expect(refetchOverview).toHaveBeenCalledTimes(1);
+
+    let unreviewedError: unknown;
+    try {
+      await mutationConfigs[0]?.mutationFn?.();
+    } catch (error) {
+      unreviewedError = error;
+    }
+    await act(async () => {
+      await mutationConfigs[0]?.onError?.(unreviewedError);
+    });
+    expect(toast.error).toHaveBeenLastCalledWith('共有リンクの生成に失敗しました');
+    expect(toast.error).not.toHaveBeenCalledWith('unreviewed-provider-detail');
+    expect(refetchOverview).toHaveBeenCalledTimes(1);
+  });
+
+  it('locks the whole share workspace while an archive conflict is being reconciled', async () => {
+    const mutationConfigs: MutationConfig[] = [];
+    let resolveRefetch!: (value: {
+      data: { archive: PatientArchiveSummary };
+      isSuccess: true;
+    }) => void;
+    const refetchPromise = new Promise<{
+      data: { archive: PatientArchiveSummary };
+      isSuccess: true;
+    }>((resolve) => {
+      resolveRefetch = resolve;
+    });
+    const refetchOverview = vi.fn(() => refetchPromise);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+          message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+        }),
+        { status: 409, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return { mutate: vi.fn(), isPending: false };
+    });
+    useQueryMock.mockReturnValue({
+      data: {
+        name: '佐藤 花子',
+        archive: ACTIVE_PATIENT_ARCHIVE,
+        patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
+        external_shares: [],
+        self_reports: [],
+        current_medications: [],
+        visit_schedules: [],
+        care_reports: [],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: refetchOverview,
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+    const generateButton = screen.getByRole('button', {
+      name: /共有リンクを発行/,
+    }) as HTMLButtonElement;
+    expect(generateButton.disabled).toBe(false);
+
+    let archivedError: unknown;
+    try {
+      await mutationConfigs[0]?.mutationFn?.();
+    } catch (error) {
+      archivedError = error;
+    }
+    let reconciliation: Promise<void> | void = undefined;
+    act(() => {
+      reconciliation = mutationConfigs[0]?.onError?.(archivedError);
+    });
+
+    expect(generateButton.disabled).toBe(true);
+    expect((screen.getByLabelText('共有先氏名') as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+      '状態未確認',
+    );
+
+    await act(async () => {
+      resolveRefetch({ data: { archive: ACTIVE_PATIENT_ARCHIVE }, isSuccess: true });
+      await reconciliation;
+    });
+    expect(generateButton.disabled).toBe(false);
+    expect(screen.queryByTestId('patient-write-availability-notice')).toBeNull();
+  });
+
+  it('keeps cached history visible and writes locked when archive reconciliation fails', async () => {
+    const mutationConfigs: MutationConfig[] = [];
+    const refetchOverview = vi.fn().mockResolvedValue({
+      data: { archive: ACTIVE_PATIENT_ARCHIVE },
+      isSuccess: false,
+    });
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
+          message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
+        }),
+        { status: 409, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return { mutate: vi.fn(), isPending: false };
+    });
+    useQueryMock.mockReturnValue({
+      data: {
+        name: '佐藤 花子',
+        archive: ACTIVE_PATIENT_ARCHIVE,
+        patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
+        external_shares: [
+          {
+            id: 'share_cached',
+            granted_to_name: '既存共有先',
+            expires_at: '2026-07-20T00:00:00.000Z',
+            accessed_at: null,
+          },
+        ],
+        self_reports: [],
+        current_medications: [],
+        visit_schedules: [],
+        care_reports: [],
+      },
+      isLoading: false,
+      isError: false,
+      isRefetchError: false,
+      isRefetching: false,
+      refetch: refetchOverview,
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    let archivedError: unknown;
+    try {
+      await mutationConfigs[0]?.mutationFn?.();
+    } catch (error) {
+      archivedError = error;
+    }
+    await act(async () => {
+      await mutationConfigs[0]?.onError?.(archivedError);
+    });
+
+    expect(refetchOverview).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('既存共有先')).toBeTruthy();
+    expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+      '状態未確認',
+    );
+    expect(
+      (screen.getByRole('button', { name: /共有リンクを発行/ }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getByRole('button', { name: '患者状態を再取得' })).toBeTruthy();
+  });
+
+  it('hides cached patient PHI when a refetch confirms access is no longer allowed', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockReturnValue({
+      data: {
+        name: '佐藤 花子',
+        archive: ACTIVE_PATIENT_ARCHIVE,
+        patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
+        external_shares: [
+          {
+            id: 'share_cached',
+            granted_to_name: '既存共有先',
+            expires_at: '2026-07-20T00:00:00.000Z',
+            accessed_at: null,
+          },
+        ],
+        self_reports: [],
+        current_medications: [],
+        visit_schedules: [],
+        care_reports: [],
+      },
+      dataUpdatedAt: Date.UTC(2026, 6, 13, 1, 30),
+      error: new PrimaryQueryError('共有状況を取得できませんでした', 403, false),
+      isLoading: false,
+      isError: true,
+      isRefetchError: true,
+      isRefetching: false,
+      refetch: vi.fn(),
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    expect(screen.getByText('共有状況を表示できません')).toBeTruthy();
+    expect(screen.queryByText('佐藤 花子')).toBeNull();
+    expect(screen.queryByText('既存共有先')).toBeNull();
+    expect(screen.queryByTestId('patient-write-availability-notice')).toBeNull();
+  });
+
+  it('labels retryable cached patient data as stale while keeping writes locked', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockReturnValue({
+      data: {
+        name: '佐藤 花子',
+        archive: ACTIVE_PATIENT_ARCHIVE,
+        patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
+        external_shares: [
+          {
+            id: 'share_cached',
+            granted_to_name: '既存共有先',
+            expires_at: '2026-07-20T00:00:00.000Z',
+            accessed_at: null,
+          },
+        ],
+        self_reports: [],
+        current_medications: [],
+        visit_schedules: [],
+        care_reports: [],
+      },
+      dataUpdatedAt: Date.UTC(2026, 6, 13, 1, 30),
+      error: new PrimaryQueryError('共有状況を取得できませんでした', 503, true),
+      isLoading: false,
+      isError: true,
+      isRefetchError: true,
+      isRefetching: false,
+      refetch: vi.fn(),
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    expect(screen.getByText('既存共有先')).toBeTruthy();
+    expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+      '前回取得データを表示中です',
+    );
+    expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+      '最終更新:',
+    );
+    expect(
+      (screen.getByRole('button', { name: /共有リンクを発行/ }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it('creates a patient-scoped reply request for the selected audience', async () => {
@@ -664,6 +1282,8 @@ describe('ExternalShareContent', () => {
       return {
         data: {
           name: '佐藤 花子',
+          archive: ACTIVE_PATIENT_ARCHIVE,
+          patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
           external_shares: [],
           self_reports: [],
           current_medications: [
@@ -813,6 +1433,8 @@ describe('ExternalShareContent', () => {
       return {
         data: {
           name: '佐藤 花子',
+          archive: ACTIVE_PATIENT_ARCHIVE,
+          patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
           external_shares: [],
           self_reports: [],
           current_medications: [],
@@ -872,6 +1494,8 @@ describe('ExternalShareContent', () => {
     useQueryMock.mockReturnValue({
       data: {
         name: '佐藤 花子',
+        archive: ACTIVE_PATIENT_ARCHIVE,
+        patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
         external_shares: [],
         self_reports: [],
         current_medications: [],
@@ -942,6 +1566,8 @@ describe('ExternalShareContent', () => {
       return {
         data: {
           name: '佐藤 花子',
+          archive: ACTIVE_PATIENT_ARCHIVE,
+          patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
           external_shares: [],
           self_reports: [],
           current_medications: [],
@@ -982,6 +1608,8 @@ describe('ExternalShareContent', () => {
       return {
         data: {
           name: '佐藤 花子',
+          archive: ACTIVE_PATIENT_ARCHIVE,
+          patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
           external_shares: [],
           self_reports: [],
           current_medications: [],
@@ -1029,6 +1657,8 @@ describe('ExternalShareContent', () => {
       return {
         data: {
           name: '佐藤 花子',
+          archive: ACTIVE_PATIENT_ARCHIVE,
+          patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
           external_shares: [],
           self_reports: [],
           current_medications: [],
