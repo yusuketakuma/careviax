@@ -6,6 +6,7 @@ const {
   visitRecordFindFirstMock,
   membershipFindFirstMock,
   taskFindFirstMock,
+  auditLogFindFirstMock,
   confirmHandoffMock,
   VisitHandoffAlreadyConfirmedErrorMock,
   VisitHandoffInvalidDataErrorMock,
@@ -17,6 +18,7 @@ const {
   visitRecordFindFirstMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   taskFindFirstMock: vi.fn(),
+  auditLogFindFirstMock: vi.fn(),
   confirmHandoffMock: vi.fn(),
   VisitHandoffAlreadyConfirmedErrorMock: class VisitHandoffAlreadyConfirmedError extends Error {},
   VisitHandoffInvalidDataErrorMock: class VisitHandoffInvalidDataError extends Error {},
@@ -34,6 +36,7 @@ vi.mock('@/lib/db/client', () => ({
     visitRecord: { findFirst: visitRecordFindFirstMock },
     membership: { findFirst: membershipFindFirstMock },
     task: { findFirst: taskFindFirstMock },
+    auditLog: { findFirst: auditLogFindFirstMock },
   },
 }));
 
@@ -91,26 +94,51 @@ function validBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function validVisitRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'vr_1',
+    version: 2,
+    schedule_id: 'schedule_1',
+    schedule: {
+      pharmacist_id: 'trainee_1',
+      case_: {
+        primary_pharmacist_id: 'supervisor_1',
+        backup_pharmacist_id: null,
+      },
+    },
+    ...overrides,
+  };
+}
+
+function validSupervisionTask(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'task_supervision_1',
+    task_type: 'handoff_supervision_review',
+    status: 'pending',
+    assigned_to: 'supervisor_1',
+    dedupe_key: 'handoff_supervision_vr_1_trainee_1',
+    metadata: {
+      visit_record_id: 'vr_1',
+      visit_record_version: 2,
+      schedule_id: 'schedule_1',
+      trainee_user_id: 'trainee_1',
+      supervisor_user_id: 'supervisor_1',
+      request_note_present: true,
+      request_note_length: 32,
+      request_note_redacted: true,
+    },
+    ...overrides,
+  };
+}
+
 describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue(authCtx);
-    visitRecordFindFirstMock.mockResolvedValue({ id: 'vr_1', version: 2 });
+    visitRecordFindFirstMock.mockResolvedValue(validVisitRecord());
     membershipFindFirstMock.mockResolvedValue({ user_id: 'supervisor_1', role: 'pharmacist' });
-    taskFindFirstMock.mockResolvedValue({
-      id: 'task_supervision_1',
-      status: 'pending',
-      assigned_to: 'supervisor_1',
-      metadata: {
-        visit_record_id: 'vr_1',
-        visit_record_version: 2,
-        trainee_user_id: 'trainee_1',
-        supervisor_user_id: 'supervisor_1',
-        request_note_present: true,
-        request_note_length: 32,
-        request_note_redacted: true,
-      },
-    });
+    taskFindFirstMock.mockResolvedValue(validSupervisionTask());
+    auditLogFindFirstMock.mockResolvedValue({ id: 'audit_request_1' });
     confirmHandoffMock.mockResolvedValue(handoffResult);
   });
 
@@ -130,7 +158,9 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
         where: {
           id: 'task_supervision_1',
           org_id: 'org_1',
-          task_type: 'handoff_supervision_review',
+          task_type: {
+            in: ['handoff_supervision_review', 'core.handoff_supervision_review'],
+          },
           related_entity_type: 'visit_record',
           related_entity_id: 'vr_1',
         },
@@ -140,6 +170,23 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
         }),
       }),
     );
+    expect(auditLogFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        actor_id: 'trainee_1',
+        action: 'visit_handoff_supervision_requested',
+        target_type: 'visit_record',
+        target_id: 'vr_1',
+        AND: [
+          { changes: { path: ['visit_record_id'], equals: 'vr_1' } },
+          { changes: { path: ['schedule_id'], equals: 'schedule_1' } },
+          { changes: { path: ['trainee_user_id'], equals: 'trainee_1' } },
+          { changes: { path: ['supervisor_user_id'], equals: 'supervisor_1' } },
+          { changes: { path: ['visit_record_version'], equals: 2 } },
+        ],
+      },
+      select: { id: true },
+    });
     expect(confirmHandoffMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
       visitRecordId: 'vr_1',
@@ -147,9 +194,20 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
       expectedVersion: 2,
       edits: { decision_rationale: '上長が確認済み' },
       requestContext: authCtx.ctx,
+      confirmationWhere: {
+        schedule_id: 'schedule_1',
+        schedule: {
+          pharmacist_id: 'trainee_1',
+          case_: {
+            primary_pharmacist_id: 'supervisor_1',
+            backup_pharmacist_id: null,
+          },
+        },
+      },
       confirmationBasis: 'supervision_task_assignee',
       supervisionReview: {
         taskId: 'task_supervision_1',
+        taskType: 'handoff_supervision_review',
         traineeUserId: 'trainee_1',
         supervisorUserId: 'supervisor_1',
         requestedVisitRecordVersion: 2,
@@ -161,6 +219,27 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
     expect(bodyText).not.toContain('request_note');
     expect(bodyText).not.toContain('田中太郎');
     expect(bodyText).not.toContain('token=secret');
+  });
+
+  it('confirms an existing canonical supervision task through the same dedicated flow', async () => {
+    taskFindFirstMock.mockResolvedValueOnce(
+      validSupervisionTask({ task_type: 'core.handoff_supervision_review' }),
+    );
+
+    const res = await POST(createRequest(validBody()), {
+      params: Promise.resolve({ id: 'vr_1' }),
+    });
+
+    expect(res!.status).toBe(200);
+    expect(confirmHandoffMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        supervisionReview: expect.objectContaining({
+          taskId: 'task_supervision_1',
+          taskType: 'core.handoff_supervision_review',
+        }),
+      }),
+    );
   });
 
   it('rejects invalid route ids before DB lookup', async () => {
@@ -194,18 +273,9 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
     ]) {
       vi.clearAllMocks();
       requireAuthContextMock.mockResolvedValue(authCtx);
-      visitRecordFindFirstMock.mockResolvedValue({ id: 'vr_1', version: 2 });
+      visitRecordFindFirstMock.mockResolvedValue(validVisitRecord());
       membershipFindFirstMock.mockResolvedValue({ user_id: 'supervisor_1', role: 'pharmacist' });
-      taskFindFirstMock.mockResolvedValue({
-        id: 'task_supervision_1',
-        metadata: {
-          visit_record_id: 'vr_1',
-          visit_record_version: 2,
-          trainee_user_id: 'trainee_1',
-          supervisor_user_id: 'supervisor_1',
-        },
-        ...task,
-      });
+      taskFindFirstMock.mockResolvedValue(validSupervisionTask(task));
 
       const res = await POST(createRequest(validBody()), {
         params: Promise.resolve({ id: 'vr_1' }),
@@ -218,17 +288,17 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
   });
 
   it('rejects metadata mismatches so the task cannot be reused across visits or users', async () => {
-    taskFindFirstMock.mockResolvedValue({
-      id: 'task_supervision_1',
-      status: 'pending',
-      assigned_to: 'supervisor_1',
-      metadata: {
-        visit_record_id: 'other_visit',
-        visit_record_version: 2,
-        trainee_user_id: 'trainee_1',
-        supervisor_user_id: 'supervisor_1',
-      },
-    });
+    taskFindFirstMock.mockResolvedValue(
+      validSupervisionTask({
+        metadata: {
+          visit_record_id: 'other_visit',
+          visit_record_version: 2,
+          schedule_id: 'schedule_1',
+          trainee_user_id: 'trainee_1',
+          supervisor_user_id: 'supervisor_1',
+        },
+      }),
+    );
 
     const res = await POST(createRequest(validBody()), {
       params: Promise.resolve({ id: 'vr_1' }),
@@ -239,8 +309,82 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
     expect(confirmHandoffMock).not.toHaveBeenCalled();
   });
 
+  it('rejects forged tasks without a matching dedicated supervision-request audit', async () => {
+    auditLogFindFirstMock.mockResolvedValueOnce(null);
+
+    const res = await POST(createRequest(validBody()), {
+      params: Promise.resolve({ id: 'vr_1' }),
+    });
+
+    expect(res!.status).toBe(403);
+    expectSensitiveNoStore(res!);
+    expect(confirmHandoffMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects tasks when the trainee is no longer assigned to the current schedule', async () => {
+    visitRecordFindFirstMock.mockResolvedValueOnce(
+      validVisitRecord({
+        schedule: {
+          pharmacist_id: 'other_pharmacist',
+          case_: {
+            primary_pharmacist_id: 'supervisor_1',
+            backup_pharmacist_id: null,
+          },
+        },
+      }),
+    );
+
+    const res = await POST(createRequest(validBody()), {
+      params: Promise.resolve({ id: 'vr_1' }),
+    });
+
+    expect(res!.status).toBe(403);
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(confirmHandoffMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects tasks when the caller is no longer the selected current supervisor', async () => {
+    visitRecordFindFirstMock.mockResolvedValueOnce(
+      validVisitRecord({
+        schedule: {
+          pharmacist_id: 'trainee_1',
+          case_: {
+            primary_pharmacist_id: 'other_supervisor',
+            backup_pharmacist_id: 'supervisor_1',
+          },
+        },
+      }),
+    );
+
+    const res = await POST(createRequest(validBody()), {
+      params: Promise.resolve({ id: 'vr_1' }),
+    });
+
+    expect(res!.status).toBe(403);
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(confirmHandoffMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'schedule metadata',
+      { metadata: { ...validSupervisionTask().metadata, schedule_id: 'other' } },
+    ],
+    ['dedupe key', { dedupe_key: 'forged_dedupe_key' }],
+  ])('rejects a task with mismatched %s before audit lookup', async (_label, taskOverrides) => {
+    taskFindFirstMock.mockResolvedValueOnce(validSupervisionTask(taskOverrides));
+
+    const res = await POST(createRequest(validBody()), {
+      params: Promise.resolve({ id: 'vr_1' }),
+    });
+
+    expect(res!.status).toBe(403);
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(confirmHandoffMock).not.toHaveBeenCalled();
+  });
+
   it('returns stale version conflicts before final confirmation', async () => {
-    visitRecordFindFirstMock.mockResolvedValue({ id: 'vr_1', version: 3 });
+    visitRecordFindFirstMock.mockResolvedValue(validVisitRecord({ version: 3 }));
 
     const res = await POST(createRequest(validBody()), {
       params: Promise.resolve({ id: 'vr_1' }),
@@ -261,19 +405,10 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
     ] as const) {
       vi.clearAllMocks();
       requireAuthContextMock.mockResolvedValue(authCtx);
-      visitRecordFindFirstMock.mockResolvedValue({ id: 'vr_1', version: 2 });
+      visitRecordFindFirstMock.mockResolvedValue(validVisitRecord());
       membershipFindFirstMock.mockResolvedValue({ user_id: 'supervisor_1', role: 'pharmacist' });
-      taskFindFirstMock.mockResolvedValue({
-        id: 'task_supervision_1',
-        status: 'pending',
-        assigned_to: 'supervisor_1',
-        metadata: {
-          visit_record_id: 'vr_1',
-          visit_record_version: 2,
-          trainee_user_id: 'trainee_1',
-          supervisor_user_id: 'supervisor_1',
-        },
-      });
+      taskFindFirstMock.mockResolvedValue(validSupervisionTask());
+      auditLogFindFirstMock.mockResolvedValue({ id: 'audit_request_1' });
       confirmHandoffMock.mockRejectedValueOnce(cause);
 
       const res = await POST(createRequest(validBody()), {

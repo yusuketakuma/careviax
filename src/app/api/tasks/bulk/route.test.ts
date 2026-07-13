@@ -299,6 +299,37 @@ describe('/api/tasks/bulk', () => {
     );
   });
 
+  it('rejects canonical supervision tasks from generic bulk completion', async () => {
+    taskFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'task_canonical_supervision',
+        task_type: 'core.handoff_supervision_review',
+        status: 'pending',
+        related_entity_type: 'visit_record',
+        related_entity_id: 'visit_record_1',
+      },
+    ]);
+
+    const response = await POST(createPostRequest({ ids: ['task_canonical_supervision'] }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        total: 1,
+        completed: 0,
+        failed: 1,
+        failures: [
+          {
+            id: 'task_canonical_supervision',
+            code: 'dedicated_completion_required',
+          },
+        ],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+  });
+
   it('rejects archived related patients before updating operational tasks', async () => {
     patientFindFirstMock.mockResolvedValueOnce({
       id: 'patient_1',

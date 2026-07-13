@@ -11,6 +11,7 @@ import {
   canActorCreateTaskForAssignee,
   canActorManageTaskAssignments,
   evaluateTaskAssigneeMembershipsEligibility,
+  requiresDedicatedTaskAssignmentFlow,
 } from '@/lib/tasks/task-assignee-eligibility';
 import { updateTaskSchema } from '@/lib/validations/task';
 import {
@@ -53,6 +54,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!existing) return notFound('タスクが見つかりません');
 
+  const isAssignmentChanged =
+    parsed.data.assigned_to !== undefined && parsed.data.assigned_to !== existing.assigned_to;
+
+  if (
+    isAssignmentChanged &&
+    parsed.data.assigned_to &&
+    requiresDedicatedTaskAssignmentFlow(existing.task_type)
+  ) {
+    return validationError('このタスクの担当者は専用フローで設定してください', {
+      assigned_to: ['専用の上長確認依頼から担当者を設定してください'],
+    });
+  }
+
   if (
     (parsed.data.status === 'completed' || parsed.data.status === 'cancelled') &&
     requiresDedicatedTaskCompletion(existing)
@@ -73,8 +87,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('担当者の変更権限がありません');
   }
 
-  const isAssignmentChanged =
-    parsed.data.assigned_to !== undefined && parsed.data.assigned_to !== existing.assigned_to;
   if (isAssignmentChanged) {
     const assignmentUserIds = parsed.data.assigned_to
       ? Array.from(new Set([ctx.userId, parsed.data.assigned_to]))

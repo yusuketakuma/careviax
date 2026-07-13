@@ -723,6 +723,41 @@ describe('/api/tasks', () => {
     });
   });
 
+  it.each(['handoff_supervision_review', 'core.handoff_supervision_review'])(
+    'rejects generic creation of protected supervision tasks before scope resolution or writes (%s)',
+    async (taskType) => {
+      const response = await POST(
+        createRequest('http://localhost/api/tasks', {
+          task_type: taskType,
+          title: '申し送り上長確認',
+          priority: 'high',
+          assigned_to: 'user_1',
+          related_entity_type: 'visit_record',
+          related_entity_id: 'visit_record_1',
+          metadata: {
+            visit_record_id: 'visit_record_1',
+            visit_record_version: 2,
+            trainee_user_id: 'trainee_1',
+            supervisor_user_id: 'user_1',
+          },
+        }),
+      );
+      if (!response) throw new Error('response is undefined');
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        message: 'このタスクは専用フローから作成してください',
+        details: { task_type: ['専用の上長確認依頼を使用してください'] },
+      });
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(membershipFindManyMock).not.toHaveBeenCalled();
+      expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(taskCreateMock).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     ['staff_work_request_visit', 'clerk'],
     ['staff_work_request_audit', 'pharmacist'],

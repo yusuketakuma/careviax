@@ -1,7 +1,12 @@
+import type { Prisma } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
+import {
+  isAssignedToVisitSchedule,
+  selectVisitHandoffSupervisionAssignee,
+} from '@/lib/auth/visit-schedule-access';
 import {
   conflict,
   error,
@@ -42,6 +47,23 @@ const supervisedConfirmSchema = z.object({
 
 const OPEN_TASK_STATUSES = ['pending', 'in_progress'];
 
+const visitRecordSupervisionSelect = {
+  id: true,
+  version: true,
+  schedule_id: true,
+  schedule: {
+    select: {
+      pharmacist_id: true,
+      case_: {
+        select: {
+          primary_pharmacist_id: true,
+          backup_pharmacist_id: true,
+        },
+      },
+    },
+  },
+} as const;
+
 function readStringMetadata(value: unknown, key: string) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const candidate = (value as Record<string, unknown>)[key];
@@ -81,7 +103,7 @@ async function authenticatedPOST(
 
   const record = await prisma.visitRecord.findFirst({
     where: { id, org_id: ctx.orgId },
-    select: { id: true, version: true },
+    select: visitRecordSupervisionSelect,
   });
   if (!record) return withSensitiveNoStore(notFound('訪問記録が見つかりません'));
 
@@ -102,14 +124,16 @@ async function authenticatedPOST(
     where: {
       id: parsed.data.task_id,
       org_id: ctx.orgId,
-      task_type: 'handoff_supervision_review',
+      task_type: { in: ['handoff_supervision_review', 'core.handoff_supervision_review'] },
       related_entity_type: 'visit_record',
       related_entity_id: id,
     },
     select: {
       id: true,
+      task_type: true,
       status: true,
       assigned_to: true,
+      dedupe_key: true,
       metadata: true,
     },
   });
@@ -121,13 +145,23 @@ async function authenticatedPOST(
   const traineeUserId = readStringMetadata(task.metadata, 'trainee_user_id');
   const supervisorUserId = readStringMetadata(task.metadata, 'supervisor_user_id');
   const metadataVisitRecordId = readStringMetadata(task.metadata, 'visit_record_id');
+  const metadataScheduleId = readStringMetadata(task.metadata, 'schedule_id');
   const requestedVisitRecordVersion = readNumberMetadata(task.metadata, 'visit_record_version');
+  const expectedDedupeKey = traineeUserId ? `handoff_supervision_${id}_${traineeUserId}` : null;
+  const currentSupervisorUserId = traineeUserId
+    ? selectVisitHandoffSupervisionAssignee(record.schedule, traineeUserId)
+    : null;
 
   if (
     metadataVisitRecordId !== id ||
+    metadataScheduleId !== record.schedule_id ||
     supervisorUserId !== ctx.userId ||
     traineeUserId === ctx.userId ||
-    requestedVisitRecordVersion !== parsed.data.expected_visit_record_version
+    requestedVisitRecordVersion !== parsed.data.expected_visit_record_version ||
+    task.dedupe_key !== expectedDedupeKey ||
+    !traineeUserId ||
+    !isAssignedToVisitSchedule(traineeUserId, record.schedule) ||
+    currentSupervisorUserId !== ctx.userId
   ) {
     return withSensitiveNoStore(await forbiddenResponse('この申し送りの上長確認を確定できません'));
   }
@@ -135,6 +169,43 @@ async function authenticatedPOST(
   if (record.version !== parsed.data.expected_visit_record_version) {
     return withSensitiveNoStore(conflict('訪問記録が同時に更新されました。再読み込みしてください'));
   }
+
+  const supervisionRequestAudit = await prisma.auditLog.findFirst({
+    where: {
+      org_id: ctx.orgId,
+      actor_id: traineeUserId,
+      action: 'visit_handoff_supervision_requested',
+      target_type: 'visit_record',
+      target_id: id,
+      AND: [
+        { changes: { path: ['visit_record_id'], equals: id } },
+        { changes: { path: ['schedule_id'], equals: record.schedule_id } },
+        { changes: { path: ['trainee_user_id'], equals: traineeUserId } },
+        { changes: { path: ['supervisor_user_id'], equals: ctx.userId } },
+        {
+          changes: {
+            path: ['visit_record_version'],
+            equals: parsed.data.expected_visit_record_version,
+          },
+        },
+      ],
+    },
+    select: { id: true },
+  });
+  if (!supervisionRequestAudit) {
+    return withSensitiveNoStore(await forbiddenResponse('この申し送りの上長確認を確定できません'));
+  }
+
+  const confirmationWhere = {
+    schedule_id: record.schedule_id,
+    schedule: {
+      pharmacist_id: record.schedule.pharmacist_id,
+      case_: {
+        primary_pharmacist_id: record.schedule.case_.primary_pharmacist_id,
+        backup_pharmacist_id: record.schedule.case_.backup_pharmacist_id,
+      },
+    },
+  } satisfies Prisma.VisitRecordWhereInput;
 
   try {
     const handoff = await confirmHandoff(prisma, {
@@ -144,9 +215,11 @@ async function authenticatedPOST(
       expectedVersion: parsed.data.expected_visit_record_version,
       edits: parsed.data.edits,
       requestContext: ctx,
+      confirmationWhere,
       confirmationBasis: 'supervision_task_assignee',
       supervisionReview: {
         taskId: task.id,
+        taskType: task.task_type,
         traineeUserId,
         supervisorUserId: ctx.userId,
         requestedVisitRecordVersion,

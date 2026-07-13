@@ -106,6 +106,63 @@ describe('/api/tasks/[id]', () => {
     );
   });
 
+  it.each(['handoff_supervision_review', 'core.handoff_supervision_review'])(
+    'rejects generic non-null assignment for protected supervision tasks (%s)',
+    async (taskType) => {
+      requireAuthContextMock.mockResolvedValueOnce({
+        ctx: { orgId: 'org_1', userId: 'owner_1', role: 'owner' },
+      });
+      taskFindFirstMock.mockResolvedValueOnce({
+        id: 'task_supervision_1',
+        task_type: taskType,
+        assigned_to: null,
+        completed_at: null,
+        related_entity_type: 'visit_record',
+        related_entity_id: 'visit_record_1',
+      });
+
+      const response = (await PATCH(
+        createPatchRequest('task_supervision_1', { assigned_to: 'owner_1' }),
+        { params: Promise.resolve({ id: 'task_supervision_1' }) },
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: 'このタスクの担当者は専用フローで設定してください',
+        details: { assigned_to: ['専用の上長確認依頼から担当者を設定してください'] },
+      });
+      expect(membershipFindManyMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows an authorized owner to clear a protected supervision assignment for remediation', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { orgId: 'org_1', userId: 'owner_1', role: 'owner' },
+    });
+    taskFindFirstMock.mockResolvedValueOnce({
+      id: 'task_supervision_1',
+      task_type: 'handoff_supervision_review',
+      assigned_to: 'supervisor_1',
+      completed_at: null,
+      related_entity_type: 'visit_record',
+      related_entity_id: 'visit_record_1',
+    });
+    membershipFindManyMock.mockResolvedValueOnce([
+      { user_id: 'owner_1', role: 'owner', can_audit_dispense: true },
+    ]);
+
+    const response = (await PATCH(createPatchRequest('task_supervision_1', { assigned_to: null }), {
+      params: Promise.resolve({ id: 'task_supervision_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expect(taskUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ assigned_to: null }) }),
+    );
+  });
+
   it('does not let a scoped user reassign a PHI-backed task to another user', async () => {
     const response = (await PATCH(
       createPatchRequest('task_1', {
@@ -404,6 +461,7 @@ describe('/api/tasks/[id]', () => {
     ['visit_schedule_override_approval', 'visit_schedule', 'schedule_1'],
     ['handoff_confirmation', 'visit_record', 'visit_record_1'],
     ['handoff_supervision_review', 'visit_record', 'visit_record_1'],
+    ['core.handoff_supervision_review', 'visit_record', 'visit_record_1'],
     ['risk_billing', 'billing_evidence', 'bill_1'],
     ['risk_medication', 'case', 'case_1'],
   ])(

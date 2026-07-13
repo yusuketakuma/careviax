@@ -17,6 +17,7 @@ import {
   buildTaskAssigneeRejectionDetails,
   canActorCreateTaskForAssignee,
   evaluateTaskAssigneeMembershipsEligibility,
+  requiresDedicatedTaskAssignmentFlow,
 } from '@/lib/tasks/task-assignee-eligibility';
 import { isRegisteredTaskType } from '@/lib/tasks/task-registry';
 import { createTaskSchema, taskPriorityValues, taskStatusValues } from '@/lib/validations/task';
@@ -370,6 +371,11 @@ async function authenticatedPOST(req: NextRequest) {
   if (!isRegisteredTaskType(parsed.data.task_type)) {
     return validationError('未登録のタスク種別です', {
       task_type: ['未登録のタスク種別です'],
+    });
+  }
+  if (requiresDedicatedTaskAssignmentFlow(parsed.data.task_type)) {
+    return validationError('このタスクは専用フローから作成してください', {
+      task_type: ['専用の上長確認依頼を使用してください'],
     });
   }
   const assignmentScope = await resolveDashboardAssignmentScope({

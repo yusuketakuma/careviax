@@ -6,6 +6,7 @@ import {
   evaluateTaskAssigneeMembershipsEligibility,
   evaluateTaskAssigneeRoleEligibility,
   listAssignableWorkRequestTypes,
+  requiresDedicatedTaskAssignmentFlow,
 } from './task-assignee-eligibility';
 
 const ROLE_MATRIX = {
@@ -19,6 +20,18 @@ const ROLE_MATRIX = {
 } as const satisfies Record<MemberRole, { visit: boolean; audit: boolean; general: boolean }>;
 
 describe('task assignee eligibility', () => {
+  it.each(['handoff_supervision_review', 'core.handoff_supervision_review'])(
+    'requires the dedicated assignment flow for %s',
+    (taskType) => {
+      expect(requiresDedicatedTaskAssignmentFlow(taskType)).toBe(true);
+    },
+  );
+
+  it('does not classify adjacent or unknown task types as dedicated assignment flows', () => {
+    expect(requiresDedicatedTaskAssignmentFlow('handoff_confirmation')).toBe(false);
+    expect(requiresDedicatedTaskAssignmentFlow('unknown_task_type')).toBe(false);
+  });
+
   it.each(Object.entries(ROLE_MATRIX) as Array<[MemberRole, (typeof ROLE_MATRIX)[MemberRole]]>)(
     'enforces the work-request capability matrix for %s',
     (role, expected) => {

@@ -18,11 +18,22 @@ export const TASK_WORKLOAD_DISPLAY_ROLES = [...TASK_WORKLOAD_MEMBER_ROLES, 'mult
 
 export const TASK_ASSIGNEE_REJECTION_REASON = 'task_assignee_ineligible' as const;
 
+const DEDICATED_ASSIGNMENT_CANONICAL_TASK_TYPES: ReadonlySet<string> = new Set([
+  'core.handoff_supervision_review',
+]);
+
 export function buildTaskAssigneeRejectionDetails(message: string) {
   return {
     reason: TASK_ASSIGNEE_REJECTION_REASON,
     assigned_to: [message],
   } as const;
+}
+
+export function requiresDedicatedTaskAssignmentFlow(taskType: string): boolean {
+  const canonicalTaskType = getCanonicalTaskType(taskType);
+  return Boolean(
+    canonicalTaskType && DEDICATED_ASSIGNMENT_CANONICAL_TASK_TYPES.has(canonicalTaskType),
+  );
 }
 
 type TaskAssigneeRule = {

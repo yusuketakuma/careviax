@@ -8,6 +8,7 @@ import {
   normalizeVisitHandoffOverrideReasonCode,
   type VisitHandoffOverrideReasonCode,
 } from '@/lib/visits/handoff-override-reasons';
+import { getCanonicalTaskType } from '@/lib/tasks/task-registry';
 import type { HandoffData, StructuredSoap } from '@/types/structured-soap';
 import type { VisitHandoff } from '@/types/visit-brief';
 import { extractHandoffFromSoap } from './visit-brief-ai';
@@ -414,6 +415,7 @@ export async function confirmHandoff(
     overrideReason?: string | null;
     supervisionReview?: {
       taskId: string;
+      taskType: string;
       traineeUserId: string | null;
       supervisorUserId: string;
       requestedVisitRecordVersion: number | null;
@@ -435,6 +437,13 @@ export async function confirmHandoff(
   } = args;
 
   let confirmed: HandoffData | null = null;
+
+  if (
+    supervisionReview &&
+    getCanonicalTaskType(supervisionReview.taskType) !== 'core.handoff_supervision_review'
+  ) {
+    throw new VisitHandoffSupervisionTaskUnavailableError(supervisionReview.taskId);
+  }
 
   await withOrgContext(
     orgId,
@@ -489,7 +498,7 @@ export async function confirmHandoff(
           where: {
             id: supervisionReview.taskId,
             org_id: orgId,
-            task_type: 'handoff_supervision_review',
+            task_type: supervisionReview.taskType,
             status: { in: ['pending', 'in_progress'] },
             assigned_to: confirmedBy,
             related_entity_type: 'visit_record',
@@ -546,7 +555,7 @@ export async function confirmHandoff(
         supervisionTaskResolution = await resolveOperationalTasks(tx, {
           orgId,
           taskId: supervisionReview.taskId,
-          taskType: 'handoff_supervision_review',
+          taskType: supervisionReview.taskType,
           relatedEntityType: 'visit_record',
           relatedEntityId: visitRecordId,
           assignedToUserId: confirmedBy,
