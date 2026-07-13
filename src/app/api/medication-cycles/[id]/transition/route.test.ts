@@ -21,6 +21,13 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -88,6 +95,24 @@ describe('/api/medication-cycles/[id]/transition', () => {
         },
       }),
     );
+  });
+
+  it('returns the authentication response before parsing or loading the cycle', async () => {
+    const deniedResponse = Response.json(
+      { code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' },
+      { status: 401 },
+    );
+    requireAuthContextMock.mockResolvedValueOnce({ response: deniedResponse });
+
+    const response = await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'cycle_1' }),
+    });
+
+    expect(response).toBe(deniedResponse);
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects transition requests with a stale version', async () => {
@@ -178,6 +203,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), undefined);
     expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith({
       where: { id: 'cycle_1', org_id: 'org_1', version: 2 },
       data: expect.objectContaining({

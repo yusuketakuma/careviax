@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { hasPermission, type PermissionKey } from '@/lib/auth/permissions';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -82,11 +82,11 @@ function resolveRequiredTransitionPermission(fromStatus: string, toStatus: strin
   return STATUS_PERMISSION[toStatus] ?? STATUS_PERMISSION[fromStatus] ?? 'canVisit';
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req);
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function transitionMedicationCycle(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('服薬サイクルIDが不正です');
@@ -196,3 +196,5 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return success({ data: updated });
 }
+
+export const PATCH = withAuthContext(transitionMedicationCycle);

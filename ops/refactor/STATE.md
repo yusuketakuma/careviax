@@ -55,6 +55,21 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZMEDCYCLEAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Tasks bulk push/parity後の残7 routesからMedication Cycle transition PATCHを選定した。Route/test、cycle-transition service、workflow query、
+    protected PATCH matrix、org realtime policy、allowlist、installed Next guideを確認した。既存handlerはinitial auth後にcycleのfrom/to工程から
+    dynamic permissionを解決し、assignment/version/allowed transition、atomic log、best-effort notificationを持つ一方、direct authが共通境界外だった。
+  - files changed / bugs found / correctness / security / privacy / medical safety / performance:
+    PATCHをoptions未指定のtyped `withAuthContext`へ移行し、工程別permissionを唯一のauthorization SSOTとして維持した。Route/body validation、
+    assignment、optimistic lock、on-hold復帰、cycle update/log、notification dedupe、realtime最小payload、response DTOは不変。Auth denial副作用zeroを
+    追加回帰しallowlist 1 entryを除去。Direct debtは157→156 routes、221→220 calls、helper未使用success routeは7→6。DB/network/payloadは不変。
+  - validation results / remaining work / next action / rollback:
+    Baseline/focused route + checker 2 files / 15 tests、transition/protected/realtime領域6 files / 116 tests、exact ESLint/Prettier、8 GiB typecheck /
+    no-unused、route-auth 156 allowlisted / 220 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、
+    client schema 361 backed / 0 allowlisted、Plans active、format/diffをPASS。新規security/privacy/medical/performance issueなし。Schema/migration/deploy/
+    Oracleなし。非視覚API変更のためimagegen/browserなし。親には6 routes、request correlation/error registryが残る。
+
 - codex1: API-CONTRACT-001FZTASKBULKAUTH (DONE; parent remains Partial, 2026-07-14; implementation `d97606035`).
   - current task / files inspected / root cause:
     Case transition push/parity後の残8 routesからTasks bulk POSTを選定した。Route/test、bulk response contract/messages、dashboard assignment scope、
