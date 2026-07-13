@@ -51,6 +51,33 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZQRDRAFTSTRICT QR draft detail readers (VERIFY_REQUIRED, 2026-07-13; implementation `3b1386be9`; shared clean-capacity build pending).
+  - current task / root cause:
+    QR draft detailのdraft GET、active cases GET、confirm POST計3 readersはpartial manual checks/string fallbackだけで、別draft/patient/case、
+    malformed JAHIS clinical data、cursor drift、provider-only tenant/scanner/hook metadataをreview/confirmation stateへ流し得た。Case listは先頭20件だけを読み、
+    実際は複数active casesでも先頭pageが1件なら自動選択して確定可能になるsilent truncationがあった。
+  - implementation / QR clinical safety boundary:
+    3 request-aware consumed runtime schemasを追加し、draft identity/status、JAHIS line/insurance/split/補足record、active case patient scope/cursor、
+    confirmation patient/case relationを検証。Raw/unknown parsed fields、tenant/site/scanner、full intake/cycle/hook resultをclient state前にstripした。
+    Case readerは20件×最大5 pagesをcursor集約し、重複case/cursorと上限超過をfail-closedにして全active case取得後のみ単一case自動選択する。
+    Provider query/write、QR claim/OCC、patient identity/line validation、post-create hooks、auth/assignment/tenant/audit/DB/UIは変更していない。
+    非visual clinical response/PHI境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page-response-schemas.ts`,
+    `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page-response-schemas.test.ts`,
+    `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`,
+    `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Schema/consumer/providers Vitest passed 5 files / 79 tests. Exact zero-warning ESLint, focused Prettier, aggregate typecheck,
+    8GB no-unused typecheck, client schema (344 backed / 20 allowlisted / 4 files), module boundary, client PHI-log/display, API response shape,
+    colors, format, and diff-check passed. Full build remains NOT_EXECUTED because only 239 MiB is free while existing `.next` consumes 16 GiB;
+    shared generated/user files were not deleted.
+  - security / performance / remaining:
+    Cross-draft/patient/case、malformed JAHIS payload、unknown raw field、incomplete case pagination now fail closed and unused PHI/provider metadata no longer
+    enters client state. Normal patients with <=20 active cases remain one request; larger lists use bounded follow-up pages. API-CONTRACT-001-RESCAN
+    continues with 20 calls across 4 files. A clean-capacity runner must complete `pnpm build`.
+
 - codex: API-CONTRACT-001FZPRINTHUBSTRICT print hub readers (VERIFY_REQUIRED, 2026-07-13; implementation `86de68339`; shared clean-capacity build pending).
   - current task / root cause:
     Print Hubのset plans、patient prescriptions、patient documents計3 readersはstring fallbackだけで、別患者/cycle、壊れたreadiness、
