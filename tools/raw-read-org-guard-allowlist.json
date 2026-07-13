@@ -476,15 +476,6 @@
       "reason": "Job-failure admin/owner notification lookup (membership); org_id filter is applied conditionally via member-access (membershipFilter.org_id = orgId) when a job orgId is present, else intentionally cross-org, and dispatch re-enters withOrgContext(row.org_id) per org.",
       "plannedAction": "Inline the org_id filter into the where literal (or route through withOrgContext) so the org scope is statically verifiable when a job orgId is present.",
       "expectedCount": 1
-    },
-    {
-      "path": "src/server/services/external-access.ts",
-      "rule": "missing_org_scope",
-      "owner": "RLS-RAW-READ-GUARD-001",
-      "debtId": "RAW-READ-ORG-054",
-      "reason": "externalAccessGrant lookup by globally-unique token_hash (id-then-org-recheck); the fetched grant.org_id is verified against the signed token payload immediately after, so it is not a where org_id filter but is org-checked before use.",
-      "plannedAction": "Keep the token_hash lookup global; the post-fetch org_id equality check enforces tenant scope.",
-      "expectedCount": 1
     }
   ]
 }

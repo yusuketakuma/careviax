@@ -54,7 +54,38 @@
 
 ## 直近の作業
 
-- codex4 + codex1 integration: EXT-ACCESS-OTP-CLIENT-RETRY-001 (DONE, 2026-07-14; implementation in this scoped commit).
+- codex3 + codex1 integration: TYPECHECK-PATIENT-BOARD-003O-A-001 (DONE, 2026-07-14; implementation `7e26fa769`, PUSHED).
+  - current task / root cause / files changed:
+    `PERF-DB-PATIENT-BOARD-FOUNDATION-SINGLEPASS-003O-A`の82-row回帰fixtureを含むcombined 8 GiB typecheckで5 assignment errorsを検出した。
+    `buildPatientRow`が実nullableなmedical insurance、preferred contact phone、facility batch ID/objectを初期値のstring/null片側へ過狭推論していた。
+    Builder内の4 fieldだけを正しいexplicit unionへwidenし、`any` / `unknown` / ignore、runtime値、fixture構造、query/test semanticsを変更していない。
+  - security / performance / validation / rollback:
+    Production source、tenant/PHI、DB/network、性能は不変。Codex3 FREEZE後にcodex1がannotation-only diffをreviewし、focused 1 file / 33 tests、exact
+    ESLint/Prettier/diff、`NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`をPASS。Rollbackは`7e26fa769`のrevertでDB/data rollback不要。
+
+- codex2 + codex1 integration: AUTHZ-EXTERNAL-GRANT-RLS-CONTEXT-001 (DONE, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    External access service/test、public GET/self-report callers、ExternalAccessGrantとpayload対象schema/RLS/FORCE policies、`withOrgContext`、manual audit、
+    raw-read guardを確認した。GrantはFORCE RLSだがtoken validationがglobal unique hashのfree-floating Prisma lookup、患者・薬剤・ケース・訪問・報告・
+    inbound/self-report PHI payload readsもglobal client、viewed update+auditもraw transactionだったため、runtime roleがRLS対象なら正しいorg contextを確立できない。
+  - files changed / correctness / security / privacy:
+    Signed token decode後にorg IDをRLS helperと同じsafe app-ID patternで検証し、不正値はDB前にgeneric not-foundへfail-closed化した。Grantは
+    `withOrgContext(tokenPayload.org_id)`のtxで`org_id + token_hash`を検索し、既存grant/patient token binding、expiry/revoke、OTP、scope検証を維持した。
+    Payload builderへhanded transaction clientを通し、patient/medication/case/visit/report/inbound/self-reportの全readを同じorg txへ閉じた。Viewed updateと
+    awaited manual auditも1 callback txで原子的に行い、mark失敗時はaudit 0。Global Prisma import/referenceとproduction caller 0のunsafe helpersを除去した。
+  - performance / stability / validation:
+    Business query・write・networkとDTOを増やさず、raw-org allowlist `RAW-READ-ORG-054`を削除して117→116へratchetした。RLS correctnessのためvalidation、
+    payload、view記録の各phaseにtransaction-local context設定が加わるため、三phase再検証/transaction統合は別taskへ残した。Codex2 FREEZE後にcodex1と
+    codex4が独立reviewし、service + public routes 3 files / 67 tests、raw-org 116 / 0 new、query-shape 0/0、API authz 0、API shape 0/0、module
+    boundary 0/0、exact ESLint/Prettier/diffをPASS。Global client searchは0。Combined 8 GiB typecheckが本差分外の003O-A test fixture型推論5件を検出し、
+    `TYPECHECK-PATIENT-BOARD-003O-A-001`を`7e26fa769`で修復・push後に同じ8 GiB typecheckを再実行してPASSした。
+  - remaining / human gates / rollback:
+    Validation→payload→view間のrevoke/expiry/OTP/scope TOCTOUとRLS setup重複は`AUTHZ-EXTERNAL-GRANT-READ-SERIALIZATION-001`へ分離した。Generic DB triggerの
+    credential/PII/raw scope永続化は`PRIVACY-EXTERNAL-GRANT-AUDIT-REDACTION-001`、manual auditのpatient/recipient/scope保持判断は
+    `PRIVACY-EXTERNAL-GRANT-APP-AUDIT-MINIMIZATION-001`のHuman gate。Migration/scrub/production data操作なし。Oracleはユーザー禁止に従いlocal独立reviewで
+    代替した。Rollbackはこのscoped commitのrevertとallowlist entry復元でDB/data rollback不要。
+
+- codex4 + codex1 integration: EXT-ACCESS-OTP-CLIENT-RETRY-001 (DONE, 2026-07-14; implementation `c121ae6ac`, PUSHED).
   - current task / files inspected / root cause:
     External shared viewer component/test、production QueryProvider、test QueryClient helper、external access GET/OTP rate-limit契約、PH-OS UI/UX SSOT、
     `emil-design-eng`、installed Next 16.2.9 client component guideを確認した。Production query既定は`retry: 1`だがtest helperは`retry: false`で、viewer queryが
@@ -69,7 +100,7 @@
     1 allowlisted / 0 new、exact2 ESLint/Prettier/diffをPASS。
   - remaining / rollback:
     分散IPを跨ぐgrant単位OTP lockoutは既存`EXT-ACCESS-OTP-BRUTEFORCE-001`のschema/migration/Privacy human gateに残る。ExternalAccessGrant FORCE RLS
-    context修正は`AUTHZ-EXTERNAL-GRANT-RLS-CONTEXT-001`としてcodex2実装中。Generic DB audit triggerのcredential/PII/raw scope永続化は
+    context修正は`AUTHZ-EXTERNAL-GRANT-RLS-CONTEXT-001`として本scoped commitへ統合する。Generic DB audit triggerのcredential/PII/raw scope永続化は
     `PRIVACY-EXTERNAL-GRANT-AUDIT-REDACTION-001`へP0 Human DB+Privacy gateで登録し、migration/scrubは未実行。Rollbackはこのscoped commitのrevertで
     DB/data rollback不要。
 

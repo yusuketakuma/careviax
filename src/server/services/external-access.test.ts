@@ -3,9 +3,8 @@ import bcrypt from 'bcryptjs';
 import type { MemberRole } from '@prisma/client';
 import { encode } from 'next-auth/jwt';
 
-const { prismaMock } = vi.hoisted(() => ({
-  prismaMock: {
-    $transaction: vi.fn(),
+const { globalPrismaAccessMock, prismaMock, withOrgContextMock } = vi.hoisted(() => {
+  const scopedTxMock = {
     patient: { findFirst: vi.fn() },
     medicationProfile: { findMany: vi.fn() },
     careCase: { findMany: vi.fn() },
@@ -14,13 +13,29 @@ const { prismaMock } = vi.hoisted(() => ({
     patientSelfReport: { findMany: vi.fn() },
     inboundCommunicationEvent: { findMany: vi.fn() },
     inboundCommunicationSignal: { findMany: vi.fn() },
-    externalAccessGrant: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    externalAccessGrant: { findFirst: vi.fn(), updateMany: vi.fn() },
     auditLog: { create: vi.fn() },
-  },
-}));
+  };
+  const globalAccess = vi.fn((property: PropertyKey) => {
+    throw new Error(`GLOBAL_PRISMA_MUST_NOT_BE_USED:${String(property)}`);
+  });
+
+  return {
+    globalPrismaAccessMock: globalAccess,
+    prismaMock: scopedTxMock,
+    withOrgContextMock: vi.fn(
+      async (_orgId: string, work: (tx: typeof scopedTxMock) => Promise<unknown>) =>
+        work(scopedTxMock),
+    ),
+  };
+});
 
 vi.mock('@/lib/db/client', () => ({
-  prisma: prismaMock,
+  prisma: new Proxy({}, { get: (_target, property) => globalPrismaAccessMock(property) }),
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
 }));
 
 import {
@@ -560,6 +575,8 @@ describe('buildExternalAccessPayload', () => {
     });
 
     expect(payload).not.toBeNull();
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
+    expect(globalPrismaAccessMock).not.toHaveBeenCalled();
     expect(prismaMock.patient.findFirst).toHaveBeenCalledWith({
       where: { id: 'patient_1', org_id: 'org_1' },
       select: {
@@ -1082,7 +1099,6 @@ describe('recordExternalAccessViewed', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-30T10:15:00.000Z'));
-    prismaMock.$transaction.mockImplementation(async (work) => work(prismaMock));
     prismaMock.externalAccessGrant.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.auditLog.create.mockResolvedValue({ id: 'audit_1' });
   });
@@ -1112,7 +1128,8 @@ describe('recordExternalAccessViewed', () => {
       userAgent: 'ExternalBrowser/1.0',
     });
 
-    expect(prismaMock.$transaction).toHaveBeenCalledOnce();
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
+    expect(globalPrismaAccessMock).not.toHaveBeenCalled();
     expect(prismaMock.externalAccessGrant.updateMany).toHaveBeenCalledWith({
       where: {
         id: 'grant_1',
@@ -1190,7 +1207,7 @@ describe('validateExternalAccessGrant', () => {
       expiresHours: 72,
     });
 
-    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+    prismaMock.externalAccessGrant.findFirst.mockResolvedValue({
       id: 'grant_1',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -1202,8 +1219,11 @@ describe('validateExternalAccessGrant', () => {
 
     const result = await validateExternalAccessGrant(token, '123456');
 
-    expect(prismaMock.externalAccessGrant.findUnique).toHaveBeenCalledWith({
-      where: { token_hash: hashExternalAccessToken(token) },
+    expect(prismaMock.externalAccessGrant.findFirst).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        token_hash: hashExternalAccessToken(token),
+      },
       select: {
         id: true,
         org_id: true,
@@ -1216,6 +1236,8 @@ describe('validateExternalAccessGrant', () => {
         scope: true,
       },
     });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
+    expect(globalPrismaAccessMock).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       ok: true,
       grant: expect.objectContaining({
@@ -1234,7 +1256,7 @@ describe('validateExternalAccessGrant', () => {
       expiresHours: 72,
     });
 
-    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+    prismaMock.externalAccessGrant.findFirst.mockResolvedValue({
       id: 'grant_legacy',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -1262,7 +1284,7 @@ describe('validateExternalAccessGrant', () => {
       expiresHours: 72,
     });
 
-    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+    prismaMock.externalAccessGrant.findFirst.mockResolvedValue({
       id: 'grant_without_otp',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -1289,7 +1311,7 @@ describe('validateExternalAccessGrant', () => {
       expiresHours: 72,
     });
 
-    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+    prismaMock.externalAccessGrant.findFirst.mockResolvedValue({
       id: 'grant_2',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -1328,7 +1350,35 @@ describe('validateExternalAccessGrant', () => {
       kind: 'not_found',
       message: '共有リンクが無効です',
     });
-    expect(prismaMock.externalAccessGrant.findUnique).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prismaMock.externalAccessGrant.findFirst).not.toHaveBeenCalled();
+    expect(globalPrismaAccessMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects signed unsafe org IDs before entering an RLS transaction', async () => {
+    const token = await encode({
+      secret: 'test-secret',
+      salt: 'ph-os-external-access',
+      maxAge: 72 * 60 * 60,
+      token: {
+        sub: 'grant_1',
+        grant_id: 'grant_1',
+        org_id: 'org_1;select',
+        patient_id: 'patient_1',
+        purpose: 'external_access_grant',
+      },
+    });
+
+    const result = await validateExternalAccessGrant(token, null);
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: 'not_found',
+      message: '共有リンクが無効です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prismaMock.externalAccessGrant.findFirst).not.toHaveBeenCalled();
+    expect(globalPrismaAccessMock).not.toHaveBeenCalled();
   });
 
   it('rejects expired grants', async () => {
@@ -1339,7 +1389,7 @@ describe('validateExternalAccessGrant', () => {
       expiresHours: 72,
     });
 
-    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+    prismaMock.externalAccessGrant.findFirst.mockResolvedValue({
       id: 'grant_1',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -1366,7 +1416,7 @@ describe('validateExternalAccessGrant', () => {
       expiresHours: 72,
     });
 
-    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+    prismaMock.externalAccessGrant.findFirst.mockResolvedValue({
       id: 'grant_1',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -1393,7 +1443,7 @@ describe('validateExternalAccessGrant', () => {
       expiresHours: 72,
     });
 
-    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+    prismaMock.externalAccessGrant.findFirst.mockResolvedValue({
       id: 'grant_1',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -1418,7 +1468,7 @@ describe('validateExternalAccessGrant', () => {
       expiresHours: 72,
     });
 
-    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+    prismaMock.externalAccessGrant.findFirst.mockResolvedValue({
       id: 'grant_1',
       org_id: 'org_1',
       patient_id: 'patient_1',

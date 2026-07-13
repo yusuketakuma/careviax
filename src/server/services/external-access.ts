@@ -4,8 +4,8 @@ import { Prisma, type MemberRole } from '@prisma/client';
 import { decode, encode } from 'next-auth/jwt';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { hasPermission } from '@/lib/auth/permissions';
-import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
+import { withOrgContext } from '@/lib/db/rls';
 import { buildPatientArchiveSummary } from '@/lib/patient/archive-summary';
 import { maskContactValueForAudit } from '@/lib/privacy/contact-mask';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
@@ -372,6 +372,7 @@ async function verifyExternalAccessOtp(otp: string, storedHash: string) {
 }
 
 const EXTERNAL_ACCESS_TOKEN_SALT = 'ph-os-external-access';
+const EXTERNAL_ACCESS_SAFE_APP_ID_PATTERN = /^[a-z][a-z0-9_-]{2,63}$/;
 
 type ExternalAccessTokenPayload = {
   grant_id: string;
@@ -413,7 +414,9 @@ function normalizeExternalAccessTokenPayload(payload: unknown): ExternalAccessTo
   const grantId = readRequiredTokenString(payloadObject, 'grant_id');
   const orgId = readRequiredTokenString(payloadObject, 'org_id');
   const patientId = readRequiredTokenString(payloadObject, 'patient_id');
-  if (!grantId || !orgId || !patientId) return null;
+  if (!grantId || !orgId || !patientId || !EXTERNAL_ACCESS_SAFE_APP_ID_PATTERN.test(orgId)) {
+    return null;
+  }
 
   return {
     grant_id: grantId,
@@ -486,20 +489,25 @@ export async function validateExternalAccessGrant(
     };
   }
 
-  const grant = await prisma.externalAccessGrant.findUnique({
-    where: { token_hash: hashExternalAccessToken(token) },
-    select: {
-      id: true,
-      org_id: true,
-      patient_id: true,
-      granted_to_name: true,
-      granted_to_contact: true,
-      otp_hash: true,
-      expires_at: true,
-      revoked_at: true,
-      scope: true,
-    },
-  });
+  const grant = await withOrgContext(tokenPayload.org_id, (tx) =>
+    tx.externalAccessGrant.findFirst({
+      where: {
+        org_id: tokenPayload.org_id,
+        token_hash: hashExternalAccessToken(token),
+      },
+      select: {
+        id: true,
+        org_id: true,
+        patient_id: true,
+        granted_to_name: true,
+        granted_to_contact: true,
+        otp_hash: true,
+        expires_at: true,
+        revoked_at: true,
+        scope: true,
+      },
+    }),
+  );
 
   if (
     !grant ||
@@ -553,34 +561,13 @@ export async function validateExternalAccessGrant(
   return { ok: true, grant: { ...grant, scope: scopeResult.scope } };
 }
 
-export async function markExternalAccessViewed(grantId: string) {
-  await prisma.externalAccessGrant.update({
-    where: { id: grantId },
-    data: { accessed_at: new Date() },
-  });
-}
-
-export async function recordExternalAccessViewAudit(args: {
-  grant: ExternalGrantRecord;
-  ipAddress?: string | null;
-  userAgent?: string | null;
-  viewedAt?: Date;
-}) {
-  const viewedAt = args.viewedAt ?? new Date();
-  await createAuditLogEntry(
-    prisma,
-    buildExternalAccessViewAuditContext(args),
-    buildExternalAccessViewAuditInput(args.grant, viewedAt),
-  );
-}
-
 export async function recordExternalAccessViewed(args: {
   grant: ExternalGrantRecord;
   ipAddress?: string | null;
   userAgent?: string | null;
 }) {
   const viewedAt = new Date();
-  await prisma.$transaction(async (tx) => {
+  await withOrgContext(args.grant.org_id, async (tx) => {
     const markResult = await tx.externalAccessGrant.updateMany({
       where: {
         id: args.grant.id,
@@ -789,6 +776,7 @@ const inboundCommunicationExternalSummarySignalSelect =
 async function buildInboundCommunicationExternalSummary(args: {
   grant: ExternalGrantRecord;
   allowedCaseIds: readonly string[];
+  tx: Prisma.TransactionClient;
 }) {
   if (args.allowedCaseIds.length === 0) return null;
 
@@ -810,7 +798,7 @@ async function buildInboundCommunicationExternalSummary(args: {
     reviewed_at: { not: null },
   } satisfies Prisma.InboundCommunicationSignalWhereInput;
 
-  const eventRows = await prisma.inboundCommunicationEvent.findMany({
+  const eventRows = await args.tx.inboundCommunicationEvent.findMany({
     where: {
       ...sharedInboundEventWhere,
       direction: 'inbound',
@@ -825,7 +813,7 @@ async function buildInboundCommunicationExternalSummary(args: {
     take: EXTERNAL_INBOUND_SUMMARY_MAX_ROWS,
   });
 
-  const signalRows = await prisma.inboundCommunicationSignal.findMany({
+  const signalRows = await args.tx.inboundCommunicationSignal.findMany({
     where: {
       ...sharedInboundSignalWhere,
       created_at: {
@@ -1012,7 +1000,29 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
   const allowedCaseIds = scope.allowed_case_ids ?? null;
   const allowedReportIds = scope.allowed_report_ids ?? null;
 
-  const patient = await prisma.patient.findFirst({
+  return withOrgContext(grant.org_id, (tx) =>
+    buildExternalAccessPayloadInOrgContext({
+      grant,
+      scope,
+      publicScope,
+      allowedCaseIds,
+      allowedReportIds,
+      tx,
+    }),
+  );
+}
+
+async function buildExternalAccessPayloadInOrgContext(args: {
+  grant: ExternalGrantRecord;
+  scope: StoredExternalAccessScope;
+  publicScope: ExternalAccessScope;
+  allowedCaseIds: string[] | null;
+  allowedReportIds: string[] | null;
+  tx: Prisma.TransactionClient;
+}) {
+  const { grant, scope, publicScope, allowedCaseIds, allowedReportIds, tx } = args;
+
+  const patient = await tx.patient.findFirst({
     where: { id: grant.patient_id, org_id: grant.org_id },
     select: {
       id: true,
@@ -1046,7 +1056,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
 
   let medicationProfiles = null;
   if (scope.medication_list === true) {
-    medicationProfiles = await prisma.medicationProfile.findMany({
+    medicationProfiles = await tx.medicationProfile.findMany({
       where: {
         patient_id: grant.patient_id,
         org_id: grant.org_id,
@@ -1074,7 +1084,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
   }> | null = null;
 
   if (scope.visit_schedule === true) {
-    const activeCases = await prisma.careCase.findMany({
+    const activeCases = await tx.careCase.findMany({
       where: {
         patient_id: grant.patient_id,
         org_id: grant.org_id,
@@ -1088,7 +1098,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
     visitSchedules =
       caseIds.length === 0
         ? []
-        : await prisma.visitSchedule.findMany({
+        : await tx.visitSchedule.findMany({
             where: {
               case_id: { in: caseIds },
               org_id: grant.org_id,
@@ -1113,7 +1123,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
     careReports =
       allowedCaseIds?.length === 0 || allowedReportIds?.length === 0
         ? []
-        : await prisma.careReport.findMany({
+        : await tx.careReport.findMany({
             where: {
               ...(allowedReportIds ? { id: { in: allowedReportIds } } : {}),
               patient_id: grant.patient_id,
@@ -1140,6 +1150,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
         : await buildInboundCommunicationExternalSummary({
             grant,
             allowedCaseIds: allowedCaseIds ?? [],
+            tx,
           });
   }
 
@@ -1147,7 +1158,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
   if (scope.self_report_history === true) {
     selfReportHistory = allowedCaseIds
       ? []
-      : await prisma.patientSelfReport.findMany({
+      : await tx.patientSelfReport.findMany({
           where: {
             patient_id: grant.patient_id,
             org_id: grant.org_id,
