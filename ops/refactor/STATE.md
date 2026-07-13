@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZADMINORGAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZADMINORGAUTH (DONE; parent remains Partial, 2026-07-14; implementation `6df69df3a`).
   - current task / files inspected / root cause:
     Notifications SSE push/parity後の残4 routesからAdmin Organizations POSTを選定した。Route/test、過去envelope/provisioning監査証跡、Cognito admin service、
     protected POST matrix、rate-limit、allowlist、installed Next guideを確認した。既存handlerはcanAdmin + owner二重gate、strict input/duplicate preflight、
