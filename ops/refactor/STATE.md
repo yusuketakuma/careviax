@@ -52,7 +52,7 @@
 
 ## 直近の作業
 
-- codex: API-CONTRACT-001FZINTERPROSHARESTRICT PHI share workspace contracts (VERIFY_REQUIRED, 2026-07-13; commit pending).
+- codex: API-CONTRACT-001FZINTERPROSHARESTRICT PHI share workspace contracts (DONE, 2026-07-13; implementation `268d1c1e3`, PUSHED).
   - current task / root cause:
     Live `client-json-schema:check` は360 schema-backed / 5 allowlisted schema-less / 1 fileで、残件は
     `reports/[id]/share/interprofessional-share-content.tsx` のcare report、care-team、contacts、communication
@@ -81,7 +81,8 @@
     363 schema-backed / 0 allowlisted / 0 new debt、route auth 176/252/0、raw-read org guard 117/0、module boundary
     0 new violations。Serialized `pnpm build`はNext 16.2.9 webpack、311 static pagesでPASS。CSS optimizerの既存
     arbitrary `var(...)` warning 2件はbuild非阻害・本差分外。Browser mobile/tablet/keyboard/forced-colors smokeは
-    local seeded auth runtimeを起動しておらず未実施。
+    local seeded auth runtimeを起動しておらず未実施。Visual layout変更はなく、表示文言・permission/error/
+    context-resetはTesting Libraryで確認したため本taskのDONE gateには含めない。全画面browser auditの残件として保持する。
   - safety / design / ownership:
     PHI共有境界のためsubagent 3名のspec/medical/privacy read-only reviewを実施し、編集はCodex本体だけが行う。
     見た目の再構築を伴わない事実表示・state ownership・consumer contract修復のため`gpt-image-2`は使用しない。
@@ -89,12 +90,11 @@
   - residual / next:
     Client projection前のtransport overfetchは`PRIVACY-SHARE-MINREAD-001`、長時間openした患者共有snapshotの
     expected patient version不足は`DATA-SHARE-SNAPSHOT-OCC-001`へDISCOVERED登録。Cross-audience policyは
-    `MEDSAFE-SHARE-AUDIENCE-001` BLOCKED。次はexplicit diff/secrets確認後にscoped commit/pushし、
-    `MEDSAFE-ARCHIVE-WRITE-001`へ進む。
+    `MEDSAFE-SHARE-AUDIENCE-001` BLOCKED。実装`268d1c1e3`は`origin/agent/continuous-improvement-20260712`へ
+    non-force push済み。次は`MEDSAFE-ARCHIVE-WRITE-001`へ進む。
   - branch / push / rollback:
-    `agent/continuous-improvement-20260712`、HEAD `36642a5d6`、upstream比0 behind / 45 ahead。Feature branch pushは
-    main-only production workflowを起動しない。検証後はexplicit owned pathsだけcommitしnon-force pushする。
-    Rollbackはscoped commit revert、DB/data rollback不要。
+    `agent/continuous-improvement-20260712`、implementation `268d1c1e3`。Feature branch pushはmain-only production
+    workflowを起動していない。Rollbackは`git revert 268d1c1e3`、DB/data rollback不要。
 
 - codex: API-CONTRACT-001FZBILLINGDASHSTRICT billing candidate dashboard readers (VERIFY_REQUIRED, 2026-07-13; implementation `9f716326f`; shared clean-capacity build pending).
   - current task / root cause:
