@@ -55,6 +55,24 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZSERVICEAREAAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Goal attachment、HEAD/parity、dirty tree、`Plans.md`、本STATE、gbrain、route-auth allowlist、Service Areas root/detail routes/tests、
+    installed Next 16.2.9 Route Handler/Data Security guideを再確認した。GET/POST/PATCH/DELETEはcanVisit/canAdmin、org/site reference、
+    RLS、bounded counted-list、strict body/route-id validationを持つ一方、4 direct `requireAuthContext` callsのためsuccess/validation/
+    not-found responseが標準auth no-store/performance境界を通らなかった。
+  - files changed / correctness / security / privacy / performance:
+    4 handlersをnamed handler + 標準`withAuthContext`へ移行し、permission、ctx、async params、org predicate、site reference拒否、
+    RLS query/write、limit/count meta、DTOを維持した。Test auth mockをwrapper signatureへ同期し、root route testsの空params context省略も
+    installed Nextの2引数Route Handler型へ修正した。Allowlist 2 entriesを除去し、direct debtは174→172 routes、249→245 calls、
+    helper未使用success routeは24→22へ減った。DB query/write/network/payloadは増やさず、共通header/performance計測だけを追加した。
+  - validation / remaining / rollback:
+    Service Areas + route checker 3 files / 23 tests、exact ESLint/Prettier、8 GiB typecheck / no-unused、route-auth 172 allowlisted /
+    245 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、client schema
+    361 backed / 0 allowlistedをPASS。初回typecheckはroot testのRouteContext省略10件だけを検出し、fixture修正後に再実行PASS。
+    Schema/migration/production data/deploy/Oracle/imagegen/browserなし。親にはdirect-auth success未収束22 routes、request_id/correlation_id、
+    error registryが残る。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
 - codex1: API-CONTRACT-001FZSAVEDVIEWAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
   - current task / files inspected / root cause:
     `API-CONTRACT-001`の次残としてroute-auth allowlistをlive分類し、no-store helper未使用25 routesを特定した。最小sliceとして

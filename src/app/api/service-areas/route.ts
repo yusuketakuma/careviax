@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { buildCountedListEnvelope } from '@/lib/api/list-envelope';
 import { parseBoundedInteger } from '@/lib/api/pagination';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
@@ -22,11 +22,7 @@ const createServiceAreaSchema = z.object({
   notes: z.string().trim().optional(),
 });
 
-export async function GET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, { permission: 'canVisit' });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function getServiceAreas(req: NextRequest, ctx: AuthContext) {
   const { searchParams } = new URL(req.url);
   const siteIdRaw = searchParams.get('site_id');
   const parsedSiteId = siteIdRaw === null ? null : siteIdQuerySchema.safeParse(siteIdRaw);
@@ -90,11 +86,7 @@ export async function GET(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function createServiceArea(req: NextRequest, ctx: AuthContext) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -131,3 +123,6 @@ export async function POST(req: NextRequest) {
 
   return success({ data: serviceArea }, 201);
 }
+
+export const GET = withAuthContext(getServiceAreas, { permission: 'canVisit' });
+export const POST = withAuthContext(createServiceArea, { permission: 'canAdmin' });

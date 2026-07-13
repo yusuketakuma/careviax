@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -16,11 +16,11 @@ const updateServiceAreaSchema = z.object({
   notes: z.string().trim().nullable().optional(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function updateServiceArea(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -66,11 +66,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return success({ data: updated });
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function deleteServiceArea(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id } = await params;
   const serviceAreaId = normalizeRequiredRouteParam(id);
   if (!serviceAreaId) return validationError('訪問エリアIDが不正です');
@@ -86,3 +86,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   await withOrgContext(ctx.orgId, (tx) => tx.serviceArea.delete({ where: { id: serviceAreaId } }));
   return success({ data: { id: serviceAreaId } });
 }
+
+export const PATCH = withAuthContext(updateServiceArea, { permission: 'canAdmin' });
+export const DELETE = withAuthContext(deleteServiceArea, { permission: 'canAdmin' });

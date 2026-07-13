@@ -19,6 +19,13 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -63,6 +70,8 @@ function serviceAreaFixture(id = 'area_1') {
   };
 }
 
+const emptyParams = { params: Promise.resolve({}) };
+
 describe('/api/service-areas', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -89,7 +98,10 @@ describe('/api/service-areas', () => {
   });
 
   it('lists service areas', async () => {
-    const response = (await GET(createGetRequest('http://localhost/api/service-areas')))!;
+    const response = (await GET(
+      createGetRequest('http://localhost/api/service-areas'),
+      emptyParams,
+    ))!;
 
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -131,6 +143,7 @@ describe('/api/service-areas', () => {
   it('bounds service area list size and trims site filters', async () => {
     const response = (await GET(
       createGetRequest('http://localhost/api/service-areas?site_id=%20site_1%20&limit=5'),
+      emptyParams,
     ))!;
 
     expect(response.status).toBe(200);
@@ -160,6 +173,7 @@ describe('/api/service-areas', () => {
 
     const response = (await GET(
       createGetRequest('http://localhost/api/service-areas?limit=9999'),
+      emptyParams,
     ))!;
 
     expect(response.status).toBe(200);
@@ -179,6 +193,7 @@ describe('/api/service-areas', () => {
   it('clamps overly large service area list limits', async () => {
     const response = (await GET(
       createGetRequest('http://localhost/api/service-areas?limit=9999'),
+      emptyParams,
     ))!;
 
     expect(response.status).toBe(200);
@@ -192,6 +207,7 @@ describe('/api/service-areas', () => {
   it('rejects blank site filters before reference checks or DB access', async () => {
     const response = (await GET(
       createGetRequest('http://localhost/api/service-areas?site_id=%20%20'),
+      emptyParams,
     ))!;
 
     expect(response.status).toBe(400);
@@ -211,6 +227,7 @@ describe('/api/service-areas', () => {
 
     const response = (await GET(
       createGetRequest('http://localhost/api/service-areas?site_id=site_other_org'),
+      emptyParams,
     ))!;
 
     expect(response.status).toBe(400);
@@ -225,6 +242,7 @@ describe('/api/service-areas', () => {
         area_type: 'radius',
         geo_data: { match_keywords: ['多摩'] },
       }),
+      emptyParams,
     ))!;
 
     expect(response.status).toBe(201);
@@ -241,7 +259,7 @@ describe('/api/service-areas', () => {
   });
 
   it('rejects non-object create payloads before validating references', async () => {
-    const response = (await POST(createPostRequest([])))!;
+    const response = (await POST(createPostRequest([]), emptyParams))!;
 
     expect(response.status).toBe(400);
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
@@ -250,7 +268,7 @@ describe('/api/service-areas', () => {
   });
 
   it('rejects malformed JSON create payloads before validating references', async () => {
-    const response = (await POST(createMalformedJsonPostRequest()))!;
+    const response = (await POST(createMalformedJsonPostRequest(), emptyParams))!;
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -277,6 +295,7 @@ describe('/api/service-areas', () => {
         area_type: 'radius',
         geo_data: {},
       }),
+      emptyParams,
     ))!;
 
     expect(response.status).toBe(400);
