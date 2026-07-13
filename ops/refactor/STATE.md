@@ -48,13 +48,32 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `API-CONTRACT-002A`残のset-batches route tests、
-  `codex2`: 本docsの`API-CONTRACT-003G` evidence同期（実装7 pathsはcommit `38da5830a`でRELEASE済み）。`codex3/codex4`は停止のまま。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `OPS-MEDPROFILE-SYNC-RECOVERY-001A`の
+  Plans/STATE evidence同期（実装2 pathsはcommit `eff075e10`でRELEASE済み）、`codex2`: `API-CONTRACT-003H`のerror registry / presigned-upload
+  4 paths。`codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: OPS-MEDPROFILE-SYNC-RECOVERY-001A (DONE; parent remains Partial, 2026-07-14; implementation `eff075e10`, `PUSHED`).
+  - current task / files inspected / root cause:
+    処方取込commit後のchange detectionとMedicationProfile syncを同じ`Promise.all` + empty catchで包んでいたため、片側reject時に
+    他方のfulfilled値も返却結果から失われ、stock linkageの独立catchも失敗を観測できなかった。受付本体は既にcommit済みであり、
+    hook失敗をcaller failureへ反転すると再送・重複受付を誘発し得る。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    `src/server/services/prescription-intake-service.ts`と同testだけを変更。先行2 hookを`Promise.allSettled`へ置換して正常系の並列性を維持し、
+    fulfilled値を独立保持した。stockは後段transactionのまま維持。3 failure pathへ固定event/operation/phaseだけのobject-form `logger.error`
+    を追加し、org/patient/intake/cycle/user ID、薬剤名/code/dose/frequency、処方医、raw error message/stackをcontextへ送らない。
+    自動retry/queue/timeout、DB query/schema/migration、webhook、response shapeは変更していない。
+  - validation results / remaining work / next action / rollback:
+    Focused service/logger/stock 3 files / 63 tests、独立medical-safety verifierのservice 1 file / 41 tests、exact ESLint/Prettier、
+    `pnpm typecheck`、8 GiB `pnpm typecheck:no-unused`、`git diff --check`をPASS。no-unusedの既定4 GiB初回はcode errorではなくNode heap OOM
+    (exit 134)となり、8 GiB再実行でcleanを確認。直前共有full Vitestは1,556 files / 16,268 tests PASSだが、本slice後のfull/build/E2E/demoは
+    Goal最終batchへ残る。親には再同期metric/queue/reconciliation、writer lock/invariant共有、SELECT-only inventoryとhuman-gated production repairが残る。
+    `MEDPROFILE-SYNC-FRESHNESS-001`批准前の自動retryは行わない。Oracleは現行SSOTの利用停止指示により未使用。非視覚backend変更のため
+    imagegen/browserなし。Rollbackは`eff075e10`のrevertでDB/data rollback不要。
 
 - codex2: API-CONTRACT-003G (DONE; parent remains Partial, 2026-07-14; implementation `38da5830a`).
   - current task / files inspected / root cause:
