@@ -31,6 +31,10 @@ type ExternalGrantRecord = {
   scope: StoredExternalAccessScope;
 };
 
+type ValidatedExternalGrantRecord = ExternalGrantRecord & {
+  token_hash: string;
+};
+
 export type ExternalAccessScope = Partial<Record<ExternalAccessScopeKey, boolean>>;
 export type StoredExternalAccessScope = ExternalAccessScope & {
   allowed_case_ids?: string[];
@@ -332,7 +336,7 @@ export function validateExternalAccessScopeForRole(
 export type ExternalAccessValidationResult =
   | {
       ok: true;
-      grant: ExternalGrantRecord;
+      grant: ValidatedExternalGrantRecord;
     }
   | {
       ok: false;
@@ -499,6 +503,7 @@ export async function validateExternalAccessGrant(
         id: true,
         org_id: true,
         patient_id: true,
+        token_hash: true,
         granted_to_name: true,
         granted_to_contact: true,
         otp_hash: true,
@@ -561,29 +566,114 @@ export async function validateExternalAccessGrant(
   return { ok: true, grant: { ...grant, scope: scopeResult.scope } };
 }
 
-export async function recordExternalAccessViewed(args: {
-  grant: ExternalGrantRecord;
+type ExternalAccessPayloadReadResult =
+  | {
+      ok: true;
+      payload: NonNullable<Awaited<ReturnType<typeof buildExternalAccessPayloadInOrgContext>>>;
+    }
+  | { ok: false; kind: 'not_found' | 'audit_failed' };
+
+class ExternalAccessPayloadUnavailableError extends Error {}
+
+class ExternalAccessViewAuditWriteError extends Error {}
+
+function isTransactionSerializationConflict(cause: unknown) {
+  return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
+}
+
+/**
+ * Revalidates the OTP-verified grant, reads the PHI payload, and records the view
+ * in one repeatable-read RLS transaction. The guarded update is the lifecycle
+ * linearization point and keeps bcrypt verification outside the longer DB transaction.
+ */
+export async function readExternalAccessPayload(args: {
+  grant: ValidatedExternalGrantRecord;
   ipAddress?: string | null;
   userAgent?: string | null;
-}) {
-  const viewedAt = new Date();
-  await withOrgContext(args.grant.org_id, async (tx) => {
-    const markResult = await tx.externalAccessGrant.updateMany({
-      where: {
-        id: args.grant.id,
-        org_id: args.grant.org_id,
+}): Promise<ExternalAccessPayloadReadResult> {
+  try {
+    return await withOrgContext(
+      args.grant.org_id,
+      async (tx) => {
+        const viewedAt = new Date();
+        const lifecycleGuard = await tx.externalAccessGrant.updateMany({
+          where: {
+            id: args.grant.id,
+            org_id: args.grant.org_id,
+            patient_id: args.grant.patient_id,
+            token_hash: args.grant.token_hash,
+            otp_hash: args.grant.otp_hash,
+            expires_at: {
+              equals: args.grant.expires_at,
+              gte: viewedAt,
+            },
+            revoked_at: null,
+            scope: { equals: args.grant.scope as Prisma.InputJsonValue },
+          },
+          data: { accessed_at: viewedAt },
+        });
+
+        if (lifecycleGuard.count !== 1) {
+          throw new ExternalAccessPayloadUnavailableError();
+        }
+
+        const scopeResult = normalizeStoredExternalAccessScope(args.grant.scope);
+        if (!scopeResult.ok) {
+          throw new ExternalAccessPayloadUnavailableError();
+        }
+        const scope = scopeResult.scope;
+        if (
+          externalAccessScopeRequiresCaseBoundary(scope) &&
+          (!scope.allowed_case_ids || scope.allowed_case_ids.length === 0)
+        ) {
+          throw new ExternalAccessPayloadUnavailableError();
+        }
+        const publicScope = toPublicExternalAccessScope(scope);
+        if (!Object.values(publicScope).some((enabled) => enabled === true)) {
+          throw new ExternalAccessPayloadUnavailableError();
+        }
+
+        const payload = await buildExternalAccessPayloadInOrgContext({
+          grant: args.grant,
+          scope,
+          publicScope,
+          allowedCaseIds: scope.allowed_case_ids ?? null,
+          allowedReportIds: scope.allowed_report_ids ?? null,
+          tx,
+        });
+        if (!payload || args.grant.expires_at < new Date()) {
+          throw new ExternalAccessPayloadUnavailableError();
+        }
+
+        try {
+          await createAuditLogEntry(
+            tx,
+            buildExternalAccessViewAuditContext(args),
+            buildExternalAccessViewAuditInput(args.grant, viewedAt),
+          );
+        } catch {
+          throw new ExternalAccessViewAuditWriteError();
+        }
+
+        return { ok: true as const, payload };
       },
-      data: { accessed_at: viewedAt },
-    });
-    if (markResult.count !== 1) {
-      throw new Error('EXTERNAL_ACCESS_VIEW_MARK_FAILED');
-    }
-    await createAuditLogEntry(
-      tx,
-      buildExternalAccessViewAuditContext(args),
-      buildExternalAccessViewAuditInput(args.grant, viewedAt),
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        timeoutMs: 10_000,
+      },
     );
-  });
+  } catch (cause) {
+    if (
+      cause instanceof ExternalAccessPayloadUnavailableError ||
+      isTransactionSerializationConflict(cause)
+    ) {
+      return { ok: false, kind: 'not_found' };
+    }
+    if (cause instanceof ExternalAccessViewAuditWriteError) {
+      return { ok: false, kind: 'audit_failed' };
+    }
+    throw cause;
+  }
 }
 
 function buildExternalAccessViewAuditContext(args: {
@@ -981,35 +1071,6 @@ function buildExternalSharedSummary(args: {
     key_medications: medicationNames,
     next_visit_date: nextVisitDate?.toISOString() ?? null,
   };
-}
-
-export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
-  const scopeResult = normalizeStoredExternalAccessScope(grant.scope);
-  if (!scopeResult.ok) return null;
-  const scope = scopeResult.scope;
-  if (
-    externalAccessScopeRequiresCaseBoundary(scope) &&
-    (!scope.allowed_case_ids || scope.allowed_case_ids.length === 0)
-  ) {
-    return null;
-  }
-  const publicScope = toPublicExternalAccessScope(scope);
-  if (!Object.values(publicScope).some((enabled) => enabled === true)) {
-    return null;
-  }
-  const allowedCaseIds = scope.allowed_case_ids ?? null;
-  const allowedReportIds = scope.allowed_report_ids ?? null;
-
-  return withOrgContext(grant.org_id, (tx) =>
-    buildExternalAccessPayloadInOrgContext({
-      grant,
-      scope,
-      publicScope,
-      allowedCaseIds,
-      allowedReportIds,
-      tx,
-    }),
-  );
 }
 
 async function buildExternalAccessPayloadInOrgContext(args: {

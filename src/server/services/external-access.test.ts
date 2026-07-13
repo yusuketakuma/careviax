@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import bcrypt from 'bcryptjs';
-import type { MemberRole } from '@prisma/client';
+import { Prisma, type MemberRole } from '@prisma/client';
 import { encode } from 'next-auth/jwt';
 
 const { globalPrismaAccessMock, prismaMock, withOrgContextMock } = vi.hoisted(() => {
@@ -40,7 +40,6 @@ vi.mock('@/lib/db/rls', () => ({
 
 import {
   buildExternalAccessGrantVisibilityWhere,
-  buildExternalAccessPayload,
   buildVisibleExternalAccessGrantWhere,
   externalAccessGrantVisibleForCaseIds,
   attachExternalAccessReportDocumentBoundary,
@@ -50,7 +49,7 @@ import {
   MissingExternalAccessSecretError,
   normalizeExternalAccessScope,
   normalizeStoredExternalAccessScope,
-  recordExternalAccessViewed,
+  readExternalAccessPayload,
   toPublicExternalAccessScope,
   validateExternalAccessScopeForRole,
   validateExternalAccessGrant,
@@ -59,6 +58,15 @@ import {
   EXTERNAL_ACCESS_UNSUPPORTED_SCOPE_KEYS,
   externalAccessShareScopeRegistry,
 } from './external-access-scope-registry';
+
+async function readExternalAccessPayloadForTest(
+  grant: Omit<Parameters<typeof readExternalAccessPayload>[0]['grant'], 'token_hash'>,
+) {
+  const result = await readExternalAccessPayload({
+    grant: { ...grant, token_hash: 'test_token_hash' },
+  });
+  return result.ok ? result.payload : null;
+}
 
 describe('external access scope validation', () => {
   it('registers MOD-SHARE planned core and pharmacy scope metadata', () => {
@@ -557,6 +565,8 @@ describe('buildExternalAccessPayload', () => {
     prismaMock.patientSelfReport.findMany.mockResolvedValue([]);
     prismaMock.inboundCommunicationEvent.findMany.mockResolvedValue([]);
     prismaMock.inboundCommunicationSignal.findMany.mockResolvedValue([]);
+    prismaMock.externalAccessGrant.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.auditLog.create.mockResolvedValue({ id: 'audit_1' });
   });
 
   afterEach(() => {
@@ -564,7 +574,7 @@ describe('buildExternalAccessPayload', () => {
   });
 
   it('does not expose patient phone when scope does not explicitly allow it', async () => {
-    const payload = await buildExternalAccessPayload({
+    const payload = await readExternalAccessPayloadForTest({
       id: 'grant_1',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -575,7 +585,10 @@ describe('buildExternalAccessPayload', () => {
     });
 
     expect(payload).not.toBeNull();
-    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      timeoutMs: 10_000,
+    });
     expect(globalPrismaAccessMock).not.toHaveBeenCalled();
     expect(prismaMock.patient.findFirst).toHaveBeenCalledWith({
       where: { id: 'patient_1', org_id: 'org_1' },
@@ -608,7 +621,7 @@ describe('buildExternalAccessPayload', () => {
       allergy_info: null,
     });
 
-    const payload = await buildExternalAccessPayload({
+    const payload = await readExternalAccessPayloadForTest({
       id: 'grant_1',
       org_id: 'org_1',
       patient_id: 'patient_archived',
@@ -671,7 +684,7 @@ describe('buildExternalAccessPayload', () => {
       },
     ]);
 
-    const payload = await buildExternalAccessPayload({
+    const payload = await readExternalAccessPayloadForTest({
       id: 'grant_1',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -703,7 +716,7 @@ describe('buildExternalAccessPayload', () => {
   });
 
   it('fails closed for legacy case-backed grants without a stored case boundary', async () => {
-    const payload = await buildExternalAccessPayload({
+    const payload = await readExternalAccessPayloadForTest({
       id: 'grant_legacy',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -719,7 +732,7 @@ describe('buildExternalAccessPayload', () => {
   });
 
   it('fails closed for stored grants that only contain unsupported public scopes', async () => {
-    const payload = await buildExternalAccessPayload({
+    const payload = await readExternalAccessPayloadForTest({
       id: 'grant_self_report_only',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -735,7 +748,7 @@ describe('buildExternalAccessPayload', () => {
   });
 
   it('fails closed for stored grants that only contain planned unsupported scopes', async () => {
-    const payload = await buildExternalAccessPayload({
+    const payload = await readExternalAccessPayloadForTest({
       id: 'grant_planned_unsupported_only',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -760,7 +773,7 @@ describe('buildExternalAccessPayload', () => {
   });
 
   it('fails closed for inbound communication summary grants without a stored case boundary', async () => {
-    const payload = await buildExternalAccessPayload({
+    const payload = await readExternalAccessPayloadForTest({
       id: 'grant_inbound_without_case_boundary',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -777,7 +790,7 @@ describe('buildExternalAccessPayload', () => {
   });
 
   it('fails closed for malformed stored grant scope roots before patient lookup', async () => {
-    const payload = await buildExternalAccessPayload({
+    const payload = await readExternalAccessPayloadForTest({
       id: 'grant_malformed_scope',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -785,7 +798,7 @@ describe('buildExternalAccessPayload', () => {
       expires_at: new Date('2026-04-01T00:00:00.000Z'),
       revoked_at: null,
       scope: ['allergy_info'] as unknown as Parameters<
-        typeof buildExternalAccessPayload
+        typeof readExternalAccessPayloadForTest
       >[0]['scope'],
     });
 
@@ -810,7 +823,7 @@ describe('buildExternalAccessPayload', () => {
     prismaMock.visitSchedule.findMany.mockResolvedValue([]);
     prismaMock.careReport.findMany.mockResolvedValue([]);
 
-    const payload = await buildExternalAccessPayload({
+    const payload = await readExternalAccessPayloadForTest({
       id: 'grant_1',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -866,7 +879,7 @@ describe('buildExternalAccessPayload', () => {
     prismaMock.careCase.findMany.mockResolvedValue([{ id: 'case_allowed' }]);
     prismaMock.visitSchedule.findMany.mockResolvedValue([]);
 
-    const payload = await buildExternalAccessPayload({
+    const payload = await readExternalAccessPayloadForTest({
       id: 'grant_1',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -901,7 +914,7 @@ describe('buildExternalAccessPayload', () => {
       },
     ]);
 
-    const payload = await buildExternalAccessPayload({
+    const payload = await readExternalAccessPayloadForTest({
       id: 'grant_report_document',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -984,7 +997,7 @@ describe('buildExternalAccessPayload', () => {
       },
     ]);
 
-    const payload = await buildExternalAccessPayload({
+    const payload = await readExternalAccessPayloadForTest({
       id: 'grant_inbound_summary',
       org_id: 'org_1',
       patient_id: 'patient_1',
@@ -1094,12 +1107,33 @@ describe('buildExternalAccessPayload', () => {
   });
 });
 
-describe('recordExternalAccessViewed', () => {
+describe('readExternalAccessPayload', () => {
+  const grant = {
+    id: 'grant_1',
+    org_id: 'org_1',
+    patient_id: 'patient_1',
+    token_hash: 'token_hash_1',
+    granted_to_name: '田中ケアマネ',
+    granted_to_contact: '09012345678',
+    otp_hash: 'otp_hash_1',
+    expires_at: new Date('2026-03-31T00:00:00.000Z'),
+    revoked_at: null,
+    scope: { medication_list: true },
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-30T10:15:00.000Z'));
     prismaMock.externalAccessGrant.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.patient.findFirst.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      birth_date: new Date('1950-01-01T00:00:00.000Z'),
+      gender: 'female',
+      archived_at: null,
+    });
+    prismaMock.medicationProfile.findMany.mockResolvedValue([]);
     prismaMock.auditLog.create.mockResolvedValue({ id: 'audit_1' });
   });
 
@@ -1107,83 +1141,101 @@ describe('recordExternalAccessViewed', () => {
     vi.useRealTimers();
   });
 
-  it('marks the grant viewed and records scope/IP/UA audit evidence in one transaction', async () => {
-    await recordExternalAccessViewed({
-      grant: {
-        id: 'grant_1',
-        org_id: 'org_1',
-        patient_id: 'patient_1',
-        granted_to_name: '田中ケアマネ',
-        granted_to_contact: '09012345678',
-        otp_hash: 'otp_hash',
-        expires_at: new Date('2026-03-31T00:00:00.000Z'),
-        revoked_at: null,
-        scope: {
-          medication_list: true,
-          care_reports: true,
-          allowed_case_ids: ['case_1'],
-        },
-      },
+  it('revalidates lifecycle state, reads PHI, and records the view in one repeatable-read RLS transaction', async () => {
+    const result = await readExternalAccessPayload({
+      grant,
       ipAddress: '203.0.113.10',
       userAgent: 'ExternalBrowser/1.0',
     });
 
-    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
-    expect(globalPrismaAccessMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      ok: true,
+      payload: { patient: { id: 'patient_1' } },
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      timeoutMs: 10_000,
+    });
     expect(prismaMock.externalAccessGrant.updateMany).toHaveBeenCalledWith({
       where: {
         id: 'grant_1',
         org_id: 'org_1',
+        patient_id: 'patient_1',
+        token_hash: 'token_hash_1',
+        otp_hash: 'otp_hash_1',
+        expires_at: {
+          equals: new Date('2026-03-31T00:00:00.000Z'),
+          gte: new Date('2026-03-30T10:15:00.000Z'),
+        },
+        revoked_at: null,
+        scope: { equals: { medication_list: true } },
       },
-      data: {
-        accessed_at: new Date('2026-03-30T10:15:00.000Z'),
-      },
+      data: { accessed_at: new Date('2026-03-30T10:15:00.000Z') },
     });
+    expect(prismaMock.patient.findFirst).toHaveBeenCalled();
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        org_id: 'org_1',
-        actor_id: 'external_access:grant_1',
-        patient_id: 'patient_1',
         action: 'external_access_payload_viewed',
-        target_type: 'external_access_grant',
         target_id: 'grant_1',
-        ip_address: '203.0.113.10',
-        user_agent: 'ExternalBrowser/1.0',
-        changes: expect.objectContaining({
-          patient_id: 'patient_1',
-          viewed_at: '2026-03-30T10:15:00.000Z',
-          granted_to_name: '田中ケアマネ',
-          granted_to_contact_masked: '090****5678',
-          scope: {
-            medication_list: true,
-            care_reports: true,
-          },
-          scope_keys: ['medication_list', 'care_reports'],
-        }),
       }),
     });
+    expect(globalPrismaAccessMock).not.toHaveBeenCalled();
   });
 
-  it('does not write view audit evidence when the grant row cannot be marked viewed', async () => {
+  it('fails closed before PHI reads when revoke, expiry, OTP, token, or scope state wins the lifecycle guard', async () => {
     prismaMock.externalAccessGrant.updateMany.mockResolvedValueOnce({ count: 0 });
 
-    await expect(
-      recordExternalAccessViewed({
-        grant: {
-          id: 'grant_1',
-          org_id: 'org_1',
-          patient_id: 'patient_1',
-          granted_to_name: '田中ケアマネ',
-          granted_to_contact: null,
-          otp_hash: 'otp_hash',
-          expires_at: new Date('2026-03-31T00:00:00.000Z'),
-          revoked_at: null,
-          scope: { medication_list: true },
-        },
-      }),
-    ).rejects.toThrow('EXTERNAL_ACCESS_VIEW_MARK_FAILED');
+    await expect(readExternalAccessPayload({ grant })).resolves.toEqual({
+      ok: false,
+      kind: 'not_found',
+    });
 
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.medicationProfile.findMany).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rolls back the guarded view when the patient payload disappears', async () => {
+    prismaMock.patient.findFirst.mockResolvedValueOnce(null);
+
+    await expect(readExternalAccessPayload({ grant })).resolves.toEqual({
+      ok: false,
+      kind: 'not_found',
+    });
+
+    expect(prismaMock.externalAccessGrant.updateMany).toHaveBeenCalledTimes(1);
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the grant expires while its payload is being read', async () => {
+    prismaMock.patient.findFirst.mockImplementationOnce(async () => {
+      vi.setSystemTime(new Date('2026-03-31T00:00:00.001Z'));
+      return {
+        id: 'patient_1',
+        name: '患者A',
+        birth_date: new Date('1950-01-01T00:00:00.000Z'),
+        gender: 'female',
+        archived_at: null,
+      };
+    });
+
+    await expect(readExternalAccessPayload({ grant })).resolves.toEqual({
+      ok: false,
+      kind: 'not_found',
+    });
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('returns an audit failure and aborts the transaction when view evidence cannot be written', async () => {
+    prismaMock.auditLog.create.mockRejectedValueOnce(new Error('audit unavailable'));
+
+    await expect(readExternalAccessPayload({ grant })).resolves.toEqual({
+      ok: false,
+      kind: 'audit_failed',
+    });
+    expect(prismaMock.externalAccessGrant.updateMany).toHaveBeenCalledTimes(1);
+    expect(prismaMock.patient.findFirst).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -1211,6 +1263,7 @@ describe('validateExternalAccessGrant', () => {
       id: 'grant_1',
       org_id: 'org_1',
       patient_id: 'patient_1',
+      token_hash: hashExternalAccessToken(token),
       otp_hash: bcrypt.hashSync('123456', 4),
       expires_at: new Date('2026-04-01T00:00:00.000Z'),
       revoked_at: null,
@@ -1228,6 +1281,7 @@ describe('validateExternalAccessGrant', () => {
         id: true,
         org_id: true,
         patient_id: true,
+        token_hash: true,
         granted_to_name: true,
         granted_to_contact: true,
         otp_hash: true,

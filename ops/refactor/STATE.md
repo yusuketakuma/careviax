@@ -6,16 +6,15 @@
 > validation、remaining/next action はこのファイルへ集約する。
 > 再開手順: このファイル → `git status --short --untracked-files=all` → `git log --oneline -15`。
 
-## 体制（2026-07-13 最新ユーザー指示）
+## 体制（2026-07-14 最新ユーザー指示）
 
-- 現行は `codex1` が計画、統合、validation、台帳更新、scoped commit/push の最終責任を持つ。
-- 2026-07-13 の最新ユーザー指示により、`agmsg` と `codex2/codex3/codex4` の全Codex並列実装を再有効化した。
-  `codex1` が機能単位の担当を決め、各Codexは通知したexact pathだけを編集する。frontend/backend/API/testは
-  同じ機能sliceのownerへまとめ、同じ領域を同時編集しない。Claudeと外部maker/checkerは再有効化されていない。
-- 全Codexに割当機能内の編集権限がある。focused validationとboundedな読取reviewは各ownerが実行できるが、
-  long Next gate、単一台帳、scoped commit/push、最終統合は`codex1`が管理する。
-- 2026-07-14 の最新チーム指示により、進行中sliceはfocused validation、FREEZE/READY、handoff、scoped commit/pushまで安全に閉じるが、
-  その後は新しいtask/sliceへ着手しない。既存dirty workとownershipを保全し、残作業は本台帳へ残して全Codexを停止する。
+- 2026-07-14 の最新ユーザー指示により、`codex2/codex3/codex4`の全担当業務を`codex1`が引き取った。
+  現行は`codex1`単独が計画、実装、validation、単一台帳更新、scoped commitの責任を持つ。
+- `codex2/codex3/codex4`へ担当返却とSTOP/RELEASE継続を`agmsg`で通知済み。各agentの既存sliceはcommit/push済みで、
+  未commit source差分はない。今後の候補・残検証は`codex1`が直列に処理し、他Codexは編集を再開しない。
+- 2026-07-13の全Codex並列実装・機能単位exact-path ownershipは終了済みの履歴。Claudeと外部maker/checkerも再有効化されていない。
+- long Next gateは引き続き直列実行し、shared dirty worktreeの既存user変更を保存する。scoped commitは明示owned pathだけをstageし、
+  push、deploy、migration適用、production mutationはcurrent-taskの明示許可なしに行わない。
 - 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
   直接の影響範囲確認、focused/full gate で代替する。
 - 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
@@ -48,13 +47,30 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `codex1`統合 + `codex2/codex3/codex4` exact-path並列運用（2026-07-13〜）。
-  機能単位でfrontend/backend/API/testを同じownerへまとめ、validation・単一台帳・最終commit/pushは`codex1`が統合する。
+- Phase C（実装ループ）: `codex1`単独運用（2026-07-14〜）。2026-07-13の`codex2/codex3/codex4`
+  exact-path並列sliceは安全境界で終了し、残作業を`codex1`へ集約した。validation・単一台帳・scoped commitは直列に行う。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1 takeover: AUTHZ-EXTERNAL-GRANT-READ-SERIALIZATION-001 (DONE, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    External access service/test、public GET route/test/shared validation、self-report caller、ExternalAccessGrant schema/FORCE RLS、`withOrgContext`の
+    isolation contract、installed Next 16.2.9 Route Handler guideを確認した。OTP-verified grant validation、PHI payload read、viewed update+manual auditが
+    3個のRLS transactionに分かれ、validation後のrevoke/expiry/token/OTP hash/scope変更をresponse確定前に同じstateとして再検証できなかった。
+  - files changed / correctness / security / privacy:
+    Validation selectへinternal `token_hash`を保持し、bcrypt OTP照合は長いDB transaction外のまま維持した。GET payload pathはvalidated
+    token/OTP hash/expires/scopeを条件にしたguarded `accessed_at` updateをlinearization pointとし、PHI readsとmanual viewed auditを同じ
+    Repeatable Read RLS transactionへ統合した。Revoke/expiry/token/OTP/scope競合、P2034 serialization conflict、payload欠落はresponse前にgeneric
+    not-foundへfail-closed化し、audit失敗はtransactionをrollbackして既存no-store 500を維持する。旧production分離build/record helperは除去した。
+  - performance / validation / remaining / rollback:
+    Business read/write/audit件数とDTOを増やさず、GETのRLS context setupを3回から2回へ削減した。Focused 3 test files / 70 tests、8 GiB
+    typecheck、query-shape 0/0、raw-org 116 / 0 new、API authz 0、API shape 0/0、route auth 175 allowlisted / 251 direct / 0 new、module boundary
+    0/0、exact ESLint/Prettier/diffをPASS。視覚・copy・layout変更のないserver/API sliceのためimagegenは省略した。Schema/migration/production data/
+    deploy/Oracleなし。Self-report writeの別transaction契約、generic DB audit redaction、manual audit minimizationは別task/human gateを維持する。
+    Rollbackはこのscoped commitのrevertでDB/data rollback不要。
 
 - codex3 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001H (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
   - current task / files inspected / root cause:
