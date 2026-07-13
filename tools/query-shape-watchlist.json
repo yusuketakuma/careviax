@@ -89,6 +89,11 @@
       "path": "src/app/api/patients/[id]/visit-constraints/route.ts",
       "owner": "QUERY-SHAPE-WATCHLIST-003-FOLLOW",
       "reason": "Patient visit constraints route must remain patient-scoped and avoid direct list fan-out in the route shell."
+    },
+    {
+      "path": "src/app/api/visit-schedules/day-board/route.ts",
+      "owner": "QUERY-SHAPE-DAYBOARD-WATCHLIST-003I",
+      "reason": "Day-board is a representative scheduling read path whose staff, visit, proposal, vehicle, and operational-task fan-out must stay bounded and stable."
     }
   ]
 }

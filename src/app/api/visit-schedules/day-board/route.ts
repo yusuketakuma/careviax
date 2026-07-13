@@ -62,6 +62,9 @@ const PENDING_PROPOSAL_LIMIT = 3;
 const OPERATIONAL_TASK_LIMIT = 24;
 const INBOUND_SCHEDULE_REQUEST_LIMIT = 5;
 const INBOUND_SCHEDULE_REQUEST_SCAN_LIMIT = INBOUND_SCHEDULE_REQUEST_LIMIT + 1;
+// Preserve exact board totals with bounded reads; fail instead of returning a partial board.
+const DAY_BOARD_SCAN_PAGE_SIZE = 200;
+const DAY_BOARD_SCAN_MAX_PAGES = 50;
 /** 余白試算: シフト未登録時は 9:00-18:00 とみなす */
 const DEFAULT_WORKDAY_START_MINUTES = 9 * 60;
 const DEFAULT_WORKDAY_END_MINUTES = 18 * 60;
@@ -100,6 +103,28 @@ const VEHICLE_ASSIGNABLE_STATUSES = new Set([
   'departed',
   'in_progress',
 ]);
+
+async function collectDayBoardPages<Row extends { id: string }>(
+  loadPage: (cursor: string | undefined) => PromiseLike<Row[]>,
+): Promise<Row[]> {
+  const rows: Row[] = [];
+  let cursor: string | undefined;
+
+  for (let pageNumber = 0; pageNumber < DAY_BOARD_SCAN_MAX_PAGES; pageNumber += 1) {
+    const page = await loadPage(cursor);
+    rows.push(...page);
+    if (page.length < DAY_BOARD_SCAN_PAGE_SIZE) return rows;
+
+    const nextCursor = page.at(-1)?.id;
+    if (!nextCursor || nextCursor === cursor) {
+      throw new Error('Day-board cursor pagination did not advance');
+    }
+    cursor = nextCursor;
+  }
+
+  throw new Error('Day-board bounded scan limit exceeded');
+}
+
 type DayBoardScheduleReadySource = {
   id: string;
   case_id: string;
@@ -838,139 +863,158 @@ const authenticatedGET = withAuthContext(
           proposals,
           pendingProposalTotalCount,
         ] = await Promise.all([
-          db.membership.findMany({
-            where: {
-              org_id: ctx.orgId,
-              is_active: true,
-              role: { in: [...BOARD_MEMBER_ROLES] },
-            },
-            orderBy: [{ user: { name_kana: 'asc' } }],
-            select: {
-              role: true,
-              user: { select: { id: true, name: true } },
-            },
-          }),
-          db.visitSchedule.findMany({
-            where: {
-              org_id: ctx.orgId,
-              scheduled_date: { gte: dayStart, lt: dayEnd },
-              schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-            },
-            orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
-            select: {
-              id: true,
-              display_id: true,
-              case_id: true,
-              cycle_id: true,
-              pharmacist_id: true,
-              visit_type: true,
-              schedule_status: true,
-              scheduled_date: true,
-              carry_items_status: true,
-              priority: true,
-              site_id: true,
-              route_order: true,
-              vehicle_resource_id: true,
-              vehicle_resource: {
-                select: {
-                  id: true,
-                  label: true,
-                  travel_mode: true,
-                },
+          collectDayBoardPages((cursor) =>
+            db.membership.findMany({
+              where: {
+                org_id: ctx.orgId,
+                is_active: true,
+                role: { in: [...BOARD_MEMBER_ROLES] },
               },
-              time_window_start: true,
-              time_window_end: true,
-              confirmed_at: true,
-              cycle: { select: { overall_status: true } },
-              preparation: {
-                select: {
-                  org_id: true,
-                  prepared_at: true,
-                  medication_changes_reviewed: true,
-                  carry_items_confirmed: true,
-                  previous_issues_reviewed: true,
-                  route_confirmed: true,
-                  offline_synced: true,
-                },
+              orderBy: [{ user: { name_kana: 'asc' } }, { id: 'asc' }],
+              take: DAY_BOARD_SCAN_PAGE_SIZE,
+              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+              select: {
+                id: true,
+                role: true,
+                user: { select: { id: true, name: true } },
               },
-              facility_batch_id: true,
-              facility_batch: { select: { id: true, facility_id: true } },
-              visit_record: { select: { id: true } },
-              case_: {
-                select: {
-                  display_id: true,
-                  patient: {
-                    select: {
-                      id: true,
-                      display_id: true,
-                      name: true,
-                      ...patientOperationalSummarySelect,
-                      contacts: {
-                        where: { org_id: ctx.orgId, is_emergency_contact: true },
-                        select: { id: true },
-                      },
-                      residences: {
-                        where: { is_primary: true },
-                        take: 1,
-                        select: {
-                          address: true,
-                          lat: true,
-                          lng: true,
+            }),
+          ),
+          collectDayBoardPages((cursor) =>
+            db.visitSchedule.findMany({
+              where: {
+                org_id: ctx.orgId,
+                scheduled_date: { gte: dayStart, lt: dayEnd },
+                schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+              },
+              orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }, { id: 'asc' }],
+              take: DAY_BOARD_SCAN_PAGE_SIZE,
+              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+              select: {
+                id: true,
+                display_id: true,
+                case_id: true,
+                cycle_id: true,
+                pharmacist_id: true,
+                visit_type: true,
+                schedule_status: true,
+                scheduled_date: true,
+                carry_items_status: true,
+                priority: true,
+                site_id: true,
+                route_order: true,
+                vehicle_resource_id: true,
+                vehicle_resource: {
+                  select: {
+                    id: true,
+                    label: true,
+                    travel_mode: true,
+                  },
+                },
+                time_window_start: true,
+                time_window_end: true,
+                confirmed_at: true,
+                cycle: { select: { overall_status: true } },
+                preparation: {
+                  select: {
+                    org_id: true,
+                    prepared_at: true,
+                    medication_changes_reviewed: true,
+                    carry_items_confirmed: true,
+                    previous_issues_reviewed: true,
+                    route_confirmed: true,
+                    offline_synced: true,
+                  },
+                },
+                facility_batch_id: true,
+                facility_batch: { select: { id: true, facility_id: true } },
+                visit_record: { select: { id: true } },
+                case_: {
+                  select: {
+                    display_id: true,
+                    patient: {
+                      select: {
+                        id: true,
+                        display_id: true,
+                        name: true,
+                        ...patientOperationalSummarySelect,
+                        contacts: {
+                          where: { org_id: ctx.orgId, is_emergency_contact: true },
+                          select: { id: true },
+                        },
+                        residences: {
+                          where: { is_primary: true },
+                          take: 1,
+                          select: {
+                            address: true,
+                            lat: true,
+                            lng: true,
+                          },
                         },
                       },
                     },
-                  },
-                  care_team_links: {
-                    where: { org_id: ctx.orgId },
-                    select: { role: true },
+                    care_team_links: {
+                      where: { org_id: ctx.orgId },
+                      select: { role: true },
+                    },
                   },
                 },
               },
-            },
-          }),
+            }),
+          ),
           db.task.groupBy({
             by: ['assigned_to'],
             where: { org_id: ctx.orgId, status: { in: ['pending', 'in_progress'] } },
             _count: { id: true },
           }),
-          db.pharmacistShift.findMany({
-            where: {
-              org_id: ctx.orgId,
-              date: { gte: dayStart, lt: dayEnd },
-            },
-            select: {
-              user_id: true,
-              available: true,
-              available_from: true,
-              available_to: true,
-            },
-          }),
-          db.visitVehicleResource.findMany({
-            where: {
-              org_id: ctx.orgId,
-            },
-            orderBy: [{ available: 'desc' }, { label: 'asc' }],
-            select: {
-              id: true,
-              label: true,
-              site_id: true,
-              vehicle_code: true,
-              travel_mode: true,
-              max_stops: true,
-              max_route_duration_minutes: true,
-              available: true,
-              site: {
-                select: {
-                  address: true,
-                  lat: true,
-                  lng: true,
+          collectDayBoardPages((cursor) =>
+            db.pharmacistShift.findMany({
+              where: {
+                org_id: ctx.orgId,
+                date: { gte: dayStart, lt: dayEnd },
+              },
+              orderBy: [{ date: 'asc' }, { user_id: 'asc' }, { id: 'asc' }],
+              take: DAY_BOARD_SCAN_PAGE_SIZE,
+              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+              select: {
+                id: true,
+                user_id: true,
+                available: true,
+                available_from: true,
+                available_to: true,
+              },
+            }),
+          ),
+          collectDayBoardPages((cursor) =>
+            db.visitVehicleResource.findMany({
+              where: {
+                org_id: ctx.orgId,
+              },
+              orderBy: [{ available: 'desc' }, { label: 'asc' }, { id: 'asc' }],
+              take: DAY_BOARD_SCAN_PAGE_SIZE,
+              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+              select: {
+                id: true,
+                label: true,
+                site_id: true,
+                vehicle_code: true,
+                travel_mode: true,
+                max_stops: true,
+                max_route_duration_minutes: true,
+                available: true,
+                site: {
+                  select: {
+                    address: true,
+                    lat: true,
+                    lng: true,
+                  },
                 },
               },
-            },
-          }),
+            }),
+          ),
           db.visitScheduleProposal.findMany({
             where: pendingProposalWhere,
-            orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
+            orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }, { id: 'asc' }],
             take: PENDING_PROPOSAL_LIMIT,
             select: {
               id: true,
@@ -1206,22 +1250,33 @@ const authenticatedGET = withAuthContext(
         const impactSchedules =
           proposalImpactPairs.length === 0
             ? []
-            : await db.visitSchedule.findMany({
-                where: {
-                  org_id: ctx.orgId,
-                  schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-                  OR: proposalImpactPairs.map((pair) => ({
-                    pharmacist_id: pair.pharmacistId,
-                    scheduled_date: { gte: pair.dayStart, lt: addUtcDays(pair.dayStart, 1) },
-                  })),
-                },
-                select: {
-                  pharmacist_id: true,
-                  scheduled_date: true,
-                  time_window_start: true,
-                  time_window_end: true,
-                },
-              });
+            : await collectDayBoardPages((cursor) =>
+                db.visitSchedule.findMany({
+                  where: {
+                    org_id: ctx.orgId,
+                    schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+                    OR: proposalImpactPairs.map((pair) => ({
+                      pharmacist_id: pair.pharmacistId,
+                      scheduled_date: { gte: pair.dayStart, lt: addUtcDays(pair.dayStart, 1) },
+                    })),
+                  },
+                  orderBy: [
+                    { scheduled_date: 'asc' },
+                    { pharmacist_id: 'asc' },
+                    { time_window_start: 'asc' },
+                    { id: 'asc' },
+                  ],
+                  take: DAY_BOARD_SCAN_PAGE_SIZE,
+                  ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+                  select: {
+                    id: true,
+                    pharmacist_id: true,
+                    scheduled_date: true,
+                    time_window_start: true,
+                    time_window_end: true,
+                  },
+                }),
+              );
 
         const proposalIds = proposals.map((proposal) => proposal.id);
         const pendingProposalEffectiveTotalCount = Math.max(
@@ -1236,12 +1291,21 @@ const authenticatedGET = withAuthContext(
           hiddenProposalCount === 0
             ? []
             : (
-                await db.visitScheduleProposal.findMany({
-                  where: pendingProposalWhere,
-                  orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
-                  skip: PENDING_PROPOSAL_LIMIT,
-                  select: { id: true },
-                })
+                await collectDayBoardPages((cursor) =>
+                  db.visitScheduleProposal.findMany({
+                    where: pendingProposalWhere,
+                    orderBy: [
+                      { proposed_date: 'asc' },
+                      { time_window_start: 'asc' },
+                      { id: 'asc' },
+                    ],
+                    take: DAY_BOARD_SCAN_PAGE_SIZE,
+                    ...(cursor
+                      ? { cursor: { id: cursor }, skip: 1 }
+                      : { skip: PENDING_PROPOSAL_LIMIT }),
+                    select: { id: true },
+                  }),
+                )
               ).map((proposal) => proposal.id);
         const proposalContactLogs =
           proposalIds.length === 0
@@ -1398,31 +1462,39 @@ const authenticatedGET = withAuthContext(
                   created_at: true,
                 },
               });
-        const hiddenOperationalTaskCount =
-          !hiddenProposalTaskFilter || !assignmentScope
-            ? 0
-            : await db.task.count({
-                where: {
-                  org_id: ctx.orgId,
-                  task_type: { in: [...SCHEDULE_BOARD_TASK_TYPES] },
-                  status: { in: [...OPEN_OPERATIONAL_TASK_STATUSES] },
-                  AND: [
-                    buildDashboardTaskAssignmentWhere(assignmentScope),
-                    hiddenProposalTaskFilter,
-                  ],
-                },
-              });
-        const hiddenStaffOperationalTaskCount =
-          !hiddenVisitTaskFilter || !assignmentScope
-            ? 0
-            : await db.task.count({
-                where: {
-                  org_id: ctx.orgId,
-                  task_type: { in: [...SCHEDULE_BOARD_TASK_TYPES] },
-                  status: { in: [...OPEN_OPERATIONAL_TASK_STATUSES] },
-                  AND: [buildDashboardTaskAssignmentWhere(assignmentScope), hiddenVisitTaskFilter],
-                },
-              });
+        const hiddenTaskEntityFilters = [
+          ...(hiddenProposalTaskFilter ? [hiddenProposalTaskFilter] : []),
+          ...(hiddenVisitTaskFilter ? [hiddenVisitTaskFilter] : []),
+        ];
+        const hiddenOperationalTasks =
+          hiddenTaskEntityFilters.length === 0 || !assignmentScope
+            ? []
+            : await collectDayBoardPages((cursor) =>
+                db.task.findMany({
+                  where: {
+                    org_id: ctx.orgId,
+                    task_type: { in: [...SCHEDULE_BOARD_TASK_TYPES] },
+                    status: { in: [...OPEN_OPERATIONAL_TASK_STATUSES] },
+                    AND: [
+                      buildDashboardTaskAssignmentWhere(assignmentScope),
+                      { OR: hiddenTaskEntityFilters },
+                    ],
+                  },
+                  orderBy: [{ id: 'asc' }],
+                  take: DAY_BOARD_SCAN_PAGE_SIZE,
+                  ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+                  select: {
+                    id: true,
+                    related_entity_type: true,
+                  },
+                }),
+              );
+        const hiddenOperationalTaskCount = hiddenOperationalTasks.filter(
+          (task) => task.related_entity_type === 'visit_schedule_proposal',
+        ).length;
+        const hiddenStaffOperationalTaskCount = hiddenOperationalTasks.filter(
+          (task) => task.related_entity_type === 'visit_schedule',
+        ).length;
 
         const auditPendingCount = auditTaskGroups.reduce((sum, group) => sum + group._count.id, 0);
         const assignedVehicleCounts = new Map<string, number>();

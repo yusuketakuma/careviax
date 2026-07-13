@@ -54,7 +54,24 @@
 
 ## 直近の作業
 
-- codex4 + codex1 integration: EVIDENCE-PRESIGN-CHECKSUM-HEADER-SIGNING-001 (DONE, 2026-07-13; implementation in this scoped commit).
+- codex3 + codex1 integration: QUERY-SHAPE-DAYBOARD-WATCHLIST-003I (DONE, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    day-board route/test、query-shape checker/watchlist、membership/schedule/shift/vehicle/proposal/task queryとassignment scopeを確認した。
+    Watchlist追加時baselineはunbounded `findMany` 6、unstable order 1、同一Task delegate aggregate fan-out 1の計8 debtだった。
+    hidden proposal/staff task countsは同じscopeを別々にcountし、代表fixtureで全17 DB readsを発行した。
+  - files changed / correctness / performance / privacy:
+    membership、day schedule、shift、vehicle、proposal-impact、hidden proposalをstable `id` cursor + `take 200` + 最大50 pagesへ統一し、
+    cap到達やcursor非進行はpartial totalsを返さずfail closedとした。proposal orderへ`id` tie-breakerを追加した。hidden proposal/staff taskは
+    同じassignment predicateとentity ORでPHI-minimalな`id`/`related_entity_type`だけを単一bounded readし、in-memoryで種類別countする。
+    表示中task detail、permission/assignment scope、患者/訪問payload、RLS/org filtersは不変。代表fixtureは17→16 DB calls、Task
+    same-delegate aggregate fan-out 1→0。bounded scanは最大10,000 rowsで、それ以上を不正確なboardとして返さない。
+  - validation / remaining / rollback:
+    Codex3 validationとcodex1独立rerunでroute 1 file / 26 tests、checker 1 file / 12 tests、`pnpm db:query-shape:check`
+    0 allowlisted / 0 new、scoped ESLint、Prettier、`git diff --check` PASS。残aggregate 3 callsitesは異なるdelegateのtask open-work group、
+    proposal count、dispense-task groupだけ。DB/schema/migration/API DTO変更なし。全slice後にserialized typecheck/no-unused/full test/build。
+    Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
+- codex4 + codex1 integration: EVIDENCE-PRESIGN-CHECKSUM-HEADER-SIGNING-001 (DONE, 2026-07-13; implementation `3f429bdd7`, PUSHED).
   - current task / files inspected / root cause:
     PH-OS evidence presigner実装/test、installed AWS SDK v3、bucket CORS checksum許可、legacy file presigner境界を確認した。
     `PutObjectCommand.ChecksumSHA256`は設定済みだったが、presignerのdefault hoistingによりchecksumがURL queryへ移動し、
@@ -220,9 +237,9 @@
   - codex2: `API-STATUS-AUTHZ-403-AS-400-001`。Confirmed permission/scope denialを403 `AUTH_FORBIDDEN`へ統一し、
     malformed/body-FK 400とnon-enumerating concealmentを維持する。自己reviewで検出したregex quote false-negativeを
     TypeScript AST guardへ直して再検証中。
-  - codex3: `QUERY-SHAPE-DAYBOARD-WATCHLIST-003I`。day-boardのunbounded reads、unstable order、task aggregate fanoutを
-    bounded stable cursor pagesと単一bounded task readへ修正中。
-  - codex4: `EVIDENCE-PRESIGN-CHECKSUM-HEADER-SIGNING-001` READY、codex1独立review済み、scoped統合中。
+  - codex3: `QUERY-SHAPE-DAYBOARD-WATCHLIST-003I` READY、codex1独立review済み、scoped統合中。
+  - codex4: `S3-OBJECT-LOCK-PRESIGNED-CHECKSUM-001`。legacy prescriptionのfinal upload File digestをFE→presign→metadata→
+    HeadObject complete verificationまで一貫させる10-path FE/BE sliceを実装中。
   - codex1: `VISIT-RECORD-OFFLINE-SYNC-SCOPE-001`をfocused gateまで完了し、single ledger、exact staging、commit/push、
     各slice独立review、serialized long gatesと次候補scoringを管理する。
 

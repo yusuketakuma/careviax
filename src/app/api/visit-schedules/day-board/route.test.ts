@@ -99,6 +99,31 @@ function createRequestWithSearch(search: string) {
   });
 }
 
+function countDayBoardDbQueries() {
+  return [
+    membershipFindManyMock,
+    visitScheduleFindManyMock,
+    dispenseTaskGroupByMock,
+    taskGroupByMock,
+    taskFindManyMock,
+    taskCountMock,
+    medicationCycleCountMock,
+    proposalFindManyMock,
+    proposalCountMock,
+    facilityFindManyMock,
+    contactLogFindManyMock,
+    pharmacistShiftFindManyMock,
+    visitVehicleResourceFindManyMock,
+    careCaseFindManyMock,
+    patientFindManyMock,
+    inboundCommunicationSignalFindManyMock,
+    consentRecordFindManyMock,
+    firstVisitDocumentFindManyMock,
+    managementPlanFindManyMock,
+    billingEvidenceFindManyMock,
+  ].reduce((count, queryMock) => count + queryMock.mock.calls.length, 0);
+}
+
 describe('/api/visit-schedules/day-board', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -244,6 +269,49 @@ describe('/api/visit-schedules/day-board', () => {
     expect(taskCountMock).not.toHaveBeenCalled();
   });
 
+  it('collects bounded membership pages with a stable id cursor before applying the staff limit', async () => {
+    membershipFindManyMock
+      .mockResolvedValueOnce(
+        Array.from({ length: 200 }, (_, index) => {
+          const ordinal = index + 1;
+          return {
+            id: `membership_${ordinal}`,
+            role: 'pharmacist',
+            user: { id: `user_${ordinal}`, name: `薬師 ${String(ordinal).padStart(3, '0')}` },
+          };
+        }),
+      )
+      .mockResolvedValueOnce([
+        {
+          id: 'membership_201',
+          role: 'pharmacist',
+          user: { id: 'user_201', name: '薬師 201' },
+        },
+      ]);
+
+    const response = (await GET(createRequest('2026-06-12'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.data.staff_counts).toMatchObject({
+      total_count: 201,
+      visible_count: 6,
+      hidden_count: 195,
+    });
+    expect(membershipFindManyMock).toHaveBeenCalledTimes(2);
+    expect(membershipFindManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        orderBy: [{ user: { name_kana: 'asc' } }, { id: 'asc' }],
+        take: 200,
+        cursor: { id: 'membership_200' },
+        skip: 1,
+      }),
+    );
+  });
+
   it('uses the Japan business date when date is omitted even if the instant is still the previous UTC day', async () => {
     vi.setSystemTime(new Date('2026-06-11T15:30:00.000Z')); // 2026-06-12 00:30 JST
 
@@ -327,7 +395,10 @@ describe('/api/visit-schedules/day-board', () => {
       .mockResolvedValueOnce(visibleProposals)
       .mockResolvedValueOnce([{ id: 'proposal_hidden_4' }, { id: 'proposal_hidden_5' }]);
     proposalCountMock.mockResolvedValue(5);
-    taskCountMock.mockResolvedValue(2);
+    taskFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      { id: 'task_hidden_1', related_entity_type: 'visit_schedule_proposal' },
+      { id: 'task_hidden_2', related_entity_type: 'visit_schedule_proposal' },
+    ]);
     visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const response = (await GET(createRequest('2026-06-12'), {
@@ -355,6 +426,8 @@ describe('/api/visit-schedules/day-board', () => {
     expect(idQuery).toMatchObject({
       where: visibleQuery.where,
       skip: 3,
+      take: 200,
+      orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }, { id: 'asc' }],
       select: { id: true },
     });
     expect(countQuery).toEqual({ where: visibleQuery.where });
@@ -362,7 +435,7 @@ describe('/api/visit-schedules/day-board', () => {
     expect(visibleQuery.where.proposal_status.in).not.toContain('rejected');
     expect(visibleQuery.where.proposal_status.in).not.toContain('superseded');
     expect(visibleQuery.where.proposal_status.in).not.toContain('expired');
-    expect(taskCountMock).toHaveBeenCalledWith({
+    expect(taskFindManyMock).toHaveBeenNthCalledWith(2, {
       where: {
         org_id: 'org_1',
         task_type: {
@@ -381,12 +454,20 @@ describe('/api/visit-schedules/day-board', () => {
         AND: [
           {},
           {
-            related_entity_type: 'visit_schedule_proposal',
-            related_entity_id: { in: ['proposal_hidden_4', 'proposal_hidden_5'] },
+            OR: [
+              {
+                related_entity_type: 'visit_schedule_proposal',
+                related_entity_id: { in: ['proposal_hidden_4', 'proposal_hidden_5'] },
+              },
+            ],
           },
         ],
       },
+      orderBy: [{ id: 'asc' }],
+      take: 200,
+      select: { id: true, related_entity_type: true },
     });
+    expect(taskCountMock).not.toHaveBeenCalled();
     expect(json.data.pending_proposals).toHaveLength(3);
     expect(json.data.pending_proposals[0]).toMatchObject({
       id: 'proposal_visible_1',
@@ -644,7 +725,11 @@ describe('/api/visit-schedules/day-board', () => {
       { id: 'case_1', patient_id: 'patient_1' },
       { id: 'case_2', patient_id: 'patient_1' },
     ]);
-    taskCountMock.mockResolvedValue(1);
+    taskFindManyMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: 'task_hidden_1', related_entity_type: 'visit_schedule_proposal' },
+      ]);
     visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const response = (await GET(createRequest('2026-06-12'), {
@@ -668,7 +753,7 @@ describe('/api/visit-schedules/day-board', () => {
       },
       select: { id: true, patient_id: true },
     });
-    expect(taskCountMock).toHaveBeenCalledWith({
+    expect(taskFindManyMock).toHaveBeenNthCalledWith(2, {
       where: {
         org_id: 'org_1',
         task_type: {
@@ -693,12 +778,20 @@ describe('/api/visit-schedules/day-board', () => {
             ],
           },
           {
-            related_entity_type: 'visit_schedule_proposal',
-            related_entity_id: { in: ['proposal_hidden_4'] },
+            OR: [
+              {
+                related_entity_type: 'visit_schedule_proposal',
+                related_entity_id: { in: ['proposal_hidden_4'] },
+              },
+            ],
           },
         ],
       },
+      orderBy: [{ id: 'asc' }],
+      take: 200,
+      select: { id: true, related_entity_type: true },
     });
+    expect(taskCountMock).not.toHaveBeenCalled();
     expect(json.data.pending_proposal_counts).toEqual({
       total_count: 4,
       visible_count: 3,
@@ -1112,7 +1205,7 @@ describe('/api/visit-schedules/day-board', () => {
     expect(JSON.stringify(json.data)).not.toContain('signal_schedule_mismatch');
   });
 
-  it('reports hidden staff visit and task counts without exposing hidden task details', async () => {
+  it('keeps representative hidden staff/proposal query fan-out bounded without exposing details', async () => {
     const memberships = Array.from({ length: 7 }, (_, index) => {
       const ordinal = index + 1;
       return {
@@ -1187,7 +1280,30 @@ describe('/api/visit-schedules/day-board', () => {
         approved_at: new Date('2026-06-01T00:00:00.000Z'),
       })),
     );
-    taskCountMock.mockResolvedValue(2);
+    proposalFindManyMock
+      .mockResolvedValueOnce(
+        Array.from({ length: 3 }, (_, index) => {
+          const ordinal = index + 1;
+          return {
+            id: `proposal_visible_${ordinal}`,
+            visit_type: 'regular',
+            proposal_status: 'proposed',
+            patient_contact_status: 'pending',
+            proposed_date: new Date('2026-06-12T00:00:00.000Z'),
+            time_window_start: null,
+            time_window_end: null,
+            proposed_pharmacist_id: 'user_1',
+            case_: { patient: { name: `提案患者 ${ordinal}` } },
+          };
+        }),
+      )
+      .mockResolvedValueOnce([{ id: 'proposal_hidden_4' }]);
+    proposalCountMock.mockResolvedValue(4);
+    taskFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      { id: 'task_hidden_proposal', related_entity_type: 'visit_schedule_proposal' },
+      { id: 'task_hidden_1', related_entity_type: 'visit_schedule' },
+      { id: 'task_hidden_2', related_entity_type: 'visit_schedule' },
+    ]);
 
     const response = (await GET(createRequest('2026-06-12'), {
       params: Promise.resolve({}),
@@ -1210,7 +1326,14 @@ describe('/api/visit-schedules/day-board', () => {
       hidden_operational_task_count: 2,
       limit: 6,
     });
-    expect(taskCountMock).toHaveBeenCalledWith({
+    expect(json.data.pending_proposal_counts).toEqual({
+      total_count: 4,
+      visible_count: 3,
+      hidden_count: 1,
+      limit: 3,
+      hidden_operational_task_count: 1,
+    });
+    expect(taskFindManyMock).toHaveBeenNthCalledWith(2, {
       where: {
         org_id: 'org_1',
         task_type: {
@@ -1229,13 +1352,28 @@ describe('/api/visit-schedules/day-board', () => {
         AND: [
           {},
           {
-            related_entity_type: 'visit_schedule',
-            related_entity_id: { in: ['visit_7'] },
+            OR: [
+              {
+                related_entity_type: 'visit_schedule_proposal',
+                related_entity_id: { in: ['proposal_hidden_4'] },
+              },
+              {
+                related_entity_type: 'visit_schedule',
+                related_entity_id: { in: ['visit_7'] },
+              },
+            ],
           },
         ],
       },
+      orderBy: [{ id: 'asc' }],
+      take: 200,
+      select: { id: true, related_entity_type: true },
     });
+    expect(taskCountMock).not.toHaveBeenCalled();
+    // The previous shape issued 17 reads here because hidden proposal/staff counts were separate.
+    expect(countDayBoardDbQueries()).toBe(16);
     expect(JSON.stringify(json.data)).not.toContain('患者 7');
+    expect(JSON.stringify(json.data)).not.toContain('proposal_hidden_4');
   });
 
   it('drops members who are shift-unavailable for the day', async () => {
@@ -1258,6 +1396,7 @@ describe('/api/visit-schedules/day-board', () => {
       lt: new Date('2026-06-13T00:00:00.000Z'),
     });
     expect(pharmacistShiftFindManyMock.mock.calls.at(0)?.[0]?.select).toEqual({
+      id: true,
       user_id: true,
       available: true,
       available_from: true,
@@ -1605,7 +1744,8 @@ describe('/api/visit-schedules/day-board', () => {
     ]);
     expect(visitVehicleResourceFindManyMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1' },
-      orderBy: [{ available: 'desc' }, { label: 'asc' }],
+      orderBy: [{ available: 'desc' }, { label: 'asc' }, { id: 'asc' }],
+      take: 200,
       select: {
         id: true,
         label: true,
