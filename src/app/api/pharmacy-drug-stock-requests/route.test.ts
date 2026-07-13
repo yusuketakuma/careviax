@@ -322,9 +322,129 @@ describe('/api/pharmacy-drug-stock-requests', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       code: 'VALIDATION_ERROR',
-      message: '採用後発薬が見つかりません',
+      message: '入力値が不正です',
+      details: {
+        preferred_generic_id: ['指定された採用後発薬を確認できません'],
+      },
+    });
+    expect(prismaMock.drugMaster.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { id: 'generic_missing' },
+      select: { id: true, is_generic: true, generic_name: true },
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('preserves the semantic validation for an existing non-generic drug', async () => {
+    prismaMock.drugMaster.findFirst
+      .mockResolvedValueOnce({
+        id: 'drug_1',
+        drug_name: 'ノルバスク錠5mg',
+        generic_name: 'アムロジピン',
+      })
+      .mockResolvedValueOnce({
+        id: 'brand_1',
+        is_generic: false,
+        generic_name: 'アムロジピン',
+      });
+
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stock-requests', {
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        requested_payload: {
+          is_stocked: true,
+          reorder_point: 10,
+          preferred_generic_id: 'brand_1',
+          adoption_note: '委員会承認待ち',
+        },
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '採用後発薬には後発品のみ指定できます',
+      details: {
+        preferred_generic_id: ['後発品を選択してください'],
+      },
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('preserves the semantic validation for a generic-name mismatch', async () => {
+    prismaMock.drugMaster.findFirst
+      .mockResolvedValueOnce({
+        id: 'drug_1',
+        drug_name: 'ノルバスク錠5mg',
+        generic_name: 'アムロジピン',
+      })
+      .mockResolvedValueOnce({
+        id: 'generic_other',
+        is_generic: true,
+        generic_name: 'ロサルタン',
+      });
+
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stock-requests', {
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        requested_payload: {
+          is_stocked: true,
+          reorder_point: 10,
+          preferred_generic_id: 'generic_other',
+          adoption_note: '委員会承認待ち',
+        },
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '採用後発薬は同一一般名から選択してください',
+      details: {
+        preferred_generic_id: ['同じ一般名の後発品を選択してください'],
+      },
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.formularyChangeRequest.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('preserves the exact primary-drug 404 before request creation', async () => {
+    prismaMock.drugMaster.findFirst.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stock-requests', {
+        site_id: 'site_1',
+        drug_master_id: 'drug_missing',
+        requested_payload: {
+          is_stocked: true,
+          reorder_point: 10,
+          preferred_generic_id: null,
+          adoption_note: '委員会承認待ち',
+        },
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '対象の医薬品が見つかりません',
     });
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(prismaMock.formularyChangeRequest.create).not.toHaveBeenCalled();
@@ -351,7 +471,7 @@ describe('/api/pharmacy-drug-stock-requests', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
     expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       code: 'WORKFLOW_NOT_FOUND',
       message: '対象の薬局拠点が見つかりません',
     });

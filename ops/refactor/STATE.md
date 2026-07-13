@@ -54,7 +54,26 @@
 
 ## 直近の作業
 
-- codex4 + codex1 integration: AUTHZ-CONFERENCE-REF-SCOPE-001 (DONE, 2026-07-13; implementation in this scoped commit).
+- codex2 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001F (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Pharmacy stock request POST/focused test、FormularyChangeRequest/DrugMaster/PharmacySite schema、shared response/no-store helper、installed Next 16.2.9
+    Route Handler guide、API/auth/raw-read/module guardsを確認した。`site_id`と`drug_master_id`は作成対象のprimary ownerだが、linked
+    `preferred_generic_id` missingだけが存在を示すroute固有400 copyを返していた。
+  - files changed / correctness / security / medical safety:
+    Linked generic missingをexact generic 400 `VALIDATION_ERROR` / `入力値が不正です` + neutral field detailへ統一した。Primary site/drugはexact
+    `WORKFLOW_NOT_FOUND` 404を完全JSONで固定し、既存drugがnon-genericの場合と一般名不一致の場合は、薬剤選択ミスを利用者が是正できる別semantic 400を
+    維持した。全拒否時のtransaction/request create/audit副作用0、auth/canAdmin、org site scope、success DTO/no-store、request+audit transactionを維持した。
+  - performance / stability / coordination:
+    実装差分はlinked error copyのみでquery/write/network数は0増。Successはlinked genericなし4 reads、あり5 reads + 1 transaction内request/audit 2 writes、
+    network 0のまま。Codex4が一時的にcodex2 identityへ切り替わって同じmissing-site matcher 1行を先行適用したownership overlapを検出し、即時STOP後、
+    正owner codex2がlive diff/hashを再確認して受理しfocused testを再実行した。以後exact2をFREEZEし、独立verifierも編集なしでINTEGRATE判定した。
+  - validation / remaining / rollback:
+    Codex2 FREEZE後にcodex1がdiff/schema/classificationを独立reviewし、focused 1 file / 18 tests、API authz 0、API shape 0/0、route auth
+    176 allowlisted / 252 direct / 0 new、raw-read org 117 allowlisted / 0 new、module boundary 0/0、exact2 ESLint/Prettier/diffをPASS。Oracle、schema/
+    migration、long gateなし。Transaction外pending checkとnonunique indexによるconcurrent/retry重複は`FORMULARY-REQUEST-CREATE-INTEGRITY-001`へ
+    分離登録した。親API statusは残存live scanがあるためPartial。RollbackはこのcommitのrevertでDB/data rollback不要。
+
+- codex4 + codex1 integration: AUTHZ-CONFERENCE-REF-SCOPE-001 (DONE, 2026-07-13; implementation `9161855cd`, PUSHED).
   - current task / files inspected / root cause:
     ConferenceNote POST/PATCH routes/tests、create/update validation、patient writable guard、case/facility/patient schema、sync/audit transaction、installed
     Next 16.2.9 Route Handler guide、API/auth/raw-read/module guardsを確認した。ConferenceNoteの3参照はnullable StringだけでFK/relationがなく、POSTの

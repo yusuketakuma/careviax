@@ -152,8 +152,8 @@ const authenticatedPOST = withAuthContext(
       });
     }
     if (requested_payload.preferred_generic_id && !preferredGeneric) {
-      return validationError('採用後発薬が見つかりません', {
-        preferred_generic_id: ['存在する後発品を選択してください'],
+      return validationError('入力値が不正です', {
+        preferred_generic_id: ['指定された採用後発薬を確認できません'],
       });
     }
     if (preferredGeneric && !preferredGeneric.is_generic) {
