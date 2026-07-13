@@ -3,13 +3,11 @@ import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
-  runWithRequestAuthContextMock,
   pharmacistShiftTemplateFindManyMock,
   pharmacistShiftUpsertMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
-  runWithRequestAuthContextMock: vi.fn(),
   pharmacistShiftTemplateFindManyMock: vi.fn(),
   pharmacistShiftUpsertMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -17,17 +15,23 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
-}));
-
-vi.mock('@/lib/auth/request-context', () => ({
-  runWithRequestAuthContext: runWithRequestAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { POST } from './route';
+import { POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/pharmacist-shift-templates/apply', {
@@ -49,9 +53,6 @@ describe('/api/pharmacist-shift-templates/apply POST', () => {
         userAgent: 'vitest',
       },
     });
-    runWithRequestAuthContextMock.mockImplementation(
-      (_ctx: { orgId: string; userId: string; role: string }, fn: () => Promise<Response>) => fn(),
-    );
     pharmacistShiftTemplateFindManyMock.mockResolvedValue([
       {
         user_id: 'user_2',
@@ -97,16 +98,19 @@ describe('/api/pharmacist-shift-templates/apply POST', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.objectContaining({
+        permission: 'canAdmin',
+        message: '定型シフトの反映権限がありません',
+      }),
+    );
     expect(pharmacistShiftTemplateFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
         user_id: 'user_2',
       },
     });
-    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
-      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'admin' }),
-      expect.any(Function),
-    );
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({
         orgId: 'org_1',

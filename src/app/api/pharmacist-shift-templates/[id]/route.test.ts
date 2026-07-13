@@ -15,6 +15,13 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -78,6 +85,13 @@ describe('/api/pharmacist-shift-templates/[id] DELETE', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.objectContaining({
+        permission: 'canAdmin',
+        message: '定型シフトの削除権限がありません',
+      }),
+    );
     await expect(response.json()).resolves.toEqual({ data: { id: 'template_1' } });
     expect(pharmacistShiftTemplateDeleteMock).toHaveBeenCalledWith({
       where: { id: 'template_1' },

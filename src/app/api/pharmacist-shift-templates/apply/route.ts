@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { z } from 'zod';
@@ -39,77 +38,73 @@ function datesForWeekday(year: number, monthIndex: number, weekday: number) {
   return dates;
 }
 
-export async function POST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '定型シフトの反映権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+async function applyShiftTemplates(req: NextRequest, ctx: AuthContext) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
+  const parsed = applyTemplateSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
 
-    const parsed = applyTemplateSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
+  const [year, month] = parsed.data.month.split('-').map(Number);
+  const monthIndex = month - 1;
 
-    const [year, month] = parsed.data.month.split('-').map(Number);
-    const monthIndex = month - 1;
+  const appliedCount = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const templates = await tx.pharmacistShiftTemplate.findMany({
+        where: {
+          org_id: ctx.orgId,
+          ...(parsed.data.user_id ? { user_id: parsed.data.user_id } : {}),
+        },
+      });
 
-    const appliedCount = await withOrgContext(
-      ctx.orgId,
-      async (tx) => {
-        const templates = await tx.pharmacistShiftTemplate.findMany({
-          where: {
-            org_id: ctx.orgId,
-            ...(parsed.data.user_id ? { user_id: parsed.data.user_id } : {}),
-          },
-        });
-
-        let count = 0;
-        for (const template of templates) {
-          const targetDates = datesForWeekday(year, monthIndex, template.weekday);
-          for (const date of targetDates) {
-            await tx.pharmacistShift.upsert({
-              where: {
-                user_id_date: {
-                  user_id: template.user_id,
-                  date,
-                },
-              },
-              create: {
-                org_id: ctx.orgId,
+      let count = 0;
+      for (const template of templates) {
+        const targetDates = datesForWeekday(year, monthIndex, template.weekday);
+        for (const date of targetDates) {
+          await tx.pharmacistShift.upsert({
+            where: {
+              user_id_date: {
                 user_id: template.user_id,
-                site_id: template.site_id,
                 date,
-                available: template.available,
-                available_from: template.available_from,
-                available_to: template.available_to,
-                note: template.note,
               },
-              update: {
-                site_id: template.site_id,
-                available: template.available,
-                available_from: template.available_from,
-                available_to: template.available_to,
-                note: template.note,
-              },
-            });
-            count += 1;
-          }
+            },
+            create: {
+              org_id: ctx.orgId,
+              user_id: template.user_id,
+              site_id: template.site_id,
+              date,
+              available: template.available,
+              available_from: template.available_from,
+              available_to: template.available_to,
+              note: template.note,
+            },
+            update: {
+              site_id: template.site_id,
+              available: template.available,
+              available_from: template.available_from,
+              available_to: template.available_to,
+              note: template.note,
+            },
+          });
+          count += 1;
         }
-        return count;
-      },
-      { requestContext: ctx },
-    );
+      }
+      return count;
+    },
+    { requestContext: ctx },
+  );
 
-    return success({
-      data: {
-        applied_count: appliedCount,
-      },
-    });
+  return success({
+    data: {
+      applied_count: appliedCount,
+    },
   });
 }
+
+export const POST = withAuthContext(applyShiftTemplates, {
+  permission: 'canAdmin',
+  message: '定型シフトの反映権限がありません',
+});

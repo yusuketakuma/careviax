@@ -55,6 +55,26 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZSHIFTTEMPLATEAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Goal attachment、HEAD/parity、dirty tree、Plans/STATE/memory/gbrain、route-auth allowlist、Pharmacist Shift Templates root/detail/apply routes/tests、
+    admin shifts strict consumer、rate-limit registry、installed Next 16.2.9 Route Handler/Data Security guideを確認した。GET/POST/DELETE/applyは
+    canVisit/canAdmin、bounded list、strict query/body/month/route-id/time validation、org/reference/RLS、UTC dateを持つ一方、4 direct
+    `requireAuthContext` callsのsuccess/validation/not-found responseが標準no-store/performance/sanitized-500境界を通らなかった。
+  - files changed / correctness / security / privacy / performance / stability:
+    4 handlersをtyped named handler + `withAuthContext`へ移行し、permission message、ctx、async params、org predicate、reference validation、
+    RLS request context、UTC月日列挙、upsert/delete/apply DTOとapplied countを維持した。Wrapperが同じrequest contextを設定するためapply内の
+    冗長な`runWithRequestAuthContext` nestingだけを除去し、DB query/write/network/payloadは増減させていない。3 testsのauth mockをwrapper signatureへ
+    同期し、4 operationのpermission/messageを明示回帰した。Allowlist 3 entriesを除去し、direct debtは167→164 routes、235→231 calls、
+    helper未使用success routeは17→14へ減った。月次applyのtemplate×date逐次upsertはstaff/template数比例でtransaction保持時間が増える候補だが、
+    計測なしのbulk rewriteは行わず`PERF-SHIFT-TEMPLATE-APPLY-001`をMeasure-firstとしてPlansへ登録した。
+  - validation / remaining / rollback:
+    Focused routes + checker 4 files / 17 tests、scheduling/time領域31 files / 546 tests、exact ESLint/Prettier、8 GiB typecheck / no-unused、
+    route-auth 164 allowlisted / 231 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、
+    client schema 361 backed / 0 allowlisted、Plans active、format/diffをPASS。Schema/migration/production data/deploy/Oracleなし。視覚変更なしのため
+    imagegen/browserなし。親にはdirect-auth success未収束14 routes、request_id/correlation_id、error registryが残る。Rollbackはこのscoped
+    commitのrevertでDB/data rollback不要。
+
 - codex1: API-CONTRACT-001FZPHARMACYSITEAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
   - current task / files inspected / root cause:
     Drug Alert Rules push後に残19 routesを再scoreし、薬局住所・連絡先・保険改定設定を返すPharmacy Site detail / Insurance Configsを

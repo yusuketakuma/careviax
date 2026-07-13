@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -19,14 +19,7 @@ function toTimeValue(value?: string) {
   return value ? hhmmToTimeDate(value) : null;
 }
 
-export async function GET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '定型シフトの閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function getShiftTemplates(req: NextRequest, ctx: AuthContext) {
   const { searchParams } = new URL(req.url);
   const userIdRaw = searchParams.get('user_id');
   const parsedUserId = userIdRaw === null ? null : userIdQuerySchema.safeParse(userIdRaw);
@@ -63,14 +56,7 @@ export async function GET(req: NextRequest) {
   return success({ data: templates });
 }
 
-export async function POST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '定型シフトの更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function upsertShiftTemplate(req: NextRequest, ctx: AuthContext) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -115,3 +101,13 @@ export async function POST(req: NextRequest) {
 
   return success({ data: template }, 201);
 }
+
+export const GET = withAuthContext(getShiftTemplates, {
+  permission: 'canVisit',
+  message: '定型シフトの閲覧権限がありません',
+});
+
+export const POST = withAuthContext(upsertShiftTemplate, {
+  permission: 'canAdmin',
+  message: '定型シフトの更新権限がありません',
+});

@@ -1,18 +1,15 @@
 import { NextRequest } from 'next/server';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, notFound, validationError } from '@/lib/api/response';
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '定型シフトの削除権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function deleteShiftTemplate(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id } = await params;
   const templateId = normalizeRequiredRouteParam(id);
   if (!templateId) return validationError('定型シフトIDが不正です');
@@ -33,3 +30,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   return success({ data: { id: templateId } });
 }
+
+export const DELETE = withAuthContext(deleteShiftTemplate, {
+  permission: 'canAdmin',
+  message: '定型シフトの削除権限がありません',
+});
