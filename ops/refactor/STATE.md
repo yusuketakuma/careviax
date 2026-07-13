@@ -51,6 +51,34 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZPRINTHUBSTRICT print hub readers (VERIFY_REQUIRED, 2026-07-13; implementation `86de68339`; shared clean-capacity build pending).
+  - current task / root cause:
+    Print Hubのset plans、patient prescriptions、patient documents計3 readersはstring fallbackだけで、別患者/cycle、壊れたreadiness、
+    unsafe document URL、重複identity、cursor driftを帳票stateへ流し得た。処方は先頭20件だけを読み、選択set planのcycleが後続pageにあると
+    正常な処方を「データなし」と表示するsilent truncationもあった。
+  - implementation / print safety boundary:
+    3 request-aware consumed runtime schemasを追加し、set plan↔cycle↔patient relationと期間、prescription patient/row/line/cursor、
+    document patient/readiness算術/identity/internal hrefを検証。Provider-only tenant、cycle status、薬剤code、文書metadataをclient state前にstripした。
+    Prescription readerは20件×最大5 pagesをcursor追跡し、対象cycle発見または終端で停止、重複row/cursorと上限超過はfail-closedにした。
+    Query keyへcycle IDを加え、同じ患者でplan cycleが切り替わった際のstale intake再利用も防止した。Provider query/write、print history、
+    auth/assignment/tenant/audit/DB/UIは変更していない。非visual response/PHI境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/reports/print/print-hub-response-schemas.ts`,
+    `src/app/(dashboard)/reports/print/print-hub-response-schemas.test.ts`,
+    `src/app/(dashboard)/reports/print/print-hub-content.tsx`,
+    `src/app/(dashboard)/reports/print/print-hub-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Schema/consumer/shared/provider Vitest passed 5 files / 107 tests. Exact zero-warning ESLint, focused Prettier, aggregate typecheck,
+    8GB no-unused typecheck, client schema (341 backed / 23 allowlisted / 5 files), module boundary, client PHI-log/display, API response shape,
+    colors, format, and diff-check passed. Initial focused runs exposed only a test-only unavailable jest-dom matcher and one schema output optionality;
+    both were corrected before the green rerun. Full build remains NOT_EXECUTED because only 225 MiB is free while existing `.next` consumes
+    16 GiB; shared generated/user files were not deleted.
+  - security / performance / remaining:
+    Cross-patient/cycle、unsafe href、malformed clinical/document payloads now fail closed and unused PHI-adjacent provider fields no longer enter
+    client state. Normal target-cycle reads remain one request; only missing target cycles fetch bounded follow-up pages. API-CONTRACT-001-RESCAN
+    continues with 23 calls across 5 files. A clean-capacity runner must complete `pnpm build`.
+
 - codex: API-CONTRACT-001FZVISITFORMSTRICT visit record form readers (VERIFY_REQUIRED, 2026-07-13; implementation `93f80829a`; shared clean-capacity build pending).
   - current task / root cause:
     Visit Record FormのCDS alerts、schedule detail、patient safety header、record create、attachment PATCH計5 readersはstring fallbackだけで、
