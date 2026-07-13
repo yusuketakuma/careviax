@@ -25,6 +25,7 @@ import {
   VisitHandoffAlreadyConfirmedError,
   VisitHandoffInvalidDataError,
   VisitHandoffMissingDataError,
+  VisitHandoffSupervisionRequestUnavailableError,
   VisitHandoffSupervisionTaskUnavailableError,
   VisitHandoffStaleRecordError,
 } from '@/server/services/visit-handoff';
@@ -170,32 +171,6 @@ async function authenticatedPOST(
     return withSensitiveNoStore(conflict('訪問記録が同時に更新されました。再読み込みしてください'));
   }
 
-  const supervisionRequestAudit = await prisma.auditLog.findFirst({
-    where: {
-      org_id: ctx.orgId,
-      actor_id: traineeUserId,
-      action: 'visit_handoff_supervision_requested',
-      target_type: 'visit_record',
-      target_id: id,
-      AND: [
-        { changes: { path: ['visit_record_id'], equals: id } },
-        { changes: { path: ['schedule_id'], equals: record.schedule_id } },
-        { changes: { path: ['trainee_user_id'], equals: traineeUserId } },
-        { changes: { path: ['supervisor_user_id'], equals: ctx.userId } },
-        {
-          changes: {
-            path: ['visit_record_version'],
-            equals: parsed.data.expected_visit_record_version,
-          },
-        },
-      ],
-    },
-    select: { id: true },
-  });
-  if (!supervisionRequestAudit) {
-    return withSensitiveNoStore(await forbiddenResponse('この申し送りの上長確認を確定できません'));
-  }
-
   const confirmationWhere = {
     schedule_id: record.schedule_id,
     schedule: {
@@ -244,6 +219,11 @@ async function authenticatedPOST(
     }
     if (cause instanceof VisitHandoffAlreadyConfirmedError) {
       return withSensitiveNoStore(conflict('申し送りはすでに確認済みです'));
+    }
+    if (cause instanceof VisitHandoffSupervisionRequestUnavailableError) {
+      return withSensitiveNoStore(
+        await forbiddenResponse('この申し送りの上長確認を確定できません'),
+      );
     }
     if (cause instanceof VisitHandoffSupervisionTaskUnavailableError) {
       return withSensitiveNoStore(

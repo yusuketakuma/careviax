@@ -42,6 +42,7 @@ import {
   VisitHandoffInvalidDataError,
   VisitHandoffAlreadyConfirmedError,
   VisitHandoffMissingDataError,
+  VisitHandoffSupervisionRequestUnavailableError,
   VisitHandoffSupervisionTaskUnavailableError,
   VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE,
   requestHandoffConfirmationSupervision,
@@ -888,6 +889,7 @@ describe('confirmHandoff', () => {
       });
       const visitRecordUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
       const taskUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+      const auditLogFindFirstMock = vi.fn().mockResolvedValue({ id: 'audit-request-1' });
       resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
       createAuditLogEntryMock.mockResolvedValue({ id: 'audit-1' });
 
@@ -899,7 +901,7 @@ describe('confirmHandoff', () => {
               updateMany: visitRecordUpdateManyMock,
             },
             task: { updateMany: taskUpdateManyMock },
-            auditLog: { create: vi.fn() },
+            auditLog: { findFirst: auditLogFindFirstMock, create: vi.fn() },
           };
           return fn(tx);
         },
@@ -926,6 +928,30 @@ describe('confirmHandoff', () => {
           supervisorUserId: 'supervisor-1',
           requestedVisitRecordVersion: 2,
         },
+      });
+
+      expect(withOrgContextMock).toHaveBeenCalledWith('org-1', expect.any(Function), {
+        requestContext: expect.objectContaining({
+          orgId: 'org-1',
+          userId: 'supervisor-1',
+        }),
+      });
+      expect(auditLogFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          org_id: 'org-1',
+          actor_id: 'trainee-1',
+          action: 'visit_handoff_supervision_requested',
+          target_type: 'visit_record',
+          target_id: 'vr-1',
+          AND: [
+            { changes: { path: ['visit_record_id'], equals: 'vr-1' } },
+            { changes: { path: ['schedule_id'], equals: 'schedule-1' } },
+            { changes: { path: ['trainee_user_id'], equals: 'trainee-1' } },
+            { changes: { path: ['supervisor_user_id'], equals: 'supervisor-1' } },
+            { changes: { path: ['visit_record_version'], equals: 2 } },
+          ],
+        },
+        select: { id: true },
       });
 
       expect(taskUpdateManyMock).toHaveBeenCalledWith({
@@ -1004,6 +1030,76 @@ describe('confirmHandoff', () => {
     },
   );
 
+  it('rejects supervision confirmation when the RLS-scoped transaction cannot find request provenance', async () => {
+    const existingHandoff = {
+      next_check_items: ['血圧確認'],
+      ongoing_monitoring: ['残薬管理'],
+      decision_rationale: '急変リスクあり',
+      ai_extracted: true,
+      ai_confidence: 0.85,
+      confirmed_by: null,
+      confirmed_at: null,
+      extracted_at: '2026-04-01T00:00:00Z',
+    };
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      version: 2,
+      schedule_id: 'schedule-1',
+      structured_soap: { ...baseSoap, handoff: existingHandoff },
+    });
+    const visitRecordUpdateManyMock = vi.fn();
+    const taskUpdateManyMock = vi.fn();
+    const auditLogFindFirstMock = vi.fn().mockResolvedValue(null);
+    const requestContext = {
+      orgId: 'org-1',
+      userId: 'supervisor-1',
+      role: 'pharmacist' as const,
+      ipAddress: '127.0.0.1',
+      userAgent: 'test',
+    };
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+          task: { updateMany: taskUpdateManyMock },
+          auditLog: { findFirst: auditLogFindFirstMock },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof confirmHandoff>[0];
+    await expect(
+      confirmHandoff(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        confirmedBy: 'supervisor-1',
+        expectedVersion: 2,
+        requestContext,
+        confirmationBasis: 'supervision_task_assignee',
+        supervisionReview: {
+          taskId: 'task-supervision-1',
+          taskType: 'handoff_supervision_review',
+          traineeUserId: 'trainee-1',
+          supervisorUserId: 'supervisor-1',
+          requestedVisitRecordVersion: 2,
+        },
+      }),
+    ).rejects.toBeInstanceOf(VisitHandoffSupervisionRequestUnavailableError);
+
+    expect(withOrgContextMock).toHaveBeenCalledWith('org-1', expect.any(Function), {
+      requestContext,
+    });
+    expect(auditLogFindFirstMock).toHaveBeenCalledOnce();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
   it('rejects lost supervision task claims before updating the visit record or audit', async () => {
     const existingHandoff = {
       next_check_items: ['血圧確認'],
@@ -1023,6 +1119,7 @@ describe('confirmHandoff', () => {
     });
     const visitRecordUpdateManyMock = vi.fn();
     const taskUpdateManyMock = vi.fn().mockResolvedValue({ count: 0 });
+    const auditLogFindFirstMock = vi.fn().mockResolvedValue({ id: 'audit-request-1' });
 
     withOrgContextMock.mockImplementation(
       async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
@@ -1032,6 +1129,7 @@ describe('confirmHandoff', () => {
             updateMany: visitRecordUpdateManyMock,
           },
           task: { updateMany: taskUpdateManyMock },
+          auditLog: { findFirst: auditLogFindFirstMock },
         };
         return fn(tx);
       },

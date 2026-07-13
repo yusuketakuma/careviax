@@ -6,11 +6,11 @@ const {
   visitRecordFindFirstMock,
   membershipFindFirstMock,
   taskFindFirstMock,
-  auditLogFindFirstMock,
   confirmHandoffMock,
   VisitHandoffAlreadyConfirmedErrorMock,
   VisitHandoffInvalidDataErrorMock,
   VisitHandoffMissingDataErrorMock,
+  VisitHandoffSupervisionRequestUnavailableErrorMock,
   VisitHandoffSupervisionTaskUnavailableErrorMock,
   VisitHandoffStaleRecordErrorMock,
 } = vi.hoisted(() => ({
@@ -18,11 +18,11 @@ const {
   visitRecordFindFirstMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   taskFindFirstMock: vi.fn(),
-  auditLogFindFirstMock: vi.fn(),
   confirmHandoffMock: vi.fn(),
   VisitHandoffAlreadyConfirmedErrorMock: class VisitHandoffAlreadyConfirmedError extends Error {},
   VisitHandoffInvalidDataErrorMock: class VisitHandoffInvalidDataError extends Error {},
   VisitHandoffMissingDataErrorMock: class VisitHandoffMissingDataError extends Error {},
+  VisitHandoffSupervisionRequestUnavailableErrorMock: class VisitHandoffSupervisionRequestUnavailableError extends Error {},
   VisitHandoffSupervisionTaskUnavailableErrorMock: class VisitHandoffSupervisionTaskUnavailableError extends Error {},
   VisitHandoffStaleRecordErrorMock: class VisitHandoffStaleRecordError extends Error {},
 }));
@@ -36,7 +36,6 @@ vi.mock('@/lib/db/client', () => ({
     visitRecord: { findFirst: visitRecordFindFirstMock },
     membership: { findFirst: membershipFindFirstMock },
     task: { findFirst: taskFindFirstMock },
-    auditLog: { findFirst: auditLogFindFirstMock },
   },
 }));
 
@@ -45,6 +44,8 @@ vi.mock('@/server/services/visit-handoff', () => ({
   VisitHandoffAlreadyConfirmedError: VisitHandoffAlreadyConfirmedErrorMock,
   VisitHandoffInvalidDataError: VisitHandoffInvalidDataErrorMock,
   VisitHandoffMissingDataError: VisitHandoffMissingDataErrorMock,
+  VisitHandoffSupervisionRequestUnavailableError:
+    VisitHandoffSupervisionRequestUnavailableErrorMock,
   VisitHandoffSupervisionTaskUnavailableError: VisitHandoffSupervisionTaskUnavailableErrorMock,
   VisitHandoffStaleRecordError: VisitHandoffStaleRecordErrorMock,
 }));
@@ -54,6 +55,7 @@ import {
   VisitHandoffAlreadyConfirmedError,
   VisitHandoffInvalidDataError,
   VisitHandoffMissingDataError,
+  VisitHandoffSupervisionRequestUnavailableError,
   VisitHandoffSupervisionTaskUnavailableError,
   VisitHandoffStaleRecordError,
 } from '@/server/services/visit-handoff';
@@ -138,7 +140,6 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
     visitRecordFindFirstMock.mockResolvedValue(validVisitRecord());
     membershipFindFirstMock.mockResolvedValue({ user_id: 'supervisor_1', role: 'pharmacist' });
     taskFindFirstMock.mockResolvedValue(validSupervisionTask());
-    auditLogFindFirstMock.mockResolvedValue({ id: 'audit_request_1' });
     confirmHandoffMock.mockResolvedValue(handoffResult);
   });
 
@@ -170,23 +171,6 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
         }),
       }),
     );
-    expect(auditLogFindFirstMock).toHaveBeenCalledWith({
-      where: {
-        org_id: 'org_1',
-        actor_id: 'trainee_1',
-        action: 'visit_handoff_supervision_requested',
-        target_type: 'visit_record',
-        target_id: 'vr_1',
-        AND: [
-          { changes: { path: ['visit_record_id'], equals: 'vr_1' } },
-          { changes: { path: ['schedule_id'], equals: 'schedule_1' } },
-          { changes: { path: ['trainee_user_id'], equals: 'trainee_1' } },
-          { changes: { path: ['supervisor_user_id'], equals: 'supervisor_1' } },
-          { changes: { path: ['visit_record_version'], equals: 2 } },
-        ],
-      },
-      select: { id: true },
-    });
     expect(confirmHandoffMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
       visitRecordId: 'vr_1',
@@ -309,8 +293,10 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
     expect(confirmHandoffMock).not.toHaveBeenCalled();
   });
 
-  it('rejects forged tasks without a matching dedicated supervision-request audit', async () => {
-    auditLogFindFirstMock.mockResolvedValueOnce(null);
+  it('keeps missing supervision-request provenance as a forbidden response', async () => {
+    confirmHandoffMock.mockRejectedValueOnce(
+      new VisitHandoffSupervisionRequestUnavailableError('vr_1'),
+    );
 
     const res = await POST(createRequest(validBody()), {
       params: Promise.resolve({ id: 'vr_1' }),
@@ -318,7 +304,7 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
 
     expect(res!.status).toBe(403);
     expectSensitiveNoStore(res!);
-    expect(confirmHandoffMock).not.toHaveBeenCalled();
+    expect(confirmHandoffMock).toHaveBeenCalledOnce();
   });
 
   it('rejects tasks when the trainee is no longer assigned to the current schedule', async () => {
@@ -339,7 +325,6 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
     });
 
     expect(res!.status).toBe(403);
-    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
     expect(confirmHandoffMock).not.toHaveBeenCalled();
   });
 
@@ -361,7 +346,6 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
     });
 
     expect(res!.status).toBe(403);
-    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
     expect(confirmHandoffMock).not.toHaveBeenCalled();
   });
 
@@ -371,17 +355,19 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
       { metadata: { ...validSupervisionTask().metadata, schedule_id: 'other' } },
     ],
     ['dedupe key', { dedupe_key: 'forged_dedupe_key' }],
-  ])('rejects a task with mismatched %s before audit lookup', async (_label, taskOverrides) => {
-    taskFindFirstMock.mockResolvedValueOnce(validSupervisionTask(taskOverrides));
+  ])(
+    'rejects a task with mismatched %s before service confirmation',
+    async (_label, taskOverrides) => {
+      taskFindFirstMock.mockResolvedValueOnce(validSupervisionTask(taskOverrides));
 
-    const res = await POST(createRequest(validBody()), {
-      params: Promise.resolve({ id: 'vr_1' }),
-    });
+      const res = await POST(createRequest(validBody()), {
+        params: Promise.resolve({ id: 'vr_1' }),
+      });
 
-    expect(res!.status).toBe(403);
-    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
-    expect(confirmHandoffMock).not.toHaveBeenCalled();
-  });
+      expect(res!.status).toBe(403);
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('returns stale version conflicts before final confirmation', async () => {
     visitRecordFindFirstMock.mockResolvedValue(validVisitRecord({ version: 3 }));
@@ -408,7 +394,6 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
       visitRecordFindFirstMock.mockResolvedValue(validVisitRecord());
       membershipFindFirstMock.mockResolvedValue({ user_id: 'supervisor_1', role: 'pharmacist' });
       taskFindFirstMock.mockResolvedValue(validSupervisionTask());
-      auditLogFindFirstMock.mockResolvedValue({ id: 'audit_request_1' });
       confirmHandoffMock.mockRejectedValueOnce(cause);
 
       const res = await POST(createRequest(validBody()), {

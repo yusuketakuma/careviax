@@ -49,6 +49,12 @@ export class VisitHandoffSupervisionTaskUnavailableError extends Error {
   }
 }
 
+export class VisitHandoffSupervisionRequestUnavailableError extends Error {
+  constructor(visitRecordId: string) {
+    super(`Visit record ${visitRecordId} has no matching supervision request`);
+  }
+}
+
 function readStructuredSoap(value: unknown): Partial<StructuredSoap> {
   return readJsonObject(value) ?? {};
 }
@@ -444,6 +450,26 @@ export async function confirmHandoff(
   ) {
     throw new VisitHandoffSupervisionTaskUnavailableError(supervisionReview.taskId);
   }
+  let supervisionRequestProvenance: {
+    traineeUserId: string;
+    supervisorUserId: string;
+    requestedVisitRecordVersion: number;
+  } | null = null;
+  if (supervisionReview) {
+    const { traineeUserId, supervisorUserId, requestedVisitRecordVersion } = supervisionReview;
+    if (
+      !traineeUserId ||
+      supervisorUserId !== confirmedBy ||
+      requestedVisitRecordVersion !== expectedVersion
+    ) {
+      throw new VisitHandoffSupervisionRequestUnavailableError(visitRecordId);
+    }
+    supervisionRequestProvenance = {
+      traineeUserId,
+      supervisorUserId,
+      requestedVisitRecordVersion,
+    };
+  }
 
   await withOrgContext(
     orgId,
@@ -455,6 +481,44 @@ export async function confirmHandoff(
 
       if (record.version !== expectedVersion) {
         throw new VisitHandoffStaleRecordError(visitRecordId);
+      }
+
+      if (supervisionRequestProvenance) {
+        const supervisionRequestAudit = await tx.auditLog.findFirst({
+          where: {
+            org_id: orgId,
+            actor_id: supervisionRequestProvenance.traineeUserId,
+            action: 'visit_handoff_supervision_requested',
+            target_type: 'visit_record',
+            target_id: visitRecordId,
+            AND: [
+              { changes: { path: ['visit_record_id'], equals: visitRecordId } },
+              { changes: { path: ['schedule_id'], equals: record.schedule_id } },
+              {
+                changes: {
+                  path: ['trainee_user_id'],
+                  equals: supervisionRequestProvenance.traineeUserId,
+                },
+              },
+              {
+                changes: {
+                  path: ['supervisor_user_id'],
+                  equals: supervisionRequestProvenance.supervisorUserId,
+                },
+              },
+              {
+                changes: {
+                  path: ['visit_record_version'],
+                  equals: supervisionRequestProvenance.requestedVisitRecordVersion,
+                },
+              },
+            ],
+          },
+          select: { id: true },
+        });
+        if (!supervisionRequestAudit) {
+          throw new VisitHandoffSupervisionRequestUnavailableError(visitRecordId);
+        }
       }
 
       const currentSoap = readStructuredSoap(record.structured_soap);
