@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZINTERVENTIONAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZINTERVENTIONAUTH (DONE; parent remains Partial, 2026-07-14; implementation `67923a54c`).
   - current task / files inspected / root cause:
     Shift Templates push/parity後に残14 routesを再scoreし、PHI/medical cache境界の価値からIntervention detail GET/PATCHを選定した。
     Route/test、root Intervention provider、strict consumer response schema、medication intervention panel、visit assignment/patient access helper、
