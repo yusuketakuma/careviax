@@ -2,7 +2,7 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createQueryClientWrapper } from '@/test/query-client-test-utils';
+import { createQueryClientWrapper, createTestQueryClient } from '@/test/query-client-test-utils';
 const { toastSuccessMock, toastErrorMock, clientLogWarnMock } = vi.hoisted(() => ({
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
@@ -26,6 +26,21 @@ const SELF_REPORT_DRAFT_STORAGE_KEY = 'ph-os:self-report-draft:v1:token_1';
 
 function renderSharedViewerContent() {
   return render(<SharedViewerContent token="token_1" />, { wrapper: createQueryClientWrapper() });
+}
+
+function renderSharedViewerContentWithProductionQueryRetry() {
+  const queryClient = createTestQueryClient({
+    defaultOptions: {
+      queries: {
+        retry: 1,
+        retryDelay: 0,
+      },
+    },
+  });
+
+  return render(<SharedViewerContent token="token_1" />, {
+    wrapper: createQueryClientWrapper(queryClient),
+  });
 }
 
 function createSharedViewerPayload() {
@@ -254,7 +269,7 @@ describe('SharedViewerContent self report', () => {
       }),
     );
 
-    renderSharedViewerContent();
+    renderSharedViewerContentWithProductionQueryRetry();
 
     fireEvent.change(screen.getByLabelText('OTP'), { target: { value: '123456' } });
     fireEvent.click(screen.getByRole('button', { name: /閲覧する/ }));
@@ -276,6 +291,7 @@ describe('SharedViewerContent self report', () => {
         },
       ),
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('retries the same OTP after a shared viewer unlock failure', async () => {
@@ -290,13 +306,14 @@ describe('SharedViewerContent self report', () => {
       }
       return new Response(JSON.stringify(createSharedViewerPayload()), { status: 200 });
     });
-    renderSharedViewerContent();
+    renderSharedViewerContentWithProductionQueryRetry();
 
     fireEvent.change(screen.getByLabelText('OTP'), { target: { value: '123456' } });
     fireEvent.click(screen.getByRole('button', { name: /閲覧する/ }));
     await screen.findByText(
       '共有情報を取得できませんでした。共有リンクとOTPを確認して、もう一度お試しください。',
     );
+    expect(unlockAttempts).toBe(1);
 
     fireEvent.click(screen.getByRole('button', { name: /閲覧する/ }));
     await screen.findByText('山田太郎');

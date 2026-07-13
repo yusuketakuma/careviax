@@ -54,7 +54,26 @@
 
 ## 直近の作業
 
-- codex4 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001G (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+- codex4 + codex1 integration: EXT-ACCESS-OTP-CLIENT-RETRY-001 (DONE, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    External shared viewer component/test、production QueryProvider、test QueryClient helper、external access GET/OTP rate-limit契約、PH-OS UI/UX SSOT、
+    `emil-design-eng`、installed Next 16.2.9 client component guideを確認した。Production query既定は`retry: 1`だがtest helperは`retry: false`で、viewer queryが
+    overrideを持たないため誤OTP/503の1回の閲覧操作が2 GETになり、server OTP試行/rate-limitを利用者の意図なく2回消費する回帰を既存testが隠していた。
+  - files changed / correctness / security / privacy:
+    Viewer OTP queryへ`retry: false`を明示した。Production同等`retry: 1` wrapperを使う回帰で、失敗時は1 user action = 1 GET、同じOTPを明示再送した時は
+    各操作ごと1 GET、二回目successを固定した。Success payload、self-report mutation/idempotency、OTP header、fixed recovery copy、layout、focus/a11yを
+    変更せず、token/OTP/PHIをlog/bodyへ追加していない。
+  - performance / UI quality / validation:
+    失敗時network requestを2から1へ削減し、利用者操作に由来しないOTP試行増幅を除去した。視覚再構成・copy・layout・motion変更のないquery-state修正のため
+    imagegenを省略した。Codex4 FREEZE後にcodex1がdiffとproduction/test QueryClient差を独立reviewし、focused 1 file / 15 tests、client PHI-log
+    1 allowlisted / 0 new、exact2 ESLint/Prettier/diffをPASS。
+  - remaining / rollback:
+    分散IPを跨ぐgrant単位OTP lockoutは既存`EXT-ACCESS-OTP-BRUTEFORCE-001`のschema/migration/Privacy human gateに残る。ExternalAccessGrant FORCE RLS
+    context修正は`AUTHZ-EXTERNAL-GRANT-RLS-CONTEXT-001`としてcodex2実装中。Generic DB audit triggerのcredential/PII/raw scope永続化は
+    `PRIVACY-EXTERNAL-GRANT-AUDIT-REDACTION-001`へP0 Human DB+Privacy gateで登録し、migration/scrubは未実行。Rollbackはこのscoped commitのrevertで
+    DB/data rollback不要。
+
+- codex4 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001G (DONE; parent remains Partial, 2026-07-13; implementation `6cadf9bee`, PUSHED).
   - current task / files inspected / root cause:
     PCA pump rental collection/dynamic routesとfocused tests、PcaPump/PcaPumpRental/PrescriberInstitutionのorg predicates、shared auth/no-store/response
     helpers、installed Next 16.2.9 Route Handler guide、API/auth/raw-read/module guardsを確認した。Primary pump/rentalは404で揃っていた一方、linked
