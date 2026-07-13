@@ -155,6 +155,13 @@ import {
   validateVisitAttachment,
 } from './visit-record-form.shared';
 import { VisitCompletionReadinessWarning } from './visit-completion-readiness-warning';
+import {
+  buildVisitRecordAttachmentPatchResponseSchema,
+  buildVisitRecordCreateResponseSchema,
+  buildVisitRecordHeaderSafetyResponseSchema,
+  buildVisitRecordScheduleResponseSchema,
+  visitRecordCdsAlertsResponseSchema,
+} from './visit-record-form-response-schemas';
 
 type ScheduleDetail = {
   id: string;
@@ -187,11 +194,10 @@ export async function fetchVisitRecordCdsAlerts(
     headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({ cycleId }),
   });
-  const payload = await readApiJson<{ data: { alerts: CdsAlert[] } }>(
-    res,
-    '訪問時の処方安全アラート取得に失敗しました',
-  );
-  return payload.data;
+  return readApiJson(res, {
+    schema: visitRecordCdsAlertsResponseSchema,
+    fallbackMessage: '訪問時の処方安全アラート取得に失敗しました',
+  });
 }
 
 const outcomeOptions = [
@@ -784,11 +790,10 @@ export function VisitRecordForm({
       const res = await fetch(`/api/visit-schedules/${schedulePathId}`, {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: ScheduleDetail }>(
-        res,
-        'スケジュール情報の取得に失敗しました',
-      );
-      return payload.data;
+      return readApiJson(res, {
+        schema: buildVisitRecordScheduleResponseSchema(id),
+        fallbackMessage: 'スケジュール情報の取得に失敗しました',
+      });
     },
     enabled: !!orgId && !!id,
   });
@@ -803,10 +808,10 @@ export function VisitRecordForm({
       const res = await fetch(buildPatientApiPath(schedule?.patient_id ?? '', '/header-summary'), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{
-        data: { safety: { visible_safety_tags: string[]; hidden_safety_tag_count: number } };
-      }>(res, '患者ヘッダー情報の取得に失敗しました');
-      return payload.data;
+      return readApiJson(res, {
+        schema: buildVisitRecordHeaderSafetyResponseSchema(schedule?.patient_id ?? ''),
+        fallbackMessage: '患者ヘッダー情報の取得に失敗しました',
+      });
     },
     enabled: !!orgId && !!schedule?.patient_id,
   });
@@ -1541,12 +1546,11 @@ export function VisitRecordForm({
         throw new Error(err.message ?? '訪問記録の保存に失敗しました');
       }
 
-      const createPayload = await readApiJson<{ data: { record: SavedVisitRecord } }>(
-        res,
-        '訪問記録の保存に失敗しました',
-      );
-      const { record } = createPayload.data;
       const labPatientId = schedule?.patient_id ?? values.patient_id;
+      const record = await readApiJson(res, {
+        schema: buildVisitRecordCreateResponseSchema(labPatientId),
+        fallbackMessage: '訪問記録の保存に失敗しました',
+      });
 
       // ⑤ 反映導線: 確認した患者情報を正本(患者詳細)へ反映する(任意・オンライン時のみ・非ブロッキング)。
       // source_visit_record_id を付けることで変更履歴の source が visit_record になる。
@@ -1613,13 +1617,17 @@ export function VisitRecordForm({
             attachmentWarning: '訪問記録は保存しましたが、添付の紐づけに失敗しました',
           };
         }
-        const patchPayload = await readApiJson<{ data: SavedVisitRecord }>(
-          patchResponse,
-          '訪問記録は保存しましたが、添付の紐づけに失敗しました',
-        );
+        const patchedRecord = await readApiJson(patchResponse, {
+          schema: buildVisitRecordAttachmentPatchResponseSchema(
+            record.id,
+            record.patient_id,
+            record.version,
+          ),
+          fallbackMessage: '訪問記録は保存しましたが、添付の紐づけに失敗しました',
+        });
 
         return {
-          record: patchPayload.data,
+          record: patchedRecord,
           attachmentWarning: null,
         };
       } catch (cause) {

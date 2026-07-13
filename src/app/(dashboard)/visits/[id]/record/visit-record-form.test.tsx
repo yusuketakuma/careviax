@@ -573,7 +573,12 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
           return new Response(
             JSON.stringify({
               data: {
-                safety: { visible_safety_tags: ['allergy'], hidden_safety_tag_count: 2 },
+                patient_id: 'patient_1',
+                safety: {
+                  safety_tags: ['allergy', 'renal', 'fall'],
+                  visible_safety_tags: ['allergy'],
+                  hidden_safety_tag_count: 2,
+                },
               },
             }),
             { status: 200 },
@@ -672,7 +677,10 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         if (url.endsWith('/header-summary')) {
           return new Response(
             JSON.stringify({
-              data: { safety: { visible_safety_tags: [], hidden_safety_tag_count: 0 } },
+              data: {
+                patient_id: 'patient_1',
+                safety: { safety_tags: [], visible_safety_tags: [], hidden_safety_tag_count: 0 },
+              },
             }),
             { status: 200 },
           );
@@ -725,7 +733,10 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         if (url.endsWith('/header-summary')) {
           return new Response(
             JSON.stringify({
-              data: { safety: { visible_safety_tags: [], hidden_safety_tag_count: 0 } },
+              data: {
+                patient_id: 'patient_1',
+                safety: { safety_tags: [], visible_safety_tags: [], hidden_safety_tag_count: 0 },
+              },
             }),
             { status: 200 },
           );
@@ -789,7 +800,10 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         if (url.endsWith('/header-summary')) {
           return new Response(
             JSON.stringify({
-              data: { safety: { visible_safety_tags: [], hidden_safety_tag_count: 0 } },
+              data: {
+                patient_id: 'patient_1',
+                safety: { safety_tags: [], visible_safety_tags: [], hidden_safety_tag_count: 0 },
+              },
             }),
             { status: 200 },
           );
@@ -875,7 +889,10 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         if (url.endsWith('/header-summary')) {
           return new Response(
             JSON.stringify({
-              data: { safety: { visible_safety_tags: [], hidden_safety_tag_count: 0 } },
+              data: {
+                patient_id: 'patient_1',
+                safety: { safety_tags: [], visible_safety_tags: [], hidden_safety_tag_count: 0 },
+              },
             }),
             { status: 200 },
           );
@@ -936,7 +953,10 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         if (url.endsWith('/header-summary')) {
           return new Response(
             JSON.stringify({
-              data: { safety: { visible_safety_tags: [], hidden_safety_tag_count: 0 } },
+              data: {
+                patient_id: 'patient_1',
+                safety: { safety_tags: [], visible_safety_tags: [], hidden_safety_tag_count: 0 },
+              },
             }),
             { status: 200 },
           );

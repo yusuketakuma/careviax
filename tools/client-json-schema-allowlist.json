@@ -40,12 +40,6 @@
       "counts": {
         "stringFallback": 5
       }
-    },
-    {
-      "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
-      "counts": {
-        "stringFallback": 5
-      }
     }
   ]
 }
