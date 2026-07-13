@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZPUSHSUBAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZPUSHSUBAUTH (DONE; parent remains Partial, 2026-07-14; implementation `9bc37e7c6`).
   - current task / files inspected / root cause:
     Intervention push/parity後に残13 routesを再scoreし、既存`PUSH-SUB-ATOMICITY-001`でatomic RLS hardening済みのPush Subscription POST/DELETEを
     次の最小sliceに選定した。Route/test、allowlist、push/OS notification回帰、auth wrapper、installed Next 16.2.9 Route Handler/Data Security guideを確認した。
