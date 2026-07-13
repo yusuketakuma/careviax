@@ -144,6 +144,21 @@ describe('check-plans-active-board', () => {
     expect(() => runCheck(root)).toThrow(/completed derived task IDs/);
   });
 
+  it('rejects completed statuses even when the active queue count is updated', () => {
+    const root = createFixtureRepo(
+      fixturePlans({
+        implementationRows: `| ID | Status | Priority | Lane | Plan / DoD | Validation / Stop |
+| --- | --- | --- | --- | --- | --- |
+| \`RECENTLY-FINISHED-001\` | Done | P1 | API | implemented | tests |
+| \`PLANS-ACTIVE-LINT-001\` | Not started | P2 | Plan hygiene | Check active board | tests |`,
+      }),
+    );
+
+    expect(() => runCheck(root)).toThrow(
+      /completed statuses must not remain in active implementation queues/,
+    );
+  });
+
   it('rejects active-board references to the old dashboard rail task ID', () => {
     const root = createFixtureRepo(
       fixturePlans({

@@ -180,6 +180,25 @@ function assertNoCompletedIdsInActiveQueues(activeLines) {
   }
 }
 
+function assertNoCompletedStatusesInActiveQueues(activeLines) {
+  const completedRows = ACTIVE_QUEUE_HEADINGS.flatMap((heading) =>
+    dataRows(extractTableAfterHeading(activeLines, heading)).flatMap((row) => {
+      const [idCell, statusCell] = splitTableRow(row);
+      const status = statusCell?.trim() ?? '';
+      return /^(?:done|completed)(?:\b|\s*\/)/i.test(status)
+        ? [{ heading, id: idCell.replace(/`/g, '').trim(), status }]
+        : [];
+    }),
+  );
+
+  if (completedRows.length > 0) {
+    fail(
+      'completed statuses must not remain in active implementation queues',
+      completedRows.map(({ heading, id, status }) => `- ${heading}: ${id} (${status})`),
+    );
+  }
+}
+
 function assertNoLegacyActiveDashboardRail(activeLines) {
   const activeText = activeLines.join('\n');
   if (activeText.includes('`DASH-P1-010-RAIL`')) {
@@ -259,6 +278,7 @@ export function checkPlansActiveBoard(content) {
     countRows(activeLines, 'Frontend implementation queue — 未実装だけ'),
   );
 
+  assertNoCompletedStatusesInActiveQueues(activeLines);
   assertNoCompletedIdsInActiveQueues(activeLines);
   assertNoLegacyActiveDashboardRail(activeLines);
   assertNoStaleBoardVersion(activeLines);

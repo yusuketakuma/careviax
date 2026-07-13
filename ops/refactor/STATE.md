@@ -59,9 +59,12 @@
     `pnpm plans:active:check`をcurrent HEADで再実行し、Implementation queueの分類件数がexpected 44 / actual 48でfailすることを確認した。
     新しく完了した`S3-SSE-DEFAULT-NONKMS-001`、`VISIT-RECORD-OFFLINE-SYNC-SCOPE-001`、
     `EVIDENCE-PRESIGN-CHECKSUM-001`、`QUERY-SHAPE-DAYBOARD-003I`を未実装入口のtableへ追加していたことが原因だった。
-    4 IDsをCurrent execution sliceのDONE/PUSHED証跡へ移し、実装queueから削除した。summaryの44を水増しせず、再実装防止を維持する。
+    4 IDsをCurrent execution sliceのDONE/PUSHED証跡へ移し、実装queueから削除した。追補で残っていたDone 8 rowsも同じcompleted
+    sliceへ移し、implementation queueを未完了36 rowsだけへ収束した。checkerへ`Done`/`Completed` statusの再混入拒否を追加し、
+    summary countだけ更新してgreenにする迂回を防止した。
   - validation / security / performance / remaining:
-    `pnpm plans:active:check`、Prettier、`git diff --check` PASS。code/API/DB/auth/PHI/performance behavior変更なし。
+    Checker 1 file / 10 tests、`pnpm plans:active:check`、scoped ESLint、Prettier、`git diff --check` PASS。
+    code/API/DB/auth/PHI/performance behavior変更なし。
     VERIFY_REQUIRED 64 entriesに記載された65 unique commit hashesは全てcurrent HEAD ancestorと確認済み。残は並列3 slice統合後に
     serialized typecheck/no-unused/full test/buildをcurrent HEADで実行し、旧capacity-only verification stateを再分類する。
 
