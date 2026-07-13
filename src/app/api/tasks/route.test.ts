@@ -723,6 +723,34 @@ describe('/api/tasks', () => {
     });
   });
 
+  it.each(['staff_work_request_audit', 'pharmacy.staff_work_request_audit'])(
+    'creates %s with a complete allowed related-entity tuple',
+    async (taskType) => {
+      requireAuthContextMock.mockResolvedValueOnce({
+        ctx: { orgId: 'org_1', userId: 'owner_1', role: 'owner' },
+      });
+      const response = await POST(
+        createRequest('http://localhost/api/tasks', {
+          task_type: taskType,
+          title: '調剤監査を依頼',
+          related_entity_type: 'dispense_task',
+          related_entity_id: 'dispense_1',
+        }),
+      );
+      if (!response) throw new Error('response is undefined');
+
+      expect(response.status).toBe(201);
+      expectSensitiveNoStore(response);
+      expect(taskCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          task_type: taskType,
+          related_entity_type: 'dispense_task',
+          related_entity_id: 'dispense_1',
+        }),
+      });
+    },
+  );
+
   it.each(['handoff_supervision_review', 'core.handoff_supervision_review'])(
     'rejects generic creation of protected supervision tasks before scope resolution or writes (%s)',
     async (taskType) => {
@@ -749,6 +777,85 @@ describe('/api/tasks', () => {
       await expect(response.json()).resolves.toMatchObject({
         message: 'このタスクは専用フローから作成してください',
         details: { task_type: ['専用の上長確認依頼を使用してください'] },
+      });
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(membershipFindManyMock).not.toHaveBeenCalled();
+      expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(taskCreateMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [
+      'legacy disallowed type',
+      {
+        task_type: 'staff_work_request_audit',
+        related_entity_type: 'visit_schedule',
+        related_entity_id: 'visit_1',
+      },
+      { related_entity_type: ['このタスク種別では指定できない関連リソースです'] },
+    ],
+    [
+      'canonical disallowed type',
+      {
+        task_type: 'pharmacy.staff_work_request_audit',
+        assigned_to: 'assignee_1',
+        related_entity_type: 'visit_schedule',
+        related_entity_id: 'visit_1',
+      },
+      { related_entity_type: ['このタスク種別では指定できない関連リソースです'] },
+    ],
+    [
+      'missing id',
+      {
+        task_type: 'staff_work_request_audit',
+        related_entity_type: 'dispense_task',
+      },
+      { related_entity_id: ['関連リソース種別とIDは同時に指定してください'] },
+    ],
+    [
+      'missing type',
+      {
+        task_type: 'staff_work_request_audit',
+        related_entity_id: 'dispense_1',
+      },
+      { related_entity_type: ['関連リソース種別とIDは同時に指定してください'] },
+    ],
+    [
+      'blank type',
+      {
+        task_type: 'staff_work_request_audit',
+        related_entity_type: '   ',
+        related_entity_id: 'dispense_1',
+      },
+      { related_entity_type: ['関連リソース種別を指定してください'] },
+    ],
+    [
+      'blank id',
+      {
+        task_type: 'staff_work_request_audit',
+        related_entity_type: 'dispense_task',
+        related_entity_id: '   ',
+      },
+      { related_entity_id: ['関連リソースIDを指定してください'] },
+    ],
+  ] as const)(
+    'rejects an invalid related-entity contract before scope resolution or writes (%s)',
+    async (_label, relatedEntityInput, expectedDetails) => {
+      const response = await POST(
+        createRequest('http://localhost/api/tasks', {
+          title: '不正な関連リソースを拒否',
+          ...relatedEntityInput,
+        }),
+      );
+      if (!response) throw new Error('response is undefined');
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '関連リソースの指定が不正です',
+        details: expectedDetails,
       });
       expect(careCaseFindManyMock).not.toHaveBeenCalled();
       expect(membershipFindManyMock).not.toHaveBeenCalled();
@@ -1065,7 +1172,7 @@ describe('/api/tasks', () => {
 
     const response = await POST(
       createRequest('http://localhost/api/tasks', {
-        task_type: 'patient_self_report_followup',
+        task_type: 'staff_work_request_general',
         title: 'ケースA: 服薬の困りごと',
         priority: 'high',
         related_entity_type: 'case',
@@ -1147,11 +1254,12 @@ describe('/api/tasks', () => {
     expect(taskCreateMock).not.toHaveBeenCalled();
   });
 
-  it('rejects unregistered task types before resolving assignment scope', async () => {
+  it('rejects unregistered task types before related-entity validation or assignment scope', async () => {
     const response = await POST(
       createRequest('http://localhost/api/tasks', {
         task_type: 'unknown_task_type',
         title: '未登録種別',
+        related_entity_type: 'patient',
       }),
     );
     if (!response) throw new Error('response is undefined');

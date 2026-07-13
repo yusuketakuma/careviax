@@ -19,7 +19,7 @@ import {
   evaluateTaskAssigneeMembershipsEligibility,
   requiresDedicatedTaskAssignmentFlow,
 } from '@/lib/tasks/task-assignee-eligibility';
-import { isRegisteredTaskType } from '@/lib/tasks/task-registry';
+import { evaluateTaskRelatedEntityContract } from '@/lib/tasks/task-related-entity';
 import { createTaskSchema, taskPriorityValues, taskStatusValues } from '@/lib/validations/task';
 import {
   buildDashboardTaskAssignmentWhere,
@@ -368,7 +368,12 @@ async function authenticatedPOST(req: NextRequest) {
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
-  if (!isRegisteredTaskType(parsed.data.task_type)) {
+  const relatedEntityContract = evaluateTaskRelatedEntityContract({
+    taskType: parsed.data.task_type,
+    relatedEntityType: parsed.data.related_entity_type,
+    relatedEntityId: parsed.data.related_entity_id,
+  });
+  if (!relatedEntityContract.valid && relatedEntityContract.reason === 'unregistered_task_type') {
     return validationError('未登録のタスク種別です', {
       task_type: ['未登録のタスク種別です'],
     });
@@ -376,6 +381,19 @@ async function authenticatedPOST(req: NextRequest) {
   if (requiresDedicatedTaskAssignmentFlow(parsed.data.task_type)) {
     return validationError('このタスクは専用フローから作成してください', {
       task_type: ['専用の上長確認依頼を使用してください'],
+    });
+  }
+  if (!relatedEntityContract.valid) {
+    const message =
+      relatedEntityContract.reason === 'unsupported_related_entity_type'
+        ? 'このタスク種別では指定できない関連リソースです'
+        : relatedEntityContract.reason === 'blank_related_entity_type'
+          ? '関連リソース種別を指定してください'
+          : relatedEntityContract.reason === 'blank_related_entity_id'
+            ? '関連リソースIDを指定してください'
+            : '関連リソース種別とIDは同時に指定してください';
+    return validationError('関連リソースの指定が不正です', {
+      [relatedEntityContract.field]: [message],
     });
   }
   const assignmentScope = await resolveDashboardAssignmentScope({
