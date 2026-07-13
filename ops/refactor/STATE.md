@@ -55,6 +55,21 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZPATIENTLABAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Admin Jobs push/parity後の残10 routesから、Cognito tenant provisioningを避けてPatient Lab detail PATCHを選定した。Route/test、lab root/provider/UI、
+    patient write guard、assignment helper、rate-limit、allowlist、installed Next guideを確認した。既存handlerはcanVisit、archive/assignment/source visit/RLS
+    guardを持つ一方、1 direct auth callのPHI-bearing success/validation/not-found responseが標準no-store/performance/sanitized-500境界を通らなかった。
+  - files changed / bugs found / correctness / security / privacy / medical safety / performance:
+    PATCHをtyped named handler + `withAuthContext`へ移行し、permission message、route/body validation、archive拒否、patient/lab/source-visit scope、
+    stale source ID cleanup、RLS request context、検査値DTOを維持した。Auth denial時のPHI read/write zeroとpermission/messageを追加回帰し、allowlist
+    1 entryを除去。Direct debtは160→159 routes、224→223 calls、helper未使用success routeは10→9へ減った。DB query/write/payloadは不変。
+  - validation results / remaining work / next action / rollback:
+    Baseline/focused route + checker 2 files / 16 tests、lab provider/UI/assignment領域5 files / 79 tests、exact ESLint/Prettier、8 GiB typecheck /
+    no-unused、route-auth 159 allowlisted / 223 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、
+    client schema 361 backed / 0 allowlisted、Plans active、format/diffをPASS。新規security/privacy/medical/performance issueなし。Schema/migration/deploy/
+    Oracleなし。非視覚API変更のためimagegen/browserなし。親にはdirect-auth success未収束9 routes、request correlation/error registryが残る。
+
 - codex1: API-CONTRACT-001FZJOBSAUTH (DONE; parent remains Partial, 2026-07-14; implementation `facc17196`).
   - current task / files inspected / root cause:
     Presence push/parity後に残11 routesを再scoreし、read-only Admin Jobs GETを選定した。Route/test、admin consumer strict schema/UI、rate-limit/route catalog、

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
@@ -45,17 +45,11 @@ async function validateSourceVisitRecord(args: {
   });
 }
 
-export async function PATCH(
+async function updatePatientLab(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string; labId: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string; labId: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '検査値の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId, labId: rawLabId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
@@ -144,3 +138,8 @@ export async function PATCH(
 
   return success({ data: updated });
 }
+
+export const PATCH = withAuthContext(updatePatientLab, {
+  permission: 'canVisit',
+  message: '検査値の更新権限がありません',
+});

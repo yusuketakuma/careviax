@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  requireAuthContextMock,
   patientFindFirstMock,
   patientLabObservationFindFirstMock,
   patientLabObservationUpdateMock,
   visitRecordFindFirstMock,
 } = vi.hoisted(() => ({
+  requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   patientLabObservationFindFirstMock: vi.fn(),
   patientLabObservationUpdateMock: vi.fn(),
@@ -14,15 +16,14 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: vi.fn(async () => ({
-    ctx: {
-      orgId: 'org_1',
-      userId: 'pharmacist_1',
-      role: 'pharmacist',
-      ipAddress: '127.0.0.1',
-      userAgent: 'vitest',
+  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
     },
-  })),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -73,6 +74,15 @@ function createMalformedJsonPatchRequest() {
 describe('/api/patients/[id]/labs/[labId] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'pharmacist_1',
+        role: 'pharmacist',
+        ipAddress: '127.0.0.1',
+        userAgent: 'vitest',
+      },
+    });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
     patientLabObservationFindFirstMock.mockResolvedValue({
       id: 'lab_1',
@@ -86,6 +96,24 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
       note: '再確認済み',
     });
     visitRecordFindFirstMock.mockResolvedValue({ id: 'visit_1' });
+  });
+
+  it('returns the authorization response before parsing or reading patient data', async () => {
+    const deniedResponse = Response.json(
+      { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+      { status: 403 },
+    );
+    requireAuthContextMock.mockResolvedValueOnce({ response: deniedResponse });
+
+    const response = await PATCH(createMalformedJsonPatchRequest(), {
+      params: Promise.resolve({ id: 'patient_1', labId: 'lab_1' }),
+    });
+
+    expect(response).toBe(deniedResponse);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object patch payloads before loading the lab observation', async () => {
@@ -166,6 +194,13 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.objectContaining({
+        permission: 'canVisit',
+        message: '検査値の更新権限がありません',
+      }),
+    );
     expect(patientLabObservationFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'lab_1',
