@@ -1,5 +1,5 @@
 import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError, conflict } from '@/lib/api/response';
+import { conflict, forbidden, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { enforceFeatureRateLimit } from '@/lib/api/rate-limit';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
@@ -760,7 +760,11 @@ export const POST = withAuthContext(
       if (!refResult.ok) return refResult.response;
     }
     if (patient_id && !(await canAccessPrescriptionPatient(prisma, ctx.orgId, ctx, patient_id))) {
-      return validationError('この患者の処方受付を作成する権限がありません');
+      return withSensitiveNoStore(
+        cycle_id
+          ? validationError('指定された患者を確認できません')
+          : forbidden('この患者の処方受付を作成する権限がありません'),
+      );
     }
 
     if (qr_draft_id) {

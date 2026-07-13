@@ -9,7 +9,7 @@ import { isPrismaErrorCode, isPrismaUniqueConstraintError } from '@/lib/db/prism
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
-import { internalError, success, validationError } from '@/lib/api/response';
+import { forbiddenResponse, internalError, success, validationError } from '@/lib/api/response';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { canCompleteTaskInline } from '@/lib/tasks/inline-completion';
@@ -424,8 +424,8 @@ async function authenticatedPOST(req: NextRequest) {
       parsed.data.assigned_to,
     )
   ) {
-    return validationError(
-      '担当外ユーザーへのタスク割り当てはできません',
+    return forbiddenResponse(
+      'このユーザーへのタスク割り当て権限がありません',
       buildTaskAssigneeRejectionDetails('担当できるスタッフを選択してください'),
     );
   }

@@ -100,6 +100,7 @@
     "colors:check": "node tools/scripts/check-raw-state-colors.mjs",
     "typography:check": "node tools/scripts/check-typography-minimum.mjs",
     "boundaries:check": "node tools/scripts/check-module-boundaries.mjs",
+    "api-authz-status:check": "node tools/scripts/check-api-authz-status.mjs",
     "api-response-shape:check": "node tools/scripts/check-api-response-shape.mjs",
     "client-json-schema:check": "node tools/scripts/check-client-json-schema.mjs",
     "dto-direct-prisma-return:check": "node tools/scripts/check-dto-direct-prisma-return.mjs",

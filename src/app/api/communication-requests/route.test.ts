@@ -1014,6 +1014,34 @@ describe('/api/communication-requests', () => {
     });
   });
 
+  it('keeps inaccessible or nonexistent request targets non-enumerating', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await POST(
+      Object.assign(
+        createPostRequest({
+          patient_id: 'patient_hidden',
+          case_id: 'case_hidden',
+          request_type: '疑義照会',
+          subject: '確認事項',
+          content: '処方内容を確認したいです',
+        }),
+        { role: 'external_viewer' },
+      ),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '患者またはケースを確認できません',
+    });
+    expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
+    expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+
   it('derives patient and case from an accessible linked tracing report', async () => {
     const response = (await POST(
       createPostRequest({

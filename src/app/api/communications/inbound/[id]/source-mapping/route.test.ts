@@ -299,6 +299,10 @@ describe('POST /api/communications/inbound/[id]/source-mapping', () => {
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '患者またはケースを確認できません',
+    });
     expect(mappingCreateMock).not.toHaveBeenCalled();
   });
 

@@ -203,6 +203,10 @@ describe('/api/communications/inbound/mcs', () => {
 
     expect(response.status).toBe(400);
     expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '患者またはケースを確認できません',
+    });
     expect(inboundCommunicationEventCreateMock).not.toHaveBeenCalled();
   });
 });

@@ -54,7 +54,24 @@
 
 ## 直近の作業
 
-- codex3 + codex1 integration: QUERY-SHAPE-DAYBOARD-WATCHLIST-003I (DONE, 2026-07-13; implementation in this scoped commit).
+- codex2 + codex1 integration: API-STATUS-AUTHZ-403-AS-400-001 (DONE, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Tasks、medication cycles、QR drafts/confirm、communication events/requests/inbound/mcs/phone/source mapping、care reports、
+    prescription intakesのroutes/tests、response/no-store helpers、route auth guard、API response-shape guard、CI/packageを確認した。
+    純粋なpermission/assignment拒否が400 `VALIDATION_ERROR`となり、malformed/body reference rejectionと監視上区別できなかった。
+  - files changed / security / correctness / performance:
+    Task assignee変更/作成、medication-cycle作成、care-report source accessとtransaction内再検証、explicit reference validation後の
+    prescription intake拒否を403 `AUTH_FORBIDDEN`へ統一した。一方、存在とassignment不可を同一化すべきQR、communication/inbound、
+    cycle-linked prescription pathはgeneric 400 `VALIDATION_ERROR`のままにし、resource existenceを列挙させない。全拒否はprivate no-store、
+    write/notification/auditより前で停止する。静的guardをTypeScript AST traversalで追加し、direct static `validationError`の権限文言を拒否。
+    comment/string/regex quoteによるblind、Unicode escape bypassを回帰固定した。DB/query/network数やschema、success DTOは変更していない。
+  - validation / review / remaining / rollback:
+    Codex2とcodex1独立rerunでroute 13 files / 445 tests + guard 1 file / 8 tests = 14 files / 453 tests、
+    `pnpm api-authz-status:check`、API response shape 0/0、route auth wrapper 176 allowlisted / 252 direct / 0 new、scoped ESLint、
+    Prettier、`git diff --check` PASS。AST化前のregex quote false-negativeは自己reviewで検出・修正済み。Dynamic messageは意図的に
+    route-test管理。残は全slice後のserialized typecheck/no-unused/full test/build。Rollbackはこのscoped commitのrevert、DB/data不要。
+
+- codex3 + codex1 integration: QUERY-SHAPE-DAYBOARD-WATCHLIST-003I (DONE, 2026-07-13; implementation `b01d928c4`, PUSHED).
   - current task / files inspected / root cause:
     day-board route/test、query-shape checker/watchlist、membership/schedule/shift/vehicle/proposal/task queryとassignment scopeを確認した。
     Watchlist追加時baselineはunbounded `findMany` 6、unstable order 1、同一Task delegate aggregate fan-out 1の計8 debtだった。
@@ -234,10 +251,9 @@
     DB/data rollback不要。gbrain: `projects/careviax/decisions/2026-07-13/anchor-daily-jobs-to-japan-business-dates`。
 
 - parallel assignments (ACTIVE, 2026-07-13):
-  - codex2: `API-STATUS-AUTHZ-403-AS-400-001`。Confirmed permission/scope denialを403 `AUTH_FORBIDDEN`へ統一し、
-    malformed/body-FK 400とnon-enumerating concealmentを維持する。自己reviewで検出したregex quote false-negativeを
-    TypeScript AST guardへ直して再検証中。
-  - codex3: `QUERY-SHAPE-DAYBOARD-WATCHLIST-003I` READY、codex1独立review済み、scoped統合中。
+  - codex2: `API-STATUS-AUTHZ-403-AS-400-001` READY、AST guard追補とcodex1独立review済み、scoped統合中。
+  - codex3: `PERF-DB-PATIENT-BOARD-CURSOR` / `QUERY-SHAPE-WATCHLIST-003J`。patients main boardのstable cursor、
+    bounded select/take、payload/query budgetを7-path API/service/model sliceで実装中。
   - codex4: `S3-OBJECT-LOCK-PRESIGNED-CHECKSUM-001`。legacy prescriptionのfinal upload File digestをFE→presign→metadata→
     HeadObject complete verificationまで一貫させる10-path FE/BE sliceを実装中。
   - codex1: `VISIT-RECORD-OFFLINE-SYNC-SCOPE-001`をfocused gateまで完了し、single ledger、exact staging、commit/push、

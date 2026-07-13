@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
-import { success, validationError, conflict, internalError } from '@/lib/api/response';
+import { conflict, internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
@@ -313,7 +313,7 @@ const authenticatedPOST = withAuthContext(
 
     if (patient_id) {
       if (!(await canAccessPrescriptionPatient(prisma, ctx.orgId, ctx, patient_id))) {
-        return validationError('この患者のQRスキャン下書きを作成する権限がありません');
+        return validationError('指定された患者を確認できません');
       }
       const patient = await prisma.patient.findFirst({
         where: { id: patient_id, org_id: ctx.orgId },

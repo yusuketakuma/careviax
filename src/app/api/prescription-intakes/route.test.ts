@@ -33,6 +33,7 @@ const {
   notifyWorkflowMutationMock,
   notifyWebhookEventForOrgMock,
   enforceFeatureRateLimitMock,
+  canAccessPrescriptionPatientMock,
 } = vi.hoisted(() => ({
   withAuthContextMock: vi.fn(
     (
@@ -68,6 +69,7 @@ const {
   notifyWorkflowMutationMock: vi.fn().mockResolvedValue(undefined),
   notifyWebhookEventForOrgMock: vi.fn().mockResolvedValue(undefined),
   enforceFeatureRateLimitMock: vi.fn().mockResolvedValue(null),
+  canAccessPrescriptionPatientMock: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -105,6 +107,11 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 
 vi.mock('@/server/services/outbound-webhook', () => ({
   notifyWebhookEventForOrg: notifyWebhookEventForOrgMock,
+}));
+
+vi.mock('@/server/services/prescription-access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/services/prescription-access')>()),
+  canAccessPrescriptionPatient: canAccessPrescriptionPatientMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -793,6 +800,75 @@ describe('/api/prescription-intakes POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: '分割調剤の途中回は次回調剤予定日が必須です',
     });
+  });
+
+  it('returns 403 after referenced patient existence is validated but assignment access is denied', async () => {
+    canAccessPrescriptionPatientMock.mockResolvedValueOnce(false);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        source_type: 'paper',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      case_id: 'case_1',
+      patient_id: 'patient_1',
+    });
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: 'この患者の処方受付を作成する権限がありません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps cycle-linked inaccessible or nonexistent patient targets non-enumerating', async () => {
+    canAccessPrescriptionPatientMock.mockResolvedValueOnce(false);
+
+    const response = await POST(
+      createRequest({
+        cycle_id: 'cycle_1',
+        patient_id: 'patient_hidden',
+        source_type: 'paper',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '指定された患者を確認できません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('creates a new cycle and completes registration in one request when case and patient are provided', async () => {

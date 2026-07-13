@@ -175,7 +175,7 @@ const authenticatedPOST = withAuthContext(
         if (!canAccessTarget) {
           return {
             ok: false as const,
-            response: validationError('患者またはケースの割当権限がありません'),
+            response: validationError('患者またはケースを確認できません'),
           };
         }
 

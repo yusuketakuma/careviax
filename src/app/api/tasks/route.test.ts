@@ -942,9 +942,11 @@ describe('/api/tasks', () => {
     );
     if (!response) throw new Error('response is undefined');
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
-      message: '担当外ユーザーへのタスク割り当てはできません',
+      code: 'AUTH_FORBIDDEN',
+      message: 'このユーザーへのタスク割り当て権限がありません',
       details: {
         reason: 'task_assignee_ineligible',
         assigned_to: ['担当できるスタッフを選択してください'],
@@ -1003,7 +1005,24 @@ describe('/api/tasks', () => {
         { user_id: 'pharmacist_2', role: 'external_viewer', can_audit_dispense: false },
       ]);
 
-    for (const title of ['actor role ambiguity', 'assignee role ambiguity']) {
+    for (const [title, expected] of [
+      [
+        'actor role ambiguity',
+        {
+          status: 403,
+          code: 'AUTH_FORBIDDEN',
+          message: 'このユーザーへのタスク割り当て権限がありません',
+        },
+      ],
+      [
+        'assignee role ambiguity',
+        {
+          status: 400,
+          code: 'VALIDATION_ERROR',
+          message: '依頼先スタッフはこのタスク種別を担当できません',
+        },
+      ],
+    ] as const) {
       const response = await POST(
         createRequest('http://localhost/api/tasks', {
           task_type: 'staff_work_request_general',
@@ -1012,7 +1031,12 @@ describe('/api/tasks', () => {
         }),
       );
       if (!response) throw new Error('response is undefined');
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(expected.status);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: expected.code,
+        message: expected.message,
+      });
     }
 
     expect(taskCreateMock).not.toHaveBeenCalled();

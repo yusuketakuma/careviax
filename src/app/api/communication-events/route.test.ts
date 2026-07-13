@@ -13,6 +13,7 @@ const {
   careCaseFindFirstMock,
   learnContactProfileFromCommunicationMock,
   withOrgContextMock,
+  canAccessCommunicationRequestRecordMock,
 } = vi.hoisted(() => ({
   communicationEventFindManyMock: vi.fn(),
   communicationEventCreateMock: vi.fn(),
@@ -24,6 +25,7 @@ const {
   careCaseFindFirstMock: vi.fn(),
   learnContactProfileFromCommunicationMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  canAccessCommunicationRequestRecordMock: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -73,6 +75,11 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/contact-profiles', () => ({
   learnContactProfileFromCommunication: learnContactProfileFromCommunicationMock,
+}));
+
+vi.mock('@/server/services/communication-request-access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/services/communication-request-access')>()),
+  canAccessCommunicationRequestRecord: canAccessCommunicationRequestRecordMock,
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
@@ -370,6 +377,28 @@ describe('/api/communication-events', () => {
     });
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps inaccessible or nonexistent event targets non-enumerating', async () => {
+    canAccessCommunicationRequestRecordMock.mockResolvedValueOnce(false);
+
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_hidden',
+        event_type: 'fax',
+        channel: 'fax',
+        direction: 'outbound',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '患者またはケースを確認できません',
+    });
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
   });

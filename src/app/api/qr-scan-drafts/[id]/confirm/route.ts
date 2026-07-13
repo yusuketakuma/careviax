@@ -1,7 +1,8 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject } from '@/lib/db/json';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import {
@@ -240,7 +241,7 @@ export const POST = withAuthContext(
     }
 
     if (!(await canAccessPrescriptionPatient(prisma, ctx.orgId, ctx, patient_id))) {
-      return validationError('この患者のQRスキャン下書きを確定する権限がありません');
+      return withSensitiveNoStore(validationError('指定された患者を確認できません'));
     }
 
     const targetPatient = await prisma.patient.findFirst({

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { addDays, format } from 'date-fns';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 type TestAuthContext = { orgId: string; userId: string; role: 'pharmacist' };
 type DraftRouteContext = { params: Promise<{ id: string }> };
@@ -23,6 +24,7 @@ const {
   patientFindFirstMock,
   careCaseFindFirstMock,
   careCaseFindManyMock,
+  canAccessPrescriptionPatientMock,
 } = vi.hoisted(() => ({
   withAuthContextMock: vi.fn(
     (
@@ -51,6 +53,7 @@ const {
   patientFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn().mockResolvedValue({ id: 'case_1' }),
   careCaseFindManyMock: vi.fn().mockResolvedValue([{ patient_id: 'patient_1' }]),
+  canAccessPrescriptionPatientMock: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -91,6 +94,11 @@ vi.mock('@/server/adapters/realtime', () => ({
   getRealtimeAdapter: () => ({
     broadcastStatusUpdate: broadcastStatusUpdateMock,
   }),
+}));
+
+vi.mock('@/server/services/prescription-access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/services/prescription-access')>()),
+  canAccessPrescriptionPatient: canAccessPrescriptionPatientMock,
 }));
 
 import { POST } from './route';
@@ -873,6 +881,38 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     expect(JSON.stringify(event)).not.toContain('draft_1');
     expect(JSON.stringify(event)).not.toContain('intake_1');
     expect(JSON.stringify(event)).not.toContain('cycle_1');
+  });
+
+  it('keeps inaccessible or nonexistent confirmation targets non-enumerating', async () => {
+    canAccessPrescriptionPatientMock.mockResolvedValueOnce(false);
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_hidden',
+        case_id: 'case_1',
+        prescribed_date: VALID_PRESCRIBED_DATE,
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '指定された患者を確認できません',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('rejects QR confirmations that override parsed packaging instructions', async () => {

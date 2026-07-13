@@ -24,6 +24,7 @@ const {
   mergeJahisQRPagesMock,
   detectMultiQRMock,
   mapJahisToIntakeMock,
+  canAccessPrescriptionPatientMock,
 } = vi.hoisted(() => ({
   withAuthContextMock: vi.fn(
     (
@@ -54,6 +55,7 @@ const {
   mergeJahisQRPagesMock: vi.fn(),
   detectMultiQRMock: vi.fn().mockReturnValue(null),
   mapJahisToIntakeMock: vi.fn(),
+  canAccessPrescriptionPatientMock: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -97,6 +99,11 @@ vi.mock('@/lib/pharmacy/jahis-qr', () => ({
 
 vi.mock('@/lib/pharmacy/qr-intake-mapper', () => ({
   mapJahisToIntake: mapJahisToIntakeMock,
+}));
+
+vi.mock('@/server/services/prescription-access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/services/prescription-access')>()),
+  canAccessPrescriptionPatient: canAccessPrescriptionPatientMock,
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
@@ -699,6 +706,28 @@ describe('/api/qr-scan-drafts POST', () => {
     expect(response.status).toBe(400);
     expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
     expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps inaccessible or nonexistent patient targets non-enumerating', async () => {
+    canAccessPrescriptionPatientMock.mockResolvedValueOnce(false);
+
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1'],
+        patient_id: 'patient_hidden',
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '指定された患者を確認できません',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects selected patients whose master identity does not match the QR patient', async () => {

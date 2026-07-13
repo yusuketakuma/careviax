@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError } from '@/lib/api/response';
+import { forbidden, success, validationError } from '@/lib/api/response';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
@@ -147,7 +147,7 @@ export const POST = withAuthContext(
         accessContext: ctx,
       }))
     ) {
-      return validationError('患者またはケースの割当権限がありません');
+      return withSensitiveNoStore(forbidden('患者またはケースの割当権限がありません'));
     }
 
     const cycle = await withOrgContext(ctx.orgId, async (tx) => {

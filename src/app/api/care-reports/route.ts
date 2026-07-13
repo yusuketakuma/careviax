@@ -103,7 +103,7 @@ type CareReportSourceDb = Pick<Prisma.TransactionClient, 'careCase' | 'patient' 
 type CareReportVisitLockDb = Pick<Prisma.TransactionClient, '$queryRaw'>;
 type CareReportBillingContextDb = Pick<Prisma.TransactionClient, 'billingEvidence'>;
 type CareReportCreateResult =
-  | { kind: 'validation_error'; response: Response }
+  | { kind: 'source_error'; response: Response }
   | { kind: 'created'; report: CareReport };
 
 function buildCareReportListSelect(args: {
@@ -391,13 +391,13 @@ async function validateCareReportSource(
     caseId?: string;
     visitRecordId?: string;
   },
-): Promise<{ error: string } | { caseId?: string }> {
+): Promise<{ error: string; errorKind: 'forbidden' | 'validation' } | { caseId?: string }> {
   const patient = await db.patient.findFirst({
     where: { id: args.patientId, org_id: args.orgId },
     select: { id: true },
   });
   if (!patient) {
-    return { error: '患者が見つかりません' };
+    return { error: '患者が見つかりません', errorKind: 'validation' };
   }
 
   if (args.caseId) {
@@ -406,7 +406,7 @@ async function validateCareReportSource(
       select: { id: true },
     });
     if (!careCase) {
-      return { error: 'ケースが患者に紐付いていません' };
+      return { error: 'ケースが患者に紐付いていません', errorKind: 'validation' };
     }
   }
 
@@ -425,11 +425,14 @@ async function validateCareReportSource(
     });
 
     if (!visitRecord) {
-      return { error: '訪問記録が患者に紐付いていません' };
+      return { error: '訪問記録が患者に紐付いていません', errorKind: 'validation' };
     }
 
     if (args.caseId && visitRecord.schedule.case_id !== args.caseId) {
-      return { error: '訪問記録が指定ケースに紐付いていません' };
+      return {
+        error: '訪問記録が指定ケースに紐付いていません',
+        errorKind: 'validation',
+      };
     }
     resolvedCaseId = visitRecord.schedule.case_id;
   }
@@ -445,10 +448,17 @@ async function validateCareReportSource(
     },
   );
   if (!canAccess) {
-    return { error: 'この報告書の作成権限がありません' };
+    return { error: 'この報告書の作成権限がありません', errorKind: 'forbidden' };
   }
 
   return { caseId: resolvedCaseId };
+}
+
+function careReportSourceErrorResponse(result: {
+  error: string;
+  errorKind: 'forbidden' | 'validation';
+}) {
+  return result.errorKind === 'forbidden' ? forbidden(result.error) : validationError(result.error);
 }
 
 async function authenticatedGET(req: NextRequest) {
@@ -952,7 +962,7 @@ async function authenticatedPOST(req: NextRequest) {
       visitRecordId: parsed.data.visit_record_id,
     });
     if ('error' in sourceValidation) {
-      return validationError(sourceValidation.error);
+      return careReportSourceErrorResponse(sourceValidation);
     }
     const resolvedCaseId = sourceValidation.caseId;
     if (parsed.data.visit_record_id) {
@@ -1044,14 +1054,14 @@ async function authenticatedPOST(req: NextRequest) {
         });
         if ('error' in finalSourceValidation) {
           return {
-            kind: 'validation_error' as const,
-            response: validationError(finalSourceValidation.error),
+            kind: 'source_error' as const,
+            response: careReportSourceErrorResponse(finalSourceValidation),
           };
         }
         const finalResolvedCaseId = finalSourceValidation.caseId;
         if (finalResolvedCaseId !== resolvedCaseId) {
           return {
-            kind: 'validation_error' as const,
+            kind: 'source_error' as const,
             response: validationError('訪問記録が更新されました。再読み込みしてください'),
           };
         }
@@ -1083,7 +1093,7 @@ async function authenticatedPOST(req: NextRequest) {
           }),
         };
       });
-      if (createResult.kind === 'validation_error') return createResult.response;
+      if (createResult.kind === 'source_error') return createResult.response;
       report = createResult.report;
     } catch (errorValue) {
       if (isCareReportVisitTypeUniqueConflict(errorValue)) {

@@ -4,7 +4,15 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  conflict,
+  forbidden,
+  forbiddenResponse,
+} from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { requiresDedicatedTaskCompletion } from '@/lib/tasks/inline-completion';
 import {
   buildTaskAssigneeRejectionDetails,
@@ -84,7 +92,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     parsed.data.assigned_to !== undefined &&
     parsed.data.assigned_to !== existing.assigned_to
   ) {
-    return validationError('担当者の変更権限がありません');
+    return withSensitiveNoStore(forbidden('担当者の変更権限がありません'));
   }
 
   if (isAssignmentChanged) {
@@ -110,9 +118,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ? canActorCreateTaskForAssignee(actor, parsed.data.assigned_to)
       : canActorManageTaskAssignments(actor);
     if (!canChangeAssignment) {
-      return validationError(
-        '担当者の変更権限がありません',
-        buildTaskAssigneeRejectionDetails('変更可能な担当者を選択してください'),
+      return withSensitiveNoStore(
+        await forbiddenResponse(
+          '担当者の変更権限がありません',
+          buildTaskAssigneeRejectionDetails('変更可能な担当者を選択してください'),
+        ),
       );
     }
     if (parsed.data.assigned_to) {

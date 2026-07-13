@@ -485,7 +485,7 @@ const authenticatedPOST = withAuthContext(
         accessContext: ctx,
       }))
     ) {
-      return validationError('患者またはケースの割当権限がありません');
+      return validationError('患者またはケースを確認できません');
     }
 
     if (effectivePatientId) {

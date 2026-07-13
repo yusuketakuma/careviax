@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
@@ -173,7 +174,12 @@ describe('/api/tasks/[id]', () => {
       },
     ))!;
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '担当者の変更権限がありません',
+    });
     expect(membershipFindManyMock).not.toHaveBeenCalled();
     expect(taskUpdateManyMock).not.toHaveBeenCalled();
   });
@@ -325,11 +331,29 @@ describe('/api/tasks/[id]', () => {
         { user_id: 'pharmacist_2', role: 'external_viewer', can_audit_dispense: false },
       ]);
 
-    for (const assignee of ['pharmacist_2', 'pharmacist_2']) {
+    for (const [assignee, expected] of [
+      [
+        'pharmacist_2',
+        { status: 403, code: 'AUTH_FORBIDDEN', message: '担当者の変更権限がありません' },
+      ],
+      [
+        'pharmacist_2',
+        {
+          status: 400,
+          code: 'VALIDATION_ERROR',
+          message: '依頼先スタッフはこのタスク種別を担当できません',
+        },
+      ],
+    ] as const) {
       const response = (await PATCH(createPatchRequest('task_1', { assigned_to: assignee }), {
         params: Promise.resolve({ id: 'task_1' }),
       }))!;
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(expected.status);
+      if (expected.status === 403) expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: expected.code,
+        message: expected.message,
+      });
     }
 
     expect(withOrgContextMock).not.toHaveBeenCalled();

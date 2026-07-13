@@ -363,7 +363,12 @@ describe('/api/medication-cycles', () => {
       { params: Promise.resolve({}) },
     ))!;
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '患者またはケースの割当権限がありません',
+    });
     expect(medicationCycleCreateMock).not.toHaveBeenCalled();
   });
 });

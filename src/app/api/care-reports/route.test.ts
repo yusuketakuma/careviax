@@ -1830,6 +1830,82 @@ describe('/api/care-reports POST', () => {
     expect(careReportCreateMock).toHaveBeenCalled();
   });
 
+  it('returns 403 when an existing report source is outside the caller assignment', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({ id: 'case_1' }).mockResolvedValueOnce({
+      primary_pharmacist_id: 'other_user',
+      backup_pharmacist_id: null,
+    });
+
+    const response = await createCareReport(
+      createAuthenticatedRequest(
+        'http://localhost/api/care-reports',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+            report_type: 'care_manager_report',
+            content: {},
+          }),
+        },
+        { orgId: 'org_1', userId: 'user_1', role: 'external_viewer' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: 'この報告書の作成権限がありません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when transactional source revalidation loses assignment access', async () => {
+    careCaseFindFirstMock
+      .mockResolvedValueOnce({ id: 'case_1' })
+      .mockResolvedValueOnce({
+        primary_pharmacist_id: 'user_1',
+        backup_pharmacist_id: null,
+      })
+      .mockResolvedValueOnce({ required_visit_support: null })
+      .mockResolvedValueOnce({ id: 'case_1' })
+      .mockResolvedValueOnce({
+        primary_pharmacist_id: 'other_user',
+        backup_pharmacist_id: null,
+      });
+
+    const response = await createCareReport(
+      createAuthenticatedRequest(
+        'http://localhost/api/care-reports',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+            report_type: 'care_manager_report',
+            content: {},
+          }),
+        },
+        { orgId: 'org_1', userId: 'user_1', role: 'external_viewer' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: 'この報告書の作成権限がありません',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects reports for a case that does not belong to the patient', async () => {
     careCaseFindFirstMock.mockResolvedValueOnce(null);
 

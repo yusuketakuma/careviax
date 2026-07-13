@@ -1622,7 +1622,7 @@
       "path": "src/app/api/tasks/[id]/route.ts",
       "expectedCount": 1,
       "permissions": ["canVisit"],
-      "sensitiveNoStore": false,
+      "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
       "debtId": "CORE-ROUTE-001",

@@ -1,7 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError, internalError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
@@ -97,7 +97,7 @@ const authenticatedPOST = withAuthContext(
         ) {
           return {
             ok: false as const,
-            response: validationError('患者またはケースの割当権限がありません'),
+            response: validationError('患者またはケースを確認できません'),
           };
         }
 
