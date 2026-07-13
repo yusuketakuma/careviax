@@ -335,6 +335,57 @@ describe('/api/pca-pump-rentals', () => {
     expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
   });
 
+  it('keeps a missing or inaccessible pump as the primary 404 target', async () => {
+    pcaPumpFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest('http://localhost/api/pca-pump-rentals', {
+        pump_id: 'pump_missing',
+        institution_id: 'institution_1',
+        rented_at: '2026-06-10',
+        due_at: '2026-06-20',
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: 'PCAポンプが見つかりません',
+    });
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+    expect(pcaPumpUpdateManyMock).not.toHaveBeenCalled();
+    expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a neutral related-reference error for a missing or inaccessible institution', async () => {
+    prescriberInstitutionFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest('http://localhost/api/pca-pump-rentals', {
+        pump_id: 'pump_1',
+        institution_id: 'institution_missing',
+        rented_at: '2026-06-10',
+        due_at: '2026-06-20',
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        institution_id: ['指定された貸出先医療機関を確認できません'],
+      },
+    });
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+    expect(pcaPumpUpdateManyMock).not.toHaveBeenCalled();
+    expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('creates a rental and marks the pump as rented in the same org transaction', async () => {
     pcaPumpRentalCreateMock.mockResolvedValue({
       ...rentalRecord,

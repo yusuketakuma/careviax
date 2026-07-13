@@ -54,7 +54,27 @@
 
 ## 直近の作業
 
-- codex3 + codex1 integration: PERF-DB-PATIENT-BOARD-FOUNDATION-SINGLEPASS-003O-A (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+- codex4 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001G (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    PCA pump rental collection/dynamic routesとfocused tests、PcaPump/PcaPumpRental/PrescriberInstitutionのorg predicates、shared auth/no-store/response
+    helpers、installed Next 16.2.9 Route Handler guide、API/auth/raw-read/module guardsを確認した。Primary pump/rentalは404で揃っていた一方、linked
+    institution missingもroute固有404を返して存在分類を混在させ、dynamic PATCHはdirect `requireAuthContext`のままroute wrapper/no-store debtに残っていた。
+  - files changed / correctness / security / privacy:
+    POST/PATCHのlinked institution missing・cross-orgを同じgeneric 400 `VALIDATION_ERROR` / `入力値が不正です` + neutral field detailへ統一し、primary
+    pump/rental missing・cross-orgはexact 404 `WORKFLOW_NOT_FOUND`を維持した。Dynamic PATCHを`withAuthContext(canAdmin)`へ移行し、auth/error/successの
+    全応答を`withSensitiveNoStore`で包んでdirect-auth allowlist entryを削除した。全拒否時のrental/pump/accessory/maintenance/audit副作用0、sanitized 500、
+    success transaction/serializationを固定し、応答・logにlinked entityや生exceptionの情報を追加していない。
+  - performance / stability / coordination:
+    Query/write/network数、transaction順序、return/cancel/open-rental race処理、DTOを変えていない。Codex1がcurrent GOのないexact5 dirty workを検出して
+    codex4を一度STOP/FREEZEし、codex4から前active session由来の未検証途中差分だと報告を受けた。Codex1がdiff/hashを開始点として受理してexact5を
+    codex4へ明示再割当し、completion後はFREEZE、codex3が編集なし独立reviewしてblocking finding 0 / INTEGRATEと判定した。
+  - validation / remaining / rollback:
+    Codex4 FREEZE後にcodex1がwrapper実装、error/write ordering、diffを独立reviewし、focused 2 files / 36 tests、API authz 0、API shape 0/0、route auth
+    175 allowlisted / 251 direct / 0 new、raw-read org 117 allowlisted / 0 new、module boundary 0/0、exact4 ESLint、exact5 Prettier/diffをPASS。Codex3も
+    同じ36 testsと静的contract群を独立PASS。Oracle、schema/migration、production data access、long gateなし。Collection routeには既存direct-auth debt
+    2 callsが残り、親API statusも残存live scanがあるためPartial。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
+- codex3 + codex1 integration: PERF-DB-PATIENT-BOARD-FOUNDATION-SINGLEPASS-003O-A (DONE; parent remains Partial, 2026-07-13; implementation `764345b1a`, PUSHED).
   - current task / files inspected / root cause:
     Patients board route/test、card derive/filter/facet/count basis、signed cursor、read-path SLO、`003J`のstable batch/org再固定契約を確認した。
     Active foundation filterはDB prefilter済みdeep rows `F`と全count basis deep rows `M`を別々に収集・card化し、同じrequestで

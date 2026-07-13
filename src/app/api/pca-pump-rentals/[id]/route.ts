@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { allocateDisplayId } from '@/lib/db/display-id';
 import { withOrgContext } from '@/lib/db/rls';
 import {
@@ -20,13 +21,11 @@ function toPrismaJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: 'PCAポンプレンタルの更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
+async function authenticatedPATCHHandler(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('PCAポンプレンタルIDが不正です');
@@ -142,7 +141,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }),
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
-    if (!institution) return notFound('貸出先医療機関が見つかりません');
+    if (!institution) {
+      return validationError('入力値が不正です', {
+        institution_id: ['指定された貸出先医療機関を確認できません'],
+      });
+    }
   }
 
   let updated;
@@ -376,3 +379,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return success({ data: serializePcaPumpRental(updated.rental) });
 }
+
+const authenticatedPATCH = withAuthContext(authenticatedPATCHHandler, {
+  permission: 'canAdmin',
+  message: 'PCAポンプレンタルの更新権限がありません',
+});
+
+export const PATCH: typeof authenticatedPATCH = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedPATCH(req, routeContext));

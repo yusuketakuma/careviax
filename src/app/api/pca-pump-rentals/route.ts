@@ -184,7 +184,11 @@ async function authenticatedPOST(req: NextRequest) {
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
     if (!pump) return notFound('PCAポンプが見つかりません');
-    if (!institution) return notFound('貸出先医療機関が見つかりません');
+    if (!institution) {
+      return validationError('入力値が不正です', {
+        institution_id: ['指定された貸出先医療機関を確認できません'],
+      });
+    }
     if (pump.status !== 'available') {
       return validationError('利用可能なPCAポンプだけ貸出登録できます');
     }

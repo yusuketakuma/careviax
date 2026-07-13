@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
-  requireAuthContextMock,
+  authMock,
+  membershipFindFirstMock,
   withOrgContextMock,
   pcaPumpRentalFindFirstMock,
   prescriberInstitutionFindFirstMock,
@@ -14,8 +15,10 @@ const {
   openRentalFindFirstMock,
   auditLogCreateMock,
   allocateDisplayIdMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   pcaPumpRentalFindFirstMock: vi.fn(),
   prescriberInstitutionFindFirstMock: vi.fn(),
@@ -27,14 +30,21 @@ const {
   openRentalFindFirstMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   allocateDisplayIdMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+vi.mock('@/lib/auth/config', () => ({
+  auth: authMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
+    pharmacySite: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
     pcaPumpRental: {
       findFirst: pcaPumpRentalFindFirstMock,
     },
@@ -52,12 +62,23 @@ vi.mock('@/lib/db/display-id', () => ({
   allocateDisplayId: allocateDisplayIdMock,
 }));
 
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
+}));
+
+vi.mock('@/lib/auth/security-events', () => ({
+  logSecurityEvent: vi.fn(),
+}));
+
 import { PATCH } from './route';
+import { expectNoStore } from '@/test/api-response-assertions';
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/pca-pump-rentals/rental_1', {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-org-id': 'org_1' },
     body: JSON.stringify(body),
   });
 }
@@ -84,9 +105,8 @@ const updatedRental = {
 describe('/api/pca-pump-rentals/[id] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
-    });
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin', site_id: null });
     pcaPumpRentalFindFirstMock.mockResolvedValue({
       id: 'rental_1',
       pump_id: 'pump_1',
@@ -135,6 +155,92 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
         },
       });
     });
+  });
+
+  it('returns a no-store auth failure before reading the rental', async () => {
+    authMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(createRequest({ status: 'cancelled' }), {
+      params: Promise.resolve({ id: 'rental_1' }),
+    });
+
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pcaPumpRentalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps a missing or inaccessible rental as the primary 404 target', async () => {
+    pcaPumpRentalFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(createRequest({ status: 'cancelled' }), {
+      params: Promise.resolve({ id: 'rental_missing' }),
+    });
+
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: 'PCAポンプレンタルが見つかりません',
+    });
+    expect(prescriberInstitutionFindFirstMock).not.toHaveBeenCalled();
+    expect(pcaPumpRentalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a neutral related-reference error for a missing or inaccessible institution', async () => {
+    prescriberInstitutionFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(createRequest({ institution_id: 'institution_missing' }), {
+      params: Promise.resolve({ id: 'rental_1' }),
+    });
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        institution_id: ['指定された貸出先医療機関を確認できません'],
+      },
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(pcaPumpRentalUpdateManyMock).not.toHaveBeenCalled();
+    expect(pcaPumpRentalRefetchMock).not.toHaveBeenCalled();
+    expect(pcaPumpMaintenanceEventCreateMock).not.toHaveBeenCalled();
+    expect(pcaPumpRentalAccessoryUpsertMock).not.toHaveBeenCalled();
+    expect(pcaPumpUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when rental update setup fails unexpectedly', async () => {
+    pcaPumpRentalFindFirstMock.mockRejectedValueOnce(
+      new Error('raw PCA rental contact phone institution secret'),
+    );
+
+    const response = await PATCH(createRequest({ status: 'cancelled' }), {
+      params: Promise.resolve({ id: 'rental_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain('contact phone institution secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
+        route: '/api/pca-pump-rentals/rental_1',
+        method: 'PATCH',
+      }),
+      expect.any(Error),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(
+      'contact phone institution secret',
+    );
+    expect(pcaPumpRentalUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects reactivating a rental when the same pump has another open rental', async () => {
