@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZMEDCYCLEAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZMEDCYCLEAUTH (DONE; parent remains Partial, 2026-07-14; implementation `4ce954053`).
   - current task / files inspected / root cause:
     Tasks bulk push/parity後の残7 routesからMedication Cycle transition PATCHを選定した。Route/test、cycle-transition service、workflow query、
     protected PATCH matrix、org realtime policy、allowlist、installed Next guideを確認した。既存handlerはinitial auth後にcycleのfrom/to工程から
