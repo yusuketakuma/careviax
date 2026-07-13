@@ -113,6 +113,10 @@ import type {
   PatientHomeOperationKey,
   PatientHomeOperationsSnapshot,
 } from '@/types/patient-home-operations';
+import {
+  buildPatientDocumentsResponseSchema,
+  buildPatientHeaderSummaryResponseSchema,
+} from './card-workspace-response-schemas';
 
 type FirstVisitDocumentsPanelProps = {
   cases: PatientOverview['cases'];
@@ -1559,6 +1563,7 @@ function PatientCardDocumentsPanel({
       });
       const payload = await readApiJson<{ data: PatientDocumentsSnapshot }>(response, {
         fallbackMessage: '文書情報の取得に失敗しました',
+        schema: buildPatientDocumentsResponseSchema(patient.id),
       });
       return payload.data;
     },
@@ -4910,6 +4915,7 @@ export function CardWorkspace({
       });
       const payload = await readApiJson<{ data: PatientHeaderSummary }>(res, {
         fallbackMessage: '患者ヘッダー情報の取得に失敗しました',
+        schema: buildPatientHeaderSummaryResponseSchema(patientId),
       });
       return payload.data;
     },

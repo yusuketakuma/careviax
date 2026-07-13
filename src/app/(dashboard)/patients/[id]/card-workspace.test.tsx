@@ -4153,12 +4153,63 @@ describe('CardWorkspace', () => {
     return () => documentsConfig;
   }
 
+  function documentsResponseData(patientId: string) {
+    return {
+      patient: { id: patientId, name: '患者A', name_kana: 'カンジャエー' },
+      print_readiness: {
+        overall_status: 'ready',
+        missing_required_count: 0,
+        warning_count: 0,
+        template_versions: [],
+        checks: [],
+      },
+      document_statuses: [],
+      first_visit_documents: [],
+    };
+  }
+
+  function headerSummaryResponseData(patientId: string) {
+    return {
+      patient_id: patientId,
+      name: '患者A',
+      name_kana: null,
+      birth_date: '1940-01-01T00:00:00.000Z',
+      gender: 'other',
+      gender_label: 'その他',
+      care_level: null,
+      care_level_label: null,
+      home_status_label: null,
+      residence_label: null,
+      primary_diagnosis: null,
+      intervention_start_date: null,
+      primary_pharmacist_name: null,
+      backup_pharmacist_name: null,
+      primary_staff_name: null,
+      backup_staff_name: null,
+      first_visit_date: null,
+      last_prescribed_date: null,
+      next_prescription_expected_date: null,
+      safety: {
+        allergy: null,
+        renal: null,
+        handling_tags: [],
+        swallowing: null,
+        cautions: [],
+        safety_tags: [],
+        visible_safety_tags: [],
+        hidden_safety_tag_count: 0,
+      },
+    };
+  }
+
   it('fetches patient documents from an encoded patient path with org headers (raw query key)', async () => {
     const hostileId = 'pt/1?x=y#z';
     const getDocumentsConfig = captureDocumentsQueryConfig(hostileId);
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(new Response(JSON.stringify({ data: {} }), { status: 200 }));
+      .mockResolvedValue(
+        new Response(JSON.stringify({ data: documentsResponseData(hostileId) }), { status: 200 }),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -4222,9 +4273,15 @@ describe('CardWorkspace', () => {
   ])('fetches %s from an encoded patient path with org headers', async (scope, segment) => {
     const hostileId = 'pt/1?x=y#z';
     const getConfig = captureWorkspaceQueryConfig(scope, hostileId);
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockImplementation(async () => new Response(JSON.stringify({ data: {} }), { status: 200 }));
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: segment === 'header-summary' ? headerSummaryResponseData(hostileId) : {},
+          }),
+          { status: 200 },
+        ),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -4363,9 +4420,15 @@ describe('CardWorkspace', () => {
         return baseImpl?.(config);
       },
     );
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockImplementation(async () => new Response(JSON.stringify({ data: {} }), { status: 200 }));
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+      const url = String(input);
+      return new Response(
+        JSON.stringify({
+          data: url.endsWith('/header-summary') ? headerSummaryResponseData(patientId) : {},
+        }),
+        { status: 200 },
+      );
+    });
     vi.stubGlobal('fetch', fetchMock);
     vi.mocked(buildPatientApiPath)
       .mockReturnValueOnce('/api/patients/__helper_patient__/overview')
