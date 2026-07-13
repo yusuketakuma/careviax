@@ -51,6 +51,32 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZVISITDETAILSTRICT visit record detail readers (VERIFY_REQUIRED, 2026-07-13; implementation `2941eeedb`; shared clean-capacity build pending).
+  - current task / root cause:
+    Visit Record Detailのschedule create、record GET、patient header、billing candidates、residual medications、visit preparation計6 readersは
+    string fallbackだけで、別record/schedule/patient、assignment/cursor/count relation、不完全mutation outcomeを成功扱いし、訪問記録・
+    患者安全・請求・残薬・準備のPHI-bearing stateへ流し得た。Record providerはUI未使用org/display/assignment/baselineも返していた。
+  - implementation / visit safety boundary:
+    6 request-aware strict schemasを追加し、requested record/schedule/patient relation、schedule assignment、billing patient/cursor、residual
+    visit relation、preparation schedule contextを検証。Provider-only tenant/display/assignment/baseline、billing details、residual metadata、
+    preparation packをcache前にstripした。Routeがgeo logを削除する現行契約にclient型をoptional化し、公開範囲は拡張していない。
+    Provider writes、auth/assignment/tenant/audit/DB/UIは変更していない。非visual parser/PHI境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/visits/[id]/visit-record-detail-response-schemas.ts`,
+    `src/app/(dashboard)/visits/[id]/visit-record-detail-response-schemas.test.ts`,
+    `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`,
+    `src/app/(dashboard)/visits/[id]/visit-record-detail.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Schema/consumer/providers Vitest passed 6 files / 166 tests; checker passed 1 file / 7 tests. Exact zero-warning ESLint, focused Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (327 backed / 37 allowlisted / 8 files), module boundary, client PHI-log/display,
+    API response shape, colors, format, and diff-check passed. Full build remains NOT_EXECUTED because only 215 MiB is free while existing
+    `.next` consumes 16 GiB; shared generated/user files were not deleted.
+  - security / performance / remaining:
+    Cross-record/schedule/patient and malformed mutation/list/preparation responses now fail closed; unused tenant/PHI-adjacent provider fields
+    no longer enter client state. Network/DB calls, writes, rendering, and dependencies are unchanged. API-CONTRACT-001-RESCAN continues with
+    37 calls across 8 files. A clean-capacity runner must complete `pnpm build`.
+
 - codex: API-CONTRACT-001FZPATCARDOVERVIEWSTRICT patient card overview reader (VERIFY_REQUIRED, 2026-07-13; implementation `4c592962a`; shared clean-capacity build pending).
   - current task / root cause:
     Patient Cardのoverview readerはcompile-time型だけで、別患者、nested VisitBrief/workspace patient context、archive state、
