@@ -8,13 +8,12 @@
 
 ## 体制（2026-07-14 最新ユーザー指示）
 
-- 2026-07-14 の最新ユーザー指示により、現行を`codex1` + `codex2`の2台体制へ切り替えた。`codex1`が計画、
-  exact-path ownership調整、独立review、直列long validation、単一台帳更新、scoped commit/pushの最終責任を持つ。
-- `codex2`は`agmsg` team `phos`のtmux paneに再spawn済み。`codex1`から明示されたexact pathsの調査/実装/focused
-  validationのみを担当し、追加DELEGATE前に競合pathを編集しない。Plans/STATE/gbrain、commit/push、long Next gateは
-  `codex1`が明示的に委譲しない限り触らない。
+- 2026-07-14 の最新ユーザー指示により、現行を`codex1` + `codex2`の対等な2台体制へ切り替えた。両者がそれぞれ
+  調査・実装・focused validationを進め、`agmsg` team `phos`でexact-path ownershipを事前通知して実装箇所の重複を防ぐ。
+- `codex1`からのDELEGATEは必須ではない。各Codexは所有pathsと開始/終了を相互通知し、peer-owned pathを編集・stageしない。
+  Plans/STATE/gbrain、commit/push、long Next gateの共有surfaceは、実行前に短時間ownershipを通知して直列化する。
 - `codex3/codex4`はSTOP/RELEASEのままで、Claudeと外部maker/checkerも再有効化しない。旧Codex並列実装記述は履歴として扱う。
-- long Next gateは引き続き直列実行し、shared dirty worktreeの既存user変更を保存する。scoped commitは明示owned pathだけをstageし、
+- long Next gateは相互通知して引き続き直列実行し、shared dirty worktreeの既存user変更を保存する。scoped commitは各自の明示owned pathだけをstageし、
   push、deploy、migration適用、production mutationはcurrent-taskの明示許可なしに行わない。
 - 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
   直接の影響範囲確認、focused/full gate で代替する。
@@ -48,9 +47,9 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `codex1` + `codex2` 2台運用（2026-07-14〜）。`codex1`が計画・所有権・
-  独立review・validation・単一台帳・scoped commit/pushを統合し、`codex2`は明示DELEGATEされたexact pathsだけを担当する。
-  `codex3/codex4`は停止のまま。long Next gateと単一台帳更新は`codex1`が直列に行う。
+- Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: 本STATE運用文言、`codex2`: `API-CONTRACT-003D/003E`の
+  external-access 3 paths + jobs 2 paths。`codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
@@ -70,7 +69,7 @@
     Auth recovery 3 routes + registry/response 5 files / 34 tests、exact ESLint/Prettier、8 GiB aggregate typecheck/no-unused、route-auth
     150 allowlisted / 214 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、
     client schema 361 backed / 0 allowlisted、Plans active、format/diffをPASS。Schema/migration/production mutation/deploy/Oracleなし。
-    非視覚service/API変更のためimagegen/browserなし。Registryは9 codes。残るexternal-accessの同一code/statusはcodex2にexact-path委譲済み。
+    非視覚service/API変更のためimagegen/browserなし。Registryは9 codes。残るexternal-accessの同一code/statusはcodex2がexact-path ownership通知済み。
     Rollbackはscoped implementation commitのrevertでDB/data rollback不要。
 
 - codex1: API-CONTRACT-003B (DONE; parent remains Partial, 2026-07-14; implementation `f49f58cea`).
