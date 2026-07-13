@@ -283,7 +283,16 @@ describe('QrDraftReviewPage case lookup error handling', () => {
     render(<QrDraftReviewPage />);
 
     const draftQuery = getQueryConfig('qr-scan-draft');
-    await expect(draftQuery?.queryFn?.()).resolves.toEqual(baseDraft);
+    await expect(draftQuery?.queryFn?.()).resolves.toEqual(
+      expect.objectContaining({
+        id: 'draft_1',
+        patient_id: 'patient_1',
+        session_id: 'session_1234567890',
+        status: 'pending',
+        parsed_data: baseDraft.parsed_data,
+      }),
+    );
+    await expect(draftQuery?.queryFn?.()).resolves.not.toHaveProperty('org_id');
   });
 
   it('rejects a legacy root QR draft detail response', async () => {
@@ -332,6 +341,51 @@ describe('QrDraftReviewPage case lookup error handling', () => {
         headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
       }),
     );
+  });
+
+  it('collects every active case page before deciding whether auto-selection is safe', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = new URL(String(input), 'http://localhost');
+      if (!url.searchParams.has('cursor')) {
+        return jsonResponse({
+          data: [
+            {
+              id: 'case_1',
+              patient_id: 'patient_1',
+              display_id: 'cc0000000001',
+              status: 'active',
+            },
+          ],
+          meta: { limit: 20, has_more: true, next_cursor: 'case_1' },
+        });
+      }
+      return jsonResponse({
+        data: [
+          {
+            id: 'case_2',
+            patient_id: 'patient_1',
+            display_id: 'cc0000000002',
+            status: 'active',
+          },
+        ],
+        meta: { limit: 20, has_more: false, next_cursor: null },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<QrDraftReviewPage />);
+
+    const patientCasesQuery = getQueryConfig('patient-cases');
+    await expect(patientCasesQuery?.queryFn?.()).resolves.toEqual({
+      data: [
+        { id: 'case_1', display_id: 'cc0000000001', status: 'active' },
+        { id: 'case_2', display_id: 'cc0000000002', status: 'active' },
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(
+      new URL(String(fetchMock.mock.calls[1]?.[0]), 'http://localhost').searchParams.get('cursor'),
+    ).toBe('case_1');
   });
 
   it('uses a named skeleton while case options are loading', () => {
@@ -412,7 +466,9 @@ describe('QrDraftReviewPage case lookup error handling', () => {
       isError: false,
       isLoading: false,
     };
-    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ data: [] }));
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ data: [], meta: { limit: 20, has_more: false, next_cursor: null } }),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     render(<QrDraftReviewPage />);
@@ -472,7 +528,7 @@ describe('QrDraftReviewPage case lookup error handling', () => {
       jsonResponse({
         data: {
           intake: { id: 'intake_1' },
-          cycle: { id: 'cycle_1' },
+          cycle: { id: 'cycle_1', patient_id: 'patient_1', case_id: 'case_1' },
           medicationChanges: [],
           profileSyncResult: null,
         },
@@ -507,8 +563,6 @@ describe('QrDraftReviewPage case lookup error handling', () => {
     expect(confirmResult).toEqual({
       intake: { id: 'intake_1' },
       cycle: { id: 'cycle_1' },
-      medicationChanges: [],
-      profileSyncResult: null,
     });
 
     expect(fetchMock).toHaveBeenCalledWith(

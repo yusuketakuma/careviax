@@ -45,15 +45,16 @@ import { messageFromError } from '@/lib/utils/error-message';
 import { buildQrDraftShortcutLinks, QR_DRAFT_CONFIRM_SUCCESS_HREF } from './page.helpers';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
-import {
-  normalizeJahisSupplementalRecords,
-  type JahisSupplementalRecordDbView,
-  type JahisSupplementalRecordView,
-} from '@/lib/pharmacy/jahis-supplemental-records-view';
+import { normalizeJahisSupplementalRecords } from '@/lib/pharmacy/jahis-supplemental-records-view';
 import {
   formatPrescriptionSubmitError,
   parsePrescriptionSubmitError,
 } from '../../new/prescription-intake-submit';
+import {
+  buildQrDraftCasesPageSchema,
+  buildQrDraftConfirmResponseSchema,
+  buildQrDraftDetailResponseSchema,
+} from './page-response-schemas';
 
 // ── Types ──
 
@@ -84,66 +85,9 @@ interface JahisQRLine {
   notes?: string;
 }
 
-interface JahisQRData {
-  patientName?: string;
-  patientNameKana?: string;
-  patientBirthdate?: string;
-  patientGender?: string;
-  prescriptionDate?: string;
-  prescriptionIssueDate?: string | null;
-  prescriptionExpirationDate?: string | null;
-  prescriberName?: string;
-  prescriberInstitution?: string;
-  prescriberInstitutionId?: string | null;
-  prescriberInstitutionCode?: string;
-  prescriptionInsurance?: {
-    insurerNumber?: string;
-    symbol?: string;
-    number?: string;
-    branchNumber?: string;
-    patientCopayRatio?: number;
-    publicSubsidies?: Array<{
-      rank: number;
-      payerNumber: string;
-      recipientNumber?: string;
-    }>;
-  } | null;
-  dispensingInstitution?: { name?: string; institutionCode?: string };
-  remarks?: string[];
-  patientNotes?: string[];
-  splitInfo?: { dataId: string; splitCount: number; sequenceNumber: number } | null;
-  parseWarnings?: Array<{ recordType?: string; field?: string; message: string }>;
-  rawRecords?: Array<{ recordType: string; lineNumber: number; fields?: string[] }>;
-  lines?: JahisQRLine[];
-  supplementalRecords?: JahisSupplementalRecordView[];
-}
-
 interface AutoCompletedField {
   field: string;
   lineIndex?: number;
-}
-
-interface QrScanDraft {
-  id: string;
-  org_id: string;
-  site_id: string;
-  patient_id: string | null;
-  scanned_by: string;
-  session_id: string;
-  status: string;
-  parsed_data: JahisQRData;
-  parse_errors: Array<{ field?: string; message: string }> | null;
-  auto_completed: AutoCompletedField[] | null;
-  expected_qr_count: number | null;
-  jahis_supplemental_records?: JahisSupplementalRecordDbView[];
-  created_at: string;
-}
-
-interface QrDraftConfirmResult {
-  intake: { id: string };
-  cycle: { id: string };
-  medicationChanges: unknown;
-  profileSyncResult: unknown;
 }
 
 interface DraftLine {
@@ -179,15 +123,6 @@ interface CaseOption {
   id: string;
   display_id?: string | null;
   status: string;
-}
-
-interface CaseListResponse {
-  data: CaseOption[];
-  meta: {
-    limit: number;
-    has_more: boolean;
-    next_cursor: string | null;
-  };
 }
 
 type DraftFormState = {
@@ -397,11 +332,10 @@ export default function QrDraftReviewPage() {
       const res = await fetch(`/api/qr-scan-drafts/${id}`, {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data?: QrScanDraft }>(res, '下書きの取得に失敗しました');
-      if (!payload.data || typeof payload.data.id !== 'string') {
-        throw new Error('下書きの取得に失敗しました');
-      }
-      return payload.data;
+      return readApiJson(res, {
+        schema: buildQrDraftDetailResponseSchema(id),
+        fallbackMessage: '下書きの取得に失敗しました',
+      });
     },
     enabled: !!orgId && !!id,
   });
@@ -415,15 +349,36 @@ export default function QrDraftReviewPage() {
   } = useQuery({
     queryKey: ['patient-cases', draft?.patient_id, orgId],
     queryFn: async () => {
-      const params = new URLSearchParams({
-        patient_id: draft!.patient_id!,
-        status: 'active',
-        limit: '20',
-      });
-      const res = await fetch(`/api/cases?${params.toString()}`, {
-        headers: buildOrgHeaders(orgId),
-      });
-      return readApiJson<CaseListResponse>(res, 'ケースの取得に失敗しました');
+      const patientId = draft!.patient_id!;
+      const cases: CaseOption[] = [];
+      const seenIds = new Set<string>();
+      const seenCursors = new Set<string>();
+      let cursor: string | null = null;
+      for (let page = 0; page < 5; page += 1) {
+        const params = new URLSearchParams({
+          patient_id: patientId,
+          status: 'active',
+          limit: '20',
+        });
+        if (cursor) params.set('cursor', cursor);
+        const res = await fetch(`/api/cases?${params.toString()}`, {
+          headers: buildOrgHeaders(orgId),
+        });
+        const payload = await readApiJson(res, {
+          schema: buildQrDraftCasesPageSchema(patientId),
+          fallbackMessage: 'ケースの取得に失敗しました',
+        });
+        for (const careCase of payload.data) {
+          if (seenIds.has(careCase.id)) throw new Error('ケースの取得に失敗しました');
+          seenIds.add(careCase.id);
+          cases.push(careCase);
+        }
+        if (!payload.meta.has_more) return { data: cases };
+        cursor = payload.meta.next_cursor;
+        if (!cursor || seenCursors.has(cursor)) throw new Error('ケースの取得に失敗しました');
+        seenCursors.add(cursor);
+      }
+      throw new Error('ケースの取得件数が上限を超えました');
     },
     enabled: !!orgId && !!draft?.patient_id,
   });
@@ -498,14 +453,10 @@ export default function QrDraftReviewPage() {
       if (!res.ok) {
         throw await parsePrescriptionSubmitError(res, '確定に失敗しました');
       }
-      const payload = await readApiJson<{ data?: QrDraftConfirmResult }>(res, '確定に失敗しました');
-      if (
-        typeof payload.data?.intake?.id !== 'string' ||
-        typeof payload.data.cycle?.id !== 'string'
-      ) {
-        throw new Error('確定に失敗しました');
-      }
-      return payload.data;
+      return readApiJson(res, {
+        schema: buildQrDraftConfirmResponseSchema(draft!.patient_id!, effectiveCaseId),
+        fallbackMessage: '確定に失敗しました',
+      });
     },
     onSuccess: () => {
       toast.success('処方受付を確定しました');

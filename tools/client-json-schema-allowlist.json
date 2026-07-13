@@ -18,12 +18,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx",
-      "counts": {
-        "stringFallback": 3
-      }
-    },
-    {
       "path": "src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx",
       "counts": {
         "stringFallback": 5
