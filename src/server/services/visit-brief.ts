@@ -258,7 +258,7 @@ type BuildVisitBriefArgs = {
   context: 'patient' | 'schedule';
   limit?: number;
   actorId?: string;
-  caseIds?: string[];
+  caseIds: string[];
   currentScheduleId?: string;
   scheduledDate?: Date;
   // patient_changes(前回訪問差分)算出に必要。揃わない経路(schedule バッチ等)は差分を出さない。
@@ -336,11 +336,11 @@ async function listVisitBriefBillingRefs(
   args: BuildVisitBriefArgs,
   caseIds: string[],
 ) {
-  if (args.caseIds === undefined || caseIds.length === 0) {
-    return { visitRecordIds: undefined, cycleIds: undefined };
+  if (caseIds.length === 0) {
+    return { visitRecordIds: [], cycleIds: [] };
   }
   if (typeof db.visitRecord.findMany !== 'function') {
-    return { visitRecordIds: undefined, cycleIds: undefined };
+    return { visitRecordIds: [], cycleIds: [] };
   }
 
   const [visitRecords, cycles] = await Promise.all([
@@ -1525,25 +1525,13 @@ export async function getPatientVisitBrief(
   db: DbClient,
   args: BuildVisitBriefArgs,
 ): Promise<VisitBrief> {
-  const patientCaseIds = (
-    await db.careCase.findMany({
-      where: {
-        org_id: args.orgId,
-        patient_id: args.patientId,
-      },
-      // 現在側 snapshot は caseIds[0] で構築するため、先頭選択を決定的にする。
-      // 複数ケースで前回訪問の case と食い違っても diff の caseComparable ガードが安全側にスキップする。
-      orderBy: [{ created_at: 'desc' }],
-      select: { id: true },
-    })
-  ).map((item) => item.id);
-  const caseIds = args.caseIds ?? patientCaseIds;
-  const caseScope =
-    args.caseIds === undefined
-      ? undefined
-      : {
-          OR: [{ case_id: null }, ...(caseIds.length > 0 ? [{ case_id: { in: caseIds } }] : [])],
-        };
+  if (!Array.isArray(args.caseIds)) {
+    throw new Error('VISIT_BRIEF_CASE_SCOPE_REQUIRED');
+  }
+  const caseIds = args.caseIds;
+  const caseScope = {
+    OR: [{ case_id: null }, ...(caseIds.length > 0 ? [{ case_id: { in: caseIds } }] : [])],
+  };
   const billingRefs = await listVisitBriefBillingRefs(db, args, caseIds);
 
   const thirtyDaysAgo = new Date();
@@ -1593,7 +1581,7 @@ export async function getPatientVisitBrief(
         org_id: args.orgId,
         cycle: {
           patient_id: args.patientId,
-          ...(args.caseIds === undefined ? {} : { case_id: { in: caseIds } }),
+          case_id: { in: caseIds },
         },
       },
       orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
@@ -1645,7 +1633,7 @@ export async function getPatientVisitBrief(
         org_id: args.orgId,
         cycle: {
           patient_id: args.patientId,
-          ...(args.caseIds === undefined ? {} : { case_id: { in: caseIds } }),
+          case_id: { in: caseIds },
         },
       },
       orderBy: [{ target_period_end: 'desc' }, { created_at: 'desc' }],
@@ -1687,7 +1675,7 @@ export async function getPatientVisitBrief(
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
-        ...(caseScope ? { AND: [caseScope] } : {}),
+        AND: [caseScope],
       },
       orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
       take: 4,
@@ -1705,7 +1693,7 @@ export async function getPatientVisitBrief(
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
-        ...(caseScope ? { AND: [caseScope] } : {}),
+        AND: [caseScope],
         status: {
           in: [...OPEN_REQUEST_STATUSES],
         },
@@ -1729,7 +1717,7 @@ export async function getPatientVisitBrief(
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
-        ...(args.caseIds === undefined ? {} : { case_id: { in: caseIds } }),
+        case_id: { in: caseIds },
       },
       orderBy: [{ called_at: 'desc' }, { id: 'desc' }],
       take: 3,
@@ -1779,7 +1767,7 @@ export async function getPatientVisitBrief(
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
-        ...(caseScope ? { AND: [caseScope] } : {}),
+        AND: [caseScope],
         status: {
           in: [...OPEN_ISSUE_STATUSES],
         },
@@ -1799,7 +1787,7 @@ export async function getPatientVisitBrief(
         org_id: args.orgId,
         cycle: {
           patient_id: args.patientId,
-          ...(args.caseIds === undefined ? {} : { case_id: { in: caseIds } }),
+          case_id: { in: caseIds },
         },
         resolved_at: null,
       },
@@ -1827,13 +1815,9 @@ export async function getPatientVisitBrief(
         patient_id: args.patientId,
         ...(args.currentScheduleId ? { schedule_id: { not: args.currentScheduleId } } : {}),
         ...(args.scheduledDate ? { visit_date: { lt: args.scheduledDate } } : {}),
-        ...(args.caseIds === undefined
-          ? {}
-          : {
-              schedule: {
-                case_id: { in: caseIds },
-              },
-            }),
+        schedule: {
+          case_id: { in: caseIds },
+        },
       },
       orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
       select: {
@@ -1846,7 +1830,7 @@ export async function getPatientVisitBrief(
           where: {
             org_id: args.orgId,
             patient_id: args.patientId,
-            ...(args.caseIds === undefined ? {} : { id: { in: caseIds } }),
+            id: { in: caseIds },
             status: { in: ['active', 'assessment'] },
           },
           orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }],
@@ -1859,7 +1843,7 @@ export async function getPatientVisitBrief(
             where: {
               org_id: args.orgId,
               patient_id: args.patientId,
-              ...(args.caseIds === undefined ? {} : { id: { in: caseIds } }),
+              id: { in: caseIds },
               status: { in: ['active', 'assessment'] },
             },
             orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
@@ -2214,27 +2198,6 @@ function getVisitBriefBatchConcurrency() {
     defaultValue: 4,
     max: 8,
   });
-}
-
-export async function getScheduleVisitBriefsForPatients(
-  db: DbClient,
-  args: Omit<BuildVisitBriefArgs, 'context' | 'patientId'> & { patientIds: string[] },
-): Promise<Map<string, VisitBrief>> {
-  const { patientIds, ...briefArgs } = args;
-  const uniquePatientIds = Array.from(new Set(patientIds.filter(Boolean)));
-  const entries = await mapWithConcurrency(
-    uniquePatientIds,
-    getVisitBriefBatchConcurrency(),
-    async (patientId) => {
-      const brief = await getScheduleVisitBrief(db, {
-        ...briefArgs,
-        patientId,
-      });
-      return [patientId, brief] as const;
-    },
-  );
-
-  return new Map(entries);
 }
 
 export async function getScheduleVisitBriefsForSchedules(

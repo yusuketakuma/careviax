@@ -28,11 +28,7 @@ vi.mock('./billing-evidence', () => ({
   listBillingEvidenceBlockers: listBillingEvidenceBlockersMock,
 }));
 
-import {
-  getPatientVisitBrief,
-  getScheduleVisitBriefsForPatients,
-  getScheduleVisitBriefsForSchedules,
-} from './visit-brief';
+import { getPatientVisitBrief, getScheduleVisitBriefsForSchedules } from './visit-brief';
 
 const originalTimezone = process.env.TZ;
 
@@ -56,7 +52,9 @@ function buildMinimalBriefDb() {
       findFirst: vi.fn().mockResolvedValue(null),
     },
     patient: {
-      findFirst: vi.fn().mockResolvedValue({ id: 'patient_1', name: '患者A', archived_at: null }),
+      findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve({ id: where.id, name: '患者A', archived_at: null }),
+      ),
     },
     prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
     medicationProfile: { findMany: vi.fn().mockResolvedValue([]) },
@@ -164,6 +162,70 @@ describe('getPatientVisitBrief', () => {
         ],
       },
     ]);
+  });
+
+  it('fails closed before reading data when the case scope is missing', async () => {
+    const db = buildMinimalBriefDb();
+
+    await expect(
+      getPatientVisitBrief(db, {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        context: 'patient',
+      } as never),
+    ).rejects.toThrow('VISIT_BRIEF_CASE_SCOPE_REQUIRED');
+
+    expect(db.patient.findFirst).not.toHaveBeenCalled();
+    expect(db.careCase.findMany).not.toHaveBeenCalled();
+    expect(listBillingEvidenceBlockersMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps an empty case scope explicit without falling back to patient-wide case reads', async () => {
+    const db = buildMinimalBriefDb();
+
+    const result = await getPatientVisitBrief(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      context: 'patient',
+      caseIds: [],
+    });
+
+    expect(result.patient.id).toBe('patient_1');
+    expect(db.careCase.findMany).not.toHaveBeenCalled();
+    expect(db.careCase.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: [] } }),
+      }),
+    );
+    expect(db.visitRecord.findMany).not.toHaveBeenCalled();
+    expect(db.medicationCycle.findMany).not.toHaveBeenCalled();
+    expect(db.prescriptionIntake.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          cycle: expect.objectContaining({ case_id: { in: [] } }),
+        }),
+      }),
+    );
+    expect(db.communicationRequest.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [{ OR: [{ case_id: null }] }],
+        }),
+      }),
+    );
+    expect(listBillingEvidenceBlockersMock).toHaveBeenCalledWith(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      visitRecordIds: [],
+      cycleIds: [],
+      limit: 2,
+    });
+    expect(listCommunicationQueueMock).toHaveBeenCalledWith(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      caseIds: [],
+      limit: 6,
+    });
   });
 
   it('aggregates prescription, dispensing, communication, and unresolved items', async () => {
@@ -576,8 +638,8 @@ describe('getPatientVisitBrief', () => {
         },
       },
     });
-    expect(db.careCase.findMany).toHaveBeenNthCalledWith(
-      2,
+    expect(db.careCase.findMany).toHaveBeenCalledTimes(1);
+    expect(db.careCase.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
         take: 1,
@@ -1285,153 +1347,6 @@ describe('getPatientVisitBrief', () => {
   });
 });
 
-describe('getScheduleVisitBriefsForPatients', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    generateVisitBriefAiSummaryMock.mockResolvedValue({
-      provider: 'rule',
-      requested_provider: 'disabled',
-      is_fallback: true,
-      model: null,
-      fallback_reason: 'provider_unavailable',
-      headline: '要点なし',
-      bullets: [],
-      must_check_today: [],
-      source_refs: [],
-      generated_at: '2026-03-27T00:00:00.000Z',
-    });
-    listCommunicationQueueMock.mockResolvedValue({
-      summary: {
-        pending_count: 0,
-        overdue_count: 0,
-        self_reports: 0,
-        callback_followups: 0,
-        inbound_communications: 0,
-        open_requests: 0,
-        delivery_backlog: 0,
-        expiring_external_shares: 0,
-        unconfirmed_count: 0,
-        reply_waiting_count: 0,
-        failed_count: 0,
-      },
-      items: [],
-      timeline: [],
-      emergency_drafts: [],
-    });
-    listBillingEvidenceBlockersMock.mockResolvedValue([]);
-  });
-
-  it('dedupes repeated patient ids before building schedule briefs', async () => {
-    const db = {
-      careCase: {
-        findMany: vi.fn().mockResolvedValue([]),
-        findFirst: vi.fn().mockResolvedValue(null),
-      },
-      billingEvidence: { findMany: vi.fn().mockResolvedValue([]) },
-      patient: {
-        findFirst: vi.fn(({ where }: { where: { id: string } }) =>
-          Promise.resolve({ id: where.id, name: where.id === 'patient_1' ? '患者A' : '患者B' }),
-        ),
-      },
-      prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
-      medicationProfile: { findMany: vi.fn().mockResolvedValue([]) },
-      setPlan: { findFirst: vi.fn().mockResolvedValue(null) },
-      patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
-      communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
-      communicationRequest: { findMany: vi.fn().mockResolvedValue([]) },
-      visitScheduleContactLog: { findMany: vi.fn().mockResolvedValue([]) },
-      task: { findMany: vi.fn().mockResolvedValue([]) },
-      medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
-      medicationStockSnapshot: { findMany: vi.fn().mockResolvedValue([]) },
-      inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
-      visitRecord: { findFirst: vi.fn().mockResolvedValue(null) },
-      medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
-      conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
-      residence: { findFirst: vi.fn().mockResolvedValue(null) },
-      drugMaster: { findMany: vi.fn().mockResolvedValue([]) },
-    };
-
-    const result = await getScheduleVisitBriefsForPatients(db, {
-      orgId: 'org_1',
-      patientIds: ['patient_1', 'patient_1', 'patient_2'],
-    });
-
-    expect(db.patient.findFirst).toHaveBeenCalledTimes(2);
-    expect([...result.keys()]).toEqual(['patient_1', 'patient_2']);
-    expect(result.get('patient_1')).toEqual(
-      expect.objectContaining({
-        patient: expect.objectContaining({
-          id: 'patient_1',
-          name: '患者A',
-          archive: { status: 'active', archived: false, archived_at: null },
-        }),
-        context: 'schedule',
-      }),
-    );
-  });
-
-  it('bounds concurrent schedule brief builds to protect DB and AI providers', async () => {
-    const originalConcurrency = process.env.VISIT_BRIEF_BATCH_CONCURRENCY;
-    process.env.VISIT_BRIEF_BATCH_CONCURRENCY = '2';
-    let activePatientLookups = 0;
-    let maxActivePatientLookups = 0;
-    const db = {
-      careCase: {
-        findMany: vi.fn().mockResolvedValue([]),
-        findFirst: vi.fn().mockResolvedValue(null),
-      },
-      billingEvidence: { findMany: vi.fn().mockResolvedValue([]) },
-      patient: {
-        findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
-          activePatientLookups += 1;
-          maxActivePatientLookups = Math.max(maxActivePatientLookups, activePatientLookups);
-          await new Promise((resolve) => setTimeout(resolve, 5));
-          activePatientLookups -= 1;
-          return { id: where.id, name: where.id };
-        }),
-      },
-      prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
-      medicationProfile: { findMany: vi.fn().mockResolvedValue([]) },
-      setPlan: { findFirst: vi.fn().mockResolvedValue(null) },
-      patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
-      communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
-      communicationRequest: { findMany: vi.fn().mockResolvedValue([]) },
-      visitScheduleContactLog: { findMany: vi.fn().mockResolvedValue([]) },
-      task: { findMany: vi.fn().mockResolvedValue([]) },
-      medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
-      medicationStockSnapshot: { findMany: vi.fn().mockResolvedValue([]) },
-      inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
-      visitRecord: { findFirst: vi.fn().mockResolvedValue(null) },
-      medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
-      conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
-      residence: { findFirst: vi.fn().mockResolvedValue(null) },
-      drugMaster: { findMany: vi.fn().mockResolvedValue([]) },
-    };
-
-    try {
-      const result = await getScheduleVisitBriefsForPatients(db, {
-        orgId: 'org_1',
-        patientIds: ['patient_1', 'patient_2', 'patient_3', 'patient_4', 'patient_5'],
-      });
-
-      expect(maxActivePatientLookups).toBeLessThanOrEqual(2);
-      expect([...result.keys()]).toEqual([
-        'patient_1',
-        'patient_2',
-        'patient_3',
-        'patient_4',
-        'patient_5',
-      ]);
-    } finally {
-      if (originalConcurrency === undefined) {
-        delete process.env.VISIT_BRIEF_BATCH_CONCURRENCY;
-      } else {
-        process.env.VISIT_BRIEF_BATCH_CONCURRENCY = originalConcurrency;
-      }
-    }
-  });
-});
-
 describe('getScheduleVisitBriefsForSchedules', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1657,5 +1572,50 @@ describe('getScheduleVisitBriefsForSchedules', () => {
     expect(db.patient.findFirst).toHaveBeenCalledTimes(2);
     expect(db.visitScheduleContactLog.findMany).toHaveBeenCalledTimes(2);
     expect(generateVisitBriefAiSummaryMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('bounds concurrent schedule brief builds to protect DB and AI providers', async () => {
+    const originalConcurrency = process.env.VISIT_BRIEF_BATCH_CONCURRENCY;
+    process.env.VISIT_BRIEF_BATCH_CONCURRENCY = '2';
+    let activePatientLookups = 0;
+    let maxActivePatientLookups = 0;
+    const db = buildMinimalBriefDb();
+    db.patient.findFirst.mockImplementation(async ({ where }: { where: { id: string } }) => {
+      activePatientLookups += 1;
+      maxActivePatientLookups = Math.max(maxActivePatientLookups, activePatientLookups);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      activePatientLookups -= 1;
+      return { id: where.id, name: where.id, archived_at: null };
+    });
+
+    try {
+      const result = await getScheduleVisitBriefsForSchedules(db, {
+        schedules: Array.from({ length: 5 }, (_, index) => {
+          const suffix = index + 1;
+          return {
+            scheduleId: `schedule_${suffix}`,
+            orgId: 'org_1',
+            patientId: `patient_${suffix}`,
+            caseId: `case_${suffix}`,
+          };
+        }),
+      });
+
+      expect(maxActivePatientLookups).toBeLessThanOrEqual(2);
+      expect(db.patient.findFirst).toHaveBeenCalledTimes(5);
+      expect([...result.keys()]).toEqual([
+        'schedule_1',
+        'schedule_2',
+        'schedule_3',
+        'schedule_4',
+        'schedule_5',
+      ]);
+    } finally {
+      if (originalConcurrency === undefined) {
+        delete process.env.VISIT_BRIEF_BATCH_CONCURRENCY;
+      } else {
+        process.env.VISIT_BRIEF_BATCH_CONCURRENCY = originalConcurrency;
+      }
+    }
   });
 });

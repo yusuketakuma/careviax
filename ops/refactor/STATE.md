@@ -54,7 +54,27 @@
 
 ## 直近の作業
 
-- codex2 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001E (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+- codex3 + codex1 integration: QUERY-SHAPE-VISIT-BRIEF-CASE-SCOPE-003N (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    visit-brief service/focused test、全production caller、patient detail assignment scope、private package boundary、query-shape/read-SLO/raw-org guardsを確認した。
+    Serviceがcallerから明示case scopeを受け取れるにもかかわらず、各briefで患者全caseを追加取得するunbounded `careCase.findMany`を常時実行し、
+    optional scope欠落時はpatient-wide queryへ拡張していた。別exportのpatient batch helperはproduction/import参照0だった。
+  - files changed / correctness / security / medical safety:
+    `BuildVisitBriefArgs.caseIds`を必須化し、runtime欠落は最初のDB read前に固定errorでfail-closed化した。明示空配列は`in: []`またはcase-lessだけの
+    既存nullable-scope contractを保ち、患者全case fallbackへ戻さない。全production callerはorg/assignment scoped case IDsまたは検証済みschedule caseを
+    既に渡していることを確認した。未使用patient batch helperとその専用testsを除去し、schedule単位のcase分離、同一patient/caseでも異なるscheduleの独立build、
+    AI/DB並列上限、PHI safelist/clinical ordering/DTOを維持した。
+  - performance / stability / review:
+    各briefのunbounded full case collectionを除去し、DB readを1件削減した。残存`careCase.findMany`はactive fallbackのstable `take: 1`のみで、
+    visit-brief内hard query-shape違反は0。削除helperにあった唯一の並列上限testをproduction-used schedule batchへ移し、env=2・5 requestで最大active lookup
+    2以下と全件完了、env restoreを固定した。独立verifierは全caller、zero-reference export、empty scope、-1 read claimを確認してINTEGRATE判定した。
+  - validation / remaining / rollback:
+    Codex3 FREEZE後にcodex1がdiff/caller/package boundaryを独立reviewし、focused 1 file / 12 tests、query-shape 0/0、read-SLO 1 known / 0 new、
+    raw-read org 117 allowlisted / 0 new、exact2 ESLint/Prettier/diffをPASS。誤って存在しない`pnpm prisma:raw-org:check`も1回実行しcommand-not-foundを確認後、
+    repo定義の`pnpm db:raw-read-org-guard:check`で再検証した。Oracle、schema/migration、network/write追加、long gateなし。親はpatients board全件materializeが
+    残るためPartial。RollbackはこのcommitのrevertでDB/data rollback不要。
+
+- codex2 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001E (DONE; parent remains Partial, 2026-07-13; implementation `30ecad829`, PUSHED).
   - current task / files inspected / root cause:
     `POST /api/handoff-board/items`とfocused test、HandoffItem/User schema、shared response/no-store helper、installed Next 16.2.9 Route Handler guide、
     API/auth/raw-read/module guardsを確認した。Primary boardは404を使う一方、linked recipientのmissing/cross-org/inactiveは存在・org・account stateを
