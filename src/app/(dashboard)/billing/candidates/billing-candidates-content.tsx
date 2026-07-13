@@ -40,6 +40,13 @@ import {
   type BillingValidationLayerSnapshot,
 } from '@/lib/billing/validation-layers';
 import type { StatusRoleOrNeutral } from '@/lib/constants/status-labels';
+import {
+  buildBillingCandidateGenerationResponseSchema,
+  buildBillingCandidateReviewResponseSchema,
+  buildBillingCandidatesPageResponseSchema,
+  buildBillingCloseResponseSchema,
+  buildBillingExportPreviewResponseSchema,
+} from './billing-candidates-response-schemas';
 
 // --- Types ---
 
@@ -114,60 +121,6 @@ type BillingCandidate = {
 type BillingDomain = 'home_care' | 'pca_rental';
 
 type CandidateValidationLayers = BillingValidationLayerSnapshot;
-
-type BillingCandidateSummary = {
-  total: number;
-  pending_review: number;
-  confirmed: number;
-  excluded: number;
-  exported: number;
-  reviewed: number;
-  ready_to_close: number;
-  blocked_from_close: number;
-  blocker_reasons: Array<{ reason: string; count: number }>;
-} | null;
-
-type BillingCandidatesResponse = {
-  data: BillingCandidate[];
-  meta: {
-    limit: number;
-    has_more: boolean;
-    next_cursor: string | null;
-    summary: BillingCandidateSummary;
-  };
-};
-
-type BillingCandidateGenerationResponse = {
-  data: {
-    message: string;
-    billing_domain: BillingDomain | 'all';
-    generated: number;
-    home_care_generated: number;
-    pca_rental_generated: number;
-    confirmed: number;
-    review_required: number;
-    excluded: number;
-  };
-};
-
-type BillingExportPreviewResponse = {
-  data: {
-    billing_month: string | null;
-    billing_domain: BillingDomain;
-    total_count: number;
-    exportable_count: number;
-    total_points: number;
-    total_amount_yen: number;
-    status_counts: Record<string, number>;
-    insurance_type_counts: {
-      medical: number;
-      care: number;
-      self: number;
-    };
-    exclusion_reasons: Array<{ reason: string; count: number }>;
-    generated_at: string;
-  };
-};
 
 type BillingCandidatesContentProps = {
   initialBillingMonth?: string | null;
@@ -403,7 +356,14 @@ export function BillingCandidatesContent({
         const res = await fetch(`/api/billing-candidates?${params}`, {
           headers: buildOrgHeaders(orgId),
         });
-        return readApiJson<BillingCandidatesResponse>(res, '請求候補の取得に失敗しました');
+        return readApiJson(res, {
+          schema: buildBillingCandidatesPageResponseSchema({
+            billingMonth: billingMonthStr,
+            billingDomain,
+            patientId: patientIdFilter,
+          }),
+          fallbackMessage: '請求候補の取得に失敗しました',
+        });
       },
       getNextPageParam: (lastPage) => lastPage.meta.next_cursor ?? undefined,
       initialPageParam: undefined as string | undefined,
@@ -428,7 +388,13 @@ export function BillingCandidatesContent({
       const res = await fetch(`/api/billing-candidates/export?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<BillingExportPreviewResponse>(res, '請求CSVの出力前確認に失敗しました');
+      return readApiJson(res, {
+        schema: buildBillingExportPreviewResponseSchema({
+          billingMonth: billingMonthStr,
+          billingDomain,
+        }),
+        fallbackMessage: '請求CSVの出力前確認に失敗しました',
+      });
     },
     enabled: !!orgId,
   });
@@ -457,7 +423,10 @@ export function BillingCandidatesContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ billing_month: billingMonthStr, billing_domain: billingDomain }),
       });
-      return readApiJson<BillingCandidateGenerationResponse>(res, '請求候補の生成に失敗しました');
+      return readApiJson(res, {
+        schema: buildBillingCandidateGenerationResponseSchema(billingDomain),
+        fallbackMessage: '請求候補の生成に失敗しました',
+      });
     },
     onSuccess: async (result) => {
       toast.success(result.data.message);
@@ -483,7 +452,14 @@ export function BillingCandidatesContent({
           expected_updated_at: input.expectedUpdatedAt,
         }),
       });
-      return readApiJson<{ data: BillingCandidate }>(res, '請求候補の更新に失敗しました');
+      return readApiJson(res, {
+        schema: buildBillingCandidateReviewResponseSchema({
+          candidateId: input.id,
+          action: input.action,
+          previousUpdatedAt: input.expectedUpdatedAt,
+        }),
+        fallbackMessage: '請求候補の更新に失敗しました',
+      });
     },
     onSuccess: async () => {
       toast.success('請求候補を更新しました');
@@ -502,16 +478,13 @@ export function BillingCandidatesContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ billing_month: billingMonthStr, billing_domain: billingDomain }),
       });
-      return readApiJson<{
-        data: {
-          message: string;
-          exported_count?: number;
-          billing_domain?: BillingDomain;
-        };
-      }>(res, '月次締めに失敗しました');
+      return readApiJson(res, {
+        schema: buildBillingCloseResponseSchema(billingDomain),
+        fallbackMessage: '月次締めに失敗しました',
+      });
     },
     onSuccess: async (result) => {
-      toast.success(result.data.message);
+      toast.success(result.message);
       await queryClient.invalidateQueries({ queryKey: ['billing-candidates', orgId] });
       await queryClient.invalidateQueries({ queryKey: ['billing-stats', orgId] });
     },

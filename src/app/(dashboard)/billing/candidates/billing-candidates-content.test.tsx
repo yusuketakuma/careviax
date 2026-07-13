@@ -310,7 +310,6 @@ describe('BillingCandidatesContent', () => {
       }
       if (url === '/api/billing-candidates/close' && init?.method === 'POST') {
         return jsonResponse({
-          message: 'legacy root message must not be read',
           data: {
             message: '2026-03 を月次締めしました',
             billing_domain: 'home_care',
@@ -775,7 +774,6 @@ describe('BillingCandidatesContent', () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input) === '/api/billing-candidates' && init?.method === 'POST') {
         return jsonResponse({
-          message: 'legacy root message must not be read',
           data: {
             message: '2026-03-01 の請求候補を生成しました',
             billing_domain: 'home_care',
@@ -798,7 +796,6 @@ describe('BillingCandidatesContent', () => {
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith('2026-03-01 の請求候補を生成しました');
     });
-    expect(toast.success).not.toHaveBeenCalledWith('legacy root message must not be read');
   });
 
   it('uses the generation fallback when mutation rejection is not an Error', async () => {
