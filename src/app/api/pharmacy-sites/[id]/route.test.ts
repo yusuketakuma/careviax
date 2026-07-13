@@ -17,6 +17,13 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -88,6 +95,10 @@ describe('/api/pharmacy-sites/[id]', () => {
       const req = createRequest('http://localhost/api/pharmacy-sites/site_1');
       const res = await GET(req, { params: Promise.resolve({ id: 'site_1' }) });
       expect(res!.status).toBe(200);
+      expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+        permission: 'canAdmin',
+        message: '薬局情報の閲覧権限がありません',
+      });
       const json = await res!.json();
       expect(json.data.id).toBe('site_1');
     });

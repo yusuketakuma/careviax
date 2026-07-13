@@ -25,6 +25,13 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -124,6 +131,10 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canAdmin',
+      message: '保険設定の閲覧権限がありません',
+    });
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'config_1', insurance_type: 'medical' }],
     });

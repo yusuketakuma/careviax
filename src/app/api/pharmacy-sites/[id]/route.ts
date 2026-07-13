@@ -1,21 +1,18 @@
 import { NextRequest } from 'next/server';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { updatePharmacySiteSchema } from '@/lib/validations/pharmacy-site';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '薬局情報の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function getPharmacySite(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id } = await params;
   const siteId = normalizeRequiredRouteParam(id);
   if (!siteId) return validationError('薬局IDが不正です');
@@ -33,14 +30,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   return success({ data: site });
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '薬局情報の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function updatePharmacySite(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -86,3 +80,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return success({ data: updated });
 }
+
+export const GET = withAuthContext(getPharmacySite, {
+  permission: 'canAdmin',
+  message: '薬局情報の閲覧権限がありません',
+});
+
+export const PATCH = withAuthContext(updatePharmacySite, {
+  permission: 'canAdmin',
+  message: '薬局情報の更新権限がありません',
+});

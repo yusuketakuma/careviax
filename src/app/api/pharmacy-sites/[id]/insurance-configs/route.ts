@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
@@ -19,14 +19,11 @@ function dayBefore(value: Date) {
   return result;
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '保険設定の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function getInsuranceConfigs(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id } = await params;
   const siteId = normalizeRequiredRouteParam(id);
   if (!siteId) return validationError('薬局IDが不正です');
@@ -45,14 +42,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   return success({ data: configs });
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '保険設定の作成権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function createInsuranceConfig(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -169,3 +163,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   return success({ data: result.config }, 201);
 }
+
+export const GET = withAuthContext(getInsuranceConfigs, {
+  permission: 'canAdmin',
+  message: '保険設定の閲覧権限がありません',
+});
+
+export const POST = withAuthContext(createInsuranceConfig, {
+  permission: 'canAdmin',
+  message: '保険設定の作成権限がありません',
+});

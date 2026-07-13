@@ -55,6 +55,24 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZPHARMACYSITEAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Drug Alert Rules push後に残19 routesを再scoreし、薬局住所・連絡先・保険改定設定を返すPharmacy Site detail / Insurance Configsを
+    cache境界のsecurity/privacy価値で選定した。Routes/tests、strict admin consumer schemas、API path encoding、advisory lock履歴、allowlist、
+    installed Next guideを確認し、4 direct `requireAuthContext` callsのsuccess/validation/not-found responseが標準no-store/performance境界を
+    通らない一方、canAdmin、org/site predicate、validation、transaction/audit契約は既に固定されていると確認した。
+  - files changed / correctness / security / privacy / billing / performance:
+    Detail GET/PATCHとInsurance Configs GET/POSTをtyped named handler + `withAuthContext`へ移行し、permission message、async params、薬局/連絡先/
+    日付/revision/config validation、org/site predicate、advisory lock、重複・期間overlap・明示auto-close、RLS audit、DTOを維持した。両test auth mockを
+    wrapper signatureへ同期し、permission optionを明示回帰した。Allowlist 2 entriesを除去し、direct debtは169→167 routes、239→235 calls、
+    helper未使用success routeは19→17へ減った。DB query/write/network/payloadと保険算定設定の意味は変えず、共通header/performance計測だけを追加した。
+  - validation / remaining / rollback:
+    Pharmacy Sites routes + checker 3 files / 24 tests、shared auth + 5 migration families + checker 11 files / 95 tests、exact ESLint/Prettier、8 GiB
+    typecheck / no-unused、route-auth 167 allowlisted / 235 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary
+    0/0、frontend contract、client schema 361 backed / 0 allowlisted、Plans active、format/diffをPASS。Schema/migration/production data/deploy/
+    Oracleなし。視覚変更なしのためimagegen/browserなし。親にはdirect-auth success未収束17 routes、request_id/correlation_id、error registryが残る。
+    Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
 - codex1: API-CONTRACT-001FZDRUGALERTAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
   - current task / files inspected / root cause:
     Goal attachment、HEAD/parity、dirty tree、Plans/STATE/gbrain、route-auth allowlist、Drug Alert Rules root/detail routes/tests、admin consumers、
