@@ -33,6 +33,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'select_organization',
     messageLabel: 'api.error.auth.no_org',
   },
+  AUTH_RECOVERY_CODE_INVALID: {
+    httpStatus: 400,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'correct_input',
+    messageLabel: 'api.error.auth.recovery_code_invalid',
+  },
   AUTH_UNAUTHENTICATED: {
     httpStatus: 401,
     logLevel: 'warn',

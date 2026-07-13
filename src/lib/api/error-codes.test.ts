@@ -23,6 +23,13 @@ describe('API error code registry', () => {
           "recoveryAction": "select_organization",
           "retryable": false,
         },
+        "AUTH_RECOVERY_CODE_INVALID": {
+          "httpStatus": 400,
+          "logLevel": "warn",
+          "messageLabel": "api.error.auth.recovery_code_invalid",
+          "recoveryAction": "correct_input",
+          "retryable": false,
+        },
         "AUTH_UNAUTHENTICATED": {
           "httpStatus": 401,
           "logLevel": "warn",

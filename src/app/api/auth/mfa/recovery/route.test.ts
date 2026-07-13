@@ -141,6 +141,27 @@ describe('/api/auth/mfa/recovery POST', () => {
     expect(restoreMfaRecoveryCodesMock).not.toHaveBeenCalled();
   });
 
+  it('returns the same invalid-code response for unknown users without recovery side effects', async () => {
+    userFindUniqueMock.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest({
+        email: 'missing@example.com',
+        recoveryCode: 'ABCD-EFGH',
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'AUTH_RECOVERY_CODE_INVALID',
+      message: 'リカバリーコードが正しくありません',
+    });
+    expect(takeMfaRecoveryCodesForRecoveryMock).not.toHaveBeenCalled();
+    expect(disableCognitoTotpForUserMock).not.toHaveBeenCalled();
+    expect(clearMfaRecoveryCodesMock).not.toHaveBeenCalled();
+    expect(restoreMfaRecoveryCodesMock).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when the recovery code does not match', async () => {
     takeMfaRecoveryCodesForRecoveryMock.mockResolvedValue(null);
 
@@ -155,8 +176,9 @@ describe('/api/auth/mfa/recovery POST', () => {
     expect(disableCognitoTotpForUserMock).not.toHaveBeenCalled();
     expect(clearMfaRecoveryCodesMock).not.toHaveBeenCalled();
     expect(restoreMfaRecoveryCodesMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       code: 'AUTH_RECOVERY_CODE_INVALID',
+      message: 'リカバリーコードが正しくありません',
     });
   });
 

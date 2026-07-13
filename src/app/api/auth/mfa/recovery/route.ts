@@ -45,7 +45,7 @@ export async function POST(req: Request) {
   });
 
   if (!user) {
-    return externalError('AUTH_RECOVERY_CODE_INVALID', 'リカバリーコードが正しくありません', 400);
+    return registeredError('AUTH_RECOVERY_CODE_INVALID', 'リカバリーコードが正しくありません');
   }
 
   let recoverySnapshot;
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     throw error;
   }
   if (!recoverySnapshot) {
-    return externalError('AUTH_RECOVERY_CODE_INVALID', 'リカバリーコードが正しくありません', 400);
+    return registeredError('AUTH_RECOVERY_CODE_INVALID', 'リカバリーコードが正しくありません');
   }
 
   try {
