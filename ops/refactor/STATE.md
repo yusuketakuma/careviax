@@ -54,7 +54,21 @@
 
 ## 直近の作業
 
-- codex2 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001F (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+- codex1: SERIALIZED-FULL-GATES-20260713-B (DONE, 2026-07-13; validated HEAD `cc1eb5c7e`).
+  - current task / coordination:
+    `cc1eb5c7e`までのAPI status、conference参照authz、visit-brief query-shape統合後、全source ownerをread-only/FREEZEにして
+    Next.jsの`.next/types`競合を避け、長時間gateを完全直列で実行した。
+  - validation / results:
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` PASS、同`pnpm typecheck:no-unused` PASS、`pnpm lint` PASS
+    （既存の`src/lib/platform/break-glass.test.ts`未使用引数warning 2件のみ）、`pnpm format:check` PASS、`pnpm colors:check` PASS
+    （19 allowlisted / 0 drift）、`pnpm plans:active:check` PASS。`NODE_OPTIONS=--max-old-space-size=8192 pnpm test`は
+    1554 files PASS / 3 skipped、16219 tests PASS / 13 skipped（既知jsdom navigation warningのみ）。`pnpm build`はNext 16.2.9
+    webpack compile、TypeScript、static generation 311/311をPASSし、既知generated CSS `var(...)` warning 2件だけだった。
+  - remaining / rollback:
+    source変更なしのcheckpointでrollback不要。患者ボードsingle-pass、API status残scan、external grant RLS/OTP/audit findingsを
+    次の独立sliceへ分離し、長時間gateは引き続きcodex1だけが直列実行する。
+
+- codex2 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001F (DONE; parent remains Partial, 2026-07-13; implementation `cc1eb5c7e`, PUSHED).
   - current task / files inspected / root cause:
     Pharmacy stock request POST/focused test、FormularyChangeRequest/DrugMaster/PharmacySite schema、shared response/no-store helper、installed Next 16.2.9
     Route Handler guide、API/auth/raw-read/module guardsを確認した。`site_id`と`drug_master_id`は作成対象のprimary ownerだが、linked
