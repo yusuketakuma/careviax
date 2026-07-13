@@ -51,6 +51,32 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZPATIENTFORMSTRICT patient form candidate readers (VERIFY_REQUIRED, 2026-07-13; implementation `0655c4d97`; shared clean-capacity build pending).
+  - current task / root cause:
+    Patient Formのduplicate check、facilities、facility units、service areas、pharmacists、staff計6 candidate readersはstring fallbackだけで、
+    malformed count/候補rowやprovider-only contacts/capacity/権限/稼働情報を患者作成前のclient stateへ流し得た。Duplicate client型は
+    providerが意図的に返さないname_kanaを必須扱いしていた。
+  - implementation / patient candidate safety boundary:
+    6 consumed runtime schemasを追加し、list count metadata、duplicate fields、service-area geo data、eligible staff roleを検証。
+    Facility contacts/capacity、pharmacist permissions/capacity、staff roleをcache前にstripし、duplicate name_kanaをnullへ正規化した。
+    Patient create/update、provider queries、auth/tenant/audit/DB/UIは変更していない。非visual candidate parser/PHI境界のため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/components/features/patients/patient-form-response-schemas.ts`,
+    `src/components/features/patients/patient-form-response-schemas.test.ts`,
+    `src/components/features/patients/patient-form.tsx`,
+    `src/components/features/patients/patient-form.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Schema/consumer/providers Vitest passed 8 files / 98 tests; checker passed 1 file / 7 tests. Exact zero-warning ESLint, focused Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (333 backed / 31 allowlisted / 7 files), module boundary, client PHI-log/display,
+    API response shape, colors, format, and diff-check passed. Full build remains NOT_EXECUTED because only 231 MiB is free while existing
+    `.next` consumes 16 GiB; shared generated/user files were not deleted.
+  - security / performance / remaining:
+    Malformed candidate/count payloads now fail closed and unused PHI/permission-adjacent provider fields no longer enter client state.
+    Network/DB calls, writes, rendering, and dependencies are unchanged. API-CONTRACT-001-RESCAN continues with 31 calls across 7 files.
+    A clean-capacity runner must complete `pnpm build`.
+
 - codex: API-CONTRACT-001FZVISITDETAILSTRICT visit record detail readers (VERIFY_REQUIRED, 2026-07-13; implementation `2941eeedb`; shared clean-capacity build pending).
   - current task / root cause:
     Visit Record Detailのschedule create、record GET、patient header、billing candidates、residual medications、visit preparation計6 readersは
