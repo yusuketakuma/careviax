@@ -8,11 +8,12 @@
 
 ## 体制（2026-07-14 最新ユーザー指示）
 
-- 2026-07-14 の最新ユーザー指示により、`codex2/codex3/codex4`の全担当業務を`codex1`が引き取った。
-  現行は`codex1`単独が計画、実装、validation、単一台帳更新、scoped commitの責任を持つ。
-- `codex2/codex3/codex4`へ担当返却とSTOP/RELEASE継続を`agmsg`で通知済み。各agentの既存sliceはcommit/push済みで、
-  未commit source差分はない。今後の候補・残検証は`codex1`が直列に処理し、他Codexは編集を再開しない。
-- 2026-07-13の全Codex並列実装・機能単位exact-path ownershipは終了済みの履歴。Claudeと外部maker/checkerも再有効化されていない。
+- 2026-07-14 の最新ユーザー指示により、現行を`codex1` + `codex2`の2台体制へ切り替えた。`codex1`が計画、
+  exact-path ownership調整、独立review、直列long validation、単一台帳更新、scoped commit/pushの最終責任を持つ。
+- `codex2`は`agmsg` team `phos`のtmux paneに再spawn済み。`codex1`から明示されたexact pathsの調査/実装/focused
+  validationのみを担当し、追加DELEGATE前に競合pathを編集しない。Plans/STATE/gbrain、commit/push、long Next gateは
+  `codex1`が明示的に委譲しない限り触らない。
+- `codex3/codex4`はSTOP/RELEASEのままで、Claudeと外部maker/checkerも再有効化しない。旧Codex並列実装記述は履歴として扱う。
 - long Next gateは引き続き直列実行し、shared dirty worktreeの既存user変更を保存する。scoped commitは明示owned pathだけをstageし、
   push、deploy、migration適用、production mutationはcurrent-taskの明示許可なしに行わない。
 - 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
