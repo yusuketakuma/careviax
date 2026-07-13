@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 const { withOrgContextMock } = vi.hoisted(() => ({ withOrgContextMock: vi.fn() }));
@@ -11,7 +13,6 @@ import {
   recordPhiReadAudit,
   recordPhiReadAuditForRequest,
 } from './phi-read-audit';
-import { logger } from '@/lib/utils/logger';
 
 describe('recordPhiReadAudit', () => {
   beforeEach(() => {
@@ -128,25 +129,44 @@ describe('recordPhiReadAudit', () => {
     expect(Object.keys(changes)).toEqual(['view']);
   });
 
-  it('does not throw and warns when the audit write fails', async () => {
-    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
-    const create = vi.fn().mockRejectedValue(new Error('db down'));
+  it('does not throw and emits a PHI-safe signal when the audit write fails', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const create = vi
+      .fn()
+      .mockRejectedValue(new Error('db down patient=patient_sensitive token=secret-audit-token'));
 
     await expect(
       recordPhiReadAudit(
         { auditLog: { create } },
-        { orgId: 'org_1', userId: 'user_1' },
-        { patientId: 'patient_1', view: 'patient_detail' },
+        { orgId: 'org_sensitive', userId: 'user_sensitive' },
+        { patientId: 'patient_sensitive', view: 'patient_detail' },
       ),
     ).resolves.toBeUndefined();
 
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    const [ctx] = warnSpy.mock.calls[0] ?? [];
-    expect(ctx).toMatchObject({ event: 'phi_read_audit_write_failed' });
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    const entry = JSON.parse(String(consoleErrorSpy.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(entry).toMatchObject({
+      level: 'error',
+      message: 'phi_read_audit_write_failed',
+      event: 'phi_read_audit_write_failed',
+      operation: 'record_phi_read_audit',
+      phase: 'audit_write',
+      error_name: 'Error',
+    });
+    expect(entry).not.toHaveProperty('orgId');
+    expect(entry).not.toHaveProperty('actorId');
+    expect(entry).not.toHaveProperty('entityType');
+    expect(entry).not.toHaveProperty('entityId');
+    const serialized = JSON.stringify(entry);
+    expect(serialized).not.toContain('org_sensitive');
+    expect(serialized).not.toContain('user_sensitive');
+    expect(serialized).not.toContain('patient_sensitive');
+    expect(serialized).not.toContain('secret-audit-token');
+    expect(serialized).not.toContain('db down');
   });
 
   it('does not throw when the audit client lacks a create method', async () => {
-    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     await expect(
       recordPhiReadAudit(
@@ -156,7 +176,7 @@ describe('recordPhiReadAudit', () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -213,21 +233,95 @@ describe('recordPhiReadAuditForRequest', () => {
     });
   });
 
-  it('does not throw and warns when opening the org-scoped transaction fails', async () => {
-    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
-    withOrgContextMock.mockRejectedValue(new Error('tx open failed'));
+  it('does not throw and emits a PHI-safe signal when the org context fails', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    withOrgContextMock.mockRejectedValue(
+      new Error('tx open failed patient=patient_sensitive token=secret-context-token'),
+    );
 
     expect(() =>
       recordPhiReadAuditForRequest(
-        { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
-        { patientId: 'patient_1', view: 'patient_detail' },
+        { orgId: 'org_sensitive', userId: 'user_sensitive', role: 'pharmacist' },
+        { patientId: 'patient_sensitive', view: 'patient_detail' },
       ),
     ).not.toThrow();
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    const [ctx] = warnSpy.mock.calls[0] ?? [];
-    expect(ctx).toMatchObject({ event: 'phi_read_audit_context_failed' });
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    const entry = JSON.parse(String(consoleErrorSpy.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(entry).toMatchObject({
+      level: 'error',
+      message: 'phi_read_audit_context_failed',
+      event: 'phi_read_audit_context_failed',
+      operation: 'record_phi_read_audit_for_request',
+      phase: 'org_context',
+      error_name: 'Error',
+    });
+    expect(entry).not.toHaveProperty('orgId');
+    expect(entry).not.toHaveProperty('actorId');
+    expect(entry).not.toHaveProperty('entityType');
+    expect(entry).not.toHaveProperty('entityId');
+    const serialized = JSON.stringify(entry);
+    expect(serialized).not.toContain('org_sensitive');
+    expect(serialized).not.toContain('user_sensitive');
+    expect(serialized).not.toContain('patient_sensitive');
+    expect(serialized).not.toContain('secret-context-token');
+    expect(serialized).not.toContain('tx open failed');
+  });
+});
+
+describe('PHI read audit failure observability contract', () => {
+  it('keeps a no-dimension CloudWatch metric filter and alarm for every failure phase', () => {
+    // AWS references confirmed 2026-07-13:
+    // https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html
+    // https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntaxForMetricFilters.html
+    const config = JSON.parse(
+      readFileSync(join(process.cwd(), 'tools/infra/cloudwatch-alarms.json'), 'utf8'),
+    ) as {
+      alarms: Array<{
+        name: string;
+        metric: string;
+        namespace: string;
+        comparisonOperator: string;
+        threshold: number;
+        evaluationPeriods: number;
+        periodSeconds: number;
+        statistic: string;
+        dimensions?: Record<string, string>;
+        metricFilter?: {
+          logGroupName: string;
+          filterName: string;
+          filterPattern: string;
+          metricNamespace: string;
+          metricName: string;
+          metricValue: string;
+          defaultValue: number;
+          dimensions?: Record<string, string>;
+        };
+      }>;
+    };
+
+    const alarm = config.alarms.find((entry) => entry.name === 'ph-os-phi-read-audit-failure');
+    expect(alarm).toMatchObject({
+      metric: 'PhiReadAuditFailureCount',
+      namespace: 'PH-OS/Application',
+      comparisonOperator: 'GreaterThanOrEqualToThreshold',
+      threshold: 1,
+      evaluationPeriods: 1,
+      periodSeconds: 300,
+      statistic: 'Sum',
+      metricFilter: {
+        logGroupName: '/ph-os/application',
+        filterName: 'ph-os-phi-read-audit-failure',
+        filterPattern: '{ $.event = "phi_read_audit_*_failed" }',
+        metricNamespace: 'PH-OS/Application',
+        metricName: 'PhiReadAuditFailureCount',
+        metricValue: '1',
+        defaultValue: 0,
+      },
+    });
+    expect(alarm).not.toHaveProperty('dimensions');
+    expect(alarm?.metricFilter).not.toHaveProperty('dimensions');
   });
 });

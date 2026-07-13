@@ -220,6 +220,26 @@
         "metricValue": "1",
         "defaultValue": 0
       }
+    },
+    {
+      "name": "ph-os-phi-read-audit-failure",
+      "metric": "PhiReadAuditFailureCount",
+      "namespace": "PH-OS/Application",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 300,
+      "statistic": "Sum",
+      "alarmDescription": "A best-effort PHI read audit write or org-context setup failed. Derived from PHI-safe structured error logs through the CloudWatch Logs metric filter below (declaration only; apply as an operational step).",
+      "metricFilter": {
+        "logGroupName": "/ph-os/application",
+        "filterName": "ph-os-phi-read-audit-failure",
+        "filterPattern": "{ $.event = \"phi_read_audit_*_failed\" }",
+        "metricNamespace": "PH-OS/Application",
+        "metricName": "PhiReadAuditFailureCount",
+        "metricValue": "1",
+        "defaultValue": 0
+      }
     }
   ]
 }

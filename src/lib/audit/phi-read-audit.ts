@@ -13,7 +13,8 @@ import { logger } from '@/lib/utils/logger';
  * - 記録内容は actor / org / patient_id / route(view) / purpose 相当のメタのみ。
  *   PHI 本文（氏名・住所・保険番号・臨床記載など）は一切記録しない。
  * - ベストエフォート非同期。監査書込みの失敗はレスポンスを妨げない（throw しない）。
- *   失敗時は logger.warn で観測可能にするだけに留める。
+ *   失敗時は PHI-safe な structured error signal を出し、CloudWatch Logs の
+ *   metric filter / alarm で監査欠落を検知できるようにする。
  * - 呼び出し側は fire-and-forget（await しない）で性能を落とさない。
  */
 
@@ -54,7 +55,7 @@ type PhiReadAuditInput = {
 /**
  * PHI 閲覧監査行を 1 件記録する（ベストエフォート）。
  *
- * 失敗しても throw せず logger.warn するのみ。呼び出し側は原則 fire-and-forget
+ * 失敗しても throw せず structured error signal を出す。呼び出し側は原則 fire-and-forget
  * （`void recordPhiReadAudit(...)`）で使用し、レスポンス性能を落とさない。
  */
 export async function recordPhiReadAudit(
@@ -83,15 +84,12 @@ export async function recordPhiReadAudit(
       },
     });
   } catch (error) {
-    // 監査書込みの失敗はレスポンスを妨げない。観測のため warn のみ。
-    logger.warn(
+    // 監査書込みの失敗はレスポンスを妨げない。識別子を含めず dedicated metric filter へ送る。
+    logger.error(
       {
         event: 'phi_read_audit_write_failed',
         operation: 'record_phi_read_audit',
-        orgId: actor.orgId,
-        actorId: actor.userId,
-        entityType: input.targetType ?? 'patient',
-        entityId: input.targetId ?? input.patientId ?? 'unknown',
+        phase: 'audit_write',
       },
       error,
     );
@@ -117,7 +115,8 @@ type PhiReadAuditRequestContext = {
  * （mutation route が `withOrgContext` 内で `createAuditLogEntry` を呼ぶのと同じ規約）。
  *
  * 本関数は void を返し、呼び出し側は `void recordPhiReadAuditForRequest(...)` として
- * await せずに使う。トランザクション確立や書込みの失敗はレスポンスを妨げず、warn のみ。
+ * await せずに使う。トランザクション確立や書込みの失敗はレスポンスを妨げず、
+ * PHI-safe な structured error signal として記録する。
  */
 export function recordPhiReadAuditForRequest(
   ctx: PhiReadAuditRequestContext,
@@ -141,16 +140,13 @@ export function recordPhiReadAuditForRequest(
     ...(ctx.userAgent ? { userAgent: ctx.userAgent } : {}),
   };
 
-  const warnContextFailure = (error: unknown) => {
+  const reportContextFailure = (error: unknown) => {
     // トランザクション確立自体の失敗（recordPhiReadAudit は内部で握り潰す）。
-    logger.warn(
+    logger.error(
       {
         event: 'phi_read_audit_context_failed',
         operation: 'record_phi_read_audit_for_request',
-        orgId: ctx.orgId,
-        actorId: ctx.userId,
-        entityType: input.targetType ?? 'patient',
-        entityId: input.targetId ?? input.patientId ?? 'unknown',
+        phase: 'org_context',
       },
       error,
     );
@@ -161,8 +157,8 @@ export function recordPhiReadAuditForRequest(
   try {
     void withOrgContext(ctx.orgId, (tx) => recordPhiReadAudit(tx, actor, input), {
       requestContext,
-    }).catch(warnContextFailure);
+    }).catch(reportContextFailure);
   } catch (error) {
-    warnContextFailure(error);
+    reportContextFailure(error);
   }
 }

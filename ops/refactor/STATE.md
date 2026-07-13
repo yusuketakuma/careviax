@@ -54,6 +54,25 @@
 
 ## 直近の作業
 
+- codex4 + codex1 integration: PHI-READ-AUDIT-BESTEFFORT-DROP-001 (DONE, 2026-07-13; implementation pending commit).
+  - current task / root cause / ownership:
+    PHI read auditのwrite失敗とorg-context確立失敗が、PHI responseを返したまま通常warnだけで消え、専用metric/alarmがなかった。
+    Codex4が`phi-read-audit`実装/testとCloudWatch alarm declarationのexact 3 pathsを所有し、codex1が差分・logger redaction・
+    AWS filter構文を独立reviewした。
+  - implementation / privacy / security result:
+    既存のnonblocking/fire-and-forget応答契約を維持し、失敗を`phi_read_audit_write_failed` /
+    `phi_read_audit_context_failed`専用error eventへ変換した。出力はevent、operation、phase、safe error nameだけで、org/user/
+    patient/target identifier、任意targetType、view/purpose/metadata、raw error message/stackを含めない。単一dimensionless
+    `PH-OS/Application/PhiReadAuditFailureCount` metric filter/alarmで両failure phaseを集約する。Outbox、retry、DB/migration、
+    direct network call、live AWS applyは追加していない。
+  - validation / AWS reference / rollback:
+    `src/lib/audit/phi-read-audit.test.ts` 9 tests、scoped ESLint、Prettier、`git diff --check`、JSON parseをPASS。
+    AWS公式「Filter pattern syntax for metric filters, subscription filters, filter log events, and Live Tail」および
+    「Filter pattern syntax for metric filters」を2026-07-13に確認:
+    https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html /
+    https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntaxForMetricFilters.html 。
+    Live alarm適用はhuman gate。Rollbackはimplementation commitを`git revert`、DB/data rollback不要。
+
 - codex1 + codex2: API-TASK-RELATED-ENTITY-CONTRACT-001 (DONE, 2026-07-13; implementation `38ed665ea`, PUSHED).
   - current task / root cause / ownership:
     Task registryの`allowedRelatedEntityTypes`がgeneric `POST /api/tasks`で未強制だった。codex2がevaluator、route、testsの
@@ -93,7 +112,7 @@
   - codex2: `API-STATUS-AUTHZ-403-AS-400-001`。Confirmed permission/scope denialを403 `AUTH_FORBIDDEN`へ統一し、
     malformed/body-FK 400とnon-enumerating concealmentを維持する。Webhook compatibility subpartは既存`86f626aa0`でDONEと再確認。
   - codex3: `PERF-DAYBOARD-ROUTE-ESTIMATOR-DEDUP-001`。Day-board routingをrequest-scoped estimator + matrix callへ収束する。
-  - codex4: `PHI-READ-AUDIT-BESTEFFORT-DROP-001`。PHI payload/DB migrationなしでwrite/context failureをPHI-safe metric/alarmへ接続する。
+  - codex4: `S3-SSE-DEFAULT-NONKMS-001`。File storageの暗号化未指定defaultをSSE-KMSへfail-closed化し、明示AES256 opt-outとpurpose別key precedenceを保持する。
   - codex1: 統合、single ledger、commit/push、long gatesを管理し、待機中は`DAILY-JOBS-LOCALDATEKEY-JST-002`を次候補とする。
 
 - codex1: MEDPROFILE-SYNC-RACE-001 MedicationProfile sync serialization (DONE, 2026-07-13; implementation `30fcf954e`, PUSHED).
