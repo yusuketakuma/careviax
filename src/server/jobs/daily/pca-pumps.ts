@@ -1,11 +1,10 @@
-import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { runJob } from '../runner';
 import {
   buildPcaPumpReturnInspectionPendingTaskKey,
   buildPcaPumpRentalOverdueTaskKey,
-  formatDateKey,
   syncGeneratedOperationalTasks,
   type GeneratedTaskSpec,
 } from '../daily-helpers';
@@ -17,7 +16,7 @@ export async function checkPcaPumpRentalOverdues(context: JobExecutionContext = 
     'pca_pump_rental_overdue_check',
     async () => {
       // due_at(@db.Date)は UTC 深夜で保存されるため UTC 深夜の今日で比較する
-      const today = utcDateFromLocalKey(localDateKey());
+      const today = utcDateFromLocalKey(japanDateKey());
       const overdueRentals = await prisma.pcaPumpRental.findMany({
         where: {
           ...(context.orgId ? { org_id: context.orgId } : {}),
@@ -98,8 +97,8 @@ export async function checkPcaPumpRentalOverdues(context: JobExecutionContext = 
                 pump_asset_code: rental.pump.asset_code,
                 institution_id: rental.institution_id,
                 institution_name: rental.institution.name,
-                rented_at: formatDateKey(rental.rented_at),
-                due_at: rental.due_at ? formatDateKey(rental.due_at) : null,
+                rented_at: japanDateKey(rental.rented_at),
+                due_at: rental.due_at ? japanDateKey(rental.due_at) : null,
                 overdue_days: overdueDays,
                 rental_fee_yen: rental.rental_fee_yen,
                 action_href: '/admin/pca-pumps',
@@ -121,7 +120,7 @@ export async function checkPcaPumpReturnInspectionPending(context: JobExecutionC
     'pca_pump_return_inspection_pending_check',
     async () => {
       // returned_at(@db.Date)との日数差は UTC 深夜の今日を基準に取る
-      const today = utcDateFromLocalKey(localDateKey());
+      const today = utcDateFromLocalKey(japanDateKey());
       const rentals = await prisma.pcaPumpRental.findMany({
         where: {
           ...(context.orgId ? { org_id: context.orgId } : {}),
@@ -178,9 +177,9 @@ export async function checkPcaPumpReturnInspectionPending(context: JobExecutionC
             pump_asset_code: rental.pump.asset_code,
             institution_id: rental.institution_id,
             institution_name: rental.institution.name,
-            rented_at: formatDateKey(rental.rented_at),
-            due_at: rental.due_at ? formatDateKey(rental.due_at) : null,
-            returned_at: rental.returned_at ? formatDateKey(rental.returned_at) : null,
+            rented_at: japanDateKey(rental.rented_at),
+            due_at: rental.due_at ? japanDateKey(rental.due_at) : null,
+            returned_at: rental.returned_at ? japanDateKey(rental.returned_at) : null,
             pending_days: pendingDays,
             action_href: '/admin/pca-pumps',
             action_label: '返却検品を確認',

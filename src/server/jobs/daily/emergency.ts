@@ -1,14 +1,14 @@
-import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { runJob } from '../runner';
-import { buildEmergencyCoverageGapTaskKey, formatDateKey } from '../daily-helpers';
+import { buildEmergencyCoverageGapTaskKey } from '../daily-helpers';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 
 export async function checkEmergencyCoverageGaps() {
   return runJob('emergency_coverage_gap_check', async () => {
-    // holiday / shift の date(@db.Date)比較用: ローカル日付の UTC 深夜境界
-    const today = utcDateFromLocalKey(localDateKey());
+    // holiday / shift の date(@db.Date)比較用: 日本業務日の UTC 深夜境界
+    const today = utcDateFromLocalKey(japanDateKey());
     const horizon = addUtcDays(today, 3);
 
     const [holidays, shifts] = await Promise.all([
@@ -50,13 +50,13 @@ export async function checkEmergencyCoverageGaps() {
 
     const shiftCoverage = new Set(
       shifts.map(
-        (shift) => `${shift.org_id}:${shift.site_id ?? 'org'}:${formatDateKey(shift.date)}`,
+        (shift) => `${shift.org_id}:${shift.site_id ?? 'org'}:${japanDateKey(shift.date)}`,
       ),
     );
 
     let processedCount = 0;
     for (const holiday of holidays.filter((item) => item.is_closed)) {
-      const dateKey = formatDateKey(holiday.date);
+      const dateKey = japanDateKey(holiday.date);
       const coverageKey = `${holiday.org_id}:${holiday.site_id ?? 'org'}:${dateKey}`;
       if (shiftCoverage.has(coverageKey)) continue;
 

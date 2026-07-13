@@ -3,7 +3,7 @@ import { formatUtcDateKey } from '@/lib/date-key';
 import {
   addUtcDays,
   japanDayInstantRange,
-  localDateKey,
+  japanDateKey,
   utcDateFromLocalKey,
 } from '@/lib/utils/date-boundary';
 import { Prisma } from '@prisma/client';
@@ -156,8 +156,9 @@ export async function checkVisitRecordRetention() {
 export async function generateVisitDemands() {
   return runJob('visit_demand_generation', async () => {
     // end_date / refill_next_dispense_date 等の服薬期限(@db.Date 規約の UTC 深夜値)と
-    // 比較するため、今日もローカル日付の UTC 深夜で表す
-    const startOfToday = utcDateFromLocalKey(localDateKey());
+    // 比較するため、今日も日本業務日の UTC 深夜 sentinel で表す。
+    const planningStartDateKey = japanDateKey();
+    const startOfToday = utcDateFromLocalKey(planningStartDateKey);
     const demandWindow = addUtcDays(startOfToday, 7);
 
     const cycles = await prisma.medicationCycle.findMany({
@@ -270,7 +271,7 @@ export async function generateVisitDemands() {
       const deadlinePolicy = resolveVisitDeadlinePolicy(cycle.prescription_intakes, {
         nextVisitSuggestionDate:
           latestVisitSuggestionByCase.get(`${cycle.org_id}:${cycle.case_id}`) ?? null,
-        planningStartDateKey: localDateKey(startOfToday),
+        planningStartDateKey,
         isVisitableDate: isDefaultVisitDemandOperatingDate,
         safetyBufferOperatingDays: VISIT_DEMAND_DEADLINE_SAFETY_BUFFER_OPERATING_DAYS,
       });

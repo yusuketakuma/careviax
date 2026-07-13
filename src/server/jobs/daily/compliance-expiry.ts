@@ -1,5 +1,5 @@
 import { addDays } from 'date-fns';
-import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -8,7 +8,6 @@ import {
   buildConsentExpiryTaskKey,
   buildFacilityStandardExpiryTaskKey,
   buildPublicSubsidyExpiryTaskKey,
-  formatDateKey,
   syncGeneratedOperationalTasks,
   type GeneratedTaskSpec,
 } from '../daily-helpers';
@@ -73,7 +72,7 @@ export async function checkFacilityStandardExpiry() {
         taskType: 'facility_standard_expiry',
         dedupeKey: buildFacilityStandardExpiryTaskKey(reg.id),
         title: `施設基準更新: ${reg.standard_type}`,
-        description: `${reg.site?.name ?? '不明'} の ${reg.standard_type} が ${formatDateKey(reg.expiry_date)} に期限切れ`,
+        description: `${reg.site?.name ?? '不明'} の ${reg.standard_type} が ${japanDateKey(reg.expiry_date)} に期限切れ`,
         priority: threshold.priority,
         dueDate: reg.expiry_date,
         relatedEntityType: 'facility_standard_registration',
@@ -199,7 +198,7 @@ export async function checkConsentExpiry() {
           user_id: pharmacistId,
           type: priority === 'urgent' ? 'urgent' : 'business',
           title: '同意書の有効期限',
-          message: `${patientName} さんの ${consent.consent_type} 同意が ${formatDateKey(consent.expiry_date)} に期限切れ。再取得が必要です。`,
+          message: `${patientName} さんの ${consent.consent_type} 同意が ${japanDateKey(consent.expiry_date)} に期限切れ。再取得が必要です。`,
           link: buildPatientHref(consent.patient_id),
           dedupe_key: `consent-expiry:${consent.id}:${daysUntilExpiry <= 7 ? '7' : '30'}`,
         });
@@ -210,7 +209,7 @@ export async function checkConsentExpiry() {
         taskType: 'consent_expiry',
         dedupeKey: buildConsentExpiryTaskKey(consent.id),
         title: `同意書更新: ${patientName}`,
-        description: `${consent.consent_type} の同意が ${formatDateKey(consent.expiry_date)} に期限切れ`,
+        description: `${consent.consent_type} の同意が ${japanDateKey(consent.expiry_date)} に期限切れ`,
         priority,
         assignedTo: pharmacistId,
         dueDate: consent.expiry_date,
@@ -234,8 +233,8 @@ export async function checkPublicSubsidyExpiry(context: JobExecutionContext = {}
     'public_subsidy_expiry_check',
     async () => {
       // valid_until(@db.Date)は UTC 深夜で保存されるため、当日分を取りこぼさないよう
-      // 今日もローカル日付の UTC 深夜で表して比較する(時刻付き now では当日が gte から漏れる)。
-      const today = utcDateFromLocalKey(localDateKey());
+      // 今日も日本業務日の UTC 深夜で表して比較する(時刻付き now では当日が gte から漏れる)。
+      const today = utcDateFromLocalKey(japanDateKey());
       const in30Days = addUtcDays(today, 30);
 
       const expiring = await prisma.patientInsurance.findMany({
@@ -276,7 +275,7 @@ export async function checkPublicSubsidyExpiry(context: JobExecutionContext = {}
             user_id: pharmacistId,
             type: priority === 'urgent' ? 'urgent' : 'business',
             title: '公費の有効期限',
-            message: `${patientName} さんの公費受給者証が ${formatDateKey(insurance.valid_until)} に期限切れ。証書の確認が必要です。`,
+            message: `${patientName} さんの公費受給者証が ${japanDateKey(insurance.valid_until)} に期限切れ。証書の確認が必要です。`,
             link: buildPatientHref(insurance.patient_id),
             dedupe_key: `public-subsidy-expiry:${insurance.id}:${daysUntilExpiry <= 7 ? '7' : '30'}`,
           });
@@ -287,7 +286,7 @@ export async function checkPublicSubsidyExpiry(context: JobExecutionContext = {}
           taskType: 'public_subsidy_expiry',
           dedupeKey: buildPublicSubsidyExpiryTaskKey(insurance.id),
           title: `公費更新: ${patientName}`,
-          description: `公費受給者証が ${formatDateKey(insurance.valid_until)} に期限切れ`,
+          description: `公費受給者証が ${japanDateKey(insurance.valid_until)} に期限切れ`,
           priority,
           assignedTo: pharmacistId,
           dueDate: insurance.valid_until,

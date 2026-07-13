@@ -1,5 +1,5 @@
 import { addDays } from 'date-fns';
-import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { prisma } from '@/lib/db/client';
 import { normalizeJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -62,8 +62,8 @@ export async function checkPreparationBacklog() {
 
 export async function checkInitialHomeVisitAssessmentBacklog() {
   return runJob('initial_home_visit_assessment_check', async () => {
-    // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜境界
-    const tomorrow = addUtcDays(utcDateFromLocalKey(localDateKey()), 1);
+    // scheduled_date(@db.Date)比較用: 日本業務日の UTC 深夜境界
+    const tomorrow = addUtcDays(utcDateFromLocalKey(japanDateKey()), 1);
     const dayAfterTomorrow = addUtcDays(tomorrow, 1);
 
     const schedules = await prisma.visitSchedule.findMany({

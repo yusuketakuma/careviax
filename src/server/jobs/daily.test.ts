@@ -324,8 +324,12 @@ describe('checkPcaPumpRentalOverdues', () => {
   });
 
   it('marks due active rentals overdue and creates follow-up tasks', async () => {
+    restoreTimezone?.();
+    restoreTimezone = useTimezone('America/Los_Angeles');
+    vi.setSystemTime(new Date('2026-06-07T15:30:00.000Z'));
+
     const updateManyMock = vi.fn().mockResolvedValue({ count: 1 });
-    // due_at(@db.Date)比較は「ローカル日付の UTC 深夜」規約(JST 6/8 → 2026-06-08T00:00Z)
+    // due_at(@db.Date)比較は日本業務日の UTC 深夜 sentinel(JST 6/8 → 2026-06-08T00:00Z)
     const today = new Date('2026-06-08T00:00:00.000Z');
     pcaPumpRentalFindManyMock.mockResolvedValue([
       {
@@ -979,7 +983,11 @@ describe('daily job local date keys', () => {
     });
   });
 
-  it('uses local-calendar dates for emergency coverage gap task keys', async () => {
+  it('uses Japan business dates for emergency coverage gap task keys outside the process timezone', async () => {
+    restoreTimezone?.();
+    restoreTimezone = useTimezone('America/Los_Angeles');
+    vi.setSystemTime(new Date('2026-06-07T15:30:00.000Z'));
+
     businessHolidayFindManyMock.mockResolvedValue([
       {
         org_id: 'org_1',
@@ -994,6 +1002,16 @@ describe('daily job local date keys', () => {
     const result = await checkEmergencyCoverageGaps();
 
     expect(result).toEqual({ processedCount: 1 });
+    expect(businessHolidayFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          date: {
+            gte: new Date('2026-06-08T00:00:00.000Z'),
+            lte: new Date('2026-06-11T00:00:00.000Z'),
+          },
+        },
+      }),
+    );
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -1006,7 +1024,11 @@ describe('daily job local date keys', () => {
     );
   });
 
-  it('groups facility visit batches by local-calendar schedule date', async () => {
+  it('groups facility visit batches by Japan schedule date outside the process timezone', async () => {
+    restoreTimezone?.();
+    restoreTimezone = useTimezone('America/Los_Angeles');
+    vi.setSystemTime(new Date('2026-06-07T15:30:00.000Z'));
+
     careCaseFindManyMock.mockResolvedValue([]);
     firstVisitDocumentFindManyMock.mockResolvedValue([]);
     patientSelfReportFindManyMock.mockResolvedValue([]);
@@ -1429,6 +1451,10 @@ describe('daily job local date keys', () => {
   });
 
   it('notifies and creates a task for public subsidy insurance nearing expiry', async () => {
+    restoreTimezone?.();
+    restoreTimezone = useTimezone('America/Los_Angeles');
+    vi.setSystemTime(new Date('2026-06-07T15:30:00.000Z'));
+
     const rawPatientId = 'patient/1?tab=x#frag';
     const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
 
@@ -1455,6 +1481,16 @@ describe('daily job local date keys', () => {
     const result = await checkPublicSubsidyExpiry();
 
     expect(result).toEqual({ processedCount: 1 });
+    expect(patientInsuranceFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          valid_until: {
+            gte: new Date('2026-06-08T00:00:00.000Z'),
+            lte: new Date('2026-07-08T00:00:00.000Z'),
+          },
+        }),
+      }),
+    );
     expect(notificationCreateMock).not.toHaveBeenCalled();
     expect(notificationCreateManyMock).toHaveBeenCalledWith({
       data: [
@@ -1555,6 +1591,8 @@ describe('daily job local date keys', () => {
 });
 
 describe('generateVisitDemands', () => {
+  let restoreTimezone: (() => void) | undefined;
+
   function mockGeneratedDemandDraft() {
     vi.mocked(generateVisitScheduleProposalDrafts).mockResolvedValue({
       diagnostics: {
@@ -1609,6 +1647,7 @@ describe('generateVisitDemands', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    restoreTimezone = useTimezone('Asia/Tokyo');
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-08T09:00:00+09:00'));
     visitRecordFindManyMock.mockResolvedValue([]);
@@ -1616,6 +1655,7 @@ describe('generateVisitDemands', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    restoreTimezone?.();
   });
 
   it('allocates generated proposal route order after active schedules and open proposals', async () => {
@@ -1759,6 +1799,10 @@ describe('generateVisitDemands', () => {
   });
 
   it('generates visit demand when line end date must be derived from start date and days', async () => {
+    restoreTimezone?.();
+    restoreTimezone = useTimezone('America/Los_Angeles');
+    vi.setSystemTime(new Date('2026-06-07T15:30:00.000Z'));
+
     medicationCycleFindManyMock.mockResolvedValue([
       {
         id: 'cycle_1',
@@ -2245,8 +2289,11 @@ describe('generateVisitDemands', () => {
 });
 
 describe('checkPrescriptionOriginalRetention', () => {
+  let restoreTimezone: (() => void) | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    restoreTimezone = useTimezone('Asia/Tokyo');
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-28T00:00:00.000Z'));
     membershipFindManyMock.mockResolvedValue([
@@ -2271,6 +2318,7 @@ describe('checkPrescriptionOriginalRetention', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    restoreTimezone?.();
   });
 
   it('uses the JST business date for retention windows in a UTC runtime', async () => {
@@ -2548,6 +2596,10 @@ describe('checkPrescriptionOriginalRetention', () => {
   });
 
   it('creates pre-visit initial assessment tasks and notifications for first-claim schedules', async () => {
+    restoreTimezone?.();
+    restoreTimezone = useTimezone('America/Los_Angeles');
+    vi.setSystemTime(new Date('2026-03-27T15:30:00.000Z'));
+
     const rawPatientId = 'patient/1?tab=x#frag';
     const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
     vi.mocked(evaluateInitialHomeVisitAssessmentRequirement).mockResolvedValue({
@@ -2574,6 +2626,16 @@ describe('checkPrescriptionOriginalRetention', () => {
     const result = await checkInitialHomeVisitAssessmentBacklog();
 
     expect(result).toMatchObject({ processedCount: 2 });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          scheduled_date: {
+            gte: new Date('2026-03-29T00:00:00.000Z'),
+            lt: new Date('2026-03-30T00:00:00.000Z'),
+          },
+        }),
+      }),
+    );
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

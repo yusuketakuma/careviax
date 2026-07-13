@@ -1,6 +1,6 @@
 import { addDays } from 'date-fns';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
-import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { prisma } from '@/lib/db/client';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { runJob } from '../runner';
@@ -11,7 +11,6 @@ import {
   buildInquiryWorkbenchTaskKey,
   buildMobileVisitModeTaskKey,
   buildPatientFoundationReviewTaskKey,
-  formatDateKey,
   hasAnyKeyword,
   startOfRuntimeDay,
   syncGeneratedOperationalTasks,
@@ -25,8 +24,8 @@ import { DOSAGE_SUPPORT_KEYWORDS } from './shared';
 
 export async function syncVisitSupportFeatureTasks() {
   return runJob('visit_support_feature_task_sync', async () => {
-    // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜境界
-    const today = utcDateFromLocalKey(localDateKey());
+    // scheduled_date(@db.Date)比較用: 日本業務日の UTC 深夜境界
+    const today = utcDateFromLocalKey(japanDateKey());
     const sevenDaysFromNow = addUtcDays(today, 7);
     const twoDaysFromNow = addUtcDays(today, 2);
 
@@ -330,7 +329,7 @@ export async function syncVisitSupportFeatureTasks() {
       const locationKey = deriveFacilityLabel(residence ?? null);
       if (!locationKey) continue;
 
-      const dateKey = formatDateKey(schedule.scheduled_date);
+      const dateKey = japanDateKey(schedule.scheduled_date);
       const groupId = [
         dateKey,
         schedule.site_id ?? 'site:none',

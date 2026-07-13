@@ -54,7 +54,23 @@
 
 ## 直近の作業
 
-- codex4 + codex1 integration: PHI-READ-AUDIT-BESTEFFORT-DROP-001 (DONE, 2026-07-13; implementation pending commit).
+- codex1: DAILY-JOBS-LOCALDATEKEY-JST-002 (DONE, 2026-07-13; implementation pending commit).
+  - current task / root cause / inspected:
+    Western runtimeで`generateVisitDemands`の期限由来/週末policy/ASAP 3 casesが1日ずれる回帰を再現し、Daily jobsに残った
+    `localDateKey()`とruntime-local business-date表示を全consumer棚卸しした。Visit demand/support、initial assessment、PCA rental、
+    public subsidy、emergency coverage、date-boundary helpers、`@db.Date` schemaとdaily testsを確認した。
+  - implementation / correctness result:
+    Daily実装6 filesのcurrent business date sentinelを`japanDateKey()`へ統一し、visit demandの
+    `planningStartDateKey`を一度だけ算出してdeadline policyにも同じ値を渡す。PCA metadata、public subsidy/consent/facility expiry、
+    holiday/shift、facility batchの暦日表示もJapan business dateへ統一した。Visit-supportの意図的runtime-local SLA
+    `startOfRuntimeDay` 2箇所、DateTime dueAt semantics、DB/schemaは変更していない。
+  - validation / regression / rollback:
+    `TZ=UTC`と`TZ=America/Los_Angeles`で`src/server/jobs/daily.test.ts`各47 tests PASS。Test内でもWestern runtimeを明示し、
+    PCA、公費、緊急当番、施設batch、初回assessment、visit demandのquery/output日付を固定した。Scoped ESLint、Prettier、
+    `git diff --check` PASS、Daily実装内の`localDateKey(`/`formatDateKey(`残存0。Rollbackはimplementation commitを
+    `git revert`、DB/data rollback不要。
+
+- codex4 + codex1 integration: PHI-READ-AUDIT-BESTEFFORT-DROP-001 (DONE, 2026-07-13; implementation `11ef2f40f`, PUSHED).
   - current task / root cause / ownership:
     PHI read auditのwrite失敗とorg-context確立失敗が、PHI responseを返したまま通常warnだけで消え、専用metric/alarmがなかった。
     Codex4が`phi-read-audit`実装/testとCloudWatch alarm declarationのexact 3 pathsを所有し、codex1が差分・logger redaction・
@@ -66,12 +82,13 @@
     `PH-OS/Application/PhiReadAuditFailureCount` metric filter/alarmで両failure phaseを集約する。Outbox、retry、DB/migration、
     direct network call、live AWS applyは追加していない。
   - validation / AWS reference / rollback:
-    `src/lib/audit/phi-read-audit.test.ts` 9 tests、scoped ESLint、Prettier、`git diff --check`、JSON parseをPASS。
+    Audit/infra focused 2 files / 48 tests、scoped ESLint、Prettier、`git diff --check`、JSON parseをPASS。
     AWS公式「Filter pattern syntax for metric filters, subscription filters, filter log events, and Live Tail」および
     「Filter pattern syntax for metric filters」を2026-07-13に確認:
     https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html /
     https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntaxForMetricFilters.html 。
-    Live alarm適用はhuman gate。Rollbackはimplementation commitを`git revert`、DB/data rollback不要。
+    Live alarm適用はhuman gate。Rollbackは`git revert 11ef2f40f`、DB/data rollback不要。gbrain:
+    `projects/careviax/decisions/2026-07-13/alert-on-phi-read-audit-failure`。
 
 - codex1 + codex2: API-TASK-RELATED-ENTITY-CONTRACT-001 (DONE, 2026-07-13; implementation `38ed665ea`, PUSHED).
   - current task / root cause / ownership:
@@ -113,7 +130,7 @@
     malformed/body-FK 400とnon-enumerating concealmentを維持する。Webhook compatibility subpartは既存`86f626aa0`でDONEと再確認。
   - codex3: `PERF-DAYBOARD-ROUTE-ESTIMATOR-DEDUP-001`。Day-board routingをrequest-scoped estimator + matrix callへ収束する。
   - codex4: `S3-SSE-DEFAULT-NONKMS-001`。File storageの暗号化未指定defaultをSSE-KMSへfail-closed化し、明示AES256 opt-outとpurpose別key precedenceを保持する。
-  - codex1: 統合、single ledger、commit/push、long gatesを管理し、待機中は`DAILY-JOBS-LOCALDATEKEY-JST-002`を次候補とする。
+  - codex1: `DAILY-JOBS-LOCALDATEKEY-JST-002`の統合後、single ledger、commit/push、long gatesと次候補scoringを管理する。
 
 - codex1: MEDPROFILE-SYNC-RACE-001 MedicationProfile sync serialization (DONE, 2026-07-13; implementation `30fcf954e`, PUSHED).
   - current task / root cause / inspected:
