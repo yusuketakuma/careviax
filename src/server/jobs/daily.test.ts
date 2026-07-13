@@ -1127,6 +1127,8 @@ describe('daily job local date keys', () => {
         title: '山田 太郎 の患者基盤を整備',
         priority: 'high',
         assignedTo: 'pharmacist_1',
+        dueDate: new Date('2026-06-09T15:00:00.000Z'),
+        slaDueAt: new Date('2026-06-09T15:00:00.000Z'),
         relatedEntityType: 'patient',
         relatedEntityId: rawPatientId,
         dedupeKey: `patient-foundation-review:${rawPatientId}`,
@@ -2271,6 +2273,38 @@ describe('checkPrescriptionOriginalRetention', () => {
     vi.useRealTimers();
   });
 
+  it('uses the JST business date for retention windows in a UTC runtime', async () => {
+    const restoreTimezone = useTimezone('UTC');
+    vi.setSystemTime(new Date('2026-04-01T16:30:00.000Z'));
+    prescriptionIntakeFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    try {
+      await checkPrescriptionOriginalRetention();
+
+      expect(prescriptionIntakeFindManyMock).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          where: expect.objectContaining({
+            prescribed_date: {
+              gte: new Date('2021-04-01T15:00:00.000Z'),
+              lt: new Date('2021-05-02T15:00:00.000Z'),
+            },
+          }),
+        }),
+      );
+      expect(prescriptionIntakeFindManyMock).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          where: expect.objectContaining({
+            created_at: { lt: new Date('2026-03-29T15:00:00.000Z') },
+          }),
+        }),
+      );
+    } finally {
+      restoreTimezone();
+    }
+  });
+
   it('creates callback follow-up tasks from overdue contact logs', async () => {
     visitScheduleContactLogFindManyMock.mockResolvedValue([
       {
@@ -2369,10 +2403,9 @@ describe('checkPrescriptionOriginalRetention', () => {
     );
   });
 
-  it('creates retention tasks with local-calendar retention dates in the description', async () => {
-    const originalTimezone = process.env.TZ;
-    process.env.TZ = 'Asia/Tokyo';
-    vi.setSystemTime(new Date('2026-03-28T00:00:00+09:00'));
+  it('creates retention tasks with JST-calendar retention dates in a UTC runtime', async () => {
+    const restoreTimezone = useTimezone('UTC');
+    vi.setSystemTime(new Date('2026-03-27T16:00:00.000Z'));
     prescriptionIntakeFindManyMock
       .mockResolvedValueOnce([
         {
@@ -2418,7 +2451,7 @@ describe('checkPrescriptionOriginalRetention', () => {
         }),
       );
     } finally {
-      process.env.TZ = originalTimezone;
+      restoreTimezone();
     }
   });
 
@@ -2611,10 +2644,32 @@ describe('checkVisitRecordRetention', () => {
     vi.useRealTimers();
   });
 
-  it('creates retention tasks with local-calendar visit retention dates in the description', async () => {
-    const originalTimezone = process.env.TZ;
-    process.env.TZ = 'Asia/Tokyo';
-    vi.setSystemTime(new Date('2026-03-28T00:00:00+09:00'));
+  it('uses the JST business date for visit retention windows in a UTC runtime', async () => {
+    const restoreTimezone = useTimezone('UTC');
+    vi.setSystemTime(new Date('2026-04-01T16:30:00.000Z'));
+    visitRecordFindManyMock.mockResolvedValue([]);
+
+    try {
+      await checkVisitRecordRetention();
+
+      expect(visitRecordFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            visit_date: {
+              gte: new Date('2021-04-01T15:00:00.000Z'),
+              lt: new Date('2021-05-02T15:00:00.000Z'),
+            },
+          },
+        }),
+      );
+    } finally {
+      restoreTimezone();
+    }
+  });
+
+  it('creates retention tasks with JST-calendar visit retention dates in a UTC runtime', async () => {
+    const restoreTimezone = useTimezone('UTC');
+    vi.setSystemTime(new Date('2026-03-27T16:00:00.000Z'));
     const visitRecordId = 'visit/record?x=1#frag';
     const visitRecordHref = `/visits/${encodeURIComponent(visitRecordId)}`;
     visitRecordFindManyMock.mockResolvedValue([
@@ -2664,7 +2719,7 @@ describe('checkVisitRecordRetention', () => {
         }),
       );
     } finally {
-      process.env.TZ = originalTimezone;
+      restoreTimezone();
     }
   });
 

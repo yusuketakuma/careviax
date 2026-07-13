@@ -17,11 +17,14 @@ vi.mock('@/server/services/operational-tasks', () => ({
 }));
 
 import {
+  addJapanCalendarDays,
+  addJapanCalendarYears,
   formatDateKey,
   hasAnyKeyword,
   parseConferenceSections,
   parseDateFromConferenceText,
   startOfDay,
+  startOfRuntimeDay,
 } from './daily-helpers';
 
 describe('daily-helpers', () => {
@@ -45,13 +48,10 @@ describe('daily-helpers', () => {
     expect(parseConferenceSections(null)).toEqual([]);
   });
 
-  it('parses conference dates from ISO-like text and normalizes to start of day', () => {
+  it('parses conference dates into stable UTC date sentinels', () => {
     const parsed = parseDateFromConferenceText('2026-04-02');
-    expect(parsed).not.toBeNull();
-    expect(formatDateKey(parsed!)).toBe('2026-04-02');
-    expect(parsed?.getHours()).toBe(0);
-    expect(parsed?.getMinutes()).toBe(0);
-    expect(parsed?.getSeconds()).toBe(0);
+    expect(parsed?.toISOString()).toBe('2026-04-02T00:00:00.000Z');
+    expect(parseDateFromConferenceText('2026-02-30')).toBeNull();
     expect(parseDateFromConferenceText('invalid')).toBeNull();
   });
 
@@ -64,9 +64,25 @@ describe('daily-helpers', () => {
     expect(hasAnyKeyword(['安定しています'], ['一包化', '嚥下'])).toBe(false);
   });
 
-  it('normalizes a date to the start of the day', () => {
-    const normalized = startOfDay(new Date('2026-04-02T12:34:56.000Z'));
-    expect(formatDateKey(normalized)).toBe('2026-04-02');
+  it('normalizes an instant to the Japan business-date sentinel', () => {
+    expect(startOfDay(new Date('2026-04-01T14:59:59.999Z')).toISOString()).toBe(
+      '2026-04-01T00:00:00.000Z',
+    );
+    expect(startOfDay(new Date('2026-04-01T15:00:00.000Z')).toISOString()).toBe(
+      '2026-04-02T00:00:00.000Z',
+    );
+  });
+
+  it('adds Japan calendar days and years without using the runtime timezone', () => {
+    const lateUtcInstant = new Date('2026-04-01T16:30:00.000Z');
+    expect(addJapanCalendarDays(lateUtcInstant, 1).toISOString()).toBe('2026-04-03T00:00:00.000Z');
+    expect(addJapanCalendarYears(new Date('2024-02-29T00:00:00.000Z'), 1).toISOString()).toBe(
+      '2025-02-28T00:00:00.000Z',
+    );
+  });
+
+  it('keeps the explicitly runtime-local SLA boundary available', () => {
+    const normalized = startOfRuntimeDay(new Date('2026-04-02T12:34:56.000Z'));
     expect(normalized.getHours()).toBe(0);
     expect(normalized.getMinutes()).toBe(0);
     expect(normalized.getSeconds()).toBe(0);

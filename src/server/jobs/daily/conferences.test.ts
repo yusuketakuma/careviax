@@ -35,20 +35,6 @@ vi.mock('@/server/services/notifications', () => ({
 
 import { checkConferenceMeetingReminders } from './conferences';
 
-// 実装側の startOfDay/parseDateFromConferenceText はどちらもローカルの壁時計
-// (setHours / new Date(y, m, d)) で「今日」やミーティング日を算出する。
-// そのため、フェイクシステム時刻を UTC の固定文字列にしても、実行環境の TZ が
-// UTC からずれていると（例: America/Los_Angeles）ローカル日付が 1 日前後にズレ、
-// テストが用意した '2026-07-0X' のようなハードコード文字列と噛み合わなくなる。
-// 対策として、フェイクシステム時刻を設定した直後に「実装と同じロジック」で
-// ローカルの today/tomorrow/2日後を都度算出し、そのテキストをフィクスチャに使う。
-function localDateText(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 function buildNote(overrides: Record<string, unknown>) {
   return {
     id: 'note_1',
@@ -73,29 +59,19 @@ function buildCase(overrides: Record<string, unknown>) {
 }
 
 describe('checkConferenceMeetingReminders', () => {
-  let todayText: string;
-  let tomorrowText: string;
-  let twoDaysOutText: string;
+  const todayText = '2026-07-04';
+  const tomorrowText = '2026-07-05';
+  const twoDaysOutText = '2026-07-06';
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-03T00:00:00.000Z'));
+    // UTCでは7月3日だが、JSTの業務日は7月4日。
+    vi.setSystemTime(new Date('2026-07-03T16:30:00.000Z'));
     runJobMock.mockImplementation(async (_jobType: string, fn: () => Promise<unknown>) => fn());
     withOrgContextMock.mockImplementation(
       async (orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn({ orgId }),
     );
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const twoDaysOut = new Date(today);
-    twoDaysOut.setDate(twoDaysOut.getDate() + 2);
-
-    todayText = localDateText(today);
-    tomorrowText = localDateText(tomorrow);
-    twoDaysOutText = localDateText(twoDaysOut);
   });
 
   afterEach(() => {

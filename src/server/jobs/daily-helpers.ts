@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 
 export { formatDateKey } from '@/lib/date-key';
@@ -21,10 +22,34 @@ export type GeneratedTaskSpec = {
   metadata?: Prisma.InputJsonValue | null;
 };
 
+/** Returns the UTC-midnight sentinel for the Japan business date containing `value`. */
 export function startOfDay(value = new Date()) {
+  return utcDateFromLocalKey(japanDateKey(value));
+}
+
+/** Preserves the legacy runtime-local midnight used only by explicitly local SLA timestamps. */
+export function startOfRuntimeDay(value = new Date()) {
   const next = new Date(value);
   next.setHours(0, 0, 0, 0);
   return next;
+}
+
+export function addJapanCalendarDays(value: Date, days: number) {
+  return addUtcDays(startOfDay(value), days);
+}
+
+export function addJapanCalendarYears(value: Date, years: number) {
+  if (!Number.isInteger(years)) {
+    throw new RangeError('Calendar years must be an integer');
+  }
+
+  const date = startOfDay(value);
+  const targetYear = date.getUTCFullYear() + years;
+  const monthIndex = date.getUTCMonth();
+  const lastDayOfTargetMonth = new Date(Date.UTC(targetYear, monthIndex + 1, 0)).getUTCDate();
+  return new Date(
+    Date.UTC(targetYear, monthIndex, Math.min(date.getUTCDate(), lastDayOfTargetMonth)),
+  );
 }
 
 export function parseConferenceSections(structuredContent: Prisma.JsonValue | null) {
@@ -44,15 +69,23 @@ export function parseDateFromConferenceText(body?: string) {
   const match = body.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
   if (match) {
     const [, year, month, day] = match;
-    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
-    parsed.setHours(0, 0, 0, 0);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    const expectedYear = Number(year);
+    const expectedMonthIndex = Number(month) - 1;
+    const expectedDay = Number(day);
+    const parsed = new Date(Date.UTC(expectedYear, expectedMonthIndex, expectedDay));
+    if (
+      parsed.getUTCFullYear() !== expectedYear ||
+      parsed.getUTCMonth() !== expectedMonthIndex ||
+      parsed.getUTCDate() !== expectedDay
+    ) {
+      return null;
+    }
+    return parsed;
   }
 
   const parsed = new Date(body.trim());
   if (Number.isNaN(parsed.getTime())) return null;
-  parsed.setHours(0, 0, 0, 0);
-  return parsed;
+  return startOfDay(parsed);
 }
 
 export function hasAnyKeyword(

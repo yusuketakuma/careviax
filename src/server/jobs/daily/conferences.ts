@@ -1,9 +1,9 @@
-import { addDays } from 'date-fns';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { runJob } from '../runner';
 import {
+  addJapanCalendarDays,
   formatDateKey,
   parseConferenceSections,
   parseDateFromConferenceText,
@@ -14,7 +14,7 @@ import { dispatchNotificationEvent } from '@/server/services/notifications';
 export async function checkConferenceMeetingReminders() {
   return runJob('conference_meeting_reminders', async () => {
     const today = startOfDay(new Date());
-    const tomorrow = addDays(today, 1);
+    const tomorrow = addJapanCalendarDays(today, 1);
 
     // cross-org: by-design。システム全体 cron のためリマインダ対象を全org横断で走査する。
     // 通知は下段の withOrgContext(note.org_id) 内で dispatch され、対象者(primaryPharmacistId)も

@@ -13,7 +13,7 @@ import {
   buildPatientFoundationReviewTaskKey,
   formatDateKey,
   hasAnyKeyword,
-  startOfDay,
+  startOfRuntimeDay,
   syncGeneratedOperationalTasks,
   type GeneratedTaskSpec,
 } from '../daily-helpers';
@@ -182,7 +182,7 @@ export async function syncVisitSupportFeatureTasks() {
       if (hasEmergencyContact && hasFirstVisitDoc) continue;
 
       // due_date / sla_due_at(DateTime, 表示・SLA 用)は従来どおりローカル深夜基準
-      const dueAt = addDays(startOfDay(), 1);
+      const dueAt = addDays(startOfRuntimeDay(), 1);
       const missingItems = [
         !hasEmergencyContact ? '緊急連絡先' : null,
         !hasFirstVisitDoc ? '初回文書' : null,
@@ -232,7 +232,7 @@ export async function syncVisitSupportFeatureTasks() {
 
       if (missingItems.length === 0) continue;
 
-      const dueAt = addDays(startOfDay(), 2);
+      const dueAt = addDays(startOfRuntimeDay(), 2);
       taskSpecs.push({
         orgId: careCase.org_id,
         taskType: 'patient_foundation_review',

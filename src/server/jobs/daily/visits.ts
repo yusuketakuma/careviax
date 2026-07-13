@@ -1,11 +1,17 @@
-import { addDays, addYears } from 'date-fns';
 import { weekdayOfDateKey } from '@/lib/calendar/operating-day';
-import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import {
+  addUtcDays,
+  japanDayInstantRange,
+  localDateKey,
+  utcDateFromLocalKey,
+} from '@/lib/utils/date-boundary';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { runJob } from '../runner';
 import {
+  addJapanCalendarDays,
+  addJapanCalendarYears,
   buildVisitDemandTaskKey,
   buildVisitRecordRetentionTaskKey,
   formatDateKey,
@@ -36,15 +42,17 @@ function isDefaultVisitDemandOperatingDate(dateKey: string) {
 export async function checkVisitRecordRetention() {
   return runJob('visit_record_retention_check', async () => {
     const now = startOfDay(new Date());
-    const in30Days = startOfDay(addDays(now, 30));
-    const expiringFrom = startOfDay(addYears(now, -5));
-    const expiringTo = startOfDay(addYears(in30Days, -5));
+    const in30Days = addJapanCalendarDays(now, 30);
+    const expiringFrom = addJapanCalendarYears(now, -5);
+    const expiringTo = addJapanCalendarYears(in30Days, -5);
+    const expiringFromInstant = japanDayInstantRange(expiringFrom).gte;
+    const expiringToInstant = japanDayInstantRange(expiringTo).lt;
 
     const expiring = await prisma.visitRecord.findMany({
       where: {
         visit_date: {
-          gte: expiringFrom,
-          lte: expiringTo,
+          gte: expiringFromInstant,
+          lt: expiringToInstant,
         },
       },
       select: {
@@ -97,7 +105,7 @@ export async function checkVisitRecordRetention() {
     const notificationData: Prisma.NotificationCreateManyInput[] = [];
 
     for (const record of expiring) {
-      const retentionUntil = startOfDay(addYears(record.visit_date, 5));
+      const retentionUntil = addJapanCalendarYears(record.visit_date, 5);
       const daysUntilExpiry = Math.ceil(
         (retentionUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
       );

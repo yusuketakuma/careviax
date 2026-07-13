@@ -1,8 +1,10 @@
-import { addDays, addYears } from 'date-fns';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { japanDayInstantRange } from '@/lib/utils/date-boundary';
 import {
+  addJapanCalendarDays,
+  addJapanCalendarYears,
   buildFaxOriginalFollowupTaskKey,
   buildPrescriptionOriginalRetentionTaskKey,
   formatDateKey,
@@ -24,10 +26,12 @@ async function createManyNotifications(notifications: Prisma.NotificationCreateM
 export async function checkPrescriptionOriginalRetention() {
   return runJob('prescription_original_retention_check', async () => {
     const now = startOfDay(new Date());
-    const in30Days = startOfDay(addDays(now, 30));
-    const expiringFrom = startOfDay(addYears(now, -5));
-    const expiringTo = startOfDay(addYears(in30Days, -5));
-    const faxFollowupThreshold = startOfDay(addDays(now, -3));
+    const in30Days = addJapanCalendarDays(now, 30);
+    const expiringFrom = addJapanCalendarYears(now, -5);
+    const expiringTo = addJapanCalendarYears(in30Days, -5);
+    const expiringFromInstant = japanDayInstantRange(expiringFrom).gte;
+    const expiringToInstant = japanDayInstantRange(expiringTo).lt;
+    const faxFollowupThreshold = japanDayInstantRange(addJapanCalendarDays(now, -3)).gte;
 
     // cross-org: by-design。システム全体 cron のため原本保存期限が近い処方箋を全org横断で走査する。
     // 通知(notification)は各行の intake.org_id を付与して発行し、対象者は org 毎に bucket 化した
@@ -37,8 +41,8 @@ export async function checkPrescriptionOriginalRetention() {
         source_type: { in: ['paper', 'fax'] },
         NOT: { original_document_url: null },
         prescribed_date: {
-          gte: expiringFrom,
-          lte: expiringTo,
+          gte: expiringFromInstant,
+          lt: expiringToInstant,
         },
       },
       include: {
@@ -119,7 +123,7 @@ export async function checkPrescriptionOriginalRetention() {
     const notifications: Prisma.NotificationCreateManyInput[] = [];
 
     for (const intake of expiring) {
-      const retentionUntil = startOfDay(addYears(intake.prescribed_date, 5));
+      const retentionUntil = addJapanCalendarYears(intake.prescribed_date, 5);
       const daysUntilExpiry = Math.ceil(
         (retentionUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
       );
@@ -177,7 +181,7 @@ export async function checkPrescriptionOriginalRetention() {
         ),
       );
       const priority = overdueDays >= 5 ? ('urgent' as const) : ('high' as const);
-      const dueDate = startOfDay(addDays(intake.created_at, 3));
+      const dueDate = addJapanCalendarDays(intake.created_at, 3);
       const patientId = intake.cycle?.case_?.patient_id ?? intake.cycle?.patient_id ?? null;
       const patientHref = patientId ? buildPatientHref(patientId, '/prescriptions') : '/workflow';
 
