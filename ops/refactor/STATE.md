@@ -9,11 +9,11 @@
 ## 体制（2026-07-13 最新ユーザー指示）
 
 - 現行は `codex1` が計画、統合、validation、台帳更新、scoped commit/push の最終責任を持つ。
-- 2026-07-13 の最新ユーザー指示により、`agmsg` と `codex2` の2台並列実装を再有効化した。`codex1` と
-  `codex2` はexact path ownershipとhandoffを明示し、同じ領域を同時編集しない。`codex3/codex4`、Claude、
-  外部maker/checkerは再有効化されていない。
-- bounded な読取調査・計画レビュー・医療安全・privacy・verification subagentは利用可。編集統合、
-  long Next gate、単一台帳、最終commit/pushは引き続き`codex1`が管理する。
+- 2026-07-13 の最新ユーザー指示により、`agmsg` と `codex2/codex3/codex4` の全Codex並列実装を再有効化した。
+  `codex1` が機能単位の担当を決め、各Codexは通知したexact pathだけを編集する。frontend/backend/API/testは
+  同じ機能sliceのownerへまとめ、同じ領域を同時編集しない。Claudeと外部maker/checkerは再有効化されていない。
+- 全Codexに割当機能内の編集権限がある。focused validationとboundedな読取reviewは各ownerが実行できるが、
+  long Next gate、単一台帳、scoped commit/push、最終統合は`codex1`が管理する。
 - 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
   直接の影響範囲確認、focused/full gate で代替する。
 - 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
@@ -46,13 +46,55 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `codex1`統合 + `codex2` exact-path並列運用（2026-07-13〜）。
-  編集ownershipをagmsgで分離し、validation・単一台帳・最終commit/pushは`codex1`が統合する。
+- Phase C（実装ループ）: `codex1`統合 + `codex2/codex3/codex4` exact-path並列運用（2026-07-13〜）。
+  機能単位でfrontend/backend/API/testを同じownerへまとめ、validation・単一台帳・最終commit/pushは`codex1`が統合する。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1 + codex2: API-TASK-RELATED-ENTITY-CONTRACT-001 (DONE, 2026-07-13; implementation `38ed665ea`, PUSHED).
+  - current task / root cause / ownership:
+    Task registryの`allowedRelatedEntityTypes`がgeneric `POST /api/tasks`で未強制だった。codex2がevaluator、route、testsの
+    exact 4 pathsを所有し、codex1はdaily jobsを並列所有した。canonical/legacy task type、archive fixture、share/self-report
+    callers、assignment scope/membership/display-ID/RLS/write順序を確認した。
+  - implementation / security result:
+    Registryを正本とする単一evaluatorで、related entityは未指定または完全なnonblank allowlisted type/ID tupleだけを許可する。
+    unknown type → dedicated handoff flow → related-entity contractの順序を維持し、contract拒否をassignment scope、membership、
+    display-ID allocation、RLS transaction、Task createより前へ置いた。Context-free callerは維持し、archive-case fixtureは
+    caseを許可する`staff_work_request_general`へ業務意味を保って修正した。独立security reviewとcodex1 reviewはAPPROVE。
+  - validation / branch / rollback / gbrain:
+    Focused evaluator/route 2 files / 80 tests、registry 2 files / 11 tests、protected POST matrix 151 tests、task registry 78/144、
+    API shape 0/0、route auth 176/252/0、typecheck/no-unused、scoped lint/format/diff、共有full Vitest 1550 files / 16101 tests、
+    Next build 311/311 pages PASS。Commit `38ed665ea`をfeature branchへnon-force push済み。Rollbackは
+    `git revert 38ed665ea`、DB/data rollback不要。gbrain:
+    `projects/careviax/decisions/2026-07-13/validate-task-related-entity-contract-before-write`。
+
+- codex1: DAILY-JOBS-STARTOFDAY-JST-001 (DONE, 2026-07-13; implementation `d8fdb8b9c`, formatter hardening `c56d86781`, PUSHED).
+  - current task / root cause / inspected:
+    Shared `startOfDay`がruntime-local midnightで、UTC productionのJST日付、retention/fax DateTime query境界、conference dateが
+    日界付近でずれた。Daily helpers、prescription-original/visit retention、conference、visit-supportの意図的local SLA、
+    date-boundary/date-key helpersと関連testsを確認した。
+  - implementation / correctness result:
+    Japan業務日を`japanDateKey`由来UTC-midnight sentinelとし、calendar day/year加算をUTC化、leap dayをclampした。
+    DateTime queryは実JST 00:00 instantへ変換し、sentinelの通知文/dedupe/metadataはUTC fieldsでformatする。Visit-supportの
+    意図的runtime-local SLA 2箇所だけは`startOfRuntimeDay`へ明示退避した。Codex2 cross-reviewでwestern TZの表示driftを検出し、
+    `c56d86781`で追補した。
+  - validation / finding / branch / rollback / gbrain:
+    UTC focused 3 files / 59 tests、America/Los_Angeles conference/helper 12 testsとretention 5 tests、scoped lint/format/diff PASS。
+    Base implementation統合後のtypecheck/no-unused、共有full Vitest 1550 files / 16101 tests、Next build 311/311 pages PASS。
+    Western runtimeでfull daily suiteを追加実行すると既存`generateVisitDemands` 3 testsが`localDateKey`由来で1日ずれる別原因を
+    再現したため、`DAILY-JOBS-LOCALDATEKEY-JST-002`へ分離し、失敗を隠して本taskのPASSには数えていない。Commits
+    `d8fdb8b9c` / `c56d86781`をfeature branchへnon-force push済み。Rollbackは逆順に`git revert c56d86781 d8fdb8b9c`、
+    DB/data rollback不要。gbrain: `projects/careviax/decisions/2026-07-13/anchor-daily-jobs-to-japan-business-dates`。
+
+- parallel assignments (ACTIVE, 2026-07-13):
+  - codex2: `API-STATUS-AUTHZ-403-AS-400-001`。Confirmed permission/scope denialを403 `AUTH_FORBIDDEN`へ統一し、
+    malformed/body-FK 400とnon-enumerating concealmentを維持する。Webhook compatibility subpartは既存`86f626aa0`でDONEと再確認。
+  - codex3: `PERF-DAYBOARD-ROUTE-ESTIMATOR-DEDUP-001`。Day-board routingをrequest-scoped estimator + matrix callへ収束する。
+  - codex4: `PHI-READ-AUDIT-BESTEFFORT-DROP-001`。PHI payload/DB migrationなしでwrite/context failureをPHI-safe metric/alarmへ接続する。
+  - codex1: 統合、single ledger、commit/push、long gatesを管理し、待機中は`DAILY-JOBS-LOCALDATEKEY-JST-002`を次候補とする。
 
 - codex1: MEDPROFILE-SYNC-RACE-001 MedicationProfile sync serialization (DONE, 2026-07-13; implementation `30fcf954e`, PUSHED).
   - current task / root cause / inspected:
