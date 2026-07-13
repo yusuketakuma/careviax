@@ -37,6 +37,13 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -77,6 +84,10 @@ function createMalformedJsonRequest() {
     },
     body: '{"name":',
   });
+}
+
+function invokePOST(request: NextRequest) {
+  return POST(request, { params: Promise.resolve({}) });
 }
 
 function setupCreateTransaction() {
@@ -149,6 +160,27 @@ describe('/api/admin/organizations POST', () => {
     organizationDeleteMock.mockResolvedValue({ id: 'org_new' });
   });
 
+  it('returns the authentication response before duplicate checks or tenant provisioning', async () => {
+    const deniedResponse = Response.json(
+      { code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' },
+      { status: 401 },
+    );
+    requireAuthContextMock.mockResolvedValueOnce({ response: deniedResponse });
+
+    const response = await invokePOST(createMalformedJsonRequest());
+
+    expect(response).toBe(deniedResponse);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canAdmin',
+      message: '組織プロビジョニングの権限がありません',
+    });
+    expect(organizationFindUniqueMock).not.toHaveBeenCalled();
+    expect(userFindUniqueMock).not.toHaveBeenCalled();
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(inviteCognitoUserMock).not.toHaveBeenCalled();
+    expect(deleteCognitoUserMock).not.toHaveBeenCalled();
+  });
+
   it('returns 403 for non-owner admins', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
@@ -158,7 +190,7 @@ describe('/api/admin/organizations POST', () => {
       },
     });
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         name: '新規法人',
         site_name: '新宿店',
@@ -177,7 +209,7 @@ describe('/api/admin/organizations POST', () => {
   });
 
   it('rejects malformed JSON create payloads before duplicate checks or tenant writes', async () => {
-    const response = await POST(createMalformedJsonRequest());
+    const response = await invokePOST(createMalformedJsonRequest());
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -192,7 +224,7 @@ describe('/api/admin/organizations POST', () => {
   });
 
   it('rejects non-object organization payloads before duplicate checks', async () => {
-    const response = await POST(createRequest([]));
+    const response = await invokePOST(createRequest([]));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -206,7 +238,7 @@ describe('/api/admin/organizations POST', () => {
   });
 
   it('rejects whitespace-only required organization fields before duplicate checks', async () => {
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         name: '   ',
         site_name: ' ',
@@ -234,7 +266,7 @@ describe('/api/admin/organizations POST', () => {
   });
 
   it('rejects malformed optional phone fields before duplicate checks', async () => {
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         name: '新規法人',
         site_name: '新宿店',
@@ -268,7 +300,7 @@ describe('/api/admin/organizations POST', () => {
       username: 'admin@example.com',
     });
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         name: '新規法人',
         corporate_number: '   ',
@@ -313,7 +345,7 @@ describe('/api/admin/organizations POST', () => {
       username: 'admin@example.com',
     });
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         name: ' 新規法人 ',
         corporate_number: ' 1234567890123 ',
@@ -417,7 +449,7 @@ describe('/api/admin/organizations POST', () => {
     setupCleanupTransaction();
     inviteCognitoUserMock.mockRejectedValue(new Error('UsernameExistsException'));
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         name: '新規法人',
         corporate_number: '1234567890123',
@@ -455,7 +487,7 @@ describe('/api/admin/organizations POST', () => {
       new Error('Cognito create failed patient=山田 token=secret-cognito-token'),
     );
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         name: '新規法人',
         corporate_number: '1234567890123',
@@ -508,7 +540,7 @@ describe('/api/admin/organizations POST', () => {
       new Error('Cognito create failed patient=山田 token=secret-cognito-token'),
     );
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         name: '新規法人',
         site_name: '新宿店',
@@ -548,7 +580,7 @@ describe('/api/admin/organizations POST', () => {
     });
     userUpdateMock.mockRejectedValueOnce(new Error('final update failed'));
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         name: '新規法人',
         corporate_number: '1234567890123',
@@ -597,7 +629,7 @@ describe('/api/admin/organizations POST', () => {
       new Error('final update failed patient=山田 token=secret-final-token'),
     );
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         name: '新規法人',
         site_name: '新宿店',

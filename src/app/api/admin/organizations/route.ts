@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { success, validationError, conflict, error, forbidden } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
@@ -88,13 +88,7 @@ async function cleanupProvisionedTenant(records: ProvisionedTenantState) {
  * 組織 → 薬局サイト → Cognito ユーザー → User → Membership を一括作成する。
  * 既存 org の owner のみ実行可。
  */
-export async function POST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '組織プロビジョニングの権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
+async function provisionOrganization(req: NextRequest, ctx: AuthContext) {
   if (ctx.role !== 'owner') {
     return forbidden('組織プロビジョニングは owner のみ実行できます');
   }
@@ -298,3 +292,8 @@ export async function POST(req: NextRequest) {
     201,
   );
 }
+
+export const POST = withAuthContext(provisionOrganization, {
+  permission: 'canAdmin',
+  message: '組織プロビジョニングの権限がありません',
+});

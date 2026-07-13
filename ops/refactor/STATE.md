@@ -55,6 +55,25 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZADMINORGAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Notifications SSE push/parity後の残4 routesからAdmin Organizations POSTを選定した。Route/test、過去envelope/provisioning監査証跡、Cognito admin service、
+    protected POST matrix、rate-limit、allowlist、installed Next guideを確認した。既存handlerはcanAdmin + owner二重gate、strict input/duplicate preflight、
+    tenant transaction、Cognito invite、最終user update、2段階補償cleanup、sanitized loggingを持つ一方、1 direct auth callのPII-bearing success/errorが
+    共通no-store/performance/sanitized-500境界外だった。
+  - files changed / bugs found / correctness / security / privacy / performance:
+    POSTをtyped named handler + `withAuthContext`へ移行し、permission message、owner gate、organization/site/admin normalization、corporate number/email
+    duplicate check、organization/site/pending user/owner membership transaction、Cognito tenant/role invite、cognito identity update、invite/update failure時の
+    Cognito/tenant cleanup順序、partial failure code/message、raw provider/PII/secret非出力logging、201 DTOを不変にした。Auth denial時のduplicate read/
+    transaction/Cognito副作用zeroを追加しallowlist 1 entryを除去。Direct debtは154→153 routes、218→217 calls、helper未使用success routeは4→3。
+    DB/network/write/payloadは不変で共通header/計測/500 envelopeだけを追加した。
+  - validation results / remaining work / next action / rollback:
+    Focused route 1 file / 13 tests、auth/Cognito/protected POST領域4 files / 176 tests、exact ESLint/Prettier、8 GiB typecheck/no-unused、route-auth
+    153 allowlisted / 217 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、client schema
+    361 backed / 0 allowlisted、format/diffをPASS。新規security/privacy/medical/performance issueなし。Cognito behavior/schema/migration/production mutation/
+    deploy/Oracleなし。非視覚server/API変更のためimagegen/browserなし。親にはBilling CloseとPatient archive/restoreの3 routes、request correlation/error
+    registryが残る。次は監査済みBilling Closeの純wrapper移行を行い、archive lifecycle policy gapは別契約として維持する。Rollbackはscoped commitのrevert。
+
 - codex1: API-CONTRACT-001FZNOTIFICATIONSTREAMAUTH (DONE; parent remains Partial, 2026-07-14; implementation `8bd189f70`).
   - current task / files inspected / root cause:
     Pharmacists import push/parity後の残5 routesからNotifications SSE GETを選定した。Route/test、shared auth/no-store/performance、SSE timer、
