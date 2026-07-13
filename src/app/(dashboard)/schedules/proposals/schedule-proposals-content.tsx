@@ -122,13 +122,17 @@ import {
   toDateKey,
   type Proposal,
   type SingleProposalConfirmAction,
-  type VisitVehicleResourceSummary,
-  type VisitScheduleBillingPreview,
   buildProposalFlowSteps,
   proposalCandidateRankLabel,
   proposalCandidateRankReason,
 } from '../day-view.shared';
-import type { VisitVehicleResourceScheduleOptionsResponse } from '@/types/api/visit-vehicle-resources';
+import {
+  buildScheduleProposalBillingPreviewBatchResponseSchema,
+  buildScheduleProposalDetailResponseSchema,
+  buildScheduleProposalsDashboardResponseSchema,
+  scheduleProposalCaseSearchResponseSchema,
+  scheduleProposalVehicleResourcesResponseSchema,
+} from './schedule-proposals-response-schemas';
 
 type DashboardTab = 'unapproved' | 'patient_contact_pending' | 'confirmed' | 'rejected';
 type TravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
@@ -155,106 +159,8 @@ const SCHEDULE_PROPOSAL_WORKFLOW_SOURCES = [
   'facility_visit_days_upsert',
 ] as const;
 
-type ProposalDetail = Proposal & {
-  approved_at?: string | null;
-  patient_contacted_at?: string | null;
-  confirmed_at?: string | null;
-  related_proposals: Proposal[];
-  pharmacist_day_schedules: Array<{
-    id: string;
-    visit_type: Proposal['visit_type'];
-    priority: Proposal['priority'];
-    schedule_status:
-      | 'planned'
-      | 'in_preparation'
-      | 'ready'
-      | 'departed'
-      | 'in_progress'
-      | 'completed'
-      | 'cancelled'
-      | 'postponed'
-      | 'rescheduled'
-      | 'no_show';
-    route_order: number | null;
-    scheduled_date: string;
-    time_window_start: string | null;
-    time_window_end: string | null;
-    case_: {
-      patient: {
-        name: string;
-        residences: Array<{
-          address: string;
-          lat: number | null;
-          lng: number | null;
-        }>;
-      };
-    };
-    site: {
-      id: string;
-      name: string;
-      address: string;
-      lat?: number | null;
-      lng?: number | null;
-    } | null;
-    vehicle_resource: VisitVehicleResourceSummary | null;
-  }>;
-  route_preview: {
-    plan: {
-      status: 'ok' | 'unavailable';
-      note: string | null;
-      travelMode: 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
-      origin: {
-        lat: number;
-        lng: number;
-        label: string;
-      } | null;
-      encodedPath: string | null;
-      orderedScheduleIds: string[];
-      totalDistanceMeters: number | null;
-      totalDurationSeconds: number | null;
-      stopSummaries: Array<{
-        scheduleId: string;
-        optimizedOrder: number;
-        arrivalOffsetSeconds: number | null;
-        distanceFromPreviousMeters: number | null;
-        durationFromPreviousSeconds: number | null;
-      }>;
-    };
-    points: Array<{
-      schedule_id: string;
-      point_kind: 'proposal' | 'schedule';
-      patient_name: string;
-      address: string;
-      lat: number;
-      lng: number;
-      priority: Proposal['priority'];
-      schedule_status:
-        | 'planned'
-        | 'in_preparation'
-        | 'ready'
-        | 'departed'
-        | 'in_progress'
-        | 'completed'
-        | 'cancelled'
-        | 'postponed'
-        | 'rescheduled'
-        | 'no_show';
-      time_window_start: string | null;
-      time_window_end: string | null;
-    }>;
-    site: {
-      name: string;
-      lat: number;
-      lng: number;
-    } | null;
-  };
-  creation_diagnostics: ProposalGenerationDiagnostics | null;
-};
-
 type ProposalGenerationDiagnostics = ProposalGenerationDiagnosticsCardData;
 
-type ScheduleProposalsResponse = { data: Proposal[] };
-type ScheduleProposalDetailResponse = { data: ProposalDetail };
 type CreateProposalResponse = {
   data: Proposal[];
   diagnostics?: ProposalGenerationDiagnostics;
@@ -264,14 +170,6 @@ const createProposalResponseSchema = visitScheduleProposalGenerationResponseSche
   VisitScheduleProposalBillingAlert,
   ProposalGenerationDiagnostics
 >();
-type CaseSearchResponse = {
-  data: CaseOption[];
-  meta: {
-    limit: number;
-    has_more: boolean;
-    next_cursor: string | null;
-  };
-};
 type ContactOutcome = 'attempted' | 'declined' | 'change_requested' | 'unreachable' | 'confirmed';
 type ContactMethod = 'phone' | 'fax' | 'email';
 
@@ -829,7 +727,17 @@ export function ScheduleProposalsContent({
       const response = await fetch(`/api/visit-schedule-proposals?${queryParams}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<ScheduleProposalsResponse>(response, '訪問候補の取得に失敗しました');
+      const params = new URLSearchParams(queryParams);
+      return readApiJson(response, {
+        schema: buildScheduleProposalsDashboardResponseSchema({
+          caseId: params.get('case_id'),
+          patientId: params.get('patient_id'),
+          dateFrom: params.get('date_from'),
+          dateTo: params.get('date_to'),
+          status: params.get('status'),
+        }),
+        fallbackMessage: '訪問候補の取得に失敗しました',
+      });
     },
     enabled: !!orgId,
     invalidateOn: [{ type: 'workflow_refresh', source: SCHEDULE_PROPOSAL_WORKFLOW_SOURCES }],
@@ -847,7 +755,10 @@ export function ScheduleProposalsContent({
       const response = await fetch(`/api/cases?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<CaseSearchResponse>(response, 'ケース候補の取得に失敗しました');
+      return readApiJson(response, {
+        schema: scheduleProposalCaseSearchResponseSchema,
+        fallbackMessage: 'ケース候補の取得に失敗しました',
+      });
     },
     enabled: !!orgId && deferredCaseSearchInput.length >= 2,
   });
@@ -873,10 +784,10 @@ export function ScheduleProposalsContent({
       const response = await fetch('/api/visit-vehicle-resources?available=true', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<VisitVehicleResourceScheduleOptionsResponse>(
-        response,
-        '社用車リソースの取得に失敗しました',
-      );
+      return readApiJson(response, {
+        schema: scheduleProposalVehicleResourcesResponseSchema,
+        fallbackMessage: '社用車リソースの取得に失敗しました',
+      });
     },
     enabled: !!orgId && shouldLoadDashboardEnhancements,
   });
@@ -947,10 +858,12 @@ export function ScheduleProposalsContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ items: proposalPreviewRequests }),
       });
-      const payload = await readApiJson<{
-        data: Record<string, VisitScheduleBillingPreview>;
-      }>(response, '候補の算定プレビュー取得に失敗しました');
-      return new Map(Object.entries(payload.data));
+      return readApiJson(response, {
+        schema: buildScheduleProposalBillingPreviewBatchResponseSchema(
+          proposalPreviewRequests.map((item) => item.key),
+        ),
+        fallbackMessage: '候補の算定プレビュー取得に失敗しました',
+      });
     },
     enabled: !!orgId && shouldLoadDashboardEnhancements && proposalPreviewRequests.length > 0,
   });
@@ -1020,10 +933,10 @@ export function ScheduleProposalsContent({
           headers: buildOrgHeaders(orgId),
         },
       );
-      return readApiJson<ScheduleProposalDetailResponse>(
-        response,
-        '確定フローの取得に失敗しました',
-      );
+      return readApiJson(response, {
+        schema: buildScheduleProposalDetailResponseSchema(activeDetailId!, routeTravelMode),
+        fallbackMessage: '確定フローの取得に失敗しました',
+      });
     },
     enabled: !!orgId && !!activeDetailId,
     invalidateOn: [{ type: 'workflow_refresh', source: SCHEDULE_PROPOSAL_WORKFLOW_SOURCES }],

@@ -95,7 +95,7 @@ export function buildWeeklyOptimizerCasesResponseSchema(expected: {
     });
 }
 
-const proposalSchema = z
+export const scheduleProposalResponseItemSchema = z
   .object({
     id: idSchema,
     display_id: idSchema.nullable().optional(),
@@ -252,7 +252,7 @@ const proposalSchema = z
 
 export function buildWeeklyOptimizerProposalsResponseSchema(dateFrom: string, dateTo: string) {
   return z
-    .object({ data: z.array(proposalSchema).max(500) })
+    .object({ data: z.array(scheduleProposalResponseItemSchema).max(500) })
     .strict()
     .superRefine(({ data }, context) => {
       const ids = new Set<string>();
@@ -341,7 +341,7 @@ const billingAlertSchema = z
     as_of: z.string().trim().min(1),
   })
   .strip();
-const billingPreviewSchema = z
+export const scheduleProposalBillingPreviewSchema = z
   .object({
     alerts: z.array(billingAlertSchema),
     cadence: z
@@ -386,5 +386,5 @@ const billingPreviewSchema = z
   .strict();
 
 export const weeklyOptimizerBillingPreviewResponseSchema = z
-  .object({ data: billingPreviewSchema })
+  .object({ data: scheduleProposalBillingPreviewSchema })
   .strict();
