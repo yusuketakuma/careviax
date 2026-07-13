@@ -325,7 +325,26 @@ describe('PatientForm', () => {
       },
     );
     const fetchMock = vi.mocked(fetch);
-    fetchMock.mockImplementation(async () => jsonResponse({ data: [] }));
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/org/members')) return jsonResponse({ data: [] });
+      return jsonResponse({
+        data: [],
+        meta: {
+          total_count: 0,
+          visible_count: 0,
+          hidden_count: 0,
+          truncated: false,
+          count_basis: url.includes('/service-areas')
+            ? 'service_areas'
+            : url.includes('/pharmacists')
+              ? 'memberships'
+              : 'facilities',
+          filters_applied: {},
+          limit: 100,
+        },
+      });
+    });
 
     render(<PatientForm />);
 
@@ -1010,7 +1029,6 @@ describe('PatientForm', () => {
             {
               id: 'patient_existing',
               name: '山田 太郎',
-              name_kana: 'ヤマダ タロウ',
               birth_date: '1950-01-01T00:00:00.000Z',
               gender: 'male',
             },

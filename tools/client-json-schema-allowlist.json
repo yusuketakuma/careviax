@@ -46,12 +46,6 @@
       "counts": {
         "stringFallback": 5
       }
-    },
-    {
-      "path": "src/components/features/patients/patient-form.tsx",
-      "counts": {
-        "stringFallback": 6
-      }
     }
   ]
 }

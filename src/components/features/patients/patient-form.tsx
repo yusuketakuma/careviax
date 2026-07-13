@@ -66,6 +66,14 @@ import {
   visitingNurseFrequencyLabels,
 } from '@/lib/patient/home-visit-intake';
 import { evaluateServiceAreaWarning, type ServiceAreaRecord } from '@/lib/patient/service-area';
+import {
+  patientDuplicateCheckResponseSchema,
+  patientFormFacilitiesResponseSchema,
+  patientFormFacilityUnitsResponseSchema,
+  patientFormPharmacistsResponseSchema,
+  patientFormServiceAreasResponseSchema,
+  patientFormStaffResponseSchema,
+} from './patient-form-response-schemas';
 
 interface DuplicatePatient {
   id: string;
@@ -515,13 +523,13 @@ export function PatientForm({
           signal,
         });
         if (res.ok) {
-          const payload = await readApiJson<{ data?: { duplicates?: DuplicatePatient[] } }>(
-            res,
-            '重複候補の確認に失敗しました',
-          );
+          const payload = await readApiJson<{ data: { duplicates: DuplicatePatient[] } }>(res, {
+            fallbackMessage: '重複候補の確認に失敗しました',
+            schema: patientDuplicateCheckResponseSchema,
+          });
           // 解決済みレスポンスの json parse 中に abort された場合、古い結果での上書きを防ぐ
           if (signal?.aborted) return;
-          setDuplicates(payload.data?.duplicates ?? []);
+          setDuplicates(payload.data.duplicates);
         }
       } catch {
         // Silently ignore duplicate check errors (incl. AbortError for superseded requests)
@@ -536,11 +544,11 @@ export function PatientForm({
       const res = await fetch(ADMIN_FACILITIES_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data?: FacilityOption[] }>(
-        res,
-        '施設一覧の取得に失敗しました',
-      );
-      return payload.data ?? [];
+      const payload = await readApiJson<{ data: FacilityOption[] }>(res, {
+        fallbackMessage: '施設一覧の取得に失敗しました',
+        schema: patientFormFacilitiesResponseSchema,
+      });
+      return payload.data;
     },
     enabled: !!orgId,
   });
@@ -551,11 +559,11 @@ export function PatientForm({
       const res = await fetch(buildAdminFacilityUnitsApiPath(selectedFacilityId), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data?: FacilityUnitOption[] }>(
-        res,
-        'ユニット一覧の取得に失敗しました',
-      );
-      return payload.data ?? [];
+      const payload = await readApiJson<{ data: FacilityUnitOption[] }>(res, {
+        fallbackMessage: 'ユニット一覧の取得に失敗しました',
+        schema: patientFormFacilityUnitsResponseSchema,
+      });
+      return payload.data;
     },
     enabled: !!orgId && !!selectedFacilityId,
   });
@@ -566,11 +574,11 @@ export function PatientForm({
       const res = await fetch(SERVICE_AREAS_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data?: ServiceAreaOption[] }>(
-        res,
-        '訪問エリア設定の取得に失敗しました',
-      );
-      return payload.data ?? [];
+      const payload = await readApiJson<{ data: ServiceAreaOption[] }>(res, {
+        fallbackMessage: '訪問エリア設定の取得に失敗しました',
+        schema: patientFormServiceAreasResponseSchema,
+      });
+      return payload.data;
     },
     enabled: !!orgId,
   });
@@ -580,11 +588,11 @@ export function PatientForm({
     queryKey: ['patient-form', 'care-team-pharmacists', orgId],
     queryFn: async () => {
       const res = await fetch(PHARMACISTS_API_PATH, { headers: buildOrgHeaders(orgId) });
-      const payload = await readApiJson<{ data?: Array<{ id: string; name: string }> }>(
-        res,
-        '薬剤師一覧の取得に失敗しました',
-      );
-      return payload.data ?? [];
+      const payload = await readApiJson<{ data: Array<{ id: string; name: string }> }>(res, {
+        fallbackMessage: '薬剤師一覧の取得に失敗しました',
+        schema: patientFormPharmacistsResponseSchema,
+      });
+      return payload.data;
     },
     enabled: !!orgId,
   });
@@ -596,11 +604,11 @@ export function PatientForm({
       const res = await fetch(buildOrgMembersApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data?: Array<{ id: string; name: string }> }>(
-        res,
-        'スタッフ一覧の取得に失敗しました',
-      );
-      return payload.data ?? [];
+      const payload = await readApiJson<{ data: Array<{ id: string; name: string }> }>(res, {
+        fallbackMessage: 'スタッフ一覧の取得に失敗しました',
+        schema: patientFormStaffResponseSchema,
+      });
+      return payload.data;
     },
     enabled: !!orgId,
   });
