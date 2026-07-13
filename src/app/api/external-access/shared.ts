@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { NextRequest } from 'next/server';
-import { error, notFound, validationError } from '@/lib/api/response';
+import { notFound, registeredError, validationError } from '@/lib/api/response';
 import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { getClientIp } from '@/lib/api/request-ip';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -46,10 +46,9 @@ export async function prepareExternalAccessOtpRequest(
     return {
       ok: false,
       response: withSensitiveNoStore(
-        error(
+        registeredError(
           'RATE_LIMIT_EXCEEDED',
           'リクエストが多すぎます。しばらく待ってから再試行してください。',
-          429,
         ),
       ),
     };

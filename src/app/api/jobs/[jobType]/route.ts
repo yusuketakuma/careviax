@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, error, validationError } from '@/lib/api/response';
+import { error, registeredError, success, validationError } from '@/lib/api/response';
 import { requireApiKeyOrAuthContext } from '@/lib/auth/context';
 import { logger } from '@/lib/utils/logger';
 import {
@@ -151,10 +151,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
 
   const handler = JOB_HANDLERS[jobType];
   if (!handler) {
-    return error(
+    return registeredError(
       'WORKFLOW_NOT_FOUND',
       `ジョブタイプ '${jobType}' は存在しません`,
-      404,
     ) as NextResponse;
   }
 

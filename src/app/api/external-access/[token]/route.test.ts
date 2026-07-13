@@ -226,6 +226,10 @@ describe('/api/external-access/[token]', () => {
 
     expect(response.status).toBe(429);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.json()).resolves.toEqual({
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: 'リクエストが多すぎます。しばらく待ってから再試行してください。',
+    });
     expect(validateExternalAccessGrantMock).not.toHaveBeenCalled();
     expect(readExternalAccessPayloadMock).not.toHaveBeenCalled();
   });

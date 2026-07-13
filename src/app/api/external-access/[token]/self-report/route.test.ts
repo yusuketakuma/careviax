@@ -594,6 +594,10 @@ describe('/api/external-access/[token]/self-report', () => {
 
     expect(response.status).toBe(429);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: 'リクエストが多すぎます。しばらく待ってから再試行してください。',
+    });
     expect(validateExternalAccessGrantMock).not.toHaveBeenCalled();
   });
 });

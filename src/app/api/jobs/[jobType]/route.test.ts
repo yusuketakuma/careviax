@@ -339,6 +339,23 @@ describe('/api/jobs/[jobType] POST', () => {
     expect(cleanupExpiredBulkExportArtifactsMock).not.toHaveBeenCalled();
   });
 
+  it('returns 404 for unknown normalized job types before running a handler', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
+      params: Promise.resolve({ jobType: '  unknown-job  ' }),
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: "ジョブタイプ 'unknown-job' は存在しません",
+    });
+    expect(checkMedicationDeadlinesMock).not.toHaveBeenCalled();
+    expect(runDailyOperationsMock).not.toHaveBeenCalled();
+    expect(cleanupExpiredBulkExportArtifactsMock).not.toHaveBeenCalled();
+  });
+
   it('returns 200 when authenticated admin executes the job', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
