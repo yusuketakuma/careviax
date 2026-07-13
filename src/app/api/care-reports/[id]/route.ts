@@ -35,6 +35,10 @@ import {
 } from '@/lib/reports/care-report-print-audit-contract';
 import { canAccessCareReportSource } from '@/server/services/care-report-access';
 import { buildCareReportActionPermissions } from '@/server/services/care-report-output-policy';
+import {
+  canCreateTaskInDashboardAssignmentScope,
+  resolveDashboardAssignmentScope,
+} from '@/server/services/dashboard-assignment-scope';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 
@@ -100,9 +104,9 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return sensitiveResponse(validationError('報告書IDが不正です'));
 
-  const permissions: CareReportActionPermissions = buildCareReportActionPermissions(ctx.role);
-  const canLoadEditableContent = permissions.can_edit || permissions.can_send;
-  const canLoadDeliverySupport = permissions.can_send;
+  const basePermissions: CareReportActionPermissions = buildCareReportActionPermissions(ctx.role);
+  const canLoadEditableContent = basePermissions.can_edit || basePermissions.can_send;
+  const canLoadDeliverySupport = basePermissions.can_send;
 
   return withOrgContext(
     ctx.orgId,
@@ -156,9 +160,9 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       const intakeBaselineContext = getHomeVisitIntake(
         report.case_?.required_visit_support ?? null,
       );
-      const canLoadPatientContext = permissions.can_view_patient;
+      const canLoadPatientContext = basePermissions.can_view_patient;
 
-      const [patientSummary, visitSummary] = await Promise.all([
+      const [patientSummary, visitSummary, followupAssignmentScope] = await Promise.all([
         canLoadPatientContext
           ? tx.patient.findFirst({
               where: { id: report.patient_id, org_id: ctx.orgId },
@@ -184,7 +188,23 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
               },
             })
           : Promise.resolve(null),
+        basePermissions.can_create_followup_task
+          ? resolveDashboardAssignmentScope({
+              db: tx,
+              orgId: ctx.orgId,
+              accessContext: ctx,
+            })
+          : Promise.resolve(null),
       ]);
+      const permissions: CareReportActionPermissions = {
+        ...basePermissions,
+        can_create_followup_task:
+          followupAssignmentScope !== null &&
+          canCreateTaskInDashboardAssignmentScope(followupAssignmentScope, {
+            related_entity_type: 'patient',
+            related_entity_id: report.patient_id,
+          }),
+      };
       const prescriberInstitutionSuggestion = canLoadDeliverySupport
         ? await findLatestPrescriberInstitutionSuggestion(tx, ctx.orgId, {
             caseId: report.case_id,

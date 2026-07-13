@@ -39,6 +39,7 @@ import {
 import { cn } from '@/lib/utils';
 import { messageFromError, SafeClientMessageError } from '@/lib/utils/error-message';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useAuthStore } from '@/lib/stores/auth-store';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import {
   canRetainCachedDataAfterPrimaryQueryError,
@@ -125,6 +126,17 @@ type ShareFormErrors = {
   scope?: string;
 };
 
+class FollowupTaskResponseError extends Error {
+  constructor(readonly status: number) {
+    super('次回タスクの作成に失敗しました');
+    this.name = 'FollowupTaskResponseError';
+  }
+}
+
+function shouldReconcileFollowupTaskPermission(error: unknown) {
+  return error instanceof FollowupTaskResponseError && [400, 401, 403, 404].includes(error.status);
+}
+
 async function throwIfPatientArchivedWriteConflict(response: Response): Promise<void> {
   if (response.status !== 409) return;
   const payload = await response
@@ -209,23 +221,38 @@ const REPLY_REQUEST_PERMISSION_DESCRIPTION_ID = 'reply-request-permission-descri
 const FOLLOWUP_TASK_DESCRIPTION_ID = 'followup-task-description';
 const EXTERNAL_SHARE_PERMISSION_MESSAGE = '外部共有リンクの発行権限がありません';
 const REPLY_REQUEST_PERMISSION_MESSAGE = '返信依頼の起票権限がありません';
+const FOLLOWUP_TASK_PERMISSION_MESSAGE = '運用タスクの作成権限がありません';
 
 // --- Main ---
 
 export function ExternalShareContent({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
+  const currentUserId = useAuthStore((state) => state.currentUser.id);
+  const currentUserRole = useAuthStore((state) => state.currentUser.role);
   return (
     <ExternalShareWorkspace
-      key={JSON.stringify([orgId, patientId])}
+      key={JSON.stringify([orgId, patientId, currentUserId, currentUserRole])}
       patientId={patientId}
       orgId={orgId}
+      currentUserId={currentUserId}
+      currentUserRole={currentUserRole}
     />
   );
 }
 
-function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId: string }) {
+function ExternalShareWorkspace({
+  patientId,
+  orgId,
+  currentUserId,
+  currentUserRole,
+}: {
+  patientId: string;
+  orgId: string;
+  currentUserId: string | null;
+  currentUserRole: string | null;
+}) {
   const queryClient = useQueryClient();
-  const isBootstrappingOrg = !orgId;
+  const isBootstrappingAuthorization = !orgId || !currentUserId || !currentUserRole;
   const [selectedAudience, setSelectedAudience] = useState<ShareAudienceKey>('care_manager');
   const [grantedToName, setGrantedToName] = useState('');
   const [grantedToContact, setGrantedToContact] = useState('');
@@ -241,10 +268,12 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
   >({});
   const [shareFormErrors, setShareFormErrors] = useState<ShareFormErrors>({});
   const [archiveConflictDetected, setArchiveConflictDetected] = useState(false);
+  const [followupEligibilityRecoveryPending, setFollowupEligibilityRecoveryPending] =
+    useState(false);
 
   const overviewQuery = useQuery<ExternalShareOverview>({
-    queryKey: ['external-share-overview', patientId, orgId],
-    enabled: Boolean(patientId && orgId),
+    queryKey: ['external-share-overview', patientId, orgId, currentUserId, currentUserRole],
+    enabled: Boolean(patientId && !isBootstrappingAuthorization),
     queryFn: async () => {
       const payload = await fetchPrimaryQueryJson(
         () =>
@@ -275,13 +304,17 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
     overviewQuery.isRefetchError && canRetainCachedDataAfterPrimaryQueryError(overviewQuery.error);
   const patientArchive = overviewQuery.data?.archive ?? null;
   const effectivePatientArchive =
-    archiveConflictDetected || canRetainCachedOverview ? null : patientArchive;
+    archiveConflictDetected || followupEligibilityRecoveryPending || canRetainCachedOverview
+      ? null
+      : patientArchive;
   const isPatientWritable = isPatientArchiveWritable(effectivePatientArchive);
   const patientSharePermissions = overviewQuery.data?.patient_share_permissions;
   const canIssueExternalShare =
     isPatientWritable && patientSharePermissions?.can_create_external_share === true;
   const canCreateReplyRequest =
     isPatientWritable && patientSharePermissions?.can_create_reply_request === true;
+  const canCreateFollowupTask =
+    isPatientWritable && patientSharePermissions?.can_create_followup_task === true;
   const externalShareDisabledDescriptionId = !isPatientWritable
     ? PATIENT_WRITE_AVAILABILITY_DESCRIPTION_ID
     : !canIssueExternalShare
@@ -296,11 +329,19 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
     }
   }
 
+  async function reconcileFollowupEligibilityAfterRejection() {
+    setFollowupEligibilityRecoveryPending(true);
+    const refreshed = await overviewQuery.refetch().catch(() => null);
+    if (refreshed?.isSuccess) {
+      setFollowupEligibilityRecoveryPending(false);
+    }
+  }
+
   // 共有する相手カード(主治医/ケアマネ/訪問看護/施設/家族)の該当者名を埋めるための
   // ケアチーム + 連絡先。報告書文脈(/reports/[id]/share)と同じ taxonomy を再利用する。
   const careTeamQuery = useQuery({
-    queryKey: ['patient-care-team', patientId, orgId],
-    enabled: Boolean(patientId && orgId),
+    queryKey: ['patient-care-team', patientId, orgId, currentUserId, currentUserRole],
+    enabled: Boolean(patientId && !isBootstrappingAuthorization),
     queryFn: async () => {
       const res = await fetch(buildPatientApiPath(patientId, '/care-team'), {
         headers: buildOrgHeaders(orgId),
@@ -313,8 +354,8 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
   });
 
   const contactsQuery = useQuery({
-    queryKey: ['patient-contacts', patientId, orgId],
-    enabled: Boolean(patientId && orgId),
+    queryKey: ['patient-contacts', patientId, orgId, currentUserId, currentUserRole],
+    enabled: Boolean(patientId && !isBootstrappingAuthorization),
     queryFn: async () => {
       const res = await fetch(buildPatientApiPath(patientId, '/contacts'), {
         headers: buildOrgHeaders(orgId),
@@ -328,8 +369,15 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
 
   // 患者単位の連携依頼(返信突合のため related_entity_type=patient を取得)。
   const requestsQuery = useQuery({
-    queryKey: ['communication-requests', 'patient', patientId, orgId],
-    enabled: Boolean(patientId && orgId),
+    queryKey: [
+      'communication-requests',
+      'patient',
+      patientId,
+      orgId,
+      currentUserId,
+      currentUserRole,
+    ],
+    enabled: Boolean(patientId && !isBootstrappingAuthorization),
     queryFn: async () => {
       return fetchAllShareCommunicationRequests({
         orgId,
@@ -439,8 +487,8 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
 
   // 一覧 API の responses は本文を含まないため、対象依頼のみ詳細を取得する。
   const replyDetailQuery = useQuery({
-    queryKey: ['communication-request', replyRequest?.id, orgId],
-    enabled: Boolean(orgId && replyRequest?.id),
+    queryKey: ['communication-request', replyRequest?.id, orgId, currentUserId, currentUserRole],
+    enabled: Boolean(!isBootstrappingAuthorization && replyRequest?.id),
     queryFn: async () => {
       const requestId = replyRequest?.id;
       if (!requestId) throw new Error('返信依頼IDがありません');
@@ -489,6 +537,9 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
       if (!isPatientWritable) {
         throw SafeClientMessageError.fromReviewed(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
       }
+      if (!patientSharePermissions?.can_create_followup_task) {
+        throw SafeClientMessageError.fromReviewed(FOLLOWUP_TASK_PERMISSION_MESSAGE);
+      }
       if (!latestReply || !replyRequest) {
         throw new Error('タスク化できる返信がありません');
       }
@@ -507,7 +558,11 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
         body: JSON.stringify(input),
       });
       await throwIfPatientArchivedWriteConflict(res);
-      await readApiAcknowledgement(res, '次回タスクの作成に失敗しました');
+      try {
+        await readApiAcknowledgement(res, '次回タスクの作成に失敗しました');
+      } catch {
+        throw new FollowupTaskResponseError(res.status);
+      }
     },
     onSuccess: () => {
       if (latestReply) {
@@ -518,6 +573,8 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
     onError: async (error: unknown) => {
       if (isPatientArchivedWriteError(error)) {
         await reconcilePatientArchiveAfterConflict();
+      } else if (shouldReconcileFollowupTaskPermission(error)) {
+        await reconcileFollowupEligibilityAfterRejection();
       }
       toast.error(messageFromError(error, '次回タスクの作成に失敗しました'));
     },
@@ -567,7 +624,14 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
       }));
       toast.success('返信依頼を起票しました');
       await queryClient.invalidateQueries({
-        queryKey: ['communication-requests', 'patient', patientId, orgId],
+        queryKey: [
+          'communication-requests',
+          'patient',
+          patientId,
+          orgId,
+          currentUserId,
+          currentUserRole,
+        ],
       });
     },
     onError: async (error: unknown) => {
@@ -644,7 +708,7 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
     generateMutation.mutate();
   }
 
-  if (isBootstrappingOrg || overviewQuery.isLoading) {
+  if (isBootstrappingAuthorization || overviewQuery.isLoading) {
     return <ExternalShareLoadingState />;
   }
 
@@ -671,13 +735,18 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
         archive={effectivePatientArchive}
         patientName={overviewQuery.data?.name ?? null}
         onRetry={
-          archiveConflictDetected || overviewQuery.isRefetchError
-            ? () => void reconcilePatientArchiveAfterConflict()
-            : undefined
+          followupEligibilityRecoveryPending
+            ? () => void reconcileFollowupEligibilityAfterRejection()
+            : archiveConflictDetected || overviewQuery.isRefetchError
+              ? () => void reconcilePatientArchiveAfterConflict()
+              : undefined
         }
         isRetrying={overviewQuery.isRefetching}
         isShowingCachedData={Boolean(
-          overviewQuery.data && (archiveConflictDetected || canRetainCachedOverview),
+          overviewQuery.data &&
+          (archiveConflictDetected ||
+            followupEligibilityRecoveryPending ||
+            canRetainCachedOverview),
         )}
         cachedDataUpdatedAt={overviewQuery.dataUpdatedAt}
       />
@@ -1123,7 +1192,10 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
               data-testid="share-next-task-button"
               className="mt-4 w-full"
               disabled={
-                !isPatientWritable || !latestReply || createTaskMutation.isPending || taskCreated
+                !canCreateFollowupTask ||
+                !latestReply ||
+                createTaskMutation.isPending ||
+                taskCreated
               }
               aria-describedby={FOLLOWUP_TASK_DESCRIPTION_ID}
               onClick={() => createTaskMutation.mutate()}
@@ -1146,7 +1218,9 @@ function ExternalShareWorkspace({ patientId, orgId }: { patientId: string; orgId
             >
               {!isPatientWritable
                 ? '患者が利用中と確認できるまで、次回タスクは作成できません。'
-                : '返信内容を次回訪問の確認タスク（運用タスク）として登録します。登録後はダッシュボードのタスク一覧に表示されます。'}
+                : !patientSharePermissions?.can_create_followup_task
+                  ? '担当範囲外のため、返信内容は閲覧のみできます。患者の担当者が次回タスクを作成してください。'
+                  : '返信内容を次回訪問の確認タスク（運用タスク）として登録します。登録後はダッシュボードのタスク一覧に表示されます。'}
             </p>
           </div>
 

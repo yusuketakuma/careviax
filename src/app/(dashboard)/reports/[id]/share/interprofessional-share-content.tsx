@@ -22,6 +22,7 @@ import {
   fetchPrimaryQueryJson,
 } from '@/lib/api/primary-query-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useAuthStore } from '@/lib/stores/auth-store';
 import { cn } from '@/lib/utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -78,6 +79,8 @@ import { buildInterprofessionalShareReportResponseSchema } from './interprofessi
 const FOLLOWUP_TASK_FAILURE_MESSAGE = '次回タスクの作成に失敗しました。もう一度お試しください。';
 const FOLLOWUP_TASK_CONFLICT_MESSAGE =
   '次回タスクは既に作成されている可能性があります。タスク一覧を確認してください。';
+const FOLLOWUP_TASK_PERMISSION_MESSAGE = '運用タスクの作成権限がありません。';
+const FOLLOWUP_TASK_DESCRIPTION_ID = 'followup-task-description';
 const REPLY_REQUEST_FAILURE_MESSAGE = '返信依頼の起票に失敗しました。もう一度お試しください。';
 const REPLY_REQUEST_CONFLICT_MESSAGE =
   '返信依頼は既に起票されている可能性があります。連携依頼の状態を確認しています。';
@@ -124,6 +127,11 @@ async function readShareMutationResponse<T>(
 
 function getShareMutationResponseStatus(error: unknown): number | null {
   return error instanceof ShareMutationResponseError ? error.status : null;
+}
+
+function shouldReconcileFollowupTaskPermission(error: unknown): boolean {
+  const status = getShareMutationResponseStatus(error);
+  return status !== null && [400, 401, 403, 404].includes(status);
 }
 
 function isPatientArchivedWriteError(error: unknown): error is ShareMutationResponseError {
@@ -228,18 +236,32 @@ function InterprofessionalShareLoadingState() {
 
 export function InterprofessionalShareContent({ reportId }: { reportId: string }) {
   const orgId = useOrgId();
+  const currentUserId = useAuthStore((state) => state.currentUser.id);
+  const currentUserRole = useAuthStore((state) => state.currentUser.role);
   return (
     <InterprofessionalShareWorkspace
-      key={JSON.stringify([orgId, reportId])}
+      key={JSON.stringify([orgId, reportId, currentUserId, currentUserRole])}
       reportId={reportId}
       orgId={orgId}
+      currentUserId={currentUserId}
+      currentUserRole={currentUserRole}
     />
   );
 }
 
-function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string; orgId: string }) {
+function InterprofessionalShareWorkspace({
+  reportId,
+  orgId,
+  currentUserId,
+  currentUserRole,
+}: {
+  reportId: string;
+  orgId: string;
+  currentUserId: string | null;
+  currentUserRole: string | null;
+}) {
   const queryClient = useQueryClient();
-  const isBootstrappingOrg = !orgId;
+  const isBootstrappingAuthorization = !orgId || !currentUserId || !currentUserRole;
 
   const [selectedAudience, setSelectedAudience] = useState<ShareAudienceKey | null>(null);
   const [createdResponseIds, setCreatedResponseIds] = useState<readonly string[]>([]);
@@ -250,9 +272,11 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
     Partial<Record<ShareAudienceKey, string>>
   >({});
   const [archiveConflictDetected, setArchiveConflictDetected] = useState(false);
+  const [followupEligibilityRecoveryPending, setFollowupEligibilityRecoveryPending] =
+    useState(false);
 
   const reportQuery = useQuery({
-    queryKey: ['care-report', reportId, orgId],
+    queryKey: ['care-report', reportId, orgId, currentUserId, currentUserRole],
     queryFn: async () => {
       return fetchPrimaryQueryJson(
         () =>
@@ -266,7 +290,7 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
         },
       );
     },
-    enabled: !!orgId && !!reportId,
+    enabled: !isBootstrappingAuthorization && !!reportId,
   });
   const canRetainCachedReport =
     reportQuery.isRefetchError && canRetainCachedDataAfterPrimaryQueryError(reportQuery.error);
@@ -274,7 +298,9 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
   const patientId = report?.patient_id ?? null;
   const patientArchive = report?.patient_summary?.archive ?? null;
   const effectivePatientArchive =
-    archiveConflictDetected || canRetainCachedReport ? null : patientArchive;
+    archiveConflictDetected || followupEligibilityRecoveryPending || canRetainCachedReport
+      ? null
+      : patientArchive;
   const isPatientWritable = isPatientArchiveWritable(effectivePatientArchive);
 
   async function reconcilePatientArchiveAfterConflict() {
@@ -282,6 +308,14 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
     const refreshed = await reportQuery.refetch().catch(() => null);
     if (refreshed?.isSuccess && refreshed.data.data.patient_summary?.archive) {
       setArchiveConflictDetected(false);
+    }
+  }
+
+  async function reconcileFollowupEligibilityAfterRejection() {
+    setFollowupEligibilityRecoveryPending(true);
+    const refreshed = await reportQuery.refetch().catch(() => null);
+    if (refreshed?.isSuccess) {
+      setFollowupEligibilityRecoveryPending(false);
     }
   }
   const canSendReport = report?.permissions?.can_send === true;
@@ -296,7 +330,14 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
   );
 
   const careTeamQuery = useQuery({
-    queryKey: ['patient-care-team', patientId, report?.case_id, orgId],
+    queryKey: [
+      'patient-care-team',
+      patientId,
+      report?.case_id,
+      orgId,
+      currentUserId,
+      currentUserRole,
+    ],
     queryFn: async () => {
       if (!patientId) throw new Error('患者IDがありません');
       const params = new URLSearchParams();
@@ -317,11 +358,11 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
         }),
       });
     },
-    enabled: !!orgId && canLoadPatientSupport,
+    enabled: !isBootstrappingAuthorization && canLoadPatientSupport,
   });
 
   const contactsQuery = useQuery({
-    queryKey: ['patient-contacts', patientId, orgId],
+    queryKey: ['patient-contacts', patientId, orgId, currentUserId, currentUserRole],
     queryFn: async () => {
       if (!patientId) throw new Error('患者IDがありません');
       const res = await fetch(buildPatientApiPath(patientId, '/contacts'), {
@@ -332,11 +373,18 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
         schema: buildShareContactsResponseSchema(patientId),
       });
     },
-    enabled: !!orgId && canLoadPatientSupport,
+    enabled: !isBootstrappingAuthorization && canLoadPatientSupport,
   });
 
   const requestsQuery = useQuery({
-    queryKey: ['communication-requests', 'care_report', reportId, orgId],
+    queryKey: [
+      'communication-requests',
+      'care_report',
+      reportId,
+      orgId,
+      currentUserId,
+      currentUserRole,
+    ],
     queryFn: async () => {
       if (!patientId) throw new Error('患者IDがありません');
       return fetchAllShareCommunicationRequests({
@@ -350,7 +398,7 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
         errorMessage: '返信状況の取得に失敗しました',
       });
     },
-    enabled: !!orgId && !!reportId && !!patientId && canUseShareOutput,
+    enabled: !isBootstrappingAuthorization && !!reportId && !!patientId && canUseShareOutput,
   });
 
   const audience = selectedAudience ?? defaultAudienceForReportType(report?.report_type ?? null);
@@ -368,7 +416,7 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
 
   // 一覧 API の responses は本文を含まないため、対象依頼のみ詳細を取得する
   const replyDetailQuery = useQuery({
-    queryKey: ['communication-request', replyRequest?.id, orgId],
+    queryKey: ['communication-request', replyRequest?.id, orgId, currentUserId, currentUserRole],
     queryFn: async () => {
       const requestId = replyRequest?.id;
       if (!requestId) throw new Error('返信依頼IDがありません');
@@ -387,7 +435,7 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
         }),
       });
     },
-    enabled: !!orgId && !!replyRequest?.id && canUseShareOutput,
+    enabled: !isBootstrappingAuthorization && !!replyRequest?.id && canUseShareOutput,
   });
   const latestReply = replyDetailQuery.data?.data.responses[0] ?? null;
   const taskCreated = Boolean(latestReply && createdResponseIds.includes(latestReply.id));
@@ -424,6 +472,9 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
           'patient_archived',
         );
       }
+      if (!canCreateFollowupTask) {
+        throw new ShareMutationResponseError(403, FOLLOWUP_TASK_PERMISSION_MESSAGE);
+      }
       const res = await fetch(buildTasksApiPath(), {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
@@ -446,6 +497,9 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
         await reconcilePatientArchiveAfterConflict();
         toast.error(PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE);
         return;
+      }
+      if (shouldReconcileFollowupTaskPermission(error)) {
+        await reconcileFollowupEligibilityAfterRejection();
       }
       toast.error(status === 409 ? FOLLOWUP_TASK_CONFLICT_MESSAGE : FOLLOWUP_TASK_FAILURE_MESSAGE);
     },
@@ -479,7 +533,14 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
       }));
       toast.success('返信依頼を起票しました');
       await queryClient.invalidateQueries({
-        queryKey: ['communication-requests', 'care_report', reportId, orgId],
+        queryKey: [
+          'communication-requests',
+          'care_report',
+          reportId,
+          orgId,
+          currentUserId,
+          currentUserRole,
+        ],
       });
     },
     onError: async (error) => {
@@ -543,7 +604,7 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
     });
   };
 
-  if (isBootstrappingOrg || reportQuery.isLoading) {
+  if (isBootstrappingAuthorization || reportQuery.isLoading) {
     return <InterprofessionalShareLoadingState />;
   }
 
@@ -637,19 +698,27 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
             shortcuts={introShortcuts}
             actions={externalShareAction}
           />
-          {patientArchive?.archived || archiveConflictDetected || canRetainCachedReport ? (
+          {patientArchive?.archived ||
+          archiveConflictDetected ||
+          followupEligibilityRecoveryPending ||
+          canRetainCachedReport ? (
             <PatientWriteAvailabilityNotice
               archive={effectivePatientArchive}
               patientName={patientName}
               unavailableReason={canViewPatient ? 'unknown' : 'permission_denied'}
               onRetry={
-                archiveConflictDetected || reportQuery.isRefetchError
-                  ? () => void reconcilePatientArchiveAfterConflict()
-                  : undefined
+                followupEligibilityRecoveryPending
+                  ? () => void reconcileFollowupEligibilityAfterRejection()
+                  : archiveConflictDetected || reportQuery.isRefetchError
+                    ? () => void reconcilePatientArchiveAfterConflict()
+                    : undefined
               }
               isRetrying={reportQuery.isRefetching}
               isShowingCachedData={Boolean(
-                reportQuery.data && (archiveConflictDetected || canRetainCachedReport),
+                reportQuery.data &&
+                (archiveConflictDetected ||
+                  followupEligibilityRecoveryPending ||
+                  canRetainCachedReport),
               )}
               cachedDataUpdatedAt={reportQuery.dataUpdatedAt}
             />
@@ -690,13 +759,18 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
           patientName={patientName}
           unavailableReason={canViewPatient ? 'unknown' : 'permission_denied'}
           onRetry={
-            archiveConflictDetected || reportQuery.isRefetchError
-              ? () => void reconcilePatientArchiveAfterConflict()
-              : undefined
+            followupEligibilityRecoveryPending
+              ? () => void reconcileFollowupEligibilityAfterRejection()
+              : archiveConflictDetected || reportQuery.isRefetchError
+                ? () => void reconcilePatientArchiveAfterConflict()
+                : undefined
           }
           isRetrying={reportQuery.isRefetching}
           isShowingCachedData={Boolean(
-            reportQuery.data && (archiveConflictDetected || canRetainCachedReport),
+            reportQuery.data &&
+            (archiveConflictDetected ||
+              followupEligibilityRecoveryPending ||
+              canRetainCachedReport),
           )}
           cachedDataUpdatedAt={reportQuery.dataUpdatedAt}
         />
@@ -952,9 +1026,7 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
                 createTaskMutation.isPending ||
                 taskCreated
               }
-              aria-describedby={
-                isPatientWritable ? undefined : PATIENT_WRITE_AVAILABILITY_DESCRIPTION_ID
-              }
+              aria-describedby={FOLLOWUP_TASK_DESCRIPTION_ID}
               onClick={createFollowupTask}
             >
               {taskCreated ? (
@@ -969,7 +1041,10 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
                 </>
               )}
             </Button>
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            <p
+              id={FOLLOWUP_TASK_DESCRIPTION_ID}
+              className="mt-2 text-xs leading-5 text-muted-foreground"
+            >
               {!isPatientWritable
                 ? '患者が利用中と確認できるまで、次回タスクは作成できません。'
                 : canCreateFollowupTask
@@ -978,7 +1053,9 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
             </p>
             {createTaskMutation.isError &&
             createTaskMutation.variables?.audience === audience &&
-            !(isPatientWritable && isPatientArchivedWriteError(createTaskMutation.error)) ? (
+            (isPatientArchivedWriteError(createTaskMutation.error)
+              ? patientArchive?.archived === true
+              : isPatientWritable && canCreateFollowupTask) ? (
               <ErrorState
                 className="mt-3"
                 title={
@@ -1001,6 +1078,8 @@ function InterprofessionalShareWorkspace({ reportId, orgId }: { reportId: string
                       : 'タスク一覧を確認して、同じ返信からもう一度作成してください。'
                 }
                 onRetry={
+                  !isPatientWritable ||
+                  !canCreateFollowupTask ||
                   getShareMutationResponseStatus(createTaskMutation.error) === 409
                     ? undefined
                     : () => createTaskMutation.mutate(createTaskMutation.variables)

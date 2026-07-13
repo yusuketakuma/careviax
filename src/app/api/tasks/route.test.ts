@@ -901,6 +901,32 @@ describe('/api/tasks', () => {
     });
   });
 
+  it('rejects an unassigned patient follow-up outside the personal scope before writes', async () => {
+    careCaseFindManyMock.mockResolvedValueOnce([]);
+
+    const response = await POST(
+      createRequest('http://localhost/api/tasks', {
+        task_type: 'report_response_followup',
+        title: '返信内容を次回確認',
+        priority: 'normal',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_unassigned',
+      }),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '担当外リソースのタスクは作成できません',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
+  });
+
   it('returns the existing task when a duplicate dedupe key create races', async () => {
     taskCreateMock.mockRejectedValueOnce({ code: 'P2002' });
     taskFindFirstMock.mockResolvedValueOnce({

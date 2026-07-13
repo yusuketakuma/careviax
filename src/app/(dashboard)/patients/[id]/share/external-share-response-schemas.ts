@@ -22,6 +22,7 @@ export function buildExternalShareOverviewResponseSchema(expectedPatientId: stri
             .object({
               can_create_external_share: z.boolean(),
               can_create_reply_request: z.boolean(),
+              can_create_followup_task: z.boolean(),
             })
             .strip(),
           external_shares: z

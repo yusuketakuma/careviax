@@ -17,6 +17,7 @@ describe('external share response schemas', () => {
         patient_share_permissions: {
           can_create_external_share: true,
           can_create_reply_request: true,
+          can_create_followup_task: true,
         },
         external_shares: [
           {
@@ -62,6 +63,7 @@ describe('external share response schemas', () => {
     expect(parsed.data.patient_share_permissions).toEqual({
       can_create_external_share: true,
       can_create_reply_request: true,
+      can_create_followup_task: true,
     });
     expect(parsed.data.external_shares[0]).not.toHaveProperty('token_hash');
     expect(parsed.data.care_reports?.[0]).toMatchObject({ has_pdf: true });
@@ -89,6 +91,18 @@ describe('external share response schemas', () => {
     const missingPermissions: Partial<typeof payload.data> = { ...payload.data };
     delete missingPermissions.patient_share_permissions;
     expect(schema.safeParse({ ...payload, data: missingPermissions }).success).toBe(false);
+    expect(
+      schema.safeParse({
+        ...payload,
+        data: {
+          ...payload.data,
+          patient_share_permissions: {
+            can_create_external_share: true,
+            can_create_reply_request: true,
+          },
+        },
+      }).success,
+    ).toBe(false);
     expect(
       schema.safeParse({
         ...payload,

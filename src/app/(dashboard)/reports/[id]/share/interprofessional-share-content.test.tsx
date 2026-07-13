@@ -25,6 +25,7 @@ setupDomTestEnv();
 
 const clientLogWarnMock = vi.hoisted(() => vi.fn());
 const useOrgIdMock = vi.hoisted(() => vi.fn(() => 'org_1'));
+const useAuthStoreMock = vi.hoisted(() => vi.fn());
 
 const REPORT_UPDATED_AT_ISO = '2026-06-18T01:02:03.000Z';
 
@@ -54,6 +55,10 @@ type ReportFixture = {
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
+}));
+
+vi.mock('@/lib/stores/auth-store', () => ({
+  useAuthStore: useAuthStoreMock,
 }));
 
 vi.mock('@/lib/utils/client-log', () => ({
@@ -428,9 +433,29 @@ afterEach(() => {
 
 beforeEach(() => {
   useOrgIdMock.mockReturnValue('org_1');
+  useAuthStoreMock.mockImplementation(
+    (selector: (state: { currentUser: { id: string; role: string } }) => unknown) =>
+      selector({ currentUser: { id: 'user_1', role: 'pharmacist' } }),
+  );
 });
 
 describe('InterprofessionalShareContent', () => {
+  it('does not start PHI queries before the authorization fingerprint is hydrated', () => {
+    useAuthStoreMock.mockImplementation(
+      (selector: (state: { currentUser: { id: null; role: null } }) => unknown) =>
+        selector({ currentUser: { id: null, role: null } }),
+    );
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderShare();
+
+    expect(
+      screen.getByRole('status', { name: '他職種共有ワークスペースを読み込み中' }),
+    ).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('shows a share workspace skeleton instead of a generic spinner while loading', () => {
     vi.stubGlobal(
       'fetch',
@@ -873,7 +898,11 @@ describe('InterprofessionalShareContent', () => {
     });
   });
 
-  it('reportまたはorganization切替時に旧共有request stateを同期的に破棄する', async () => {
+  it('report、organization、またはactor切替時に旧共有request stateを同期的に破棄する', async () => {
+    let authState = { currentUser: { id: 'user_1', role: 'pharmacist' } };
+    useAuthStoreMock.mockImplementation((selector: (state: typeof authState) => unknown) =>
+      selector(authState),
+    );
     const reportTwo = {
       ...REPORT,
       id: 'rep_2',
@@ -931,6 +960,29 @@ describe('InterprofessionalShareContent', () => {
       );
     });
     expect(screen.queryByTestId('share-open-request-link')).toBeNull();
+
+    fireEvent.click(
+      screen
+        .getAllByTestId('share-audience-card')
+        .find((card) => card.getAttribute('data-audience') === 'physician')!,
+    );
+    fireEvent.click(await screen.findByTestId('share-create-request-button'));
+    await waitFor(() => expect(screen.getByText('返信依頼起票済み')).toBeTruthy());
+
+    authState = { currentUser: { id: 'user_2', role: 'admin' } };
+    view.rerender(<InterprofessionalShareContent reportId="rep_2" />);
+    await waitFor(() => {
+      expect(screen.getByTestId('share-create-request-button').textContent).toContain(
+        '返信依頼を起票',
+      );
+    });
+    expect(screen.queryByTestId('share-open-request-link')).toBeNull();
+    expect(
+      screen
+        .getAllByTestId('share-audience-card')
+        .find((card) => card.getAttribute('aria-pressed') === 'true')
+        ?.getAttribute('data-audience'),
+    ).toBe('care_manager');
   });
 
   it('rejects a legacy-root 2xx reply-request response and leaves retry available', async () => {
@@ -1553,6 +1605,7 @@ describe('InterprofessionalShareContent', () => {
 
     const button = screen.getByTestId('share-next-task-button') as HTMLButtonElement;
     expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-describedby')).toBe('followup-task-description');
     expect(
       screen.getByText('運用タスクの作成権限がないため、返信内容は閲覧のみできます。'),
     ).toBeTruthy();
@@ -1562,6 +1615,154 @@ describe('InterprofessionalShareContent', () => {
         ([input, init]) => String(input) === '/api/tasks' && init?.method === 'POST',
       ),
     ).toBe(false);
+  });
+
+  it('locks every write and refreshes task eligibility after an authoritative task rejection', async () => {
+    const refetchedReport: ReportFixture = {
+      ...REPORT,
+      permissions: {
+        ...REPORT.permissions,
+        can_create_followup_task: false,
+      },
+    };
+    let resolveReportRefetch!: (response: Response) => void;
+    const reportRefetchPromise = new Promise<Response>((resolve) => {
+      resolveReportRefetch = resolve;
+    });
+    const fetchMock = stubFetch({
+      failTaskPost: new Response(JSON.stringify({ error: 'assignment scope changed' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      reportRefetchPromise,
+      requests: [{ ...REQUESTS[0], status: 'closed' }],
+    });
+    renderShare();
+
+    const taskButton = await screen.findByTestId('share-next-task-button');
+    const requestButton = screen.getByTestId('share-create-request-button') as HTMLButtonElement;
+    await waitFor(() => expect((taskButton as HTMLButtonElement).disabled).toBe(false));
+    expect(requestButton.disabled).toBe(false);
+    expect(screen.getByRole('link', { name: /外部共有リンクの発行/ })).toBeTruthy();
+
+    fireEvent.click(taskButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('状態未確認')).toBeTruthy();
+      expect(requestButton.disabled).toBe(true);
+      expect((taskButton as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.queryByRole('link', { name: /外部共有リンクの発行/ })).toBeNull();
+      expect(
+        (screen.getByRole('button', { name: /外部共有リンクの発行/ }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+    });
+    expect(toast.error).not.toHaveBeenCalledWith(
+      '次回タスクの作成に失敗しました。もう一度お試しください。',
+    );
+
+    resolveReportRefetch(
+      new Response(JSON.stringify({ data: refetchedReport }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('運用タスクの作成権限がないため、返信内容は閲覧のみできます。'),
+      ).toBeTruthy();
+      expect((taskButton as HTMLButtonElement).disabled).toBe(true);
+      expect(requestButton.disabled).toBe(false);
+      expect(screen.getByRole('link', { name: /外部共有リンクの発行/ })).toBeTruthy();
+    });
+    expect(screen.queryByRole('button', { name: '次回タスク作成を再試行' })).toBeNull();
+    expect(screen.queryByText('次回タスクを作成できませんでした')).toBeNull();
+    expect(
+      fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/care-reports/')),
+    ).toHaveLength(2);
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input, init]) => String(input) === '/api/tasks' && init?.method === 'POST',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('removes follow-up retry when the refreshed provider permission is false', async () => {
+    const queryClient = createTestQueryClient();
+    const fetchMock = stubFetch({
+      failTaskPost: new Response('server error', { status: 500 }),
+    });
+    render(<InterprofessionalShareContent reportId="rep_1" />, {
+      wrapper: createQueryClientWrapper(queryClient),
+    });
+
+    const button = await screen.findByTestId('share-next-task-button');
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '次回タスク作成を再試行' })).toBeTruthy();
+    });
+
+    act(() => {
+      queryClient.setQueryData(['care-report', 'rep_1', 'org_1', 'user_1', 'pharmacist'], {
+        data: {
+          ...REPORT,
+          permissions: {
+            ...REPORT.permissions,
+            can_create_followup_task: false,
+          },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.queryByRole('button', { name: '次回タスク作成を再試行' })).toBeNull();
+    });
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input, init]) => String(input) === '/api/tasks' && init?.method === 'POST',
+      ),
+    ).toHaveLength(1);
+    expect(screen.queryByText('次回タスクを作成できませんでした')).toBeNull();
+  });
+
+  it('removes follow-up retry while a primary refetch is stale and read-only', async () => {
+    const queryClient = createTestQueryClient();
+    const fetchMock = stubFetch({
+      failTaskPost: new Response('server error', { status: 500 }),
+      reportRefetchPromise: Promise.resolve(new Response('server error', { status: 500 })),
+    });
+    render(<InterprofessionalShareContent reportId="rep_1" />, {
+      wrapper: createQueryClientWrapper(queryClient),
+    });
+
+    const button = await screen.findByTestId('share-next-task-button');
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '次回タスク作成を再試行' })).toBeTruthy();
+    });
+
+    await act(async () => {
+      await queryClient.refetchQueries({
+        queryKey: ['care-report', 'rep_1', 'org_1', 'user_1', 'pharmacist'],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('patient-write-availability-notice').textContent).toContain(
+        '前回取得データを表示中です',
+      );
+      expect(screen.queryByRole('button', { name: '次回タスク作成を再試行' })).toBeNull();
+      expect(screen.queryByText('次回タスクを作成できませんでした')).toBeNull();
+    });
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input, init]) => String(input) === '/api/tasks' && init?.method === 'POST',
+      ),
+    ).toHaveLength(1);
   });
 
   it('view-only report permissions hide external share and disable follow-up task creation', async () => {
@@ -1626,7 +1827,9 @@ describe('InterprofessionalShareContent', () => {
 
     await waitFor(() => expect(screen.getByTestId('share-permission-warning')).toBeTruthy());
     await act(async () => {
-      await queryClient.refetchQueries({ queryKey: ['care-report', 'rep_1', 'org_1'] });
+      await queryClient.refetchQueries({
+        queryKey: ['care-report', 'rep_1', 'org_1', 'user_1', 'pharmacist'],
+      });
     });
 
     await waitFor(() => {

@@ -19,6 +19,12 @@ export type DashboardAssignmentScope = {
   assignedToUserId?: string;
 };
 
+export type DashboardTaskAssignmentSubject = {
+  assigned_to?: string | null;
+  related_entity_type?: string;
+  related_entity_id?: string;
+};
+
 function unrestrictedDashboardAssignmentScope(): DashboardAssignmentScope {
   return {
     caseIds: undefined,
@@ -118,4 +124,35 @@ export function buildDashboardTaskAssignmentWhere(args: {
   ];
 
   return relatedEntityScope.length > 0 ? { OR: relatedEntityScope } : { id: { in: [] } };
+}
+
+export function canCreateTaskInDashboardAssignmentScope(
+  scope: DashboardAssignmentScope,
+  task: DashboardTaskAssignmentSubject,
+) {
+  if (
+    scope.caseIds === undefined &&
+    scope.patientIds === undefined &&
+    scope.assignedToUserId === undefined
+  ) {
+    return true;
+  }
+
+  if (task.assigned_to && task.assigned_to !== scope.assignedToUserId) {
+    return false;
+  }
+
+  if (!task.related_entity_id) {
+    return task.assigned_to === scope.assignedToUserId;
+  }
+
+  if (task.related_entity_type === 'patient') {
+    return Boolean(scope.patientIds?.includes(task.related_entity_id));
+  }
+
+  if (task.related_entity_type === 'case') {
+    return Boolean(scope.caseIds?.includes(task.related_entity_id));
+  }
+
+  return task.assigned_to === scope.assignedToUserId;
 }

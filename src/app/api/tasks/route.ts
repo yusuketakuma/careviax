@@ -21,8 +21,8 @@ import {
 import { isRegisteredTaskType } from '@/lib/tasks/task-registry';
 import { createTaskSchema, taskPriorityValues, taskStatusValues } from '@/lib/validations/task';
 import {
-  type DashboardAssignmentScope,
   buildDashboardTaskAssignmentWhere,
+  canCreateTaskInDashboardAssignmentScope,
   resolveDashboardAssignmentScope,
 } from '@/server/services/dashboard-assignment-scope';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
@@ -261,41 +261,6 @@ function parseTaskListFilters(searchParams: URLSearchParams) {
   };
 }
 
-function canCreateTaskInAssignmentScope(
-  scope: DashboardAssignmentScope,
-  task: {
-    assigned_to?: string | null;
-    related_entity_type?: string;
-    related_entity_id?: string;
-  },
-) {
-  if (
-    scope.caseIds === undefined &&
-    scope.patientIds === undefined &&
-    scope.assignedToUserId === undefined
-  ) {
-    return true;
-  }
-
-  if (task.assigned_to && task.assigned_to !== scope.assignedToUserId) {
-    return false;
-  }
-
-  if (!task.related_entity_id) {
-    return task.assigned_to === scope.assignedToUserId;
-  }
-
-  if (task.related_entity_type === 'patient') {
-    return Boolean(scope.patientIds?.includes(task.related_entity_id));
-  }
-
-  if (task.related_entity_type === 'case') {
-    return Boolean(scope.caseIds?.includes(task.related_entity_id));
-  }
-
-  return task.assigned_to === scope.assignedToUserId;
-}
-
 async function authenticatedGET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
@@ -440,7 +405,7 @@ async function authenticatedPOST(req: NextRequest) {
       buildTaskAssigneeRejectionDetails('担当できるスタッフを選択してください'),
     );
   }
-  if (!canCreateTaskInAssignmentScope(assignmentScope, parsed.data)) {
+  if (!canCreateTaskInDashboardAssignmentScope(assignmentScope, parsed.data)) {
     return validationError('担当外リソースのタスクは作成できません');
   }
   if (parsed.data.related_entity_type === 'patient' && parsed.data.related_entity_id) {

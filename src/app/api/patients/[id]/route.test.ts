@@ -40,6 +40,7 @@ const {
   patientInsuranceUpdateMock,
   patientInsuranceCreateMock,
   patientInsuranceUpdateManyMock,
+  careCaseFindManyMock,
   careCaseFindFirstMock,
   careCaseUpdateMock,
   communicationQueueMock,
@@ -100,6 +101,7 @@ const {
   patientInsuranceUpdateMock: vi.fn(),
   patientInsuranceCreateMock: vi.fn(),
   patientInsuranceUpdateManyMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   careCaseUpdateMock: vi.fn(),
   communicationQueueMock: vi.fn(),
@@ -305,6 +307,7 @@ describe('/api/patients/[id]', () => {
     contactPartyFindManyMock.mockResolvedValue([]);
     contactPartyDeleteManyMock.mockResolvedValue({ count: 0 });
     contactPartyCreateManyMock.mockResolvedValue({ count: 0 });
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     careCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
       required_visit_support: {
@@ -493,6 +496,7 @@ describe('/api/patients/[id]', () => {
           findUnique: patientSchedulePreferenceFindUniqueMock,
         },
         careCase: {
+          findMany: careCaseFindManyMock,
           findFirst: careCaseFindFirstMock,
           update: careCaseUpdateMock,
         },
@@ -1041,6 +1045,7 @@ describe('/api/patients/[id]', () => {
         patient_share_permissions: {
           can_create_external_share: false,
           can_create_reply_request: false,
+          can_create_followup_task: false,
         },
       },
     });
@@ -1066,10 +1071,83 @@ describe('/api/patients/[id]', () => {
         patient_share_permissions: {
           can_create_external_share: false,
           can_create_reply_request: true,
+          can_create_followup_task: true,
         },
       },
     });
   });
+
+  it.each(['owner', 'admin'] as const)(
+    'allows %s to create a follow-up task for an unassigned readable patient',
+    async (role) => {
+      requireAuthContextMock.mockResolvedValue({
+        ctx: {
+          orgId: 'corg1234567890123456789012',
+          userId: `${role}_1`,
+          role,
+        },
+      });
+      careCaseFindManyMock.mockResolvedValueOnce([]);
+
+      const response = await GET(
+        createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        data: {
+          patient_share_permissions: {
+            can_create_followup_task: true,
+          },
+        },
+      });
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['pharmacist', 'pharmacist_trainee'] as const)(
+    'denies %s follow-up task affordance for an unassigned readable patient',
+    async (role) => {
+      requireAuthContextMock.mockResolvedValue({
+        ctx: {
+          orgId: 'corg1234567890123456789012',
+          userId: `${role}_1`,
+          role,
+        },
+      });
+      careCaseFindManyMock.mockResolvedValueOnce([]);
+
+      const response = await GET(
+        createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        data: {
+          patient_share_permissions: {
+            can_create_followup_task: false,
+          },
+        },
+      });
+      expect(careCaseFindManyMock).toHaveBeenCalledWith({
+        where: {
+          org_id: 'corg1234567890123456789012',
+          AND: [
+            {
+              OR: [
+                { primary_pharmacist_id: `${role}_1` },
+                { backup_pharmacist_id: `${role}_1` },
+                { visit_schedules: { some: { pharmacist_id: `${role}_1` } } },
+              ],
+            },
+          ],
+        },
+        select: { id: true, patient_id: true },
+      });
+    },
+  );
 
   it('filters external shares by assigned case boundary and strips stored boundary scope', async () => {
     patientFindFirstMock.mockResolvedValue({

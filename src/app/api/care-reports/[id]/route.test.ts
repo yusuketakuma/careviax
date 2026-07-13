@@ -15,6 +15,7 @@ const {
   findExternalProfessionalSuggestionsMock,
   getChannelStatsByNameMock,
   getRecommendedChannelsMock,
+  careCaseFindManyMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
@@ -28,6 +29,7 @@ const {
   findExternalProfessionalSuggestionsMock: vi.fn(),
   getChannelStatsByNameMock: vi.fn(),
   getRecommendedChannelsMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -185,6 +187,7 @@ describe('care-reports/[id] route', () => {
       visit_date: new Date('2026-03-29T09:00:00.000Z'),
     });
     documentDeliveryRuleFindFirstMock.mockResolvedValue(null);
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     careReportUpdateManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -203,6 +206,9 @@ describe('care-reports/[id] route', () => {
         },
         visitRecord: {
           findFirst: visitRecordFindFirstMock,
+        },
+        careCase: {
+          findMany: careCaseFindManyMock,
         },
       }),
     );
@@ -297,6 +303,7 @@ describe('care-reports/[id] route', () => {
       },
     });
     expect(payload.data).not.toHaveProperty('org_id');
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(careReportFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'report_1', org_id: 'org_1' },
@@ -474,6 +481,7 @@ describe('care-reports/[id] route', () => {
     expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
     expect(findExternalProfessionalSuggestionsMock).not.toHaveBeenCalled();
     expect(getChannelStatsByNameMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
     const select = careReportFindFirstMock.mock.calls[0]?.[0]?.select;
     expect(select).toMatchObject({
       content: false,
@@ -506,6 +514,7 @@ describe('care-reports/[id] route', () => {
           can_edit: true,
           can_send: false,
           can_create_external_share: false,
+          can_create_followup_task: true,
         },
         prescriber_institution_suggestion: null,
         external_professional_suggestions: [],
@@ -519,7 +528,52 @@ describe('care-reports/[id] route', () => {
       content: true,
       pdf_url: true,
     });
+    expect(careCaseFindManyMock).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['pharmacist', 'pharmacist_trainee'] as const)(
+    'keeps %s report readable but disables follow-up creation for an unassigned patient',
+    async (role) => {
+      requireAuthContextMock.mockResolvedValueOnce({
+        ctx: {
+          userId: `${role}_1`,
+          orgId: 'org_1',
+          role,
+        },
+      });
+      careCaseFindManyMock.mockResolvedValueOnce([]);
+
+      const response = await GET(createRequest(), {
+        params: Promise.resolve({ id: 'report_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        data: {
+          id: 'report_1',
+          permissions: {
+            can_create_followup_task: false,
+          },
+        },
+      });
+      expect(careCaseFindManyMock).toHaveBeenCalledWith({
+        where: {
+          org_id: 'org_1',
+          AND: [
+            {
+              OR: [
+                { primary_pharmacist_id: `${role}_1` },
+                { backup_pharmacist_id: `${role}_1` },
+                { visit_schedules: { some: { pharmacist_id: `${role}_1` } } },
+              ],
+            },
+          ],
+        },
+        select: { id: true, patient_id: true },
+      });
+    },
+  );
 
   it('serializes patient birth date by the local pharmacy calendar day', async () => {
     patientFindFirstMock.mockResolvedValueOnce({

@@ -61,6 +61,10 @@ import {
 } from '@/server/services/external-access';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { listPatientBillingCaseRefs } from '@/server/services/patient-detail-billing-refs';
+import {
+  canCreateTaskInDashboardAssignmentScope,
+  resolveDashboardAssignmentScope,
+} from '@/server/services/dashboard-assignment-scope';
 
 type FirstVisitDocumentContact = {
   id?: string;
@@ -913,9 +917,10 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
   const canManageBilling = hasPermission(ctx.role, 'canManageBilling');
-  const patientSharePermissions = {
+  const basePatientSharePermissions = {
     can_create_external_share: hasPermission(ctx.role, 'canManagePatientSharing'),
     can_create_reply_request: hasPermission(ctx.role, 'canReport'),
+    can_create_followup_task: hasPermission(ctx.role, 'canVisit'),
   };
 
   const { id: rawId } = await params;
@@ -943,9 +948,27 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       if (!patient) return notFound('患者が見つかりません');
 
       const caseIds = (patient.cases ?? []).map((item) => item.id);
-      const billingRefs = canManageBilling
-        ? await listPatientBillingCaseRefs(tx, { orgId: ctx.orgId, patientId: id }, caseIds)
-        : { visitRecordIds: [] as string[], cycleIds: [] as string[] };
+      const [billingRefs, followupAssignmentScope] = await Promise.all([
+        canManageBilling
+          ? listPatientBillingCaseRefs(tx, { orgId: ctx.orgId, patientId: id }, caseIds)
+          : Promise.resolve({ visitRecordIds: [] as string[], cycleIds: [] as string[] }),
+        basePatientSharePermissions.can_create_followup_task
+          ? resolveDashboardAssignmentScope({
+              db: tx,
+              orgId: ctx.orgId,
+              accessContext: ctx,
+            })
+          : Promise.resolve(null),
+      ]);
+      const patientSharePermissions = {
+        ...basePatientSharePermissions,
+        can_create_followup_task:
+          followupAssignmentScope !== null &&
+          canCreateTaskInDashboardAssignmentScope(followupAssignmentScope, {
+            related_entity_type: 'patient',
+            related_entity_id: id,
+          }),
+      };
       const billingEvidenceScope =
         billingRefs.visitRecordIds.length === 0 && billingRefs.cycleIds.length === 0
           ? { id: { in: [] } }
