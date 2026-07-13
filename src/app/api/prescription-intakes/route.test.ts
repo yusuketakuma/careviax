@@ -16,6 +16,7 @@ type TestRouteContext = { params: Promise<Record<string, string>> };
 const {
   withAuthContextMock,
   withOrgContextMock,
+  acquireAdvisoryTxLockMock,
   prescriptionIntakeFindManyMock,
   prescriptionIntakeCountMock,
   prescriptionIntakeGroupByMock,
@@ -50,6 +51,7 @@ const {
     },
   ),
   withOrgContextMock: vi.fn(),
+  acquireAdvisoryTxLockMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
   prescriptionIntakeCountMock: vi.fn().mockResolvedValue(2),
   prescriptionIntakeGroupByMock: vi.fn().mockResolvedValue([]),
@@ -78,6 +80,10 @@ vi.mock('@/lib/api/rate-limit', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: acquireAdvisoryTxLockMock,
 }));
 
 vi.mock('@/lib/api/org-reference', () => ({
@@ -164,6 +170,11 @@ function withDrugMasterDelegate<T extends object>(tx: T) {
   return {
     drugMaster: {
       findMany: drugMasterFindManyMock,
+    },
+    medicationProfile: {
+      findMany: medicationProfileFindManyMock,
+      createMany: medicationProfileCreateManyMock,
+      updateMany: medicationProfileUpdateManyMock,
     },
     ...tx,
   };
@@ -296,6 +307,7 @@ function createQrDraftSuccessfulTransaction(parsedData: unknown) {
 describe('/api/prescription-intakes POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    acquireAdvisoryTxLockMock.mockResolvedValue(undefined);
     enforceFeatureRateLimitMock.mockResolvedValue(null);
     drugMasterFindManyMock.mockResolvedValue([
       {
@@ -2055,6 +2067,11 @@ describe('/api/prescription-intakes POST', () => {
         }),
       ],
     });
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledWith(
+      tx,
+      'medication_profile_sync',
+      'org_1:patient_qr',
+    );
   });
 
   it('rejects QR draft imports when submitted lines do not match the draft lines', async () => {

@@ -3,12 +3,14 @@ import { addDays, format } from 'date-fns';
 
 const {
   withOrgContextMock,
+  acquireAdvisoryTxLockMock,
   notifyWebhookEventForOrgMock,
   upsertOperationalTaskMock,
   createDispenseDraftMock,
   prismaMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
+  acquireAdvisoryTxLockMock: vi.fn(),
   notifyWebhookEventForOrgMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   createDispenseDraftMock: vi.fn(),
@@ -31,6 +33,10 @@ const {
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: acquireAdvisoryTxLockMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -122,9 +128,12 @@ function validLine() {
 describe('createPrescriptionIntake', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(prismaMock));
+    acquireAdvisoryTxLockMock.mockResolvedValue(undefined);
     prismaMock.prescriptionIntake.findFirst.mockResolvedValue(null);
     prismaMock.medicationProfile.findMany.mockResolvedValue([]);
     prismaMock.medicationProfile.create.mockResolvedValue({});
+    prismaMock.medicationProfile.createMany.mockResolvedValue({ count: 0 });
     prismaMock.medicationProfile.update.mockResolvedValue({});
     prismaMock.medicationProfile.updateMany.mockResolvedValue({ count: 0 });
     prismaMock.drugMaster.findMany.mockResolvedValue([]);
@@ -1458,6 +1467,116 @@ describe('createPrescriptionIntake', () => {
     expect(result.kind).toBe('intake');
     expect(tx.workflowException.create).not.toHaveBeenCalled();
     expect(tx.prescriptionIntake.create).toHaveBeenCalled();
+  });
+
+  it('serializes concurrent medication profile syncs per organization and patient', async () => {
+    type InMemoryProfile = {
+      id: string;
+      org_id: string;
+      patient_id: string;
+      drug_name: string;
+      drug_master_id: string | null;
+      dose: string;
+      frequency: string;
+      prescriber: string | null;
+      start_date: Date;
+      end_date: Date | null;
+      is_current: boolean;
+      source: string;
+    };
+
+    const currentProfiles: InMemoryProfile[] = [];
+    let nextProfileId = 1;
+    const releaseByTx = new WeakMap<object, () => void>();
+    let lockTail = Promise.resolve();
+
+    const makeProfileTx = () => ({
+      medicationProfile: {
+        findMany: vi.fn(async () => currentProfiles.filter((profile) => profile.is_current)),
+        createMany: vi.fn(
+          async ({ data }: { data: Array<Omit<InMemoryProfile, 'id' | 'end_date'>> }) => {
+            await Promise.resolve();
+            for (const profile of data) {
+              currentProfiles.push({
+                ...profile,
+                id: `profile_${nextProfileId++}`,
+                end_date: null,
+              });
+            }
+            return { count: data.length };
+          },
+        ),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
+    });
+
+    acquireAdvisoryTxLockMock.mockImplementation(
+      async (tx: object, namespace: string, key: string) => {
+        expect(namespace).toBe('medication_profile_sync');
+        expect(key).toBe('org_1:patient_1');
+
+        const previous = lockTail;
+        let release!: () => void;
+        const current = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        lockTail = previous.then(() => current);
+        await previous;
+        releaseByTx.set(tx, release);
+      },
+    );
+    withOrgContextMock.mockImplementation(
+      async (
+        orgId: string,
+        callback: (tx: ReturnType<typeof makeProfileTx>) => Promise<unknown>,
+      ) => {
+        expect(orgId).toBe('org_1');
+        const tx = makeProfileTx();
+        try {
+          return await callback(tx);
+        } finally {
+          releaseByTx.get(tx)?.();
+        }
+      },
+    );
+
+    const sharedArgs = {
+      patientId: 'patient_1',
+      orgId: 'org_1',
+      userId: 'user_1',
+      lines: [
+        {
+          drug_name: '同時取込薬',
+          drug_master_id: 'drug_master_shared',
+          dose: '1錠',
+          frequency: '1日1回朝食後',
+        },
+      ],
+      prescriberName: '処方医A',
+      sourceType: 'qr_scan' as const,
+    };
+
+    const [first, second] = await Promise.all([
+      runPrescriptionIntakePostCreateHooks({
+        ...sharedArgs,
+        cycleId: 'cycle_1',
+        intakeId: 'intake_1',
+      }),
+      runPrescriptionIntakePostCreateHooks({
+        ...sharedArgs,
+        cycleId: 'cycle_2',
+        intakeId: 'intake_2',
+      }),
+    ]);
+
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledTimes(2);
+    expect(currentProfiles.filter((profile) => profile.is_current)).toHaveLength(1);
+    expect([first.profileSyncResult?.created, second.profileSyncResult?.created].sort()).toEqual([
+      0, 1,
+    ]);
+    expect(prismaMock.medicationProfile.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.medicationProfile.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.medicationProfile.updateMany).not.toHaveBeenCalled();
   });
 
   it('resolves prescription drug codes to DrugMaster ids when syncing medication profiles', async () => {

@@ -2,6 +2,7 @@ import { addDays, subDays } from 'date-fns';
 import { prisma } from '@/lib/db/client';
 import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { withOrgContext } from '@/lib/db/rls';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import {
   PrescriberInstitutionReferenceValidationError,
@@ -1564,16 +1565,45 @@ async function syncMedicationProfiles(
   prescriberName: string | null,
   sourceType: PrescriptionSourceType,
 ): Promise<ProfileSyncResult> {
+  // DrugMaster is a global reference table and does not participate in the patient-profile
+  // read-modify-write invariant, so resolve codes before taking the patient-scoped lock.
+  const drugMasterIdByCode = await resolveDrugMasterIdsByPrescriptionCode(intakeLines);
+
+  return withOrgContext(orgId, async (tx) => {
+    // MedicationProfile has no partial unique constraint for one current row per drug identity.
+    // Serialize the complete read -> create/update -> discontinue sequence per org/patient so a
+    // concurrent intake must re-read the first transaction's committed profiles before writing.
+    await acquireAdvisoryTxLock(tx, 'medication_profile_sync', `${orgId}:${patientId}`);
+    return syncMedicationProfilesInTx(
+      tx,
+      patientId,
+      orgId,
+      intakeLines,
+      prescriberName,
+      sourceType,
+      drugMasterIdByCode,
+    );
+  });
+}
+
+async function syncMedicationProfilesInTx(
+  tx: Prisma.TransactionClient,
+  patientId: string,
+  orgId: string,
+  intakeLines: MedicationProfileSyncLine[],
+  prescriberName: string | null,
+  sourceType: PrescriptionSourceType,
+  drugMasterIdByCode: ReadonlyMap<string, string>,
+): Promise<ProfileSyncResult> {
   let created = 0;
   let updated = 0;
   let discontinued = 0;
 
   // 現在の is_current プロファイルを取得
-  const existingProfiles = await prisma.medicationProfile.findMany({
+  const existingProfiles = await tx.medicationProfile.findMany({
     where: { org_id: orgId, patient_id: patientId, is_current: true },
   });
 
-  const drugMasterIdByCode = await resolveDrugMasterIdsByPrescriptionCode(intakeLines);
   const existingByKey = new Map<string, (typeof existingProfiles)[number]>();
   for (const profile of existingProfiles) {
     for (const key of profileKeys(profile)) {
@@ -1613,9 +1643,8 @@ async function syncMedicationProfiles(
         shouldRefreshDrugMasterId
       ) {
         // テナント分離(二重防御): existing.id は org-scoped な findMany 由来だが、この sync は
-        // RLS 外の global prisma 書込みのため WHERE に org_id を明示する。単一行更新だが
-        // org_id を併用するため updateMany を使う(返り値 count は未使用、id 単独更新と挙動は等価)。
-        await prisma.medicationProfile.updateMany({
+        // RLS transaction内でも org_id を併用し、患者scopeの二重防御を維持する。
+        await tx.medicationProfile.updateMany({
           where: { id: existing.id, org_id: orgId },
           data: {
             ...(shouldRefreshDrugMasterId ? { drug_master_id: resolvedDrugMasterId } : {}),
@@ -1651,7 +1680,7 @@ async function syncMedicationProfiles(
 
   // 新規プロファイルは多剤併用でも 1 回の挿入で済むよう一括作成する。
   if (profilesToCreate.length > 0) {
-    await prisma.medicationProfile.createMany({ data: profilesToCreate });
+    await tx.medicationProfile.createMany({ data: profilesToCreate });
   }
 
   // 今回の処方に含まれない既存プロファイルを中止扱い（一括更新）
@@ -1664,7 +1693,7 @@ async function syncMedicationProfiles(
     .map((profile) => profile.id);
 
   if (idsToDiscontinue.length > 0) {
-    const result = await prisma.medicationProfile.updateMany({
+    const result = await tx.medicationProfile.updateMany({
       where: { id: { in: idsToDiscontinue }, org_id: orgId },
       data: { is_current: false, end_date: todayDateSentinel },
     });
