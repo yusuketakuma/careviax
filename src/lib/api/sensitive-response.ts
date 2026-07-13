@@ -4,8 +4,19 @@ export const SENSITIVE_NO_STORE_HEADERS = {
 } as const;
 
 export function withSensitiveNoStore<T extends Response>(response: T): T {
-  for (const [key, value] of Object.entries(SENSITIVE_NO_STORE_HEADERS)) {
-    response.headers.set(key, value);
-  }
+  const existingCacheDirectives = new Set(
+    (response.headers.get('Cache-Control') ?? '')
+      .split(',')
+      .map((directive) => directive.trim().toLowerCase()),
+  );
+  const preservedDirectives = ['no-cache', 'no-transform'].filter((directive) =>
+    existingCacheDirectives.has(directive),
+  );
+
+  response.headers.set(
+    'Cache-Control',
+    [SENSITIVE_NO_STORE_HEADERS['Cache-Control'], ...preservedDirectives].join(', '),
+  );
+  response.headers.set('Pragma', SENSITIVE_NO_STORE_HEADERS.Pragma);
   return response;
 }

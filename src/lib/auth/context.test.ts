@@ -72,6 +72,26 @@ describe('withAuthContext error envelope', () => {
     expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
+  it('supports a plain Response while preserving safe streaming cache directives', async () => {
+    const handlerResponse = new Response('stream', {
+      headers: {
+        'Cache-Control': 'public, max-age=3600, no-cache, no-transform',
+        'Content-Type': 'text/event-stream',
+      },
+    });
+    const handler = vi.fn().mockResolvedValue(handlerResponse);
+
+    const res = await withAuthContext(handler)(authedRequest(), routeContext);
+
+    expect(res).toBe(handlerResponse);
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream');
+    expect(res.headers.get('Cache-Control')).toBe(
+      'private, no-store, max-age=0, no-cache, no-transform',
+    );
+    expect(res.headers.get('Cache-Control')).not.toContain('public');
+    expect(res.headers.get('Pragma')).toBe('no-cache');
+  });
+
   it('converts an unexpected handler throw into the standard 500 {code,message} envelope', async () => {
     const rawError = new Error('boom: patient=青葉 花子 insurance=MED-SECRET-1');
     const handler = vi.fn().mockRejectedValue(rawError);

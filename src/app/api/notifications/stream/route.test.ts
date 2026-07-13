@@ -33,9 +33,19 @@ vi.mock('@/lib/utils/logger', () => ({
   },
 }));
 
-vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
-}));
+vi.mock('@/lib/auth/context', async () => {
+  const { withSensitiveNoStore } = await import('@/lib/api/sensitive-response');
+  return {
+    requireAuthContext: requireAuthContextMock,
+    withAuthContext:
+      (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+      async (req: unknown, routeContext?: unknown) => {
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return withSensitiveNoStore(authResult.response);
+        return withSensitiveNoStore(await handler(req, authResult.ctx, routeContext));
+      },
+  };
+});
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
@@ -71,6 +81,10 @@ function streamRequest(signal: AbortSignal, url = 'http://localhost/api/notifica
   return new NextRequest(url, { signal });
 }
 
+function invokeGET(request: NextRequest) {
+  return GET(request, { params: Promise.resolve({}) });
+}
+
 async function flushAsyncWork() {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -91,7 +105,7 @@ async function openStreamForTest() {
 
 async function openStreamForTestWithUrl(url: string) {
   const controller = new AbortController();
-  const response = (await GET(streamRequest(controller.signal, url)))!;
+  const response = (await invokeGET(streamRequest(controller.signal, url)))!;
   const reader = response.body?.getReader();
   if (!reader) throw new Error('reader is required');
   await reader.read();
@@ -125,12 +139,14 @@ describe('/api/notifications/stream', () => {
 
   it('opens an SSE stream and immediately emits keepalive', async () => {
     const controller = new AbortController();
-    const response = (await GET(streamRequest(controller.signal)))!;
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
 
     expect(response.headers.get('Content-Type')).toBe('text/event-stream');
     expect(response.headers.get('Cache-Control')).toContain('no-store');
     expect(response.headers.get('Cache-Control')).toContain('no-cache');
     expect(response.headers.get('Cache-Control')).toContain('no-transform');
+    expect(response.headers.get('Cache-Control')).toContain('private');
+    expect(response.headers.get('Cache-Control')).toContain('max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
     const reader = response.body?.getReader();
     if (!reader) throw new Error('reader is required');
@@ -143,6 +159,28 @@ describe('/api/notifications/stream', () => {
     expect(releaseSseConnectionMock).toHaveBeenCalledTimes(1);
     expect(unsubscribeFromChannelMock).toHaveBeenCalledWith('org:org_1', expect.any(Function));
     expect(unsubscribeFromChannelMock).toHaveBeenCalledWith('user:user_1', expect.any(Function));
+  });
+
+  it('returns the authentication response before resolving rooms or acquiring a stream slot', async () => {
+    const deniedResponse = Response.json(
+      { code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' },
+      { status: 401 },
+    );
+    requireAuthContextMock.mockResolvedValueOnce({ response: deniedResponse });
+
+    const response = await invokeGET(
+      streamRequest(
+        new AbortController().signal,
+        'http://localhost/api/notifications/stream?presence=not-json',
+      ),
+    );
+
+    expect(response).toBe(deniedResponse);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), undefined);
+    expect(canAccessCollaborationEntityMock).not.toHaveBeenCalled();
+    expect(acquireSseConnectionMock).not.toHaveBeenCalled();
+    expect(subscribeToChannelMock).not.toHaveBeenCalled();
+    expect(notificationFindManyMock).not.toHaveBeenCalled();
   });
 
   it('unrefs SSE timers when the runtime exposes timer handles', () => {
@@ -160,7 +198,7 @@ describe('/api/notifications/stream', () => {
   it('rejects streams when the per-user connection cap is reached', async () => {
     acquireSseConnectionMock.mockReturnValue({ allowed: false, count: 10 });
 
-    const response = (await GET(streamRequest(new AbortController().signal)))!;
+    const response = (await invokeGET(streamRequest(new AbortController().signal)))!;
 
     expect(response.status).toBe(429);
     expect(response.headers.get('Cache-Control')).toContain('no-store');
@@ -174,7 +212,7 @@ describe('/api/notifications/stream', () => {
   });
 
   it('releases the connection when the stream body is cancelled', async () => {
-    const response = (await GET(streamRequest(new AbortController().signal)))!;
+    const response = (await invokeGET(streamRequest(new AbortController().signal)))!;
     const reader = response.body?.getReader();
     if (!reader) throw new Error('reader is required');
     await reader.read();
@@ -190,7 +228,7 @@ describe('/api/notifications/stream', () => {
 
   it('releases the connection exactly once when abort and body cancel both happen', async () => {
     const controller = new AbortController();
-    const response = (await GET(streamRequest(controller.signal)))!;
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
     const reader = response.body?.getReader();
     if (!reader) throw new Error('reader is required');
     await reader.read();
@@ -210,7 +248,7 @@ describe('/api/notifications/stream', () => {
       .mockResolvedValueOnce(undefined);
 
     const controller = new AbortController();
-    const response = (await GET(streamRequest(controller.signal)))!;
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
     const reader = response.body?.getReader();
     if (!reader) throw new Error('reader is required');
     await reader.read();
@@ -230,7 +268,7 @@ describe('/api/notifications/stream', () => {
       .mockRejectedValueOnce(new Error('user channel unavailable'));
 
     const controller = new AbortController();
-    const response = (await GET(streamRequest(controller.signal)))!;
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
     const reader = response.body?.getReader();
     if (!reader) throw new Error('reader is required');
     await reader.read();
@@ -252,7 +290,7 @@ describe('/api/notifications/stream', () => {
       .mockResolvedValueOnce(undefined);
 
     const controller = new AbortController();
-    const response = (await GET(streamRequest(controller.signal)))!;
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
     const reader = response.body?.getReader();
     if (!reader) throw new Error('reader is required');
     await reader.read();
@@ -431,7 +469,7 @@ describe('/api/notifications/stream', () => {
   });
 
   it('rejects invalid presence stream targets before acquiring an SSE slot', async () => {
-    const response = (await GET(
+    const response = (await invokeGET(
       streamRequest(
         new AbortController().signal,
         'http://localhost/api/notifications/stream?presence=not-json',
@@ -450,7 +488,7 @@ describe('/api/notifications/stream', () => {
     canAccessCollaborationEntityMock.mockResolvedValue(false);
     const presence = encodeURIComponent(JSON.stringify(['visit_record', 'vr_unassigned']));
 
-    const response = (await GET(
+    const response = (await invokeGET(
       streamRequest(
         new AbortController().signal,
         `http://localhost/api/notifications/stream?presence=${presence}`,
@@ -495,7 +533,7 @@ describe('/api/notifications/stream', () => {
     subscribeToChannelMock.mockRejectedValue(new Error('realtime unavailable'));
 
     const controller = new AbortController();
-    const response = (await GET(streamRequest(controller.signal)))!;
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
     const reader = response.body?.getReader();
     if (!reader) throw new Error('reader is required');
     await reader.read();
@@ -565,7 +603,7 @@ describe('/api/notifications/stream', () => {
     ]);
 
     const controller = new AbortController();
-    const response = (await GET(streamRequest(controller.signal)))!;
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
     const reader = response.body?.getReader();
     if (!reader) throw new Error('reader is required');
     await reader.read();
@@ -628,7 +666,7 @@ describe('/api/notifications/stream', () => {
     notificationFindManyMock.mockRejectedValue(new Error('db down'));
 
     const controller = new AbortController();
-    const response = (await GET(streamRequest(controller.signal)))!;
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
     const reader = response.body?.getReader();
     if (!reader) throw new Error('reader is required');
     await reader.read();
@@ -664,7 +702,7 @@ describe('/api/notifications/stream', () => {
     const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockReturnValue(timeoutHandle);
 
     const controller = new AbortController();
-    const response = (await GET(streamRequest(controller.signal)))!;
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
     const reader = response.body?.getReader();
     if (!reader) throw new Error('reader is required');
     await reader.read();

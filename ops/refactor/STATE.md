@@ -55,6 +55,27 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZNOTIFICATIONSTREAMAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Pharmacists import push/parity後の残5 routesからNotifications SSE GETを選定した。Route/test、shared auth/no-store/performance、SSE timer、
+    shared EventSource、notification payload sanitizer、org realtime policy、protected GET matrix、rate-limit、allowlist、installed Next guideを確認した。
+    SSEはplain streaming `Response`を返すため`withAuthContext`の`Promise<NextResponse>`型に適合せず、direct authのまま共通performance/sanitized-500
+    境界外だった。単純な型拡張では既存SSEの`no-cache/no-transform`が固定no-store上書きで失われることも確認した。
+  - files changed / bugs found / correctness / security / privacy / performance:
+    `withAuthContext`をgeneric `Response` handler対応にし、明示params型だけを渡す既存callsiteは`NextResponse`既定値で後方互換を維持した。
+    sensitive no-storeは`public/max-age`等をfail-closedで除去したまま、安全な既存`no-cache/no-transform`だけを保持する。SSE GETをtyped handler + wrapperへ
+    移行し、auth、presence room access、connection cap、keepalive/lifetime、abort/cancel exactly-once release、late subscription cleanup、org/user/presence購読、
+    bounded DB safety poll、recovery/failure logging、PHI-safe notification/org/presence projectionを不変にした。Auth denial副作用zeroを追加しallowlist 1 entryを除去。
+    Direct debtは155→154 routes、219→218 calls、helper未使用success routeは5→4。DB/network/stream payload/timer間隔は不変でsetup計測だけを追加した。
+  - validation results / remaining work / next action / rollback:
+    Focused shared auth + SSE 2 files / 27 tests、auth/SSE/protected/realtime領域7 files / 436 tests、exact ESLint/Prettier、8 GiB typecheck/no-unused、
+    route-auth 154 allowlisted / 218 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、
+    client schema 361 backed / 0 allowlisted、format/diffをPASS。初回focused failureはtest wrapper mockのheader再現不足だけを検出し実helperへ同期、初回typecheckは
+    shared genericの既存明示型後方互換不足だけを検出しdefault追加後に再実行PASS。新規security/privacy/medical/performance issueなし。Schema/migration/
+    deploy/Oracleなし。非視覚server/API変更のためimagegen/browserなし。親にはadmin organization provisioning、billing close、patient archive/restoreの4 routesと、
+    request correlation/error registryが残る。次は既存高リスク回帰を根拠にadmin/billing routeの純wrapper移行可否を監査し、archive/restore policy gapは迂回しない。
+    Rollbackはscoped commitのrevertでDB/data rollback不要。
+
 - codex1: API-CONTRACT-001FZPHARMACISTIMPORTAUTH (DONE; parent remains Partial, 2026-07-14; implementation `710917480`).
   - current task / files inspected / root cause:
     Medication Cycle push/parity後の残6 routesからPharmacists import POSTを選定した。Route/test、import validation、Cognito admin service、

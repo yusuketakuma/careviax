@@ -330,12 +330,15 @@ export async function requireAuthContext(
  * エンベロープに変換し、観測性のため PHI-safe structured logger へ記録する。
  * 既存の早期 return(validationError 等の NextResponse)はそのまま素通しする。
  */
-export function withAuthContext<TParams extends Record<string, string>>(
+export function withAuthContext<
+  TParams extends Record<string, string>,
+  TResponse extends Response = NextResponse,
+>(
   handler: (
     req: NextRequest,
     ctx: AuthContext,
     routeContext: AuthRouteContext<TParams>,
-  ) => Promise<NextResponse>,
+  ) => Promise<TResponse>,
   options?: RequireAuthContextOptions,
 ) {
   return async (req: NextRequest, routeContext: AuthRouteContext<TParams>) => {

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { logger } from '@/lib/utils/logger';
 import { acquireSseConnection, releaseSseConnection } from '@/lib/api/rate-limit';
@@ -30,8 +30,6 @@ const SENSITIVE_JSON_HEADERS = {
   'Cache-Control': 'no-store, no-cache, no-transform',
   Pragma: 'no-cache',
 };
-
-type AuthContext = Extract<Awaited<ReturnType<typeof requireAuthContext>>, { ctx: unknown }>['ctx'];
 
 type PresenceStreamTarget = {
   entityType: CollaborationEntityType;
@@ -149,12 +147,9 @@ function sanitizePresenceRealtimeEvent(
   };
 }
 
-export async function GET(req: NextRequest) {
-  const authResult = await requireAuthContext(req);
-  if ('response' in authResult) return authResult.response;
-
-  const { orgId, userId } = authResult.ctx;
-  const presenceTargets = await resolvePresenceStreamTargets(req, authResult.ctx);
+async function streamNotifications(req: NextRequest, ctx: AuthContext) {
+  const { orgId, userId } = ctx;
+  const presenceTargets = await resolvePresenceStreamTargets(req, ctx);
   if (presenceTargets instanceof Response) return presenceTargets;
 
   const sseResult = acquireSseConnection(userId);
@@ -374,3 +369,5 @@ export async function GET(req: NextRequest) {
     },
   });
 }
+
+export const GET = withAuthContext(streamNotifications);
