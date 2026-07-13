@@ -52,6 +52,55 @@
 
 ## 直近の作業
 
+- codex: AUTHZ-TASK-ASSIGNEE-ELIGIBILITY-001 task assignee capability boundary (DONE, 2026-07-13; implementation `a226ff664`, PUSHED).
+  - current task / root cause:
+    `POST /api/tasks`はcaller permissionとpatient assignment scopeを検証する一方、明示`assigned_to`はsame-org active
+    membershipだけで受理し、clerk/driver、inactive account、個人監査資格不足、複数site Membershipのrow-order driftを
+    task type別writeへ接続していなかった。Staff workloadも先頭Membershipを表示/候補化し、候補とPOST/PATCHが不一致。
+    Tasks UIはactor/org/role変更後の候補cache、認可失効4xx後のcached staff/patient/task PHI、create-time資格drift、
+    保存後response-lossからの重複再送を安全に扱えなかった。
+  - inspected / frame / decision:
+    Task registry/alias、permission matrix、dashboard assignment scope、Membership/User lifecycle、Staff workload provider、
+    POST/PATCH、Tasks query/UI、primary-query cache policy、share/external/system task callers、関連route/UI testsを照合。
+    Canonical task type × stable active role × role permissionをserver evaluatorとし、監査だけpharmacistの
+    `can_audit_dispense`を追加要求する。owner/adminは既存dispense recipient policy同様に個人flagをbypass、
+    owner/adminは組織内委任、pharmacist/traineeは本人割当だけを許可。mixed role、未知type、inactive account/membershipは
+    fail-closedとし、対象entity固有の訪問担当/self-audit/二者確認は根拠なしに推測せずHuman gateへ分離した。
+  - implementation / security / privacy result:
+    Candidate provider、POST、assignment変更PATCHを同じevaluatorへ接続し、actor+assignee Membershipを1回取得後O(n)集約。
+    workloadはuser単位の安定1行、mixed roleは`multiple`かつ候補0、strict role/work-request DTOで返す。空白IDをtrim拒否し、
+    active `User`でも`account_status!='active'`は拒否、拒否はTask/audit/notification write前に終了する。
+    UI query keyへorg/user/roleを含め、auth fingerprint変更時はworkspace remount。401/403/4xx・malformed 2xxはcached PHIを
+    即時非表示、network/5xxだけ最終更新時刻付きread-only cacheを表示し、全assignment pathを停止する。
+    Create-time資格拒否はtyped reasonで候補解除・再取得完了までlatchし、その他の確定拒否では入力/担当を保持する。
+    Network/5xx/成功response不正による結果不明はpayload fingerprint単位のclient `dedupe_key`を保持し、同内容再送を
+    既存Taskへreplayして二重起票を防止。stale/recovery/恒久的な資格不足はカードのvisible copyと`aria-describedby`を分離した。
+  - validation / evidence:
+    Focused eligibility/validation/navigation/POST/PATCH/workload/UI/query testsは8 files / 160 tests PASS。
+    Full Vitestは1549 files PASS / 3 skipped、16035 tests PASS / 13 skipped。Scoped ESLint、Prettier、`git diff --check`、
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`、同`typecheck:no-unused` PASS。既定4 GiB no-unusedは独立reviewで
+    heap OOM (exit 134)、診断なしのため8 GiB結果を正とした。Frontend contract、client schema 361/0、PHI log/display、
+    API shape、route auth 176/252/0、raw-read org guard 117/0、task registry 81 literals/144 types、module boundaries、colors PASS。
+    Serialized Next 16.2.9 webpack buildは311 pages PASS。CSS optimizerの既存`var(...)` warning 2件は非阻害・本差分外。
+  - design / image generation / browser:
+    `docs/ui-ux-design-guidelines.md`のdisabled理由、復旧条件、色だけに依存しない状態、cached PHI境界を適用。
+    新規layout/visual reconstructionではなく既存画面のstate/authz/idempotency gate追加のため`gpt-image-2`は省略した。
+    Browser screenshotはvisual hierarchy変更がなく、Testing Libraryで候補filter、auth remount、4xx PHI不在、503 stale時刻、
+    drift/response-loss recovery、keyboard-accessible descriptionを検証したため本taskのDONE gateから除外した。
+  - independent review / residual:
+    Read-only contract reviewはactionable findingなし、independent verifierはAPPROVE WITH FOLLOW-UP。Medical/privacy reviewの
+    Medium response-loss重複とLow stale/recovery説明誤分類はcommit前に修正した。残る`MEDSAFE-TASK-ASSIGNEE-CONTEXT-001`
+    （訪問実担当、self-audit/二者確認、general/clerk/driver policy）と`AUTHZ-ACTOR-MULTISITE-ROLE-SSOT-001`はHuman gate。
+    資格check/write間TOCTOUは`DATA-TASK-ASSIGNMENT-SERIALIZATION-001` Low、既存不適格Taskは
+    `OPS-TASK-ASSIGNEE-INVENTORY-001` Human gate。Related entity registry enforcementとexternal self-report task scopeは
+    `API-TASK-RELATED-ENTITY-CONTRACT-001` / `AUTHZ-EXTERNAL-SELF-REPORT-TASK-SCOPE-001`へ分離した。
+  - branch / ownership / rollback / next:
+    `agent/continuous-improvement-20260712`へowned code/test 15 pathsだけを`a226ff664`としてscoped commitし、originへ
+    non-force push済み。既存dirty ops/harness/personal filesは未stage・未変更。Rollbackは`git revert a226ff664`、
+    DB/data rollback不要。gbrain decisionは
+    `projects/careviax/decisions/2026-07-13/task-assignee-eligibility-and-idempotent-recovery`へredacted evidence付きで保存した。
+    次はledger commit/push後にlive `Plans.md`を再scoreし、Human gateを迂回せず次の最小verified sliceを選ぶ。
+
 - codex: MEDSAFE-ARCHIVE-WRITE-001 archived patient share write gates (DONE, 2026-07-13; implementation `26142f05a`, PUSHED).
   - current task / root cause:
     Report共有はarchive警告を表示しながら外部共有リンク・返信依頼・次回タスクを有効化し、患者共有はproviderの
