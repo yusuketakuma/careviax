@@ -67,8 +67,8 @@
   - validation results / remaining work / next action / rollback:
     Focused/independent 5 files / 54 tests、独立verifier APPROVED、exact ESLint/Prettier、8 GiB typecheck/no-unused、API shape 0/0、API authz、
     route-auth 150 allowlisted / 214 direct / 0 new、module boundary 0/0、frontend contract、client schema 361 backed / 0 allowlisted、diffをPASS。
-    Direct `error/externalError('EXTERNAL_JOB_FAILED', ..., 500)`は2→0、registryは11 codes。Full Vitest収集時の003G 4 failuresは実装途中の一時不整合で、
-    現差分のjob/registry focused regressionはPASS。全体再実行はcodex1のset-batches expectation group着地後に直列化する。Build/E2E/demoはGoal最終batchへ残す。
+    Direct `error/externalError('EXTERNAL_JOB_FAILED', ..., 500)`は2→0、registryは11 codes。002A/002B/003Gの関連修正着地後にfull Vitestを再実行し、
+    1,556 files / 16,268 tests PASS、3 files / 13 tests skipped、0 failuresを確認した。Build/E2E/demoはGoal最終batchへ残す。
     Schema/migration/production mutation/deploy/Oracleなし。非視覚API変更のためimagegen/browserなし。Rollbackは`38da5830a`のrevertでDB/data rollback不要。
 
 - codex1: API-CONTRACT-002B (DONE; parent remains Partial, 2026-07-14; implementation `284616d92`).
