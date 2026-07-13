@@ -77,6 +77,18 @@ function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+async function expectNeutralLinkedTracingReportValidationError(response: Response) {
+  expect(response.status).toBe(400);
+  expectSensitiveNoStore(response);
+  await expect(response.json()).resolves.toEqual({
+    code: 'VALIDATION_ERROR',
+    message: '入力値が不正です',
+    details: {
+      related_entity_id: ['指定された関連先を確認できません'],
+    },
+  });
+}
+
 describe('/api/communication-requests/[id]/resolve-followup POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -363,6 +375,124 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
         display_id: true,
       },
     });
+  });
+
+  it('returns the generic linked validation error when a tracing report is missing or outside the organization', async () => {
+    communicationRequestFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'responded',
+      updated_at: CURRENT_UPDATED_AT_DATE,
+      subject: '服薬情報提供書の確認',
+      recipient_name: '在宅主治医',
+      related_entity_type: 'tracing_report',
+      related_entity_id: 'tracing_missing',
+    });
+
+    const response = await POST(
+      createRequest({
+        expected_updated_at: CURRENT_UPDATED_AT,
+      }),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    await expectNeutralLinkedTracingReportValidationError(response);
+    expect(tracingReportFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'tracing_missing', org_id: 'org_1' },
+      select: expect.any(Object),
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the generic linked validation error when tracing report scope does not match', async () => {
+    communicationRequestFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'responded',
+      updated_at: CURRENT_UPDATED_AT_DATE,
+      subject: '服薬情報提供書の確認',
+      recipient_name: '在宅主治医',
+      related_entity_type: 'tracing_report',
+      related_entity_id: 'tracing_2',
+    });
+    tracingReportFindFirstMock.mockResolvedValue({
+      id: 'tracing_2',
+      patient_id: 'patient_1',
+      case_id: 'case_2',
+      status: 'received',
+      sent_at: new Date('2026-06-17T00:00:00.000Z'),
+      acknowledged_at: null,
+    });
+
+    const response = await POST(
+      createRequest({
+        expected_updated_at: CURRENT_UPDATED_AT,
+      }),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    await expectNeutralLinkedTracingReportValidationError(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the same generic linked validation error when tracing report assignment access is denied', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'driver_1',
+        role: 'driver',
+      },
+    });
+    communicationRequestFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: null,
+      status: 'responded',
+      updated_at: CURRENT_UPDATED_AT_DATE,
+      subject: '服薬情報提供書の確認',
+      recipient_name: '在宅主治医',
+      related_entity_type: 'tracing_report',
+      related_entity_id: 'tracing_2',
+    });
+    tracingReportFindFirstMock.mockResolvedValue({
+      id: 'tracing_2',
+      patient_id: 'patient_1',
+      case_id: 'case_2',
+      status: 'received',
+      sent_at: new Date('2026-06-17T00:00:00.000Z'),
+      acknowledged_at: null,
+    });
+    patientFindFirstMock
+      .mockResolvedValueOnce({ id: 'patient_1' })
+      .mockResolvedValueOnce({ id: 'patient_1', archived_at: null });
+    careCaseFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest({
+        expected_updated_at: CURRENT_UPDATED_AT,
+      }),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    await expectNeutralLinkedTracingReportValidationError(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('syncs a linked tracing report only after scope consistency is verified', async () => {

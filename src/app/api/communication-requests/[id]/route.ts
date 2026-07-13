@@ -180,6 +180,12 @@ const patchCommunicationRequestSchema = z.object({
     .optional(),
 });
 
+function invalidLinkedTracingReportReference() {
+  return validationError('入力値が不正です', {
+    related_entity_id: ['指定された関連先を確認できません'],
+  });
+}
+
 class CommunicationRequestPatchRollback extends Error {
   constructor(readonly result: { error: 'state_changed' }) {
     super('communication request patch transaction rolled back');
@@ -357,7 +363,7 @@ async function authenticatedPATCH(
       },
     });
 
-    if (!linkedTracingReport) return notFound('トレーシングレポートが見つかりません');
+    if (!linkedTracingReport) return invalidLinkedTracingReportReference();
 
     const resolvedScope = resolveTracingReportCommunicationScope({
       requestedPatientId: existing.patient_id,
@@ -366,9 +372,7 @@ async function authenticatedPATCH(
     });
 
     if (!resolvedScope) {
-      return validationError('関連トレーシングレポートと患者またはケースが一致しません', {
-        related_entity_id: ['関連トレーシングレポートと患者またはケースが一致しません'],
-      });
+      return invalidLinkedTracingReportReference();
     }
 
     if (
@@ -380,7 +384,7 @@ async function authenticatedPATCH(
         accessContext: ctx,
       }))
     ) {
-      return notFound('トレーシングレポートが見つかりません');
+      return invalidLinkedTracingReportReference();
     }
   }
 

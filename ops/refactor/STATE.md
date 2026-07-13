@@ -14,6 +14,8 @@
   同じ機能sliceのownerへまとめ、同じ領域を同時編集しない。Claudeと外部maker/checkerは再有効化されていない。
 - 全Codexに割当機能内の編集権限がある。focused validationとboundedな読取reviewは各ownerが実行できるが、
   long Next gate、単一台帳、scoped commit/push、最終統合は`codex1`が管理する。
+- 2026-07-14 の最新チーム指示により、進行中sliceはfocused validation、FREEZE/READY、handoff、scoped commit/pushまで安全に閉じるが、
+  その後は新しいtask/sliceへ着手しない。既存dirty workとownershipを保全し、残作業は本台帳へ残して全Codexを停止する。
 - 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
   直接の影響範囲確認、focused/full gate で代替する。
 - 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
@@ -54,6 +56,21 @@
 
 ## 直近の作業
 
+- codex3 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001H (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Communication request PATCH/resolve-followup routes/tests、primary request assignment scope、linked tracing report scope/access helper、transaction内request/response/
+    task/tracing/audit ordering、installed Next 16.2.9 Route Handler guide、API/auth/raw-read/module guardsを確認した。Primary requestは同じ404だった一方、linked
+    tracing reportのmissing/cross-org/access denialはroute固有404、patient/case mismatchは具体的400で、存在・tenant・assignment/mismatchを分類できた。
+  - files changed / correctness / security / privacy:
+    両handlerに同じneutral helperを置き、linked reportのmissing/cross-org、patient/case mismatch、assignment denialをexact 400 `VALIDATION_ERROR` /
+    `入力値が不正です` + `details.related_entity_id`へ統一した。Primary request missing/assignment denialのexact 404 `WORKFLOW_NOT_FOUND`は維持した。全linked拒否を
+    `withOrgContext`前に終了させ、request update、response create、task upsert、tracing update、audit副作用0を固定し、ID/count/PHIを応答へ追加していない。
+  - performance / stability / validation / rollback:
+    Success/concurrency claim、hostile-ID、sanitized 500、DTO/no-store、query/write/network数は不変。Codex3 FREEZE後にcodex1がdiffと副作用順を独立reviewし、focused
+    2 files / 47 tests、API authz 0、API shape 0/0、route auth 175 allowlisted / 251 direct / 0 new、raw-org 116 / 0 new、module boundary
+    0/0、exact4 ESLint/Prettier/diff、combined 8 GiB typecheckをPASS。Schema/migration/production data/Oracle/long buildなし。親は残存mutation route scanが
+    あるためPartialだが、2026-07-14停止指示に従い次candidateへは着手しない。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
 - codex3 + codex1 integration: TYPECHECK-PATIENT-BOARD-003O-A-001 (DONE, 2026-07-14; implementation `7e26fa769`, PUSHED).
   - current task / root cause / files changed:
     `PERF-DB-PATIENT-BOARD-FOUNDATION-SINGLEPASS-003O-A`の82-row回帰fixtureを含むcombined 8 GiB typecheckで5 assignment errorsを検出した。
@@ -63,7 +80,7 @@
     Production source、tenant/PHI、DB/network、性能は不変。Codex3 FREEZE後にcodex1がannotation-only diffをreviewし、focused 1 file / 33 tests、exact
     ESLint/Prettier/diff、`NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`をPASS。Rollbackは`7e26fa769`のrevertでDB/data rollback不要。
 
-- codex2 + codex1 integration: AUTHZ-EXTERNAL-GRANT-RLS-CONTEXT-001 (DONE, 2026-07-14; implementation in this scoped commit).
+- codex2 + codex1 integration: AUTHZ-EXTERNAL-GRANT-RLS-CONTEXT-001 (DONE, 2026-07-14; implementation `a1fa07357`, PUSHED).
   - current task / files inspected / root cause:
     External access service/test、public GET/self-report callers、ExternalAccessGrantとpayload対象schema/RLS/FORCE policies、`withOrgContext`、manual audit、
     raw-read guardを確認した。GrantはFORCE RLSだがtoken validationがglobal unique hashのfree-floating Prisma lookup、患者・薬剤・ケース・訪問・報告・

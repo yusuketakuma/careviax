@@ -58,6 +58,12 @@ const resolveFollowupSchema = z.object({
   ),
 });
 
+function invalidLinkedTracingReportReference() {
+  return validationError('入力値が不正です', {
+    related_entity_id: ['指定された関連先を確認できません'],
+  });
+}
+
 function readPersistedId(value: unknown) {
   if (typeof value !== 'object' || value === null || !('id' in value)) return null;
   const id = (value as { id?: unknown }).id;
@@ -232,7 +238,7 @@ async function authenticatedPOST(req: NextRequest, { params }: ResolveFollowupRo
         acknowledged_at: true,
       },
     });
-    if (!linkedTracingReport) return notFound('トレーシングレポートが見つかりません');
+    if (!linkedTracingReport) return invalidLinkedTracingReportReference();
 
     const resolvedScope = resolveTracingReportCommunicationScope({
       requestedPatientId: existing.patient_id,
@@ -240,9 +246,7 @@ async function authenticatedPOST(req: NextRequest, { params }: ResolveFollowupRo
       tracingReport: linkedTracingReport,
     });
     if (!resolvedScope) {
-      return validationError('関連トレーシングレポートと患者またはケースが一致しません', {
-        related_entity_id: ['関連トレーシングレポートと患者またはケースが一致しません'],
-      });
+      return invalidLinkedTracingReportReference();
     }
 
     if (
@@ -254,7 +258,7 @@ async function authenticatedPOST(req: NextRequest, { params }: ResolveFollowupRo
         accessContext: ctx,
       }))
     ) {
-      return notFound('トレーシングレポートが見つかりません');
+      return invalidLinkedTracingReportReference();
     }
   }
 

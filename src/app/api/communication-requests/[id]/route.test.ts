@@ -106,6 +106,18 @@ function createMalformedJsonRequest(headers?: Record<string, string>) {
   });
 }
 
+async function expectNeutralLinkedTracingReportValidationError(response: Response) {
+  expect(response.status).toBe(400);
+  expectSensitiveNoStore(response);
+  await expect(response.json()).resolves.toEqual({
+    code: 'VALIDATION_ERROR',
+    message: '入力値が不正です',
+    details: {
+      related_entity_id: ['指定された関連先を確認できません'],
+    },
+  });
+}
+
 function buildUniqueConstraintError() {
   return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
     code: 'P2002',
@@ -1105,6 +1117,44 @@ describe('/api/communication-requests/[id] PATCH', () => {
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
+  it('returns the generic linked validation error when a tracing report is missing or outside the organization', async () => {
+    communicationRequestFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'received',
+      updated_at: CURRENT_UPDATED_AT_DATE,
+      recipient_name: '在宅主治医',
+      related_entity_type: 'tracing_report',
+      related_entity_id: 'tracing_missing',
+    });
+    tracingReportFindFirstMock.mockResolvedValue(null);
+
+    const response = await PATCH(
+      createRequest(
+        {
+          response: {
+            responder_name: '在宅主治医',
+            content: '現行処方で継続',
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    await expectNeutralLinkedTracingReportValidationError(response);
+    expect(tracingReportFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'tracing_missing', org_id: 'org_1' },
+      select: expect.any(Object),
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('updates and audits a linked tracing report only after scope consistency is verified', async () => {
     communicationRequestFindFirstMock.mockResolvedValue({
       id: 'request_1',
@@ -1376,14 +1426,62 @@ describe('/api/communication-requests/[id] PATCH', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '関連トレーシングレポートと患者またはケースが一致しません',
-    });
+    await expectNeutralLinkedTracingReportValidationError(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationResponseCreateMock).not.toHaveBeenCalled();
     expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the same generic linked validation error when tracing report assignment access is denied', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'driver_1',
+        role: 'driver',
+      },
+    });
+    communicationRequestFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: null,
+      status: 'received',
+      updated_at: CURRENT_UPDATED_AT_DATE,
+      recipient_name: '在宅主治医',
+      related_entity_type: 'tracing_report',
+      related_entity_id: 'tracing_2',
+    });
+    tracingReportFindFirstMock.mockResolvedValue({
+      id: 'tracing_2',
+      patient_id: 'patient_1',
+      case_id: 'case_2',
+      status: 'received',
+      sent_at: new Date('2026-03-28T05:00:00.000Z'),
+      acknowledged_at: null,
+    });
+    patientFindFirstMock
+      .mockResolvedValueOnce({ id: 'patient_1' })
+      .mockResolvedValueOnce({ id: 'patient_1', archived_at: null });
+    careCaseFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(
+      createRequest(
+        {
+          response: {
+            responder_name: '在宅主治医',
+            content: '現行処方で継続',
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    await expectNeutralLinkedTracingReportValidationError(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
     expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
