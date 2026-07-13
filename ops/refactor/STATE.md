@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZPATIENTLABAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZPATIENTLABAUTH (DONE; parent remains Partial, 2026-07-14; implementation `b107d425d`).
   - current task / files inspected / root cause:
     Admin Jobs push/parity後の残10 routesから、Cognito tenant provisioningを避けてPatient Lab detail PATCHを選定した。Route/test、lab root/provider/UI、
     patient write guard、assignment helper、rate-limit、allowlist、installed Next guideを確認した。既存handlerはcanVisit、archive/assignment/source visit/RLS
