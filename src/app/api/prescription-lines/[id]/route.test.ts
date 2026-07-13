@@ -405,6 +405,10 @@ describe('/api/prescription-lines/[id] PATCH', () => {
     ))!;
 
     expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '処方明細が見つかりません',
+    });
     expect(prescriptionLineUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -585,10 +589,42 @@ describe('/api/prescription-lines/[id] PATCH', () => {
     ))!;
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       code: 'VALIDATION_ERROR',
-      details: { drug_master_id: ['存在する医薬品マスターを選択してください'] },
+      message: '入力値が不正です',
+      details: { drug_master_id: ['指定された医薬品マスターを確認できません'] },
     });
+    expect(drugMasterFindManyMock).not.toHaveBeenCalled();
+    expect(prescriptionLineUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the same validation response when the selected DrugMaster has no usable YJ code', async () => {
+    drugMasterFindFirstMock.mockResolvedValue({
+      id: 'drug_master_1',
+      yj_code: '   ',
+      receipt_code: 'RC001',
+      hot_code: null,
+      drug_name: 'Drug A',
+    });
+
+    const response = (await PATCH(
+      createRequest({
+        expected_updated_at: '2026-06-16T00:00:00.000Z',
+        drug_master_id: 'drug_master_1',
+      }),
+      {
+        params: Promise.resolve({ id: 'line_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: { drug_master_id: ['指定された医薬品マスターを確認できません'] },
+    });
+    expect(drugMasterFindManyMock).not.toHaveBeenCalled();
     expect(prescriptionLineUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });

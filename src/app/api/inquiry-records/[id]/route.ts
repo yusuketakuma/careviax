@@ -411,7 +411,9 @@ async function authenticatedPATCH(
     if (inquiryResult.error === 'line_update_no_changes') {
       return validationError('処方明細の更新内容に変更がありません');
     }
-    return validationError('指定された処方明細が見つかりません');
+    return validationError('入力値が不正です', {
+      line_update: ['更新対象の処方明細を確認できません'],
+    });
   }
 
   await notifyWorkflowMutation({

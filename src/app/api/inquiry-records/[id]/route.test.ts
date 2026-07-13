@@ -376,6 +376,11 @@ describe('/api/inquiry-records/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '疑義照会記録が見つかりません',
+    });
     expect(inquiryRecordFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'inquiry_unassigned',
@@ -798,6 +803,14 @@ describe('/api/inquiry-records/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        line_update: ['更新対象の処方明細を確認できません'],
+      },
+    });
     expect(txLineFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'line_foreign',
@@ -822,6 +835,8 @@ describe('/api/inquiry-records/[id] PATCH', () => {
     expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
     expect(lineUpdateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects line updates unless the inquiry result is changed', async () => {

@@ -247,7 +247,11 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
             })
           : null;
         if (mergedValidation.data.case_id && !careCase) {
-          return { error: validationError('ケースが見つかりません') };
+          return {
+            error: validationError('入力値が不正です', {
+              case_id: ['指定されたケースを確認できません'],
+            }),
+          };
         }
         const requestedPatientId =
           mergedValidation.data.patient_id ??
@@ -259,7 +263,11 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
           requestedPatientId &&
           requestedPatientId !== careCase.patient_id
         ) {
-          return { error: validationError('ケースと患者が一致していません') };
+          return {
+            error: validationError('入力値が不正です', {
+              patient_id: ['指定された患者を確認できません'],
+            }),
+          };
         }
         const resolvedPatientId =
           careCase?.patient_id ??

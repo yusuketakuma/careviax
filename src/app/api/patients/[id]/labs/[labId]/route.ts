@@ -92,8 +92,8 @@ export async function PATCH(
 
   if (existing.source_type === 'visit_record') {
     if (!existing.source_visit_record_id) {
-      return validationError('訪問記録由来の検査値に訪問記録IDがありません', {
-        source_visit_record_id: ['訪問記録IDを確認してください'],
+      return validationError('入力値が不正です', {
+        source_visit_record_id: ['登録元の訪問記録を確認できません'],
       });
     }
 
@@ -105,8 +105,8 @@ export async function PATCH(
       sourceVisitRecordId: existing.source_visit_record_id,
     });
     if (!sourceVisitRecord) {
-      return validationError('指定された訪問記録が見つかりません', {
-        source_visit_record_id: ['登録先患者でアクセス可能な訪問記録を指定してください'],
+      return validationError('入力値が不正です', {
+        source_visit_record_id: ['登録元の訪問記録を確認できません'],
       });
     }
   }

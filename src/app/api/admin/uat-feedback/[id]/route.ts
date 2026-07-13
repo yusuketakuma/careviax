@@ -111,8 +111,8 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
       return notFound('UAT フィードバックが見つかりません');
     }
     if (updateResult.kind === 'invalid_owner') {
-      return validationError('割当先ユーザーが見つかりません', {
-        owner_user_id: ['同一組織のユーザーを指定してください'],
+      return validationError('入力値が不正です', {
+        owner_user_id: ['指定された割当先を確認できません'],
       });
     }
     const updated = updateResult.feedback;

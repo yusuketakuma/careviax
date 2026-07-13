@@ -253,6 +253,13 @@ describe('/api/admin/uat-feedback/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        owner_user_id: ['指定された割当先を確認できません'],
+      },
+    });
     expect(feedbackFindFirstMock).toHaveBeenCalled();
     expect(userFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'user_x', org_id: 'org_1' },
@@ -272,6 +279,10 @@ describe('/api/admin/uat-feedback/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: 'UAT フィードバックが見つかりません',
+    });
     expect(feedbackUpdateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });

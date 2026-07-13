@@ -216,7 +216,7 @@ export const PATCH = withAuthContext<{ id: string }>(
           return {
             error: 'drug_master_not_found' as const,
             details: {
-              drug_master_id: ['存在する医薬品マスターを選択してください'],
+              drug_master_id: ['指定された医薬品マスターを確認できません'],
             },
           };
         }
@@ -225,7 +225,7 @@ export const PATCH = withAuthContext<{ id: string }>(
           return {
             error: 'drug_master_not_found' as const,
             details: {
-              drug_master_id: ['YJコードが設定された医薬品マスターを選択してください'],
+              drug_master_id: ['指定された医薬品マスターを確認できません'],
             },
           };
         }
@@ -402,7 +402,7 @@ export const PATCH = withAuthContext<{ id: string }>(
         return validationError('入力値が不正です', result.details);
       }
       if (result.error === 'drug_master_not_found') {
-        return validationError('対象の医薬品マスターが見つかりません', result.details);
+        return validationError('入力値が不正です', result.details);
       }
       if (result.error === 'drug_master_already_resolved') {
         return conflict('処方明細はすでに別の医薬品マスターに紐づいています', result.details);

@@ -221,6 +221,10 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
     }))!;
 
     expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '検査値が見つかりません',
+    });
     expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -239,6 +243,13 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        source_visit_record_id: ['登録元の訪問記録を確認できません'],
+      },
+    });
     expect(visitRecordFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'visit_unassigned',
@@ -247,6 +258,31 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
       },
       select: { id: true },
     });
+    expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the same validation response when a visit-record sourced lab has no source id', async () => {
+    patientLabObservationFindFirstMock.mockResolvedValue({
+      id: 'lab_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      source_type: 'visit_record',
+      source_visit_record_id: null,
+    });
+
+    const response = (await PATCH(createPatchRequest({ note: '再確認済み' }), {
+      params: Promise.resolve({ id: 'patient_1', labId: 'lab_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        source_visit_record_id: ['登録元の訪問記録を確認できません'],
+      },
+    });
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
     expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
   });
 

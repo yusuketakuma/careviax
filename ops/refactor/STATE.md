@@ -54,6 +54,27 @@
 
 ## 直近の作業
 
+- codex4 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001B (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    API route 402、dynamic route 189、body parser + notFound route 156のlive scan候補から、UAT feedback、conference note、inquiry record、
+    patient lab、prescription lineの5 dynamic PATCH route/testsとresponse/no-store/auth guardsを確認した。Primary path targetは404を使う一方、
+    body/既存linked referenceのmissing/inaccessibleは存在・tenantを示唆する400 message/detailがrouteごとに分散していた。
+  - files changed / security / correctness / privacy:
+    `owner_user_id`、conference `case_id`、inquiry `line_update`対象、lab `source_visit_record_id`、prescription line `drug_master_id`を
+    generic 400 `VALIDATION_ERROR` / `入力値が不正です` + field-specific neutral copyへ揃えた。UAT/conferenceの初稿に残った
+    「同一組織」copyはcodex4自己reviewとcodex1 feedbackで「指定された…を確認できません」へ修復した。DrugMaster missingとcanonical
+    YJ code unusableも同一response。各routeのprimary path targetは既存固定copyのexact 404 `WORKFLOW_NOT_FOUND`、missing/inaccessibleの
+    同一化、全拒否時のupdate/audit/task/report/notification副作用0を回帰固定した。Auth/tenant reads、transaction/no-store、success DTO、
+    schema/migration、PHI/logは不変。Query/network数とsuccess performanceも不変。
+  - validation / review / Oracle boundary:
+    Codex4 finalとCodex1の中立化後独立rerunで5 files / 78 tests、exact 10-path ESLint/Prettier/diff、API shape 0/0、authz status 0、
+    route auth 176 allowlisted / 252 direct / 0 new、module boundary 0/0、raw-read org guard 117 allowlisted / 0 new PASS。Installed Next
+    16.2.9 Route Handler guideを確認。Codex4が現行overrideを受信する前にOracle processを起動したが、codex1が直ちに終了し、
+    advisory answerを待機・閲覧・利用していない。以後は全agentsへOracle禁止を再通知した。
+  - remaining / rollback:
+    親は`001A`の6 pairsと`001C`の4 pairs、残存live scan、serialized typecheck/full test/buildが残るためPartial。Admin webhook compat
+    helperはlive codeで既にzero callerなので再実装しない。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
 - codex3 + codex1 integration: QUERY-SHAPE-REPORT-WORKSPACE-WATCHLIST-003K (DONE, 2026-07-13; implementation in this scoped commit).
   - current task / root cause / files inspected:
     report today-workspace route/tests、query-shape watchlist/checker、read-path SLO registry/drift checker、delivery/schedule/recipient/
@@ -387,9 +408,9 @@
 
 - parallel assignments (ACTIVE, 2026-07-13):
   - codex2: `API-STATUS-NOTFOUND-LIVE-RESCAN-001A`。primary targetとbody FKの分類1件をcodex1 review後に修復中。
-  - codex3: `QUERY-SHAPE-REPORT-WORKSPACE-WATCHLIST-003K`はREADY/FREEZE、Oracleなしのlocal scoped統合中。
-  - codex4: `API-STATUS-NOTFOUND-LIVE-RESCAN-001B` exact 10 pathsはREADY/FREEZE、codex1 review待ち。
-  - codex1: report workspace scoped統合、single ledger、exact staging、各slice独立review、
+  - codex3: `QUERY-SHAPE-VISIT-BRIEF-SERVICE-003L` exact 2 pathsで11 stable-order tie-breakersを実装中。
+  - codex4: `001B`はREADY/FREEZE・scoped統合中。`API-STATUS-NOTFOUND-LIVE-RESCAN-001C` exact 8 pathsを並行実装中。
+  - codex1: API status scoped統合、single ledger、exact staging、各slice独立review、
     serialized long gates、VERIFY_REQUIRED reconciliationと次候補scoringを管理する。
 
 - codex1: MEDPROFILE-SYNC-RACE-001 MedicationProfile sync serialization (DONE, 2026-07-13; implementation `30fcf954e`, PUSHED).

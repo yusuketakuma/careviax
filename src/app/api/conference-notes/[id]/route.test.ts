@@ -488,6 +488,10 @@ describe('/api/conference-notes/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
     expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: 'カンファレンス記録が見つかりません',
+    });
     expect(conferenceNoteLockMock).toHaveBeenCalledTimes(1);
     expect(conferenceNoteFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -498,6 +502,64 @@ describe('/api/conference-notes/[id] PATCH', () => {
       }),
     );
     expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a non-enumerating validation error when the linked case is unavailable', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(
+      createRequest({
+        title: '担当者会議（更新）',
+      }),
+      {
+        params: Promise.resolve({ id: 'note_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        case_id: ['指定されたケースを確認できません'],
+      },
+    });
+    expect(residenceFindFirstMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('does not distinguish a patient reference that conflicts with the linked case', async () => {
+    const response = await PATCH(
+      createRequest({
+        patient_id: 'patient_other',
+      }),
+      {
+        params: Promise.resolve({ id: 'note_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        patient_id: ['指定された患者を確認できません'],
+      },
+    });
+    expect(residenceFindFirstMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(taskCreateManyMock).not.toHaveBeenCalled();
     expect(careReportCreateManyMock).not.toHaveBeenCalled();
