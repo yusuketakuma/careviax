@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { japanDayInstantRange } from '@/lib/utils/date-boundary';
 import {
@@ -7,7 +8,6 @@ import {
   addJapanCalendarYears,
   buildFaxOriginalFollowupTaskKey,
   buildPrescriptionOriginalRetentionTaskKey,
-  formatDateKey,
   startOfDay,
   syncGeneratedOperationalTasks,
   type GeneratedTaskSpec,
@@ -153,7 +153,7 @@ export async function checkPrescriptionOriginalRetention() {
         taskType: 'prescription_original_retention',
         dedupeKey: buildPrescriptionOriginalRetentionTaskKey(intake.id),
         title: `処方箋原本保存期限確認: ${patientName}`,
-        description: `原本スキャンが ${formatDateKey(retentionUntil)} に5年保存期限を迎えます。Object Lock と保全状況を確認してください。`,
+        description: `原本スキャンが ${formatUtcDateKey(retentionUntil)} に5年保存期限を迎えます。Object Lock と保全状況を確認してください。`,
         priority,
         assignedTo: intake.cycle?.case_?.primary_pharmacist_id ?? null,
         dueDate: retentionUntil,

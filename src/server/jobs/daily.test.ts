@@ -2403,8 +2403,8 @@ describe('checkPrescriptionOriginalRetention', () => {
     );
   });
 
-  it('creates retention tasks with JST-calendar retention dates in a UTC runtime', async () => {
-    const restoreTimezone = useTimezone('UTC');
+  it('formats JST-calendar retention dates outside UTC and Japan runtimes', async () => {
+    const restoreTimezone = useTimezone('America/Los_Angeles');
     vi.setSystemTime(new Date('2026-03-27T16:00:00.000Z'));
     prescriptionIntakeFindManyMock
       .mockResolvedValueOnce([
@@ -2667,8 +2667,8 @@ describe('checkVisitRecordRetention', () => {
     }
   });
 
-  it('creates retention tasks with JST-calendar visit retention dates in a UTC runtime', async () => {
-    const restoreTimezone = useTimezone('UTC');
+  it('formats JST-calendar visit retention dates outside UTC and Japan runtimes', async () => {
+    const restoreTimezone = useTimezone('America/Los_Angeles');
     vi.setSystemTime(new Date('2026-03-27T16:00:00.000Z'));
     const visitRecordId = 'visit/record?x=1#frag';
     const visitRecordHref = `/visits/${encodeURIComponent(visitRecordId)}`;

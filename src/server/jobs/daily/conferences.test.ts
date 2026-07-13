@@ -127,7 +127,14 @@ describe('checkConferenceMeetingReminders', () => {
     const result = await checkConferenceMeetingReminders();
 
     expect(result).toEqual({ processedCount: 1 });
-    expect(dispatchNotificationEventMock).toHaveBeenCalledTimes(1);
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        message: expect.stringContaining(todayText),
+        dedupeKey: `conference-next-meeting:note_1:${todayText}`,
+        metadata: expect.objectContaining({ next_meeting_date: todayText }),
+      }),
+    );
   });
 
   it('excludes a meeting scheduled 2 days out (boundary: just outside the window)', async () => {

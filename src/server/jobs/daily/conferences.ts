@@ -1,10 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { runJob } from '../runner';
 import {
   addJapanCalendarDays,
-  formatDateKey,
   parseConferenceSections,
   parseDateFromConferenceText,
   startOfDay,
@@ -64,6 +64,7 @@ export async function checkConferenceMeetingReminders() {
       const nextMeetingSection = sections.find((section) => section.key === 'next_meeting_date');
       const meetingDate = parseDateFromConferenceText(nextMeetingSection?.body);
       if (!meetingDate) continue;
+      const meetingDateKey = formatUtcDateKey(meetingDate);
 
       const isReminderWindow =
         meetingDate.getTime() === today.getTime() || meetingDate.getTime() === tomorrow.getTime();
@@ -79,15 +80,15 @@ export async function checkConferenceMeetingReminders() {
           eventType: 'conference_next_meeting_due',
           type: 'reminder',
           title: '次回担当者会議の予定確認',
-          message: `${careCase.patient.name ?? '患者'} の担当者会議が ${formatDateKey(meetingDate)} に予定されています。`,
+          message: `${careCase.patient.name ?? '患者'} の担当者会議が ${meetingDateKey} に予定されています。`,
           link: '/conferences',
           explicitUserIds: [primaryPharmacistId],
-          dedupeKey: `conference-next-meeting:${note.id}:${formatDateKey(meetingDate)}`,
+          dedupeKey: `conference-next-meeting:${note.id}:${meetingDateKey}`,
           metadata: {
             conference_note_id: note.id,
             case_id: note.case_id,
             patient_id: careCase.patient_id,
-            next_meeting_date: formatDateKey(meetingDate),
+            next_meeting_date: meetingDateKey,
           } satisfies Prisma.InputJsonValue,
         }),
       );

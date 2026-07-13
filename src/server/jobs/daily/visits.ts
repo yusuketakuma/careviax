@@ -1,4 +1,5 @@
 import { weekdayOfDateKey } from '@/lib/calendar/operating-day';
+import { formatUtcDateKey } from '@/lib/date-key';
 import {
   addUtcDays,
   japanDayInstantRange,
@@ -14,7 +15,6 @@ import {
   addJapanCalendarYears,
   buildVisitDemandTaskKey,
   buildVisitRecordRetentionTaskKey,
-  formatDateKey,
   startOfDay,
   syncGeneratedOperationalTasks,
   type GeneratedTaskSpec,
@@ -131,7 +131,7 @@ export async function checkVisitRecordRetention() {
         taskType: 'visit_record_retention',
         dedupeKey: buildVisitRecordRetentionTaskKey(record.id),
         title: `薬歴保存期限確認: ${patientName}`,
-        description: `訪問記録が ${formatDateKey(retentionUntil)} に5年保存期限を迎えます。PDF出力・保全状況を確認してください。`,
+        description: `訪問記録が ${formatUtcDateKey(retentionUntil)} に5年保存期限を迎えます。PDF出力・保全状況を確認してください。`,
         priority,
         dueDate: retentionUntil,
         relatedEntityType: 'visit_record',
