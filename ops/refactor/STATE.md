@@ -48,13 +48,30 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `codex1`単独運用（2026-07-14〜）。2026-07-13の`codex2/codex3/codex4`
-  exact-path並列sliceは安全境界で終了し、残作業を`codex1`へ集約した。validation・単一台帳・scoped commitは直列に行う。
+- Phase C（実装ループ）: `codex1` + `codex2` 2台運用（2026-07-14〜）。`codex1`が計画・所有権・
+  独立review・validation・単一台帳・scoped commit/pushを統合し、`codex2`は明示DELEGATEされたexact pathsだけを担当する。
+  `codex3/codex4`は停止のまま。long Next gateと単一台帳更新は`codex1`が直列に行う。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: API-CONTRACT-003C (DONE; parent remains Partial, 2026-07-14; implementation `bf66a8206`).
+  - current task / files inspected / root cause:
+    PDF family完了後のliteral code/status matrixから、既存registryと完全一致するauth rate-limit 3件を選定した。
+    MFA recovery、password reset request / confirmのroutes/tests、shared registry/responseを確認。各routeが`RATE_LIMIT_EXCEEDED`とHTTP 429を
+    個別に重複指定し、canonical registryが定義するwarn/retry/retryable recoveryをtyped callsiteで参照できなかった。
+  - files changed / bugs found / correctness / security / privacy / medical safety / performance:
+    3 routesの互換`error()`をtyped `registeredError()`へ移行し、auth route内のdirect `RATE_LIMIT_EXCEEDED` 429指定を3→0件へ収束した。
+    既存code/message/status、rate-limit判定、downstream副作用、raw provider error非公開を維持。Retry-Afterを新規追加する別helperは使わず、
+    意図しないresponse contract変更を避けた。DB/network/payload size/per-request complexityは不変。新規security/privacy/medical/performance issueなし。
+  - validation results / remaining work / next action / rollback:
+    Auth recovery 3 routes + registry/response 5 files / 34 tests、exact ESLint/Prettier、8 GiB aggregate typecheck/no-unused、route-auth
+    150 allowlisted / 214 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、
+    client schema 361 backed / 0 allowlisted、Plans active、format/diffをPASS。Schema/migration/production mutation/deploy/Oracleなし。
+    非視覚service/API変更のためimagegen/browserなし。Registryは9 codes。残るexternal-accessの同一code/statusはcodex2にexact-path委譲済み。
+    Rollbackはscoped implementation commitのrevertでDB/data rollback不要。
 
 - codex1: API-CONTRACT-003B (DONE; parent remains Partial, 2026-07-14; implementation `f49f58cea`).
   - current task / files inspected / root cause:
