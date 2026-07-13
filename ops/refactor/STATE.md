@@ -54,7 +54,21 @@
 
 ## 直近の作業
 
-- codex1: FULL-GATE-CONTRACT-RATCHET-001 (DONE focused; full rerun pending, 2026-07-13; implementation in this scoped commit).
+- codex1: SERIALIZED-FULL-GATES-20260713 (DONE, 2026-07-13; reconciliation in this scoped commit; validated HEAD `bbd125bcc`).
+  - current task / scope / ancestry proof:
+    全agent writersをfreezeし、current feature HEADでlong gatesを直列実行した。旧`VERIFY_REQUIRED` 64 headingsから抽出したimplementation/
+    ledger 106 unique hashesは`git cat-file`存在確認と`git merge-base --is-ancestor <hash> HEAD`が全件PASS（missing/non-ancestor 0）。
+    各headingを`VERIFIED`へ更新し、当時のcapacity-only pendingはこのcurrent-HEAD gateでsupersedeした。
+  - validation results:
+    `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` PASS、同`pnpm typecheck:no-unused` PASS、`pnpm test`は1554 files /
+    16193 tests PASS・3 files / 13 tests skip、`pnpm build`はNext 16.2.9 webpack compile/typecheckと311/311 pages PASS。Default 4 GiB
+    typecheckはOOM exit 134だったためcapacity failureとして保持し、8 GiBの同一gateでcode resultを確定した。
+  - warnings / security / performance / remaining:
+    Buildはtypography checker test fixture `src/tools/check-typography-minimum.test.ts:158`のliteral arbitrary classes由来CSS optimizer warning 2件を
+    出したがexit 0で、runtime source検索に同literalはない。Production mutation、migration、deploy、secret、PHI送信なし。次はwritersを再割当し、
+    P0/P1 `AUTHZ-CONFERENCE-REF-SCOPE-001`を最優先に実装する。
+
+- codex1: FULL-GATE-CONTRACT-RATCHET-001 (DONE, 2026-07-13; implementation `bbd125bcc`, PUSHED).
   - current task / root cause / files inspected:
     Serialized `pnpm test`を完走し、1552 files / 16191 tests PASS、2 contract tests FAILを確認した。新設済み
     `/api/patient-self-reports/[id]/convert-to-task`が`API_ROUTE_TEMPLATES`へ未登録でroute catalogが1件driftした。またS3 checksum sliceの
@@ -64,9 +78,10 @@
     Conversion route templateをcatalogへ追加した。AWS guardは一般wrapper必須を維持し、`src/server/services/file-storage.ts`内でconstructorを
     named variableへ代入し、その同じvariableが`createFileStorageS3ClientHandles(...)`の引数に入る場合だけを認識するfile-scoped判定を追加した。
     Factoryはpresignerをno-network handle、send clientを`withAwsClientTimeout`へ分離する既存実装のままで、retry/HTTP timeoutも不変。
-  - validation / remaining / rollback:
+  - validation / rollback:
     rate-limit + AWS contract + file-storage focused 3 files / 137 tests、scoped ESLint/Prettier/diff PASS。Guardを広域allowlist化せず、第三の
-    unbound S3 constructorは引き続きfailする。次はfull Vitest rerunとNext build。RollbackはこのcommitのrevertでDB/data rollback不要。
+    unbound S3 constructorは引き続きfailする。Full Vitest 1554 files / 16193 testsとNext build 311/311 pagesもPASS。Rollbackはこのcommitの
+    revertでDB/data rollback不要。
 
 - codex1: QUERY-SHAPE-DAYBOARD-TYPECHECK-003I1 (DONE, 2026-07-13; implementation `3561268e4`, PUSHED).
   - current task / root cause / files inspected:
@@ -291,8 +306,8 @@
   - validation / security / performance / remaining:
     Checker 1 file / 10 tests、`pnpm plans:active:check`、scoped ESLint、Prettier、`git diff --check` PASS。
     code/API/DB/auth/PHI/performance behavior変更なし。
-    VERIFY_REQUIRED 64 entriesに記載された65 unique commit hashesは全てcurrent HEAD ancestorと確認済み。残は並列3 slice統合後に
-    serialized typecheck/no-unused/full test/buildをcurrent HEADで実行し、旧capacity-only verification stateを再分類する。
+    旧VERIFY_REQUIRED 64 entriesに記載されたimplementation/ledger 106 unique hashesは全てcurrent HEAD ancestorと再確認し、
+    `SERIALIZED-FULL-GATES-20260713`のtypecheck/no-unused/full test/build PASSで全64 headingsをVERIFIEDへ再分類した。
 
 - codex2 + codex1 integration: API-STATUS-AUTHZ-403-AS-400-001 (DONE, 2026-07-13; implementation `4bb4e82db`, PUSHED).
   - current task / files inspected / root cause:
@@ -490,11 +505,11 @@
     `d8fdb8b9c` / `c56d86781`をfeature branchへnon-force push済み。Rollbackは逆順に`git revert c56d86781 d8fdb8b9c`、
     DB/data rollback不要。gbrain: `projects/careviax/decisions/2026-07-13/anchor-daily-jobs-to-japan-business-dates`。
 
-- parallel assignments (FROZEN FOR SERIALIZED GATES, 2026-07-13):
+- parallel assignments (FULL GATES COMPLETE; NEXT CLAIM PENDING, 2026-07-13):
   - codex2: `API-STATUS-NOTFOUND-LIVE-RESCAN-001A`は`3dc520668`でPUSHED。追加編集禁止。
   - codex3: `QUERY-SHAPE-VISIT-BRIEF-SERVICE-003L`は`0dd51f444`でPUSHED、ownership release済み。
   - codex4: `001B`は`9e238feb1`、`001C`は`3087191b0`でPUSHED、ownership release済み。
-  - codex1: 全writers freezeを維持し、typecheck repair後のno-unused/full test/build、VERIFY_REQUIRED reconciliationを直列実行する。
+  - codex1: HEAD `bbd125bcc`でserialized gatesと64-marker reconciliation完了。台帳commit後にP0/P1 securityから機能単位で再割当する。
 
 - codex1: MEDPROFILE-SYNC-RACE-001 MedicationProfile sync serialization (DONE, 2026-07-13; implementation `30fcf954e`, PUSHED).
   - current task / root cause / inspected:
@@ -744,7 +759,7 @@
     `agent/continuous-improvement-20260712`、implementation `268d1c1e3`。Feature branch pushはmain-only production
     workflowを起動していない。Rollbackは`git revert 268d1c1e3`、DB/data rollback不要。
 
-- codex: API-CONTRACT-001FZBILLINGDASHSTRICT billing candidate dashboard readers (VERIFY_REQUIRED, 2026-07-13; implementation `9f716326f`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZBILLINGDASHSTRICT billing candidate dashboard readers (VERIFIED, 2026-07-13; implementation `9f716326f`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Billing Candidatesのlist、export preview、generation、review、monthly close計5 readersはstring fallbackだけで、別月/患者/domain候補、
     summary/preview/generation count drift、別candidate/action outcome、OCC version非進行、別domain closeを請求state/toast/invalidationへ流し得た。
@@ -772,7 +787,7 @@
     enters client state. Network/DB calls, writes, calculation, and dependencies are unchanged. API-CONTRACT-001-RESCAN continues with 10 calls across 2 files.
     A clean-capacity runner must complete `pnpm build`.
 
-- codex: API-CONTRACT-001FZPROPOSALDASHSTRICT schedule proposal dashboard readers (VERIFY_REQUIRED, 2026-07-13; implementation `d0a6ec966`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZPROPOSALDASHSTRICT schedule proposal dashboard readers (VERIFIED, 2026-07-13; implementation `d0a6ec966`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Schedule Proposals dashboardのproposal list、case search、available vehicle resources、billing preview batch、proposal detail計5 readersは
     string fallbackだけで、filter外proposal、重複identity、count/cursor drift、別billing key、別detail/travel mode、provider-only PHI/metadataを
@@ -799,7 +814,7 @@
     client state. Network/DB calls, writes, rendering, and dependencies are unchanged. API-CONTRACT-001-RESCAN continues with 15 calls across 3 files.
     A clean-capacity runner must complete `pnpm build`.
 
-- codex: API-CONTRACT-001FZQRDRAFTSTRICT QR draft detail readers (VERIFY_REQUIRED, 2026-07-13; implementation `3b1386be9`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZQRDRAFTSTRICT QR draft detail readers (VERIFIED, 2026-07-13; implementation `3b1386be9`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     QR draft detailのdraft GET、active cases GET、confirm POST計3 readersはpartial manual checks/string fallbackだけで、別draft/patient/case、
     malformed JAHIS clinical data、cursor drift、provider-only tenant/scanner/hook metadataをreview/confirmation stateへ流し得た。Case listは先頭20件だけを読み、
@@ -826,7 +841,7 @@
     enters client state. Normal patients with <=20 active cases remain one request; larger lists use bounded follow-up pages. API-CONTRACT-001-RESCAN
     continues with 20 calls across 4 files. A clean-capacity runner must complete `pnpm build`.
 
-- codex: API-CONTRACT-001FZPRINTHUBSTRICT print hub readers (VERIFY_REQUIRED, 2026-07-13; implementation `86de68339`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZPRINTHUBSTRICT print hub readers (VERIFIED, 2026-07-13; implementation `86de68339`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Print Hubのset plans、patient prescriptions、patient documents計3 readersはstring fallbackだけで、別患者/cycle、壊れたreadiness、
     unsafe document URL、重複identity、cursor driftを帳票stateへ流し得た。処方は先頭20件だけを読み、選択set planのcycleが後続pageにあると
@@ -854,7 +869,7 @@
     client state. Normal target-cycle reads remain one request; only missing target cycles fetch bounded follow-up pages. API-CONTRACT-001-RESCAN
     continues with 23 calls across 5 files. A clean-capacity runner must complete `pnpm build`.
 
-- codex: API-CONTRACT-001FZVISITFORMSTRICT visit record form readers (VERIFY_REQUIRED, 2026-07-13; implementation `93f80829a`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZVISITFORMSTRICT visit record form readers (VERIFIED, 2026-07-13; implementation `93f80829a`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Visit Record FormのCDS alerts、schedule detail、patient safety header、record create、attachment PATCH計5 readersはstring fallbackだけで、
     malformed alert、別schedule/patient/record、患者安全tag算術drift、OCC version非進行を成功状態へ流し得た。各providerは画面が使わない
@@ -880,7 +895,7 @@
     client state. Network/DB calls, writes, rendering, and dependencies are unchanged. API-CONTRACT-001-RESCAN continues with 26 calls across 6 files.
     A clean-capacity runner must complete `pnpm build`.
 
-- codex: API-CONTRACT-001FZPATIENTFORMSTRICT patient form candidate readers (VERIFY_REQUIRED, 2026-07-13; implementation `0655c4d97`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZPATIENTFORMSTRICT patient form candidate readers (VERIFIED, 2026-07-13; implementation `0655c4d97`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Patient Formのduplicate check、facilities、facility units、service areas、pharmacists、staff計6 candidate readersはstring fallbackだけで、
     malformed count/候補rowやprovider-only contacts/capacity/権限/稼働情報を患者作成前のclient stateへ流し得た。Duplicate client型は
@@ -906,7 +921,7 @@
     Network/DB calls, writes, rendering, and dependencies are unchanged. API-CONTRACT-001-RESCAN continues with 31 calls across 7 files.
     A clean-capacity runner must complete `pnpm build`.
 
-- codex: API-CONTRACT-001FZVISITDETAILSTRICT visit record detail readers (VERIFY_REQUIRED, 2026-07-13; implementation `2941eeedb`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZVISITDETAILSTRICT visit record detail readers (VERIFIED, 2026-07-13; implementation `2941eeedb`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Visit Record Detailのschedule create、record GET、patient header、billing candidates、residual medications、visit preparation計6 readersは
     string fallbackだけで、別record/schedule/patient、assignment/cursor/count relation、不完全mutation outcomeを成功扱いし、訪問記録・
@@ -932,7 +947,7 @@
     no longer enter client state. Network/DB calls, writes, rendering, and dependencies are unchanged. API-CONTRACT-001-RESCAN continues with
     37 calls across 8 files. A clean-capacity runner must complete `pnpm build`.
 
-- codex: API-CONTRACT-001FZPATCARDOVERVIEWSTRICT patient card overview reader (VERIFY_REQUIRED, 2026-07-13; implementation `4c592962a`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZPATCARDOVERVIEWSTRICT patient card overview reader (VERIFIED, 2026-07-13; implementation `4c592962a`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Patient Cardのoverview readerはcompile-time型だけで、別患者、nested VisitBrief/workspace patient context、archive state、
     duplicate residence/condition/contact/case/schedule identity、不正enum/date/count/href、未知provider fieldを2xx成功扱いし、患者基本情報・
@@ -958,7 +973,7 @@
     Network/DB calls, rendering, and dependencies are unchanged。API-CONTRACT-001-RESCANは43 calls across 9 filesへ継続する。
     A clean-capacity runner must complete `pnpm build`.
 
-- codex: API-CONTRACT-001FZPATCARDHOMEOPSSTRICT patient card home-operations reader (VERIFY_REQUIRED, 2026-07-13; implementation `47693cca5`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZPATCARDHOMEOPSSTRICT patient card home-operations reader (VERIFIED, 2026-07-13; implementation `47693cca5`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Patient Cardのhome-operations readerはcompile-time型だけで、固定5-domain欠落/重複、attention count、top alert relation、quick action、
     internal/external href driftを2xx成功扱いし、文書・MCS・処方・請求・会議のPHI-bearing operational stateへ流し得た。
@@ -983,7 +998,7 @@
     dependencies are unchanged. Patient Cardにはoverview 1 object readerだけが残る。次sliceでstrict化してfile allowlist entryを削除する。
     A clean-capacity runner must complete `pnpm build`.
 
-- codex: API-CONTRACT-001FZPATCARDRISKSTRICT patient card case-risk readers (VERIFY_REQUIRED, 2026-07-13; implementation `374682a78`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZPATCARDRISKSTRICT patient card case-risk readers (VERIFIED, 2026-07-13; implementation `374682a78`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Patient Cardのcase-risk cockpit GET、task sync、task waiver計3 readersはstring fallbackだけで、別case/patient/task、section/finding
     relation、active severity aggregate、sync task ref count、waiver audit outcome driftを2xx成功扱いし、患者リスク表示・タスク同期・
@@ -1009,7 +1024,7 @@
     unused task refs no longer enter UI state. Network/DB calls, writes, rendering, and dependencies are unchanged. Patient Card still has
     overview/home-operations 2 object readers; the next safe slice continues those calls. A clean-capacity runner must complete `pnpm build`.
 
-- codex: API-CONTRACT-001FZPATCARDDOCHEADERSTRICT patient card documents/header readers (VERIFY_REQUIRED, 2026-07-13; implementation `6059fa6f6`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZPATCARDDOCHEADERSTRICT patient card documents/header readers (VERIFIED, 2026-07-13; implementation `6059fa6f6`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Patient Cardのdocumentsとheader-summary readersはcompile-time型だけで、別患者、文書readiness件数/status、重複文書identity、
     unsafe action href、header safety tag projection driftを2xx成功扱いし、文書・連絡先・患者安全情報を含むPHI-bearing query stateへ
@@ -1035,7 +1050,7 @@
     rendering, and dependencies are unchanged. Patient Card still has overview/home-operations plus three risk/task outcome string readers;
     the next safe slice continues those remaining 5 calls. A clean-capacity runner must complete `pnpm build`.
 
-- codex: API-CONTRACT-001FZCONFERENCESTRICT conference readers (VERIFY_REQUIRED, 2026-07-13; implementation `aaaed63d1`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCONFERENCESTRICT conference readers (VERIFIED, 2026-07-13; implementation `aaaed63d1`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Conferencesのnote detail、external professionals、prescriber institution suggestion、community activity create、action-item task、
     report generation 6 readersはcompile-time型だけで、別note、不正participant/action conversion、duplicate professional、不完全
@@ -1061,7 +1076,7 @@
     Network/DB calls, writes, rendering, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues with 50 calls across 10 files.
 
-- codex: API-CONTRACT-001FZWEEKOPTSTRICT schedule weekly optimizer readers (VERIFY_REQUIRED, 2026-07-13; implementation `4176ead5c`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZWEEKOPTSTRICT schedule weekly optimizer readers (VERIFIED, 2026-07-13; implementation `4176ead5c`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Weekly Optimizerのcases/検索、週間proposals、shifts、vehicle、billing、mixed route 7 readersはcompile-time型だけで、別週、
     case/patient/pharmacist/site relation drift、不完全billing、要求外schedule/proposalやtravel modeを成功扱いし、患者予定・算定・
@@ -1087,7 +1102,7 @@
     Network/DB calls, writes, route computation, rendering, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`,
     then `API-CONTRACT-001-RESCAN` continues with 56 calls across 11 files.
 
-- codex: API-CONTRACT-001FZINBOUNDSTRICT communications inbound readers (VERIFY_REQUIRED, 2026-07-13; implementation `6b88c28bd`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZINBOUNDSTRICT communications inbound readers (VERIFIED, 2026-07-13; implementation `6b88c28bd`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Communications Inboundのinbox/signal candidates/detail/patient stock summary 4 GETとintake/task/review/stock apply/source mapping
     5 mutation readersはcompile-time型だけで、filter/count/candidate、別event/signal/patient/stock/mapping、監査detail metadata driftを
@@ -1113,7 +1128,7 @@
     unsafe external/secret-bearing action hrefs are rejected. Network/DB calls, writes, rendering, and dependencies are unchanged. A
     clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues with 63 calls across 12 files.
 
-- codex: API-CONTRACT-001FZDISPENSEWRITESTRICT dispensing workbench write readers (VERIFY_REQUIRED, 2026-07-13; implementation `ab2a62582`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZDISPENSEWRITESTRICT dispensing workbench write readers (VERIFIED, 2026-07-13; implementation `ab2a62582`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Dispensing Workbenchの13 mutation呼出しは同一のschema-less generic writerを通り、2xx JSONなら要求と異なるgroup/line/task/
     plan/batch/hold、欠損result/reused/barcode outcomeでも成功扱いとなり、optimistic UI後のinvalidate/recoveryへ進み得た。
@@ -1137,7 +1152,7 @@
     removed. Network/DB calls, writes, rendering, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues with 72 allowlisted calls across 13 files.
 
-- codex: API-CONTRACT-001FZDISPENSEREADSTRICT dispensing workbench read readers (VERIFY_REQUIRED, 2026-07-13; implementation `ba43fdda8`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZDISPENSEREADSTRICT dispensing workbench read readers (VERIFIED, 2026-07-13; implementation `ba43fdda8`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Dispensing Workbenchの患者一覧、task workbench、set calendarは同一のschema-less generic GET readerを通り、別task/患者/plan、
     不正な工程filter/count/cursor、clinical/count row、calendar/generation/classification driftを成功扱いし、調剤・監査・セットの
@@ -1162,7 +1177,7 @@
     Network/DB calls, rendering, and dependencies are unchanged. The same adapter's generic write reader remains 1 allowlisted call and is the
     next schema slice. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZCAPTURESTRICT visit capture readers (VERIFY_REQUIRED, 2026-07-13; implementation `707081cb8`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCAPTURESTRICT visit capture readers (VERIFIED, 2026-07-13; implementation `707081cb8`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Visit Captureのpatient-name detail raw JSON、patient safety header、visit-end PATCH結果readersはmanual/compile-time
     extractionだけで、別患者、不正/欠損safety、別record、未反映version/ended-atを成功扱いし、患者安全tag表示・撮影許可・
@@ -1189,7 +1204,7 @@
     writes, rendering, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZREPORTWORKSPACESTRICT report share workspace readers (VERIFY_REQUIRED, 2026-07-13; implementation `ff5a6d2c6`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZREPORTWORKSPACESTRICT report share workspace readers (VERIFIED, 2026-07-13; implementation `ff5a6d2c6`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Report Share Workspaceのtoday-workspace GETとinbound candidate decision PATCH結果readersはcompile-time castだけで、
     malformed/cross-section rows、count/visible/hidden/identity drift、unsafe action href、requested signal/actionと異なる
@@ -1214,7 +1229,7 @@
     enters the client cache and the file's allowlist entry is removed. Network/DB calls, writes, rendering, and dependencies
     are unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZREPORTDETAILSTRICT care-report detail readers (VERIFY_REQUIRED, 2026-07-13; implementation `c5ce1223c`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZREPORTDETAILSTRICT care-report detail readers (VERIFIED, 2026-07-13; implementation `c5ce1223c`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Care Report detail GETとexternal-professional suggestions GET readersはcompile-time castだけで、別report/patient、
     malformed status/date/archive/delivery/contact、権限とcontent/pdf/patient/contact visibilityの不整合、重複suggestionを
@@ -1243,7 +1258,7 @@
     writes, rendering, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZWORKFLOWSTRICT workflow dashboard reader (VERIFY_REQUIRED, 2026-07-13; implementation `ab8147fa2`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZWORKFLOWSTRICT workflow dashboard reader (VERIFIED, 2026-07-13; implementation `ab8147fa2`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Workflow Dashboardのfull GET readerはcompile-time castだけで、約30 sectionの欠損/未知field、不正enum/count/date/
     action URL、aggregate/identity driftを成功扱いし、患者risk・疑義照会・連絡・訪問・在宅機能を含むPHI-bearing
@@ -1268,7 +1283,7 @@
     longer enter the client cache and the file's allowlist entry is removed. Network/DB calls, server cache, writes, rendering,
     and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZROUTECOMPARESTRICT route compare readers (VERIFY_REQUIRED, 2026-07-13; implementation `6857139b9`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZROUTECOMPARESTRICT route compare readers (VERIFIED, 2026-07-13; implementation `6857139b9`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Route Compareのday-board GETとroute-plan POST結果readersはcompile-time castだけで、別日board、count/identity/vehicle
     aggregate drift、不正route geometry/order、requested scenario外scheduleやtravel mode driftを成功扱いし、車両選択・
@@ -1294,7 +1309,7 @@
     allowlist entry is removed. Network/DB calls, route computation/writes, auth/tenant, rendering, and dependencies are
     unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZVISITBRIEFSTRICT patient visit-brief reader (VERIFY_REQUIRED, 2026-07-13; implementation `b409683fb`; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZVISITBRIEFSTRICT patient visit-brief reader (VERIFIED, 2026-07-13; implementation `b409683fb`; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Patient Visit BriefのGET readerはcompile-time castだけで、別患者、schedule context、不正archive/日時/action URL、
     欠損/過大clinical data、重複identity、AI生成・失敗count/rateやfallback状態driftを成功扱いし、患者・処方・検査・
@@ -1320,7 +1335,7 @@
     entry is removed. Network/DB query count, generation/audit writes, auth/tenant, rendering, and dependencies are unchanged.
     A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZSCHEDULEBOARDSTRICT schedule day-board reader (VERIFY_REQUIRED, 2026-07-13; implementation `616752932`, ledger `9b2696f3d`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZSCHEDULEBOARDSTRICT schedule day-board reader (VERIFIED, 2026-07-13; implementation `616752932`, ledger `9b2696f3d`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Schedule Team Boardのday-board GET readerはcompile-time castだけで、別日、重複identity、不正日時/関係、
     visible/hidden workload・proposal・inbound counts drift、車両容量/推奨矛盾、unsanitized task metadataを成功扱いし、
@@ -1348,7 +1363,7 @@
     and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZCONSENTSTRICT consent record/template readers (VERIFY_REQUIRED, 2026-07-13; implementation `1986de54d`, ledger `4c85c902f`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCONSENTSTRICT consent record/template readers (VERIFIED, 2026-07-13; implementation `1986de54d`, ledger `4c85c902f`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Patient Consent Recordsのtemplate list、consent list、create、update、revoke計5 readersはcompile-time castだけで、
     別患者・別record、重複/逆順、template relation、active/revoked状態、document URL可視性、件数/pagination drift、
@@ -1376,7 +1391,7 @@
     authorization, RLS, rendering, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`,
     then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZHANDOFFSTRICT handoff board/task/comment readers (VERIFY_REQUIRED, 2026-07-13; implementation `2f06c5b3f`, ledger `d95e3ff28`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZHANDOFFSTRICT handoff board/task/comment readers (VERIFIED, 2026-07-13; implementation `2f06c5b3f`, ledger `d95e3ff28`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Handoff Workspaceに残るboard、pending confirmation/supervision tasks、recent comments 3 GET readersはcompile-time
     castだけで、duplicate/reordered/legacy board items、progress/aggregate drift、truncated/wrong-type/unrelated tasks、
@@ -1403,7 +1418,7 @@
     count, Handoff writes, auth/tenant/RLS, render behavior, and dependencies are unchanged. A clean-capacity runner
     must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZDAILYOPSCONSUMERS handoff/schedule cockpit consumers (VERIFY_REQUIRED, 2026-07-13; implementation `017c605c7`, ledger `8925ad38c`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZDAILYOPSCONSUMERS handoff/schedule cockpit consumers (VERIFIED, 2026-07-13; implementation `017c605c7`, ledger `8925ad38c`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Handoff WorkspaceとSchedule Team Boardはshared daily-ops railを使う一方、cockpit GETをcompile-time full response castで
     読み、実際にはaudit queue/today visits/blocked reasonsしか使わないのにcomments/team/count等をcacheしていた。
@@ -1428,7 +1443,7 @@
     remaining file-specific readers stay in the ratchet for dedicated schemas. A clean-capacity runner must complete
     `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZOPPOLICYSTRICT operational policy/daily-ops readers (VERIFY_REQUIRED, 2026-07-13; implementation `07a5cc1bd`, ledger `6306c4aae`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZOPPOLICYSTRICT operational policy/daily-ops readers (VERIFIED, 2026-07-13; implementation `07a5cc1bd`, ledger `6306c4aae`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Operational PolicyのGET/PATCHとdaily-ops cockpit readersはcompile-time castだけで、欠損/未知policy、locked-item
     identity drift、PATCH未反映、非editable update、change-log count drift、unsafe/malformed rail actionsを成功扱いし、
@@ -1457,7 +1472,7 @@
     Network/DB query count, policy/audit writes, auth/tenant/RLS, render behavior, and dependencies are unchanged.
     A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZREPORTDELIVERYSTRICT report delivery analytics/reminder readers (VERIFY_REQUIRED, 2026-07-13; implementation `61c8cb26e`, ledger `d84e62251`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZREPORTDELIVERYSTRICT report delivery analytics/reminder readers (VERIFIED, 2026-07-13; implementation `61c8cb26e`, ledger `d84e62251`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Report Delivery Dashboardのanalytics GETとreminder POST結果readersはcompile-time castだけで、current/monthly rate・
     count drift、duplicate/unordered months/deliveries、閾値未満のoverdue、unrequested delivery reminder、queued/skipped
@@ -1484,7 +1499,7 @@
     Network/DB query count, delivery/reminder logic, auth/tenant/RLS, render behavior, and dependencies are unchanged.
     A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZCOMMENTSTRICT comment thread readers (VERIFY_REQUIRED, 2026-07-13; implementation `6b05ea0ba`, ledger `81f53083b`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCOMMENTSTRICT comment thread readers (VERIFIED, 2026-07-13; implementation `6b05ea0ba`, ledger `81f53083b`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Comment ThreadのGET/POST/DELETE readersはcompile-time castまたはuntyped JSONで、duplicate/reordered comments、
     duplicate mentions、別entity/改変contentのPOST結果、legacy/false delete acknowledgementを成功扱いし、PHIを
@@ -1511,7 +1526,7 @@
     Network/DB query count, authorization/tenant/RLS, notification/realtime behavior, and dependencies are unchanged.
     A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZINTAKETRIAGESTRICT prescription intake triage readers (VERIFY_REQUIRED, 2026-07-13; implementation `4a3d01d01`, ledger `dbf270d81`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZINTAKETRIAGESTRICT prescription intake triage readers (VERIFIED, 2026-07-13; implementation `4a3d01d01`, ledger `dbf270d81`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Prescription Intake Triageのqueueとcockpit right-rail GET readersはcompile-time castだけで、重複identity、
     reverse order、lane/decision/duplicate notice集計drift、不正status/action/OCR confidence、unsafe action URLを
@@ -1539,7 +1554,7 @@
     Network/DB query count, triage/OCR calculations, auth/tenant/RLS, render behavior, and dependencies are unchanged.
     A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZINTERVENTIONSTRICT medication intervention readers (VERIFY_REQUIRED, 2026-07-13; implementation `c3db5e73f`, ledger `92c180066`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZINTERVENTIONSTRICT medication intervention readers (VERIFIED, 2026-07-13; implementation `c3db5e73f`, ledger `92c180066`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Medication Intervention Panelの患者/服薬課題別GETとPOST結果readerはcompile-time castだけで、別患者/別課題、
     重複identity、reverse order、invalid type/date、実施前の作成日時、silent 50件truncationを成功扱いし得た。
@@ -1566,7 +1581,7 @@
     Network/DB query count, mutation payload, assignment/auth/tenant/RLS/audit, render behavior, and dependencies are
     unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZSTOCKSUMMARYSTRICT patient medication-stock summary reader (VERIFY_REQUIRED, 2026-07-13; implementation `fba648153`, ledger `619d3153b`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZSTOCKSUMMARYSTRICT patient medication-stock summary reader (VERIFIED, 2026-07-13; implementation `fba648153`, ledger `619d3153b`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Visit Medication Stock Summary GET readerはcompile-time castだけで、別患者item、重複identity、request limit drift、
     visible/hidden/active・risk/review集計drift、最新観測時刻drift、hidden itemへのevent参照、event順序不正を成功扱い
@@ -1595,7 +1610,7 @@
     dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN`
     continues.
 
-- codex: API-CONTRACT-001FZSTOCKOBSRESULTSTRICT visit medication-stock observation result (VERIFY_REQUIRED, 2026-07-13; implementation `208c7e8b3`, ledger `58b7664de`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZSTOCKOBSRESULTSTRICT visit medication-stock observation result (VERIFIED, 2026-07-13; implementation `208c7e8b3`, ledger `58b7664de`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Visit Medication Stock Observation POST結果はcompile-time castだけで、legacy/wrong visit、empty/duplicate
     observation identities、不正kind/quantity/risk/timestamp、applied/replay count driftを成功扱いし得た。既存fixture
@@ -1624,7 +1639,7 @@
     unchanged. The paired summary GET reader remains in the ratchet for a dedicated aggregate schema. A clean-capacity
     runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZPCAPUMPSTRICT PCA pump/rental/institution readers (VERIFY_REQUIRED, 2026-07-13; implementation `8ac7b7b16`, ledger `86c20009b`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZPCAPUMPSTRICT PCA pump/rental/institution readers (VERIFIED, 2026-07-13; implementation `8ac7b7b16`, ledger `86c20009b`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Admin PCA Pumpsのpump list、open/pending-inspection rentals、institution options 4 GETとpump/rental create/update/
     inspection 5 mutation readersがcompile-time castを残し、lifecycle/date/relation/inspection driftを医療機器stateへ
@@ -1654,7 +1669,7 @@
     maintenance, optimistic concurrency, audit, auth/tenant, render behavior, and dependencies are unchanged. A
     clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZBILLRULEREADSTRICT billing-rule list/sync/create/update readers (VERIFY_REQUIRED, 2026-07-13; implementation `768b8083c`, ledger `086602ff5`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZBILLRULEREADSTRICT billing-rule list/sync/create/update readers (VERIFIED, 2026-07-13; implementation `768b8083c`, ledger `086602ff5`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Admin Billing Rulesのlist、SSOT sync、create、update計4 readersはcompile-time castだけで、legacy/extra root、
     invalid rule enum/URL/timestamp、system-scope mismatch、duplicate identity、summary drift、wrong update identity、
@@ -1684,7 +1699,7 @@
     render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZSHIFTREADSTRICT admin shift/support readers (VERIFY_REQUIRED, 2026-07-13; implementation `a6b7d2257`, ledger `4f04ee79f`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZSHIFTREADSTRICT admin shift/support readers (VERIFIED, 2026-07-13; implementation `a6b7d2257`, ledger `4f04ee79f`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Admin Shiftsのsite/member、当月/前月shift、templates、apply result計6 readersはcompile-time castを残し、legacy
     root、month drift、duplicate user-date/template、relation ID drift、不正time range、負applied countを勤務stateへ
@@ -1714,7 +1729,7 @@
     and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZINCIDENTSTRICT incident list/create/update/status readers (VERIFY_REQUIRED, 2026-07-13; implementation `fe660d73c`, ledger `805e379f2`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZINCIDENTSTRICT incident list/create/update/status readers (VERIFIED, 2026-07-13; implementation `fe660d73c`, ledger `805e379f2`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Admin Incidentsのlist、memo PATCH、status PATCH、createの4 readersはcompile-time castだけで、legacy root、未知
     severity/status/process、不正timestamp、duplicate identity、wrong update identityをmedical-safety UI stateへ流し得た。
@@ -1744,7 +1759,7 @@
     render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZDATAEXPLORERREADSTRICT data-explorer model/row readers (VERIFY_REQUIRED, 2026-07-13; implementation `bce3bad6b`, ledger `d3d22f8bf`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZDATAEXPLORERREADSTRICT data-explorer model/row readers (VERIFIED, 2026-07-13; implementation `bce3bad6b`, ledger `d3d22f8bf`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Admin Data Explorerのmodel listとdynamic table rowsはcompile-time castだけで読み、legacy/wrong-table root、
     invalid coverage/count、duplicate model/table/column/row identity、未宣言row field、limit超過をeditor stateへ
@@ -1773,7 +1788,7 @@
     render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZEXTPROFREMAINDER external-professional facility/mutation readers (VERIFY_REQUIRED, 2026-07-13; implementation `66ae81eed`, ledger `a8e435be2`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZEXTPROFREMAINDER external-professional facility/mutation readers (VERIFIED, 2026-07-13; implementation `66ae81eed`, ledger `a8e435be2`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Admin External Professionalsでは主要listとlinked patientsはschema化済みだったが、facility optionsとsave/delete
     の3 readersがcompile-time castを残していた。施設providerの余分なfields、legacy root、duplicate/empty facility
@@ -1799,7 +1814,7 @@
     render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZADMINSETTINGSSTRICT admin settings/profile/site readers (VERIFY_REQUIRED, 2026-07-13; implementation `3bf68e892`, ledger `6e5083010`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZADMINSETTINGSSTRICT admin settings/profile/site readers (VERIFIED, 2026-07-13; implementation `3bf68e892`, ledger `6e5083010`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Admin Settingsは設定GET/PATCH、current profile、site optionの4 responsesをcompile-time castだけで読み、legacy
     root、duplicate setting key、不正scope/type/range、過大な文字列/配列をquery/edit stateへ流し得た。Profile画面は
@@ -1827,7 +1842,7 @@
     count, DB/provider work, setting writes, canAdmin/tenant/no-store, health polling, render behavior, and dependencies
     are unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZCREDENTIALSTRICT pharmacist credential/staff-option readers (VERIFY_REQUIRED, 2026-07-13; implementation `115430961`, ledger `c5d5c8958`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCREDENTIALSTRICT pharmacist credential/staff-option readers (VERIFIED, 2026-07-13; implementation `115430961`, ledger `c5d5c8958`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Admin Pharmacist Credentialsはcredential listとstaff optionsをcompile-time castだけで読み、legacy root、
     duplicate credential/patient、不正issue/expiry range・tenure/work hours、count drift、wrong staff scope/roleを
@@ -1861,7 +1876,7 @@
     writes/audit, auth/tenant/no-store, render behavior, and dependencies are unchanged. A clean-capacity runner must
     complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZTEMPLATEREADSTRICT document-template list/detail/body readers (VERIFY_REQUIRED, 2026-07-13; implementation `f75484d74`, ledger `6089fdb77`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZTEMPLATEREADSTRICT document-template list/detail/body readers (VERIFIED, 2026-07-13; implementation `f75484d74`, ledger `6089fdb77`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Admin Document Templatesはmetadata list、full detail GET、Body Editor detail GET/PATCHの4 readersを別々の
     compile-time typesでcastし、legacy root、wrong list filter/count、duplicate/incorrect template identity、不正
@@ -1894,7 +1909,7 @@
     render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZADMINUSERSSTRICT admin users/site-option readers (VERIFY_REQUIRED, 2026-07-13; implementation `bc9e4a0cc`, ledger `c7e0b77bb`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZADMINUSERSSTRICT admin users/site-option readers (VERIFIED, 2026-07-13; implementation `bc9e4a0cc`, ledger `c7e0b77bb`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Admin Usersは`include_collaborators=true` user一覧とsite optionsをcompile-time castだけで読み、legacy root、
     duplicate identity/email、不正role/account/timestamp/capacity、meta count/query-scope driftを権限・所属編集stateへ
@@ -1926,7 +1941,7 @@
     actions, auth/tenant/audit/Cognito, render behavior, and dependencies are unchanged. A clean-capacity runner must
     complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZPHARMACYSITESTRICT admin pharmacy-site/config readers (VERIFY_REQUIRED, 2026-07-13; implementation `13c66a05c`, ledger `65e072c54`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZPHARMACYSITESTRICT admin pharmacy-site/config readers (VERIFIED, 2026-07-13; implementation `13c66a05c`, ledger `65e072c54`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Admin Pharmacy Sitesは拠点一覧と選択拠点のinsurance configsをcompile-time castだけで読み、legacy root、
     duplicate/cross-site config、不正insurance/date rangeをedit stateへ流し得た。拠点readerはUI未使用の座標を、
@@ -1956,7 +1971,7 @@
     render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZCALPREVIEWSTRICT calendar billing-preview batch reader (VERIFY_REQUIRED, 2026-07-13; implementation `08bd509f2`, ledger `34458e186`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCALPREVIEWSTRICT calendar billing-preview batch reader (VERIFIED, 2026-07-13; implementation `08bd509f2`, ledger `34458e186`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Calendarは最大100 scheduleのread-only billing preview batchをcompile-time record castだけで読み、legacy root、
     schedule key欠落/混入、不正severity/dateをcadence warning表示へ流し得た。さらにCalendarが使うのはalert
@@ -1989,7 +2004,7 @@
     boundary, render behavior, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZPREPDEAD schedule-day preparation dead orchestration removal (VERIFY_REQUIRED, 2026-07-13; implementation `63396b5b3`, ledger `8ddecaa5a`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZPREPDEAD schedule-day preparation dead orchestration removal (VERIFIED, 2026-07-13; implementation `63396b5b3`, ledger `8ddecaa5a`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     `schedule-day-preparation.ts`は現役のform/readiness/onboarding helperと同居して、production参照がない
     preparation GET/PUT fetchers、save-success query invalidation wrapper、専用typesをexportしていた。利用検索では
@@ -2017,7 +2032,7 @@
     auth/assignment/tenant/audit/no-store, clinical readiness decisions, render behavior, and dependencies are unchanged.
     A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZBILLCHECKSTRICT billing-check BFF reader (VERIFY_REQUIRED, 2026-07-13; implementation `632b4bed0`, ledger `f51f4c821`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZBILLCHECKSTRICT billing-check BFF reader (VERIFIED, 2026-07-13; implementation `632b4bed0`, ledger `f51f4c821`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     算定チェック画面はread-only BFFの3 KPI、疑義rows、根拠/操作link、右railをcompile-time
     `BillingCheckResponse` castだけで読み、legacy root、負数、集計drift、重複identity、外部URLを算定確認UIへ
@@ -2048,7 +2063,7 @@
     and billing decisions are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZUATSTRICT admin UAT endpoint response readers (VERIFY_REQUIRED, 2026-07-13; implementation `d5c1b2da7`, ledger `7ae890e39`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZUATSTRICT admin UAT endpoint response readers (VERIFIED, 2026-07-13; implementation `d5c1b2da7`, ledger `7ae890e39`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Admin UATの共通`fetchOrgJson<T>`は全7 endpoint familyをcompile-time genericへ直接castし、legacy/malformed
     feedback、readiness、集計、担当候補、組織監査、launch dossierをquery/mutation stateへ流し得た。Ratchet上も
@@ -2075,7 +2090,7 @@
     and clinical/business decisions are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZBRIEFREVIEWSTRICT visit-brief pharmacist review reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `c29a55c4d`, ledger `67acd4ab9`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZBRIEFREVIEWSTRICT visit-brief pharmacist review reader/path (VERIFIED, 2026-07-13; implementation `c29a55c4d`, ledger `67acd4ab9`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Visit Brief pharmacist review画面は患者名、context、生成日時、AI/rule要約とrule sourceだけを使う一方、
     compile-time full `VisitBrief` castで薬剤、検査、患者変化、多職種連携、未解決事項等の大量PHIをquery
@@ -2110,7 +2125,7 @@
     dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZDELRULESTRICT document-delivery rule list reader (VERIFY_REQUIRED, 2026-07-13; implementation `80ecd8007`, ledger `0918cad46`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZDELRULESTRICT document-delivery rule list reader (VERIFIED, 2026-07-13; implementation `80ecd8007`, ledger `0918cad46`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Admin document-delivery rule managerがcounted list responseをcompile-time castだけで読み、legacy/mixed root、
     invalid channel/fallback、duplicate rules、meta count/limit/truncation driftを送達rule編集へ流し得た。Providerは
@@ -2139,7 +2154,7 @@
     client projection. Request count, provider query/take/count, rule writes, render behavior, and dependencies are
     unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZFACPACKETSTRICT facility visit packet reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `9e474fff1`, ledger `39d24994c`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZFACPACKETSTRICT facility visit packet reader/path (VERIFIED, 2026-07-13; implementation `9e474fff1`, ledger `39d24994c`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Facility packet画面はvisit-preparationの巨大packから施設巡回contextだけを使う一方、compile-time castで
     full responseをquery stateへ保持し、patient ID/生年月日/性別、薬剤期間、その他pack PHIを不要に到達
@@ -2172,7 +2187,7 @@
     reduced. Request count, provider query/payload, render behavior, packet write, and dependencies are unchanged.
     A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZVOICEMEMOSTRICT voice memo visit-record detail reader/path (VERIFY_REQUIRED, 2026-07-13; implementation `e732f914f`, ledger `be41425c7`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZVOICEMEMOSTRICT voice memo visit-record detail reader/path (VERIFIED, 2026-07-13; implementation `e732f914f`, ledger `be41425c7`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Voice memoの手入力/転写をSOAP主観へ追記する経路がfull visit-record detailをcompile-time unknown castで読み、
     legacy/mixed root、不正version/subjectiveでもpatch-body builderまで進めた。画面に不要な患者・添付等の
@@ -2204,7 +2219,7 @@
     and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`, then
     `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZEMERGENCYROUTESTRICT emergency visit route-plan reader (VERIFY_REQUIRED, 2026-07-13; implementation `360061e21`, ledger `bf2f121e4`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZEMERGENCYROUTESTRICT emergency visit route-plan reader (VERIFIED, 2026-07-13; implementation `360061e21`, ledger `bf2f121e4`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Emergency route画面は確定訪問を固定した2案の移動増・訪問順を比較して採用するが、`/api/visit-routes`
     responseをcompile-time `VisitRoutePlan` castだけで信頼し、legacy/mixed root、不正travel mode/距離/時間、
@@ -2233,7 +2248,7 @@
     provider DB/route-engine work, payload, render behavior, and dependencies are unchanged. A clean-capacity runner
     must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZEVIDENCESYNCSTRICT offline evidence visit-record detail reader (VERIFY_REQUIRED, 2026-07-12; implementation `93955963d`, ledger `0fa032692`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZEVIDENCESYNCSTRICT offline evidence visit-record detail reader (VERIFIED, 2026-07-12; implementation `93955963d`, ledger `0fa032692`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Offline evidence syncがupload済みfile assetをvisit recordへ紐づける前に、visit-record detailの
     compile-time optional castからversionを読み、attachmentsはunknownのままbest-effort mergeしていた。
@@ -2260,7 +2275,7 @@
     sync pipeline. Request count, upload sequence, provider query/payload, retry behavior, and dependencies are
     unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZCYCLEHISTORYSTRICT medication-cycle transition history reader/path (VERIFY_REQUIRED, 2026-07-12; implementation `d9b5d2737`, ledger `9355a5d2c`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCYCLEHISTORYSTRICT medication-cycle transition history reader/path (VERIFIED, 2026-07-12; implementation `d9b5d2737`, ledger `9355a5d2c`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Workflow stage timeline / previous-stage summaryがcycle transition historyをcompile-time castだけで読み、
     legacy root、unknown status、duplicate/reverse-ordered logsを履歴表示へ流し得た。さらにcycleIdをAPI pathへ
@@ -2289,7 +2304,7 @@
     provider DB query, payload, render behavior, and dependencies are unchanged. A clean-capacity runner must complete
     `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZEVIDENCESTRICT evidence gallery attachment reader (VERIFY_REQUIRED, 2026-07-12; implementation `af855ee4a`, ledger `dbe9bb97f`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZEVIDENCESTRICT evidence gallery attachment reader (VERIFIED, 2026-07-12; implementation `af855ee4a`, ledger `dbe9bb97f`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     証跡galleryのvisit-record attachment readerがoptional compile-time型だけを信頼し、legacy root、不正
     datetime/kind、pagination drift、duplicate identityを表示モデルへ流し得た。さらにprovider上限を超えた
@@ -2318,7 +2333,7 @@
     count remains one, provider narrow select/take, payload, offline behavior, render behavior, and dependencies are
     unchanged. A clean-capacity runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZVISITPREPSTRICT today visit preparation board reader (VERIFY_REQUIRED, 2026-07-12; implementation `debbdb0aa`, ledger `13898b8e0`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZVISITPREPSTRICT today visit preparation board reader (VERIFIED, 2026-07-12; implementation `debbdb0aa`, ledger `13898b8e0`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     今日の訪問準備board readerがcompile-time `VisitPreparationBoardResponse` castだけを信頼し、legacy/mixed
     root、不正datetime/enum/negative count、card/check/aggregate不整合を訪問前の準備判断へ流し得た。
@@ -2346,7 +2361,7 @@
     provider query shape, payload, render behavior, and dependencies are unchanged. A clean-capacity runner must
     complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZCOLLABOVERVIEWSTRICT collaboration minimal patient overview reader (VERIFY_REQUIRED, 2026-07-12; implementation `df995da78`, ledger `f284afaee`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZCOLLABOVERVIEWSTRICT collaboration minimal patient overview reader (VERIFIED, 2026-07-12; implementation `df995da78`, ledger `f284afaee`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Patient collaboration画面はheader文言に患者名1 fieldだけを使う一方、compile-time `PatientOverview` castで
     full overviewをquery cacheへ保持し、住所、保険、アレルギー、連絡先、cases、visit、foundation等の
@@ -2374,7 +2389,7 @@
     provider query/audit, realtime behavior, render behavior, and dependencies are unchanged. A clean-capacity runner
     must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZHISTORYSTRICT patient prescription/visit history summary readers (VERIFY_REQUIRED, 2026-07-12; implementation `f108fd48c`, ledger `0a1568d4a`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZHISTORYSTRICT patient prescription/visit history summary readers (VERIFIED, 2026-07-12; implementation `f108fd48c`, ledger `0a1568d4a`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Patient history summaryの処方/訪問readerがcompile-time castsだけを信頼し、legacy/wrong envelope、duplicate/
     reverse-ordered rows、pagination drift、unknown visit outcomeを直近過去歴へ流し得た。両providerはlimit=5、
@@ -2404,7 +2419,7 @@
     reduced. Request count, provider take/query, render behavior, and dependencies are unchanged. A clean-capacity
     runner must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZREFLECTEDSTRICT visit reflected-fields provenance reader/path (VERIFY_REQUIRED, 2026-07-12; implementation `8c6ef6905`, ledger `4258ad5c2`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZREFLECTEDSTRICT visit reflected-fields provenance reader/path (VERIFIED, 2026-07-12; implementation `8c6ef6905`, ledger `4258ad5c2`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Visit recordの「患者詳細へ反映した項目」cardがcompile-time service typeだけを信頼し、legacy root、
     duplicate/reverse-ordered revision、非許可fieldのraw PHIをprovenance表示へ流し得た。さらにrecordIdを
@@ -2435,7 +2450,7 @@
     provider query/take, render behavior, and dependencies are unchanged. A clean-capacity runner must complete
     `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZFIELDREVSTRICT patient field-revision timeline reader (VERIFY_REQUIRED, 2026-07-12; implementation `30a775e9a`, ledger `ffcda1d56`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZFIELDREVSTRICT patient field-revision timeline reader (VERIFIED, 2026-07-12; implementation `30a775e9a`, ledger `ffcda1d56`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Patient detailのfield revision timelineがcompile-time service typeだけを信頼し、legacy root、meta arithmetic/
     filter drift、重複identity、逆順日時を表示/cacheへ流し得た。Provider serviceはPHI raw-value allowlistで
@@ -2466,7 +2481,7 @@
     are reduced; request count, polling, provider query/take, and dependencies are unchanged. A clean-capacity runner
     must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZRESIDUALCHARTSTRICT patient residual-medication chart reader (VERIFY_REQUIRED, 2026-07-12; implementation `d7b4543ae`, ledger `52aa41595`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZRESIDUALCHARTSTRICT patient residual-medication chart reader (VERIFIED, 2026-07-12; implementation `d7b4543ae`, ledger `52aa41595`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Patient detailの残薬推移chartが`GET /api/residual-medications?patient_id=...&limit=100`を
     compile-time castだけで読み、legacy root、負/非整数余剰日数、不正日時、重複record、provider ordering
@@ -2494,7 +2509,7 @@
     take=100, polling, render shape, and dependencies are unchanged; cached fields are reduced. A clean-capacity runner
     must complete `pnpm build`, then `API-CONTRACT-001-RESCAN` continues.
 
-- codex: API-CONTRACT-001FZSTRUCTCARESTRICT patient structured-care active-state reader (VERIFY_REQUIRED, 2026-07-12; implementation `769528a2f`, ledger `78fc3f7c2`, feature-branch push confirmed; shared clean-capacity build pending).
+- codex: API-CONTRACT-001FZSTRUCTCARESTRICT patient structured-care active-state reader (VERIFIED, 2026-07-12; implementation `769528a2f`, ledger `78fc3f7c2`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     Patient detailの在宅医療処置・麻薬panelがcompile-time `PatientStructuredCareList` castだけを信頼し、
     legacy root、終了済みrow、不正日時、重複identity、確認者不整合を現在のactive careとして表示し得た。
@@ -2521,7 +2536,7 @@
     dependency, or broad cache was introduced. A clean-capacity runner must complete `pnpm build`; then continue the
     `API-CONTRACT-001-RESCAN` inventory without conflating human-gated stock/DB work.
 
-- codex: API-CONTRACT-001FZREALTIMESTRICT admin realtime workflow/notification readers (VERIFY_REQUIRED, 2026-07-12; implementation `e3816210b`, ledger `bc23ae391`, feature-branch push confirmed; clean-capacity build pending).
+- codex: API-CONTRACT-001FZREALTIMESTRICT admin realtime workflow/notification readers (VERIFIED, 2026-07-12; implementation `e3816210b`, ledger `bc23ae391`, feature-branch push confirmed; full gates passed at HEAD `bbd125bcc`).
   - current task / root cause:
     `/admin/realtime` のworkflow KPI/workbenchとnotification listがcompile-time castsだけを信頼し、legacy root、
     負の運用件数、重複workbench identity、unsafe action/link、invalid timestamp、pagination driftを
