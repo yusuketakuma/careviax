@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZPRESENCEAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZPRESENCEAUTH (DONE; parent remains Partial, 2026-07-14; implementation `3fdf6c277`).
   - current task / files inspected / root cause:
     Push Subscription push/parity後に残12 routesをlive再分類し、Patient archive/restoreはpolicy gap隣接のため回避してPresence POST/GETを選定した。
     Route/test、collaboration entity access、presence store/client/hook/avatar、org realtime policy、rate-limit registry、allowlist、installed Next guideを確認した。
