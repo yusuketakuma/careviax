@@ -14,7 +14,7 @@
     {
       "path": "src/app/(dashboard)/patients/[id]/card-workspace.tsx",
       "counts": {
-        "objectWithoutSchema": 2
+        "objectWithoutSchema": 1
       }
     },
     {

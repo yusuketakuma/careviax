@@ -5,6 +5,7 @@ import {
   buildCaseRiskTaskSyncResponseSchema,
   buildPatientDocumentsResponseSchema,
   buildPatientHeaderSummaryResponseSchema,
+  patientHomeOperationsResponseSchema,
 } from './card-workspace-response-schemas';
 
 function documentsResponse(patientId = 'patient_1') {
@@ -178,6 +179,44 @@ describe('card workspace response schemas', () => {
     expect(
       buildCaseRiskTaskSyncResponseSchema('case_1', 'patient_1').safeParse(response).success,
     ).toBe(false);
+  });
+
+  it('validates the five home operation domains and alert relations', () => {
+    const items = ['documents', 'mcs', 'prescription', 'billing', 'conference'].map((key) => ({
+      key,
+      label: key,
+      status: '確認済み',
+      description: '状態を確認します。',
+      href: `/patients/patient_1#patient-${key}`,
+      action_label: '確認する',
+      tone: key === 'documents' ? 'attention' : 'ok',
+      updated_at: null,
+      metrics: [],
+      alerts: key === 'documents' ? ['未回収'] : [],
+    }));
+    const response = {
+      data: {
+        generated_at: '2026-07-13T00:00:00.000Z',
+        attention_count: 1,
+        top_alerts: [
+          {
+            id: 'documents:0:未回収',
+            key: 'documents',
+            label: 'documents',
+            message: '未回収',
+            href: '/patients/patient_1#patient-documents',
+            action_label: '確認する',
+          },
+        ],
+        items,
+      },
+    };
+    expect(patientHomeOperationsResponseSchema.safeParse(response).success).toBe(true);
+    response.data.attention_count = 0;
+    expect(patientHomeOperationsResponseSchema.safeParse(response).success).toBe(false);
+    response.data.attention_count = 1;
+    response.data.top_alerts[0]!.message = '存在しない警告';
+    expect(patientHomeOperationsResponseSchema.safeParse(response).success).toBe(false);
   });
 
   it('requires the requested risk task resolution and audited single update', () => {

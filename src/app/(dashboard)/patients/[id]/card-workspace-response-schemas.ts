@@ -29,6 +29,11 @@ const internalHrefSchema = z
   .startsWith('/')
   .refine((href) => !href.startsWith('//'))
   .refine((href) => !/(?:token|storage_?key|x-amz-|signature)=/i.test(href));
+const safeExternalHrefSchema = z
+  .string()
+  .url()
+  .refine((href) => href.startsWith('https://'))
+  .refine((href) => !/(?:token|access_?key|x-amz-|signature)=/i.test(href));
 
 const documentCheckSchema = z
   .object({
@@ -249,6 +254,113 @@ export function buildPatientHeaderSummaryResponseSchema(expectedPatientId: strin
       }
     });
 }
+
+const homeOperationKeySchema = z.enum([
+  'documents',
+  'mcs',
+  'prescription',
+  'billing',
+  'conference',
+]);
+const homeOperationQuickActionSchema = z
+  .object({
+    key: z.enum([
+      'mark_fax_original_collected',
+      'save_prescription_document',
+      'record_prescription_original_management',
+      'record_billing_payment_profile',
+      'record_billing_collection',
+      'record_conference_note',
+      'open_visit_proposal',
+      'record_mcs_check_log',
+    ]),
+    label: z.string().trim().min(1).max(500),
+    resource_id: idSchema,
+  })
+  .strict();
+
+export const patientHomeOperationsResponseSchema = z
+  .object({
+    data: z
+      .object({
+        generated_at: dateSchema,
+        attention_count: countSchema,
+        top_alerts: z
+          .array(
+            z
+              .object({
+                id: z.string().trim().min(1).max(10_000),
+                key: homeOperationKeySchema,
+                label: z.string().trim().min(1).max(500),
+                message: textSchema,
+                href: internalHrefSchema,
+                action_label: z.string().trim().min(1).max(500),
+              })
+              .strict(),
+          )
+          .max(8),
+        items: z.array(
+          z
+            .object({
+              key: homeOperationKeySchema,
+              label: z.string().trim().min(1).max(500),
+              status: z.string().trim().min(1).max(1_000),
+              description: textSchema,
+              href: internalHrefSchema,
+              action_label: z.string().trim().min(1).max(500),
+              external_href: safeExternalHrefSchema.nullable().optional(),
+              external_action_label: nullableTextSchema.optional(),
+              tone: z.enum(['ok', 'attention', 'neutral']),
+              updated_at: nullableDateSchema,
+              metrics: z.array(
+                z
+                  .object({
+                    label: z.string().trim().min(1).max(500),
+                    value: textSchema,
+                  })
+                  .strict(),
+              ),
+              alerts: z.array(textSchema),
+              quick_actions: z.array(homeOperationQuickActionSchema).optional(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine(({ data }, context) => {
+    const requiredKeys = new Set(['documents', 'mcs', 'prescription', 'billing', 'conference']);
+    const itemByKey = new Map(data.items.map((item) => [item.key, item]));
+    if (
+      data.items.length !== requiredKeys.size ||
+      itemByKey.size !== requiredKeys.size ||
+      [...requiredKeys].some((key) => !itemByKey.has(key as never)) ||
+      data.attention_count !== data.items.filter((item) => item.tone === 'attention').length
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['data', 'items'],
+        message: 'home operation aggregate mismatch',
+      });
+    }
+    for (const [index, alert] of data.top_alerts.entries()) {
+      const item = itemByKey.get(alert.key);
+      if (
+        !item ||
+        !item.alerts.includes(alert.message) ||
+        alert.label !== item.label ||
+        alert.href !== item.href ||
+        alert.action_label !== item.action_label
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['data', 'top_alerts', index],
+          message: 'home operation alert relation mismatch',
+        });
+      }
+    }
+  });
 
 const riskFindingSchema = z
   .object({

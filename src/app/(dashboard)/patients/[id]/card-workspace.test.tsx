@@ -4205,6 +4205,26 @@ describe('CardWorkspace', () => {
     };
   }
 
+  function homeOperationsResponseData(patientId: string) {
+    return {
+      generated_at: '2026-07-13T00:00:00.000Z',
+      attention_count: 0,
+      top_alerts: [],
+      items: ['documents', 'mcs', 'prescription', 'billing', 'conference'].map((key) => ({
+        key,
+        label: key,
+        status: '確認済み',
+        description: '状態を確認します。',
+        href: `/patients/${encodeURIComponent(patientId)}#patient-${key}`,
+        action_label: '確認する',
+        tone: 'ok',
+        updated_at: null,
+        metrics: [],
+        alerts: [],
+      })),
+    };
+  }
+
   it('fetches patient documents from an encoded patient path with org headers (raw query key)', async () => {
     const hostileId = 'pt/1?x=y#z';
     const getDocumentsConfig = captureDocumentsQueryConfig(hostileId);
@@ -4280,7 +4300,12 @@ describe('CardWorkspace', () => {
       async () =>
         new Response(
           JSON.stringify({
-            data: segment === 'header-summary' ? headerSummaryResponseData(hostileId) : {},
+            data:
+              segment === 'header-summary'
+                ? headerSummaryResponseData(hostileId)
+                : segment === 'home-operations'
+                  ? homeOperationsResponseData(hostileId)
+                  : {},
           }),
           { status: 200 },
         ),
@@ -4427,7 +4452,11 @@ describe('CardWorkspace', () => {
       const url = String(input);
       return new Response(
         JSON.stringify({
-          data: url.endsWith('/header-summary') ? headerSummaryResponseData(patientId) : {},
+          data: url.endsWith('/header-summary')
+            ? headerSummaryResponseData(patientId)
+            : url.endsWith('/home-operations')
+              ? homeOperationsResponseData(patientId)
+              : {},
         }),
         { status: 200 },
       );

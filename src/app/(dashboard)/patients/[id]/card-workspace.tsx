@@ -119,6 +119,7 @@ import {
   buildCaseRiskTaskSyncResponseSchema,
   buildPatientDocumentsResponseSchema,
   buildPatientHeaderSummaryResponseSchema,
+  patientHomeOperationsResponseSchema,
 } from './card-workspace-response-schemas';
 
 type FirstVisitDocumentsPanelProps = {
@@ -4904,6 +4905,7 @@ export function CardWorkspace({
       });
       const payload = await readApiJson<{ data: PatientHomeOperationsSnapshot }>(res, {
         fallbackMessage: '在宅運用管理の取得に失敗しました',
+        schema: patientHomeOperationsResponseSchema,
       });
       return payload.data;
     },
