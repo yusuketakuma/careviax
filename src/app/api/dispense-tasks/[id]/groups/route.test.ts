@@ -354,6 +354,26 @@ describe('/api/dispense-tasks/[id]/groups POST', () => {
 });
 
 describe('/api/dispense-tasks/[id]/groups PATCH (groups update)', () => {
+  it('keeps the PATCH task mutation owner as an exact 404', async () => {
+    dispenseTaskFindFirstMock.mockResolvedValue(null);
+
+    const response = await PATCH(
+      createPatchRequest({ groups: [{ id: 'group_1', label: '朝・昼食後', version: 0 }] }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: 'タスクが見つかりません',
+    });
+    expect(packagingGroupFindManyMock).not.toHaveBeenCalled();
+    expect(prescriptionLineFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('updates groups and records audit entries with before/after', async () => {
     packagingGroupFindManyMock.mockResolvedValue([
       {
@@ -412,7 +432,13 @@ describe('/api/dispense-tasks/[id]/groups PATCH (groups update)', () => {
     );
 
     expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '対象の一包化グループが見つかりません',
+    });
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns 409 on optimistic-lock version conflict', async () => {
@@ -549,10 +575,17 @@ describe('/api/dispense-tasks/[id]/groups PATCH (line assignment)', () => {
     );
 
     expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '対象の処方明細が見つかりません',
+    });
+    expect(packagingGroupFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
-  it('returns 404 when the target group is outside the cycle', async () => {
+  it('returns a neutral 400 when the linked destination group is outside the cycle', async () => {
     prescriptionLineFindManyMock.mockResolvedValue([{ id: 'line_1', packaging_group_id: null }]);
     packagingGroupFindManyMock.mockResolvedValue([]);
 
@@ -569,8 +602,18 @@ describe('/api/dispense-tasks/[id]/groups PATCH (line assignment)', () => {
       routeContext,
     );
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        assignments: ['割当先の一包化グループを確認できません'],
+      },
+    });
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prescriptionLineUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns 409 when the current line assignment no longer matches the expected group', async () => {

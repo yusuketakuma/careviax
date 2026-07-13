@@ -55,7 +55,22 @@
 
 ## 直近の作業
 
-- codex1 takeover: AUTHZ-EXTERNAL-GRANT-READ-SERIALIZATION-001 (DONE, 2026-07-14; implementation in this scoped commit).
+- codex1 takeover: API-STATUS-NOTFOUND-LIVE-RESCAN-001I (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Codex4 handoffのdispense task groups候補をcodex1がroute/test全文、PackagingGroup/PrescriptionLineのmutation、cycle scope、optimistic conflict、
+    transaction/audit/notify順、installed Next 16.2.9 Route Handler guideと照合した。提案された3 branchのうち、`groups[].id`はPackagingGroup update、
+    `assignments[].line_id`はPrescriptionLine updateのprimary mutation targetであり404維持が正しい。`packaging_group_id`だけがlinked destinationだった。
+  - files changed / correctness / security / privacy:
+    Assignment destination groupのmissing/cross-cycleだけをgeneric 400 `VALIDATION_ERROR` / `入力値が不正です` + neutral `details.assignments`へ統一した。
+    Path task owner、group update target、line assignment targetのexact 404 `WORKFLOW_NOT_FOUND`を明示回帰で維持し、linked拒否時のtransaction、line update、
+    audit、workflow notification副作用0を固定した。Success/clear assignment/optimistic conflict/DTO/query数、org/cycle/assignment predicatesは不変。
+  - validation / remaining / rollback:
+    Focused 1 test file / 20 tests、API shape 0/0、API authz 0、route auth 175 allowlisted / 251 direct / 0 new、raw-org 116 / 0 new、module boundary
+    0/0、exact ESLint/Prettier/diffをPASS。視覚変更のないAPI status sliceのためimagegen省略。Schema/migration/production data/deploy/Oracleなし。
+    Array上限/duplicate rejection/serial writesはapproved policyなしの別data-integrity/performance候補として混在させず、親は残存mutation scanのためPartial。
+    Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
+- codex1 takeover: AUTHZ-EXTERNAL-GRANT-READ-SERIALIZATION-001 (DONE, 2026-07-14; implementation `7f67a0dfe`).
   - current task / files inspected / root cause:
     External access service/test、public GET route/test/shared validation、self-report caller、ExternalAccessGrant schema/FORCE RLS、`withOrgContext`の
     isolation contract、installed Next 16.2.9 Route Handler guideを確認した。OTP-verified grant validation、PHI payload read、viewed update+manual auditが

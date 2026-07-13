@@ -431,7 +431,9 @@ async function assignLines(
     const validGroupIds = new Set(validGroups.map((group) => group.id));
     const invalidGroups = targetGroupIds.filter((groupId) => !validGroupIds.has(groupId));
     if (invalidGroups.length > 0) {
-      return notFound('割当先の一包化グループが見つかりません');
+      return validationError('入力値が不正です', {
+        assignments: ['割当先の一包化グループを確認できません'],
+      });
     }
   }
 
