@@ -55,6 +55,21 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZJOBSAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Presence push/parity後に残11 routesを再scoreし、read-only Admin Jobs GETを選定した。Route/test、admin consumer strict schema/UI、rate-limit/route catalog、
+    proxy job credential境界、allowlist、installed Next guideを確認した。既存handlerはcanAdmin、org/global bounded read、raw job error/input redactionを持つ一方、
+    1 direct auth callの運用情報success responseが標準no-store/performance/sanitized-500境界を通らなかった。
+  - files changed / bugs found / correctness / security / privacy / performance:
+    GETをtyped named handler + `withAuthContext`へ移行し、permission message、ctx、50-row bound、org/global predicate、固定definition、latest run/export分離、
+    finite count projection、raw error/input/output redactionを維持した。Auth denialのDB read zeroとpermission/messageをtestへ追加し、allowlist 1 entryを除去。
+    Direct debtは161→160 routes、225→224 calls、helper未使用success routeは11→10へ減った。DB query/network/payloadは不変で共通header/計測だけを追加した。
+  - validation results / remaining work / next action / rollback:
+    Baseline/focused route + checker 2 files / 9 tests、provider/consumer/checker 3 files / 21 tests、exact ESLint/Prettier、8 GiB typecheck / no-unused、
+    route-auth 160 allowlisted / 224 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、client schema
+    361 backed / 0 allowlisted、Plans active、format/diffをPASS。新規security/privacy/performance issueなし。Job execution/proxy/schema/DB/migration/deploy/Oracleなし。
+    非視覚API変更のためimagegen/browserなし。親にはdirect-auth success未収束10 routes、request_id/correlation_id、error registryが残る。Rollbackはrevert。
+
 - codex1: API-CONTRACT-001FZPRESENCEAUTH (DONE; parent remains Partial, 2026-07-14; implementation `3fdf6c277`).
   - current task / files inspected / root cause:
     Push Subscription push/parity後に残12 routesをlive再分類し、Patient archive/restoreはpolicy gap隣接のため回避してPresence POST/GETを選定した。

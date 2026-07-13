@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import type { Prisma } from '@prisma/client';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { success } from '@/lib/api/response';
 import { readJsonObject } from '@/lib/db/json';
@@ -275,14 +275,7 @@ function toJobRunDto(job: LatestRun | null): JobRunDto | null {
 // future edit cannot silently widen/remove the bound.
 const RECENT_JOB_RUN_WINDOW = 50;
 
-export async function GET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: 'ジョブ設定の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function listJobs(_req: NextRequest, ctx: AuthContext) {
   const latestRuns = await prisma.integrationJob.findMany({
     where: {
       OR: [{ org_id: ctx.orgId }, { org_id: null }],
@@ -313,3 +306,8 @@ export async function GET(req: NextRequest) {
     })),
   });
 }
+
+export const GET = withAuthContext(listJobs, {
+  permission: 'canAdmin',
+  message: 'ジョブ設定の閲覧権限がありません',
+});

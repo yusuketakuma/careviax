@@ -8,6 +8,13 @@ const { requireAuthContextMock, integrationJobFindManyMock } = vi.hoisted(() => 
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -18,7 +25,10 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { GET } from './route';
+import { GET as rawGET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
 function createRequest() {
   return new NextRequest('http://localhost/api/jobs', {
@@ -74,6 +84,19 @@ describe('/api/jobs GET', () => {
     ]);
   });
 
+  it('returns the authorization response before reading job runs', async () => {
+    const deniedResponse = Response.json(
+      { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+      { status: 403 },
+    );
+    requireAuthContextMock.mockResolvedValueOnce({ response: deniedResponse });
+
+    const response = await GET(createRequest());
+
+    expect(response).toBe(deniedResponse);
+    expect(integrationJobFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('returns expanded job definitions with latest runs', async () => {
     const response = await GET(createRequest());
     expect(response).toBeDefined();
@@ -82,6 +105,13 @@ describe('/api/jobs GET', () => {
     }
 
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.objectContaining({
+        permission: 'canAdmin',
+        message: 'ジョブ設定の閲覧権限がありません',
+      }),
+    );
     const payload = await response.json();
     const entries = payload.data as Array<{
       job_type: string;
