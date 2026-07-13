@@ -51,6 +51,32 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZPATCARDOVERVIEWSTRICT patient card overview reader (VERIFY_REQUIRED, 2026-07-13; implementation `4c592962a`; shared clean-capacity build pending).
+  - current task / root cause:
+    Patient Cardのoverview readerはcompile-time型だけで、別患者、nested VisitBrief/workspace patient context、archive state、
+    duplicate residence/condition/contact/case/schedule identity、不正enum/date/count/href、未知provider fieldを2xx成功扱いし、患者基本情報・
+    連絡先・処方・訪問・foundationを含むPHI-bearing stateへ流し得た。
+  - implementation / overview safety boundary:
+    専用exact runtime schemaを追加し、全top-levelとVisitBrief/foundation/JAHIS/workspace nested DTO、requested/nested patient identity、
+    workspace action context、archive consistency、duplicate identity、internal hrefを検証。Cross-patient、unknown root data、duplicate contact
+    のnegative testsとconsumer live-shape fixturesを追加した。Provider query、auth/assignment/tenant/audit/DB/UIは変更していない。
+    非visual response parser/PHI境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/patients/[id]/patient-overview-response-schema.ts`,
+    `src/app/(dashboard)/patients/[id]/patient-overview-response-schema.test.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Schema/consumer/provider Vitest passed 4 files / 232 tests; focused schema/consumer passed 2 files / 99 tests; checker passed 1 file / 7 tests.
+    Exact zero-warning ESLint, focused Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (321 backed / 43 allowlisted / 9 files),
+    module boundary, client PHI-log/display, API response shape, colors, format, and diff-check passed. Full build remains NOT_EXECUTED because only
+    278 MiB is free while existing `.next` consumes 16 GiB; shared generated/user files were not deleted.
+  - security / performance / remaining:
+    Malformed/cross-patient overview payloads now fail closed before PHI-bearing patient state updates; Patient Cardのallowlist entryは削除済み。
+    Network/DB calls, rendering, and dependencies are unchanged。API-CONTRACT-001-RESCANは43 calls across 9 filesへ継続する。
+    A clean-capacity runner must complete `pnpm build`.
+
 - codex: API-CONTRACT-001FZPATCARDHOMEOPSSTRICT patient card home-operations reader (VERIFY_REQUIRED, 2026-07-13; implementation `47693cca5`; shared clean-capacity build pending).
   - current task / root cause:
     Patient Cardのhome-operations readerはcompile-time型だけで、固定5-domain欠落/重複、attention count、top alert relation、quick action、
