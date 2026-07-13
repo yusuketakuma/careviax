@@ -135,7 +135,15 @@ describe('/api/handoff-board/items', () => {
       deadline: '2026-06-11T08:00:00.000Z',
     });
     const res = await POST(req, { params: Promise.resolve({}) });
+
     expect(res!.status).toBe(404);
+    expectSensitiveNoStore(res!);
+    await expect(res!.json()).resolves.toEqual({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '申し送りボードが見つかりません',
+    });
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 on invalid body', async () => {
@@ -255,53 +263,43 @@ describe('/api/handoff-board/items', () => {
     );
   });
 
-  it('rejects a recipient user id outside the current org before transaction side effects', async () => {
-    handoffBoardFindFirstMock.mockResolvedValue({ id: 'board_1' });
-    userFindFirstMock.mockResolvedValueOnce(null);
+  it.each([
+    ['missing recipient user', 'missing_user'],
+    ['recipient user outside the current org', 'user_other_org'],
+    ['inactive recipient user', 'inactive_user'],
+  ])(
+    'rejects a %s with the same neutral response before transaction side effects',
+    async (_caseName, recipientUserId) => {
+      handoffBoardFindFirstMock.mockResolvedValue({ id: 'board_1' });
+      userFindFirstMock.mockResolvedValueOnce(null);
 
-    const req = createRequest('http://localhost/api/handoff-board/items', {
-      board_id: 'board_1',
-      content: 'セット先行準備(施設GH)',
-      recipient_user_id: 'user_other_org',
-      recipient_label: '別組織ユーザー',
-      scope: '数量セットまで',
-      rationale: '判断WIPが目安超過のため',
-      deadline: '2026-06-11T08:00:00.000Z',
-    });
-    const res = await POST(req, { params: Promise.resolve({}) });
+      const req = createRequest('http://localhost/api/handoff-board/items', {
+        board_id: 'board_1',
+        content: 'セット先行準備(施設GH)',
+        recipient_user_id: recipientUserId,
+        recipient_label: '宛先ユーザー',
+        scope: '数量セットまで',
+        rationale: '判断WIPが目安超過のため',
+        deadline: '2026-06-11T08:00:00.000Z',
+      });
+      const res = await POST(req, { params: Promise.resolve({}) });
 
-    expect(res!.status).toBe(400);
-    await expect(res!.json()).resolves.toMatchObject({
-      message: '宛先ユーザーが見つかりません',
-    });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects an inactive recipient user before transaction side effects', async () => {
-    handoffBoardFindFirstMock.mockResolvedValue({ id: 'board_1' });
-    userFindFirstMock.mockResolvedValueOnce(null);
-
-    const req = createRequest('http://localhost/api/handoff-board/items', {
-      board_id: 'board_1',
-      content: 'セット先行準備(施設GH)',
-      recipient_user_id: 'inactive_user',
-      recipient_label: '退職済みユーザー',
-      scope: '数量セットまで',
-      rationale: '判断WIPが目安超過のため',
-      deadline: '2026-06-11T08:00:00.000Z',
-    });
-    const res = await POST(req, { params: Promise.resolve({}) });
-
-    expect(res!.status).toBe(400);
-    await expect(res!.json()).resolves.toMatchObject({
-      message: '宛先ユーザーが見つかりません',
-    });
-    expect(userFindFirstMock).toHaveBeenCalledWith({
-      where: { id: 'inactive_user', org_id: 'org_1', is_active: true },
-      select: { id: true },
-    });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-  });
+      expect(res!.status).toBe(400);
+      expectSensitiveNoStore(res!);
+      await expect(res!.json()).resolves.toEqual({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+        details: {
+          recipient_user_id: ['指定された宛先ユーザーを確認できません'],
+        },
+      });
+      expect(userFindFirstMock).toHaveBeenCalledWith({
+        where: { id: recipientUserId, org_id: 'org_1', is_active: true },
+        select: { id: true },
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects content-only handoff notes instead of creating legacy items', async () => {
     const req = createRequest('http://localhost/api/handoff-board/items', {

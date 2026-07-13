@@ -54,7 +54,25 @@
 
 ## 直近の作業
 
-- codex3 + codex1 integration: QUERY-SHAPE-VISIT-BRIEF-PACKAGE-003M (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+- codex2 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001E (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    `POST /api/handoff-board/items`とfocused test、HandoffItem/User schema、shared response/no-store helper、installed Next 16.2.9 Route Handler guide、
+    API/auth/raw-read/module guardsを確認した。Primary boardは404を使う一方、linked recipientのmissing/cross-org/inactiveは存在・org・account stateを
+    示唆するroute固有400 copyを返していた。
+  - files changed / correctness / security / privacy:
+    Board missing/cross-orgは従来どおりexact 404 `WORKFLOW_NOT_FOUND` / `申し送りボードが見つかりません`を維持し、recipientの3状態を同じ
+    generic 400 `VALIDATION_ERROR` / `入力値が不正です` + neutral field detailへ統一した。Board denialはrecipient readとtransactionを開始せず、
+    recipient denialもtransaction前に終了するためitem/audit副作用0。Auth/tenant、transfer/consult/message lifecycle、success DTO/no-storeを維持した。
+  - performance / stability / discovered:
+    Success/denial query・write・network数は0増、notification/task/network pathはない。Success item+audit transactionのatomicityも不変。
+    Recipient active checkがtransaction外でHandoffItemにUser FKがなく、request idempotencyもないため、active-state raceとresponse-loss/double-submit
+    重複を確認し、`HANDOFF-ITEM-CREATE-INTEGRITY-001`へ分離登録した。本status-only sliceへmigration/dedupe semanticsを混ぜていない。
+  - validation / review / remaining / rollback:
+    Codex2 FREEZE後にcodex1がdiff/schema/production pathを独立reviewし、focused 1 file / 15 tests、exact2 ESLint/Prettier/diff、API authz 0、
+    API shape 0/0、route auth 176 allowlisted / 252 direct / 0 new、raw-read org 117 allowlisted / 0 new、module boundary 0/0をPASS。Oracle、schema/
+    migration、gbrain write、long gateなし。親API statusは残存live scanがあるためPartial。RollbackはこのcommitのrevertでDB/data rollback不要。
+
+- codex3 + codex1 integration: QUERY-SHAPE-VISIT-BRIEF-PACKAGE-003M (DONE; parent remains Partial, 2026-07-13; implementation `047d5f484`, PUSHED).
   - current task / files inspected / root cause:
     visit-brief service/focused test、DrugMaster/DrugPackageInsert schema、drug detail API、manual/PMDA importのlatest package convention、query-shape/
     read-SLO/raw-org guardsを確認した。Current-line YJ codeのDrugMaster attributesとpackage insert cautionsを別々に取得し、後者は全historical rowsと

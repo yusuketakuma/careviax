@@ -119,7 +119,11 @@ const authenticatedPOST = withAuthContext(
         where: { id: parsed.data.recipient_user_id, org_id: ctx.orgId, is_active: true },
         select: { id: true },
       });
-      if (!recipient) return validationError('宛先ユーザーが見つかりません');
+      if (!recipient) {
+        return validationError('入力値が不正です', {
+          recipient_user_id: ['指定された宛先ユーザーを確認できません'],
+        });
+      }
     }
 
     const isMessage = parsed.data.kind === 'message';
