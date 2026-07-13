@@ -6,6 +6,7 @@ const {
   careCaseFindManyMock,
   careCaseFindFirstMock,
   patientFindFirstMock,
+  membershipFindManyMock,
   taskFindFirstMock,
   taskFindUniqueMock,
   taskUpdateManyMock,
@@ -15,6 +16,7 @@ const {
   careCaseFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
+  membershipFindManyMock: vi.fn(),
   taskFindFirstMock: vi.fn(),
   taskFindUniqueMock: vi.fn(),
   taskUpdateManyMock: vi.fn(),
@@ -36,6 +38,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     task: {
       findFirst: taskFindFirstMock,
+    },
+    membership: {
+      findMany: membershipFindManyMock,
     },
   },
 }));
@@ -75,6 +80,9 @@ describe('/api/tasks/[id]', () => {
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     careCaseFindFirstMock.mockResolvedValue({ patient_id: 'patient_1' });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
+    membershipFindManyMock.mockResolvedValue([
+      { user_id: 'user_2', role: 'pharmacist', can_audit_dispense: true },
+    ]);
     taskFindFirstMock.mockResolvedValue({
       id: 'task_1',
       task_type: 'patient_self_report_followup',
@@ -109,7 +117,196 @@ describe('/api/tasks/[id]', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
     expect(taskUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['', '   '])(
+    'rejects a blank assigned_to value before scope resolution or writes (%j)',
+    async (assignedTo) => {
+      const response = (await PATCH(createPatchRequest('task_1', { assigned_to: assignedTo }), {
+        params: Promise.resolve({ id: 'task_1' }),
+      }))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '入力値が不正です',
+        details: { assigned_to: ['assigned_to は空にできません'] },
+      });
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(taskFindFirstMock).not.toHaveBeenCalled();
+      expect(membershipFindManyMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects inactive, cross-org, or unknown assignees before an unrestricted reassignment', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { orgId: 'org_1', userId: 'owner_1', role: 'owner' },
+    });
+    taskFindFirstMock.mockResolvedValueOnce({
+      id: 'task_1',
+      task_type: 'staff_work_request_audit',
+      assigned_to: 'user_1',
+      completed_at: null,
+      related_entity_type: null,
+      related_entity_id: null,
+    });
+    membershipFindManyMock.mockResolvedValueOnce([
+      { user_id: 'owner_1', role: 'owner', can_audit_dispense: true },
+    ]);
+
+    const response = (await PATCH(createPatchRequest('task_1', { assigned_to: 'unknown_user' }), {
+      params: Promise.resolve({ id: 'task_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '依頼先スタッフが見つかりません',
+      details: {
+        reason: 'task_assignee_ineligible',
+        assigned_to: ['有効なスタッフを選択してください'],
+      },
+    });
+    expect(membershipFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        user_id: { in: ['owner_1', 'unknown_user'] },
+        is_active: true,
+        user: { is_active: true, account_status: 'active' },
+      },
+      select: { user_id: true, role: true, can_audit_dispense: true },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects audit reassignment to a trainee before opening the update transaction', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { orgId: 'org_1', userId: 'owner_1', role: 'owner' },
+    });
+    taskFindFirstMock.mockResolvedValueOnce({
+      id: 'task_1',
+      task_type: 'staff_work_request_audit',
+      assigned_to: 'user_1',
+      completed_at: null,
+      related_entity_type: null,
+      related_entity_id: null,
+    });
+    membershipFindManyMock.mockResolvedValueOnce([
+      { user_id: 'owner_1', role: 'owner', can_audit_dispense: true },
+      { user_id: 'trainee_1', role: 'pharmacist_trainee', can_audit_dispense: false },
+    ]);
+
+    const response = (await PATCH(createPatchRequest('task_1', { assigned_to: 'trainee_1' }), {
+      params: Promise.resolve({ id: 'task_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '依頼先スタッフはこのタスク種別を担当できません',
+      details: {
+        reason: 'task_assignee_ineligible',
+        assigned_to: ['このタスク種別を担当できるスタッフを選択してください'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects audit reassignment when a pharmacist lacks the membership audit capability', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { orgId: 'org_1', userId: 'owner_1', role: 'owner' },
+    });
+    taskFindFirstMock.mockResolvedValueOnce({
+      id: 'task_1',
+      task_type: 'staff_work_request_audit',
+      assigned_to: 'user_1',
+      completed_at: null,
+      related_entity_type: null,
+      related_entity_id: null,
+    });
+    membershipFindManyMock.mockResolvedValueOnce([
+      { user_id: 'owner_1', role: 'owner', can_audit_dispense: true },
+      { user_id: 'pharmacist_2', role: 'pharmacist', can_audit_dispense: false },
+    ]);
+
+    const response = (await PATCH(createPatchRequest('task_1', { assigned_to: 'pharmacist_2' }), {
+      params: Promise.resolve({ id: 'task_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '依頼先スタッフはこのタスク種別を担当できません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when actor or assignee roles are mixed across active memberships', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: { orgId: 'org_1', userId: 'owner_1', role: 'owner' },
+    });
+    taskFindFirstMock.mockResolvedValue({
+      id: 'task_1',
+      task_type: 'staff_work_request_general',
+      assigned_to: 'user_1',
+      completed_at: null,
+      related_entity_type: null,
+      related_entity_id: null,
+    });
+    membershipFindManyMock
+      .mockResolvedValueOnce([
+        { user_id: 'owner_1', role: 'owner', can_audit_dispense: true },
+        { user_id: 'owner_1', role: 'pharmacist', can_audit_dispense: true },
+        { user_id: 'pharmacist_2', role: 'pharmacist', can_audit_dispense: true },
+      ])
+      .mockResolvedValueOnce([
+        { user_id: 'owner_1', role: 'owner', can_audit_dispense: true },
+        { user_id: 'pharmacist_2', role: 'pharmacist', can_audit_dispense: true },
+        { user_id: 'pharmacist_2', role: 'external_viewer', can_audit_dispense: false },
+      ]);
+
+    for (const assignee of ['pharmacist_2', 'pharmacist_2']) {
+      const response = (await PATCH(createPatchRequest('task_1', { assigned_to: assignee }), {
+        params: Promise.resolve({ id: 'task_1' }),
+      }))!;
+      expect(response.status).toBe(400);
+    }
+
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('allows an unrestricted audit reassignment to an active pharmacist', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { orgId: 'org_1', userId: 'owner_1', role: 'owner' },
+    });
+    taskFindFirstMock.mockResolvedValueOnce({
+      id: 'task_1',
+      task_type: 'staff_work_request_audit',
+      assigned_to: 'user_1',
+      completed_at: null,
+      related_entity_type: null,
+      related_entity_id: null,
+    });
+    membershipFindManyMock.mockResolvedValueOnce([
+      { user_id: 'owner_1', role: 'owner', can_audit_dispense: true },
+      { user_id: 'pharmacist_2', role: 'pharmacist', can_audit_dispense: true },
+    ]);
+
+    const response = (await PATCH(createPatchRequest('task_1', { assigned_to: 'pharmacist_2' }), {
+      params: Promise.resolve({ id: 'task_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expect(taskUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'task_1', org_id: 'org_1' },
+        data: expect.objectContaining({ assigned_to: 'pharmacist_2' }),
+      }),
+    );
   });
 
   it('rejects blank task ids before parsing or resolving assignment scope', async () => {

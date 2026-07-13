@@ -6,6 +6,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { stubJsonFetch } from '@/test/fetch-test-utils';
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { PrimaryQueryError } from '@/lib/api/primary-query-json';
 import type { BulkCompleteTasksResponse } from '@/lib/tasks/bulk-completion-contract';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -188,6 +189,7 @@ vi.mock('@/components/ui/select', async () => {
           value={value ?? ''}
           onChange={(event) => onValueChange?.(event.currentTarget.value)}
         >
+          <option value="" />
           {collectOptions(children)}
         </select>
       );
@@ -324,7 +326,10 @@ function taskListQueryKeys() {
 }
 
 function getCreateRequestMutationOptions() {
-  const options = useMutationMock.mock.calls[0]?.[0] as CreateRequestMutationOptions | undefined;
+  const options = useMutationMock.mock.calls
+    .map((call) => call[0] as CreateRequestMutationOptions | undefined)
+    .filter((candidate) => candidate?.mutationFn.length === 0)
+    .at(-1);
   expect(options).toBeTruthy();
   return options as CreateRequestMutationOptions;
 }
@@ -347,8 +352,8 @@ describe('TasksContent', () => {
     usePathnameMock.mockReturnValue('/tasks');
     useSearchParamsMock.mockReturnValue(new URLSearchParams('context=dashboard_home'));
     useAuthStoreMock.mockImplementation(
-      (selector: (state: { currentUser: { id: string } }) => unknown) =>
-        selector({ currentUser: { id: 'user_1' } }),
+      (selector: (state: { currentUser: { id: string; role: 'owner' } }) => unknown) =>
+        selector({ currentUser: { id: 'user_1', role: 'owner' } }),
     );
     useQueryClientMock.mockReturnValue({
       invalidateQueries: vi.fn(),
@@ -368,7 +373,13 @@ describe('TasksContent', () => {
               {
                 id: 'user_2',
                 name: '佐藤 薬剤師',
+                role: 'pharmacist',
                 role_label: '薬剤師',
+                assignable_work_request_types: [
+                  'staff_work_request_visit',
+                  'staff_work_request_audit',
+                  'staff_work_request_general',
+                ],
                 open_task_count: 2,
                 today_visit_count: 1,
                 dispense_task_count: 1,
@@ -771,6 +782,8 @@ describe('TasksContent', () => {
           data: undefined,
           isLoading: false,
           isError: true,
+          isRefetchError: false,
+          error: new PrimaryQueryError('スタッフ別業務量の取得に失敗しました', null, true),
           refetch: refetchStaffWorkload,
         };
       }
@@ -780,10 +793,127 @@ describe('TasksContent', () => {
     render(<TasksContent />);
 
     expect(screen.getByText('スタッフ別業務量を取得できませんでした。')).toBeTruthy();
+    expect(within(screen.getByTestId('staff-workload-board')).getByRole('alert')).toBeTruthy();
     expect(screen.queryByText('依頼可能なスタッフが見つかりません')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetchStaffWorkload).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps stale workload visible but disables every assignment path after a refetch error', async () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks-health-board') {
+        return taskHealthBoardQueryResult();
+      }
+      if (options.queryKey?.[0] === 'staff-workload') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'pharmacist_1',
+                name: '山田 薬剤師',
+                role: 'pharmacist',
+                role_label: '薬剤師',
+                assignable_work_request_types: [
+                  'staff_work_request_visit',
+                  'staff_work_request_audit',
+                  'staff_work_request_general',
+                ],
+                open_task_count: 2,
+                today_visit_count: 1,
+                dispense_task_count: 1,
+                workload_score: 7,
+                visits: [],
+                open_tasks: [],
+              },
+            ],
+          },
+          isLoading: false,
+          isError: true,
+          isRefetchError: true,
+          dataUpdatedAt: Date.now() - 5 * 60_000,
+          error: new PrimaryQueryError('スタッフ別業務量の取得に失敗しました', 503, true),
+          refetch: vi.fn(),
+        };
+      }
+      return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<TasksContent />);
+
+    expect(screen.getByText('山田 薬剤師')).toBeTruthy();
+    const workloadCard = screen.getByRole('button', { name: /山田 薬剤師/ });
+    expect(workloadCard.getAttribute('aria-disabled')).toBe('true');
+    expect(workloadCard.getAttribute('aria-describedby')?.split(' ')).toContain(
+      'staff-workload-error',
+    );
+    expect(
+      screen.getByText('スタッフ情報を再取得するまで、この依頼先は選択できません'),
+    ).toBeTruthy();
+    const staleNotice = screen.getByText(/前回取得データを読み取り専用で表示しています/);
+    expect(staleNotice.textContent).toContain('5分前のデータ');
+    expect(staleNotice.textContent).toContain('最終更新:');
+    expect(
+      within(screen.getByRole('combobox', { name: '依頼先' })).queryByRole('option', {
+        name: /山田 薬剤師/,
+      }),
+    ).toBeNull();
+    const submitButton = screen.getByTestId('staff-work-request-submit');
+    expect(submitButton).toHaveProperty('disabled', true);
+    expect(submitButton.getAttribute('aria-describedby')).toBe(
+      'staff-work-request-submit-disabled-reason',
+    );
+    expect(screen.getByText('スタッフ情報を再取得するまで依頼できません')).toBeTruthy();
+    await expect(getCreateRequestMutationOptions().mutationFn()).rejects.toThrow(
+      '基本権限上、この依頼を割り当てられるスタッフを選択してください',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('hides cached workload PHI when a refetch confirms access is no longer allowed', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks-health-board') {
+        return taskHealthBoardQueryResult();
+      }
+      if (options.queryKey?.[0] === 'staff-workload') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'pharmacist_1',
+                name: '失効後に隠すスタッフ名',
+                role: 'pharmacist',
+                role_label: '薬剤師',
+                assignable_work_request_types: ['staff_work_request_visit'],
+                open_task_count: 1,
+                today_visit_count: 1,
+                dispense_task_count: 0,
+                workload_score: 4,
+                visits: [{ id: 'visit_1', patient_name: '失効後に隠す患者名' }],
+                open_tasks: [{ id: 'task_1', title: '失効後に隠すタスク件名' }],
+              },
+            ],
+            meta: { date: '2026-07-13' },
+          },
+          isLoading: false,
+          isError: true,
+          isRefetchError: true,
+          error: new PrimaryQueryError('スタッフ別業務量の取得に失敗しました', 403, false),
+          refetch: vi.fn(),
+        };
+      }
+      return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(<TasksContent />);
+
+    expect(screen.getByText('スタッフ別業務量を取得できませんでした。')).toBeTruthy();
+    expect(screen.queryByText('失効後に隠すスタッフ名')).toBeNull();
+    expect(screen.queryByText('訪問: 失効後に隠す患者名')).toBeNull();
+    expect(screen.queryByText('依頼: 失効後に隠すタスク件名')).toBeNull();
+    expect(screen.getByTestId('staff-work-request-submit')).toHaveProperty('disabled', true);
   });
 
   it('shows a named skeleton instead of a plain loading text for staff workload', () => {
@@ -831,6 +961,12 @@ describe('TasksContent', () => {
     render(<TasksContent />);
 
     expect(staffWorkloadQueryFn).toBeTruthy();
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ['staff-workload', 'org_1', 'user_1', 'owner'],
+        enabled: true,
+      }),
+    );
     await expect(staffWorkloadQueryFn?.()).resolves.toEqual(workloadPayload);
     expect(fetchMock).toHaveBeenCalledWith('/api/staff-workload', {
       headers: sentinelHeaders,
@@ -844,6 +980,45 @@ describe('TasksContent', () => {
       }),
     );
     await expect(staffWorkloadQueryFn?.()).rejects.toThrow('スタッフ別業務量の取得に失敗しました');
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: 'AUTH_FORBIDDEN' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await expect(staffWorkloadQueryFn?.()).rejects.toMatchObject({
+      status: 403,
+      canRetainCachedData: false,
+    });
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              id: 'user_2',
+              name: '契約外ロール',
+              role: 'superuser',
+              role_label: '不正',
+              assignable_work_request_types: [],
+              open_task_count: 0,
+              today_visit_count: 0,
+              dispense_task_count: 0,
+              workload_score: 0,
+              visits: [],
+              open_tasks: [],
+            },
+          ],
+          meta: { date: '2026-04-10' },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    await expect(staffWorkloadQueryFn?.()).rejects.toMatchObject({
+      status: 200,
+      canRetainCachedData: false,
+    });
   });
 
   it('prefills work request fields from visit or audit deep links', () => {
@@ -876,6 +1051,196 @@ describe('TasksContent', () => {
     );
   });
 
+  it('filters assignees by the provider projection and clears a stale selection on type change', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks-health-board') {
+        return taskHealthBoardQueryResult();
+      }
+      if (options.queryKey?.[0] === 'staff-workload') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'trainee_1',
+                name: '佐藤 研修薬剤師',
+                role: 'pharmacist_trainee',
+                role_label: '研修薬剤師',
+                assignable_work_request_types: [
+                  'staff_work_request_visit',
+                  'staff_work_request_general',
+                ],
+                open_task_count: 1,
+                today_visit_count: 0,
+                dispense_task_count: 0,
+                workload_score: 1,
+                visits: [],
+                open_tasks: [],
+              },
+              {
+                id: 'pharmacist_1',
+                name: '山田 薬剤師',
+                role: 'pharmacist',
+                role_label: '薬剤師',
+                assignable_work_request_types: [
+                  'staff_work_request_visit',
+                  'staff_work_request_audit',
+                  'staff_work_request_general',
+                ],
+                open_task_count: 2,
+                today_visit_count: 0,
+                dispense_task_count: 0,
+                workload_score: 2,
+                visits: [],
+                open_tasks: [],
+              },
+              {
+                id: 'clerk_1',
+                name: '鈴木 事務',
+                role: 'clerk',
+                role_label: '事務スタッフ',
+                assignable_work_request_types: [],
+                open_task_count: 0,
+                today_visit_count: 0,
+                dispense_task_count: 0,
+                workload_score: 0,
+                visits: [],
+                open_tasks: [],
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(<TasksContent />);
+
+    const assigneeSelect = screen.getByRole('combobox', { name: '依頼先' });
+    expect(within(assigneeSelect).getByRole('option', { name: /佐藤 研修薬剤師/ })).toBeTruthy();
+    expect(within(assigneeSelect).getByRole('option', { name: /山田 薬剤師/ })).toBeTruthy();
+    expect(within(assigneeSelect).queryByRole('option', { name: /鈴木 事務/ })).toBeNull();
+    const clerkCard = screen.getByRole('button', { name: /鈴木 事務/ });
+    expect(clerkCard.getAttribute('aria-disabled')).toBe('true');
+    expect(within(clerkCard).getByText('基本権限上、この依頼は割り当てできません')).toBeTruthy();
+    fireEvent.click(clerkCard);
+    expect(assigneeSelect).toHaveProperty('value', '');
+
+    fireEvent.change(assigneeSelect, { target: { value: 'trainee_1' } });
+    expect(assigneeSelect).toHaveProperty('value', 'trainee_1');
+
+    fireEvent.change(screen.getByRole('combobox', { name: '依頼内容' }), {
+      target: { value: 'staff_work_request_audit' },
+    });
+
+    expect(
+      screen.getByText(
+        '自己監査と二者確認の可否は、監査ワークフローで対象タスクごとに別途判定されます。',
+      ),
+    ).toBeTruthy();
+    expect(assigneeSelect).toHaveProperty('value', '');
+    expect(within(assigneeSelect).queryByRole('option', { name: /佐藤 研修薬剤師/ })).toBeNull();
+    expect(within(assigneeSelect).getByRole('option', { name: /山田 薬剤師/ })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /佐藤 研修薬剤師/ }).getAttribute('aria-disabled'),
+    ).toBe('true');
+    expect(screen.getByTestId('staff-work-request-submit')).toHaveProperty('disabled', true);
+  });
+
+  it('clears the selected assignee when the org or authenticated actor fingerprint changes', async () => {
+    let authState: { currentUser: { id: string; role: 'owner' | 'admin' } } = {
+      currentUser: { id: 'user_1', role: 'owner' },
+    };
+    useAuthStoreMock.mockImplementation((selector: (state: typeof authState) => unknown) =>
+      selector(authState),
+    );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const rendered = render(<TasksContent />);
+    let assigneeSelect = screen.getByRole('combobox', { name: '依頼先' });
+
+    fireEvent.change(assigneeSelect, { target: { value: 'user_2' } });
+    expect(assigneeSelect).toHaveProperty('value', 'user_2');
+
+    authState = { currentUser: { id: 'user_1', role: 'admin' } };
+    rendered.rerender(<TasksContent />);
+
+    assigneeSelect = screen.getByRole('combobox', { name: '依頼先' });
+    expect(assigneeSelect).toHaveProperty('value', '');
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ['staff-workload', 'org_1', 'user_1', 'admin'],
+      }),
+    );
+
+    fireEvent.change(assigneeSelect, { target: { value: 'user_2' } });
+    expect(assigneeSelect).toHaveProperty('value', 'user_2');
+
+    authState = { currentUser: { id: 'user_3', role: 'owner' } };
+    useOrgIdMock.mockReturnValue('org_2');
+    rendered.rerender(<TasksContent />);
+
+    assigneeSelect = screen.getByRole('combobox', { name: '依頼先' });
+    expect(assigneeSelect).toHaveProperty('value', '');
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ['staff-workload', 'org_2', 'user_3', 'owner'],
+      }),
+    );
+    await expect(getCreateRequestMutationOptions().mutationFn()).rejects.toThrow(
+      '基本権限上、この依頼を割り当てられるスタッフを選択してください',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed without POST when the provider exposes no assignable staff', async () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks-health-board') {
+        return taskHealthBoardQueryResult();
+      }
+      if (options.queryKey?.[0] === 'staff-workload') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'clerk_1',
+                name: '鈴木 事務',
+                role: 'clerk',
+                role_label: '事務スタッフ',
+                assignable_work_request_types: [],
+                open_task_count: 0,
+                today_visit_count: 0,
+                dispense_task_count: 0,
+                workload_score: 0,
+                visits: [],
+                open_tasks: [],
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<TasksContent />);
+
+    expect(
+      screen.getByText('基本権限上、この依頼を割り当てられるスタッフが見つかりません。'),
+    ).toBeTruthy();
+    expect(screen.getByTestId('staff-work-request-submit')).toHaveProperty('disabled', true);
+    await expect(getCreateRequestMutationOptions().mutationFn()).rejects.toThrow(
+      '基本権限上、この依頼を割り当てられるスタッフを選択してください',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('uses safe recovery copy and rejects legacy successful work request responses', async () => {
     const fetchMock = vi
       .fn()
@@ -895,11 +1260,28 @@ describe('TasksContent', () => {
 
     render(<TasksContent />);
 
+    fireEvent.change(screen.getByRole('combobox', { name: '依頼先' }), {
+      target: { value: 'user_2' },
+    });
+    fireEvent.change(screen.getByLabelText('件名'), {
+      target: { value: '担当資格のあるスタッフへ依頼' },
+    });
+
     const createRequestOptions = getCreateRequestMutationOptions();
-    await expect(createRequestOptions.mutationFn()).rejects.toThrow(
-      '業務依頼の作成権限がありません',
-    );
-    createRequestOptions.onError(new Error('業務依頼の作成権限がありません'));
+    let rejectedError: unknown;
+    try {
+      await createRequestOptions.mutationFn();
+    } catch (error) {
+      rejectedError = error;
+    }
+    expect(rejectedError).toMatchObject({
+      status: 403,
+      outcomeUnknown: false,
+      assignmentEligibilityRejected: false,
+    });
+    await act(async () => {
+      createRequestOptions.onError(rejectedError);
+    });
 
     expect(fetch).toHaveBeenCalledWith('/api/tasks', {
       method: 'POST',
@@ -908,8 +1290,160 @@ describe('TasksContent', () => {
     });
     expect(toast.error).toHaveBeenCalledWith('業務依頼の作成に失敗しました');
     expect(toast.error).not.toHaveBeenCalledWith('業務依頼の作成権限がありません');
+    expect(screen.getByRole('combobox', { name: '依頼先' })).toHaveProperty('value', 'user_2');
+    expect(
+      screen.getByText(
+        '依頼は作成されませんでした。入力内容、対象業務、現在の権限を確認して再送してください。',
+      ),
+    ).toBeTruthy();
 
-    await expect(createRequestOptions.mutationFn()).rejects.toThrow('業務依頼の作成に失敗しました');
+    await expect(createRequestOptions.mutationFn()).rejects.toMatchObject({
+      status: 201,
+      outcomeUnknown: true,
+      assignmentEligibilityRejected: false,
+    });
+  });
+
+  it('reuses one dedupe key after response loss so a retry cannot create a duplicate task', async () => {
+    const invalidateQueriesMock = vi.fn();
+    useQueryClientMock.mockReturnValue({ invalidateQueries: invalidateQueriesMock });
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('network response lost'))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { id: 'task_1' } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<TasksContent />);
+    fireEvent.change(screen.getByRole('combobox', { name: '依頼先' }), {
+      target: { value: 'user_2' },
+    });
+    fireEvent.change(screen.getByLabelText('件名'), {
+      target: { value: '応答喪失でも重複しない依頼' },
+    });
+
+    const createRequestOptions = getCreateRequestMutationOptions();
+    let unknownOutcomeError: unknown;
+    try {
+      await createRequestOptions.mutationFn();
+    } catch (error) {
+      unknownOutcomeError = error;
+    }
+    expect(unknownOutcomeError).toMatchObject({
+      status: 0,
+      outcomeUnknown: true,
+      assignmentEligibilityRejected: false,
+    });
+    await act(async () => {
+      createRequestOptions.onError(unknownOutcomeError);
+    });
+
+    expect(screen.getByText(/通信の途中で送信結果を確認できませんでした/)).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '依頼先' })).toHaveProperty('value', 'user_2');
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['tasks', 'org_1'] });
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({
+      queryKey: ['tasks-health-board', 'org_1'],
+    });
+
+    await expect(createRequestOptions.mutationFn()).resolves.toBeUndefined();
+    const firstBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      dedupe_key: string;
+    };
+    const secondBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as {
+      dedupe_key: string;
+    };
+    expect(firstBody.dedupe_key).toMatch(/^staff-work-request:/);
+    expect(secondBody.dedupe_key).toBe(firstBody.dedupe_key);
+  });
+
+  it('locks assignment and persistently refreshes candidates after a create-time eligibility drift', async () => {
+    const invalidateQueriesMock = vi.fn();
+    useQueryClientMock.mockReturnValue({ invalidateQueries: invalidateQueriesMock });
+    const baseUseQueryImplementation = useQueryMock.getMockImplementation();
+    let staffDataUpdatedAt = 100;
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const result = baseUseQueryImplementation?.(options) as Record<string, unknown>;
+      return options.queryKey?.[0] === 'staff-workload'
+        ? { ...result, dataUpdatedAt: staffDataUpdatedAt }
+        : result;
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'VALIDATION_ERROR',
+          message: '依頼先スタッフはこのタスク種別を担当できません',
+          details: {
+            reason: 'task_assignee_ineligible',
+            assigned_to: ['このタスク種別を担当できるスタッフを選択してください'],
+          },
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const rendered = render(<TasksContent />);
+    fireEvent.change(screen.getByRole('combobox', { name: '依頼先' }), {
+      target: { value: 'user_2' },
+    });
+    fireEvent.change(screen.getByLabelText('件名'), {
+      target: { value: '権限変更を検知する依頼' },
+    });
+
+    const createRequestOptions = getCreateRequestMutationOptions();
+    let eligibilityError: unknown;
+    try {
+      await createRequestOptions.mutationFn();
+    } catch (error) {
+      eligibilityError = error;
+    }
+    expect(eligibilityError).toMatchObject({
+      status: 400,
+      outcomeUnknown: false,
+      assignmentEligibilityRejected: true,
+    });
+    await act(async () => {
+      createRequestOptions.onError(eligibilityError);
+    });
+
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({
+      queryKey: ['staff-workload', 'org_1'],
+    });
+    expect(screen.getByRole('combobox', { name: '依頼先' })).toHaveProperty('value', '');
+    expect(
+      screen.getByText(
+        '業務依頼を作成できませんでした。割当候補が変わった可能性があるため、再読み込みして依頼先を選び直してください。',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByTestId('staff-work-request-submit')).toHaveProperty('disabled', true);
+    const recoveryCard = screen.getByRole('button', { name: /佐藤 薬剤師/ });
+    expect(recoveryCard.getAttribute('aria-describedby')?.split(' ')).toContain(
+      'work-request-assignment-recovery',
+    );
+    expect(
+      screen.getByText('割当候補の再確認が完了するまで、この依頼先は選択できません'),
+    ).toBeTruthy();
+    await expect(getCreateRequestMutationOptions().mutationFn()).rejects.toThrow(
+      '基本権限上、この依頼を割り当てられるスタッフを選択してください',
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '割当候補を再読み込み' }));
+    expect(invalidateQueriesMock).toHaveBeenCalledTimes(2);
+
+    staffDataUpdatedAt = 200;
+    rendered.rerender(<TasksContent />);
+    expect(screen.queryByText(/割当候補が変わった可能性/)).toBeNull();
+    expect(
+      within(screen.getByRole('combobox', { name: '依頼先' })).getByRole('option', {
+        name: /佐藤 薬剤師/,
+      }),
+    ).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '依頼先' })).toHaveProperty('value', '');
   });
 
   it('surfaces server-provided bulk completion failure details', async () => {

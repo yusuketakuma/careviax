@@ -7,20 +7,20 @@ import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
+import {
+  listAssignableWorkRequestTypes,
+  TASK_WORKLOAD_MEMBER_ROLES,
+} from '@/lib/tasks/task-assignee-eligibility';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { dateKeySchema } from '@/lib/validations/date-key';
 
 const ROUTE = '/api/staff-workload';
-const STAFF_ROLES = [
-  'owner',
-  'admin',
-  'pharmacist',
-  'pharmacist_trainee',
-  'clerk',
-  'driver',
-] as const;
+const STAFF_ROLE_SET = new Set<string>(TASK_WORKLOAD_MEMBER_ROLES);
+const STAFF_ROLE_ORDER = new Map<string, number>(
+  TASK_WORKLOAD_MEMBER_ROLES.map((role, index) => [role, index]),
+);
 const RECENT_TASK_PREVIEW_LIMIT_PER_STAFF = 2;
 const RECENT_VISIT_PREVIEW_LIMIT_PER_STAFF = 2;
 
@@ -89,20 +89,30 @@ async function authenticatedGET(req: NextRequest) {
           where: {
             org_id: ctx.orgId,
             is_active: true,
-            role: { in: [...STAFF_ROLES] },
-            user: { is_active: true },
+            user: { is_active: true, account_status: 'active' },
           },
           orderBy: [{ user: { name_kana: 'asc' } }, { user: { name: 'asc' } }],
           select: {
             role: true,
+            can_audit_dispense: true,
             user: { select: { id: true, name: true } },
           },
         });
 
-        const staffIds = Array.from(new Set(memberships.map((membership) => membership.user.id)));
+        const staffIds = Array.from(
+          new Set(
+            memberships
+              .filter((membership) => STAFF_ROLE_SET.has(membership.role))
+              .map((membership) => membership.user.id),
+          ),
+        );
+        const staffIdSet = new Set(staffIds);
+        const staffMemberships = memberships.filter((membership) =>
+          staffIdSet.has(membership.user.id),
+        );
         if (staffIds.length === 0) {
           return {
-            memberships,
+            memberships: staffMemberships,
             staffIds,
             openTaskGroups: [],
             openTasks: [],
@@ -173,7 +183,14 @@ async function authenticatedGET(req: NextRequest) {
           }),
         ]);
 
-        return { memberships, staffIds, openTaskGroups, openTasks, visits, dispenseTaskGroups };
+        return {
+          memberships: staffMemberships,
+          staffIds,
+          openTaskGroups,
+          openTasks,
+          visits,
+          dispenseTaskGroups,
+        };
       },
       { requestContext: ctx },
     );
@@ -213,14 +230,27 @@ async function authenticatedGET(req: NextRequest) {
       tasksByUser.set(task.assigned_to, items);
     }
 
-    const seen = new Set<string>();
-    const data = memberships
-      .filter((membership) => {
-        if (seen.has(membership.user.id)) return false;
-        seen.add(membership.user.id);
-        return true;
-      })
-      .map((membership) => {
+    const membershipsByUser = new Map<string, typeof memberships>();
+    for (const membership of memberships) {
+      const userMemberships = membershipsByUser.get(membership.user.id) ?? [];
+      userMemberships.push(membership);
+      membershipsByUser.set(membership.user.id, userMemberships);
+    }
+    const assignmentActor = {
+      userId: ctx.userId,
+      memberships: (membershipsByUser.get(ctx.userId) ?? []).map((membership) => ({
+        role: membership.role,
+      })),
+    };
+
+    const data = Array.from(membershipsByUser.values())
+      .map((userMemberships) => {
+        const membership = userMemberships[0];
+        const roles = Array.from(new Set(userMemberships.map((item) => item.role))).sort(
+          (left, right) =>
+            (STAFF_ROLE_ORDER.get(left) ?? Number.MAX_SAFE_INTEGER) -
+            (STAFF_ROLE_ORDER.get(right) ?? Number.MAX_SAFE_INTEGER),
+        );
         const staffVisits = visitsByUser.get(membership.user.id) ?? [];
         const openTaskCount = openTaskCountByUser.get(membership.user.id) ?? 0;
         const dispenseTaskCount = dispenseTaskCountByUser.get(membership.user.id) ?? 0;
@@ -228,8 +258,15 @@ async function authenticatedGET(req: NextRequest) {
         return {
           id: membership.user.id,
           name: membership.user.name,
-          role: membership.role,
-          role_label: memberRoleLabel(membership.role),
+          role: roles.length === 1 ? roles[0] : 'multiple',
+          role_label: roles.map(memberRoleLabel).join('・'),
+          assignable_work_request_types: listAssignableWorkRequestTypes(assignmentActor, {
+            userId: membership.user.id,
+            memberships: userMemberships.map((item) => ({
+              role: item.role,
+              canAuditDispense: item.can_audit_dispense,
+            })),
+          }),
           open_task_count: openTaskCount,
           today_visit_count: todayVisitCount,
           dispense_task_count: dispenseTaskCount,

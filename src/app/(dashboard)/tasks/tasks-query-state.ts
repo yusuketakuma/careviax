@@ -4,6 +4,7 @@ import type {
   TasksPriorityFilter,
   TasksStatusFilter,
 } from '@/lib/dashboard/home-link-builders';
+import { isWorkRequestType, type WorkRequestType } from '@/lib/tasks/work-request-navigation';
 
 type SearchParamRecord = Record<string, string | string[] | undefined> | null | undefined;
 
@@ -13,7 +14,7 @@ export type TasksInitialState = {
   initialTaskType?: string;
   initialPriority?: TasksPriorityFilter;
   initialContext?: HomeLinkContext | null;
-  initialWorkRequestType?: string;
+  initialWorkRequestType?: WorkRequestType;
   initialWorkRequestTitle?: string;
   initialWorkRequestDescription?: string;
   initialRelatedEntityType?: string;
@@ -58,12 +59,7 @@ export function readTasksState(params: SearchParamRecord): TasksInitialState {
         ? priority
         : undefined,
     initialContext: context === 'dashboard_home' ? context : null,
-    initialWorkRequestType:
-      workRequestType === 'staff_work_request_visit' ||
-      workRequestType === 'staff_work_request_audit' ||
-      workRequestType === 'staff_work_request_general'
-        ? workRequestType
-        : undefined,
+    initialWorkRequestType: isWorkRequestType(workRequestType) ? workRequestType : undefined,
     initialWorkRequestTitle: workRequestTitle?.trim() || undefined,
     initialWorkRequestDescription: workRequestDescription?.trim() || undefined,
     initialRelatedEntityType: relatedEntityType?.trim() || undefined,

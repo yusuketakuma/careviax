@@ -1,7 +1,16 @@
-export type WorkRequestType =
-  | 'staff_work_request_visit'
-  | 'staff_work_request_audit'
-  | 'staff_work_request_general';
+export const WORK_REQUEST_TYPES = [
+  'staff_work_request_visit',
+  'staff_work_request_audit',
+  'staff_work_request_general',
+] as const;
+
+export type WorkRequestType = (typeof WORK_REQUEST_TYPES)[number];
+
+const WORK_REQUEST_TYPE_SET = new Set<string>(WORK_REQUEST_TYPES);
+
+export function isWorkRequestType(value: unknown): value is WorkRequestType {
+  return typeof value === 'string' && WORK_REQUEST_TYPE_SET.has(value);
+}
 
 type WorkRequestHrefInput = {
   type?: WorkRequestType | null;

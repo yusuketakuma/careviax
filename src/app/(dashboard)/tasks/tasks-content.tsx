@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import type { MemberRole } from '@prisma/client';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
@@ -32,6 +33,11 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
+import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
+import {
+  canRetainCachedDataAfterPrimaryQueryError,
+  fetchPrimaryQueryJson,
+} from '@/lib/api/primary-query-json';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { messageFromError } from '@/lib/utils/error-message';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
@@ -41,6 +47,15 @@ import {
 } from '@/lib/tasks/bulk-completion-contract';
 import { summarizeBulkCompleteTaskFailures } from '@/lib/tasks/bulk-completion-messages';
 import { buildTasksHealthBoardApiPath } from '@/lib/tasks/api-paths';
+import {
+  isWorkRequestType,
+  WORK_REQUEST_TYPES,
+  type WorkRequestType,
+} from '@/lib/tasks/work-request-navigation';
+import {
+  TASK_ASSIGNEE_REJECTION_REASON,
+  TASK_WORKLOAD_DISPLAY_ROLES,
+} from '@/lib/tasks/task-assignee-eligibility';
 import type { RiskDomain } from '@/lib/risk/risk-finding';
 import { StateBadge } from '@/components/ui/state-badge';
 import {
@@ -48,7 +63,8 @@ import {
   TASK_STATUS_ROLE,
   type StatusRoleOrNeutral,
 } from '@/lib/constants/status-labels';
-import { formatDateLabel } from '@/lib/ui/date-format';
+import { formatDateLabel, formatDateTimeLabel } from '@/lib/ui/date-format';
+import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import type {
   TasksAssignedFilter,
   TasksPriorityFilter,
@@ -105,8 +121,9 @@ const staffWorkloadSchema = z
   .object({
     id: z.string(),
     name: z.string(),
-    role: z.string(),
+    role: z.enum(TASK_WORKLOAD_DISPLAY_ROLES),
     role_label: z.string(),
+    assignable_work_request_types: z.array(z.enum(WORK_REQUEST_TYPES)),
     open_task_count: z.number().int().nonnegative(),
     today_visit_count: z.number().int().nonnegative(),
     dispense_task_count: z.number().int().nonnegative(),
@@ -140,6 +157,56 @@ const staffWorkloadEnvelopeSchema = z
       .strict(),
   })
   .strict();
+
+const taskAssigneeRejectionEnvelopeSchema = z
+  .object({
+    code: z.literal('VALIDATION_ERROR'),
+    details: z
+      .object({
+        reason: z.literal(TASK_ASSIGNEE_REJECTION_REASON),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+type WorkRequestSubmissionError = Error & {
+  status: number | null;
+  outcomeUnknown: boolean;
+  assignmentEligibilityRejected: boolean;
+};
+
+type WorkRequestSubmissionFailure = 'assignment_eligibility' | 'outcome_unknown' | 'rejected';
+
+function createWorkRequestSubmissionError(input: {
+  status: number | null;
+  outcomeUnknown: boolean;
+  assignmentEligibilityRejected?: boolean;
+}): WorkRequestSubmissionError {
+  return Object.assign(new Error('WORK_REQUEST_SUBMISSION_FAILED'), {
+    status: input.status,
+    outcomeUnknown: input.outcomeUnknown,
+    assignmentEligibilityRejected: input.assignmentEligibilityRejected ?? false,
+  });
+}
+
+function isWorkRequestSubmissionError(error: unknown): error is WorkRequestSubmissionError {
+  if (!(error instanceof Error) || typeof error !== 'object' || error === null) return false;
+  const candidate = error as Partial<WorkRequestSubmissionError>;
+  return (
+    (typeof candidate.status === 'number' || candidate.status === null) &&
+    typeof candidate.outcomeUnknown === 'boolean' &&
+    typeof candidate.assignmentEligibilityRejected === 'boolean'
+  );
+}
+
+async function isTaskAssigneeRejectionResponse(response: Response): Promise<boolean> {
+  if (response.status !== 400) return false;
+  const payload = await response
+    .clone()
+    .json()
+    .catch(() => null);
+  return taskAssigneeRejectionEnvelopeSchema.safeParse(payload).success;
+}
 
 // --- Constants ---
 
@@ -181,7 +248,15 @@ const WORK_REQUEST_OPTIONS = [
   { value: 'staff_work_request_visit', label: '訪問に行ってほしい' },
   { value: 'staff_work_request_audit', label: '監査をしてほしい' },
   { value: 'staff_work_request_general', label: 'その他の業務を依頼' },
-];
+] as const satisfies ReadonlyArray<{ value: WorkRequestType; label: string }>;
+
+const WORK_REQUEST_POLICY_NOTE: Record<WorkRequestType, string> = {
+  staff_work_request_visit:
+    '訪問予定の実担当割当は、訪問ワークフローで対象予定ごとに別途確認されます。',
+  staff_work_request_audit:
+    '自己監査と二者確認の可否は、監査ワークフローで対象タスクごとに別途判定されます。',
+  staff_work_request_general: '割当候補は、運用タスクを閲覧・更新できる基本権限で絞り込まれます。',
+};
 
 // 状態色は 6 軸セマンティック（status-labels.ts の *_ROLE）を正本とする。
 // docs/state-color-migration-map.md の TASK_STATUS_ROLE / PRIORITY_ROLE に追随。
@@ -230,14 +305,37 @@ type TasksContentProps = {
   initialTaskType?: string | null;
   initialPriority?: TasksPriorityFilter;
   initialContext?: string | null;
-  initialWorkRequestType?: string | null;
+  initialWorkRequestType?: WorkRequestType | null;
   initialWorkRequestTitle?: string | null;
   initialWorkRequestDescription?: string | null;
   initialRelatedEntityType?: string | null;
   initialRelatedEntityId?: string | null;
 };
 
-export function TasksContent({
+type TasksWorkspaceProps = TasksContentProps & {
+  orgId: ReturnType<typeof useOrgId>;
+  currentUserId: string | null;
+  currentUserRole: MemberRole | null;
+};
+
+export function TasksContent(props: TasksContentProps = {}) {
+  const orgId = useOrgId();
+  const currentUserId = useAuthStore((state) => state.currentUser.id);
+  const currentUserRole = useAuthStore((state) => state.currentUser.role);
+  const authorizationFingerprint = JSON.stringify([orgId, currentUserId, currentUserRole]);
+
+  return (
+    <TasksWorkspace
+      key={authorizationFingerprint}
+      {...props}
+      orgId={orgId}
+      currentUserId={currentUserId}
+      currentUserRole={currentUserRole}
+    />
+  );
+}
+
+function TasksWorkspace({
   initialAssigned,
   initialStatus,
   initialTaskType,
@@ -248,10 +346,11 @@ export function TasksContent({
   initialWorkRequestDescription,
   initialRelatedEntityType,
   initialRelatedEntityId,
-}: TasksContentProps = {}) {
+  orgId,
+  currentUserId,
+  currentUserRole,
+}: TasksWorkspaceProps) {
   const replaceTaskUrl = useSyncedSearchParams();
-  const orgId = useOrgId();
-  const currentUserId = useAuthStore((s) => s.currentUser.id);
   const queryClient = useQueryClient();
 
   const [assignedToMe, setAssignedToMe] = useState(initialAssigned === 'me');
@@ -260,13 +359,21 @@ export function TasksContent({
   const [priorityFilter, setPriorityFilter] = useState(initialPriority ?? '');
   const [selectedTasks, setSelectedTasks] = useState<Task[]>([]);
   const [requestAssignee, setRequestAssignee] = useState('');
-  const [requestType, setRequestType] = useState(
+  const [requestType, setRequestType] = useState<WorkRequestType>(
     initialWorkRequestType ?? 'staff_work_request_visit',
   );
   const [requestPriority, setRequestPriority] = useState('normal');
   const [requestDueDate, setRequestDueDate] = useState('');
   const [requestTitle, setRequestTitle] = useState(initialWorkRequestTitle ?? '');
   const [requestDescription, setRequestDescription] = useState(initialWorkRequestDescription ?? '');
+  const requestSubmissionRef = useRef<{
+    payloadFingerprint: string;
+    dedupeKey: string;
+  } | null>(null);
+  const [requestSubmissionFailure, setRequestSubmissionFailure] =
+    useState<WorkRequestSubmissionFailure | null>(null);
+  const [assignmentEligibilityRecoveryBaseline, setAssignmentEligibilityRecoveryBaseline] =
+    useState<number | null>(null);
   const [healthBoardScope, setHealthBoardScope] = useState<TaskHealthBoard['scope']>(
     initialAssigned === 'me' ? 'mine' : 'role_default',
   );
@@ -339,23 +446,52 @@ export function TasksContent({
     data: staffWorkloadData,
     isLoading: isStaffWorkloadLoading,
     isError: isStaffWorkloadError,
+    isRefetchError: isStaffWorkloadRefetchError,
+    error: staffWorkloadError,
+    dataUpdatedAt: staffWorkloadDataUpdatedAt,
     refetch: refetchStaffWorkload,
   } = useQuery({
-    queryKey: ['staff-workload', orgId],
-    queryFn: async () => {
-      const res = await fetch('/api/staff-workload', {
-        headers: buildOrgHeaders(orgId),
-      });
-      return readApiJson(res, {
-        fallbackMessage: 'スタッフ別業務量の取得に失敗しました',
-        schema: staffWorkloadEnvelopeSchema,
-      });
-    },
-    enabled: !!orgId,
+    queryKey: ['staff-workload', orgId, currentUserId, currentUserRole],
+    queryFn: () =>
+      fetchPrimaryQueryJson(
+        () =>
+          fetch('/api/staff-workload', {
+            headers: buildOrgHeaders(orgId),
+          }),
+        {
+          fallbackMessage: 'スタッフ別業務量の取得に失敗しました',
+          schema: staffWorkloadEnvelopeSchema,
+        },
+      ),
+    enabled: Boolean(orgId && currentUserId && currentUserRole),
   });
 
-  const staffWorkload = staffWorkloadData?.data ?? [];
-  const selectedAssignee = staffWorkload.find((staff) => staff.id === requestAssignee) ?? null;
+  const canRetainCachedStaffWorkload =
+    isStaffWorkloadError &&
+    isStaffWorkloadRefetchError &&
+    canRetainCachedDataAfterPrimaryQueryError(staffWorkloadError);
+  const cachedStaffWorkloadAgeLabel =
+    canRetainCachedStaffWorkload && staffWorkloadDataUpdatedAt > 0
+      ? `${formatElapsedLabel(
+          Math.floor((Date.now() - staffWorkloadDataUpdatedAt) / 60_000),
+        )}前のデータ（最終更新: ${formatDateTimeLabel(
+          new Date(staffWorkloadDataUpdatedAt).toISOString(),
+        )}）`
+      : null;
+  const hasRecoveredAssignmentEligibility =
+    assignmentEligibilityRecoveryBaseline !== null &&
+    !isStaffWorkloadError &&
+    staffWorkloadDataUpdatedAt > assignmentEligibilityRecoveryBaseline;
+  const isAssignmentEligibilityRecoveryRequired =
+    assignmentEligibilityRecoveryBaseline !== null && !hasRecoveredAssignmentEligibility;
+  const staffWorkload =
+    !isStaffWorkloadError || canRetainCachedStaffWorkload ? (staffWorkloadData?.data ?? []) : [];
+  const assignableStaffWorkload =
+    isStaffWorkloadError || isAssignmentEligibilityRecoveryRequired
+      ? []
+      : staffWorkload.filter((staff) => staff.assignable_work_request_types.includes(requestType));
+  const selectedAssignee =
+    assignableStaffWorkload.find((staff) => staff.id === requestAssignee) ?? null;
   const selectedRequestTypeLabel =
     WORK_REQUEST_OPTIONS.find((option) => option.value === requestType)?.label ?? '業務を依頼';
   const selectedRequestPriorityLabel =
@@ -371,33 +507,68 @@ export function TasksContent({
 
   const createRequestMutation = useMutation({
     mutationFn: async () => {
+      if (!selectedAssignee) {
+        throw new Error('基本権限上、この依頼を割り当てられるスタッフを選択してください');
+      }
       const dueDateIso = requestDueDate
         ? new Date(`${requestDueDate}T23:59:00+09:00`).toISOString()
         : null;
-      const res = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({
-          task_type: requestType,
-          title: requestTitle.trim(),
-          description: requestDescription.trim() || undefined,
-          priority: requestPriority,
-          assigned_to: requestAssignee,
-          due_date: dueDateIso,
+      const requestPayload = {
+        task_type: requestType,
+        title: requestTitle.trim(),
+        description: requestDescription.trim() || undefined,
+        priority: requestPriority,
+        assigned_to: requestAssignee,
+        due_date: dueDateIso,
+        related_entity_type: initialRelatedEntityType ?? undefined,
+        related_entity_id: initialRelatedEntityId ?? undefined,
+        metadata: {
+          source: 'staff_work_request',
+          requested_by: currentUserId,
+          request_type_label: selectedRequestTypeLabel,
           related_entity_type: initialRelatedEntityType ?? undefined,
           related_entity_id: initialRelatedEntityId ?? undefined,
-          metadata: {
-            source: 'staff_work_request',
-            requested_by: currentUserId,
-            request_type_label: selectedRequestTypeLabel,
-            related_entity_type: initialRelatedEntityType ?? undefined,
-            related_entity_id: initialRelatedEntityId ?? undefined,
-          },
-        }),
-      });
-      await readApiAcknowledgement(res, '業務依頼の作成に失敗しました');
+        },
+      };
+      const payloadFingerprint = JSON.stringify(requestPayload);
+      let submission = requestSubmissionRef.current;
+      if (!submission || submission.payloadFingerprint !== payloadFingerprint) {
+        submission = {
+          payloadFingerprint,
+          dedupeKey: createClientIdempotencyKey('staff-work-request'),
+        };
+        requestSubmissionRef.current = submission;
+      }
+
+      let res: Response;
+      try {
+        res = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: buildOrgJsonHeaders(orgId),
+          body: JSON.stringify({
+            ...requestPayload,
+            dedupe_key: submission.dedupeKey,
+          }),
+        });
+      } catch {
+        throw createWorkRequestSubmissionError({ status: 0, outcomeUnknown: true });
+      }
+
+      const assignmentEligibilityRejected = await isTaskAssigneeRejectionResponse(res);
+      try {
+        await readApiAcknowledgement(res, '業務依頼の作成に失敗しました');
+      } catch {
+        throw createWorkRequestSubmissionError({
+          status: res.status,
+          outcomeUnknown: res.ok || res.status >= 500,
+          assignmentEligibilityRejected,
+        });
+      }
     },
     onSuccess: () => {
+      requestSubmissionRef.current = null;
+      setRequestSubmissionFailure(null);
+      setAssignmentEligibilityRecoveryBaseline(null);
       toast.success('業務を依頼しました');
       setRequestTitle('');
       setRequestDescription('');
@@ -407,9 +578,37 @@ export function TasksContent({
       void queryClient.invalidateQueries({ queryKey: ['staff-workload', orgId] });
     },
     onError: (error) => {
-      toast.error(messageFromError(error, '業務依頼の作成に失敗しました'));
+      const submissionError = isWorkRequestSubmissionError(error) ? error : null;
+      if (submissionError?.assignmentEligibilityRejected) {
+        setRequestAssignee('');
+        setRequestSubmissionFailure('assignment_eligibility');
+        setAssignmentEligibilityRecoveryBaseline(staffWorkloadDataUpdatedAt);
+      } else if (submissionError?.outcomeUnknown) {
+        setRequestSubmissionFailure('outcome_unknown');
+        void queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
+        void queryClient.invalidateQueries({ queryKey: ['tasks-health-board', orgId] });
+      } else {
+        setRequestSubmissionFailure('rejected');
+      }
+      void queryClient.invalidateQueries({ queryKey: ['staff-workload', orgId] });
+      toast.error(
+        submissionError?.outcomeUnknown
+          ? '送信結果を確認できません。同じ内容で再送すると重複を防止できます'
+          : messageFromError(error, '業務依頼の作成に失敗しました'),
+      );
     },
   });
+  const submitDisabledReason = isStaffWorkloadError
+    ? 'スタッフ情報を再取得するまで依頼できません'
+    : isAssignmentEligibilityRecoveryRequired
+      ? '割当候補を再確認するまで依頼できません'
+      : !selectedAssignee
+        ? '基本権限上、この依頼を割り当てられるスタッフを選択してください'
+        : !requestTitle.trim()
+          ? '件名を入力してください'
+          : createRequestMutation.isPending
+            ? '依頼を送信中です'
+            : null;
 
   const bulkCompleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
@@ -625,13 +824,40 @@ export function TasksContent({
             // 過剰な追加依頼を避けられるようにする（色だけに依存せずアイコン+数値を併記）。
             const isHighLoad =
               staff.workload_score > 0 && staff.workload_score >= highLoadThreshold;
+            const isAssignable =
+              !isStaffWorkloadError &&
+              !isAssignmentEligibilityRecoveryRequired &&
+              staff.assignable_work_request_types.includes(requestType);
+            const availabilityDescriptionId = `staff-workload-availability-${staff.id}`;
+            const availabilityDescription = isStaffWorkloadError
+              ? 'スタッフ情報を再取得するまで、この依頼先は選択できません'
+              : isAssignmentEligibilityRecoveryRequired
+                ? '割当候補の再確認が完了するまで、この依頼先は選択できません'
+                : isAssignable
+                  ? '基本権限上、この依頼を割り当てできます'
+                  : '基本権限上、この依頼は割り当てできません';
+            const availabilityContextId = isStaffWorkloadError
+              ? 'staff-workload-error'
+              : isAssignmentEligibilityRecoveryRequired
+                ? 'work-request-assignment-recovery'
+                : null;
             return (
               <button
                 key={staff.id}
                 type="button"
-                onClick={() => setRequestAssignee(staff.id)}
-                className={`rounded-lg border p-4 text-left transition hover:border-primary/60 hover:bg-primary/5 ${
-                  requestAssignee === staff.id ? 'border-primary bg-primary/5' : 'border-border/70'
+                onClick={isAssignable ? () => setRequestAssignee(staff.id) : undefined}
+                aria-disabled={!isAssignable}
+                aria-describedby={[availabilityDescriptionId, availabilityContextId]
+                  .filter(Boolean)
+                  .join(' ')}
+                className={`rounded-lg border p-4 text-left transition ${
+                  isAssignable
+                    ? 'hover:border-primary/60 hover:bg-primary/5'
+                    : 'cursor-not-allowed opacity-70'
+                } ${
+                  selectedAssignee?.id === staff.id
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border/70'
                 }`}
                 data-testid="staff-workload-card"
               >
@@ -681,6 +907,14 @@ export function TasksContent({
                     <p>現在表示する抱え込みはありません</p>
                   ) : null}
                 </div>
+                <p
+                  id={availabilityDescriptionId}
+                  className={`mt-3 text-xs font-medium ${
+                    isAssignable ? 'text-primary' : 'text-muted-foreground'
+                  }`}
+                >
+                  {availabilityDescription}
+                </p>
               </button>
             );
           })}
@@ -696,8 +930,18 @@ export function TasksContent({
           ) : null}
           {!isStaffWorkloadLoading && isStaffWorkloadError ? (
             // 取得失敗時は「スタッフがいない」かのような false-empty を出さず、再読み込み導線を示す。
-            <div className="col-span-full flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              <span>スタッフ別業務量を取得できませんでした。</span>
+            <div
+              id="staff-workload-error"
+              role="alert"
+              className="col-span-full flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+            >
+              <span>
+                {canRetainCachedStaffWorkload
+                  ? `最新のスタッフ別業務量を取得できないため、前回取得データを読み取り専用で表示しています。 ${
+                      cachedStaffWorkloadAgeLabel ?? '最終更新時刻は確認できません。'
+                    }`
+                  : 'スタッフ別業務量を取得できませんでした。'}
+              </span>
               <Button
                 type="button"
                 size="sm"
@@ -720,27 +964,19 @@ export function TasksContent({
       >
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="space-y-1.5">
-            <Label htmlFor="work-request-assignee">依頼先</Label>
-            <Select
-              value={requestAssignee}
-              onValueChange={(value) => setRequestAssignee(value ?? '')}
-            >
-              <SelectTrigger id="work-request-assignee">
-                <SelectValue placeholder="スタッフを選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {staffWorkload.map((staff) => (
-                  <SelectItem key={staff.id} value={staff.id}>
-                    {staff.name} / 未完了{staff.open_task_count}件
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
             <Label htmlFor="work-request-type">依頼内容</Label>
-            <Select value={requestType} onValueChange={(value) => setRequestType(value ?? '')}>
-              <SelectTrigger id="work-request-type">
+            <Select
+              value={requestType}
+              onValueChange={(value) => {
+                if (!isWorkRequestType(value)) return;
+                setRequestType(value);
+                const currentAssignee = staffWorkload.find((staff) => staff.id === requestAssignee);
+                if (!currentAssignee?.assignable_work_request_types.includes(value)) {
+                  setRequestAssignee('');
+                }
+              }}
+            >
+              <SelectTrigger id="work-request-type" aria-describedby="work-request-policy-note">
                 <span>{selectedRequestTypeLabel}</span>
               </SelectTrigger>
               <SelectContent>
@@ -751,6 +987,98 @@ export function TasksContent({
                 ))}
               </SelectContent>
             </Select>
+            <p id="work-request-policy-note" className="text-xs text-muted-foreground">
+              {WORK_REQUEST_POLICY_NOTE[requestType]}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="work-request-assignee">依頼先</Label>
+            <Select
+              value={selectedAssignee?.id ?? ''}
+              onValueChange={(value) => setRequestAssignee(value ?? '')}
+            >
+              <SelectTrigger
+                id="work-request-assignee"
+                aria-describedby={
+                  isStaffWorkloadError
+                    ? 'staff-workload-error'
+                    : isAssignmentEligibilityRecoveryRequired
+                      ? 'work-request-assignment-recovery'
+                      : assignableStaffWorkload.length === 0
+                        ? 'work-request-assignee-unavailable'
+                        : undefined
+                }
+              >
+                <SelectValue placeholder="スタッフを選択" />
+              </SelectTrigger>
+              <SelectContent>
+                {assignableStaffWorkload.map((staff) => (
+                  <SelectItem key={staff.id} value={staff.id}>
+                    {staff.name}（{staff.role_label}）/ 未完了{staff.open_task_count}件
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!isStaffWorkloadLoading &&
+            !isStaffWorkloadError &&
+            !isAssignmentEligibilityRecoveryRequired &&
+            assignableStaffWorkload.length === 0 ? (
+              <p
+                id="work-request-assignee-unavailable"
+                className="text-xs text-muted-foreground"
+                role="status"
+              >
+                基本権限上、この依頼を割り当てられるスタッフが見つかりません。
+              </p>
+            ) : null}
+            {isAssignmentEligibilityRecoveryRequired ? (
+              <div
+                id="work-request-assignment-recovery"
+                role="alert"
+                className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive"
+              >
+                <p>
+                  業務依頼を作成できませんでした。割当候補が変わった可能性があるため、再読み込みして依頼先を選び直してください。
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    void queryClient.invalidateQueries({ queryKey: ['staff-workload', orgId] })
+                  }
+                >
+                  割当候補を再読み込み
+                </Button>
+              </div>
+            ) : null}
+            {requestSubmissionFailure === 'outcome_unknown' ? (
+              <div
+                role="alert"
+                className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive"
+              >
+                <p>
+                  通信の途中で送信結果を確認できませんでした。入力内容を変えずに再送すると、同じ依頼として照合され重複作成を防げます。
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => createRequestMutation.mutate()}
+                  disabled={createRequestMutation.isPending}
+                >
+                  同じ内容で結果を確認
+                </Button>
+              </div>
+            ) : null}
+            {requestSubmissionFailure === 'rejected' ? (
+              <div
+                role="alert"
+                className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive"
+              >
+                依頼は作成されませんでした。入力内容、対象業務、現在の権限を確認して再送してください。
+              </div>
+            ) : null}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="work-request-priority">優先度</Label>
@@ -812,12 +1140,20 @@ export function TasksContent({
           <Button
             type="button"
             onClick={() => createRequestMutation.mutate()}
-            disabled={!requestAssignee || !requestTitle.trim() || createRequestMutation.isPending}
+            disabled={!selectedAssignee || !requestTitle.trim() || createRequestMutation.isPending}
+            aria-describedby={
+              submitDisabledReason ? 'staff-work-request-submit-disabled-reason' : undefined
+            }
             data-testid="staff-work-request-submit"
           >
             <Send className="mr-1.5 size-3.5" aria-hidden="true" />
             {createRequestMutation.isPending ? '依頼中...' : '依頼する'}
           </Button>
+          {submitDisabledReason ? (
+            <span id="staff-work-request-submit-disabled-reason" className="sr-only">
+              {submitDisabledReason}
+            </span>
+          ) : null}
         </div>
       </PageSection>
 

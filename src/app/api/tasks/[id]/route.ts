@@ -6,6 +6,12 @@ import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { requiresDedicatedTaskCompletion } from '@/lib/tasks/inline-completion';
+import {
+  buildTaskAssigneeRejectionDetails,
+  canActorCreateTaskForAssignee,
+  canActorManageTaskAssignments,
+  evaluateTaskAssigneeMembershipsEligibility,
+} from '@/lib/tasks/task-assignee-eligibility';
 import { updateTaskSchema } from '@/lib/validations/task';
 import {
   buildDashboardTaskAssignmentWhere,
@@ -65,6 +71,62 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     parsed.data.assigned_to !== existing.assigned_to
   ) {
     return validationError('担当者の変更権限がありません');
+  }
+
+  const isAssignmentChanged =
+    parsed.data.assigned_to !== undefined && parsed.data.assigned_to !== existing.assigned_to;
+  if (isAssignmentChanged) {
+    const assignmentUserIds = parsed.data.assigned_to
+      ? Array.from(new Set([ctx.userId, parsed.data.assigned_to]))
+      : [ctx.userId];
+    const assignmentMemberships = await prisma.membership.findMany({
+      where: {
+        org_id: ctx.orgId,
+        user_id: { in: assignmentUserIds },
+        is_active: true,
+        user: { is_active: true, account_status: 'active' },
+      },
+      select: { user_id: true, role: true, can_audit_dispense: true },
+    });
+    const actor = {
+      userId: ctx.userId,
+      memberships: assignmentMemberships
+        .filter((membership) => membership.user_id === ctx.userId)
+        .map((membership) => ({ role: membership.role })),
+    };
+    const canChangeAssignment = parsed.data.assigned_to
+      ? canActorCreateTaskForAssignee(actor, parsed.data.assigned_to)
+      : canActorManageTaskAssignments(actor);
+    if (!canChangeAssignment) {
+      return validationError(
+        '担当者の変更権限がありません',
+        buildTaskAssigneeRejectionDetails('変更可能な担当者を選択してください'),
+      );
+    }
+    if (parsed.data.assigned_to) {
+      const assigneeMemberships = assignmentMemberships.filter(
+        (membership) => membership.user_id === parsed.data.assigned_to,
+      );
+      if (assigneeMemberships.length === 0) {
+        return validationError(
+          '依頼先スタッフが見つかりません',
+          buildTaskAssigneeRejectionDetails('有効なスタッフを選択してください'),
+        );
+      }
+      const eligibility = evaluateTaskAssigneeMembershipsEligibility(
+        existing.task_type,
+        assigneeMemberships.map((membership) => ({
+          role: membership.role,
+          canAuditDispense: membership.can_audit_dispense,
+        })),
+      );
+      if (!eligibility.eligible) {
+        return validationError(
+          '依頼先スタッフはこのタスク種別を担当できません',
+          buildTaskAssigneeRejectionDetails('このタスク種別を担当できるスタッフを選択してください'),
+        );
+      }
+    }
   }
 
   const task = await withOrgContext(

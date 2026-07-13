@@ -12,7 +12,7 @@ const {
   patientFindFirstMock,
   taskFindManyMock,
   userFindManyMock,
-  membershipFindFirstMock,
+  membershipFindManyMock,
   taskFindFirstMock,
   taskCreateMock,
   withOrgContextMock,
@@ -24,7 +24,7 @@ const {
   patientFindFirstMock: vi.fn(),
   taskFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
+  membershipFindManyMock: vi.fn(),
   taskFindFirstMock: vi.fn(),
   taskCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -52,7 +52,7 @@ vi.mock('@/lib/db/client', () => ({
       findMany: userFindManyMock,
     },
     membership: {
-      findFirst: membershipFindFirstMock,
+      findMany: membershipFindManyMock,
     },
   },
 }));
@@ -107,7 +107,9 @@ describe('/api/tasks', () => {
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
     taskFindManyMock.mockResolvedValue([]);
     userFindManyMock.mockResolvedValue([]);
-    membershipFindFirstMock.mockResolvedValue({ user_id: 'user_1' });
+    membershipFindManyMock.mockResolvedValue([
+      { user_id: 'user_1', role: 'pharmacist', can_audit_dispense: true },
+    ]);
     taskFindFirstMock.mockResolvedValue(null);
     taskCreateMock.mockResolvedValue({
       id: 'task_1',
@@ -692,14 +694,14 @@ describe('/api/tasks', () => {
 
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
-    expect(membershipFindFirstMock).toHaveBeenCalledWith({
+    expect(membershipFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
-        user_id: 'user_1',
+        user_id: { in: ['user_1'] },
         is_active: true,
-        user: { is_active: true },
+        user: { is_active: true, account_status: 'active' },
       },
-      select: { user_id: true },
+      select: { user_id: true, role: true, can_audit_dispense: true },
     });
     expect(allocateDisplayIdMock).toHaveBeenCalledWith(
       expect.objectContaining({ task: expect.objectContaining({ create: taskCreateMock }) }),
@@ -717,6 +719,184 @@ describe('/api/tasks', () => {
         related_entity_type: 'patient',
         related_entity_id: 'patient_1',
         metadata: { source: 'self_report', severity: 'high' },
+      }),
+    });
+  });
+
+  it.each([
+    ['staff_work_request_visit', 'clerk'],
+    ['staff_work_request_audit', 'pharmacist'],
+    ['staff_work_request_audit', 'pharmacist_trainee'],
+    ['staff_work_request_general', 'driver'],
+    ['patient_self_report_followup', 'external_viewer'],
+  ] as const)(
+    'rejects %s assignment to an ineligible %s before creating a task',
+    async (taskType, assigneeRole) => {
+      requireAuthContextMock.mockResolvedValueOnce({
+        ctx: { orgId: 'org_1', userId: 'owner_1', role: 'owner' },
+      });
+      membershipFindManyMock.mockResolvedValueOnce([
+        { user_id: 'owner_1', role: 'owner', can_audit_dispense: true },
+        { user_id: 'assignee_1', role: assigneeRole, can_audit_dispense: false },
+      ]);
+
+      const response = await POST(
+        createRequest('http://localhost/api/tasks', {
+          task_type: taskType,
+          title: '担当資格を確認する依頼',
+          priority: 'normal',
+          assigned_to: 'assignee_1',
+        }),
+      );
+      if (!response) throw new Error('response is undefined');
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '依頼先スタッフはこのタスク種別を担当できません',
+        details: {
+          reason: 'task_assignee_ineligible',
+          assigned_to: ['このタスク種別を担当できるスタッフを選択してください'],
+        },
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(allocateDisplayIdMock).not.toHaveBeenCalled();
+      expect(taskCreateMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['', '   '])(
+    'rejects a blank assigned_to value before assignment scope or writes (%j)',
+    async (assignedTo) => {
+      const response = await POST(
+        createRequest('http://localhost/api/tasks', {
+          task_type: 'staff_work_request_general',
+          title: '空の担当者を拒否',
+          assigned_to: assignedTo,
+        }),
+      );
+      if (!response) throw new Error('response is undefined');
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '入力値が不正です',
+        details: { assigned_to: ['assigned_to は空にできません'] },
+      });
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(membershipFindManyMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(taskCreateMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps personal-scope callers limited to self-assignment before membership lookup', async () => {
+    const response = await POST(
+      createRequest('http://localhost/api/tasks', {
+        task_type: 'staff_work_request_general',
+        title: '他スタッフへの依頼',
+        priority: 'normal',
+        assigned_to: 'user_2',
+      }),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '担当外ユーザーへのタスク割り当てはできません',
+      details: {
+        reason: 'task_assignee_ineligible',
+        assigned_to: ['担当できるスタッフを選択してください'],
+      },
+    });
+    expect(membershipFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ user_id: { in: ['user_1', 'user_2'] } }),
+      }),
+    );
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('allows an owner to create a task for another active eligible staff member', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { orgId: 'org_1', userId: 'owner_1', role: 'owner' },
+    });
+    membershipFindManyMock.mockResolvedValueOnce([
+      { user_id: 'owner_1', role: 'owner', can_audit_dispense: true },
+      { user_id: 'pharmacist_2', role: 'pharmacist', can_audit_dispense: true },
+    ]);
+
+    const response = await POST(
+      createRequest('http://localhost/api/tasks', {
+        task_type: 'staff_work_request_audit',
+        title: '監査依頼',
+        priority: 'normal',
+        assigned_to: 'pharmacist_2',
+      }),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(201);
+    expect(taskCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        task_type: 'staff_work_request_audit',
+        assigned_to: 'pharmacist_2',
+      }),
+    });
+  });
+
+  it('fails closed when the actor or assignee has mixed active roles', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: { orgId: 'org_1', userId: 'owner_1', role: 'owner' },
+    });
+    membershipFindManyMock
+      .mockResolvedValueOnce([
+        { user_id: 'owner_1', role: 'owner', can_audit_dispense: true },
+        { user_id: 'owner_1', role: 'pharmacist', can_audit_dispense: true },
+        { user_id: 'pharmacist_2', role: 'pharmacist', can_audit_dispense: true },
+      ])
+      .mockResolvedValueOnce([
+        { user_id: 'owner_1', role: 'owner', can_audit_dispense: true },
+        { user_id: 'pharmacist_2', role: 'pharmacist', can_audit_dispense: true },
+        { user_id: 'pharmacist_2', role: 'external_viewer', can_audit_dispense: false },
+      ]);
+
+    for (const title of ['actor role ambiguity', 'assignee role ambiguity']) {
+      const response = await POST(
+        createRequest('http://localhost/api/tasks', {
+          task_type: 'staff_work_request_general',
+          title,
+          assigned_to: 'pharmacist_2',
+        }),
+      );
+      if (!response) throw new Error('response is undefined');
+      expect(response.status).toBe(400);
+    }
+
+    expect(taskCreateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps patient-scoped follow-up tasks unassigned when the caller omits assigned_to', async () => {
+    const response = await POST(
+      createRequest('http://localhost/api/tasks', {
+        task_type: 'report_response_followup',
+        title: '返信内容を次回確認',
+        priority: 'normal',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+      }),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(201);
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        task_type: 'report_response_followup',
+        assigned_to: null,
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
       }),
     });
   });
@@ -810,7 +990,7 @@ describe('/api/tasks', () => {
       code: PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
       message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
     });
-    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskCreateMock).not.toHaveBeenCalled();
@@ -846,21 +1026,26 @@ describe('/api/tasks', () => {
       },
       select: { patient_id: true },
     });
-    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskCreateMock).not.toHaveBeenCalled();
   });
 
-  it('rejects create payloads assigned to inactive or unknown staff', async () => {
-    membershipFindFirstMock.mockResolvedValueOnce(null);
+  it('rejects inactive, non-active-account, cross-org, or unknown assignees', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { orgId: 'org_1', userId: 'owner_1', role: 'owner' },
+    });
+    membershipFindManyMock.mockResolvedValueOnce([
+      { user_id: 'owner_1', role: 'owner', can_audit_dispense: true },
+    ]);
 
     const response = await POST(
       createRequest('http://localhost/api/tasks', {
         task_type: 'patient_self_report_followup',
         title: '患者A: 服薬の困りごと',
         priority: 'high',
-        assigned_to: 'user_1',
+        assigned_to: 'unavailable_user',
         related_entity_type: 'patient',
         related_entity_id: 'patient_1',
       }),
@@ -871,6 +1056,19 @@ describe('/api/tasks', () => {
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '依頼先スタッフが見つかりません',
+      details: {
+        reason: 'task_assignee_ineligible',
+        assigned_to: ['有効なスタッフを選択してください'],
+      },
+    });
+    expect(membershipFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        user_id: { in: ['owner_1', 'unavailable_user'] },
+        is_active: true,
+        user: { is_active: true, account_status: 'active' },
+      },
+      select: { user_id: true, role: true, can_audit_dispense: true },
     });
     expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(taskCreateMock).not.toHaveBeenCalled();

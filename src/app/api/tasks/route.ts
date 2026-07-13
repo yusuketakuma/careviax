@@ -13,6 +13,11 @@ import { internalError, success, validationError } from '@/lib/api/response';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { canCompleteTaskInline } from '@/lib/tasks/inline-completion';
+import {
+  buildTaskAssigneeRejectionDetails,
+  canActorCreateTaskForAssignee,
+  evaluateTaskAssigneeMembershipsEligibility,
+} from '@/lib/tasks/task-assignee-eligibility';
 import { isRegisteredTaskType } from '@/lib/tasks/task-registry';
 import { createTaskSchema, taskPriorityValues, taskStatusValues } from '@/lib/validations/task';
 import {
@@ -407,12 +412,33 @@ async function authenticatedPOST(req: NextRequest) {
     orgId: ctx.orgId,
     accessContext: ctx,
   });
+  const assignmentMemberships = parsed.data.assigned_to
+    ? await prisma.membership.findMany({
+        where: {
+          org_id: ctx.orgId,
+          user_id: { in: Array.from(new Set([ctx.userId, parsed.data.assigned_to])) },
+          is_active: true,
+          user: { is_active: true, account_status: 'active' },
+        },
+        select: { user_id: true, role: true, can_audit_dispense: true },
+      })
+    : [];
   if (
-    assignmentScope.assignedToUserId &&
     parsed.data.assigned_to &&
-    parsed.data.assigned_to !== assignmentScope.assignedToUserId
+    !canActorCreateTaskForAssignee(
+      {
+        userId: ctx.userId,
+        memberships: assignmentMemberships
+          .filter((membership) => membership.user_id === ctx.userId)
+          .map((membership) => ({ role: membership.role })),
+      },
+      parsed.data.assigned_to,
+    )
   ) {
-    return validationError('担当外ユーザーへのタスク割り当てはできません');
+    return validationError(
+      '担当外ユーザーへのタスク割り当てはできません',
+      buildTaskAssigneeRejectionDetails('担当できるスタッフを選択してください'),
+    );
   }
   if (!canCreateTaskInAssignmentScope(assignmentScope, parsed.data)) {
     return validationError('担当外リソースのタスクは作成できません');
@@ -434,17 +460,27 @@ async function authenticatedPOST(req: NextRequest) {
     if ('response' in writable) return writable.response;
   }
   if (parsed.data.assigned_to) {
-    const assignee = await prisma.membership.findFirst({
-      where: {
-        org_id: ctx.orgId,
-        user_id: parsed.data.assigned_to,
-        is_active: true,
-        user: { is_active: true },
-      },
-      select: { user_id: true },
-    });
-    if (!assignee) {
-      return validationError('依頼先スタッフが見つかりません');
+    const assigneeMemberships = assignmentMemberships.filter(
+      (membership) => membership.user_id === parsed.data.assigned_to,
+    );
+    if (assigneeMemberships.length === 0) {
+      return validationError(
+        '依頼先スタッフが見つかりません',
+        buildTaskAssigneeRejectionDetails('有効なスタッフを選択してください'),
+      );
+    }
+    const eligibility = evaluateTaskAssigneeMembershipsEligibility(
+      parsed.data.task_type,
+      assigneeMemberships.map((membership) => ({
+        role: membership.role,
+        canAuditDispense: membership.can_audit_dispense,
+      })),
+    );
+    if (!eligibility.eligible) {
+      return validationError(
+        '依頼先スタッフはこのタスク種別を担当できません',
+        buildTaskAssigneeRejectionDetails('このタスク種別を担当できるスタッフを選択してください'),
+      );
     }
   }
 
