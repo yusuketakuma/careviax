@@ -78,6 +78,8 @@ const RECORD = {
   patient_id: 'patient_1',
   pharmacist_id: 'pharmacist_1',
   visit_date: '2026-06-11',
+  visit_started_at: null,
+  visit_ended_at: null,
   outcome_status: 'completed',
   soap_subjective: 'S',
   soap_objective: 'O',
@@ -314,7 +316,20 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
   it('unwraps the visit record detail data envelope', async () => {
     const { queryConfigs } = setupQueries();
     render(<VisitRecordDetail recordId="record_1" />);
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: RECORD }));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: {
+          ...RECORD,
+          org_id: 'org_1',
+          display_id: 'vr0000000001',
+          baseline_context: null,
+          schedule: {
+            ...RECORD.schedule,
+            case_: { primary_pharmacist_id: 'pharmacist_1', backup_pharmacist_id: null },
+          },
+        },
+      }),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -397,7 +412,9 @@ describe('VisitRecordDetail fetch-error handling (no false-empty workflow)', () 
     const createNextVisit = mutationConfigs[1];
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(jsonResponse({ data: { id: 'schedule_2' } }, 201));
+      .mockResolvedValue(
+        jsonResponse({ data: { id: 'schedule_2', assignment_mode: 'primary' } }, 201),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     try {

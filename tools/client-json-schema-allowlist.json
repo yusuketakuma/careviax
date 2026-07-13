@@ -48,12 +48,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/visits/[id]/visit-record-detail.tsx",
-      "counts": {
-        "stringFallback": 6
-      }
-    },
-    {
       "path": "src/components/features/patients/patient-form.tsx",
       "counts": {
         "stringFallback": 6

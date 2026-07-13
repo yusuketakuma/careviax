@@ -79,6 +79,14 @@ import {
 } from './visit-record-report-generation';
 import { buildVisitRecordPdfHref } from '@/lib/visits/navigation';
 import { clientLog } from '@/lib/utils/client-log';
+import { buildPatientHeaderSummaryResponseSchema } from '@/app/(dashboard)/patients/[id]/card-workspace-response-schemas';
+import {
+  buildVisitBillingCandidatesResponseSchema,
+  buildVisitPreparationDetailResponseSchema,
+  buildVisitRecordDetailResponseSchema,
+  buildVisitResidualMedicationsResponseSchema,
+  visitScheduleCreateResponseSchema,
+} from './visit-record-detail-response-schemas';
 
 type ResidualMedication = {
   id: string;
@@ -158,7 +166,7 @@ type VisitRecordFull = {
   soap_objective: string | null;
   soap_assessment: string | null;
   soap_plan: string | null;
-  structured_soap: StructuredSoap | null;
+  structured_soap: Partial<StructuredSoap> | null;
   receipt_person_name: string | null;
   receipt_person_relation: string | null;
   receipt_at: string | null;
@@ -180,7 +188,7 @@ type VisitRecordFull = {
     uploaded_at: string | null;
     kind: 'photo' | 'attachment';
   }>;
-  visit_geo_log: VisitGeoLog | null;
+  visit_geo_log?: VisitGeoLog | null;
   schedule: {
     id: string;
     case_id: string;
@@ -521,13 +529,10 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
         body: JSON.stringify(payload),
       });
 
-      const responsePayload = await readApiJson<{ data?: { id?: unknown } }>(
-        response,
-        '次回訪問予定の作成に失敗しました',
-      );
-      if (typeof responsePayload.data?.id !== 'string' || !responsePayload.data.id.trim()) {
-        throw new Error('次回訪問予定の作成に失敗しました');
-      }
+      const responsePayload = await readApiJson<{ data: { id: string } }>(response, {
+        fallbackMessage: '次回訪問予定の作成に失敗しました',
+        schema: visitScheduleCreateResponseSchema,
+      });
       return { id: responsePayload.data.id };
     },
     onSuccess: (schedule) => {
@@ -555,10 +560,10 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       const res = await fetch(`/api/visit-records/${recordId}`, {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: VisitRecordFull }>(
-        res,
-        '訪問記録の取得に失敗しました',
-      );
+      const payload = await readApiJson<{ data: VisitRecordFull }>(res, {
+        fallbackMessage: '訪問記録の取得に失敗しました',
+        schema: buildVisitRecordDetailResponseSchema(recordId),
+      });
       return payload.data;
     },
     enabled: !!orgId && !!recordId,
@@ -576,10 +581,10 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       const res = await fetch(buildPatientApiPath(record?.patient_id ?? '', '/header-summary'), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: PatientHeaderSummary }>(
-        res,
-        '患者ヘッダー情報の取得に失敗しました',
-      );
+      const payload = await readApiJson<{ data: PatientHeaderSummary }>(res, {
+        fallbackMessage: '患者ヘッダー情報の取得に失敗しました',
+        schema: buildPatientHeaderSummaryResponseSchema(record?.patient_id ?? ''),
+      });
       return payload.data;
     },
     enabled: !!orgId && !!record?.patient_id,
@@ -618,7 +623,10 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       const res = await fetch(`/api/billing-candidates?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<BillingCandidatesResponse>(res, '請求候補の取得に失敗しました');
+      return readApiJson<BillingCandidatesResponse>(res, {
+        fallbackMessage: '請求候補の取得に失敗しました',
+        schema: buildVisitBillingCandidatesResponseSchema(record?.patient_id ?? ''),
+      });
     },
     enabled: !!orgId && !!record?.patient_id && !!billingMonth,
   });
@@ -667,11 +675,11 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       });
       // 取得失敗を空配列に潰すと残薬ゼロ(=訪問準備の根拠なし)と区別できないため、
       // throw して isError を立て、利用側で「取得失敗」を明示する。
-      const json = await readApiJson<{ data?: ResidualMedication[] }>(
-        res,
-        '残薬データの取得に失敗しました',
-      );
-      return json.data ?? [];
+      const json = await readApiJson<{ data: ResidualMedication[] }>(res, {
+        fallbackMessage: '残薬データの取得に失敗しました',
+        schema: buildVisitResidualMedicationsResponseSchema(recordId),
+      });
+      return json.data;
     },
     enabled: !!orgId && !!recordId,
   });
@@ -686,7 +694,10 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       const res = await fetch(`/api/visit-preparations/${record?.schedule?.id}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<VisitPreparationSnapshot>(res, '訪問準備情報の取得に失敗しました');
+      return readApiJson<VisitPreparationSnapshot>(res, {
+        fallbackMessage: '訪問準備情報の取得に失敗しました',
+        schema: buildVisitPreparationDetailResponseSchema(record?.schedule?.id ?? ''),
+      });
     },
     enabled: !!orgId && !!record?.schedule?.id,
   });
