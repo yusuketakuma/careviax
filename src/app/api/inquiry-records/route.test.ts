@@ -340,72 +340,103 @@ describe('/api/inquiry-records POST', () => {
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
-  it('denies unassigned cycles before creating inquiry side effects', async () => {
-    const inquiryCreateMock = vi.fn();
-    const communicationRequestCreateMock = vi.fn();
-    const communicationEventCreateMock = vi.fn();
-    const medicationCycleFindFirstMock = vi.fn().mockResolvedValue(null);
+  it.each(['cycle_missing', 'cycle_unassigned'])(
+    'returns the same primary-target 404 for missing or inaccessible cycle %s',
+    async (cycleId) => {
+      const inquiryCreateMock = vi.fn();
+      const communicationRequestCreateMock = vi.fn();
+      const communicationEventCreateMock = vi.fn();
+      const medicationCycleFindFirstMock = vi.fn().mockResolvedValue(null);
+      const medicationCycleUpdateMock = vi.fn();
+      const prescriptionLineFindFirstMock = vi.fn();
+      const medicationIssueFindFirstMock = vi.fn();
+      const medicationIssueUpdateMock = vi.fn();
+      const cycleTransitionLogCreateMock = vi.fn();
+      const auditLogCreateMock = vi.fn();
 
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        medicationCycle: {
-          findFirst: medicationCycleFindFirstMock,
-          update: vi.fn(),
-        },
-        prescriptionLine: {
-          findFirst: vi.fn(),
-        },
-        medicationIssue: {
-          findFirst: vi.fn(),
-          update: vi.fn(),
-        },
-        inquiryRecord: {
-          create: inquiryCreateMock,
-        },
-        communicationRequest: {
-          create: communicationRequestCreateMock,
-        },
-        communicationEvent: {
-          create: communicationEventCreateMock,
-        },
-      }),
-    );
+      withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+        callback({
+          medicationCycle: {
+            findFirst: medicationCycleFindFirstMock,
+            update: medicationCycleUpdateMock,
+          },
+          prescriptionLine: {
+            findFirst: prescriptionLineFindFirstMock,
+          },
+          medicationIssue: {
+            findFirst: medicationIssueFindFirstMock,
+            update: medicationIssueUpdateMock,
+          },
+          inquiryRecord: {
+            create: inquiryCreateMock,
+          },
+          communicationRequest: {
+            create: communicationRequestCreateMock,
+          },
+          communicationEvent: {
+            create: communicationEventCreateMock,
+          },
+          cycleTransitionLog: {
+            create: cycleTransitionLogCreateMock,
+          },
+          auditLog: {
+            create: auditLogCreateMock,
+          },
+        }),
+      );
 
-    const response = await POST(
-      createPostRequest({
-        cycle_id: 'cycle_unassigned',
-        reason: '用量疑義',
-        inquiry_to_physician: '在宅医',
-        inquiry_content: '用量をご確認ください',
-        inquired_at: '2026-03-29',
-      }),
-    );
+      const response = await POST(
+        createPostRequest({
+          cycle_id: cycleId,
+          reason: '用量疑義',
+          inquiry_to_physician: '在宅医',
+          inquiry_content: '用量をご確認ください',
+          inquired_at: '2026-03-29',
+        }),
+      );
 
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(400);
-    expectSensitiveNoStore(response);
-    expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
-      where: {
-        id: 'cycle_unassigned',
-        org_id: 'org_1',
-      },
-      select: {
-        id: true,
-        overall_status: true,
-        patient_id: true,
-        case_id: true,
-      },
-    });
-    expect(inquiryCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
-    expect(communicationEventCreateMock).not.toHaveBeenCalled();
-    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
-  });
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(404);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toEqual({
+        code: 'WORKFLOW_NOT_FOUND',
+        message: '指定されたサイクルが見つかりません',
+      });
+      expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          id: cycleId,
+          org_id: 'org_1',
+        },
+        select: {
+          id: true,
+          overall_status: true,
+          patient_id: true,
+          case_id: true,
+        },
+      });
+      expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
+      expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
+      expect(inquiryCreateMock).not.toHaveBeenCalled();
+      expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+      expect(communicationEventCreateMock).not.toHaveBeenCalled();
+      expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+      expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+      expect(medicationCycleUpdateMock).not.toHaveBeenCalled();
+      expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('denies line IDs that do not belong to the assigned cycle before writing', async () => {
     const inquiryCreateMock = vi.fn();
     const communicationRequestCreateMock = vi.fn();
+    const communicationEventCreateMock = vi.fn();
     const prescriptionLineFindFirstMock = vi.fn().mockResolvedValue(null);
+    const medicationCycleUpdateMock = vi.fn();
+    const medicationIssueFindFirstMock = vi.fn();
+    const medicationIssueUpdateMock = vi.fn();
+    const cycleTransitionLogCreateMock = vi.fn();
+    const auditLogCreateMock = vi.fn();
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -416,14 +447,14 @@ describe('/api/inquiry-records POST', () => {
             patient_id: 'patient_1',
             case_id: 'case_1',
           }),
-          update: vi.fn(),
+          update: medicationCycleUpdateMock,
         },
         prescriptionLine: {
           findFirst: prescriptionLineFindFirstMock,
         },
         medicationIssue: {
-          findFirst: vi.fn(),
-          update: vi.fn(),
+          findFirst: medicationIssueFindFirstMock,
+          update: medicationIssueUpdateMock,
         },
         inquiryRecord: {
           create: inquiryCreateMock,
@@ -432,7 +463,13 @@ describe('/api/inquiry-records POST', () => {
           create: communicationRequestCreateMock,
         },
         communicationEvent: {
-          create: vi.fn(),
+          create: communicationEventCreateMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
         },
       }),
     );
@@ -451,6 +488,13 @@ describe('/api/inquiry-records POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        line_id: ['指定された処方明細を確認できません'],
+      },
+    });
     expect(prescriptionLineFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'line_foreign',
@@ -461,9 +505,103 @@ describe('/api/inquiry-records POST', () => {
       },
       select: { id: true },
     });
+    expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
     expect(inquiryCreateMock).not.toHaveBeenCalled();
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a neutral linked-reference error when the medication issue is inaccessible', async () => {
+    const inquiryCreateMock = vi.fn();
+    const communicationRequestCreateMock = vi.fn();
+    const communicationEventCreateMock = vi.fn();
+    const medicationCycleUpdateMock = vi.fn();
+    const medicationIssueFindFirstMock = vi.fn().mockResolvedValue(null);
+    const medicationIssueUpdateMock = vi.fn();
+    const prescriptionLineFindFirstMock = vi.fn();
+    const cycleTransitionLogCreateMock = vi.fn();
+    const auditLogCreateMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        medicationCycle: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'cycle_1',
+            overall_status: 'ready_to_dispense',
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+          }),
+          update: medicationCycleUpdateMock,
+        },
+        prescriptionLine: {
+          findFirst: prescriptionLineFindFirstMock,
+        },
+        medicationIssue: {
+          findFirst: medicationIssueFindFirstMock,
+          update: medicationIssueUpdateMock,
+        },
+        inquiryRecord: {
+          create: inquiryCreateMock,
+        },
+        communicationRequest: {
+          create: communicationRequestCreateMock,
+        },
+        communicationEvent: {
+          create: communicationEventCreateMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
+        },
+      }),
+    );
+
+    const response = await POST(
+      createPostRequest({
+        cycle_id: 'cycle_1',
+        issue_id: 'issue_foreign',
+        reason: '用量疑義',
+        inquiry_to_physician: '在宅医',
+        inquiry_content: '用量をご確認ください',
+        inquired_at: '2026-03-29',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        issue_id: ['指定された服薬課題を確認できません'],
+      },
+    });
+    expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationIssueFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'issue_foreign',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        OR: [{ case_id: 'case_1' }, { case_id: null }],
+      },
+      select: { id: true },
+    });
+    expect(inquiryCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('creates communication request with inquiry context snapshot', async () => {

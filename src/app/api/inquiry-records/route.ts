@@ -5,7 +5,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { buildCursorPage, parseBoundedInteger } from '@/lib/api/pagination';
-import { internalError, success, validationError } from '@/lib/api/response';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createInquiryRecordSchema } from '@/lib/validations/prescription';
@@ -369,13 +369,17 @@ async function authenticatedPOST(req: NextRequest) {
 
     if ('error' in result) {
       if (result.error === 'cycle_not_found') {
-        return validationError('指定されたサイクルが見つかりません');
+        return notFound('指定されたサイクルが見つかりません');
       }
       if (result.error === 'issue_not_found') {
-        return validationError('指定された服薬課題が見つかりません');
+        return validationError('入力値が不正です', {
+          issue_id: ['指定された服薬課題を確認できません'],
+        });
       }
       if (result.error === 'line_not_found') {
-        return validationError('指定された処方明細が見つかりません');
+        return validationError('入力値が不正です', {
+          line_id: ['指定された処方明細を確認できません'],
+        });
       }
     }
 

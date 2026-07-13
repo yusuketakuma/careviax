@@ -54,6 +54,25 @@
 
 ## 直近の作業
 
+- codex2 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001D (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    `POST /api/inquiry-records`とfocused test、shared response helper、installed Next 16.2.9 Route Handler guide、API/auth/raw-read/module guardsを確認した。
+    必須`cycle_id`はInquiryRecordのownerであり同一transaction内のMedicationCycle更新・CycleTransitionLogも所有するprimary mutation targetだが、
+    missing/inaccessibleを400で返していた。一方`line_id` / `issue_id`はvalidated cycleへ付随するlinked referenceなのに、存在・tenant・assignmentを
+    示唆するroute固有400 copyを返していた。
+  - files changed / correctness / security / privacy:
+    cycle missing/unassignedを同じexact 404 `WORKFLOW_NOT_FOUND` / `指定されたサイクルが見つかりません`へ統一し、line/issueはgeneric 400
+    `VALIDATION_ERROR` / `入力値が不正です` + neutral field detailへ統一した。全拒否時のinquiry/communication/task/issue/cycle/transition/audit
+    副作用0を固定し、auth/assignment/org predicates、single transaction、success DTO、no-store、PHI/log境界を維持した。
+  - performance / stability / discovered:
+    success/denialのquery・write・network数は0増で、外部networkは0、retry/timeout/lock/serializationも追加していない。既存POSTにrequest-level
+    idempotencyがなくresponse-loss retry/double submit/concurrent createで重複inquiry/communication/transitionが可能な別リスクを確認し、
+    `INQUIRY-CREATE-IDEMPOTENCY-001`としてPlansへ分離登録した。本status-only sliceは推測でdedupe semanticsを追加していない。
+  - validation / review / remaining / rollback:
+    Codex2 FREEZE後にcodex1がdiffとproduction pathを独立reviewし、focused 1 file / 21 tests、exact2 ESLint/Prettier/diff、API authz 0、API shape
+    0/0、route auth 176 allowlisted / 252 direct / 0 new、raw-read org guard 117 allowlisted / 0 new、module boundary 0/0をPASS。Oracle、schema/
+    migration、gbrain write、long gateなし。親API statusは残存live scanがあるためPartial。RollbackはこのcommitのrevertでDB/data rollback不要。
+
 - codex1: SERIALIZED-FULL-GATES-20260713 (DONE, 2026-07-13; reconciliation in this scoped commit; validated HEAD `bbd125bcc`).
   - current task / scope / ancestry proof:
     全agent writersをfreezeし、current feature HEADでlong gatesを直列実行した。旧`VERIFY_REQUIRED` 64 headingsから抽出したimplementation/
