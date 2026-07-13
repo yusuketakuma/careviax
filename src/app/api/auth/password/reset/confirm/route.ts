@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { externalError, validationError, error, success } from '@/lib/api/response';
+import { externalError, registeredError, success, validationError } from '@/lib/api/response';
 import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { getClientIp } from '@/lib/api/request-ip';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
   const ip = getClientIp(req) ?? 'unknown';
   const rateLimit = await checkAuthRateLimit(ip, '/api/auth/password/reset/confirm');
   if (!rateLimit.allowed) {
-    return error('RATE_LIMIT_EXCEEDED', 'Too many requests', 429);
+    return registeredError('RATE_LIMIT_EXCEEDED', 'Too many requests');
   }
 
   const payload = await readJsonObjectRequestBody(req);
