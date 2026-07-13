@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -9,14 +9,11 @@ import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updateBusinessHolidaySchema } from '@/lib/validations/business-holiday';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '休日設定の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function updateBusinessHoliday(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -84,14 +81,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return success({ data: holiday });
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '休日設定の削除権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function deleteBusinessHoliday(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id } = await params;
   const holidayId = normalizeRequiredRouteParam(id);
   if (!holidayId) return validationError('休日設定IDが不正です');
@@ -119,3 +113,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   return success({ data: { id: holidayId } });
 }
+
+export const PATCH = withAuthContext(updateBusinessHoliday, {
+  permission: 'canAdmin',
+  message: '休日設定の更新権限がありません',
+});
+
+export const DELETE = withAuthContext(deleteBusinessHoliday, {
+  permission: 'canAdmin',
+  message: '休日設定の削除権限がありません',
+});

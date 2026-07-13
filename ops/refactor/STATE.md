@@ -55,6 +55,22 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZBIZHOLIDAYAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Service Areas push後に同一運用マスター領域を再scanし、Business Holidays root/detail routes/tests、route-auth allowlist、installed Next guideを
+    確認した。Root GET/POSTは既に標準wrapperだったが、detail PATCH/DELETEだけが2 direct `requireAuthContext` callsに残り、
+    success/validation/not-found responseが共通no-store/performance境界を通らない同一route内の実装driftだった。
+  - files changed / correctness / security / privacy / performance:
+    PATCH/DELETEをtyped named handler + `withAuthContext`へ移行し、canAdmin permission message、strict date/body/id validation、org/site reference、
+    duplicate判定、RLS transaction、update/delete audit changes、response DTOを維持した。Test auth mockをwrapper signatureへ同期し、allowlist 1 entryを
+    除去。Direct debtは172→171 routes、245→243 calls、helper未使用success routeは22→21へ減った。DB query/write/network/payloadは増やさず、
+    共通header/performance計測だけを追加した。
+  - validation / remaining / rollback:
+    Business Holidays root/detail + route checker 3 files / 20 tests、3 migration群 + shared auth + checker 7 files / 56 tests、exact
+    ESLint/Prettier、8 GiB typecheck / no-unused、route-auth 171 allowlisted / 243 direct / 0 newをPASS。
+    Schema/migration/production data/deploy/Oracle/imagegen/browserなし。親にはdirect-auth success
+    未収束21 routes、request_id/correlation_id、error registryが残る。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
 - codex1: API-CONTRACT-001FZSERVICEAREAAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
   - current task / files inspected / root cause:
     Goal attachment、HEAD/parity、dirty tree、`Plans.md`、本STATE、gbrain、route-auth allowlist、Service Areas root/detail routes/tests、
