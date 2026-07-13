@@ -1604,7 +1604,7 @@ export async function getPatientVisitBrief(
           ...(args.caseIds === undefined ? {} : { case_id: { in: caseIds } }),
         },
       },
-      orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+      orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
       take: 2,
       select: {
         prescribed_date: true,
@@ -1636,7 +1636,7 @@ export async function getPatientVisitBrief(
         patient_id: args.patientId,
         is_current: true,
       },
-      orderBy: [{ created_at: 'desc' }],
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: args.limit ?? 12,
       select: {
         drug_name: true,
@@ -1679,7 +1679,7 @@ export async function getPatientVisitBrief(
           in: [...OPEN_SELF_REPORT_STATUSES],
         },
       },
-      orderBy: [{ created_at: 'desc' }],
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: 4,
       select: {
         subject: true,
@@ -1697,7 +1697,7 @@ export async function getPatientVisitBrief(
         patient_id: args.patientId,
         ...(caseScope ? { AND: [caseScope] } : {}),
       },
-      orderBy: [{ occurred_at: 'desc' }],
+      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
       take: 4,
       select: {
         event_type: true,
@@ -1718,7 +1718,7 @@ export async function getPatientVisitBrief(
           in: [...OPEN_REQUEST_STATUSES],
         },
       },
-      orderBy: [{ due_date: 'asc' }, { requested_at: 'desc' }],
+      orderBy: [{ due_date: 'asc' }, { requested_at: 'desc' }, { id: 'desc' }],
       take: 4,
       select: {
         id: true,
@@ -1739,7 +1739,7 @@ export async function getPatientVisitBrief(
         patient_id: args.patientId,
         ...(args.caseIds === undefined ? {} : { case_id: { in: caseIds } }),
       },
-      orderBy: [{ called_at: 'desc' }],
+      orderBy: [{ called_at: 'desc' }, { id: 'desc' }],
       take: 3,
       select: {
         outcome: true,
@@ -1772,7 +1772,7 @@ export async function getPatientVisitBrief(
             : []),
         ],
       },
-      orderBy: [{ sla_due_at: 'asc' }, { due_date: 'asc' }, { created_at: 'asc' }],
+      orderBy: [{ sla_due_at: 'asc' }, { due_date: 'asc' }, { created_at: 'asc' }, { id: 'asc' }],
       take: 4,
       select: {
         task_type: true,
@@ -1792,7 +1792,7 @@ export async function getPatientVisitBrief(
           in: [...OPEN_ISSUE_STATUSES],
         },
       },
-      orderBy: [{ priority: 'desc' }, { identified_at: 'desc' }],
+      orderBy: [{ priority: 'desc' }, { identified_at: 'desc' }, { id: 'desc' }],
       take: 3,
       select: {
         id: true,
@@ -1811,7 +1811,7 @@ export async function getPatientVisitBrief(
         },
         resolved_at: null,
       },
-      orderBy: [{ inquired_at: 'desc' }],
+      orderBy: [{ inquired_at: 'desc' }, { id: 'desc' }],
       take: 2,
       select: {
         id: true,
@@ -1870,7 +1870,7 @@ export async function getPatientVisitBrief(
               ...(args.caseIds === undefined ? {} : { id: { in: caseIds } }),
               status: { in: ['active', 'assessment'] },
             },
-            orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }],
+            orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
             take: 1,
             select: {
               required_visit_support: true,
@@ -1885,7 +1885,7 @@ export async function getPatientVisitBrief(
             case_id: { in: caseIds },
             conference_date: { gte: thirtyDaysAgo },
           },
-          orderBy: [{ conference_date: 'desc' }],
+          orderBy: [{ conference_date: 'desc' }, { id: 'desc' }],
           take: 10,
           select: {
             id: true,

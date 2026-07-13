@@ -504,6 +504,63 @@ describe('getPatientVisitBrief', () => {
         }),
       }),
     );
+    expect(db.prescriptionIntake.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
+    expect(db.medicationProfile.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
+    expect(db.patientSelfReport.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
+    expect(db.communicationEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
+    expect(db.communicationRequest.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ due_date: 'asc' }, { requested_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
+    expect(db.visitScheduleContactLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ called_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
+    expect(db.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ sla_due_at: 'asc' }, { due_date: 'asc' }, { created_at: 'asc' }, { id: 'asc' }],
+      }),
+    );
+    expect(db.medicationIssue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ priority: 'desc' }, { identified_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
+    expect(db.inquiryRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ inquired_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
+    expect(db.careCase.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+        take: 1,
+      }),
+    );
+    expect(db.conferenceNote.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ conference_date: 'desc' }, { id: 'desc' }],
+      }),
+    );
     expect(db.visitRecord.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

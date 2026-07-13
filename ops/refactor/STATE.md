@@ -54,7 +54,24 @@
 
 ## 直近の作業
 
-- codex4 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001B (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+- codex3 + codex1 integration: QUERY-SHAPE-VISIT-BRIEF-SERVICE-003L (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    `src/server/services/visit-brief.ts`とfocused test、query-shape checker/watchlist、read-SLO/raw-org guardsを確認した。既にboundedな
+    top-N read 11箇所が臨床優先度または時刻だけでorderし、同値rowの選択がDB実行ごとに不安定だった。Baselineはquery-shape 15件。
+  - files changed / correctness / performance / security:
+    prescription intake、medication profile、self report、communication event/request、contact log、task、medication issue、inquiry、
+    active-case fallback、conference noteへ既存orderを一切変えずunique `id` tie-breakerを追加した。Medication change、caution、lab
+    staleness、communication、unresolved item、DTOは不変。新規query/networkなし、tenant/assignment/PHI/log/write path不変。
+  - validation / review:
+    Codex3 READYをcodex1が独立review/rerunし、focused 1 file / 11 tests、query-shape 0 allowlisted / 0 new、read-SLO 1 known / 0 new、
+    raw-read org guard 117 allowlisted / 0 new、exact 2-path ESLint/Prettier/diffをPASS。In-memory watchlist proofは15→4。Oracle、gbrain、
+    allowlist/watchlist/read-SLO registry、schema/migration、long gateは変更していない。
+  - remaining / rollback:
+    `drugPackageInsert` broad include/unbounded、full `careCase` collection、`DrugMaster` unboundedの4件はversion/cardinality/clinical scopeを
+    決める別sliceへ残し、debtを隠していない。親はpatients board全件materializeも残るためPartial。Rollbackはこのcommitのrevertで
+    DB/data rollback不要。
+
+- codex4 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001B (DONE; parent remains Partial, 2026-07-13; implementation `9e238feb1`, PUSHED).
   - current task / files inspected / root cause:
     API route 402、dynamic route 189、body parser + notFound route 156のlive scan候補から、UAT feedback、conference note、inquiry record、
     patient lab、prescription lineの5 dynamic PATCH route/testsとresponse/no-store/auth guardsを確認した。Primary path targetは404を使う一方、
@@ -92,9 +109,10 @@
     Codex3 finalとCodex1独立rerunでroute 1 file / 35 tests、query-shape 0 allowlisted / 0 new、read-SLO 1 known / 0 new、raw-read org guard
     117 allowlisted / 0 new、scoped ESLint、Prettier、`git diff --check` PASS。初回reviewで`take 200`がdeclared max_rows 180を超え、stale
     visitSchedule driftを残すことを検出し、180 + stale entry削除へ修復後に再runした。Codex3が古いOracle必須記述で外部reviewを
-    開始しかけたが、現行ユーザー指示のOracle禁止を優先してcodex1がlocal processを停止し、出力を閲覧・利用・台帳転記していない。
+    開始したsessionsはattachment upload timeoutでadvisory生成前に失敗し、codex1がlocal processを停止した。advisoryは生成・閲覧・
+    利用・台帳転記していない。
   - remaining / rollback:
-    親`QUERY-SHAPE-WATCHLIST-003-FOLLOW`にはpatients boardの全cardinality materializeとvisit-brief service本体が残る。9,000 rowsは
+    親`QUERY-SHAPE-WATCHLIST-003-FOLLOW`にはpatients boardの全cardinality materializeとvisit-briefの4 hard violationsが残る。9,000 rowsは
     correctness ceilingであり、実seeded large-org p95/p99は別の運用証跡。DB schema/migration/write path変更なし。Rollbackはこの
     scoped commitのrevertでDB/data rollback不要。
 
@@ -408,8 +426,8 @@
 
 - parallel assignments (ACTIVE, 2026-07-13):
   - codex2: `API-STATUS-NOTFOUND-LIVE-RESCAN-001A`。primary targetとbody FKの分類1件をcodex1 review後に修復中。
-  - codex3: `QUERY-SHAPE-VISIT-BRIEF-SERVICE-003L` exact 2 pathsで11 stable-order tie-breakersを実装中。
-  - codex4: `001B`はREADY/FREEZE・scoped統合中。`API-STATUS-NOTFOUND-LIVE-RESCAN-001C` exact 8 pathsを並行実装中。
+  - codex3: `QUERY-SHAPE-VISIT-BRIEF-SERVICE-003L` exact 2 pathsはREADY/FREEZE、codex1 scoped統合中。
+  - codex4: `001B`は`9e238feb1`でPUSHED。`API-STATUS-NOTFOUND-LIVE-RESCAN-001C` exact 8 pathsはREADY/FREEZE。
   - codex1: API status scoped統合、single ledger、exact staging、各slice独立review、
     serialized long gates、VERIFY_REQUIRED reconciliationと次候補scoringを管理する。
 
