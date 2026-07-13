@@ -411,6 +411,13 @@ describe('/api/patients/[id]/labs POST', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        source_visit_record_id: ['指定された訪問記録を確認できません'],
+      },
+    });
     expect(visitRecordFindFirstMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         id: 'visit_wrong_patient',
@@ -435,6 +442,13 @@ describe('/api/patients/[id]/labs POST', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        source_visit_record_id: ['指定された訪問記録を確認できません'],
+      },
+    });
     expect(visitRecordFindFirstMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         id: 'visit_wrong_org',
@@ -459,6 +473,13 @@ describe('/api/patients/[id]/labs POST', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        source_visit_record_id: ['指定された訪問記録を確認できません'],
+      },
+    });
     expect(visitRecordFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'visit_unassigned',
@@ -468,6 +489,7 @@ describe('/api/patients/[id]/labs POST', () => {
       select: { id: true },
     });
     expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
+    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
   });
 
   it('clears inconsistent visit record IDs for non-visit lab sources', async () => {

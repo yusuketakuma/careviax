@@ -751,5 +751,14 @@ describe('/api/consent-records', () => {
 
     expect(response.status).toBe(400);
     expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        template_id: ['指定されたテンプレートを確認できません'],
+      },
+    });
+    expect(consentRecordCreateMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordCreatedAuditMock).not.toHaveBeenCalled();
   });
 });

@@ -662,12 +662,14 @@ describe('/api/first-visit-documents', () => {
 
       expect(response.status).toBe(400);
       expectSensitiveNoStore(response);
-      await expect(response.json()).resolves.toMatchObject({
+      await expect(response.json()).resolves.toEqual({
         code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
         details: {
-          template_id: ['有効な初回文書テンプレートを選択してください'],
+          template_id: ['指定されたテンプレートを確認できません'],
         },
       });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
       expect(firstVisitDocumentCreateMock).not.toHaveBeenCalled();
       expect(auditLogCreateMock).not.toHaveBeenCalled();
     });

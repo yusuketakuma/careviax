@@ -323,8 +323,8 @@ async function authenticatedPOST(req: NextRequest) {
         });
 
     if (parsed.data.template_id && !template) {
-      return validationError('選択した初回文書テンプレートが見つかりません', {
-        template_id: ['有効な初回文書テンプレートを選択してください'],
+      return validationError('入力値が不正です', {
+        template_id: ['指定されたテンプレートを確認できません'],
       });
     }
 

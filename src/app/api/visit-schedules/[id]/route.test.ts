@@ -502,6 +502,33 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(validateOrgReferencesMock).toHaveBeenCalled();
   });
 
+  it('returns a non-enumerating validation error when the requested case is unavailable', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(createPatchRequest({ case_id: 'case_unavailable' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        case_id: ['指定されたケースを確認できません'],
+      },
+    });
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      case_id: 'case_unavailable',
+    });
+    expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('evaluates ready blockers for an org-wide pharmacist regardless of assignment', async () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',

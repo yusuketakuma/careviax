@@ -157,8 +157,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       sourceVisitRecordId,
     });
     if (!sourceVisitRecord) {
-      return validationError('指定された訪問記録が見つかりません', {
-        source_visit_record_id: ['登録先患者でアクセス可能な訪問記録を指定してください'],
+      return validationError('入力値が不正です', {
+        source_visit_record_id: ['指定された訪問記録を確認できません'],
       });
     }
 

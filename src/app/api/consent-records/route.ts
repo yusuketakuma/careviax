@@ -382,8 +382,8 @@ async function authenticatedPOST(req: NextRequest) {
       });
     }
     if ('templateMissing' in record) {
-      return validationError('選択した同意書テンプレートが見つかりません', {
-        template_id: ['有効な同意書テンプレートを選択してください'],
+      return validationError('入力値が不正です', {
+        template_id: ['指定されたテンプレートを確認できません'],
       });
     }
 

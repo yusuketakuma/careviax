@@ -529,7 +529,9 @@ async function authenticatedPATCH(
       },
     });
     if (!careCase) {
-      return validationError('ケースが見つかりません');
+      return validationError('入力値が不正です', {
+        case_id: ['指定されたケースを確認できません'],
+      });
     }
     projectedRouteResidence = careCase.patient.residences[0] ?? null;
 

@@ -54,7 +54,26 @@
 
 ## 直近の作業
 
-- codex3 + codex1 integration: QUERY-SHAPE-VISIT-BRIEF-SERVICE-003L (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+- codex4 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001C (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    patient lab create、first-visit document create、consent record create、visit schedule updateの4 routes/testsとresponse/no-store/auth/static
+    guards、installed Next 16.2.9 Route Handler guideを確認した。Body/linked FKのmissing/inaccessible 400が存在・tenant・assignmentを示唆する
+    route固有copyを返し、同じ親conventionからdriftしていた。
+  - files changed / security / correctness / privacy:
+    lab `source_visit_record_id`、first-visit/consent `template_id`、schedule `case_id`をgeneric 400 `VALIDATION_ERROR` / `入力値が不正です` +
+    neutral field detailへ統一した。Missing/cross-patient/cross-org/unassignedのlab sourceを同一responseとし、required source ID、primary patient/
+    case/schedule 404、duplicate consent、schedule/time/shift/reference、transaction/request count、success DTOを維持した。拒否後のcreate/
+    allocation/update/audit/notifyは0。Schema/migration、PHI/log、auth scope、query/network数は不変。
+  - validation / review:
+    Codex4 READYをcodex1が独立review/rerunし、focused 4 files / 145 tests、exact 8-path ESLint/Prettier/diff、API response shape 0/0、
+    authz status 0、route auth 176 allowlisted / 252 direct / 0 new、module boundary 0/0、raw-read org guard 117 allowlisted / 0 new PASS。
+    Oracle、gbrain、shared helper、typecheck/build/full suiteは使用・変更していない。
+  - discovered / remaining / rollback:
+    Read-only follow-upでConferenceNoteのpatient/facility referenceにorg-scoped FK/relationがなく、POST/PATCHのapp-level facility検証と
+    PATCH patient検証も欠けるcross-tenant logical-relation riskを確認し、`AUTHZ-CONFERENCE-REF-SCOPE-001`をP0/P1へ追加した。
+    親API statusは`001A`、残存scan、serialized full gatesが残るためPartial。RollbackはこのcommitのrevertでDB/data rollback不要。
+
+- codex3 + codex1 integration: QUERY-SHAPE-VISIT-BRIEF-SERVICE-003L (DONE; parent remains Partial, 2026-07-13; implementation `0dd51f444`, PUSHED).
   - current task / files inspected / root cause:
     `src/server/services/visit-brief.ts`とfocused test、query-shape checker/watchlist、read-SLO/raw-org guardsを確認した。既にboundedな
     top-N read 11箇所が臨床優先度または時刻だけでorderし、同値rowの選択がDB実行ごとに不安定だった。Baselineはquery-shape 15件。
@@ -426,8 +445,8 @@
 
 - parallel assignments (ACTIVE, 2026-07-13):
   - codex2: `API-STATUS-NOTFOUND-LIVE-RESCAN-001A`。primary targetとbody FKの分類1件をcodex1 review後に修復中。
-  - codex3: `QUERY-SHAPE-VISIT-BRIEF-SERVICE-003L` exact 2 pathsはREADY/FREEZE、codex1 scoped統合中。
-  - codex4: `001B`は`9e238feb1`でPUSHED。`API-STATUS-NOTFOUND-LIVE-RESCAN-001C` exact 8 pathsはREADY/FREEZE。
+  - codex3: `QUERY-SHAPE-VISIT-BRIEF-SERVICE-003L`は`0dd51f444`でPUSHED、ownership release待ち。
+  - codex4: `001B`は`9e238feb1`でPUSHED。`API-STATUS-NOTFOUND-LIVE-RESCAN-001C` exact 8 pathsはscoped統合中。
   - codex1: API status scoped統合、single ledger、exact staging、各slice独立review、
     serialized long gates、VERIFY_REQUIRED reconciliationと次候補scoringを管理する。
 
