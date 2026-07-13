@@ -7,6 +7,7 @@ import {
   error,
   forbiddenResponse,
   internalError,
+  registeredError,
   success,
   validationError,
 } from '@/lib/api/response';
@@ -320,7 +321,7 @@ const authenticatedPOST = withAuthContext(async (req, ctx) => {
       return error(cause.code, cause.message, cause.status);
     }
 
-    return error('EXTERNAL_FILE_UPLOAD_FAILED', 'アップロードURLの発行に失敗しました', 502);
+    throw cause;
   }
 
   if (parsed.data.purpose === 'report') {
@@ -485,7 +486,7 @@ const authenticatedPOST = withAuthContext(async (req, ctx) => {
       return error(cause.code, cause.message, cause.status);
     }
 
-    return error('EXTERNAL_FILE_UPLOAD_FAILED', 'アップロードURLの発行に失敗しました', 502);
+    return registeredError('EXTERNAL_FILE_UPLOAD_FAILED', 'アップロードURLの発行に失敗しました');
   }
 });
 

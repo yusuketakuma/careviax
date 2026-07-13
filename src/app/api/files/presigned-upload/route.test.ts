@@ -504,6 +504,41 @@ describe('/api/files/presigned-upload POST', () => {
     expect(createPresignedUploadMock).not.toHaveBeenCalled();
   });
 
+  it('returns a fixed internal error when upload constraint evaluation fails unexpectedly', async () => {
+    assertFileUploadConstraintsMock.mockImplementationOnce(() => {
+      throw new Error(
+        'validator failed storageKey=reports/org_1/report_1/file_1-report.pdf patient=患者A token=secret_1',
+      );
+    });
+
+    const response = await POST(
+      createRequest({
+        purpose: 'report',
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+        report_id: 'report_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('storageKey');
+    expect(JSON.stringify(body)).not.toContain('reports/org_1/report_1');
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('secret_1');
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+  });
+
   it('returns no-store storage errors without exposing object keys', async () => {
     createPresignedUploadMock.mockRejectedValueOnce(
       new FileStorageErrorMock('FILE_STORAGE_UNAVAILABLE', 'ストレージを利用できません', 503),
@@ -532,7 +567,9 @@ describe('/api/files/presigned-upload POST', () => {
 
   it('returns fixed no-store presign errors without exposing raw provider details', async () => {
     createPresignedUploadMock.mockRejectedValueOnce(
-      new Error('S3 failed storageKey=reports/org_1/report_1/file_1-report.pdf patient=患者A'),
+      new Error(
+        'S3 failed storageKey=reports/org_1/report_1/file_1-report.pdf patient=患者A token=secret_1',
+      ),
     );
 
     const response = await POST(
@@ -549,13 +586,15 @@ describe('/api/files/presigned-upload POST', () => {
     expect(response.status).toBe(502);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(body).toMatchObject({
+    expect(body).toEqual({
       code: 'EXTERNAL_FILE_UPLOAD_FAILED',
       message: 'アップロードURLの発行に失敗しました',
     });
     expect(JSON.stringify(body)).not.toContain('storageKey');
     expect(JSON.stringify(body)).not.toContain('reports/org_1/report_1');
     expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('secret_1');
+    expect(createPresignedUploadMock).toHaveBeenCalledTimes(1);
   });
 
   it('rejects entity ids that do not belong to the selected purpose', async () => {

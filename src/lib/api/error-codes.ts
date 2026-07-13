@@ -1,5 +1,5 @@
 export type ApiErrorLogLevel = 'info' | 'warn' | 'error';
-export type ApiErrorHttpStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500;
+export type ApiErrorHttpStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 502;
 
 export type ApiErrorRecoveryAction =
   | 'correct_input'
@@ -46,6 +46,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     retryable: false,
     recoveryAction: 'sign_in',
     messageLabel: 'api.error.auth.unauthenticated',
+  },
+  EXTERNAL_FILE_UPLOAD_FAILED: {
+    httpStatus: 502,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.external.file_upload_failed',
   },
   EXTERNAL_JOB_FAILED: {
     httpStatus: 500,
