@@ -15,13 +15,24 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { POST, DELETE } from './route';
+import { POST as rawPOST, DELETE as rawDELETE } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+const DELETE = (req: NextRequest) => rawDELETE(req, emptyRouteContext);
 
 function createJsonRequest(method: 'POST' | 'DELETE', body: unknown) {
   return new NextRequest('http://localhost/api/push-subscription', {
@@ -118,6 +129,13 @@ describe('/api/push-subscription', () => {
         'key1',
         'key2',
       ]);
+      expect(requireAuthContextMock).toHaveBeenCalledWith(
+        expect.any(NextRequest),
+        expect.objectContaining({
+          permission: 'canVisit',
+          message: 'プッシュ通知の登録権限がありません',
+        }),
+      );
       expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
         requestContext: authCtx.ctx,
       });
@@ -192,6 +210,13 @@ describe('/api/push-subscription', () => {
       });
       const res = await DELETE(req);
       await expectMinimalSuccessEnvelope(res!, ['https://push.example.com/sub/abc']);
+      expect(requireAuthContextMock).toHaveBeenCalledWith(
+        expect.any(NextRequest),
+        expect.objectContaining({
+          permission: 'canVisit',
+          message: 'プッシュ通知の削除権限がありません',
+        }),
+      );
       expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
         requestContext: authCtx.ctx,
       });

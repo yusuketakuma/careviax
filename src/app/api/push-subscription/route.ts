@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { z } from 'zod';
 
@@ -29,14 +29,7 @@ const unsubscribeSchema = z.object({
   endpoint: httpsEndpointSchema,
 });
 
-export async function POST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: 'プッシュ通知の登録権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function createPushSubscription(req: NextRequest, ctx: AuthContext) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -72,14 +65,7 @@ export async function POST(req: NextRequest) {
   return success({ data: { ok: true } });
 }
 
-export async function DELETE(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: 'プッシュ通知の削除権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function deletePushSubscription(req: NextRequest, ctx: AuthContext) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -103,3 +89,13 @@ export async function DELETE(req: NextRequest) {
 
   return success({ data: { ok: true } });
 }
+
+export const POST = withAuthContext(createPushSubscription, {
+  permission: 'canVisit',
+  message: 'プッシュ通知の登録権限がありません',
+});
+
+export const DELETE = withAuthContext(deletePushSubscription, {
+  permission: 'canVisit',
+  message: 'プッシュ通知の削除権限がありません',
+});

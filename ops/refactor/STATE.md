@@ -55,6 +55,24 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZPUSHSUBAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Intervention push/parity後に残13 routesを再scoreし、既存`PUSH-SUB-ATOMICITY-001`でatomic RLS hardening済みのPush Subscription POST/DELETEを
+    次の最小sliceに選定した。Route/test、allowlist、push/OS notification回帰、auth wrapper、installed Next 16.2.9 Route Handler/Data Security guideを確認した。
+    既存handlersはcanVisit、HTTPS endpoint、非空p256dh/auth、user+org scoped RLS mutation、最小ackを持つ一方、2 direct `requireAuthContext` callsの
+    success/validation responseが標準no-store/performance/sanitized-500境界を通らなかった。
+  - files changed / bugs found / correctness / security / privacy / performance:
+    POST/DELETEをtyped named handler + `withAuthContext`へ移行し、permission message、ctx、strict request validation、atomic RLS upsert/delete、
+    credential-free `{ data: { ok: true } }`、対象なしDELETEのidempotencyを維持した。Test auth mockをwrapper signatureへ同期し、両permission/messageを
+    明示回帰した。Allowlist 1 entryを除去し、direct debtは163→162 routes、229→227 calls、helper未使用success routeは13→12へ減った。
+    DB query/write/network/payloadは増減させず、共通header/performance計測だけを追加した。新規security/privacy/performance riskは検出しなかった。
+  - validation results / remaining work / next action / rollback:
+    Baseline/focused route + checker 2 files / 17 tests、push/OS notification領域5 files / 32 tests、exact ESLint/Prettier、8 GiB typecheck / no-unused、
+    route-auth 162 allowlisted / 227 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、
+    client schema 361 backed / 0 allowlisted、Plans active、format/diffをPASS。Schema/migration/production data/deploy/Oracleなし。非視覚API変更のため
+    imagegen/browserなし。親にはdirect-auth success未収束12 routes、request_id/correlation_id、error registryが残る。次は残routeをlive再scoreし、
+    Patient archive/restoreは既存human/high-risk policy gap隣接のため引き続き回避する。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
 - codex1: API-CONTRACT-001FZINTERVENTIONAUTH (DONE; parent remains Partial, 2026-07-14; implementation `67923a54c`).
   - current task / files inspected / root cause:
     Shift Templates push/parity後に残14 routesを再scoreし、PHI/medical cache境界の価値からIntervention detail GET/PATCHを選定した。
