@@ -48,13 +48,28 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: 本STATE運用文言、`codex2`: `API-CONTRACT-003D/003E`の
-  external-access 3 paths + jobs 2 paths。`codex3/codex4`は停止のまま。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `Plans.md` + 本STATEの003D/003E evidence同期、
+  `codex2`: 次候補選定中（`API-CONTRACT-003D/003E` 5 pathsはcommit `c0b4fcc04`でRELEASE済み）。`codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex2: API-CONTRACT-003D/003E (DONE; parent remains Partial, 2026-07-14; implementation `c0b4fcc04`).
+  - current task / files inspected / root cause:
+    Literal code/status matrixと既存registryを照合し、external-access OTP共通handlerの残`RATE_LIMIT_EXCEEDED` 429と、
+    jobs route未知typeの`WORKFLOW_NOT_FOUND` 404を選定。両者はregistry定義とstatus/recoveryが一致する一方、
+    callsiteがcode/statusを重複指定し、jobs未知typeはexact error body/downstream-zero回帰を欠いていた。
+  - files changed / bugs found / correctness / security / privacy / medical safety / performance:
+    External-access shared helperとjobs routeをtyped `registeredError()`へ移行。External GET/self-reportの429テストにexact code/messageを追加し、
+    jobsにnormalized unknown typeの404/code/messageとhandler副作用zeroを追加した。既存status/body/message/no-store、rate-limit identifier/check、
+    downstream-zero、job auth/handlerを維持。Retry-After追加、DB/network/query/payload/retry変更なし。新規security/privacy/medical/performance issueなし。
+  - validation results / remaining work / next action / rollback:
+    External-access 2 route tests + jobs + registry/response 5 files / 73 tests、exact ESLint/Prettier、diff checkをPASS。初回testはjobs routeの
+    別code用`error` importが必要と検出し、importを維持して再実行PASS。Registryは9 codes。`RATE_LIMIT_EXCEEDED` / `WORKFLOW_NOT_FOUND`の
+    direct literal status指定はAPI全体で0。Schema/migration/production mutation/deploy/Oracle/imagegen/browserなし。Commitはfeature branchへpush済み。
+    Rollbackは`c0b4fcc04`のrevertでDB/data rollback不要。
 
 - codex1: API-CONTRACT-003C (DONE; parent remains Partial, 2026-07-14; implementation `bf66a8206`).
   - current task / files inspected / root cause:
