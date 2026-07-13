@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZNOTIFICATIONSTREAMAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZNOTIFICATIONSTREAMAUTH (DONE; parent remains Partial, 2026-07-14; implementation `8bd189f70`).
   - current task / files inspected / root cause:
     Pharmacists import push/parity後の残5 routesからNotifications SSE GETを選定した。Route/test、shared auth/no-store/performance、SSE timer、
     shared EventSource、notification payload sanitizer、org realtime policy、protected GET matrix、rate-limit、allowlist、installed Next guideを確認した。
