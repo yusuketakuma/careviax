@@ -23,6 +23,13 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -100,6 +107,24 @@ describe('/api/cases/[id]/transition', () => {
     );
   });
 
+  it('returns the authorization response before parsing or reading the case', async () => {
+    const deniedResponse = Response.json(
+      { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+      { status: 403 },
+    );
+    requireAuthContextMock.mockResolvedValueOnce({ response: deniedResponse });
+
+    const response = await PATCH(createMalformedTransitionRequest('case_1'), {
+      params: Promise.resolve({ id: 'case_1' }),
+    });
+
+    expect(response).toBe(deniedResponse);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(firstVisitDocFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
   it('transitions a case when the current status matches', async () => {
     const response = (await PATCH(
       createTransitionRequest('case_1', {
@@ -112,6 +137,13 @@ describe('/api/cases/[id]/transition', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.objectContaining({
+        permission: 'canVisit',
+        message: 'ケース更新の権限がありません',
+      }),
+    );
     await expect(response.json()).resolves.toEqual({
       data: { id: 'case_1', status: 'active' },
       meta: { warnings: [] },

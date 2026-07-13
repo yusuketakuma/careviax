@@ -55,6 +55,21 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZCASETRANSITIONAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Patient Lab push/parity後の残9 routesを再scoreし、SSEはshared wrapper型gap、Tasks bulkはarchive/dedicated partial-success隣接として保留し、
+    Case transition PATCHを選定した。Route/test、protected PATCH matrix、case transition schema、assignment helper、operational-task service、allowlist、
+    installed Next guideを確認した。既存handlerはassignment/遷移表/atomic競合/task副作用を持つ一方、1 direct auth callが共通境界外だった。
+  - files changed / bugs found / correctness / security / privacy / medical safety / performance:
+    PATCHをtyped named handler + `withAuthContext`へ移行し、permission、route/body validation、assignment preflight、first-visit warning、status-guarded
+    updateMany、post-update read、同一transaction task upsert、409競合、data/meta DTOを維持した。Auth denial時のcase/document/task副作用zeroとpermissionを
+    追加回帰し、allowlist 1 entryを除去。Direct debtは159→158 routes、223→222 calls、helper未使用success routeは9→8。DB/payloadは不変。
+  - validation results / remaining work / next action / rollback:
+    Baseline/focused route + checker 2 files / 13 tests、protected PATCH/operational-task領域5 files / 118 tests、exact ESLint/Prettier、8 GiB typecheck /
+    no-unused、route-auth 158 allowlisted / 222 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、
+    client schema 361 backed / 0 allowlisted、Plans active、format/diffをPASS。新規security/privacy/medical/performance issueなし。Schema/migration/deploy/
+    Oracleなし。非視覚API変更のためimagegen/browserなし。親にはdirect-auth success未収束8 routes、request correlation/error registryが残る。
+
 - codex1: API-CONTRACT-001FZPATIENTLABAUTH (DONE; parent remains Partial, 2026-07-14; implementation `b107d425d`).
   - current task / files inspected / root cause:
     Admin Jobs push/parity後の残10 routesから、Cognito tenant provisioningを避けてPatient Lab detail PATCHを選定した。Route/test、lab root/provider/UI、

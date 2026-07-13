@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -9,14 +9,11 @@ import { prisma } from '@/lib/db/client';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: 'ケース更新の権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function transitionCase(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('ケースIDが不正です');
@@ -124,3 +121,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return success({ data: transitionResult.careCase, meta: { warnings } });
 }
+
+export const PATCH = withAuthContext(transitionCase, {
+  permission: 'canVisit',
+  message: 'ケース更新の権限がありません',
+});
