@@ -54,7 +54,47 @@
 
 ## 直近の作業
 
-- codex1: DAILY-JOBS-LOCALDATEKEY-JST-002 (DONE, 2026-07-13; implementation pending commit).
+- codex4 + codex1 integration: S3-SSE-DEFAULT-NONKMS-001 (DONE, 2026-07-13; implementation pending commit).
+  - current task / root cause / ownership:
+    File storageは`S3_SERVER_SIDE_ENCRYPTION`未指定・typo時にAES256へsilent downgradeし、presigned/generatedの
+    要配慮個人情報uploadがcustomer-managed KMS keyなしでも進めた。Codex4がfile-storage実装/testのexact 2 pathsを所有し、
+    codex1がside-effect順序、purpose key precedence、secret/PHI非露出、AWS公式契約を独立reviewした。
+  - implementation / security result:
+    Exact `AES256`だけを明示opt-outとして保持し、未指定・unsupported値は`aws:kms`へfail-closed化した。
+    Purpose-specific、PHI、generic keyを順にtrim/non-empty解決し、key不在時はUUID生成、presign/PutObject、metadata永続化より前に
+    既存`FILE_STORAGE_NOT_CONFIGURED`/503を返す。Presigned response headersとgenerated PutObjectに同じSSE-KMS keyを渡し、
+    Object Lock、retention、auth、storage key、DB write契約は変更していない。
+  - validation / AWS reference / remaining:
+    Focused file-storage 1 file / 83 tests、scoped ESLint、Prettier、`git diff --check` PASS。Omitted/unsupported mode、explicit AES256、
+    report/export/PHI/generic key precedence、whitespace fallback/failure、presigned/generated両経路、fail-before-side-effectsを固定した。
+    AWS PutObject API、SSE-KMS指定、presigned URL uploadを2026-07-13確認:
+    https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html /
+    https://docs.aws.amazon.com/AmazonS3/latest/userguide/specifying-kms-encryption.html /
+    https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html 。
+    Live AWS applyなし。既存P0のsend-only timeout wrapperをpresignerへ渡す不具合は`S3-PRESIGN-WRAPPED-CLIENT-001`へ分離して即時継続し、
+    browser/Object Lock checksum契約はその後の独立sliceとする。Oracleは現行ユーザー指示により実行しない。
+
+- codex3 + codex1 integration: PERF-DAYBOARD-ROUTE-ESTIMATOR-DEDUP-001 (DONE, 2026-07-13; implementation pending commit).
+  - current task / root cause / ownership:
+    Day-boardのvehicleごとにestimator/provider/cacheを作り、route totalをstop leg単位のsequential external fetchへfan-outしていた。
+    Codex3がday-board API、planner、road-routingと各testのexact 6 pathsを所有し、codex1がprovider fallback、consumer impact、
+    PHI payload、公式limitを独立reviewした。
+  - implementation / performance / privacy result:
+    Request内でtravel modeごとにestimatorを共有し、OSRM Route ServiceまたはGoogle Compute Routesへsite→ordered stops→siteの
+    単一route requestを追加した。同一ordered routeはrequest cacheし、provider不在、timeout、malformed response、座標欠落、
+    Google 25 intermediates超過はpairwise network retryせずlocal fallbackへ落とす。既存matrix/insertion scoringは不変。
+    Provider payloadはlat/lngのordered listだけで、氏名、住所文字列、patient/schedule ID、時刻、logを追加しない。
+  - validation / official reference / remaining:
+    Core routing/day-board/planner 4 files / 106 tests、proposal/reorder/route-engine影響 4 files / 133 tests、scoped ESLint、Prettier、
+    `git diff --check` PASS。Google intermediate 25上限、ComputeRoutes順序、matrix API、OSRM ordered routeを2026-07-13確認:
+    https://developers.google.com/maps/documentation/routes/intermed_waypoints /
+    https://developers.google.com/maps/documentation/routes/reference/rest/v2/TopLevel/computeRoutes /
+    https://developers.google.com/maps/documentation/routes/compute_route_matrix /
+    https://github.com/Project-OSRM/osrm-backend/blob/master/docs/http.md 。
+    Oracle browser consultは添付upload timeoutで同一sessionを一度restartしてもmodel応答前に失敗したが、現行STATEのユーザー指示上
+    Oracle opinionはcompletion gateにしない。Codex2 privacy reviewとcodex1 reviewはblockerなし。
+
+- codex1: DAILY-JOBS-LOCALDATEKEY-JST-002 (DONE, 2026-07-13; implementation `62bcc3819`, PUSHED).
   - current task / root cause / inspected:
     Western runtimeで`generateVisitDemands`の期限由来/週末policy/ASAP 3 casesが1日ずれる回帰を再現し、Daily jobsに残った
     `localDateKey()`とruntime-local business-date表示を全consumer棚卸しした。Visit demand/support、initial assessment、PCA rental、
@@ -67,8 +107,9 @@
   - validation / regression / rollback:
     `TZ=UTC`と`TZ=America/Los_Angeles`で`src/server/jobs/daily.test.ts`各47 tests PASS。Test内でもWestern runtimeを明示し、
     PCA、公費、緊急当番、施設batch、初回assessment、visit demandのquery/output日付を固定した。Scoped ESLint、Prettier、
-    `git diff --check` PASS、Daily実装内の`localDateKey(`/`formatDateKey(`残存0。Rollbackはimplementation commitを
-    `git revert`、DB/data rollback不要。
+    `git diff --check` PASS、Daily実装内の`localDateKey(`/`formatDateKey(`残存0。Rollbackは
+    `git revert 62bcc3819`、DB/data rollback不要。gbrain:
+    `projects/careviax/decisions/2026-07-13/use-japan-business-dates-in-daily-jobs`。
 
 - codex4 + codex1 integration: PHI-READ-AUDIT-BESTEFFORT-DROP-001 (DONE, 2026-07-13; implementation `11ef2f40f`, PUSHED).
   - current task / root cause / ownership:
@@ -128,9 +169,10 @@
 - parallel assignments (ACTIVE, 2026-07-13):
   - codex2: `API-STATUS-AUTHZ-403-AS-400-001`。Confirmed permission/scope denialを403 `AUTH_FORBIDDEN`へ統一し、
     malformed/body-FK 400とnon-enumerating concealmentを維持する。Webhook compatibility subpartは既存`86f626aa0`でDONEと再確認。
-  - codex3: `PERF-DAYBOARD-ROUTE-ESTIMATOR-DEDUP-001`。Day-board routingをrequest-scoped estimator + matrix callへ収束する。
-  - codex4: `S3-SSE-DEFAULT-NONKMS-001`。File storageの暗号化未指定defaultをSSE-KMSへfail-closed化し、明示AES256 opt-outとpurpose別key precedenceを保持する。
-  - codex1: `DAILY-JOBS-LOCALDATEKEY-JST-002`の統合後、single ledger、commit/push、long gatesと次候補scoringを管理する。
+  - codex3: `PERF-DAYBOARD-ROUTE-ESTIMATOR-DEDUP-001` READY、codex1統合中。次slice待機。
+  - codex4: `S3-SSE-DEFAULT-NONKMS-001` READY、codex1統合後に`S3-PRESIGN-WRAPPED-CLIENT-001`を継続する。
+  - codex1: `VISIT-RECORD-OFFLINE-SYNC-SCOPE-001`のcurrent-record save/sync/freshness isolationを担当し、
+    single ledger、commit/push、long gatesと次候補scoringを管理する。
 
 - codex1: MEDPROFILE-SYNC-RACE-001 MedicationProfile sync serialization (DONE, 2026-07-13; implementation `30fcf954e`, PUSHED).
   - current task / root cause / inspected:

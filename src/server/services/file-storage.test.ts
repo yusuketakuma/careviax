@@ -305,7 +305,7 @@ describe('file-storage', () => {
     vi.clearAllMocks();
     process.env.S3_BUCKET_NAME = 'ph-os-files';
     process.env.S3_BUCKET_REGION = 'ap-northeast-1';
-    delete process.env.S3_SERVER_SIDE_ENCRYPTION;
+    process.env.S3_SERVER_SIDE_ENCRYPTION = 'AES256';
     delete process.env.S3_KMS_KEY_ID;
     delete process.env.S3_KMS_KEY_ID_PHI;
     delete process.env.S3_KMS_KEY_ID_REPORT;
@@ -337,7 +337,9 @@ describe('file-storage', () => {
     });
   });
 
-  it('signs uploads with AES256 server-side encryption and returns the required header', async () => {
+  it('allows explicitly configured AES256 uploads and returns the required header', async () => {
+    process.env.S3_SERVER_SIDE_ENCRYPTION = 'AES256';
+
     const result = await createPresignedUpload({
       orgId: 'org_1',
       purpose: 'report',
@@ -369,6 +371,64 @@ describe('file-storage', () => {
       'Content-Type': 'application/pdf',
       'x-amz-server-side-encryption': 'AES256',
     });
+  });
+
+  it.each([
+    ['omitted mode', undefined],
+    ['unsupported mode', 'AES-256'],
+  ] as const)('uses KMS for presigned uploads with %s', async (_label, mode) => {
+    if (mode === undefined) {
+      delete process.env.S3_SERVER_SIDE_ENCRYPTION;
+    } else {
+      process.env.S3_SERVER_SIDE_ENCRYPTION = mode;
+    }
+    process.env.S3_KMS_KEY_ID_REPORT = '   ';
+    process.env.S3_KMS_KEY_ID = 'arn:aws:kms:ap-northeast-1:123456789012:key/generic';
+
+    const result = await createPresignedUpload({
+      orgId: 'org_1',
+      purpose: 'report',
+      fileName: 'report.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      reportId: 'report_1',
+    });
+
+    const putObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
+      input: Record<string, unknown>;
+    };
+    expect(putObjectCommand.input).toMatchObject({
+      ServerSideEncryption: 'aws:kms',
+      SSEKMSKeyId: 'arn:aws:kms:ap-northeast-1:123456789012:key/generic',
+    });
+    expect(result.headers).toMatchObject({
+      'x-amz-server-side-encryption': 'aws:kms',
+      'x-amz-server-side-encryption-aws-kms-key-id':
+        'arn:aws:kms:ap-northeast-1:123456789012:key/generic',
+    });
+  });
+
+  it('fails closed before signing when default KMS mode has no configured key', async () => {
+    delete process.env.S3_SERVER_SIDE_ENCRYPTION;
+
+    await expect(
+      createPresignedUpload({
+        orgId: 'org_1',
+        purpose: 'report',
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        reportId: 'report_1',
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_STORAGE_NOT_CONFIGURED',
+      status: 503,
+    });
+
+    expect(randomUuidMock).not.toHaveBeenCalled();
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
+    expect(settingUpsertMock).not.toHaveBeenCalled();
+    expect(fileAssetUpsertMock).not.toHaveBeenCalled();
   });
 
   it('creates a separate S3 client when the configured bucket region changes', async () => {
@@ -553,6 +613,56 @@ describe('file-storage', () => {
       }),
     );
     expect(result.storageKey).toBe('bulk-exports/org_1/job_1/file-uuid-1-medication-history.zip');
+  });
+
+  it('defaults generated writes to KMS and prefers the export-specific key', async () => {
+    delete process.env.S3_SERVER_SIDE_ENCRYPTION;
+    process.env.S3_KMS_KEY_ID = 'arn:aws:kms:ap-northeast-1:123456789012:key/generic';
+    process.env.S3_KMS_KEY_ID_PHI = 'arn:aws:kms:ap-northeast-1:123456789012:key/phi';
+    process.env.S3_KMS_KEY_ID_EXPORT = 'arn:aws:kms:ap-northeast-1:123456789012:key/export';
+
+    await storeGeneratedFile({
+      orgId: 'org_1',
+      purpose: 'bulk-export',
+      fileName: 'medication-history.zip',
+      mimeType: 'application/zip',
+      buffer: Buffer.from('zip-bytes'),
+      uploadedBy: 'user_1',
+      jobId: 'job_1',
+    });
+
+    const putObjectCommand = s3SendMock.mock.calls[0]?.[0] as {
+      input: Record<string, unknown>;
+    };
+    expect(putObjectCommand.input).toMatchObject({
+      ServerSideEncryption: 'aws:kms',
+      SSEKMSKeyId: 'arn:aws:kms:ap-northeast-1:123456789012:key/export',
+    });
+  });
+
+  it('fails closed before generated PutObject when default KMS mode has no configured key', async () => {
+    delete process.env.S3_SERVER_SIDE_ENCRYPTION;
+    process.env.S3_KMS_KEY_ID = '   ';
+
+    await expect(
+      storeGeneratedFile({
+        orgId: 'org_1',
+        purpose: 'bulk-export',
+        fileName: 'medication-history.zip',
+        mimeType: 'application/zip',
+        buffer: Buffer.from('zip-bytes'),
+        uploadedBy: 'user_1',
+        jobId: 'job_1',
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_STORAGE_NOT_CONFIGURED',
+      status: 503,
+    });
+
+    expect(randomUuidMock).not.toHaveBeenCalled();
+    expect(s3SendMock).not.toHaveBeenCalled();
+    expect(settingUpsertMock).not.toHaveBeenCalled();
+    expect(fileAssetUpsertMock).not.toHaveBeenCalled();
   });
 
   it('stores generated contract document PDFs under the contract document path with retention expiry', async () => {
@@ -1214,11 +1324,41 @@ describe('file-storage', () => {
     });
   });
 
-  it('uses KMS encryption when the bucket is configured for aws:kms', async () => {
+  it('prefers the report-specific key when KMS encryption is explicitly configured', async () => {
     process.env.S3_SERVER_SIDE_ENCRYPTION = 'aws:kms';
     process.env.S3_KMS_KEY_ID_PHI = 'arn:aws:kms:ap-northeast-1:123456789012:key/phi';
+    process.env.S3_KMS_KEY_ID_REPORT = 'arn:aws:kms:ap-northeast-1:123456789012:key/report';
+    process.env.S3_KMS_KEY_ID = 'arn:aws:kms:ap-northeast-1:123456789012:key/generic';
 
     const result = await createPresignedUpload({
+      orgId: 'org_1',
+      purpose: 'report',
+      fileName: 'report.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 2048,
+      reportId: 'report_1',
+    });
+
+    const putObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
+      input: Record<string, unknown>;
+    };
+    expect(putObjectCommand.input).toMatchObject({
+      ServerSideEncryption: 'aws:kms',
+      SSEKMSKeyId: 'arn:aws:kms:ap-northeast-1:123456789012:key/report',
+    });
+    expect(result.headers).toMatchObject({
+      'x-amz-server-side-encryption': 'aws:kms',
+      'x-amz-server-side-encryption-aws-kms-key-id':
+        'arn:aws:kms:ap-northeast-1:123456789012:key/report',
+    });
+  });
+
+  it('prefers the PHI key over the generic key for patient-scoped uploads', async () => {
+    delete process.env.S3_SERVER_SIDE_ENCRYPTION;
+    process.env.S3_KMS_KEY_ID_PHI = 'arn:aws:kms:ap-northeast-1:123456789012:key/phi';
+    process.env.S3_KMS_KEY_ID = 'arn:aws:kms:ap-northeast-1:123456789012:key/generic';
+
+    await createPresignedUpload({
       orgId: 'org_1',
       purpose: 'prescription',
       fileName: 'prescription.pdf',
@@ -1233,11 +1373,6 @@ describe('file-storage', () => {
     expect(putObjectCommand.input).toMatchObject({
       ServerSideEncryption: 'aws:kms',
       SSEKMSKeyId: 'arn:aws:kms:ap-northeast-1:123456789012:key/phi',
-    });
-    expect(result.headers).toMatchObject({
-      'x-amz-server-side-encryption': 'aws:kms',
-      'x-amz-server-side-encryption-aws-kms-key-id':
-        'arn:aws:kms:ap-northeast-1:123456789012:key/phi',
     });
   });
 

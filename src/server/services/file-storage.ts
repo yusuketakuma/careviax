@@ -258,7 +258,7 @@ function getRequiredStorageConfig() {
 }
 
 function getServerSideEncryptionMode(): SupportedServerSideEncryption {
-  return process.env.S3_SERVER_SIDE_ENCRYPTION === 'aws:kms' ? 'aws:kms' : 'AES256';
+  return process.env.S3_SERVER_SIDE_ENCRYPTION === 'AES256' ? 'AES256' : 'aws:kms';
 }
 
 function resolveBulkExportRetentionHours() {
@@ -313,7 +313,16 @@ function resolveKmsKeyId(purpose: AnyFilePurpose) {
         ? process.env.S3_KMS_KEY_ID_REPORT
         : undefined;
 
-  return explicitPurposeKey ?? process.env.S3_KMS_KEY_ID_PHI ?? process.env.S3_KMS_KEY_ID ?? null;
+  for (const candidate of [
+    explicitPurposeKey,
+    process.env.S3_KMS_KEY_ID_PHI,
+    process.env.S3_KMS_KEY_ID,
+  ]) {
+    const kmsKeyId = candidate?.trim();
+    if (kmsKeyId) return kmsKeyId;
+  }
+
+  return null;
 }
 
 function getS3EncryptionConfig(purpose: AnyFilePurpose) {
