@@ -52,7 +52,7 @@
 
 ## 直近の作業
 
-- codex: MEDSAFE-ARCHIVE-WRITE-001 archived patient share write gates (COMMIT_READY, 2026-07-13; commit group `CG-MEDSAFE-ARCHIVE-WRITE-001`).
+- codex: MEDSAFE-ARCHIVE-WRITE-001 archived patient share write gates (DONE, 2026-07-13; implementation `26142f05a`, PUSHED).
   - current task / root cause:
     Report共有はarchive警告を表示しながら外部共有リンク・返信依頼・次回タスクを有効化し、患者共有はproviderの
     `archived_at`をconsumer schemaでstripしていた。Backendは`requireWritablePatient`によりexternal access、
@@ -74,8 +74,8 @@
     `docs/ui-ux-design-guidelines.md`のAction beside evidence、disabled理由、色だけに依存しない状態表示、44px操作面を維持。
     新規layout/visual reconstructionではなく既存部品のlifecycle状態追加のため`gpt-image-2`は省略する。
   - branch / rollback:
-    `agent/continuous-improvement-20260712`、upstream同期済み。Owned pathsだけstage/commitしnon-force pushする。
-    Rollbackはscoped commit revert、DB/data rollback不要。
+    `agent/continuous-improvement-20260712`へowned 20 pathsだけを`26142f05a`としてscoped commitし、originへnon-force push済み。
+    Rollbackは`git revert 26142f05a`、DB/data rollback不要。
   - implementation / audit checkpoint:
     `PatientArchiveSummary`へshare-adjacent canonical 409 code/message、既知active write eligibility、archive conflict
     workspace latchを集約。患者共有はstrict patient GET schemaで`archived_at`を必須nullable datetimeとして検証し、
