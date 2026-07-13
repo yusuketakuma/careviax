@@ -3,7 +3,7 @@ import type { ZodError } from 'zod';
 
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -127,14 +127,7 @@ function failedImportResult(args: {
   };
 }
 
-export async function POST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: 'スタッフ一括取込の権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function importPharmacists(req: NextRequest, ctx: AuthContext) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -388,3 +381,8 @@ export async function POST(req: NextRequest) {
 
   return importResponse(results);
 }
+
+export const POST = withAuthContext(importPharmacists, {
+  permission: 'canAdmin',
+  message: 'スタッフ一括取込の権限がありません',
+});

@@ -55,6 +55,25 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZPHARMACISTIMPORTAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Medication Cycle push/parity後の残6 routesからPharmacists import POSTを選定した。Route/test、import validation、Cognito admin service、
+    protected POST matrix、rate-limit、allowlist、installed Next guideを確認した。既存handlerはcanAdmin、行単位validation/partial failure、site/role/
+    certification mapping、既存email一括照合、Cognito招待、org-scoped transaction/audit、DB失敗時の補償削除を持つ一方、1 direct auth callの
+    success/validation responseが共通no-store/performance/sanitized-500境界外だった。
+  - files changed / bugs found / correctness / security / privacy / performance:
+    POSTをtyped named handler + `withAuthContext`へ移行し、permission message、全validation、site曖昧性/必須判定、招待payload、user/membership/
+    credential/audit write、行順/件数/outcome、Cognito cleanup failureの管理者確認messageを維持した。Auth denial時のparse/site/user/Cognito/RLS副作用zeroを
+    追加回帰し、Next 16の2引数Route Handler型へtest helperを同期、allowlist 1 entryを除去。Direct debtは156→155 routes、220→219 calls、
+    helper未使用success routeは6→5。DB/network/write/payloadは不変で、共通header/計測/500 envelopeだけを追加した。
+  - validation results / remaining work / next action / rollback:
+    Focused route 1 file / 16 tests、auth/Cognito/protected POST領域4 files / 178 tests、exact ESLint/Prettier、8 GiB typecheck/no-unused、
+    route-auth 155 allowlisted / 219 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、
+    client schema 361 backed / 0 allowlisted、Plans active、format/diffをPASS。初回typecheckはroot testの空RouteContext省略16件だけを検出し、fixture同期後に
+    再実行PASS。新規security/privacy/medical/performance issueなし。Cognito behavior/schema/migration/deploy/Oracleなし。非視覚API変更のためimagegen/browserなし。
+    親には5 routes、request correlation/error registryが残る。次はSSE shared wrapper型gapと残るprovisioning/billing/archive policy境界を設計監査する。
+    Rollbackはscoped commitのrevertでDB/data rollback不要。
+
 - codex1: API-CONTRACT-001FZMEDCYCLEAUTH (DONE; parent remains Partial, 2026-07-14; implementation `4ce954053`).
   - current task / files inspected / root cause:
     Tasks bulk push/parity後の残7 routesからMedication Cycle transition PATCHを選定した。Route/test、cycle-transition service、workflow query、

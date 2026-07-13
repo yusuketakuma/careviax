@@ -27,6 +27,13 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -67,6 +74,10 @@ function createMalformedJsonRequest() {
   });
 }
 
+function invokePOST(request: NextRequest) {
+  return POST(request, { params: Promise.resolve({}) });
+}
+
 describe('/api/pharmacists/import POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -99,8 +110,28 @@ describe('/api/pharmacists/import POST', () => {
     );
   });
 
+  it('returns the authentication response before parsing or inviting users', async () => {
+    const deniedResponse = Response.json(
+      { code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' },
+      { status: 401 },
+    );
+    requireAuthContextMock.mockResolvedValueOnce({ response: deniedResponse });
+
+    const response = await invokePOST(createMalformedJsonRequest());
+
+    expect(response).toBe(deniedResponse);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canAdmin',
+      message: 'スタッフ一括取込の権限がありません',
+    });
+    expect(pharmacySiteFindManyMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
+    expect(inviteCognitoUserMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object import payloads before loading sites or inviting users', async () => {
-    const response = await POST(createRequest([]));
+    const response = await invokePOST(createRequest([]));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -115,7 +146,7 @@ describe('/api/pharmacists/import POST', () => {
   });
 
   it('rejects malformed JSON import payloads before loading sites or inviting users', async () => {
-    const response = await POST(createMalformedJsonRequest());
+    const response = await invokePOST(createMalformedJsonRequest());
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -130,7 +161,7 @@ describe('/api/pharmacists/import POST', () => {
   });
 
   it('imports a CSV row and creates membership plus credential', async () => {
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         rows: [
           {
@@ -207,7 +238,7 @@ describe('/api/pharmacists/import POST', () => {
   });
 
   it('normalizes blank optional CSV fields to null without creating a credential', async () => {
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         rows: [
           {
@@ -254,7 +285,7 @@ describe('/api/pharmacists/import POST', () => {
   });
 
   it('accepts E.164 phone numbers and forwards them to Cognito invite', async () => {
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         rows: [
           {
@@ -287,7 +318,7 @@ describe('/api/pharmacists/import POST', () => {
   });
 
   it('reports malformed phone numbers as row failures before loading sites or inviting users', async () => {
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         rows: [
           {
@@ -327,7 +358,7 @@ describe('/api/pharmacists/import POST', () => {
   });
 
   it('reports row schema failures and continues importing valid rows', async () => {
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         rows: [
           {
@@ -391,7 +422,7 @@ describe('/api/pharmacists/import POST', () => {
   });
 
   it('reports credential details without a certification type as row failures before loading sites', async () => {
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         rows: [
           {
@@ -429,7 +460,7 @@ describe('/api/pharmacists/import POST', () => {
   });
 
   it('reports non-plain credential numeric fields as row failures before loading sites', async () => {
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         rows: [
           {
@@ -470,7 +501,7 @@ describe('/api/pharmacists/import POST', () => {
   });
 
   it('fails duplicate normalized emails before inviting users', async () => {
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         rows: [
           {
@@ -523,7 +554,7 @@ describe('/api/pharmacists/import POST', () => {
       { id: 'site_2', name: ' 本店 ' },
     ]);
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         rows: [
           {
@@ -570,7 +601,7 @@ describe('/api/pharmacists/import POST', () => {
         username: 'new-2@example.com',
       });
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         rows: [
           {
@@ -645,7 +676,7 @@ describe('/api/pharmacists/import POST', () => {
   });
 
   it('reports a missing required site without creating the user', async () => {
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         rows: [
           {
@@ -689,7 +720,7 @@ describe('/api/pharmacists/import POST', () => {
         username: 'second@example.com',
       });
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         rows: [
           {
@@ -747,7 +778,7 @@ describe('/api/pharmacists/import POST', () => {
       username: 'cleanup-failed@example.com',
     });
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({
         rows: [
           {
