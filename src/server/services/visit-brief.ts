@@ -97,13 +97,7 @@ type VisitBriefDataReader = BillingEvidenceBlockersReader & {
     due_date: Date | null;
     requested_at: Date;
   }>;
-  drugMaster?: FindManyDelegate<DrugMasterEnrichment>;
-  drugPackageInsert: FindManyDelegate<{
-    drug_master: { yj_code: string; drug_name: string };
-    contraindications: unknown;
-    adverse_effects: unknown;
-    precautions_elderly: unknown;
-  }>;
+  drugMaster: FindManyDelegate<DrugMasterEnrichment>;
   jahisSupplementalRecord?: FindManyDelegate<JahisSupplementalRecordForBrief>;
   inquiryRecord: FindManyDelegate<{
     id: string;
@@ -582,13 +576,21 @@ function severityFromPriority(priority: string | null | undefined): VisitBriefSe
   }
 }
 
+type DrugPackageInsertCautionSource = {
+  contraindications: unknown;
+  adverse_effects: unknown;
+  precautions_elderly: unknown;
+};
+
 type DrugMasterEnrichment = {
   yj_code: string;
+  drug_name: string;
   drug_price: { toNumber: () => number } | null;
   is_generic: boolean;
   is_narcotic: boolean;
   is_psychotropic: boolean;
   therapeutic_category: string | null;
+  package_inserts: DrugPackageInsertCautionSource[];
 };
 
 function buildMedicationItems(args: {
@@ -654,47 +656,37 @@ function buildMedicationItems(args: {
  * Surfaces contraindications, adverse effects, and elderly precautions
  * so pharmacists can review them before visiting.
  */
-async function buildDrugCautions(
-  db: DbClient,
-  drugCodes: string[],
-): Promise<VisitBriefDrugCaution[]> {
-  if (drugCodes.length === 0) return [];
-
-  const packageInserts = await db.drugPackageInsert.findMany({
-    where: { drug_master: { yj_code: { in: drugCodes } } },
-    include: { drug_master: { select: { yj_code: true, drug_name: true } } },
-  });
-
+function buildDrugCautions(drugMasters: DrugMasterEnrichment[]): VisitBriefDrugCaution[] {
   const cautions: VisitBriefDrugCaution[] = [];
 
-  for (const pi of packageInserts) {
-    const code = pi.drug_master.yj_code;
-    const name = pi.drug_master.drug_name;
+  for (const drugMaster of drugMasters) {
+    const packageInsert = drugMaster.package_inserts[0];
+    if (!packageInsert) continue;
 
-    for (const c of readPackageInsertTextEntries(pi.contraindications).slice(0, 3)) {
+    for (const c of readPackageInsertTextEntries(packageInsert.contraindications).slice(0, 3)) {
       cautions.push({
-        drug_name: name,
-        drug_code: code,
+        drug_name: drugMaster.drug_name,
+        drug_code: drugMaster.yj_code,
         caution_type: 'contraindication',
         severity: 'critical',
         summary: c.text.slice(0, 120),
       });
     }
 
-    for (const a of readPackageInsertTextEntries(pi.adverse_effects).slice(0, 3)) {
+    for (const a of readPackageInsertTextEntries(packageInsert.adverse_effects).slice(0, 3)) {
       cautions.push({
-        drug_name: name,
-        drug_code: code,
+        drug_name: drugMaster.drug_name,
+        drug_code: drugMaster.yj_code,
         caution_type: 'adverse_effect',
         severity: a.severity?.toLowerCase() === 'serious' ? 'critical' : 'warning',
         summary: a.text.slice(0, 120),
       });
     }
 
-    for (const e of readPackageInsertTextEntries(pi.precautions_elderly).slice(0, 2)) {
+    for (const e of readPackageInsertTextEntries(packageInsert.precautions_elderly).slice(0, 2)) {
       cautions.push({
-        drug_name: name,
-        drug_code: code,
+        drug_name: drugMaster.drug_name,
+        drug_code: drugMaster.yj_code,
         caution_type: 'elderly_precaution',
         severity: 'warning',
         summary: e.text.slice(0, 120),
@@ -2004,18 +1996,31 @@ export async function getPatientVisitBrief(
 
   // Enrich with DrugMaster data for price/generic/narcotic display
   const drugCodes = currentLines.map((l) => l.drug_code).filter((c): c is string => c !== null);
+  const uniqueDrugCodes = Array.from(new Set(drugCodes));
 
   const drugMasters =
-    drugCodes.length > 0 && db.drugMaster
+    uniqueDrugCodes.length > 0
       ? await db.drugMaster.findMany({
-          where: { yj_code: { in: drugCodes } },
+          where: { yj_code: { in: uniqueDrugCodes } },
+          orderBy: [{ id: 'asc' }],
+          take: uniqueDrugCodes.length,
           select: {
             yj_code: true,
+            drug_name: true,
             drug_price: true,
             is_generic: true,
             is_narcotic: true,
             is_psychotropic: true,
             therapeutic_category: true,
+            package_inserts: {
+              orderBy: [{ revised_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+              take: 1,
+              select: {
+                contraindications: true,
+                adverse_effects: true,
+                precautions_elderly: true,
+              },
+            },
           },
         })
       : [];
@@ -2030,7 +2035,7 @@ export async function getPatientVisitBrief(
   }).slice(0, args.limit ?? 12);
 
   // Build drug cautions from package inserts for visit preparation
-  const drugCautions = await buildDrugCautions(db, drugCodes);
+  const drugCautions = buildDrugCautions(drugMasters);
   const dispensingItems = buildPharmacyVisitBriefDispensingItems({
     currentLines,
     latestSetPlan,

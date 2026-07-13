@@ -75,7 +75,6 @@ function buildMinimalBriefDb() {
     },
     medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
     drugMaster: { findMany: vi.fn().mockResolvedValue([]) },
-    drugPackageInsert: { findMany: vi.fn().mockResolvedValue([]) },
     conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
     residence: { findFirst: vi.fn().mockResolvedValue(null) },
     jahisSupplementalRecord: { findMany: vi.fn().mockResolvedValue([]) },
@@ -409,40 +408,45 @@ describe('getPatientVisitBrief', () => {
         findMany: vi.fn().mockResolvedValue([
           {
             yj_code: '123',
+            drug_name: 'アムロジピン錠',
             drug_price: { toNumber: () => 12.5 },
             is_generic: false,
             is_narcotic: false,
             is_psychotropic: false,
             therapeutic_category: '2171',
+            package_inserts: [
+              {
+                contraindications: [
+                  '重度低血圧の患者',
+                  null,
+                  { text: '妊婦' },
+                  { value: 'ignored' },
+                  '',
+                ],
+                adverse_effects: [
+                  { text: '血管浮腫', severity: ' serious ' },
+                  'めまい',
+                  { description: '浮腫' },
+                  null,
+                ],
+                precautions_elderly: ['過度の降圧に注意', { name: '転倒に注意' }, 42],
+              },
+              {
+                contraindications: ['旧版禁忌を表示しない'],
+                adverse_effects: ['旧版副作用を表示しない'],
+                precautions_elderly: ['旧版高齢者注意を表示しない'],
+              },
+            ],
           },
           {
             yj_code: '456',
+            drug_name: 'ロキソニンテープ',
             drug_price: { toNumber: () => 5.7 },
             is_generic: true,
             is_narcotic: false,
             is_psychotropic: false,
             therapeutic_category: '2344',
-          },
-        ]),
-      },
-      drugPackageInsert: {
-        findMany: vi.fn().mockResolvedValue([
-          {
-            drug_master: { yj_code: '123', drug_name: 'アムロジピン錠' },
-            contraindications: [
-              '重度低血圧の患者',
-              null,
-              { text: '妊婦' },
-              { value: 'ignored' },
-              '',
-            ],
-            adverse_effects: [
-              { text: '血管浮腫', severity: ' serious ' },
-              'めまい',
-              { description: '浮腫' },
-              null,
-            ],
-            precautions_elderly: ['過度の降圧に注意', { name: '転倒に注意' }, 42],
+            package_inserts: [],
           },
         ]),
       },
@@ -549,6 +553,29 @@ describe('getPatientVisitBrief', () => {
         orderBy: [{ inquired_at: 'desc' }, { id: 'desc' }],
       }),
     );
+    expect(db.drugMaster.findMany).toHaveBeenCalledWith({
+      where: { yj_code: { in: ['123', '456', '999'] } },
+      orderBy: [{ id: 'asc' }],
+      take: 3,
+      select: {
+        yj_code: true,
+        drug_name: true,
+        drug_price: true,
+        is_generic: true,
+        is_narcotic: true,
+        is_psychotropic: true,
+        therapeutic_category: true,
+        package_inserts: {
+          orderBy: [{ revised_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+          take: 1,
+          select: {
+            contraindications: true,
+            adverse_effects: true,
+            precautions_elderly: true,
+          },
+        },
+      },
+    });
     expect(db.careCase.findMany).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
@@ -641,6 +668,7 @@ describe('getPatientVisitBrief', () => {
         }),
       ]),
     );
+    expect(JSON.stringify(result.drug_cautions)).not.toContain('旧版');
     expect(result.dispensing_items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1320,7 +1348,7 @@ describe('getScheduleVisitBriefsForPatients', () => {
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
       conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
       residence: { findFirst: vi.fn().mockResolvedValue(null) },
-      drugPackageInsert: { findMany: vi.fn().mockResolvedValue([]) },
+      drugMaster: { findMany: vi.fn().mockResolvedValue([]) },
     };
 
     const result = await getScheduleVisitBriefsForPatients(db, {
@@ -1377,7 +1405,7 @@ describe('getScheduleVisitBriefsForPatients', () => {
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
       conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
       residence: { findFirst: vi.fn().mockResolvedValue(null) },
-      drugPackageInsert: { findMany: vi.fn().mockResolvedValue([]) },
+      drugMaster: { findMany: vi.fn().mockResolvedValue([]) },
     };
 
     try {
@@ -1469,7 +1497,6 @@ describe('getScheduleVisitBriefsForSchedules', () => {
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
       conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
       residence: { findFirst: vi.fn().mockResolvedValue(null) },
-      drugPackageInsert: { findMany: vi.fn().mockResolvedValue([]) },
       drugMaster: { findMany: vi.fn().mockResolvedValue([]) },
     };
 
@@ -1603,7 +1630,6 @@ describe('getScheduleVisitBriefsForSchedules', () => {
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
       conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
       residence: { findFirst: vi.fn().mockResolvedValue(null) },
-      drugPackageInsert: { findMany: vi.fn().mockResolvedValue([]) },
       drugMaster: { findMany: vi.fn().mockResolvedValue([]) },
     };
 

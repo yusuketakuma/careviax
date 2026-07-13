@@ -54,7 +54,25 @@
 
 ## 直近の作業
 
-- codex2 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001D (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+- codex3 + codex1 integration: QUERY-SHAPE-VISIT-BRIEF-PACKAGE-003M (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    visit-brief service/focused test、DrugMaster/DrugPackageInsert schema、drug detail API、manual/PMDA importのlatest package convention、query-shape/
+    read-SLO/raw-org guardsを確認した。Current-line YJ codeのDrugMaster attributesとpackage insert cautionsを別々に取得し、後者は全historical rowsと
+    parent includeを無制限materializeしていた。DrugMaster `yj_code`はschema-level uniqueで、詳細/API importはlatest revisionを正準としていた。
+  - files changed / correctness / medical safety:
+    unique non-null YJ codes `U`を1回作り、DrugMaster attributes + `package_inserts` latest 1 rowをexplicit selectの単一findManyへ統合した。
+    Rootは`take U` + `id asc`、nestedは`revised_at desc, created_at desc, id desc` + `take 1`で固定した。既存caution parse、per-type caps、severity、
+    dispensing DTO、missing master/insertのnull/empty semanticsを維持し、stale second insertの注意事項を表示しない回帰を追加した。
+  - performance / stability / security:
+    enrichment DB reads 2→1、materialize上限を`U masters + unbounded H historical inserts`から`U masters + U latest inserts`へ縮小した。`U=0`は
+    0 reads、DB errorは既存どおりcallerへrejectしrouteのsanitized handlingへ進む。新規network/write/cache/retry/timeoutなし。Global master readで
+    tenant/PHI/write境界は不変。Remaining hard violationはservice内のunbounded `careCase.findMany` 1件のみ。
+  - validation / review / remaining / rollback:
+    Codex3 FREEZE後にcodex1がschema/convention/diffを独立reviewし、focused 1 file / 11 tests、query-shape 0/0、read-SLO 1 known / 0 new、
+    raw-read org 117 allowlisted / 0 new、exact2 ESLint/Prettier/diffをPASS。Oracle、shared registry、schema/migration、long gateなし。親はpatients board
+    全件materializeとcareCase 1件が残るためPartial。RollbackはこのcommitのrevertでDB/data rollback不要。
+
+- codex2 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001D (DONE; parent remains Partial, 2026-07-13; implementation `6dde16986`, PUSHED).
   - current task / files inspected / root cause:
     `POST /api/inquiry-records`とfocused test、shared response helper、installed Next 16.2.9 Route Handler guide、API/auth/raw-read/module guardsを確認した。
     必須`cycle_id`はInquiryRecordのownerであり同一transaction内のMedicationCycle更新・CycleTransitionLogも所有するprimary mutation targetだが、
