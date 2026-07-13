@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { buildCountedListEnvelope } from '@/lib/api/list-envelope';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -33,11 +33,7 @@ const createDrugAlertRuleSchema = z.object({
   is_active: z.boolean().default(true),
 });
 
-export async function GET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function getDrugAlertRules(req: NextRequest, ctx: AuthContext) {
   const { searchParams } = new URL(req.url);
   const alertTypeParam = searchParams.get('alert_type');
   const alertType = alertTypeParam ? alertTypeSchema.safeParse(alertTypeParam) : null;
@@ -85,11 +81,7 @@ export async function GET(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function createDrugAlertRule(req: NextRequest, ctx: AuthContext) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -113,3 +105,6 @@ export async function POST(req: NextRequest) {
 
   return success({ data: rule }, 201);
 }
+
+export const GET = withAuthContext(getDrugAlertRules, { permission: 'canAdmin' });
+export const POST = withAuthContext(createDrugAlertRule, { permission: 'canAdmin' });

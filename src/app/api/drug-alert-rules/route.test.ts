@@ -17,13 +17,24 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 
@@ -75,6 +86,9 @@ describe('/api/drug-alert-rules', () => {
     const response = (await GET(createGetRequest()))!;
 
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canAdmin',
+    });
     expect(drugAlertRuleFindManyMock).toHaveBeenCalledWith({
       where: {
         OR: [{ org_id: 'org_1' }, { org_id: null }],

@@ -55,6 +55,26 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZDRUGALERTAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Goal attachment、HEAD/parity、dirty tree、Plans/STATE/gbrain、route-auth allowlist、Drug Alert Rules root/detail routes/tests、admin consumers、
+    API conventions、installed Next 16.2.9 Route Handler/Data Security guideを確認した。GET/POST/PATCH/DELETEはcanAdmin、bounded counted-list、
+    strict alert type/severity/condition/body/id validation、org/global readとorg-only mutationを持つ一方、4 direct `requireAuthContext` callsのため
+    success/validation/not-found responseが標準auth no-store/performance境界を通らなかった。
+  - files changed / correctness / security / medical safety / performance:
+    4 handlersをtyped named handler + `withAuthContext`へ移行し、permission、ctx、async params、list limit/count meta、org/RLS predicates、
+    create/update/delete payloadとDTOを維持した。Root test auth mockをwrapper signatureへ同期し、detail successでsensitive no-storeを明示回帰した。
+    Allowlist 2 entriesを除去し、direct debtは171→169 routes、243→239 calls、helper未使用success routeは21→19へ減った。アラート種別、
+    severity、condition、active状態、DB query/write/network/payloadは変えず、共通header/performance計測だけを追加した。
+  - validation / remaining / rollback:
+    Drug Alert Rules root/detail + route checker 3 files / 23 tests、shared auth + 4 migration families + checker 9 files / 75 tests、exact
+    ESLint/Prettier、8 GiB typecheck / no-unused、route-auth 169 allowlisted /
+    239 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、client schema
+    361 backed / 0 allowlisted、Plans active、format/diffをPASS。初回static batchの旧script名2件とPlans format未適用はpackage scripts照合・整形後に
+    current commandで再実行PASSし、production code failureはなかった。視覚変更なしのためimagegen/browserなし。Schema/migration/production data/
+    deploy/Oracleなし。親にはdirect-auth success未収束19 routes、request_id/correlation_id、error registryが残る。
+    Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
 - codex1: API-CONTRACT-001FZBIZHOLIDAYAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
   - current task / files inspected / root cause:
     Service Areas push後に同一運用マスター領域を再scanし、Business Holidays root/detail routes/tests、route-auth allowlist、installed Next guideを

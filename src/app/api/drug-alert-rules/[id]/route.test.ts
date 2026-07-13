@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const { authMock, membershipFindFirstMock, drugAlertRuleUpdateMock, withOrgContextMock } =
   vi.hoisted(() => ({
@@ -86,6 +87,7 @@ describe('/api/drug-alert-rules/[id]', () => {
       ))!;
 
       expect(response.status).toBe(200);
+      expectSensitiveNoStore(response);
       expect(drugAlertRuleUpdateMock).toHaveBeenCalledWith({
         where: { id: 'rule_1' },
         data: expect.objectContaining({
@@ -177,6 +179,7 @@ describe('/api/drug-alert-rules/[id]', () => {
       ))!;
 
       expect(response.status).toBe(200);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toEqual({ data: { id: 'rule_1' } });
     });
 

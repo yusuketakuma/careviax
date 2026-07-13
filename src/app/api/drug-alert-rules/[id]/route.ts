@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -28,11 +28,11 @@ const updateDrugAlertRuleSchema = z.object({
   is_active: z.boolean().optional(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function updateDrugAlertRule(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -71,11 +71,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return success({ data: updated });
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function deleteDrugAlertRule(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id } = await params;
   const ruleId = normalizeRequiredRouteParam(id);
   if (!ruleId) return validationError('処方安全アラートルールIDが不正です');
@@ -92,3 +92,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   return success({ data: { id: existing.id } });
 }
+
+export const PATCH = withAuthContext(updateDrugAlertRule, { permission: 'canAdmin' });
+export const DELETE = withAuthContext(deleteDrugAlertRule, { permission: 'canAdmin' });
