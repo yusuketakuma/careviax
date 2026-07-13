@@ -54,6 +54,20 @@
 
 ## 直近の作業
 
+- codex1: QUERY-SHAPE-PATIENT-BOARD-TENANT-SCOPE-003J1 (DONE, 2026-07-13; hardening in this scoped commit).
+  - current task / root cause / files inspected:
+    `321b6fcaf`のpatient board keyset collector、route tests、raw Prisma read org-scope guardを再確認した。callerの
+    `patientWhere` / `basePatientWhere`は既に`org_id`を持ちruntime tenant scopeは維持していたが、collector引数`where`だけを
+    raw `prisma.patient.findMany`へ渡したため、callsite局所ではtenant invariantを証明できず、guardがnew debtを検出した。
+  - files changed / security / correctness / performance:
+    各batch queryで`where: { ...where, org_id: ctx.orgId }`と認証contextのorgを最後に再固定し、将来のcallerが誤って広いpredicateを
+    渡してもcross-org scanへ拡張できないようにした。first/follow-up pageとも同じorg filterを持つ回帰assertionを追加した。
+    Cursor、batch size、sort、DTO、query count、RLS/assignment、PHI projectionは不変。
+  - validation / remaining / rollback:
+    patient board 2 files / 39 tests、raw-read org guard 117 allowlisted / 0 new、query-shape 0/0、read-SLO 1 known / 0 new、
+    scoped ESLint、Prettier、`git diff --check` PASS。親の全cardinality materializeとBFF分離は引き続き
+    `PERF-DB-PATIENT-BOARD-CURSOR`で追跡する。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
 - codex2 + codex1 integration: AUTHZ-EXTERNAL-SELF-REPORT-TASK-SCOPE-001 (DONE, 2026-07-13; implementation in this scoped commit).
   - current task / root cause / files inspected:
     External self-report UI/provider、generic Task POST、self-report PATCH、Task registry/presentation、daily follow-up job、assignment predicate、

@@ -683,6 +683,7 @@ describe('/api/patients/board', () => {
 
     expect(response.status).toBe(200);
     expect(patientFindManyMock.mock.calls[0][0]).toMatchObject({
+      where: expect.objectContaining({ org_id: 'org_1' }),
       orderBy: [{ name_kana: 'asc' }, { id: 'asc' }],
       take: 80,
     });
@@ -876,6 +877,7 @@ describe('/api/patients/board', () => {
     ).toHaveLength(1);
     for (const args of patientQueries) {
       expect(args).toMatchObject({
+        where: expect.objectContaining({ org_id: 'org_1' }),
         orderBy: [{ name_kana: 'asc' }, { id: 'asc' }],
         take: 80,
         select: expect.any(Object),

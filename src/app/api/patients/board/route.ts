@@ -759,7 +759,10 @@ const authenticatedGET = withAuthContext(
       // set. The id tie-breaker makes the cursor deterministic when kana values are equal.
       while (true) {
         const batch = await prisma.patient.findMany({
-          where,
+          // Keep the raw-client tenant boundary explicit at every paginated callsite.
+          // The callers already pass an org-scoped predicate; overriding it here makes
+          // the invariant local and prevents a future caller from widening the scan.
+          where: { ...where, org_id: ctx.orgId },
           orderBy: [{ name_kana: 'asc' }, { id: 'asc' }],
           take: PATIENT_BOARD_QUERY_BATCH_SIZE,
           ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
