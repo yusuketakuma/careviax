@@ -618,8 +618,10 @@ describe('ConferencesContent', () => {
 
   it('uses shared JSON headers and encoded dynamic paths for conference note mutations', async () => {
     const hostileNoteId = 'note/id?task=1#frag';
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({ data: { report_draft_count: 1, queued_recipient_count: 0 } }),
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith('/tasks')
+        ? jsonResponse({ data: { task_id: 'task_1' } })
+        : jsonResponse({ data: { report_draft_count: 1, queued_recipient_count: 0 } }),
     );
     vi.stubGlobal('fetch', fetchMock);
 

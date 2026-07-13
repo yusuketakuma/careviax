@@ -12,12 +12,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/conferences/conferences-content.tsx",
-      "counts": {
-        "stringFallback": 6
-      }
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/card-workspace.tsx",
       "counts": {
         "stringFallback": 3,

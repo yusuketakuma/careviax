@@ -71,6 +71,14 @@ import { messageFromError } from '@/lib/utils/error-message';
 import type { ConferencesFocus } from '@/lib/dashboard/home-link-builders';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { Skeleton } from '@/components/ui/loading';
+import {
+  buildConferenceNoteDetailResponseSchema,
+  communityActivityCreateResponseSchema,
+  conferenceExternalProfessionalsResponseSchema,
+  convertConferenceActionItemResponseSchema,
+  generateConferenceReportResponseSchema,
+  prescriberInstitutionSuggestionResponseSchema,
+} from './conference-response-schemas';
 
 type Participant = {
   name: string;
@@ -668,10 +676,10 @@ export function ConferencesContent({
       const response = await fetch(buildConferenceNoteApiPath(selectedNoteId), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: ConferenceNote }>(
-        response,
-        'カンファレンスノート詳細の取得に失敗しました',
-      );
+      const payload = await readApiJson<{ data: ConferenceNote }>(response, {
+        fallbackMessage: 'カンファレンスノート詳細の取得に失敗しました',
+        schema: buildConferenceNoteDetailResponseSchema(selectedNoteId),
+      });
       return payload.data;
     },
     enabled: Boolean(orgId && selectedNoteId),
@@ -697,10 +705,10 @@ export function ConferencesContent({
       const response = await fetch('/api/admin/external-professionals', {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: ExternalProfessionalOption[] }>(
-        response,
-        '他職種マスターの取得に失敗しました',
-      );
+      return readApiJson<{ data: ExternalProfessionalOption[] }>(response, {
+        fallbackMessage: '他職種マスターの取得に失敗しました',
+        schema: conferenceExternalProfessionalsResponseSchema,
+      });
     },
     enabled: !!orgId,
   });
@@ -761,10 +769,10 @@ export function ConferencesContent({
       const response = await fetch(`/api/prescriber-institutions/suggestion?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: PrescriberInstitutionSuggestion | null }>(
-        response,
-        '処方元医療機関候補の取得に失敗しました',
-      );
+      return readApiJson<{ data: PrescriberInstitutionSuggestion | null }>(response, {
+        fallbackMessage: '処方元医療機関候補の取得に失敗しました',
+        schema: prescriberInstitutionSuggestionResponseSchema,
+      });
     },
     enabled: !!orgId && (!!contextPatientId || !!contextCaseId),
   });
@@ -813,7 +821,10 @@ export function ConferencesContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
-      return readApiJson<CommunityActivityCreateResponse>(response, '作成に失敗しました');
+      return readApiJson<CommunityActivityCreateResponse>(response, {
+        fallbackMessage: '作成に失敗しました',
+        schema: communityActivityCreateResponseSchema,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['community-activities', orgId] });
@@ -837,7 +848,10 @@ export function ConferencesContent({
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ action_item_index: actionItemIndex }),
       });
-      return readApiJson<ConvertActionItemResponse>(response, 'タスク化に失敗しました');
+      return readApiJson<ConvertActionItemResponse>(response, {
+        fallbackMessage: 'タスク化に失敗しました',
+        schema: convertConferenceActionItemResponseSchema,
+      });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['conference-notes', orgId] });
@@ -874,7 +888,10 @@ export function ConferencesContent({
           include_structured_content: includeStructuredContent,
         }),
       });
-      return readApiJson<GenerateConferenceReportResponse>(response, '報告書生成に失敗しました');
+      return readApiJson<GenerateConferenceReportResponse>(response, {
+        fallbackMessage: '報告書生成に失敗しました',
+        schema: generateConferenceReportResponseSchema,
+      });
     },
     onSuccess: (payload) => {
       toast.success(
