@@ -51,6 +51,34 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZBILLINGDASHSTRICT billing candidate dashboard readers (VERIFY_REQUIRED, 2026-07-13; implementation `9f716326f`; shared clean-capacity build pending).
+  - current task / root cause:
+    Billing Candidatesのlist、export preview、generation、review、monthly close計5 readersはstring fallbackだけで、別月/患者/domain候補、
+    summary/preview/generation count drift、別candidate/action outcome、OCC version非進行、別domain closeを請求state/toast/invalidationへ流し得た。
+    Legacy mixed-root success fixtureも残り、exact envelope方針と不整合だった。
+  - implementation / billing safety boundary:
+    5 request-aware consumed runtime schemasを追加し、billing month/patient/domain、cursor/identity、summary arithmetic、exportable/insurance totals、
+    generation partitions、review candidate/action/status/OCC updated_at、close domainを検証。Source snapshotはUIが使う算定根拠/validation/workflowだけに
+    projectionし、provider-only raw metadata、review full row、close summary/claims-export detailをclient state前にstripした。Mixed-root success fixtureを
+    canonical envelopeへ同期し、mixed-root rejectionはschema testで固定。Provider calculation/generation/review/close/export/claims transmission、
+    auth/tenant/audit/DB/UIは変更していない。非visual billing response/PHI境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/billing/candidates/billing-candidates-response-schemas.ts`,
+    `src/app/(dashboard)/billing/candidates/billing-candidates-response-schemas.test.ts`,
+    `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`,
+    `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Schema/consumer/providers Vitest passed 6 files / 134 tests. Exact zero-warning ESLint, focused Prettier, aggregate typecheck,
+    8GB no-unused typecheck, client schema (354 backed / 10 allowlisted / 2 files), module boundary, client PHI-log/display, API response shape,
+    colors, format, and diff-check passed. Initial integration run exposed nullable fixture omissions and legacy mixed-root expectations; both were corrected
+    before the green rerun. Full build remains NOT_EXECUTED because only 225 MiB is free while existing `.next` consumes 16 GiB; shared generated/user
+    files were not deleted.
+  - security / performance / remaining:
+    Cross-month/patient/domain、aggregate drift、stale/wrong review outcome、wrong close domain now fail closed and unused PHI/billing provider metadata no longer
+    enters client state. Network/DB calls, writes, calculation, and dependencies are unchanged. API-CONTRACT-001-RESCAN continues with 10 calls across 2 files.
+    A clean-capacity runner must complete `pnpm build`.
+
 - codex: API-CONTRACT-001FZPROPOSALDASHSTRICT schedule proposal dashboard readers (VERIFY_REQUIRED, 2026-07-13; implementation `d0a6ec966`; shared clean-capacity build pending).
   - current task / root cause:
     Schedule Proposals dashboardのproposal list、case search、available vehicle resources、billing preview batch、proposal detail計5 readersは
