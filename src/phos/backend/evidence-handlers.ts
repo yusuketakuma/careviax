@@ -24,6 +24,7 @@ import type { TenantContext } from './tenant-context';
 
 export const EVIDENCE_UPLOAD_MAX_SIZE_BYTES = 25 * 1024 * 1024;
 export const EVIDENCE_UPLOAD_DEFAULT_EXPIRES_IN_SECONDS = 300;
+const EVIDENCE_CHECKSUM_HEADER = 'x-amz-checksum-sha256';
 
 export type EvidenceUploadPresignInput = {
   key: string;
@@ -297,12 +298,13 @@ export function createS3EvidenceUploadPresigner(input: {
       });
       const upload_url = await getSignedUrl(input.client, command, {
         expiresIn: expires_in_seconds,
+        unhoistableHeaders: new Set([EVIDENCE_CHECKSUM_HEADER]),
       });
       return {
         upload_url,
         headers: {
           'Content-Type': request.mime_type,
-          'x-amz-checksum-sha256': sha256HexToBase64(request.sha256),
+          [EVIDENCE_CHECKSUM_HEADER]: sha256HexToBase64(request.sha256),
           'x-amz-meta-sha256': request.sha256,
           'x-amz-meta-size_bytes': String(request.size_bytes),
           'x-amz-tagging': evidenceObjectTaggingHeader('PRESIGNED', request.tenant_id),

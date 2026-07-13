@@ -105,6 +105,43 @@ describe('PH-OS evidence presign upload handler', () => {
     });
   });
 
+  it('requires the checksum as a signed upload header instead of hoisting it into the URL', async () => {
+    const checksum = Buffer.from('a'.repeat(64), 'hex').toString('base64');
+    const client = new S3Client({
+      region: 'ap-northeast-1',
+      credentials: {
+        accessKeyId: 'test-access-key',
+        secretAccessKey: 'test-secret-key',
+      },
+    });
+
+    try {
+      const presigner = createS3EvidenceUploadPresigner({
+        client,
+        bucket: 'phos-evidence-prod',
+        kms_key_arn:
+          'arn:aws:kms:ap-northeast-1:123456789012:key/11111111-2222-3333-4444-555555555555',
+        expires_in_seconds: 120,
+      });
+      const response = await presigner.presignPut({
+        key: 'tenants/tenant_abc123/evidence/card_1/evidence_1.jpg',
+        tenant_id: 'tenant_abc123',
+        mime_type: 'image/jpeg',
+        sha256: 'a'.repeat(64),
+        size_bytes: 1024,
+      });
+      const uploadUrl = new URL(response.upload_url);
+
+      expect(uploadUrl.searchParams.has('x-amz-checksum-sha256')).toBe(false);
+      expect(uploadUrl.searchParams.get('X-Amz-SignedHeaders')?.split(';')).toContain(
+        'x-amz-checksum-sha256',
+      );
+      expect(response.headers['x-amz-checksum-sha256']).toBe(checksum);
+    } finally {
+      client.destroy();
+    }
+  });
+
   it('builds a tenant-prefixed S3 key and presigns PUT without accepting client s3_key', async () => {
     const fakePresigner = presigner();
     const uploadIntentStore: EvidenceUploadIntentStore = {

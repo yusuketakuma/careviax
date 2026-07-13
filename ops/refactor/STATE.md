@@ -54,7 +54,22 @@
 
 ## 直近の作業
 
-- codex1: VISIT-RECORD-OFFLINE-SYNC-SCOPE-001 (DONE, 2026-07-13; implementation in this scoped commit).
+- codex4 + codex1 integration: EVIDENCE-PRESIGN-CHECKSUM-HEADER-SIGNING-001 (DONE, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    PH-OS evidence presigner実装/test、installed AWS SDK v3、bucket CORS checksum許可、legacy file presigner境界を確認した。
+    `PutObjectCommand.ChecksumSHA256`は設定済みだったが、presignerのdefault hoistingによりchecksumがURL queryへ移動し、
+    `X-Amz-SignedHeaders`から外れてbrowser upload時の必須署名headerになっていなかった。
+  - files changed / security / privacy / performance:
+    canonical `x-amz-checksum-sha256`名をsigningとresponseで共有し、`unhoistableHeaders`へ明示した。precomputed SHA-256はqueryへ
+    出ずrequired signed headerとなり、返却値とcommand checksumが一致する。raw real S3Client、KMS、tenant-prefixed key、auth/tenant、
+    upload intent、Object Lock、API DTOは不変。secret/PHI/log/network callを追加せず、署名時の追加remote I/Oもない。
+  - validation / official reference / remaining / rollback:
+    Codex4 validationとcodex1独立rerunでfocused 1 file / 13 tests、scoped ESLint、Prettier、`git diff --check` PASS。dummy credentials・
+    no-networkのinstalled SDK回帰がchecksum query不在、`X-Amz-SignedHeaders`包含、response exact valueを固定した。AWS SDK JS v3
+    s3-request-presigner README、S3 presigned upload、upload integrity docsを2026-07-13確認。Live AWS/CORS applyなし。legacy prescription
+    Object Lock end-to-end digest/complete verificationは`S3-OBJECT-LOCK-PRESIGNED-CHECKSUM-001`に残す。Rollbackはこのscoped commitのrevert。
+
+- codex1: VISIT-RECORD-OFFLINE-SYNC-SCOPE-001 (DONE, 2026-07-13; implementation `420102b22`, PUSHED).
   - current task / files inspected / root cause:
     `visits/[id]/record` page/form/shared state/step navとtests、offline store queue contract、共通sync/state badge、
     `docs/ui-ux-design-guidelines.md`、installed Next 16.2.9 docsを確認した。旧表示はglobal pending count、global conflicts、
@@ -207,8 +222,7 @@
     TypeScript AST guardへ直して再検証中。
   - codex3: `QUERY-SHAPE-DAYBOARD-WATCHLIST-003I`。day-boardのunbounded reads、unstable order、task aggregate fanoutを
     bounded stable cursor pagesと単一bounded task readへ修正中。
-  - codex4: `EVIDENCE-PRESIGN-CHECKSUM-HEADER-SIGNING-001`。PH-OS evidence uploadのchecksumをqueryへhoistせず、
-    required signed headerとして固定する実presigner回帰を実装中。
+  - codex4: `EVIDENCE-PRESIGN-CHECKSUM-HEADER-SIGNING-001` READY、codex1独立review済み、scoped統合中。
   - codex1: `VISIT-RECORD-OFFLINE-SYNC-SCOPE-001`をfocused gateまで完了し、single ledger、exact staging、commit/push、
     各slice独立review、serialized long gatesと次候補scoringを管理する。
 
