@@ -65,6 +65,16 @@ const OPEN_ISSUE_LIMIT = 12;
 const REPORT_INBOUND_CANDIDATE_LIMIT = 12;
 const REPORT_INBOUND_CANDIDATE_SCAN_LIMIT = REPORT_INBOUND_CANDIDATE_LIMIT + 1;
 const BILLING_CANDIDATE_OPEN_ISSUE_SCAN_LIMIT = OPEN_ISSUE_LIMIT * 3;
+const REPORT_WORKSPACE_SCAN_PAGE_SIZE = 180;
+const REPORT_WORKSPACE_SCAN_MAX_PAGES = 50;
+const REPORT_WORKSPACE_CARE_TEAM_LINK_LIMIT = 10;
+const REPORT_WORKSPACE_RECIPIENT_ROLES = [
+  'physician',
+  'care_manager',
+  'nurse',
+  'facility_staff',
+  'facility',
+] as const;
 const OPEN_ISSUE_SEVERITY_RANK: Record<ReportOpenIssue['severity'], number> = {
   critical: 0,
   warning: 1,
@@ -131,6 +141,27 @@ type SafeReportInboundCandidateSignalRow = Omit<
     processing_status: (typeof REPORT_INBOUND_CANDIDATE_EVENT_STATUSES)[number];
   };
 };
+
+async function collectReportWorkspacePages<Row extends { id: string }>(
+  loadPage: (cursor: string | undefined) => PromiseLike<Row[]>,
+): Promise<Row[]> {
+  const rows: Row[] = [];
+  let cursor: string | undefined;
+
+  for (let pageNumber = 0; pageNumber < REPORT_WORKSPACE_SCAN_MAX_PAGES; pageNumber += 1) {
+    const page = await loadPage(cursor);
+    rows.push(...page);
+    if (page.length < REPORT_WORKSPACE_SCAN_PAGE_SIZE) return rows;
+
+    const nextCursor = page.at(-1)?.id;
+    if (!nextCursor || nextCursor === cursor) {
+      throw new Error('Report workspace cursor pagination did not advance');
+    }
+    cursor = nextCursor;
+  }
+
+  throw new Error('Report workspace bounded scan limit exceeded');
+}
 
 function countReportWorkspaceInboundCommunications(
   db: ReportWorkspaceInboundCountReader,
@@ -826,9 +857,18 @@ const authenticatedGET = withAuthContext(
             },
           },
         });
-        const waitingDeliveryCountPromise = tx.deliveryRecord.count({
-          where: { org_id: ctx.orgId, status: 'response_waiting' },
-        });
+        const deliveryCountRowsPromise = collectReportWorkspacePages((cursor) =>
+          tx.deliveryRecord.findMany({
+            where: {
+              org_id: ctx.orgId,
+              OR: [{ status: 'response_waiting' }, { sent_at: targetMonthInstantRange }],
+            },
+            orderBy: [{ id: 'asc' }],
+            take: REPORT_WORKSPACE_SCAN_PAGE_SIZE,
+            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+            select: { id: true, status: true, sent_at: true },
+          }),
+        );
         const waitingRequestsPromise = tx.communicationRequest.findMany({
           where: {
             org_id: ctx.orgId,
@@ -964,51 +1004,59 @@ const authenticatedGET = withAuthContext(
             },
           });
         })();
-        const monthlyDeliveryCountPromise = tx.deliveryRecord.count({
-          where: {
-            org_id: ctx.orgId,
-            sent_at: targetMonthInstantRange,
-          },
-        });
-
         const scheduleContextPromise = (async () => {
-          const schedules = await tx.visitSchedule.findMany({
-            where: {
-              org_id: ctx.orgId,
-              scheduled_date: { gte: today, lt: tomorrow },
-              schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-            },
-            orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }, { id: 'asc' }],
-            select: {
-              id: true,
-              schedule_status: true,
-              time_window_start: true,
-              facility_batch_id: true,
-              facility_batch: {
-                select: { id: true, facility_id: true, patient_ids: true },
+          const schedules = await collectReportWorkspacePages((cursor) =>
+            tx.visitSchedule.findMany({
+              where: {
+                org_id: ctx.orgId,
+                scheduled_date: { gte: today, lt: tomorrow },
+                schedule_status: { notIn: ['cancelled', 'rescheduled'] },
               },
-              case_: {
-                select: {
-                  patient: { select: { id: true, name: true } },
-                  care_team_links: {
-                    select: { role: true, name: true, is_primary: true },
-                  },
+              orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }, { id: 'asc' }],
+              take: REPORT_WORKSPACE_SCAN_PAGE_SIZE,
+              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+              select: {
+                id: true,
+                schedule_status: true,
+                time_window_start: true,
+                facility_batch_id: true,
+                facility_batch: {
+                  select: { id: true, facility_id: true, patient_ids: true },
                 },
-              },
-              cycle: {
-                select: {
-                  prescription_intakes: {
-                    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-                    take: 1,
-                    select: {
-                      lines: { select: { packaging_instruction_tags: true } },
+                case_: {
+                  select: {
+                    patient: { select: { id: true, name: true } },
+                    care_team_links: {
+                      where: {
+                        org_id: ctx.orgId,
+                        role: { in: [...REPORT_WORKSPACE_RECIPIENT_ROLES] },
+                      },
+                      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }, { id: 'asc' }],
+                      take: REPORT_WORKSPACE_CARE_TEAM_LINK_LIMIT,
+                      select: { role: true, name: true, is_primary: true },
                     },
                   },
                 },
+                cycle: {
+                  select: {
+                    prescription_intakes: {
+                      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+                      take: 1,
+                      select: {
+                        lines: {
+                          where: { packaging_instruction_tags: { has: 'narcotic' } },
+                          orderBy: [{ line_number: 'asc' }, { id: 'asc' }],
+                          take: 1,
+                          select: { packaging_instruction_tags: true },
+                        },
+                      },
+                    },
+                  },
+                },
+                visit_record: { select: { id: true, updated_at: true } },
               },
-              visit_record: { select: { id: true, updated_at: true } },
-            },
-          });
+            }),
+          );
 
           const visitRecordIds = schedules
             .map((schedule) => schedule.visit_record?.id)
@@ -1057,7 +1105,7 @@ const authenticatedGET = withAuthContext(
         const [
           { schedules, existingReports, facilities },
           waitingDeliveries,
-          waitingDeliveryCount,
+          deliveryCountRows,
           waitingRequests,
           waitingRequestCount,
           resolvedResponses,
@@ -1067,11 +1115,10 @@ const authenticatedGET = withAuthContext(
           templateCount,
           inboundCommunicationCount,
           inboundReportCandidateSignalRows,
-          monthlyDeliveryCount,
         ] = await Promise.all([
           scheduleContextPromise,
           waitingDeliveriesPromise,
-          waitingDeliveryCountPromise,
+          deliveryCountRowsPromise,
           waitingRequestsPromise,
           waitingRequestCountPromise,
           resolvedResponsesPromise,
@@ -1081,8 +1128,17 @@ const authenticatedGET = withAuthContext(
           templateCountPromise,
           inboundCommunicationCountPromise,
           inboundReportCandidateSignalsPromise,
-          monthlyDeliveryCountPromise,
         ]);
+
+        const waitingDeliveryCount = deliveryCountRows.filter(
+          (delivery) => delivery.status === 'response_waiting',
+        ).length;
+        const monthlyDeliveryCount = deliveryCountRows.filter(
+          (delivery) =>
+            delivery.sent_at !== null &&
+            delivery.sent_at >= targetMonthInstantRange.gte &&
+            delivery.sent_at < targetMonthInstantRange.lt,
+        ).length;
 
         const reportsByRecordId = new Map<string, ExistingScheduleReport[]>();
         for (const report of existingReports) {

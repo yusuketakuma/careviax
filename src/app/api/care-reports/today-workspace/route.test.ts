@@ -56,12 +56,33 @@ type TxOverrides = {
   billingCandidates?: unknown[];
   templateCount?: number;
   deliveryCount?: number;
+  deliveryCountRows?: Array<{ id: string; status: string; sent_at: Date | null }>;
 };
+
+type PageQueryArgs = {
+  take?: number;
+  skip?: number;
+  cursor?: { id?: string };
+};
+
+function paginateMockRows(rows: unknown[], args?: PageQueryArgs) {
+  if (typeof args?.take !== 'number') return rows;
+  const cursorId = args.cursor?.id;
+  const cursorIndex = cursorId
+    ? rows.findIndex((row) => (row as { id?: unknown }).id === cursorId)
+    : -1;
+  const start = cursorIndex >= 0 ? cursorIndex + (args.skip ?? 0) : (args.skip ?? 0);
+  return rows.slice(start, start + args.take);
+}
 
 function mockTx(overrides: TxOverrides = {}) {
   const tx = {
     visitSchedule: {
-      findMany: vi.fn().mockResolvedValue(overrides.schedules ?? []),
+      findMany: vi
+        .fn()
+        .mockImplementation((args?: PageQueryArgs) =>
+          Promise.resolve(paginateMockRows(overrides.schedules ?? [], args)),
+        ),
     },
     careReport: {
       findMany: vi.fn().mockImplementation((args?: { take?: number; orderBy?: unknown }) => {
@@ -79,15 +100,35 @@ function mockTx(overrides: TxOverrides = {}) {
       findMany: vi.fn().mockResolvedValue(overrides.facilities ?? []),
     },
     deliveryRecord: {
-      findMany: vi.fn().mockResolvedValue(overrides.deliveries ?? []),
-      count: vi.fn().mockImplementation((args?: { where?: { status?: string } }) => {
-        if (args?.where?.status === 'response_waiting') {
-          return Promise.resolve(
-            overrides.waitingDeliveryCount ?? (overrides.deliveries ?? []).length,
-          );
-        }
-        return Promise.resolve(overrides.deliveryCount ?? 0);
-      }),
+      findMany: vi.fn().mockImplementation(
+        (
+          args?: PageQueryArgs & {
+            where?: {
+              OR?: Array<{ sent_at?: { gte: Date; lt: Date } }>;
+            };
+          },
+        ) => {
+          if (Array.isArray(args?.where?.OR)) {
+            const monthRange = args.where.OR.find((clause) => clause.sent_at)?.sent_at;
+            const waitingCount =
+              overrides.waitingDeliveryCount ?? (overrides.deliveries ?? []).length;
+            const deliveryCountRows = overrides.deliveryCountRows ?? [
+              ...Array.from({ length: waitingCount }, (_, index) => ({
+                id: `waiting_count_${index}`,
+                status: 'response_waiting',
+                sent_at: null,
+              })),
+              ...Array.from({ length: overrides.deliveryCount ?? 0 }, (_, index) => ({
+                id: `monthly_count_${index}`,
+                status: 'sent',
+                sent_at: monthRange?.gte ?? new Date('2026-06-01T00:00:00.000Z'),
+              })),
+            ];
+            return Promise.resolve(paginateMockRows(deliveryCountRows, args));
+          }
+          return Promise.resolve(paginateMockRows(overrides.deliveries ?? [], args));
+        },
+      ),
     },
     communicationRequest: {
       findMany: vi.fn().mockResolvedValue(overrides.requests ?? []),
@@ -136,6 +177,25 @@ function mockTx(overrides: TxOverrides = {}) {
     fn(tx),
   );
   return tx;
+}
+
+function countWorkspaceDbQueries(tx: ReturnType<typeof mockTx>) {
+  return [
+    tx.visitSchedule.findMany,
+    tx.careReport.findMany,
+    tx.careReport.count,
+    tx.facility.findMany,
+    tx.deliveryRecord.findMany,
+    tx.communicationRequest.findMany,
+    tx.communicationRequest.count,
+    tx.inboundCommunicationEvent.count,
+    tx.inboundCommunicationSignal.findMany,
+    tx.communicationResponse.findMany,
+    tx.communicationResponse.count,
+    tx.patient.findMany,
+    tx.billingCandidate.findMany,
+    tx.template.count,
+  ].reduce((total, mock) => total + mock.mock.calls.length, 0);
 }
 
 describe('/api/care-reports/today-workspace', () => {
@@ -260,18 +320,58 @@ describe('/api/care-reports/today-workspace', () => {
     expect(tx.visitSchedule.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }, { id: 'asc' }],
+        take: 180,
         select: expect.objectContaining({
+          case_: {
+            select: expect.objectContaining({
+              care_team_links: {
+                where: {
+                  org_id: 'org_1',
+                  role: {
+                    in: ['physician', 'care_manager', 'nurse', 'facility_staff', 'facility'],
+                  },
+                },
+                orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }, { id: 'asc' }],
+                take: 10,
+                select: { role: true, name: true, is_primary: true },
+              },
+            }),
+          },
           cycle: {
             select: {
               prescription_intakes: expect.objectContaining({
                 orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
                 take: 1,
+                select: {
+                  lines: {
+                    where: { packaging_instruction_tags: { has: 'narcotic' } },
+                    orderBy: [{ line_number: 'asc' }, { id: 'asc' }],
+                    take: 1,
+                    select: { packaging_instruction_tags: true },
+                  },
+                },
               }),
             },
           },
         }),
       }),
     );
+    expect(tx.deliveryRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          OR: [
+            { status: 'response_waiting' },
+            { sent_at: expect.objectContaining({ gte: expect.any(Date), lt: expect.any(Date) }) },
+          ],
+        },
+        orderBy: [{ id: 'asc' }],
+        take: 180,
+        select: { id: true, status: true, sent_at: true },
+      }),
+    );
+    expect(tx.deliveryRecord.findMany).toHaveBeenCalledTimes(2);
+    expect(countWorkspaceDbQueries(tx)).toBe(12);
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
       expect.any(Function),
@@ -537,15 +637,24 @@ describe('/api/care-reports/today-workspace', () => {
           }),
         }),
       );
-      expect(tx.deliveryRecord.count).toHaveBeenCalledWith({
-        where: {
-          org_id: 'org_1',
-          sent_at: {
-            gte: new Date('2026-05-31T15:00:00.000Z'),
-            lt: new Date('2026-06-30T15:00:00.000Z'),
+      expect(tx.deliveryRecord.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            org_id: 'org_1',
+            OR: [
+              { status: 'response_waiting' },
+              {
+                sent_at: {
+                  gte: new Date('2026-05-31T15:00:00.000Z'),
+                  lt: new Date('2026-06-30T15:00:00.000Z'),
+                },
+              },
+            ],
           },
-        },
-      });
+          orderBy: [{ id: 'asc' }],
+          take: 180,
+        }),
+      );
       expect(tx.billingCandidate.findMany).toHaveBeenCalled();
       for (const [args] of tx.billingCandidate.findMany.mock.calls) {
         expect(args.where.billing_month).toEqual(new Date('2026-06-01T00:00:00.000Z'));
@@ -659,6 +768,65 @@ describe('/api/care-reports/today-workspace', () => {
     expect(third.action?.href).not.toBe(`/visits/${HOSTILE_FACILITY_SCHEDULE_ID}/facility-packet`);
 
     expect(json.data.counts.to_write).toBe(3);
+  });
+
+  it('collects stable schedule pages without dropping a later narcotic-safety row', async () => {
+    const schedules = Array.from({ length: 181 }, (_, index) => {
+      const ordinal = index + 1;
+      const id = `sched_${String(ordinal).padStart(3, '0')}`;
+      return {
+        id,
+        schedule_status: 'planned',
+        time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+        facility_batch_id: null,
+        facility_batch: null,
+        case_: {
+          patient: { id: `patient_${ordinal}`, name: `患者 ${ordinal}` },
+          care_team_links: [],
+        },
+        cycle: {
+          prescription_intakes: [
+            {
+              lines: ordinal === 181 ? [{ packaging_instruction_tags: ['narcotic'] }] : [],
+            },
+          ],
+        },
+        visit_record: null,
+      };
+    });
+    const tx = mockTx({ schedules });
+
+    const res = await GET(
+      createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11'),
+      { params: Promise.resolve({}) },
+    );
+
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+    expect(json.data.counts.to_write).toBe(181);
+    expect(json.data.count_metadata.to_write).toEqual({
+      total_count: 181,
+      visible_count: 181,
+      hidden_count: 0,
+      limit: null,
+      truncated: false,
+      count_basis: 'full_result',
+    });
+    expect(json.data.draft_rows.at(-1)).toMatchObject({
+      id: 'sched_181',
+      patient_label: '患者 181 様',
+      note: '麻薬使用状況を含む',
+    });
+    expect(tx.visitSchedule.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.visitSchedule.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }, { id: 'asc' }],
+        take: 180,
+        cursor: { id: 'sched_180' },
+        skip: 1,
+      }),
+    );
   });
 
   it('marks completed visits without report drafts as not-created generation candidates', async () => {
@@ -1082,6 +1250,46 @@ describe('/api/care-reports/today-workspace', () => {
         count_basis: 'database_total',
       },
     });
+  });
+
+  it('derives exact waiting and monthly delivery counts from one bounded union scan', async () => {
+    mockTx({
+      waitingDeliveryCount: 99,
+      deliveryCount: 99,
+      deliveryCountRows: [
+        {
+          id: 'delivery_both',
+          status: 'response_waiting',
+          sent_at: new Date('2026-06-05T00:00:00.000Z'),
+        },
+        {
+          id: 'delivery_waiting_only',
+          status: 'response_waiting',
+          sent_at: new Date('2026-05-01T00:00:00.000Z'),
+        },
+        {
+          id: 'delivery_month_only',
+          status: 'sent',
+          sent_at: new Date('2026-06-06T00:00:00.000Z'),
+        },
+      ],
+    });
+
+    const res = await GET(
+      createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11'),
+      { params: Promise.resolve({}) },
+    );
+
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+    expect(json.data.counts.waiting).toBe(2);
+    expect(json.data.count_metadata.waiting).toMatchObject({
+      total_count: 2,
+      visible_count: 0,
+      hidden_count: 2,
+      count_basis: 'database_total',
+    });
+    expect(json.data.evidence.monthly_delivery_count).toBe(2);
   });
 
   it('focuses waiting inquiry secondary actions on related report, visit, and schedule records', async () => {
@@ -2101,6 +2309,31 @@ describe('/api/care-reports/today-workspace', () => {
         }),
       ]),
     );
+  });
+
+  it('fails closed instead of returning a partial workspace at the bounded scan ceiling', async () => {
+    const tx = mockTx();
+    tx.visitSchedule.findMany.mockImplementation(() => {
+      const pageNumber = tx.visitSchedule.findMany.mock.calls.length;
+      return Promise.resolve(
+        Array.from({ length: 180 }, (_, index) => ({
+          id: `limit_${String((pageNumber - 1) * 180 + index + 1).padStart(5, '0')}`,
+        })),
+      );
+    });
+
+    const res = await GET(
+      createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11'),
+      { params: Promise.resolve({}) },
+    );
+
+    expect(res!.status).toBe(500);
+    expectSensitiveNoStore(res!);
+    await expect(res!.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(tx.visitSchedule.findMany).toHaveBeenCalledTimes(50);
   });
 
   it('returns 400 on invalid date param', async () => {

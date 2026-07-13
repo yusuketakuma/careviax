@@ -292,15 +292,6 @@
   ],
   "known_take_drift": [
     {
-      "route": "/api/care-reports/today-workspace",
-      "method": "GET",
-      "model": "visitSchedule",
-      "rule": "slo_take_missing",
-      "expectedCount": 1,
-      "owner": "PERF-DB-SLO-TAKE-LINT-001",
-      "reason": "Today workspace visit schedules are naturally bounded by a single-day org-scoped scheduled_date window (gte today / lt tomorrow) rather than a row-count take. Row count is capped by one org's schedules for one day."
-    },
-    {
       "route": "/api/visits/today-preparation",
       "method": "GET",
       "model": "visitSchedule",

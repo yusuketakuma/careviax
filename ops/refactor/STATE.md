@@ -54,6 +54,29 @@
 
 ## 直近の作業
 
+- codex3 + codex1 integration: QUERY-SHAPE-REPORT-WORKSPACE-WATCHLIST-003K (DONE, 2026-07-13; implementation in this scoped commit).
+  - current task / root cause / files inspected:
+    report today-workspace route/tests、query-shape watchlist/checker、read-path SLO registry/drift checker、delivery/schedule/recipient/
+    narcotic projectionとinstalled Next 16.2.9 Route Handler guideを確認した。Watchlist追加baselineは`visitSchedule.findMany`の
+    unbounded read 1件と同一DeliveryRecord delegateのaggregate fan-out 1件。care-team全relationと最新intakeの全linesもscheduleごとに
+    過剰取得していた。
+  - files changed / correctness / performance / privacy:
+    scheduleとdelivery unionを`id asc` keyset、`take 180`、最大50 pagesへ統一し、cursor非進行または9,000-row ceilingではpartial count/
+    workspaceを返さずsanitized 500へfail closedとした。Deliveryは`id/status/sent_at`だけを読み、response-waitingと対象月の重複rowを
+    waiting/月次の双方へexact加算する。care-teamはorg + 表示に使う5 roles、primary/created/id安定順、take 10、latest intake lineは
+    narcotic tagをDB filterしてline_number/id順take 1へ絞った。181 schedulesの2-page caseでも末尾narcotic safety row、full-result count、
+    draft orderを維持する。代表empty workspace DB callsは13→12、query-shape debtは2→0。DTO、count basis、assignment、org/RLS、
+    PHI display、draft/send behaviorは不変。
+  - validation / independent review / Oracle boundary:
+    Codex3 finalとCodex1独立rerunでroute 1 file / 35 tests、query-shape 0 allowlisted / 0 new、read-SLO 1 known / 0 new、raw-read org guard
+    117 allowlisted / 0 new、scoped ESLint、Prettier、`git diff --check` PASS。初回reviewで`take 200`がdeclared max_rows 180を超え、stale
+    visitSchedule driftを残すことを検出し、180 + stale entry削除へ修復後に再runした。Codex3が古いOracle必須記述で外部reviewを
+    開始しかけたが、現行ユーザー指示のOracle禁止を優先してcodex1がlocal processを停止し、出力を閲覧・利用・台帳転記していない。
+  - remaining / rollback:
+    親`QUERY-SHAPE-WATCHLIST-003-FOLLOW`にはpatients boardの全cardinality materializeとvisit-brief service本体が残る。9,000 rowsは
+    correctness ceilingであり、実seeded large-org p95/p99は別の運用証跡。DB schema/migration/write path変更なし。Rollbackはこの
+    scoped commitのrevertでDB/data rollback不要。
+
 - codex4 + codex1 integration: S3-OBJECT-LOCK-PRESIGNED-CHECKSUM-001 / S3-PRESIGN-SEPARATE-CHECKSUM-CLIENT-001 (DONE code; external deployment gate remains, 2026-07-13; implementation in this scoped commit).
   - current task / root causes / files inspected:
     Legacy file presign/complete service、presigned-upload route、患者cardと新規処方入力の2 upload UI、installed AWS SDK v3、
@@ -363,11 +386,10 @@
     DB/data rollback不要。gbrain: `projects/careviax/decisions/2026-07-13/anchor-daily-jobs-to-japan-business-dates`。
 
 - parallel assignments (ACTIVE, 2026-07-13):
-  - codex2: `API-STATUS-NOTFOUND-LIVE-RESCAN-001A`。6 route/test pairsでpath primary 404とbody FK generic 400を整合中。
-  - codex3: `QUERY-SHAPE-REPORT-WORKSPACE-WATCHLIST-003K`。report today-workspaceのbounded stable readsと
-    zero-debt watchlist/read-SLO admissionをexact 4 pathsで修復中。
-  - codex4: S3 exact 10 pathsはREADY/FREEZE。並行して`API-STATUS-NOTFOUND-LIVE-RESCAN-001B`の非重複route pairsをscan/claim中。
-  - codex1: S3 scoped統合、single ledger、exact staging、各slice独立review、
+  - codex2: `API-STATUS-NOTFOUND-LIVE-RESCAN-001A`。primary targetとbody FKの分類1件をcodex1 review後に修復中。
+  - codex3: `QUERY-SHAPE-REPORT-WORKSPACE-WATCHLIST-003K`はREADY/FREEZE、Oracleなしのlocal scoped統合中。
+  - codex4: `API-STATUS-NOTFOUND-LIVE-RESCAN-001B` exact 10 pathsはREADY/FREEZE、codex1 review待ち。
+  - codex1: report workspace scoped統合、single ledger、exact staging、各slice独立review、
     serialized long gates、VERIFY_REQUIRED reconciliationと次候補scoringを管理する。
 
 - codex1: MEDPROFILE-SYNC-RACE-001 MedicationProfile sync serialization (DONE, 2026-07-13; implementation `30fcf954e`, PUSHED).
