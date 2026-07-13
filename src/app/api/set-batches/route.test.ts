@@ -135,11 +135,13 @@ describe('set-batches POST', () => {
       'org_1',
       expect.any(Function),
       expect.objectContaining({
-        requestContext: {
+        requestContext: expect.objectContaining({
           orgId: 'org_1',
           userId: 'user_1',
           role: 'pharmacist_trainee',
-        },
+          requestId: expect.any(String),
+          correlationId: expect.any(String),
+        }),
       }),
     );
   });
@@ -631,11 +633,13 @@ describe('set-batches POST', () => {
       expect.any(Function),
       expect.objectContaining({
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        requestContext: {
+        requestContext: expect.objectContaining({
           orgId: 'org_1',
           userId: 'user_1',
           role: 'admin',
-        },
+          requestId: expect.any(String),
+          correlationId: expect.any(String),
+        }),
       }),
     );
     expect(txMock.setPlan.updateMany).toHaveBeenCalledWith(

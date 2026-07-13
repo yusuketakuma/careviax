@@ -130,11 +130,13 @@ describe('/api/set-batches/[id]', () => {
       'org_1',
       expect.any(Function),
       expect.objectContaining({
-        requestContext: {
+        requestContext: expect.objectContaining({
           orgId: 'org_1',
           userId: 'user_1',
           role: 'admin',
-        },
+          requestId: expect.any(String),
+          correlationId: expect.any(String),
+        }),
       }),
     );
   });
@@ -216,11 +218,13 @@ describe('/api/set-batches/[id]', () => {
       'org_1',
       expect.any(Function),
       expect.objectContaining({
-        requestContext: {
+        requestContext: expect.objectContaining({
           orgId: 'org_1',
           userId: 'user_1',
           role: 'admin',
-        },
+          requestId: expect.any(String),
+          correlationId: expect.any(String),
+        }),
       }),
     );
     expect(setBatchUpdateManyMock).toHaveBeenCalledWith({
