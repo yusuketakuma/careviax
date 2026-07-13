@@ -55,6 +55,24 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-003B (DONE; parent remains Partial, 2026-07-14; implementation `f49f58cea`).
+  - current task / files inspected / root cause:
+    Shared registry push/parity後、literal `error` / `externalError` codeの頻度matrixとstatus一致をlive scanし、最多の
+    `EXTERNAL_PDF_RENDER_FAILED`を選定した。PDF/一括出力11 routes、各route tests、aggregate PDF route test、shared registry/responseを確認。
+    全11 callsitesがHTTP 500と再試行可能な同一recoveryを持つ一方、code/statusを各routeで重複していた。
+  - files changed / bugs found / correctness / security / privacy / medical safety / performance:
+    Canonical registryに`EXTERNAL_PDF_RENDER_FAILED` = 500/error/retryable/retry/`api.error.external.pdf_render_failed`を追加し、
+    billing document、care report、conference note、management plan、medication calendar/history/bulk export、patient visit-record list、pharmacy invoice、
+    tracing report、visit recordの11 routesをtyped `registeredError`へ移行した。Direct `error('EXTERNAL_PDF_RENDER_FAILED', ..., 500)`は11→0。
+    Route固定message、code/body/status、auth/org/patient scope、PDF bytes、export audit、sensitive no-store、unexpected failure制御は不変。Raw PDF data/
+    patient data/provider errorをregistryへ追加せず、DB/network/render call/payload/per-request complexityも不変。
+  - validation results / remaining work / next action / rollback:
+    11 route tests + aggregate PDF + registry/response 14 files / 103 tests、direct PDF code scan 0、exact ESLint/Prettier、8 GiB aggregate typecheck/
+    no-unused、route-auth 150 allowlisted / 214 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、
+    frontend contract、client schema 361 backed / 0 allowlisted、Plans/format/diffをPASS。新規security/privacy/medical/performance issueなし。
+    Schema/migration/production mutation/deploy/Oracleなし。非視覚server/API変更のためimagegen/browserなし。Registryは9 codes。残るroute固有/
+    dynamic familyはstatus/recovery一致を確認して段階移行する。Rollbackは`f49f58cea`のrevertでDB/data rollback不要。
+
 - codex1: API-CONTRACT-003A (DONE; parent remains Partial, 2026-07-14; implementation `0f49030ab`).
   - current task / files inspected / root cause:
     Request correlation push/parity後、shared response helper/tests、route固有`error()` / `externalError()` callsites、error response schema、label dictionary
