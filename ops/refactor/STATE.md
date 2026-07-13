@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZPHARMACISTIMPORTAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZPHARMACISTIMPORTAUTH (DONE; parent remains Partial, 2026-07-14; implementation `710917480`).
   - current task / files inspected / root cause:
     Medication Cycle push/parity後の残6 routesからPharmacists import POSTを選定した。Route/test、import validation、Cognito admin service、
     protected POST matrix、rate-limit、allowlist、installed Next guideを確認した。既存handlerはcanAdmin、行単位validation/partial failure、site/role/
