@@ -5,6 +5,7 @@ const {
   withOrgContextMock,
   acquireAdvisoryTxLockMock,
   notifyWebhookEventForOrgMock,
+  loggerErrorMock,
   upsertOperationalTaskMock,
   createDispenseDraftMock,
   prismaMock,
@@ -12,6 +13,7 @@ const {
   withOrgContextMock: vi.fn(),
   acquireAdvisoryTxLockMock: vi.fn(),
   notifyWebhookEventForOrgMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   createDispenseDraftMock: vi.fn(),
   prismaMock: {
@@ -45,6 +47,12 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/server/services/outbound-webhook', () => ({
   notifyWebhookEventForOrg: notifyWebhookEventForOrgMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
 }));
 
 vi.mock('@/server/services/operational-tasks', () => ({
@@ -122,6 +130,27 @@ function validLine() {
     dose: '1錠',
     frequency: '1日1回朝食後',
     days: 14,
+  };
+}
+
+function postCreateHookArgs() {
+  return {
+    cycleId: 'cycle_1',
+    intakeId: 'intake_1',
+    patientId: 'patient_1',
+    orgId: 'org_1',
+    userId: 'user_1',
+    lines: [
+      {
+        drug_name: 'アムロジピン錠5mg',
+        drug_code: '2149001',
+        dose: '1錠',
+        frequency: '1日1回朝食後',
+        days: 14,
+      },
+    ],
+    prescriberName: '処方医A',
+    sourceType: 'qr_scan' as const,
   };
 }
 
@@ -2307,5 +2336,152 @@ describe('createPrescriptionIntake', () => {
     });
     if (!result.profileSyncResult) throw new Error('profile sync result is required');
     expect(result.profileSyncResult.discontinued).toBe(1);
+  });
+
+  it('preserves profile sync and stock results when medication change detection fails', async () => {
+    const detectionError = new Error('patient_1 secret detection failure');
+    const stockResult = { results: [] };
+    prismaMock.prescriptionIntake.findFirst.mockRejectedValueOnce(detectionError);
+    withOrgContextMock
+      .mockImplementationOnce(async (_orgId, callback) => callback(prismaMock))
+      .mockResolvedValueOnce(stockResult);
+
+    const result = await runPrescriptionIntakePostCreateHooks(postCreateHookArgs());
+
+    expect(result.medicationChanges).toEqual([]);
+    expect(result.profileSyncResult).toEqual({ created: 1, updated: 0, discontinued: 0 });
+    expect(result.prescriptionSupplyResult).toBe(stockResult);
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'prescription_intake.post_create_change_detection_failed',
+        operation: 'detect_medication_changes',
+        phase: 'post_create',
+      },
+      detectionError,
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls.map(([context]) => context))).not.toMatch(
+      /patient_1|intake_1|org_1|secret|アムロジピン|処方医A/,
+    );
+  });
+
+  it('preserves detected medication changes and stock results when profile sync fails', async () => {
+    const profileSyncError = new Error('patient_1 secret profile failure');
+    const stockResult = { results: [] };
+    prismaMock.prescriptionIntake.findFirst
+      .mockResolvedValueOnce({
+        id: 'intake_1',
+        prescribed_date: new Date('2026-06-10T00:00:00.000Z'),
+        created_at: new Date('2026-06-10T09:00:00.000Z'),
+        cycle: { case_id: 'case_1' },
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+            start_date: null,
+            end_date: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: 'intake_previous',
+        prescribed_date: new Date('2026-05-27T00:00:00.000Z'),
+        created_at: new Date('2026-05-27T09:00:00.000Z'),
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 7,
+            start_date: null,
+            end_date: null,
+          },
+        ],
+      });
+    withOrgContextMock.mockRejectedValueOnce(profileSyncError).mockResolvedValueOnce(stockResult);
+
+    const result = await runPrescriptionIntakePostCreateHooks(postCreateHookArgs());
+
+    expect(result.medicationChanges).toEqual([
+      expect.objectContaining({
+        drug_name: 'アムロジピン錠5mg',
+        change_type: 'days_changed',
+        previous_days: 7,
+        current_days: 14,
+      }),
+    ]);
+    expect(result.profileSyncResult).toBeNull();
+    expect(result.prescriptionSupplyResult).toBe(stockResult);
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'prescription_intake.post_create_profile_sync_failed',
+        operation: 'sync_medication_profiles',
+        phase: 'post_create',
+      },
+      profileSyncError,
+    );
+  });
+
+  it('preserves earlier hook results when prescription stock linkage fails', async () => {
+    const stockError = new Error('patient_1 secret stock failure');
+    prismaMock.prescriptionIntake.findFirst.mockResolvedValue(null);
+    withOrgContextMock
+      .mockImplementationOnce(async (_orgId, callback) => callback(prismaMock))
+      .mockRejectedValueOnce(stockError);
+
+    const result = await runPrescriptionIntakePostCreateHooks(postCreateHookArgs());
+
+    expect(result.medicationChanges).toEqual([]);
+    expect(result.profileSyncResult).toEqual({ created: 1, updated: 0, discontinued: 0 });
+    expect(result.prescriptionSupplyResult).toBeNull();
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'prescription_intake.post_create_stock_linkage_failed',
+        operation: 'apply_prescription_supply',
+        phase: 'post_create',
+      },
+      stockError,
+    );
+  });
+
+  it('keeps a committed intake successful and records each post-create hook failure once', async () => {
+    const detectionError = new Error('patient_1 secret detection failure');
+    const profileSyncError = new Error('patient_1 secret profile failure');
+    const stockError = new Error('patient_1 secret stock failure');
+    prismaMock.prescriptionIntake.findFirst.mockRejectedValueOnce(detectionError);
+    withOrgContextMock.mockRejectedValueOnce(profileSyncError).mockRejectedValueOnce(stockError);
+
+    await expect(runPrescriptionIntakePostCreateHooks(postCreateHookArgs())).resolves.toEqual({
+      medicationChanges: [],
+      profileSyncResult: null,
+      prescriptionSupplyResult: null,
+    });
+    expect(loggerErrorMock).toHaveBeenCalledTimes(3);
+    expect(loggerErrorMock.mock.calls.map(([context]) => context)).toEqual([
+      {
+        event: 'prescription_intake.post_create_change_detection_failed',
+        operation: 'detect_medication_changes',
+        phase: 'post_create',
+      },
+      {
+        event: 'prescription_intake.post_create_profile_sync_failed',
+        operation: 'sync_medication_profiles',
+        phase: 'post_create',
+      },
+      {
+        event: 'prescription_intake.post_create_stock_linkage_failed',
+        operation: 'apply_prescription_supply',
+        phase: 'post_create',
+      },
+    ]);
+    expect(JSON.stringify(loggerErrorMock.mock.calls.map(([context]) => context))).not.toMatch(
+      /patient_1|intake_1|org_1|secret|アムロジピン|処方医A/,
+    );
   });
 });

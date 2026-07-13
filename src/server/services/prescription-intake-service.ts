@@ -1,6 +1,7 @@
 import { addDays, subDays } from 'date-fns';
 import { prisma } from '@/lib/db/client';
 import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { logger } from '@/lib/utils/logger';
 import { withOrgContext } from '@/lib/db/rls';
 import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { toPrismaJsonInput } from '@/lib/db/json';
@@ -1492,21 +1493,41 @@ export async function runPrescriptionIntakePostCreateHooks(args: {
   let profileSyncResult: ProfileSyncResult | null = null;
   let prescriptionSupplyResult: ApplyPrescriptionSupplyForIntakeResult | null = null;
 
-  try {
-    const [changes, syncResult] = await Promise.all([
-      detectIntakeChanges(args.orgId, args.patientId, args.intakeId),
-      syncMedicationProfiles(
-        args.patientId,
-        args.orgId,
-        args.lines,
-        args.prescriberName,
-        args.sourceType,
-      ),
-    ]);
-    medicationChanges = changes;
-    profileSyncResult = syncResult;
-  } catch {
-    // Post-processing errors should not fail the intake creation
+  const [changeDetectionResult, profileSyncOutcome] = await Promise.allSettled([
+    detectIntakeChanges(args.orgId, args.patientId, args.intakeId),
+    syncMedicationProfiles(
+      args.patientId,
+      args.orgId,
+      args.lines,
+      args.prescriberName,
+      args.sourceType,
+    ),
+  ]);
+
+  if (changeDetectionResult.status === 'fulfilled') {
+    medicationChanges = changeDetectionResult.value;
+  } else {
+    logger.error(
+      {
+        event: 'prescription_intake.post_create_change_detection_failed',
+        operation: 'detect_medication_changes',
+        phase: 'post_create',
+      },
+      changeDetectionResult.reason,
+    );
+  }
+
+  if (profileSyncOutcome.status === 'fulfilled') {
+    profileSyncResult = profileSyncOutcome.value;
+  } else {
+    logger.error(
+      {
+        event: 'prescription_intake.post_create_profile_sync_failed',
+        operation: 'sync_medication_profiles',
+        phase: 'post_create',
+      },
+      profileSyncOutcome.reason,
+    );
   }
 
   try {
@@ -1518,7 +1539,15 @@ export async function runPrescriptionIntakePostCreateHooks(args: {
         patientId: args.patientId,
       }),
     );
-  } catch {
+  } catch (error) {
+    logger.error(
+      {
+        event: 'prescription_intake.post_create_stock_linkage_failed',
+        operation: 'apply_prescription_supply',
+        phase: 'post_create',
+      },
+      error,
+    );
     // Medication stock linkage is best-effort and must not fail a committed intake.
   }
 
