@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZBILLINGCLOSEAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZBILLINGCLOSEAUTH (DONE; parent remains Partial, 2026-07-14; implementation `e74eb5e60`).
   - current task / files inspected / root cause:
     Admin Organizations push/parity後の残3 routesからBilling Candidates Close POSTを選定した。Route/test、billing evidence close service、claims export adapter/
     site resolution、attempt/success audit、webhook、billing UI consumer、protected POST matrix、rate-limit、allowlist、installed Next guideを確認した。
