@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZCASETRANSITIONAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZCASETRANSITIONAUTH (DONE; parent remains Partial, 2026-07-14; implementation `8a032b148`).
   - current task / files inspected / root cause:
     Patient Lab push/parity後の残9 routesを再scoreし、SSEはshared wrapper型gap、Tasks bulkはarchive/dedicated partial-success隣接として保留し、
     Case transition PATCHを選定した。Route/test、protected PATCH matrix、case transition schema、assignment helper、operational-task service、allowlist、
