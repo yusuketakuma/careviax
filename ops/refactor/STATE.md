@@ -54,7 +54,18 @@
 
 ## 直近の作業
 
-- codex2 + codex1 integration: API-STATUS-AUTHZ-403-AS-400-001 (DONE, 2026-07-13; implementation in this scoped commit).
+- codex1: PLANS-ACTIVE-QUEUE-DONE-DRIFT-001 (DONE, 2026-07-13; ledger repair in this scoped commit).
+  - current task / root cause / files changed:
+    `pnpm plans:active:check`をcurrent HEADで再実行し、Implementation queueの分類件数がexpected 44 / actual 48でfailすることを確認した。
+    新しく完了した`S3-SSE-DEFAULT-NONKMS-001`、`VISIT-RECORD-OFFLINE-SYNC-SCOPE-001`、
+    `EVIDENCE-PRESIGN-CHECKSUM-001`、`QUERY-SHAPE-DAYBOARD-003I`を未実装入口のtableへ追加していたことが原因だった。
+    4 IDsをCurrent execution sliceのDONE/PUSHED証跡へ移し、実装queueから削除した。summaryの44を水増しせず、再実装防止を維持する。
+  - validation / security / performance / remaining:
+    `pnpm plans:active:check`、Prettier、`git diff --check` PASS。code/API/DB/auth/PHI/performance behavior変更なし。
+    VERIFY_REQUIRED 64 entriesに記載された65 unique commit hashesは全てcurrent HEAD ancestorと確認済み。残は並列3 slice統合後に
+    serialized typecheck/no-unused/full test/buildをcurrent HEADで実行し、旧capacity-only verification stateを再分類する。
+
+- codex2 + codex1 integration: API-STATUS-AUTHZ-403-AS-400-001 (DONE, 2026-07-13; implementation `4bb4e82db`, PUSHED).
   - current task / files inspected / root cause:
     Tasks、medication cycles、QR drafts/confirm、communication events/requests/inbound/mcs/phone/source mapping、care reports、
     prescription intakesのroutes/tests、response/no-store helpers、route auth guard、API response-shape guard、CI/packageを確認した。
@@ -256,8 +267,8 @@
     bounded select/take、payload/query budgetを7-path API/service/model sliceで実装中。
   - codex4: `S3-OBJECT-LOCK-PRESIGNED-CHECKSUM-001`。legacy prescriptionのfinal upload File digestをFE→presign→metadata→
     HeadObject complete verificationまで一貫させる10-path FE/BE sliceを実装中。
-  - codex1: `VISIT-RECORD-OFFLINE-SYNC-SCOPE-001`をfocused gateまで完了し、single ledger、exact staging、commit/push、
-    各slice独立review、serialized long gatesと次候補scoringを管理する。
+  - codex1: completed IDsのactive queue driftを修復し、single ledger、exact staging、各slice独立review、
+    serialized long gates、VERIFY_REQUIRED reconciliationと次候補scoringを管理する。
 
 - codex1: MEDPROFILE-SYNC-RACE-001 MedicationProfile sync serialization (DONE, 2026-07-13; implementation `30fcf954e`, PUSHED).
   - current task / root cause / inspected:
