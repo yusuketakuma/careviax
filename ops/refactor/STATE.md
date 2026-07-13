@@ -51,6 +51,32 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZWEEKOPTSTRICT schedule weekly optimizer readers (VERIFY_REQUIRED, 2026-07-13; implementation `4176ead5c`; shared clean-capacity build pending).
+  - current task / root cause:
+    Weekly Optimizerのcases/検索、週間proposals、shifts、vehicle、billing、mixed route 7 readersはcompile-time型だけで、別週、
+    case/patient/pharmacist/site relation drift、不完全billing、要求外schedule/proposalやtravel modeを成功扱いし、患者予定・算定・
+    route draftへ流し得た。
+  - implementation / scheduling safety boundary:
+    Cases、proposal、跨月shift、billingのoptimizer固有schemasを追加し、vehicleとrouteは既存shared strict schemasを再利用。
+    Active status/cursor、week range、identity/relation、billing full fields、requested mixed route set/travel modeを検証した。Route testを
+    requested week/pharmacist cellの実schedule+proposal semanticsへ強化。Proposal generation/reorder、route engine、billing calculation、
+    auth/assignment/tenant/DB/UIは変更していない。非visual parser境界のため`gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer-response-schemas.ts`,
+    `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer-response-schemas.test.ts`,
+    `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`,
+    `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Schema/consumer Vitest passed 2 files / 20 tests; provider/shared contracts passed 7 files / 179 tests. Exact zero-warning ESLint,
+    focused Prettier, aggregate typecheck, 8GB no-unused typecheck, client schema (308 backed / 56 allowlisted / 11 files), module boundary,
+    client PHI-log, API response shape, colors, and diff-check passed. Full build remains NOT_EXECUTED because only 291 MiB is free while
+    existing `.next` consumes 16 GiB; shared generated/user files were not deleted.
+  - security / performance / remaining:
+    Cross-week/case/patient/pharmacist/site and malformed billing/route responses now fail closed before operational schedule state updates.
+    Network/DB calls, writes, route computation, rendering, and dependencies are unchanged. A clean-capacity runner must complete `pnpm build`,
+    then `API-CONTRACT-001-RESCAN` continues with 56 calls across 11 files.
+
 - codex: API-CONTRACT-001FZINBOUNDSTRICT communications inbound readers (VERIFY_REQUIRED, 2026-07-13; implementation `6b88c28bd`; shared clean-capacity build pending).
   - current task / root cause:
     Communications Inboundのinbox/signal candidates/detail/patient stock summary 4 GETとintake/task/review/stock apply/source mapping
