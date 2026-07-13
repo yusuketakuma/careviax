@@ -48,13 +48,31 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。`codex1`の`OPS-MEDPROFILE-SYNC-RECOVERY-001A`実装/docsと、`codex2`の
-  `API-CONTRACT-003H`実装4 pathsはいずれもcommit/push済み。現在の共有surface ownershipはなく、`codex3/codex4`は停止のまま。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `API-CONTRACT-002C`のPlans/STATE evidence同期
+  （実装3 pathsは`d71107c27`でRELEASE済み）、`codex2`: `PERF-FE-CSS-SOURCE-001`の`src/app/globals.css`と
+  `tools/scripts/tailwind-source-boundary.test.ts`。`codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: API-CONTRACT-002C (DONE; parent remains Partial, 2026-07-14; implementation `d71107c27`, `PUSHED`).
+  - current task / files inspected / root cause:
+    Shared PHI read audit helperと7 API callsites、SSR capture、general AuditLog writer、auth request context、direct-writer static ratchetを照合。
+    Auth contextはserver-owned request/correlation IDを持つが、PHI read helperのactor/request-context型が両値を落とし、直接`auditLog.create`
+    していたため、患者詳細・overview・header・movement/timeline event・medication stock・inbound raw detailの監査をrequest/responseへ相関できなかった。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    `src/lib/audit/phi-read-audit.ts`とtest、`src/__tests__/audit-log-conventions-static.test.ts`だけを変更。監査writeをshared
+    `createAuditLogEntry`へ収束し、validated IDだけを予約`changes.request_trace`へ追加。不正IDを除外し、既存view/purpose、domain
+    `metadata.request_id`、org/actor/patient/target/IP/UA、fire-and-forget、同期/非同期failure吸収、RLS request contextを維持した。
+    PHI本文/raw errorを追加せず、route response/query/network/DB schemaは不変。direct-writer allowlistからPHI helper例外を除去した。
+  - validation results / remaining work / next action / rollback:
+    Focused helper/shared-writer/static ratchet 3 files / 18 tests、全callsite回帰8 files / 93 tests、独立privacy verifier 2 files / 12 tests、
+    exact ESLint/Prettier、`pnpm typecheck`、8 GiB `pnpm typecheck:no-unused`、`git diff --check`をPASS。002C前のcurrent headでは
+    codex2のNext buildもwebpack compile 6.8min、TypeScript 105s、311 pagesでPASSしたが、本slice後のbuild/full Vitest/E2E/demoはGoal最終batchへ残る。
+    親にはexport/print/break-glass/billing/visit-brief direct writers、trace元のないSSR capture、success/error body、job/outbox伝播が残る。
+    Oracleは現行SSOTの利用停止指示により未使用。非視覚audit変更のためimagegen/browserなし。Rollbackは`d71107c27`のrevertでDB/data rollback不要。
 
 - codex2: API-CONTRACT-003H (DONE; parent remains Partial, 2026-07-14; implementation `998995085`, `PUSHED`).
   - current task / files inspected / root cause:
