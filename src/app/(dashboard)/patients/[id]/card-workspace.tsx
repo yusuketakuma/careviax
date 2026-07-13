@@ -121,6 +121,7 @@ import {
   buildPatientHeaderSummaryResponseSchema,
   patientHomeOperationsResponseSchema,
 } from './card-workspace-response-schemas';
+import { buildPatientOverviewResponseSchema } from './patient-overview-response-schema';
 
 type FirstVisitDocumentsPanelProps = {
   cases: PatientOverview['cases'];
@@ -4884,6 +4885,7 @@ export function CardWorkspace({
       });
       const payload = await readApiJson<{ data: PatientOverview }>(res, {
         fallbackMessage: '患者情報の取得に失敗しました',
+        schema: buildPatientOverviewResponseSchema(patientId),
       });
       return payload.data;
     },

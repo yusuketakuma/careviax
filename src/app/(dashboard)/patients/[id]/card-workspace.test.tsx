@@ -4225,6 +4225,55 @@ describe('CardWorkspace', () => {
     };
   }
 
+  function overviewResponseData(patientId: string) {
+    return {
+      id: patientId,
+      name: '患者A',
+      name_kana: 'カンジャエー',
+      birth_date: '1940-01-01T00:00:00.000Z',
+      gender: 'other',
+      phone: null,
+      medical_insurance_number: null,
+      care_insurance_number: null,
+      billing_support_flag: false,
+      primary_pharmacist_id: null,
+      backup_pharmacist_id: null,
+      primary_staff_id: null,
+      backup_staff_id: null,
+      allergy_info: [],
+      notes: null,
+      archived_at: null,
+      archived_by: null,
+      archived_by_name: null,
+      updated_at: '2026-07-13T00:00:00.000Z',
+      residences: [],
+      scheduling_preference: null,
+      conditions: [],
+      contacts: [],
+      cases: [],
+      visit_schedules: [],
+      summary_metrics: { open_tasks_count: 0 },
+      risk_summary: null,
+      visit_brief: buildVisitBrief({ patient: { id: patientId, name: '患者A' } }),
+      lab_summary: [],
+      foundation: {
+        summary: { status: 'ready', label: '確認済み', items: [] },
+        items: [],
+        changes_since_last_visit: [],
+        latest_labs: [],
+        insurances: [],
+        archive: { archived: false, archived_at: null, archived_by_name: null },
+      },
+      jahis_supplemental_records: [],
+      workspace: null,
+      privacy: {
+        sensitive_fields_masked: false,
+        address_fields_masked: false,
+        can_view_detail: true,
+      },
+    };
+  }
+
   it('fetches patient documents from an encoded patient path with org headers (raw query key)', async () => {
     const hostileId = 'pt/1?x=y#z';
     const getDocumentsConfig = captureDocumentsQueryConfig(hostileId);
@@ -4305,7 +4354,7 @@ describe('CardWorkspace', () => {
                 ? headerSummaryResponseData(hostileId)
                 : segment === 'home-operations'
                   ? homeOperationsResponseData(hostileId)
-                  : {},
+                  : overviewResponseData(hostileId),
           }),
           { status: 200 },
         ),
@@ -4456,7 +4505,7 @@ describe('CardWorkspace', () => {
             ? headerSummaryResponseData(patientId)
             : url.endsWith('/home-operations')
               ? homeOperationsResponseData(patientId)
-              : {},
+              : overviewResponseData(patientId),
         }),
         { status: 200 },
       );

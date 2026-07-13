@@ -12,12 +12,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/card-workspace.tsx",
-      "counts": {
-        "objectWithoutSchema": 1
-      }
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/share/external-share-content.tsx",
       "counts": {
         "stringFallback": 5
