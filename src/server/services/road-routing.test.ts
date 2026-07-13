@@ -90,6 +90,57 @@ describe('createRoadTravelEstimator', () => {
     expect(requestUrl.searchParams.has('destinations')).toBe(false);
   });
 
+  it('uses one ordered OSRM route request and caches identical routes', async () => {
+    process.env.ROUTING_API_PROVIDER = 'osrm';
+    process.env.ROUTING_API_BASE_URL = 'https://osrm.example.test';
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'Ok',
+          routes: [{ duration: 1800, distance: 10000 }],
+        }),
+        { status: 200 },
+      ),
+    );
+    const points = [
+      { lat: 35.0, lng: 139.0 },
+      { lat: 35.1, lng: 139.1 },
+      { lat: 35.2, lng: 139.2 },
+      { lat: 35.0, lng: 139.0 },
+    ];
+    const estimateTravel = createRoadTravelEstimator('DRIVE');
+
+    await expect(estimateTravel.estimateRoute?.(points)).resolves.toEqual({
+      durationMinutes: 30,
+      distanceKm: 10,
+    });
+    await expect(estimateTravel.estimateRoute?.(points)).resolves.toEqual({
+      durationMinutes: 30,
+      distanceKm: 10,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const requestUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    expect(requestUrl.pathname).toBe('/route/v1/driving/139,35;139.1,35.1;139.2,35.2;139,35');
+    expect(requestUrl.searchParams.get('overview')).toBe('false');
+    expect(requestUrl.searchParams.get('steps')).toBe('false');
+  });
+
+  it('does not issue a route request when no provider endpoint is configured', async () => {
+    process.env.ROUTING_API_PROVIDER = 'osrm';
+    delete process.env.ROUTING_API_BASE_URL;
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const estimateTravel = createRoadTravelEstimator('DRIVE');
+
+    await expect(
+      estimateTravel.estimateRoute?.([
+        { lat: 35.0, lng: 139.0 },
+        { lat: 35.1, lng: 139.1 },
+      ]),
+    ).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('bounds Google matrix fallback calls instead of exploding into pairwise API requests', async () => {
     process.env.ROUTING_API_PROVIDER = 'google';
     process.env.GOOGLE_ROUTES_API_KEY = 'routes-key';
@@ -232,6 +283,56 @@ describe('createRoadTravelEstimator', () => {
       durationMinutes: 7.5,
       distanceKm: 1.2,
     });
+  });
+
+  it('uses one Google Compute Routes request with ordered intermediate waypoints', async () => {
+    process.env.ROUTING_API_PROVIDER = 'google';
+    process.env.GOOGLE_ROUTES_API_KEY = 'routes-key';
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          routes: [{ duration: '1800s', distanceMeters: 10000 }],
+        }),
+        { status: 200 },
+      ),
+    );
+    const estimateTravel = createRoadTravelEstimator('DRIVE');
+
+    await expect(
+      estimateTravel.estimateRoute?.([
+        { lat: 35.0, lng: 139.0 },
+        { lat: 35.1, lng: 139.1 },
+        { lat: 35.2, lng: 139.2 },
+      ]),
+    ).resolves.toEqual({ durationMinutes: 30, distanceKm: 10 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, requestInit] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String(requestInit?.body))).toEqual({
+      origin: { location: { latLng: { latitude: 35, longitude: 139 } } },
+      destination: { location: { latLng: { latitude: 35.2, longitude: 139.2 } } },
+      intermediates: [{ location: { latLng: { latitude: 35.1, longitude: 139.1 } } }],
+      travelMode: 'DRIVE',
+      routingPreference: 'TRAFFIC_UNAWARE',
+      optimizeWaypointOrder: false,
+    });
+  });
+
+  it('skips Google route requests that exceed the waypoint limit', async () => {
+    process.env.ROUTING_API_PROVIDER = 'google';
+    process.env.GOOGLE_ROUTES_API_KEY = 'routes-key';
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const estimateTravel = createRoadTravelEstimator('DRIVE');
+
+    await expect(
+      estimateTravel.estimateRoute?.(
+        Array.from({ length: 28 }, (_, index) => ({
+          lat: 35 + index * 0.01,
+          lng: 139 + index * 0.01,
+        })),
+      ),
+    ).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('uses the shared Google Maps server key alias for road estimates', async () => {

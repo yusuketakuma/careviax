@@ -73,7 +73,110 @@ vi.mock('./road-routing', async (importOriginal) => {
   };
 });
 
-import { generateVisitScheduleProposalDrafts } from './visit-schedule-planner';
+import {
+  estimateVehicleRouteDurationWithCandidate,
+  generateVisitScheduleProposalDrafts,
+} from './visit-schedule-planner';
+
+describe('estimateVehicleRouteDurationWithCandidate', () => {
+  const sitePoint = {
+    routeOrder: 0,
+    lat: 35,
+    lng: 139,
+    address: '拠点',
+    startsAt: null,
+  };
+  const existingPoint = {
+    routeOrder: 1,
+    lat: 35.1,
+    lng: 139.1,
+    address: '訪問先A',
+    startsAt: null,
+  };
+  const candidatePoint = {
+    routeOrder: 2,
+    lat: 35.2,
+    lng: 139.2,
+    address: '訪問先B',
+    startsAt: null,
+  };
+
+  it('uses one route-level estimate for the fixed site round trip', async () => {
+    const estimateOne = vi.fn(async () => ({ durationMinutes: 999, distanceKm: 999 }));
+    const estimateRoute = vi.fn(async () => ({ durationMinutes: 35, distanceKm: 12 }));
+    const estimator = Object.assign(estimateOne, {
+      estimateMatrix: vi.fn(async () => null),
+      estimateRoute,
+    });
+
+    await expect(
+      estimateVehicleRouteDurationWithCandidate(
+        sitePoint,
+        [existingPoint],
+        candidatePoint,
+        estimator,
+        'DRIVE',
+      ),
+    ).resolves.toEqual({
+      durationMinutes: 35,
+      summary: '拠点発着の総移動時間 約35分',
+    });
+    expect(estimateRoute).toHaveBeenCalledTimes(1);
+    expect(estimateRoute).toHaveBeenCalledWith([
+      sitePoint,
+      existingPoint,
+      candidatePoint,
+      sitePoint,
+    ]);
+    expect(estimateOne).not.toHaveBeenCalled();
+  });
+
+  it('uses only local leg fallbacks after a route-level provider failure', async () => {
+    const estimateOne = vi.fn(async () => ({ durationMinutes: 999, distanceKm: 999 }));
+    const estimateRoute = vi.fn(async () => null);
+    const estimator = Object.assign(estimateOne, {
+      estimateMatrix: vi.fn(async () => null),
+      estimateRoute,
+    });
+
+    const result = await estimateVehicleRouteDurationWithCandidate(
+      sitePoint,
+      [existingPoint],
+      candidatePoint,
+      estimator,
+      'DRIVE',
+    );
+
+    expect(result.durationMinutes).toBeGreaterThan(0);
+    expect(result.summary).toContain('拠点発着の総移動時間');
+    expect(estimateRoute).toHaveBeenCalledTimes(1);
+    expect(estimateOne).not.toHaveBeenCalled();
+  });
+
+  it('remains unverified when route-level fallback points lack coordinates', async () => {
+    const estimateOne = vi.fn(async () => ({ durationMinutes: 999, distanceKm: 999 }));
+    const estimateRoute = vi.fn(async () => null);
+    const estimator = Object.assign(estimateOne, {
+      estimateMatrix: vi.fn(async () => null),
+      estimateRoute,
+    });
+
+    await expect(
+      estimateVehicleRouteDurationWithCandidate(
+        sitePoint,
+        [existingPoint],
+        { ...candidatePoint, lat: null, lng: null },
+        estimator,
+        'DRIVE',
+      ),
+    ).resolves.toEqual({
+      durationMinutes: null,
+      summary: expect.stringContaining('第2訪問までの移動時間を検証できません'),
+    });
+    expect(estimateRoute).toHaveBeenCalledTimes(1);
+    expect(estimateOne).not.toHaveBeenCalled();
+  });
+});
 
 function createExistingPatientSchedule(args: {
   id: string;

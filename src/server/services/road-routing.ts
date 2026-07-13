@@ -21,6 +21,7 @@ export type TravelEstimateMatrix = Array<Array<TravelEstimate | null>>;
 export type RoadTravelEstimator = {
   (from: RoutePoint, to: RoutePoint): Promise<TravelEstimate | null>;
   estimateMatrix(points: RoutePoint[]): Promise<TravelEstimateMatrix | null>;
+  estimateRoute?(points: RoutePoint[]): Promise<TravelEstimate | null>;
 };
 
 export function fallbackTravelSpeedKph(travelMode: RouteTravelMode) {
@@ -43,6 +44,15 @@ export function estimateFallbackTravelMinutes(distanceKm: number, travelMode: Ro
 
 function readFiniteNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readLocatedRoutePoints(points: RoutePoint[]) {
+  const locatedPoints: Array<{ lat: number; lng: number }> = [];
+  for (const point of points) {
+    if (point.lat == null || point.lng == null) return null;
+    locatedPoints.push({ lat: point.lat, lng: point.lng });
+  }
+  return locatedPoints;
 }
 
 function readMatrixCell(payload: unknown, key: 'durations' | 'distances') {
@@ -117,6 +127,24 @@ function readGoogleRouteEstimate(payload: unknown) {
   };
 }
 
+function readOsrmRouteEstimate(payload: unknown) {
+  const object = readJsonObject(payload);
+  if (!object || object.code !== 'Ok' || !Array.isArray(object.routes)) return null;
+
+  const route = readJsonObject(object.routes[0]);
+  if (!route) return null;
+
+  const durationSeconds = readFiniteNumber(route.duration);
+  if (durationSeconds === null || durationSeconds < 0) return null;
+  const distanceMeters = readFiniteNumber(route.distance);
+  if (distanceMeters !== null && distanceMeters < 0) return null;
+
+  return {
+    durationMinutes: durationSeconds / 60,
+    distanceKm: distanceMeters === null ? Number.NaN : distanceMeters / 1000,
+  };
+}
+
 export interface RoutingProvider {
   estimate(
     from: RoutePoint,
@@ -127,6 +155,7 @@ export interface RoutingProvider {
     points: RoutePoint[],
     travelMode: RouteTravelMode,
   ): Promise<TravelEstimateMatrix | null>;
+  estimateRoute?(points: RoutePoint[], travelMode: RouteTravelMode): Promise<TravelEstimate | null>;
 }
 
 // ─── OSRM Provider ────────────────────────────────────────────────────────────
@@ -245,6 +274,40 @@ class OsrmProvider implements RoutingProvider {
       abort.clear();
     }
   }
+
+  async estimateRoute(
+    points: RoutePoint[],
+    travelMode: RouteTravelMode,
+  ): Promise<TravelEstimate | null> {
+    if (points.length < 2) return null;
+    const locatedPoints = readLocatedRoutePoints(points);
+    if (!locatedPoints) return null;
+
+    const profile =
+      travelMode === 'BICYCLE' ? 'cycling' : travelMode === 'WALK' ? 'foot' : this.profile;
+    const coordinates = locatedPoints.map((point) => `${point.lng},${point.lat}`).join(';');
+    const url = new URL(`/route/v1/${profile}/${coordinates}`, this.baseUrl);
+    url.searchParams.set('overview', 'false');
+    url.searchParams.set('steps', 'false');
+
+    const abort = createFetchTimeout(this.timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        signal: abort.signal,
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!response.ok) return null;
+
+      return readOsrmRouteEstimate(await readJsonResponseBody(response));
+    } catch {
+      return null;
+    } finally {
+      abort.clear();
+    }
+  }
 }
 
 // ─── Google Routes Provider ───────────────────────────────────────────────────
@@ -263,9 +326,26 @@ class GoogleRoutesProvider implements RoutingProvider {
     to: RoutePoint,
     travelMode: RouteTravelMode,
   ): Promise<TravelEstimate | null> {
-    if (from.lat == null || from.lng == null || to.lat == null || to.lng == null) {
-      return null;
-    }
+    return this.estimateRoute([from, to], travelMode);
+  }
+
+  async estimateRoute(
+    points: RoutePoint[],
+    travelMode: RouteTravelMode,
+  ): Promise<TravelEstimate | null> {
+    // Compute Routes supports at most 25 intermediate waypoints. Returning null lets
+    // callers use their local, non-network fallback without starting a request storm.
+    if (points.length < 2 || points.length > 27) return null;
+    const locatedPoints = readLocatedRoutePoints(points);
+    if (!locatedPoints) return null;
+
+    const [origin, ...remainingPoints] = locatedPoints;
+    const destination = remainingPoints[remainingPoints.length - 1];
+    if (!origin || !destination) return null;
+    const intermediates = remainingPoints.slice(0, -1);
+    const toWaypoint = (point: { lat: number; lng: number }) => ({
+      location: { latLng: { latitude: point.lat, longitude: point.lng } },
+    });
 
     const abort = createFetchTimeout(this.timeoutMs);
 
@@ -279,10 +359,12 @@ class GoogleRoutesProvider implements RoutingProvider {
           'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters',
         },
         body: JSON.stringify({
-          origin: { location: { latLng: { latitude: from.lat, longitude: from.lng } } },
-          destination: { location: { latLng: { latitude: to.lat, longitude: to.lng } } },
+          origin: toWaypoint(origin),
+          destination: toWaypoint(destination),
+          ...(intermediates.length > 0 ? { intermediates: intermediates.map(toWaypoint) } : {}),
           travelMode,
           routingPreference: 'TRAFFIC_UNAWARE',
+          optimizeWaypointOrder: false,
         }),
         cache: 'no-store',
       });
@@ -339,6 +421,7 @@ export function createRoadTravelEstimator(
   travelMode: RouteTravelMode = 'DRIVE',
 ): RoadTravelEstimator {
   const cache = new Map<string, Promise<TravelEstimate | null>>();
+  const routeCache = new Map<string, Promise<TravelEstimate | null>>();
   const provider = createProvider();
 
   const estimateTravel = (async (
@@ -385,6 +468,19 @@ export function createRoadTravelEstimator(
     );
 
     return matrix;
+  };
+
+  estimateTravel.estimateRoute = async (points: RoutePoint[]) => {
+    if (!provider?.estimateRoute) return null;
+    const key = `${travelMode}:${points
+      .map((point) => `${point.lat ?? 'na'}:${point.lng ?? 'na'}`)
+      .join('=>')}`;
+    const cached = routeCache.get(key);
+    if (cached) return cached;
+
+    const estimatePromise = provider.estimateRoute(points, travelMode);
+    routeCache.set(key, estimatePromise);
+    return estimatePromise;
   };
 
   return estimateTravel;

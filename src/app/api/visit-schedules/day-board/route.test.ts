@@ -1861,6 +1861,137 @@ describe('/api/visit-schedules/day-board', () => {
     expect(vehicle.route_duration_minutes).toBeGreaterThan(30);
   });
 
+  it('shares one route estimator across same-mode vehicle summaries', async () => {
+    const previousProvider = process.env.ROUTING_API_PROVIDER;
+    const previousBaseUrl = process.env.ROUTING_API_BASE_URL;
+    process.env.ROUTING_API_PROVIDER = 'osrm';
+    process.env.ROUTING_API_BASE_URL = 'https://osrm.example.test';
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'Ok',
+          routes: [{ duration: 1800, distance: 10000 }],
+        }),
+        { status: 200 },
+      ),
+    );
+    membershipFindManyMock.mockResolvedValue([
+      { role: 'pharmacist', user: { id: 'user_1', name: '山田 太郎' } },
+    ]);
+    const sharedResidence = { address: '訪問先', lat: 35.7, lng: 139.8 };
+    visitScheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_vehicle_1',
+        case_id: 'case_1',
+        cycle_id: null,
+        pharmacist_id: 'user_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
+        carry_items_status: null,
+        priority: 'normal',
+        site_id: 'site_1',
+        route_order: 1,
+        vehicle_resource_id: 'vehicle_1',
+        vehicle_resource: { id: 'vehicle_1', label: '軽バン1号', travel_mode: 'DRIVE' },
+        time_window_start: new Date(2026, 5, 12, 10, 0),
+        time_window_end: new Date(2026, 5, 12, 10, 30),
+        confirmed_at: null,
+        cycle: null,
+        preparation: null,
+        facility_batch_id: null,
+        facility_batch: null,
+        visit_record: null,
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '患者A',
+            contacts: [],
+            residences: [sharedResidence],
+          },
+          care_team_links: [],
+        },
+      },
+      {
+        id: 'visit_vehicle_2',
+        case_id: 'case_2',
+        cycle_id: null,
+        pharmacist_id: 'user_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
+        carry_items_status: null,
+        priority: 'normal',
+        site_id: 'site_1',
+        route_order: 1,
+        vehicle_resource_id: 'vehicle_2',
+        vehicle_resource: { id: 'vehicle_2', label: '軽バン2号', travel_mode: 'DRIVE' },
+        time_window_start: new Date(2026, 5, 12, 11, 0),
+        time_window_end: new Date(2026, 5, 12, 11, 30),
+        confirmed_at: null,
+        cycle: null,
+        preparation: null,
+        facility_batch_id: null,
+        facility_batch: null,
+        visit_record: null,
+        case_: {
+          patient: {
+            id: 'patient_2',
+            name: '患者B',
+            contacts: [],
+            residences: [sharedResidence],
+          },
+          care_team_links: [],
+        },
+      },
+    ]);
+    const site = { address: '拠点薬局', lat: 35.6812, lng: 139.7671 };
+    visitVehicleResourceFindManyMock.mockResolvedValue([
+      {
+        id: 'vehicle_1',
+        label: '軽バン1号',
+        site_id: 'site_1',
+        vehicle_code: 'VEH-DEMO-001',
+        travel_mode: 'DRIVE',
+        max_stops: 8,
+        max_route_duration_minutes: 60,
+        available: true,
+        site,
+      },
+      {
+        id: 'vehicle_2',
+        label: '軽バン2号',
+        site_id: 'site_1',
+        vehicle_code: 'VEH-DEMO-002',
+        travel_mode: 'DRIVE',
+        max_stops: 8,
+        max_route_duration_minutes: 60,
+        available: true,
+        site,
+      },
+    ]);
+
+    try {
+      const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+      expect(response.status).toBe(200);
+      const json = await response.json();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(json.data.vehicle_resources).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'vehicle_1', route_duration_minutes: 30 }),
+          expect.objectContaining({ id: 'vehicle_2', route_duration_minutes: 30 }),
+        ]),
+      );
+    } finally {
+      fetchMock.mockRestore();
+      if (previousProvider === undefined) delete process.env.ROUTING_API_PROVIDER;
+      else process.env.ROUTING_API_PROVIDER = previousProvider;
+      if (previousBaseUrl === undefined) delete process.env.ROUTING_API_BASE_URL;
+      else process.env.ROUTING_API_BASE_URL = previousBaseUrl;
+    }
+  });
+
   it('recommends vehicles only for unassigned visits in the same site', async () => {
     membershipFindManyMock.mockResolvedValue([
       { role: 'pharmacist', user: { id: 'user_1', name: '山田 太郎' } },

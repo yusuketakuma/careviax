@@ -1003,33 +1003,52 @@ async function computeRouteTotalDurationMinutes(
     return { durationMinutes: 0, summary: '訪問予定なし' };
   }
 
-  let totalMinutes = 0;
-  let previousPoint = sitePoint;
-  for (let index = 0; index < routePoints.length; index++) {
-    const point = routePoints[index];
-    const cost = await getTravelCost(previousPoint, point, estimateRoadTravel, travelMode);
-    if (cost.limitMinutes == null) {
+  const computeFromLegCosts = async (
+    resolveTravelCost: (from: SchedulePoint, to: SchedulePoint) => TravelCost | Promise<TravelCost>,
+  ) => {
+    let totalMinutes = 0;
+    let previousPoint = sitePoint;
+    for (let index = 0; index < routePoints.length; index++) {
+      const point = routePoints[index];
+      const cost = await resolveTravelCost(previousPoint, point);
+      if (cost.limitMinutes == null) {
+        return {
+          durationMinutes: null,
+          summary: `第${index + 1}訪問までの移動時間を検証できません（${cost.summary}）`,
+        };
+      }
+      totalMinutes += cost.limitMinutes;
+      previousPoint = point;
+    }
+
+    const returnCost = await resolveTravelCost(previousPoint, sitePoint);
+    if (returnCost.limitMinutes == null) {
       return {
         durationMinutes: null,
-        summary: `第${index + 1}訪問までの移動時間を検証できません（${cost.summary}）`,
+        summary: `拠点へ戻る移動時間を検証できません（${returnCost.summary}）`,
       };
     }
-    totalMinutes += cost.limitMinutes;
-    previousPoint = point;
+    totalMinutes += returnCost.limitMinutes;
+    return {
+      durationMinutes: totalMinutes,
+      summary: `拠点発着の総移動時間 約${Math.round(totalMinutes)}分`,
+    };
+  };
+
+  if (typeof estimateRoadTravel.estimateRoute === 'function') {
+    const estimate = await estimateRoadTravel.estimateRoute([sitePoint, ...routePoints, sitePoint]);
+    if (estimate) {
+      return {
+        durationMinutes: estimate.durationMinutes,
+        summary: `拠点発着の総移動時間 約${Math.round(estimate.durationMinutes)}分`,
+      };
+    }
+
+    // A route-level provider failure must not fan back out into one request per leg.
+    return computeFromLegCosts((from, to) => getFallbackTravelCost(from, to, travelMode));
   }
 
-  const returnCost = await getTravelCost(previousPoint, sitePoint, estimateRoadTravel, travelMode);
-  if (returnCost.limitMinutes == null) {
-    return {
-      durationMinutes: null,
-      summary: `拠点へ戻る移動時間を検証できません（${returnCost.summary}）`,
-    };
-  }
-  totalMinutes += returnCost.limitMinutes;
-  return {
-    durationMinutes: totalMinutes,
-    summary: `拠点発着の総移動時間 約${Math.round(totalMinutes)}分`,
-  };
+  return computeFromLegCosts((from, to) => getTravelCost(from, to, estimateRoadTravel, travelMode));
 }
 
 async function computeBestRouteDurationWithCandidate(

@@ -13,7 +13,10 @@ import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { timeDateToMinutes } from '@/lib/visits/time-of-day';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
-import { createRoadTravelEstimator } from '@/server/services/road-routing';
+import {
+  createRoadTravelEstimator,
+  type RoadTravelEstimator,
+} from '@/server/services/road-routing';
 import { buildVehicleRoutePoint } from '@/server/services/visit-schedule-service';
 import { attachVisitSchedulePatientSummary } from '@/server/services/visit-schedule-patient-summary';
 import {
@@ -442,6 +445,7 @@ function formatRouteDurationMinutes(minutes: number) {
 async function summarizeDayBoardVehicleRouteDuration(
   vehicle: DayBoardVehicleRouteSource,
   schedules: DayBoardVehicleRouteSchedule[],
+  resolveRoadTravelEstimator: (travelMode: VisitRouteTravelMode) => RoadTravelEstimator,
 ): Promise<
   Pick<
     DayBoardVehicleResource,
@@ -492,7 +496,7 @@ async function summarizeDayBoardVehicleRouteDuration(
     buildDayBoardVehicleSitePoint(vehicle.site),
     routePoints.slice(0, -1),
     candidatePoint,
-    createRoadTravelEstimator(vehicle.travel_mode as VisitRouteTravelMode),
+    resolveRoadTravelEstimator(vehicle.travel_mode as VisitRouteTravelMode),
     vehicle.travel_mode as VisitRouteTravelMode,
   );
   if (estimate.durationMinutes == null) {
@@ -811,6 +815,14 @@ const authenticatedGET = withAuthContext(
       org_id: ctx.orgId,
       proposal_status: { in: OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES },
       proposed_date: { gte: dayStart, lt: dayEnd },
+    };
+    const roadTravelEstimatorsByMode = new Map<VisitRouteTravelMode, RoadTravelEstimator>();
+    const resolveRoadTravelEstimator = (travelMode: VisitRouteTravelMode) => {
+      const cached = roadTravelEstimatorsByMode.get(travelMode);
+      if (cached) return cached;
+      const estimator = createRoadTravelEstimator(travelMode);
+      roadTravelEstimatorsByMode.set(travelMode, estimator);
+      return estimator;
     };
 
     const responseData = await withOrgContext(
@@ -1443,6 +1455,7 @@ const authenticatedGET = withAuthContext(
             const routeDuration = await summarizeDayBoardVehicleRouteDuration(
               vehicle,
               assignedVehicleSchedulesById.get(vehicle.id) ?? [],
+              resolveRoadTravelEstimator,
             );
             const routeDurationBlockerReason =
               routeDuration.route_duration_status === 'exceeded'
