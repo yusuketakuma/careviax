@@ -55,6 +55,23 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZSAVEDVIEWAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    `API-CONTRACT-001`の次残としてroute-auth allowlistをlive分類し、no-store helper未使用25 routesを特定した。最小sliceとして
+    `src/app/api/saved-views/[id]/route.ts`、統合route test、auth wrapper ratchet、installed Next data-security guideを確認した。
+    PATCH/DELETEは所有者本人だけのorg-scoped write、RLS内audit、strict input/unique conflictを持つ一方、direct `requireAuthContext`
+    2 callsのためsuccess/validation/not-found/forbidden/conflict responseが標準auth no-store境界を通らなかった。
+  - files changed / correctness / security / privacy / performance:
+    PATCH/DELETEを標準`withAuthContext`へ移行し、既存ctx、route params、所有者判定、org predicate/RLS、unique race mapping、audit changes、
+    response DTOを維持したまま、全response classへ共通sensitive no-storeを適用した。DB query/write/network/payload/renderは増やさず、
+    auth wrapperの定数header/performance計測だけを採用した。Allowlistから当該routeを除去し、direct debtは175→174 routes、251→249 calls、
+    helper未使用success routeは25→24へ減った。Schema/migration/production data/deploy/Oracle/imagegen/browserなし。
+  - validation / remaining / rollback:
+    Saved Views + route checker 2 files / 15 tests、exact ESLint/Prettier、8 GiB typecheck / no-unused、route-auth 174 allowlisted / 249 direct /
+    0 newをPASS。直前の共通auth sliceでfull Vitest 1554 files / 16237 testsとNext production build 311/311をPASS済み。
+    親にはdirect-auth success未収束24 routes、request_id/correlation_id、error registryが残る。Rollbackはこのscoped commitのrevertで
+    DB/data rollback不要。
+
 - codex1: API-CONTRACT-001FZAUTHNOSTORE (DONE; parent remains Partial, 2026-07-14; implementation `ef25ef695`).
   - current task / files inspected / root cause:
     Goal objective、`Plans.md`、本STATE、git/branch parity、gbrain、API contract ratchets、`src/lib/auth/context.ts`/test、

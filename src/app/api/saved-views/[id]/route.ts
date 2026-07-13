@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
@@ -34,11 +34,7 @@ const updateSavedViewSchema = z
     message: '更新する項目がありません',
   });
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req);
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+export const PATCH = withAuthContext(async (req: NextRequest, ctx, { params }) => {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -120,13 +116,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   return success({ data: toSavedViewRecord(updated, ctx.userId) });
-}
+});
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req);
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+export const DELETE = withAuthContext(async (_req: NextRequest, ctx, { params }) => {
   const { id } = await params;
   const viewId = normalizeRequiredRouteParam(id);
   if (!viewId) return validationError('保存ビューIDが不正です');
@@ -152,4 +144,4 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   });
 
   return success({ data: { id: viewId } });
-}
+});
