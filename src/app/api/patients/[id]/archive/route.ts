@@ -1,18 +1,15 @@
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, notFound, conflict, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '患者のアーカイブ権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function archivePatient(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
@@ -41,3 +38,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return success({ data: updated });
 }
+
+export const PATCH = withAuthContext(archivePatient, {
+  permission: 'canAdmin',
+  message: '患者のアーカイブ権限がありません',
+});

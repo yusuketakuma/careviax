@@ -55,6 +55,24 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZPATIENTLIFECYCLEAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Billing Close push/parity後の最後の2 routesとしてPatient archive/restore PATCHを選定した。両route/test、patient archive summary、protected PATCH matrix、
+    rate-limit、allowlist、既存`DATA-ARCHIVE-WRITE-SERIALIZATION-001` / `PRIVACY-ARCHIVE-GRANT-LIFECYCLE-001`、installed Next guideを確認した。
+    既存handlersはcanAdmin、org predicate、active/archive conflict、RLS updateを持つ一方、2 direct auth callsのPHI-bearing responseが共通境界外だった。
+  - files changed / bugs found / correctness / security / privacy / medical safety / performance:
+    archive/restoreをtyped named handlers + `withAuthContext`へ移行し、permission messages、route ID normalization、org-scoped patient lookup、not-found、
+    already archived/not archived conflict、RLS request context、archived_at/archived_by update、response DTOを不変にした。両routeへauth denial時のpatient read/
+    RLS update副作用zeroを追加しallowlist 2 entriesを除去。Direct debtは152→150 routes、216→214 calls、helper未使用success routeは2→0。
+    DB query/write/payloadは不変で共通header/計測/500 envelopeだけを追加した。Read-checkとupdateの既存TOCTOU、archive時grant lifecycleには触れず、
+    既存HR/Human gate itemを維持した。
+  - validation results / remaining work / next action / rollback:
+    Focused archive/restore + protected PATCH matrix 3 files / 86 tests、exact ESLint/Prettier、8 GiB typecheck/no-unused、route-auth 150 allowlisted /
+    214 direct / 0 new、direct-auth success no-store未接続scan 0、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、
+    frontend contract、client schema 361 backed / 0 allowlisted、format/diffをPASS。新規security/privacy/medical/performance issueなし。Schema/migration/
+    production mutation/deploy/Oracleなし。非視覚server/API変更のためimagegen/browserなし。親`API-CONTRACT-001`にはshared request_id/correlation_idと
+    canonical error registryが残る。次はshared response/auth/logger/audit contextを監査してcorrelation sliceを最小設計する。Rollbackはscoped commitのrevert。
+
 - codex1: API-CONTRACT-001FZBILLINGCLOSEAUTH (DONE; parent remains Partial, 2026-07-14; implementation `e74eb5e60`).
   - current task / files inspected / root cause:
     Admin Organizations push/parity後の残3 routesからBilling Candidates Close POSTを選定した。Route/test、billing evidence close service、claims export adapter/

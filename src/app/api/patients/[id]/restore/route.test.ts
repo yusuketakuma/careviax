@@ -11,6 +11,13 @@ const { requireAuthContextMock, patientFindFirstMock, patientUpdateMock, withOrg
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -58,6 +65,27 @@ describe('/api/patients/[id]/restore PATCH', () => {
         },
       }),
     );
+  });
+
+  it('returns the authentication response before loading or restoring the patient', async () => {
+    const deniedResponse = Response.json(
+      { code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' },
+      { status: 401 },
+    );
+    requireAuthContextMock.mockResolvedValueOnce({ response: deniedResponse });
+
+    const response = await PATCH(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    expect(response).toBe(deniedResponse);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canAdmin',
+      message: '患者の復元権限がありません',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank patient ids before loading or restoring the patient', async () => {
