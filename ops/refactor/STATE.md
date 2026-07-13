@@ -54,6 +54,23 @@
 
 ## 直近の作業
 
+- codex3 + codex1 integration: PERF-DB-PATIENT-BOARD-FOUNDATION-SINGLEPASS-003O-A (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Patients board route/test、card derive/filter/facet/count basis、signed cursor、read-path SLO、`003J`のstable batch/org再固定契約を確認した。
+    Active foundation filterはDB prefilter済みdeep rows `F`と全count basis deep rows `M`を別々に収集・card化し、同じrequestで
+    `Q(F)+Q(M)+3` readsと`F+M` materializeを発生させていた。
+  - files changed / correctness / performance:
+    Foundation専用DB prefilter/第二collectorを削除し、全requestを既存`basePatientWhere`のorg-scoped `name_kana,id` stable `take 80`
+    stream 1本へ統合した。同じ`allCards`から全foundation issue countをexact算出し、選択foundation cardからchip/facility/safety facetを
+    exact算出した後、既存card filter/full sort/offset sliceを適用する。Normalは`Q(M)+3`不変、active foundationは`Q(F)+Q(M)+3`から
+    `Q(M)+3`、deep rows/cardsは`F+M`から`M`へ削減。82 rows回帰は2 batches、後半2 selected cards、ID重複/欠落0、各batch org、
+    missing insurance/contact、external/visit/facility/safety facet、旧signed cursor位置を同時に固定する。
+  - security / privacy / validation / remaining:
+    Auth/assignment/org predicate、PHI select/DTO/no-store、cursor署名/filter binding/TTL、frontend、schema/migration/write/networkを変更していない。
+    Codex3 FREEZE後にcodex1が独立reviewし、focused API+UI 2 files / 65 tests、query-shape 0/0、read-SLO 1 known / 0 new、raw-org
+    117 allowlisted / 0 new、exact2 ESLint、exact3 Prettier、diff-checkをPASS。親は通常時`M` deep rows、full allCards materialize/sort、
+    unbounded cases relation、cursor redesignが残るためPartial。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
 - codex1: SERIALIZED-FULL-GATES-20260713-B (DONE, 2026-07-13; validated HEAD `cc1eb5c7e`).
   - current task / coordination:
     `cc1eb5c7e`までのAPI status、conference参照authz、visit-brief query-shape統合後、全source ownerをread-only/FREEZEにして

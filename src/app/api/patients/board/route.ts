@@ -390,90 +390,6 @@ function toPublicPatientBoardCard(card: DerivedPatientBoardCard) {
   return publicCard;
 }
 
-function activeVisitConsentWhere(now: Date): Prisma.ConsentRecordWhereInput {
-  return {
-    consent_type: 'visit_medication_management',
-    is_active: true,
-    revoked_date: null,
-    OR: [{ expiry_date: null }, { expiry_date: { gte: now } }],
-  };
-}
-
-function approvedManagementPlanWhere(now: Date): Prisma.ManagementPlanWhereInput {
-  return {
-    status: 'approved',
-    approved_at: { not: null },
-    OR: [{ effective_from: null }, { effective_from: { lte: now } }],
-  };
-}
-
-function hasBoardWhereClause(where: Prisma.PatientWhereInput): boolean {
-  return Object.keys(where).length > 0;
-}
-
-function buildPatientBoardFoundationPrefilterWhere(args: {
-  issue: z.infer<typeof boardQuerySchema>['foundation_issue'];
-  caseScopeWhere: Prisma.CareCaseWhereInput;
-  now: Date;
-  today: Date;
-}): Prisma.PatientWhereInput {
-  switch (args.issue) {
-    case 'missing_parking':
-      return {
-        OR: [
-          { scheduling_preference: { is: null } },
-          { scheduling_preference: { is: { parking_available: null } } },
-        ],
-      };
-    case 'missing_care_level':
-      return {
-        OR: [
-          { scheduling_preference: { is: null } },
-          { scheduling_preference: { is: { care_level: null } } },
-          { scheduling_preference: { is: { care_level: '' } } },
-        ],
-      };
-    case 'missing_insurance':
-      return {
-        AND: [
-          { OR: [{ medical_insurance_number: null }, { medical_insurance_number: '' }] },
-          { OR: [{ care_insurance_number: null }, { care_insurance_number: '' }] },
-        ],
-      };
-    case 'missing_consent_plan': {
-      const planWhere = approvedManagementPlanWhere(args.now);
-      return {
-        OR: [
-          { consents: { none: activeVisitConsentWhere(args.now) } },
-          {
-            cases: {
-              some: {
-                ...args.caseScopeWhere,
-                management_plans: { none: planWhere },
-              },
-            },
-          },
-          {
-            cases: {
-              some: {
-                ...args.caseScopeWhere,
-                management_plans: {
-                  some: {
-                    ...planWhere,
-                    next_review_date: { lt: args.today },
-                  },
-                },
-              },
-            },
-          },
-        ],
-      };
-    }
-    default:
-      return {};
-  }
-}
-
 const ACTIVE_SCHEDULE_STATUSES = [
   'planned',
   'in_preparation',
@@ -547,22 +463,12 @@ const authenticatedGET = withAuthContext(
       ...mineCaseWhere,
     };
 
-    const foundationPrefilterWhere = buildPatientBoardFoundationPrefilterWhere({
-      issue: foundationIssue,
-      caseScopeWhere,
-      now,
-      today,
-    });
     const basePatientWhere: Prisma.PatientWhereInput = {
       org_id: ctx.orgId,
       archived_at: null,
       cases: { some: caseScopeWhere },
       ...buildPatientBoardSearchWhere(query),
     };
-    const patientWhere: Prisma.PatientWhereInput = { ...basePatientWhere };
-    if (hasBoardWhereClause(foundationPrefilterWhere)) {
-      patientWhere.AND = [foundationPrefilterWhere];
-    }
 
     const patientBoardSelect = {
       id: true,
@@ -778,66 +684,56 @@ const authenticatedGET = withAuthContext(
       return rows;
     };
 
-    const shouldFetchFoundationCountBasis =
-      foundationIssue != null && hasBoardWhereClause(foundationPrefilterWhere);
-
-    const [patients, foundationCountPatients, assignedTotal, auditTasks, openExceptions] =
-      await Promise.all([
-        collectPatientBoardRows(patientWhere),
-        shouldFetchFoundationCountBasis
-          ? collectPatientBoardRows(basePatientWhere)
-          : Promise.resolve(null),
-        prisma.patient.count({ where: basePatientWhere }),
-        // 次にやること: 監査待ち(麻薬を最優先)の先頭 1 件
-        prisma.dispenseTask.findMany({
-          where: { org_id: ctx.orgId, status: 'completed' },
-          orderBy: [{ priority: 'asc' }, { due_date: 'asc' }, { id: 'asc' }],
-          take: 10,
-          select: {
-            due_date: true,
-            audits: {
-              orderBy: [{ audited_at: 'desc' }, { id: 'desc' }],
-              take: 1,
-              select: { result: true },
-            },
-            cycle: {
-              select: {
-                case_: { select: { patient: { select: { name: true } } } },
-                prescription_intakes: {
-                  orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-                  take: 1,
-                  select: {
-                    lines: {
-                      orderBy: [{ line_number: 'asc' }, { id: 'asc' }],
-                      take: PATIENT_BOARD_PRESCRIPTION_LINE_LIMIT,
-                      select: { packaging_instruction_tags: true },
-                    },
+    const [patients, assignedTotal, auditTasks, openExceptions] = await Promise.all([
+      collectPatientBoardRows(basePatientWhere),
+      prisma.patient.count({ where: basePatientWhere }),
+      // 次にやること: 監査待ち(麻薬を最優先)の先頭 1 件
+      prisma.dispenseTask.findMany({
+        where: { org_id: ctx.orgId, status: 'completed' },
+        orderBy: [{ priority: 'asc' }, { due_date: 'asc' }, { id: 'asc' }],
+        take: 10,
+        select: {
+          due_date: true,
+          audits: {
+            orderBy: [{ audited_at: 'desc' }, { id: 'desc' }],
+            take: 1,
+            select: { result: true },
+          },
+          cycle: {
+            select: {
+              case_: { select: { patient: { select: { name: true } } } },
+              prescription_intakes: {
+                orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+                take: 1,
+                select: {
+                  lines: {
+                    orderBy: [{ line_number: 'asc' }, { id: 'asc' }],
+                    take: PATIENT_BOARD_PRESCRIPTION_LINE_LIMIT,
+                    select: { packaging_instruction_tags: true },
                   },
                 },
               },
             },
           },
-        }),
-        prisma.workflowException.findMany({
-          where: { org_id: ctx.orgId, status: 'open' },
-          orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
-          take: BLOCKED_REASONS_LIMIT,
-          select: {
-            id: true,
-            exception_type: true,
-            patient_id: true,
-            description: true,
-            severity: true,
-            created_at: true,
-          },
-        }),
-      ]);
+        },
+      }),
+      prisma.workflowException.findMany({
+        where: { org_id: ctx.orgId, status: 'open' },
+        orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+        take: BLOCKED_REASONS_LIMIT,
+        select: {
+          id: true,
+          exception_type: true,
+          patient_id: true,
+          description: true,
+          severity: true,
+          created_at: true,
+        },
+      }),
+    ]);
 
     const allCards = patients.map((patient) => derivePatientBoardCard(patient, now));
-    const foundationCountCards = (foundationCountPatients ?? patients).map((patient) =>
-      derivePatientBoardCard(patient, now),
-    );
-    const foundationIssueCounts = buildPatientBoardFoundationIssueCounts(foundationCountCards);
+    const foundationIssueCounts = buildPatientBoardFoundationIssueCounts(allCards);
     const foundationFilteredCards = allCards.filter((card) =>
       matchesPatientBoardFoundationIssue(card, foundationIssue),
     );

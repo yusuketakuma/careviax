@@ -751,28 +751,87 @@ describe('/api/patients/board', () => {
     },
   );
 
-  it('keeps foundation issue counts on the unselected board basis when a DB prefilter is active', async () => {
+  it('scans the foundation basis once across stable batches and keeps exact derived counts', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
-    const insurancePatient = {
-      ...buildPatientRow(new Date('2026-06-12T00:00:00.000Z')),
-      id: 'patient_missing_insurance',
-      medical_insurance_number: null,
-      care_insurance_number: null,
-    };
-    const missingContactPatient = {
+    const patients = Array.from({ length: 82 }, (_, index) => ({
       ...buildPatientRow(new Date('2026-06-13T00:00:00.000Z')),
-      id: 'patient_missing_contact',
+      id: `patient_${String(index).padStart(3, '0')}`,
+      name: `患者 ${String(index).padStart(3, '0')}`,
+      name_kana: `カンジャ ${String(index).padStart(3, '0')}`,
+    }));
+    patients[10] = {
+      ...patients[10]!,
       scheduling_preference: {
-        ...buildPatientRow(new Date('2026-06-13T00:00:00.000Z')).scheduling_preference,
+        ...patients[10]!.scheduling_preference,
         preferred_contact_phone: null,
       },
       contacts: [],
     };
-    patientFindManyMock
-      .mockResolvedValueOnce([insurancePatient])
-      .mockResolvedValueOnce([insurancePatient, missingContactPatient]);
-    patientCountMock.mockResolvedValue(2);
+    patients[80] = {
+      ...patients[80]!,
+      medical_insurance_number: null,
+      care_insurance_number: null,
+      cases: [
+        {
+          ...patients[80]!.cases[0]!,
+          visit_schedules: [
+            {
+              ...patients[80]!.cases[0]!.visit_schedules[0]!,
+              scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
+              facility_batch_id: 'facility_batch_late',
+              facility_batch: { patient_ids: ['patient_080', 'patient_other'] },
+            },
+          ],
+        },
+      ],
+    };
+    patients[81] = {
+      ...patients[81]!,
+      medical_insurance_number: null,
+      care_insurance_number: null,
+      cases: [
+        {
+          ...patients[81]!.cases[0]!,
+          medication_cycles: [
+            {
+              id: 'cycle_late_external',
+              overall_status: 'inquiry_pending',
+              exception_status: null,
+              updated_at: new Date('2026-06-12T08:00:00+09:00'),
+              prescription_intakes: [
+                {
+                  lines: [
+                    {
+                      packaging_instruction_tags: ['cold_storage'],
+                      dispensing_method: null,
+                    },
+                  ],
+                },
+              ],
+              inquiries: [
+                {
+                  inquired_at: new Date('2026-06-12T07:00:00+09:00'),
+                  resolved_at: null,
+                },
+              ],
+              dispense_tasks: [],
+              workflow_exceptions: [],
+            },
+          ],
+        },
+      ],
+    };
+    patientFindManyMock.mockImplementation(
+      (args: { cursor?: { id: string }; skip?: number; take?: number }) => {
+        const cursorIndex = args.cursor
+          ? patients.findIndex((patient) => patient.id === args.cursor?.id)
+          : -1;
+        const start = cursorIndex >= 0 ? cursorIndex + (args.skip ?? 0) : 0;
+        return Promise.resolve(patients.slice(start, start + (args.take ?? patients.length)));
+      },
+    );
+    patientCountMock.mockResolvedValue(82);
 
     const response = (await GET(createRequest('?scope=all&foundation_issue=missing_insurance'), {
       params: Promise.resolve({}),
@@ -780,19 +839,58 @@ describe('/api/patients/board', () => {
 
     expect(response.status).toBe(200);
     const json = await response.json();
-    expect(json.data).toHaveLength(1);
-    expect(json.data[0].patient_id).toBe('patient_missing_insurance');
+    expect(json.data.map((card: { patient_id: string }) => card.patient_id)).toEqual([
+      'patient_080',
+      'patient_081',
+    ]);
+    expect(new Set(json.data.map((card: { patient_id: string }) => card.patient_id)).size).toBe(2);
     expect(json.meta.facets.foundation_issue_counts).toMatchObject({
-      missing_insurance: 1,
+      missing_insurance: 2,
       missing_contact: 1,
-      needs_confirmation: 2,
     });
-    expect(patientFindManyMock).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        where: expect.not.objectContaining({ AND: expect.any(Array) }),
-      }),
-    );
+    expect(json.meta.facets).toMatchObject({
+      chip_counts: {
+        urgent_now: 0,
+        external_wait: 1,
+        visit_today: 1,
+        paused: 0,
+      },
+      today_facility_patient_count: 2,
+      today_visit_count: 0,
+      safety_tagged_count: 1,
+    });
+    expect(json.meta).toMatchObject({
+      assigned_total: 82,
+      total_count: 2,
+      has_more: false,
+      next_cursor: null,
+    });
+
+    const patientQueries = patientFindManyMock.mock.calls.map(([args]) => args);
+    expect(patientQueries).toHaveLength(2);
+    expect(patientQueries[0]).toMatchObject({
+      where: expect.objectContaining({ org_id: 'org_1' }),
+      orderBy: [{ name_kana: 'asc' }, { id: 'asc' }],
+      take: 80,
+    });
+    expect(patientQueries[0].where).not.toHaveProperty('AND');
+    expect(patientQueries[1]).toMatchObject({
+      where: expect.objectContaining({ org_id: 'org_1' }),
+      orderBy: [{ name_kana: 'asc' }, { id: 'asc' }],
+      take: 80,
+      cursor: { id: 'patient_079' },
+      skip: 1,
+    });
+    expect(patientQueries[1].where).not.toHaveProperty('AND');
+    expect(
+      patientFindManyMock.mock.calls.length +
+        patientCountMock.mock.calls.length +
+        dispenseTaskFindManyMock.mock.calls.length +
+        workflowExceptionFindManyMock.mock.calls.length,
+    ).toBe(5);
+    expect(patientCountMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({ org_id: 'org_1' }),
+    });
   });
 
   it('sorts matching cards before applying the cursor page limit and reports has_more', async () => {
@@ -1062,7 +1160,7 @@ describe('/api/patients/board', () => {
     });
   });
 
-  it('combines q with a database-side prefilter for directly expressible foundation issues', async () => {
+  it('applies q to the single base stream before derived foundation filtering', async () => {
     const response = (await GET(
       createRequest('?scope=all&q=%E4%BD%90%E8%97%A4&foundation_issue=missing_insurance'),
       {
@@ -1071,12 +1169,6 @@ describe('/api/patients/board', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    const expectedInsurancePrefilter = {
-      AND: [
-        { OR: [{ medical_insurance_number: null }, { medical_insurance_number: '' }] },
-        { OR: [{ care_insurance_number: null }, { care_insurance_number: '' }] },
-      ],
-    };
     expect(patientFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -1086,10 +1178,11 @@ describe('/api/patients/board', () => {
             { name: { contains: '佐藤', mode: 'insensitive' } },
             { name_kana: { contains: '佐藤', mode: 'insensitive' } },
           ]),
-          AND: [expectedInsurancePrefilter],
         }),
       }),
     );
+    expect(patientFindManyMock.mock.calls[0][0].where.AND).toBeUndefined();
+    expect(patientFindManyMock).toHaveBeenCalledTimes(1);
     expect(patientCountMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         OR: expect.arrayContaining([
@@ -1098,50 +1191,6 @@ describe('/api/patients/board', () => {
         ]),
       }),
     });
-  });
-
-  it('prefilters consent and management-plan foundation gaps at the database boundary', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
-
-    const response = (await GET(createRequest('?scope=all&foundation_issue=missing_consent_plan'), {
-      params: Promise.resolve({}),
-    }))!;
-
-    expect(response.status).toBe(200);
-    const prefilter = patientFindManyMock.mock.calls[0][0].where.AND[0];
-    expect(prefilter).toMatchObject({
-      OR: expect.arrayContaining([
-        {
-          consents: {
-            none: expect.objectContaining({
-              consent_type: 'visit_medication_management',
-              is_active: true,
-              revoked_date: null,
-            }),
-          },
-        },
-        {
-          cases: {
-            some: expect.objectContaining({
-              management_plans: { none: expect.any(Object) },
-            }),
-          },
-        },
-        {
-          cases: {
-            some: expect.objectContaining({
-              management_plans: {
-                some: expect.objectContaining({
-                  next_review_date: { lt: new Date('2026-06-12T00:00:00.000Z') },
-                }),
-              },
-            }),
-          },
-        },
-      ]),
-    });
-    expect(patientCountMock.mock.calls[0][0].where.AND).toBeUndefined();
   });
 
   it('rejects invalid board foundation issue values before querying patients', async () => {
