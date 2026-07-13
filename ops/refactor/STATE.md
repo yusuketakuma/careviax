@@ -8,10 +8,12 @@
 
 ## 体制（2026-07-13 最新ユーザー指示）
 
-- 現行は Codex 本体が計画、編集、validation、台帳更新、scoped commit の最終責任を持つ単一制御運用。
-- 2026-07-13 の最新ユーザー指示により、subagent は bounded な読取調査・計画レビュー・医療安全・
-  privacy・verificationへ再投入可。編集、統合、validation、台帳更新、scoped commit/pushはCodex本体が
-  最終責任を持つ。agmsg、codex2/codex3/codex4、Claudeは再有効化されていない。
+- 現行は `codex1` が計画、統合、validation、台帳更新、scoped commit/push の最終責任を持つ。
+- 2026-07-13 の最新ユーザー指示により、`agmsg` と `codex2` の2台並列実装を再有効化した。`codex1` と
+  `codex2` はexact path ownershipとhandoffを明示し、同じ領域を同時編集しない。`codex3/codex4`、Claude、
+  外部maker/checkerは再有効化されていない。
+- bounded な読取調査・計画レビュー・医療安全・privacy・verification subagentは利用可。編集統合、
+  long Next gate、単一台帳、最終commit/pushは引き続き`codex1`が管理する。
 - 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
   直接の影響範囲確認、focused/full gate で代替する。
 - 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
@@ -44,13 +46,65 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: Codex 単独運用（2026-07-10〜）。調査・編集・統合・
-  validation・commitは Codex 本体が担い、pushは明示指示時だけ行う。
+- Phase C（実装ループ）: `codex1`統合 + `codex2` exact-path並列運用（2026-07-13〜）。
+  編集ownershipをagmsgで分離し、validation・単一台帳・最終commit/pushは`codex1`が統合する。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: AUTHZ-SHARE-FOLLOWUP-ELIGIBILITY-001 share follow-up task eligibility (DONE, 2026-07-13; implementation `dcff0860c`, PUSHED).
+  - current task / root cause / inspected:
+    Patient/report share workspaces could enable a follow-up-task CTA for pharmacist/trainee actors who may read a
+    patient org-wide but are outside the personal dashboard assignment scope. The authoritative `POST /api/tasks`
+    already rejected the patient before writes, so this was a false affordance and repeated-authoritative-rejection
+    path, not an auth bypass. Inspected the dashboard scope resolver/predicate, tasks POST order, patient/report detail
+    providers and strict DTOs, both share query/mutation workspaces, auth store hydration, primary cache policy, public
+    token DTO boundary, task registry, archive write gate, and all directly related route/UI/schema tests.
+  - implementation / security / privacy result:
+    Extracted the exact route-private predicate into `dashboard-assignment-scope` and reused it in task POST plus the
+    authenticated patient/report `can_create_followup_task` projections. Owner/admin remain unrestricted;
+    pharmacist/trainee remain limited to their personal patient/case scope. POST status/message/rejection ordering,
+    `requireWritablePatient`, audit/write boundaries, public `/shared/[token]` responses, DB/schema, and existing
+    unassigned-queue behavior are unchanged. Both clients partition primary/supporting PHI queries and workspace state
+    by org/resource/actor ID/role and keep PHI queries disabled until auth hydration. Task POST 400/401/403/404 now
+    locks external share, reply request, and task writes while the primary provider refetches; fresh permission=false
+    removes task CTA/error/retry, primary 4xx hides cached PHI, and network/5xx retains only read-only cached history.
+    Error/log surfaces retain fixed reviewed copy and status only.
+  - tests / validation / review:
+    Baseline 6 files / 152 tests and final focused 7 files / 221 tests PASS. Final single full Vitest run: 1549 files
+    PASS / 3 skipped, 16059 tests PASS / 13 skipped. Scoped ESLint/Prettier, `git diff --check`, 8 GiB `pnpm typecheck`,
+    8 GiB `typecheck:no-unused`, format/frontend/client-schema 361/0/API-shape/route-auth 176/252/0/raw-read 117/0/
+    PHI log+display/module boundary/task registry 81+144/colors/plans gates PASS. Serialized Next.js 16.2.9 webpack
+    build generated 311 pages PASS; existing CSS `var(...)` optimizer warnings 2件は非阻害・本差分外。Full-test
+    orchestration中にCodex-owned duplicate sessionsを検出し3本をexit 130で停止、競合解消後の単独run exit 0を
+    正式結果とした。Contract、independent、medical/privacy final reviewsはAPPROVEで、auth weakening、PHI leak、
+    public DTO exposure、repeat POST blockerなし。
+  - design / image generation / advisory:
+    `docs/ui-ux-design-guidelines.md`のdisabled reason、unknown/stale read-only、色だけに依存しない説明を既存layoutで
+    適用。visual reconstructionではないため`gpt-image-2`とbrowser screenshotは省略し、Testing Libraryでauth
+    hydration、actor switch、write lock、permission drift、4xx/5xx cache境界を確認した。Current SSOTに従いOracleは
+    使用せず、local inspection、bounded review、focused/full/type/static/buildを安全ゲートとした。
+  - branch / ownership / rollback / remaining:
+    `codex1` owned 14 code/test pathsだけを`dcff0860c`へscoped commitし、feature branchへnon-force push済み。
+    `codex2`のTasks UI commit `42262e794`と既存dirty ops/harness/personal filesは未stage・未変更。Rollbackは
+    `git revert dcff0860c`、DB/data rollback不要。gbrain decision:
+    `projects/careviax/decisions/2026-07-13/share-followup-task-eligibility-and-drift-recovery`。
+    残る対象patient限定scope query最適化は`PERF-SHARE-FOLLOWUP-SCOPE-001` Lowへ分離した。
+
+- codex2: AUTHZ-TASKS-ACTOR-CACHE-RETRY-001 Tasks actor cache and immutable retry payload (DONE, 2026-07-13; implementation `42262e794`, PUSHED).
+  - root cause / result:
+    Tasks list/health query keysがorgとfilterだけでactor/roleを含まず、same-org actor switchで旧task PHI/permissionを
+    再利用し得た。業務依頼の結果不明retryもmutable formからpayloadを再構築でき、初回送信と異なる本文を同じ復旧操作で
+    送る余地があった。`codex2`はTasks UI 2 pathsだけを所有し、query keysへuser ID/roleを追加、auth hydration前queryを
+    disable、actor fingerprint切替でlocal assignment stateを破棄した。Create mutationは初回payload+dedupe keyのimmutable
+    submission snapshotを保持し、結果不明中はform/selectorをlockして同じsnapshotだけをretryする。資格拒否と結果不明を
+    分離し、staff/task/health refetch後の復旧条件を維持した。
+  - validation / ownership:
+    Focused 29/29、scoped ESLint/Prettier、8 GiB typecheck/no-unused、read-only post-review、shared full Vitest PASS。
+    Commit `42262e794`はexact 2 pathsのみでfeature branchへpush済み。Server dedupe exact-match/replayの残余と
+    supervision専用taskのgeneric write boundaryは別sliceとした。台帳統合は`codex1`が担当。
 
 - codex: AUTHZ-TASK-ASSIGNEE-ELIGIBILITY-001 task assignee capability boundary (DONE, 2026-07-13; implementation `a226ff664`, PUSHED).
   - current task / root cause:
