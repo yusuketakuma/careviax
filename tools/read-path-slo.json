@@ -140,7 +140,7 @@
         "visit schedules scoped by org_id, case_id, and scheduled_date"
       ],
       "owner": "PERF-DB-READ-SLO-001",
-      "notes": "Implementation evidence: collectPatientBoardRows uses stable name_kana/id ordering, take 80, and id cursor/skip batches over one base patient stream. Exact foundation counts and the selected foundation result are derived from that same card set, so an active foundation filter does not start a duplicate deep patient stream. Preserve filtered_result_exact and do not add deeper all-patient relation includes."
+      "notes": "Implementation evidence: collectPatientBoardPage uses stable name_kana/id ordering and take 80 over one tenant-scoped base stream. Each batch is folded immediately into exact facets/counts, while only limit + 1 globally ordered cards remain in memory. The public continuation cursor carries an authenticated-encrypted derived sort key, not an offset or plaintext patient identity. Preserve filtered_result_exact, the bounded candidate set, and the zero-duplicate keyset order; the remaining full deep database scan is tracked by PERF-DB-PATIENT-BOARD-CURSOR."
     },
     {
       "family": "patient-detail-initial",

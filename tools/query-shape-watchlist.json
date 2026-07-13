@@ -98,7 +98,7 @@
     {
       "path": "src/app/api/patients/board/route.ts",
       "owner": "QUERY-SHAPE-WATCHLIST-003J",
-      "reason": "Patient board is a critical PHI read path whose exact facets and priority ordering must use stable bounded patient batches."
+      "reason": "Patient board is a critical PHI read path whose exact facets and priority ordering must use stable bounded patient batches, streaming limit + 1 candidate retention, and an encrypted derived-sort keyset cursor."
     },
     {
       "path": "src/app/api/care-reports/today-workspace/route.ts",

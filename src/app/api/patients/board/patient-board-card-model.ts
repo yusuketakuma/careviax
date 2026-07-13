@@ -134,6 +134,13 @@ export type DerivedPatientBoardCard = PatientBoardCard & {
   facility_batch_patient_count: number;
 };
 
+export type PatientBoardCardSortKey = Pick<
+  DerivedPatientBoardCard,
+  'patient_id' | 'name' | 'attention' | 'next_visit_date' | 'next_visit_time'
+> & {
+  foundation_status: NonNullable<PatientBoardCard['foundation_summary']>['status'];
+};
+
 export type PatientBoardFoundationIssueFilter =
   | PatientFoundationIssueKey
   | 'needs_confirmation'
@@ -367,11 +374,42 @@ export function comparePatientBoardCards(
   left: DerivedPatientBoardCard,
   right: DerivedPatientBoardCard,
 ): number {
+  return comparePatientBoardCardSortKeys(
+    buildPatientBoardCardSortKey(left),
+    buildPatientBoardCardSortKey(right),
+  );
+}
+
+export function buildPatientBoardCardSortKey(
+  card: Pick<
+    DerivedPatientBoardCard,
+    | 'patient_id'
+    | 'name'
+    | 'attention'
+    | 'next_visit_date'
+    | 'next_visit_time'
+    | 'foundation_summary'
+  >,
+): PatientBoardCardSortKey {
+  return {
+    patient_id: card.patient_id,
+    name: card.name,
+    attention: card.attention,
+    foundation_status: card.foundation_summary?.status ?? 'ready',
+    next_visit_date: card.next_visit_date,
+    next_visit_time: card.next_visit_time,
+  };
+}
+
+export function comparePatientBoardCardSortKeys(
+  left: PatientBoardCardSortKey,
+  right: PatientBoardCardSortKey,
+): number {
   const priorityDiff = ATTENTION_PRIORITY[left.attention] - ATTENTION_PRIORITY[right.attention];
   if (priorityDiff !== 0) return priorityDiff;
   const foundationDiff =
-    FOUNDATION_STATUS_PRIORITY[left.foundation_summary?.status ?? 'ready'] -
-    FOUNDATION_STATUS_PRIORITY[right.foundation_summary?.status ?? 'ready'];
+    FOUNDATION_STATUS_PRIORITY[left.foundation_status] -
+    FOUNDATION_STATUS_PRIORITY[right.foundation_status];
   if (foundationDiff !== 0) return foundationDiff;
   const leftDate = left.next_visit_date ?? '9999-99-99';
   const rightDate = right.next_visit_date ?? '9999-99-99';

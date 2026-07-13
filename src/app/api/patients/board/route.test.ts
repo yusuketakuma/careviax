@@ -1038,6 +1038,66 @@ describe('/api/patients/board', () => {
     });
   });
 
+  it.each([
+    {
+      sort: 'name',
+      expected: ['patient_a', 'patient_b'],
+    },
+    {
+      sort: 'next_visit',
+      expected: ['patient_b', 'patient_c'],
+    },
+  ] as const)(
+    'keeps encrypted keyset pagination stable for $sort sorting',
+    async ({ sort, expected }) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+      const patients = [
+        {
+          ...buildPatientRow(new Date('2026-06-15T00:00:00.000Z')),
+          id: 'patient_a',
+          name: 'A Patient',
+          name_kana: 'A',
+        },
+        {
+          ...buildPatientRow(new Date('2026-06-12T00:00:00.000Z')),
+          id: 'patient_b',
+          name: 'B Patient',
+          name_kana: 'B',
+        },
+        {
+          ...buildPatientRow(new Date('2026-06-14T00:00:00.000Z')),
+          id: 'patient_c',
+          name: 'C Patient',
+          name_kana: 'C',
+        },
+      ];
+      patientFindManyMock.mockResolvedValue(patients);
+      patientCountMock.mockResolvedValue(3);
+
+      const first = (await GET(createRequest(`?scope=all&limit=1&sort=${sort}`), {
+        params: Promise.resolve({}),
+      }))!;
+      const firstJson = await first.json();
+      expect(firstJson.data.map((card: { patient_id: string }) => card.patient_id)).toEqual([
+        expected[0],
+      ]);
+      expect(firstJson.meta.next_cursor).toEqual(expect.any(String));
+
+      const second = (await GET(
+        createRequest(
+          `?scope=all&limit=1&sort=${sort}&cursor=${encodeURIComponent(firstJson.meta.next_cursor)}`,
+        ),
+        { params: Promise.resolve({}) },
+      ))!;
+      const secondJson = await second.json();
+      expect(secondJson.data.map((card: { patient_id: string }) => card.patient_id)).toEqual([
+        expected[1],
+      ]);
+      expect(secondJson.meta).toMatchObject({ total_count: 3, has_more: true });
+    },
+  );
+
   it('rejects tampered and filter-mismatched cursors before querying patients', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
@@ -1085,6 +1145,16 @@ describe('/api/patients/board', () => {
     expectSensitiveNoStore(mismatchResponse);
     expect(patientFindManyMock).not.toHaveBeenCalled();
     expect(patientCountMock).not.toHaveBeenCalled();
+
+    vi.setSystemTime(new Date('2026-06-12T08:11:00+09:00'));
+    const expiredResponse = (await GET(
+      createRequest(`?scope=all&limit=1&cursor=${encodeURIComponent(cursor)}`),
+      { params: Promise.resolve({}) },
+    ))!;
+    expect(expiredResponse.status).toBe(400);
+    expectSensitiveNoStore(expiredResponse);
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(patientCountMock).not.toHaveBeenCalled();
   });
 
   it('does not echo raw q or patient identifiers inside cursor metadata', async () => {
@@ -1120,6 +1190,12 @@ describe('/api/patients/board', () => {
     expect(json.meta.next_cursor).toEqual(expect.any(String));
     expect(json.meta.next_cursor).not.toContain('patient_sensitive');
     expect(json.meta.next_cursor).not.toContain(rawQuery);
+    expect(
+      json.meta.next_cursor
+        .split('.')
+        .map((part: string) => Buffer.from(part, 'base64url').toString('utf8'))
+        .join(''),
+    ).not.toContain('patient_sensitive');
     expect(bodyText).not.toContain(rawQuery);
   });
 

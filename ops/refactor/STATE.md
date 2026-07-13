@@ -55,6 +55,34 @@
 
 ## 直近の作業
 
+- codex1: QUERY-SHAPE-PATIENT-BOARD-STREAMING-003P (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Goal再開時にattachment、`Plans.md`、本STATE、dirty tree、feature branch/deploy triggerを復元し、未push 6 commitsを
+    `agent/continuous-improvement-20260712`へnon-force pushしてorigin parity `0 0`を確認した。次のP1としてpatient board route/test、
+    card derive/sort、read-path SLO/query-shape台帳、PH-OS UI/UX SSOT、installed Next 16.2.9 data fetching/security guideを確認した。
+    既存003O-AはDB readをstable `take 80`へ分割したが、各pageで全deep rowを配列化し、全cardをderive/materialize、full sortしてから
+    signed offset sliceしていたため、application memoryが対象患者数に比例し、sortも`O(N log N)`、offset cursorは並行更新時にpage driftし得た。
+  - files changed / correctness / performance:
+    `collectPatientBoardPage`へ80-row batchを即時derive/foldするstreaming collectorを導入し、foundation issue counts、facets、exact
+    `total_count`をsingle passで維持しつつ、cursor後の候補をbinary insertionした`limit + 1`件だけ保持する。全card配列/full sort/offset sliceを除去し、
+    application memoryを`O(batch + limit)`、候補sortを`O(N log limit)`へ縮小した。既存priority/name/next_visit順序、patient ID tie-breaker、
+    exact count basis、rail、public DTO、response上限を維持し、後半DB batchの高優先患者を先頭へ採用する82-row回帰を継続して固定した。
+    親taskは各pageで全deep rowをDB scan/deriveするためPartialで、次はpersistent summary/BFFまたはDB-side bounded projectionの設計が必要。
+  - security / privacy / stability:
+    offset cursorをAES-256-GCMのopaque derived sort-key cursorへ変更し、auth secretからdomain-separated keyを導出、AAD、random 96-bit IV、
+    canonical base64url、strict payload schema、10分TTL、limit/filter/actor/role binding、tamper rejectionを固定した。患者ID・氏名をURLでplaintext露出せず、
+    tamper/filter mismatch/expiryはpatient query前にgeneric 400へfail-closedする。Auth/assignment/org predicate、RLS boundary、PHI select/public DTO、
+    sensitive no-store、DB/write/network/schema/migrationは変更していない。視覚・copy・layout・motion変更のないserver/API sliceのためimagegenを省略した。
+  - validation / remaining / rollback:
+    Focused patient-board 2 files / 40 tests、8 GiB typecheck、8 GiB typecheck:no-unused、query-shape 0/0、read-SLO 1 known / 0 new、raw-org
+    116 / 0 new、API shape 0/0、API authz 0、route auth 175 allowlisted / 251 direct / 0 new、module boundary 0/0、client schema
+    361 backed / 0 allowlisted、frontend contract、Plans active、exact ESLint/Prettier/diffをPASS。初回full testは5秒既定timeout下で
+    raw-read-org guard test 3件のみtimeoutし、同file単独15 testsは865msでPASS。30秒timeoutの全体再実行は1554 files / 16236 tests PASS、
+    3 files / 13 tests skippedで負荷起因と確定した。Full lintは既知break-glass test warning 2件 / error 0、format、colors 19 allowlisted / 0 drift、
+    typography 0/0、client PHI-log 1 allowlisted / 0 new、client PHI-display 0をPASS。Next 16.2.9 production buildはwebpack compile、TypeScript、
+    static pages 311/311をPASSし、既知generated CSS `var(...)` warning 2件のみ。Schema/migration/production data/deploy/Oracleなし。
+    Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
 - codex1 takeover: API-STATUS-NOTFOUND-LIVE-RESCAN-001J (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
   - current task / files inspected / root cause:
     Codex3 handoffのIntervention POST候補をcodex1がGET/POST route/test、patient assignment helper、MedicationIssue org/patient predicate、create transaction、

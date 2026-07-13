@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import type { PackagingInstructionTag, Prisma } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
@@ -11,11 +11,12 @@ import { prisma } from '@/lib/db/client';
 import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { PACKAGING_INSTRUCTION_TAG_OPTIONS } from '@/lib/dispensing/packaging';
 import {
-  buildPatientBoardFoundationIssueCounts,
-  comparePatientBoardCards,
+  buildPatientBoardCardSortKey,
+  comparePatientBoardCardSortKeys,
   derivePatientBoardCard,
   matchesPatientBoardFoundationIssue,
   type DerivedPatientBoardCard,
+  type PatientBoardCardSortKey,
   type PatientBoardQueryRow,
 } from './patient-board-card-model';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
@@ -29,6 +30,7 @@ import type {
   PatientBoardCardFilter,
   PatientBoardCountBasis,
   PatientBoardFacets,
+  PatientBoardFoundationIssueCounts,
   PatientBoardPageResponse,
   PatientBoardSort,
 } from '@/types/patient-board';
@@ -44,6 +46,7 @@ const DEFAULT_PATIENT_BOARD_PAGE_LIMIT = 60;
 const MAX_PATIENT_BOARD_PAGE_LIMIT = 100;
 const PATIENT_BOARD_QUERY_BATCH_SIZE = 80;
 const PATIENT_BOARD_CURSOR_TTL_MS = 10 * 60 * 1000;
+const PATIENT_BOARD_CURSOR_AAD = Buffer.from('ph-os:patient-board-cursor:v2', 'utf8');
 const BLOCKED_REASONS_LIMIT = 2;
 const PATIENT_BOARD_CONTACT_LIMIT = 10;
 const PATIENT_BOARD_CARE_TEAM_LINK_LIMIT = 10;
@@ -75,8 +78,8 @@ const boardQuerySchema = z.object({
     .string()
     .trim()
     .min(1)
-    .max(512)
-    .regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
+    .max(2048)
+    .regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
     .optional(),
 });
 
@@ -105,16 +108,45 @@ function findDuplicateBoardQueryParams(searchParams: URLSearchParams) {
   return Object.keys(fieldErrors).length > 0 ? fieldErrors : null;
 }
 
-type PatientBoardCursorPayload = {
-  v: 1;
-  offset: number;
-  limit: number;
-  fh: string;
-  iat_ms: number;
-};
+const patientBoardCursorPayloadSchema = z
+  .object({
+    v: z.literal(2),
+    after: z
+      .object({
+        patient_id: z.string().min(1).max(512),
+        name: z.string().min(1).max(512),
+        attention: z.enum([
+          'urgent_now',
+          'wait_release',
+          'acceptance',
+          'visit_today',
+          'external_wait',
+          'checking',
+          'reply_wait',
+          'steady',
+          'paused',
+        ]),
+        foundation_status: z.enum(['ready', 'needs_confirmation', 'missing']),
+        next_visit_date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullable(),
+        next_visit_time: z
+          .string()
+          .regex(/^\d{2}:\d{2}$/)
+          .nullable(),
+      })
+      .strict(),
+    limit: z.number().int().min(1).max(MAX_PATIENT_BOARD_PAGE_LIMIT),
+    fh: z.string().min(1),
+    iat_ms: z.number().int().nonnegative(),
+  })
+  .strict();
+
+type PatientBoardCursorPayload = z.infer<typeof patientBoardCursorPayloadSchema>;
 
 type PatientBoardCursorDecodeResult =
-  | { ok: true; offset: number }
+  | { ok: true; after: PatientBoardCardSortKey | null }
   | { ok: false; reason: 'malformed' | 'mismatch' | 'expired' };
 type PatientBoardCursorFailureReason = Extract<
   PatientBoardCursorDecodeResult,
@@ -128,35 +160,16 @@ const PATIENT_BOARD_COUNT_BASIS: PatientBoardCountBasis = {
   board_summary: 'scope_search_foundation_exact',
 };
 
-function encodeBase64UrlJson(value: unknown) {
-  return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+function buildPatientBoardCursorKey(secret: string) {
+  return createHash('sha256')
+    .update('ph-os:patient-board-cursor-key:v2\0', 'utf8')
+    .update(secret, 'utf8')
+    .digest();
 }
 
-function signPatientBoardCursor(payloadPart: string, secret: string) {
-  return createHmac('sha256', secret).update(payloadPart).digest('base64url');
-}
-
-function safeEqualSignature(left: string, right: string) {
-  const leftBuffer = Buffer.from(left, 'base64url');
-  const rightBuffer = Buffer.from(right, 'base64url');
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
-}
-
-function readPatientBoardCursorPayload(value: unknown): PatientBoardCursorPayload | null {
-  if (!value || typeof value !== 'object') return null;
-  const record = value as Record<string, unknown>;
-  if (record.v !== 1) return null;
-  if (!Number.isSafeInteger(record.offset) || (record.offset as number) < 0) return null;
-  if (!Number.isSafeInteger(record.limit) || (record.limit as number) < 1) return null;
-  if (typeof record.fh !== 'string' || !record.fh) return null;
-  if (!Number.isSafeInteger(record.iat_ms) || (record.iat_ms as number) < 0) return null;
-  return {
-    v: 1,
-    offset: record.offset as number,
-    limit: record.limit as number,
-    fh: record.fh,
-    iat_ms: record.iat_ms as number,
-  };
+function decodeCanonicalBase64Url(value: string) {
+  const decoded = Buffer.from(value, 'base64url');
+  return decoded.toString('base64url') === value ? decoded : null;
 }
 
 function buildPatientBoardFilterHash(args: {
@@ -186,20 +199,29 @@ function buildPatientBoardFilterHash(args: {
 }
 
 function encodePatientBoardCursor(args: {
-  offset: number;
+  after: PatientBoardCardSortKey;
   limit: number;
   filterHash: string;
   now: Date;
   secret: string;
 }) {
-  const payloadPart = encodeBase64UrlJson({
-    v: 1,
-    offset: args.offset,
+  const payload = {
+    v: 2,
+    after: args.after,
     limit: args.limit,
     fh: args.filterHash,
     iat_ms: args.now.getTime(),
-  } satisfies PatientBoardCursorPayload);
-  return `${payloadPart}.${signPatientBoardCursor(payloadPart, args.secret)}`;
+  } satisfies PatientBoardCursorPayload;
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', buildPatientBoardCursorKey(args.secret), iv);
+  cipher.setAAD(PATIENT_BOARD_CURSOR_AAD);
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(payload), 'utf8'),
+    cipher.final(),
+  ]);
+  return `${iv.toString('base64url')}.${ciphertext.toString('base64url')}.${cipher
+    .getAuthTag()
+    .toString('base64url')}`;
 }
 
 function decodePatientBoardCursor(args: {
@@ -209,24 +231,34 @@ function decodePatientBoardCursor(args: {
   now: Date;
   secret: string;
 }): PatientBoardCursorDecodeResult {
-  if (!args.cursor) return { ok: true, offset: 0 };
-  const [payloadPart, signature, ...extra] = args.cursor.split('.');
-  if (!payloadPart || !signature || extra.length > 0) return { ok: false, reason: 'malformed' };
-  const expectedSignature = signPatientBoardCursor(payloadPart, args.secret);
-  if (!safeEqualSignature(signature, expectedSignature)) {
+  if (!args.cursor) return { ok: true, after: null };
+  const [ivPart, ciphertextPart, authTagPart, ...extra] = args.cursor.split('.');
+  if (!ivPart || !ciphertextPart || !authTagPart || extra.length > 0) {
     return { ok: false, reason: 'malformed' };
   }
   try {
-    const parsed = JSON.parse(Buffer.from(payloadPart, 'base64url').toString('utf8')) as unknown;
-    const payload = readPatientBoardCursorPayload(parsed);
-    if (!payload) return { ok: false, reason: 'malformed' };
+    const iv = decodeCanonicalBase64Url(ivPart);
+    const ciphertext = decodeCanonicalBase64Url(ciphertextPart);
+    const authTag = decodeCanonicalBase64Url(authTagPart);
+    if (!iv || iv.length !== 12 || !ciphertext || !authTag || authTag.length !== 16) {
+      return { ok: false, reason: 'malformed' };
+    }
+    const decipher = createDecipheriv('aes-256-gcm', buildPatientBoardCursorKey(args.secret), iv);
+    decipher.setAAD(PATIENT_BOARD_CURSOR_AAD);
+    decipher.setAuthTag(authTag);
+    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString(
+      'utf8',
+    );
+    const parsed = patientBoardCursorPayloadSchema.safeParse(JSON.parse(plaintext) as unknown);
+    if (!parsed.success) return { ok: false, reason: 'malformed' };
+    const payload = parsed.data;
     if (args.now.getTime() - payload.iat_ms > PATIENT_BOARD_CURSOR_TTL_MS) {
       return { ok: false, reason: 'expired' };
     }
     if (payload.limit !== args.limit || payload.fh !== args.filterHash) {
       return { ok: false, reason: 'mismatch' };
     }
-    return { ok: true, offset: payload.offset };
+    return { ok: true, after: payload.after };
   } catch {
     return { ok: false, reason: 'malformed' };
   }
@@ -309,15 +341,15 @@ function buildPatientBoardSearchWhere(query: string | undefined): Prisma.Patient
   };
 }
 
-function getVisitSortKey(card: DerivedPatientBoardCard): string {
+function getVisitSortKey(card: PatientBoardCardSortKey): string {
   const date = card.next_visit_date ?? '9999-12-31';
   const time = card.next_visit_time ?? '99:99';
   return `${date}T${time}`;
 }
 
-function compareForPatientBoardSort(
-  left: DerivedPatientBoardCard,
-  right: DerivedPatientBoardCard,
+function comparePatientBoardSortKeys(
+  left: PatientBoardCardSortKey,
+  right: PatientBoardCardSortKey,
   sort: PatientBoardSort,
 ) {
   if (sort === 'next_visit') {
@@ -328,9 +360,21 @@ function compareForPatientBoardSort(
     if (nameCompare !== 0) return nameCompare;
   }
 
-  const priorityCompare = comparePatientBoardCards(left, right);
+  const priorityCompare = comparePatientBoardCardSortKeys(left, right);
   if (priorityCompare !== 0) return priorityCompare;
   return left.patient_id.localeCompare(right.patient_id);
+}
+
+function compareForPatientBoardSort(
+  left: DerivedPatientBoardCard,
+  right: DerivedPatientBoardCard,
+  sort: PatientBoardSort,
+) {
+  return comparePatientBoardSortKeys(
+    buildPatientBoardCardSortKey(left),
+    buildPatientBoardCardSortKey(right),
+    sort,
+  );
 }
 
 function matchesPatientBoardCardFilter(
@@ -347,40 +391,94 @@ function matchesPatientBoardCardFilter(
   return card.attention === 'paused';
 }
 
-function buildPatientBoardFacets(
-  cards: readonly DerivedPatientBoardCard[],
-  foundationIssueCounts: ReturnType<typeof buildPatientBoardFoundationIssueCounts>,
-  todayKey: string,
-): PatientBoardFacets {
-  const visitTodayCards = cards.filter((card) => card.next_visit_date === todayKey);
-  const facilityBatchSizes = new Map<string, number>();
-  let todayVisitCount = 0;
-
-  for (const card of visitTodayCards) {
-    if (card.facility_batch_id) {
-      facilityBatchSizes.set(card.facility_batch_id, card.facility_batch_patient_count);
-    } else {
-      todayVisitCount += 1;
-    }
-  }
-
+function createPatientBoardFoundationIssueCounts(): PatientBoardFoundationIssueCounts {
   return {
-    chip_counts: {
-      urgent_now: cards.filter((card) => card.attention === 'urgent_now').length,
-      external_wait: cards.filter(
-        (card) => card.attention === 'external_wait' || card.attention === 'reply_wait',
-      ).length,
-      visit_today: visitTodayCards.length,
-      paused: cards.filter((card) => card.attention === 'paused').length,
-    },
+    needs_confirmation: 0,
+    missing_contact: 0,
+    missing_consent_plan: 0,
+    missing_parking: 0,
+    missing_care_level: 0,
+    missing_insurance: 0,
+    missing_care_team: 0,
+  };
+}
+
+function observePatientBoardFoundationIssues(
+  counts: PatientBoardFoundationIssueCounts,
+  card: DerivedPatientBoardCard,
+) {
+  if (card.foundation_summary?.status !== 'ready') counts.needs_confirmation += 1;
+  for (const issue of card.foundation_issue_keys ?? []) counts[issue] += 1;
+}
+
+type PatientBoardFacetAccumulator = {
+  chip_counts: PatientBoardFacets['chip_counts'];
+  facility_batch_sizes: Map<string, number>;
+  today_visit_count: number;
+  safety_tagged_count: number;
+};
+
+function createPatientBoardFacetAccumulator(): PatientBoardFacetAccumulator {
+  return {
+    chip_counts: { urgent_now: 0, external_wait: 0, visit_today: 0, paused: 0 },
+    facility_batch_sizes: new Map(),
+    today_visit_count: 0,
+    safety_tagged_count: 0,
+  };
+}
+
+function observePatientBoardFacets(
+  accumulator: PatientBoardFacetAccumulator,
+  card: DerivedPatientBoardCard,
+  todayKey: string,
+) {
+  if (card.attention === 'urgent_now') accumulator.chip_counts.urgent_now += 1;
+  if (card.attention === 'external_wait' || card.attention === 'reply_wait') {
+    accumulator.chip_counts.external_wait += 1;
+  }
+  if (card.attention === 'paused') accumulator.chip_counts.paused += 1;
+  if (card.safety_tags.length > 0) accumulator.safety_tagged_count += 1;
+  if (card.next_visit_date !== todayKey) return;
+
+  accumulator.chip_counts.visit_today += 1;
+  if (card.facility_batch_id) {
+    accumulator.facility_batch_sizes.set(card.facility_batch_id, card.facility_batch_patient_count);
+  } else {
+    accumulator.today_visit_count += 1;
+  }
+}
+
+function buildPatientBoardFacets(
+  accumulator: PatientBoardFacetAccumulator,
+  foundationIssueCounts: PatientBoardFoundationIssueCounts,
+): PatientBoardFacets {
+  return {
+    chip_counts: accumulator.chip_counts,
     foundation_issue_counts: foundationIssueCounts,
-    today_facility_patient_count: Array.from(facilityBatchSizes.values()).reduce(
+    today_facility_patient_count: Array.from(accumulator.facility_batch_sizes.values()).reduce(
       (sum, count) => sum + count,
       0,
     ),
-    today_visit_count: todayVisitCount,
-    safety_tagged_count: cards.filter((card) => card.safety_tags.length > 0).length,
+    today_visit_count: accumulator.today_visit_count,
+    safety_tagged_count: accumulator.safety_tagged_count,
   };
+}
+
+function insertBoundedPatientBoardCandidate(
+  candidates: DerivedPatientBoardCard[],
+  card: DerivedPatientBoardCard,
+  sort: PatientBoardSort,
+  capacity: number,
+) {
+  let low = 0;
+  let high = candidates.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (compareForPatientBoardSort(candidates[middle]!, card, sort) <= 0) low = middle + 1;
+    else high = middle;
+  }
+  candidates.splice(low, 0, card);
+  if (candidates.length > capacity) candidates.pop();
 }
 
 function toPublicPatientBoardCard(card: DerivedPatientBoardCard) {
@@ -656,15 +754,19 @@ const authenticatedGET = withAuthContext(
       },
     } satisfies Prisma.PatientSelect;
 
-    const collectPatientBoardRows = async (where: Prisma.PatientWhereInput) => {
-      const rows: PatientBoardQueryRow[] = [];
+    const collectPatientBoardPage = async (where: Prisma.PatientWhereInput) => {
+      const foundationIssueCounts = createPatientBoardFoundationIssueCounts();
+      const facetAccumulator = createPatientBoardFacetAccumulator();
+      const pageCandidates: DerivedPatientBoardCard[] = [];
+      const candidateCapacity = limit + 1;
+      let totalCount = 0;
       let cursor: string | undefined;
 
-      // Exact facets and priority sorting still need the complete filtered result. Read it in
-      // stable, SLO-sized keyset batches so no Prisma query can materialize an unbounded patient
-      // set. The id tie-breaker makes the cursor deterministic when kana values are equal.
+      // Exact facets and derived priority ordering require observing the complete filtered basis.
+      // Keep both database and application memory bounded: hydrate at most one SLO-sized batch,
+      // fold exact counters immediately, and retain only the next page plus one look-ahead card.
       while (true) {
-        const batch = await prisma.patient.findMany({
+        const batch: PatientBoardQueryRow[] = await prisma.patient.findMany({
           // Keep the raw-client tenant boundary explicit at every paginated callsite.
           // The callers already pass an org-scoped predicate; overriding it here makes
           // the invariant local and prevents a future caller from widening the scan.
@@ -674,18 +776,43 @@ const authenticatedGET = withAuthContext(
           ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
           select: patientBoardSelect,
         });
-        rows.push(...batch);
+
+        for (const patient of batch) {
+          const card = derivePatientBoardCard(patient, now);
+          observePatientBoardFoundationIssues(foundationIssueCounts, card);
+          if (!matchesPatientBoardFoundationIssue(card, foundationIssue)) continue;
+
+          observePatientBoardFacets(facetAccumulator, card, todayKey);
+          if (!matchesPatientBoardCardFilter(card, cardFilter, todayKey)) continue;
+          totalCount += 1;
+
+          const sortKey = buildPatientBoardCardSortKey(card);
+          if (
+            decodedCursor.after &&
+            comparePatientBoardSortKeys(sortKey, decodedCursor.after, sort) <= 0
+          ) {
+            continue;
+          }
+          insertBoundedPatientBoardCandidate(pageCandidates, card, sort, candidateCapacity);
+        }
 
         if (batch.length < PATIENT_BOARD_QUERY_BATCH_SIZE) break;
         cursor = batch[batch.length - 1]?.id;
         if (!cursor) break;
       }
 
-      return rows;
+      const hasMore = pageCandidates.length > limit;
+      if (hasMore) pageCandidates.pop();
+      return {
+        pageCards: pageCandidates,
+        totalCount,
+        hasMore,
+        facets: buildPatientBoardFacets(facetAccumulator, foundationIssueCounts),
+      };
     };
 
-    const [patients, assignedTotal, auditTasks, openExceptions] = await Promise.all([
-      collectPatientBoardRows(basePatientWhere),
+    const [boardPage, assignedTotal, auditTasks, openExceptions] = await Promise.all([
+      collectPatientBoardPage(basePatientWhere),
       prisma.patient.count({ where: basePatientWhere }),
       // 次にやること: 監査待ち(麻薬を最優先)の先頭 1 件
       prisma.dispenseTask.findMany({
@@ -732,26 +859,9 @@ const authenticatedGET = withAuthContext(
       }),
     ]);
 
-    const allCards = patients.map((patient) => derivePatientBoardCard(patient, now));
-    const foundationIssueCounts = buildPatientBoardFoundationIssueCounts(allCards);
-    const foundationFilteredCards = allCards.filter((card) =>
-      matchesPatientBoardFoundationIssue(card, foundationIssue),
-    );
-    const facets = buildPatientBoardFacets(
-      foundationFilteredCards,
-      foundationIssueCounts,
-      todayKey,
-    );
-    const filteredCards = foundationFilteredCards
-      .filter((card) => matchesPatientBoardCardFilter(card, cardFilter, todayKey))
-      .sort((left, right) => compareForPatientBoardSort(left, right, sort));
-    const pageStart = decodedCursor.offset;
-    const pageCards = filteredCards.slice(pageStart, pageStart + limit);
-    const nextOffset = pageStart + pageCards.length;
-    const hasMore = nextOffset < filteredCards.length;
-    const nextCursor = hasMore
+    const nextCursor = boardPage.hasMore
       ? encodePatientBoardCursor({
-          offset: nextOffset,
+          after: buildPatientBoardCardSortKey(boardPage.pageCards[boardPage.pageCards.length - 1]!),
           limit,
           filterHash,
           now,
@@ -779,15 +889,15 @@ const authenticatedGET = withAuthContext(
     const blockedReasons: PatientBoardBlockedReason[] = buildBlockedReasons(openExceptions, now);
 
     const responseData: PatientBoardPageResponse = {
-      data: pageCards.map(toPublicPatientBoardCard),
+      data: boardPage.pageCards.map(toPublicPatientBoardCard),
       meta: {
         generated_at: now.toISOString(),
         scope,
         limit,
-        returned_count: pageCards.length,
-        has_more: hasMore,
+        returned_count: boardPage.pageCards.length,
+        has_more: boardPage.hasMore,
         next_cursor: nextCursor,
-        total_count: filteredCards.length,
+        total_count: boardPage.totalCount,
         count_basis: PATIENT_BOARD_COUNT_BASIS,
         filters_applied: {
           scope,
@@ -796,7 +906,7 @@ const authenticatedGET = withAuthContext(
           card_filter: cardFilter,
           sort,
         },
-        facets,
+        facets: boardPage.facets,
         rail: {
           next_action: auditQueue[0] ?? null,
           blocked_reasons: blockedReasons,
