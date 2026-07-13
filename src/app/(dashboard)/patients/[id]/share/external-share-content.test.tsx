@@ -173,10 +173,32 @@ describe('ExternalShareContent', () => {
     const queryConfigs: QueryConfig[] = [];
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input);
+      if (url.endsWith('/care-team')) {
+        return new Response(
+          JSON.stringify({
+            data: [],
+            meta: { case_id: null, cases: [] },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url.endsWith('/contacts')) {
+        return new Response(
+          JSON.stringify({
+            data: [],
+            meta: {
+              expected_updated_at: '2026-06-01T00:00:00.000Z',
+              version_basis: 'patient_updated_at',
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
       if (url.startsWith('/api/patients/')) {
         return new Response(
           JSON.stringify({
             data: {
+              id: patientId,
               name: '佐藤 花子',
               external_shares: [],
               self_reports: [],
@@ -194,14 +216,25 @@ describe('ExternalShareContent', () => {
             data: [
               {
                 id: requestId,
+                patient_id: patientId,
+                request_type: 'patient_share_reply_request',
                 recipient_role: 'care_manager',
                 recipient_name: '田中ケアマネ',
+                related_entity_type: 'patient',
+                related_entity_id: patientId,
                 status: 'responded',
                 subject: '共有確認',
                 requested_at: '2026-06-01T00:00:00.000Z',
-                responses: [{ id: 'response_1', responded_at: '2026-06-02T00:00:00.000Z' }],
+                responses: [
+                  {
+                    id: 'response_1',
+                    responder_name: '田中ケアマネ',
+                    responded_at: '2026-06-02T00:00:00.000Z',
+                  },
+                ],
               },
             ],
+            meta: { limit: 50, has_more: false, next_cursor: null },
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
@@ -211,6 +244,10 @@ describe('ExternalShareContent', () => {
           JSON.stringify({
             data: {
               id: requestId,
+              patient_id: patientId,
+              request_type: 'patient_share_reply_request',
+              related_entity_type: 'patient',
+              related_entity_id: patientId,
               responses: [
                 {
                   id: 'response_1',
@@ -411,6 +448,64 @@ describe('ExternalShareContent', () => {
     await expect(contactsQuery?.queryFn?.()).rejects.toThrow('連絡先の閲覧権限がありません');
     await expect(requestsQuery?.queryFn?.()).rejects.toThrow('返信状況の閲覧権限がありません');
     await expect(replyDetailQuery?.queryFn?.()).rejects.toThrow('返信内容の閲覧権限がありません');
+  });
+
+  it('accepts the provider SMS grant shape without exposing or rendering an OTP', async () => {
+    const mutationConfigs: MutationConfig[] = [];
+    const token = `${'a'.repeat(24)}.${'b'.repeat(24)}.${'c'.repeat(24)}`;
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      expect(String(input)).toBe('/api/external-access');
+      expect(init?.method).toBe('POST');
+      return new Response(
+        JSON.stringify({
+          data: {
+            token,
+            expires_at: '2026-07-20T00:00:00.000Z',
+            otp_delivery: 'sms',
+            otp_delivery_destination: '090****5678',
+            token_hash: 'must-be-stripped',
+          },
+        }),
+        { status: 201, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return { mutate: vi.fn(), isPending: false };
+    });
+    useQueryMock.mockReturnValue({
+      data: {
+        name: '佐藤 花子',
+        external_shares: [],
+        self_reports: [],
+        current_medications: [],
+        visit_schedules: [],
+        care_reports: [],
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    const result = await mutationConfigs[0]?.mutationFn?.();
+    expect(result).toEqual({
+      data: {
+        shareUrl: `${window.location.origin}/shared/${token}`,
+        otp: null,
+        expiresAt: '2026-07-20T00:00:00.000Z',
+        otpDelivery: 'sms',
+        otpDeliveryDestination: '090****5678',
+      },
+    });
+
+    await act(async () => {
+      await mutationConfigs[0]?.onSuccess?.(result);
+    });
+    expect(screen.queryByLabelText('OTP')).toBeNull();
+    expect(screen.getByText(/OTPは画面には表示されません/)).toBeTruthy();
   });
 
   it('creates a patient-scoped reply request for the selected audience', async () => {

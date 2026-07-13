@@ -42,9 +42,6 @@ import {
   buildShareAudienceCards,
   pickLatestAudienceRequest,
   pickLatestAudienceReplyRequest,
-  type CareTeamMemberSummary,
-  type ContactPartySummary,
-  type ShareCommunicationRequest,
 } from '@/app/(dashboard)/reports/[id]/share/interprofessional-share.helpers';
 import {
   SHARE_AUDIENCES,
@@ -67,6 +64,19 @@ import {
   buildPatientShareSections,
   type PatientShareSnapshot,
 } from './patient-share.helpers';
+import {
+  buildExternalShareOverviewResponseSchema,
+  buildExternalShareReplyDetailResponseSchema,
+  buildExternalShareRequestsResponseSchema,
+  createExternalShareGrantResponseSchema,
+  externalShareCareTeamResponseSchema,
+  externalShareContactsResponseSchema,
+  type ExternalShareCareTeamResponse,
+  type ExternalShareContactsResponse,
+  type ExternalShareOverview,
+  type ExternalShareReplyDetailResponse,
+  type ExternalShareRequestsResponse,
+} from './external-share-response-schemas';
 
 /**
  * p1_05「他職種向け共有ページ」(患者文脈 /patients/[id]/share)。
@@ -89,52 +99,10 @@ type ScopeItem = {
 
 type GeneratedGrant = {
   shareUrl: string;
-  otp: string;
+  otp: string | null;
   expiresAt: string;
   otpDelivery: 'sms' | 'manual';
   otpDeliveryDestination: string | null;
-};
-
-type ExternalShareOverview = {
-  name?: string | null;
-  external_shares: Array<{
-    id: string;
-    granted_to_name: string;
-    expires_at: string;
-    accessed_at: string | null;
-  }>;
-  self_reports: Array<{
-    id: string;
-    subject: string;
-    category?: string | null;
-    content?: string;
-    created_at: string;
-    status: string;
-  }>;
-  current_medications?: Array<{
-    drug_name: string;
-    dose: string | null;
-    frequency: string | null;
-  }>;
-  visit_schedules?: Array<{
-    scheduled_date: string;
-    schedule_status: string | null;
-  }>;
-  care_reports?: Array<{
-    report_type: string;
-    created_at: string;
-    status: string;
-  }>;
-};
-
-type ShareReplyDetail = {
-  id: string;
-  responses: Array<{
-    id: string;
-    responder_name: string;
-    content: string;
-    responded_at: string;
-  }>;
 };
 
 type ShareFormErrors = {
@@ -233,12 +201,13 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         cache: 'no-store',
       });
 
-      const payload = await readApiJson<{ data: ExternalShareOverview }>(
-        response,
-        '共有状況を取得できませんでした',
-      );
+      const payload = await readApiJson(response, {
+        fallbackMessage: '共有状況を取得できませんでした',
+        schema: buildExternalShareOverviewResponseSchema(patientId),
+      });
       const overview = payload.data;
       return {
+        id: overview.id,
         name: overview.name ?? null,
         external_shares: overview.external_shares ?? [],
         self_reports: overview.self_reports ?? [],
@@ -258,7 +227,10 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       const res = await fetch(buildPatientApiPath(patientId, '/care-team'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: CareTeamMemberSummary[] }>(res, 'ケアチームの取得に失敗しました');
+      return readApiJson<ExternalShareCareTeamResponse>(res, {
+        fallbackMessage: 'ケアチームの取得に失敗しました',
+        schema: externalShareCareTeamResponseSchema,
+      });
     },
   });
 
@@ -269,7 +241,10 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       const res = await fetch(buildPatientApiPath(patientId, '/contacts'), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: ContactPartySummary[] }>(res, '連絡先の取得に失敗しました');
+      return readApiJson<ExternalShareContactsResponse>(res, {
+        fallbackMessage: '連絡先の取得に失敗しました',
+        schema: externalShareContactsResponseSchema,
+      });
     },
   });
 
@@ -288,10 +263,10 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
           headers: buildOrgHeaders(orgId),
         },
       );
-      return readApiJson<{ data: ShareCommunicationRequest[] }>(
-        res,
-        '返信状況の取得に失敗しました',
-      );
+      return readApiJson<ExternalShareRequestsResponse>(res, {
+        fallbackMessage: '返信状況の取得に失敗しました',
+        schema: buildExternalShareRequestsResponseSchema(patientId),
+      });
     },
   });
 
@@ -310,20 +285,14 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
           expires_hours: parseInt(expiryHours, 10),
         }),
       });
-      if (!res.ok) throw new Error('共有リンクの生成に失敗しました');
-      const payload = (await res.json()) as {
-        data: {
-          token: string;
-          otp: string;
-          expires_at: string;
-          otp_delivery: 'sms' | 'manual';
-          otp_delivery_destination: string | null;
-        };
-      };
+      const payload = await readApiJson(res, {
+        fallbackMessage: '共有リンクの生成に失敗しました',
+        schema: createExternalShareGrantResponseSchema,
+      });
       return {
         data: {
           shareUrl: `${window.location.origin}/shared/${payload.data.token}`,
-          otp: payload.data.otp,
+          otp: payload.data.otp ?? null,
           expiresAt: payload.data.expires_at,
           otpDelivery: payload.data.otp_delivery,
           otpDeliveryDestination: payload.data.otp_delivery_destination,
@@ -394,7 +363,13 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       const res = await fetch(buildCommunicationRequestApiPath(requestId), {
         headers: buildOrgHeaders(orgId),
       });
-      return readApiJson<{ data: ShareReplyDetail }>(res, '返信内容の取得に失敗しました');
+      return readApiJson<ExternalShareReplyDetailResponse>(res, {
+        fallbackMessage: '返信内容の取得に失敗しました',
+        schema: buildExternalShareReplyDetailResponseSchema({
+          expectedRequestId: requestId,
+          expectedPatientId: patientId,
+        }),
+      });
     },
   });
   const latestReply = replyDetailQuery.data?.data?.responses?.[0] ?? null;
@@ -793,25 +768,27 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label>OTP（別経路で伝達）</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={generated.otp}
-                      readOnly
-                      className="font-mono text-xl tracking-widest text-center"
-                      aria-label="OTP"
-                    />
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={handleCopyOtp}
-                      aria-label="OTPをコピー"
-                    >
-                      <Copy className="size-4" />
-                    </Button>
+                {generated.otp ? (
+                  <div className="space-y-1.5">
+                    <Label>OTP（別経路で伝達）</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={generated.otp}
+                        readOnly
+                        className="text-center font-mono text-xl tracking-widest"
+                        aria-label="OTP"
+                      />
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={handleCopyOtp}
+                        aria-label="OTPをコピー"
+                      >
+                        <Copy className="size-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Clock className="size-3.5" aria-hidden="true" />
@@ -822,7 +799,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
                   <div className="flex items-start gap-2 rounded-md border border-state-done/30 bg-state-done/10 px-3 py-2 text-xs text-state-done">
                     <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                     OTP を {generated.otpDeliveryDestination ?? '共有先連絡先'} に SMS
-                    送信しました。必要に応じて下の控え用 OTP を確認してください。
+                    送信しました。OTPは画面には表示されません。
                   </div>
                 ) : (
                   <div className="flex items-start gap-2 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">

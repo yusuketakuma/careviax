@@ -6,12 +6,6 @@
   "plannedAction": "Migrate bounded provider/consumer families to exact runtime response schemas.",
   "entries": [
     {
-      "path": "src/app/(dashboard)/patients/[id]/share/external-share-content.tsx",
-      "counts": {
-        "stringFallback": 5
-      }
-    },
-    {
       "path": "src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx",
       "counts": {
         "stringFallback": 5
