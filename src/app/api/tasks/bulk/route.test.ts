@@ -22,6 +22,13 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -43,7 +50,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { POST } from './route';
+import { POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createPostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/tasks/bulk', {
@@ -100,10 +110,34 @@ describe('/api/tasks/bulk', () => {
     );
   });
 
+  it('returns the authorization response before parsing or resolving task scope', async () => {
+    const deniedResponse = Response.json(
+      { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+      { status: 403 },
+    );
+    requireAuthContextMock.mockResolvedValueOnce({ response: deniedResponse });
+
+    const response = await POST(createMalformedPostRequest());
+
+    expect(response).toBe(deniedResponse);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(taskFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+  });
+
   it('completes inline tasks with one scoped updateMany call', async () => {
     const response = await POST(createPostRequest({ ids: ['task_1', 'task_2'] }));
 
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.objectContaining({
+        permission: 'canVisit',
+        message: '運用タスクの更新権限がありません',
+      }),
+    );
     const body = await response.json();
     expect(bulkCompleteTasksResponseSchema.safeParse(body).success).toBe(true);
     expect(body).toEqual({

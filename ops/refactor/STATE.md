@@ -55,6 +55,21 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZTASKBULKAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Case transition push/parity後の残8 routesからTasks bulk POSTを選定した。Route/test、bulk response contract/messages、dashboard assignment scope、
+    task write guard、schedule operational-task UI、allowlist、installed Next guideを確認した。既存handlerは100件cap、assignment、archive/dedicated
+    guard、partial success、atomic scoped updateを持つ一方、1 direct auth callのsuccess/validation responseが共通境界外だった。
+  - files changed / bugs found / correctness / security / privacy / medical safety / performance:
+    POSTをtyped named handler + `withAuthContext`へ移行し、permission、body validation、ID dedupe、assignment query、dedicated completion、patient
+    write guard、partial failure order/messages、status-guarded updateMany、completed/failed算術を維持した。Auth denial時の全scope/patient/task read-write
+    zeroとpermissionを追加回帰し、allowlist 1 entryを除去。Direct debtは158→157 routes、222→221 calls、helper未使用success routeは8→7。
+  - validation results / remaining work / next action / rollback:
+    Baseline/focused route + checker 2 files / 12 tests、provider/contract/UI領域6 files / 33 tests、exact ESLint/Prettier、8 GiB typecheck/no-unused、
+    route-auth 157 allowlisted / 221 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、frontend contract、client schema
+    361 backed / 0 allowlisted、Plans active、format/diffをPASS。DB query/write/payload不変、新規security/privacy/medical/performance issueなし。Schema/
+    migration/deploy/Oracleなし。非視覚API変更のためimagegen/browserなし。親には7 routes、request correlation/error registryが残る。
+
 - codex1: API-CONTRACT-001FZCASETRANSITIONAUTH (DONE; parent remains Partial, 2026-07-14; implementation `8a032b148`).
   - current task / files inspected / root cause:
     Patient Lab push/parity後の残9 routesを再scoreし、SSEはshared wrapper型gap、Tasks bulkはarchive/dedicated partial-success隣接として保留し、

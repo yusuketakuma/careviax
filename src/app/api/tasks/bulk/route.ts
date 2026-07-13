@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
@@ -40,14 +40,7 @@ function writableFailureForStatus(id: string, status: number): BulkCompleteTaskF
   };
 }
 
-export async function POST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '運用タスクの更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function bulkCompleteTasks(req: NextRequest, ctx: AuthContext) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -159,3 +152,8 @@ export async function POST(req: NextRequest) {
     },
   } satisfies BulkCompleteTasksResponse);
 }
+
+export const POST = withAuthContext(bulkCompleteTasks, {
+  permission: 'canVisit',
+  message: '運用タスクの更新権限がありません',
+});
