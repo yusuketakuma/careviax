@@ -193,6 +193,8 @@ function prescriptionsResponse(patientId: string) {
           ],
         },
       ],
+      hasMore: false,
+      nextCursor: null,
     },
   };
 }
@@ -612,9 +614,57 @@ describe('PrintHubContent', () => {
 
     await expectQueryErrorMessage(
       queryClient,
-      ['print-hub-prescriptions', 'org_1', 'patient_1'],
+      ['print-hub-prescriptions', 'org_1', 'patient_1', 'cycle_1'],
       '処方明細を表示できません',
     );
+  });
+
+  it('continues prescription pagination until the selected cycle is found', async () => {
+    setPrintSearchParams({ type: 'set_instruction' });
+    const prescriptionUrls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/set-plans') {
+          return new Response(JSON.stringify(setPlansResponse('patient_1')), { status: 200 });
+        }
+        if (url.startsWith('/api/patients/patient_1/prescriptions?')) {
+          prescriptionUrls.push(url);
+          if (!url.includes('cursor=')) {
+            return new Response(
+              JSON.stringify({
+                data: {
+                  patient: { id: 'patient_1', name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
+                  data: [
+                    {
+                      ...prescriptionsResponse('patient_1').data.data[0],
+                      id: 'intake_other',
+                      cycle_id: 'cycle_other',
+                    },
+                  ],
+                  hasMore: true,
+                  nextCursor: 'cursor_2',
+                },
+              }),
+              { status: 200 },
+            );
+          }
+          return new Response(JSON.stringify(prescriptionsResponse('patient_1')), { status: 200 });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    renderPrintHubContent();
+
+    await waitFor(() => {
+      expect(prescriptionUrls).toEqual([
+        '/api/patients/patient_1/prescriptions?limit=20',
+        '/api/patients/patient_1/prescriptions?limit=20&cursor=cursor_2',
+      ]);
+    });
+    expect(await screen.findByText('アムロジピン錠5mg')).not.toBeNull();
   });
 
   it('keeps API messages from failed care report reads', async () => {

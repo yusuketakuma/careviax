@@ -30,12 +30,6 @@
       }
     },
     {
-      "path": "src/app/(dashboard)/reports/print/print-hub-content.tsx",
-      "counts": {
-        "stringFallback": 3
-      }
-    },
-    {
       "path": "src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx",
       "counts": {
         "stringFallback": 5

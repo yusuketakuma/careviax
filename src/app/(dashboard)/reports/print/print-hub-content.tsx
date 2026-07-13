@@ -40,7 +40,6 @@ import {
   type DocumentReceiptRow,
   type FirstVisitDocumentForPrint,
   type FirstVisitDocumentPrintSummary,
-  type FirstVisitPrintReadinessForPrint,
   type FirstVisitPrintReadinessSummary,
   type MedicationCalendarDocument,
   type MedicationLabelCard,
@@ -48,9 +47,13 @@ import {
   type PrintDocumentTypeKey,
   type PrintOutputSettings,
   type SetInstructionDocument,
-  type SetPlanForPrint,
   type VisitReportDocument,
 } from './print-hub.shared';
+import {
+  buildPrintHubPatientDocumentsResponseSchema,
+  buildPrintHubPrescriptionsPageSchema,
+  buildPrintHubSetPlansResponseSchema,
+} from './print-hub-response-schemas';
 
 /**
  * p0_47(帳票・印刷プレビュー)/reports/print。
@@ -62,23 +65,14 @@ const PRINT_DISABLED_REASON_ID = 'print-submit-disabled-reason';
 
 // ─── データ取得 ──────────────────────────────────────────────────────────────
 
-type SetPlansResponse = { data: SetPlanForPrint[] };
-type PatientPrescriptionsResponse = {
-  patient: { id: string; name: string; name_kana: string };
-  data: PrescriptionIntakeForPrint[];
-};
+const PRINT_HUB_PRESCRIPTION_PAGE_LIMIT = 20;
+const PRINT_HUB_PRESCRIPTION_MAX_PAGES = 5;
 const careReportForPrintSchema = z.custom<CareReportForPrint>((value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const report = value as Record<string, unknown>;
   return typeof report.id === 'string' && typeof report.report_type === 'string';
 });
 const careReportsResponseSchema = careReportListResponseSchema(careReportForPrintSchema);
-type PatientDocumentsForPrintResponse = {
-  patient: { id: string; name: string; name_kana: string };
-  print_readiness: FirstVisitPrintReadinessForPrint;
-  first_visit_documents: FirstVisitDocumentForPrint[];
-};
-
 async function recordFirstVisitPrintHistory({
   orgId,
   patientId,
@@ -139,7 +133,10 @@ function usePrintHubData(
         ? `/api/set-plans?patient_id=${encodeURIComponent(explicitPatientId)}`
         : '/api/set-plans';
       const res = await fetch(url, { headers: buildOrgHeaders(orgId) });
-      return readApiJson<SetPlansResponse>(res, 'セットプランの取得に失敗しました');
+      return readApiJson(res, {
+        schema: buildPrintHubSetPlansResponseSchema(explicitPatientId),
+        fallbackMessage: 'セットプランの取得に失敗しました',
+      });
     },
     enabled: !!orgId && needsSetPlan,
     staleTime: 60_000,
@@ -152,17 +149,39 @@ function usePrintHubData(
   const patientId = plan?.cycle.patient_id ?? null;
 
   const prescriptionsQuery = useQuery({
-    queryKey: ['print-hub-prescriptions', orgId, patientId],
+    queryKey: ['print-hub-prescriptions', orgId, patientId, plan?.cycle_id],
     queryFn: async () => {
       if (!patientId) throw new Error('患者IDがないため処方明細を取得できません');
-      const res = await fetch(`${buildPatientApiPath(patientId, '/prescriptions')}?limit=20`, {
-        headers: buildOrgHeaders(orgId),
-      });
-      const payload = await readApiJson<{ data: PatientPrescriptionsResponse }>(
-        res,
-        '処方明細の取得に失敗しました',
-      );
-      return payload.data;
+      const intakes: PrescriptionIntakeForPrint[] = [];
+      const seenIntakeIds = new Set<string>();
+      const seenCursors = new Set<string>();
+      let cursor: string | null = null;
+
+      for (let page = 0; page < PRINT_HUB_PRESCRIPTION_MAX_PAGES; page += 1) {
+        const params = new URLSearchParams({ limit: String(PRINT_HUB_PRESCRIPTION_PAGE_LIMIT) });
+        if (cursor) params.set('cursor', cursor);
+        const res = await fetch(
+          `${buildPatientApiPath(patientId, '/prescriptions')}?${params.toString()}`,
+          { headers: buildOrgHeaders(orgId) },
+        );
+        const payload = await readApiJson(res, {
+          schema: buildPrintHubPrescriptionsPageSchema(patientId),
+          fallbackMessage: '処方明細の取得に失敗しました',
+        });
+        for (const intake of payload.data) {
+          if (seenIntakeIds.has(intake.id)) throw new Error('処方明細の取得に失敗しました');
+          seenIntakeIds.add(intake.id);
+          intakes.push(intake);
+        }
+        if (intakes.some((intake) => intake.cycle_id === plan?.cycle_id) || !payload.hasMore) {
+          return { patient: payload.patient, data: intakes };
+        }
+        cursor = payload.nextCursor;
+        if (!cursor || seenCursors.has(cursor)) throw new Error('処方明細の取得に失敗しました');
+        seenCursors.add(cursor);
+      }
+
+      throw new Error('処方明細の取得件数が上限を超えました');
     },
     enabled: !!orgId && !!patientId,
     staleTime: 60_000,
@@ -190,11 +209,10 @@ function usePrintHubData(
       const res = await fetch(buildPatientApiPath(explicitPatientId, '/documents'), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: PatientDocumentsForPrintResponse }>(
-        res,
-        '患者文書の取得に失敗しました',
-      );
-      return payload.data;
+      return readApiJson(res, {
+        schema: buildPrintHubPatientDocumentsResponseSchema(explicitPatientId),
+        fallbackMessage: '患者文書の取得に失敗しました',
+      });
     },
     enabled: !!orgId && !!explicitPatientId && needsFirstVisitDocuments,
     staleTime: 60_000,
