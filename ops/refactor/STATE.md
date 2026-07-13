@@ -54,7 +54,25 @@
 
 ## 直近の作業
 
-- codex4 + codex1 integration: S3-PRESIGN-WRAPPED-CLIENT-001 (DONE, 2026-07-13; implementation pending commit).
+- codex1: VISIT-RECORD-OFFLINE-SYNC-SCOPE-001 (DONE, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    `visits/[id]/record` page/form/shared state/step navとtests、offline store queue contract、共通sync/state badge、
+    `docs/ui-ux-design-guidelines.md`、installed Next 16.2.9 docsを確認した。旧表示はglobal pending count、global conflicts、
+    queue-wide last-syncedを現在訪問の状態として扱い、別scheduleの待機/競合/過去同期だけでfresh recordを「同期待ち」「競合あり」
+    「同期済」と誤表示した。dynamic route切替時もclient form stateを持ち越し得た。
+  - files changed / correctness / privacy / performance:
+    pageにschedule ID keyを付け、current scheduleの`visit_record` queue（legacy scope欠落時だけpayload fallback）、current evidence、
+    local draft、server mutation、服薬/在庫部分送信から単一pure resolverで状態と件数を決定する。saving→conflict→failed→queued→
+    synced→checking→saved locally→unsavedの優先順位を固定し、NaN/負数のevidence countを0へ正規化した。失敗/競合は共通badgeと
+    `/offline-sync`復旧導線を出すが、queue raw error、患者名、ID等は表示しない。global queue refresh behaviorとnetwork/query数は不変で、
+    不要なglobal state由来の状態再描画だけを表示判断から除いた。画像生成は状態ロジック中心の非視覚sliceのため省略した。
+  - validation / remaining / rollback:
+    Focused 4 files / 73 tests、scoped ESLint、Prettier、`git diff --check` PASS。別schedule/current/legacy queue、retry/conflict、
+    manual/auto local draft、server success、partial medication-stock failure、invalid evidence countを固定した。security riskはraw error/PHI
+    非表示を維持し、DB/API/auth contract変更なし。残は全並列slice統合後のserialized typecheck/no-unused/full test/build。
+    Rollbackはこのscoped commitのrevertで、DB/data rollback不要。
+
+- codex4 + codex1 integration: S3-PRESIGN-WRAPPED-CLIENT-001 (DONE, 2026-07-13; implementation `866658b44`, PUSHED).
   - current task / root cause / ownership:
     `getClient()`がreal `S3Client`をsend-only timeout wrapperへ置換し、そのwrapperを`getSignedUrl()`へ渡していたため、AWS SDKが
     必要とする`config`/`middlewareStack`を読めずlegacy upload/download presignがURL生成前に例外化した。Codex4がfile-storage
@@ -185,11 +203,14 @@
 
 - parallel assignments (ACTIVE, 2026-07-13):
   - codex2: `API-STATUS-AUTHZ-403-AS-400-001`。Confirmed permission/scope denialを403 `AUTH_FORBIDDEN`へ統一し、
-    malformed/body-FK 400とnon-enumerating concealmentを維持する。Webhook compatibility subpartは既存`86f626aa0`でDONEと再確認。
-  - codex3: `PERF-DAYBOARD-ROUTE-ESTIMATOR-DEDUP-001` READY、codex1統合中。次slice待機。
-  - codex4: `S3-SSE-DEFAULT-NONKMS-001` READY、codex1統合後に`S3-PRESIGN-WRAPPED-CLIENT-001`を継続する。
-  - codex1: `VISIT-RECORD-OFFLINE-SYNC-SCOPE-001`のcurrent-record save/sync/freshness isolationを担当し、
-    single ledger、commit/push、long gatesと次候補scoringを管理する。
+    malformed/body-FK 400とnon-enumerating concealmentを維持する。自己reviewで検出したregex quote false-negativeを
+    TypeScript AST guardへ直して再検証中。
+  - codex3: `QUERY-SHAPE-DAYBOARD-WATCHLIST-003I`。day-boardのunbounded reads、unstable order、task aggregate fanoutを
+    bounded stable cursor pagesと単一bounded task readへ修正中。
+  - codex4: `EVIDENCE-PRESIGN-CHECKSUM-HEADER-SIGNING-001`。PH-OS evidence uploadのchecksumをqueryへhoistせず、
+    required signed headerとして固定する実presigner回帰を実装中。
+  - codex1: `VISIT-RECORD-OFFLINE-SYNC-SCOPE-001`をfocused gateまで完了し、single ledger、exact staging、commit/push、
+    各slice独立review、serialized long gatesと次候補scoringを管理する。
 
 - codex1: MEDPROFILE-SYNC-RACE-001 MedicationProfile sync serialization (DONE, 2026-07-13; implementation `30fcf954e`, PUSHED).
   - current task / root cause / inspected:

@@ -87,7 +87,6 @@ import {
   countUnsyncedEvidenceDrafts,
   deriveMedicationAdherenceChoice,
   mobileVisitStepSectionClassName,
-  resolveMobilePendingSyncCount,
   resolveMobileVisitStepHeading,
 } from './visit-mode-mobile.shared';
 import { ResidualMedicationForm } from '@/components/features/visits/residual-medication-form';
@@ -152,6 +151,7 @@ import {
   getVisitReceiptReadiness,
   getVisitAttachmentConstraints,
   normalizeVisitReceiptPayload,
+  resolveVisitRecordSavePresentation,
   validateVisitAttachment,
 } from './visit-record-form.shared';
 import { VisitCompletionReadinessWarning } from './visit-completion-readiness-warning';
@@ -750,6 +750,7 @@ export function VisitRecordForm({
   const [pendingMedicationStockSubmission, setPendingMedicationStockSubmission] =
     useState<PendingMedicationStockSubmission | null>(null);
   const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [hasLocalDraft, setHasLocalDraft] = useState(false);
   const [visitGeoLog, setVisitGeoLog] = useState<VisitGeoLog | null>(null);
   const [locationTrackingEnabled] = useState(() =>
     typeof window === 'undefined' ? false : getVisitLocationTrackingPreference(),
@@ -771,8 +772,7 @@ export function VisitRecordForm({
   const carryItemAcknowledgementErrorId = 'carry-item-warning-acknowledgement-error';
   const isOffline = useOfflineStore((state) => state.isOffline);
   const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
-  const syncConflicts = useOfflineStore((state) => state.syncConflicts);
-  const lastSyncedAt = useOfflineStore((state) => state.lastSyncedAt);
+  const pendingQueue = useOfflineStore((state) => state.pendingQueue);
   const syncOnlineStatus = useOfflineStore((state) => state.syncOnlineStatus);
   const refreshSyncCount = useOfflineStore((state) => state.refreshSyncCount);
   const refreshSyncState = useOfflineStore((state) => state.refreshSyncState);
@@ -1014,6 +1014,7 @@ export function VisitRecordForm({
           buildDraftMetadata(values, geoLog),
         );
         draftSaveFailureNotifiedRef.current = false;
+        setHasLocalDraft(true);
         setDraftSaveStatus('saved');
       } catch (error) {
         setDraftSaveStatus('idle');
@@ -1122,6 +1123,7 @@ export function VisitRecordForm({
         if (!active) return;
 
         if (draft) {
+          setHasLocalDraft(true);
           setVisitGeoLog(draft.visitGeoLog ?? null);
           autoCapturedStartRef.current = Boolean(draft.visitGeoLog?.start);
           form.reset({
@@ -1148,6 +1150,7 @@ export function VisitRecordForm({
           });
           toast.info('オフライン下書きを復元しました');
         } else {
+          setHasLocalDraft(false);
           setVisitGeoLog(null);
           autoCapturedStartRef.current = false;
         }
@@ -1644,6 +1647,8 @@ export function VisitRecordForm({
     },
     onSuccess: async ({ record, attachmentWarning }, variables) => {
       await clearDraft();
+      setHasLocalDraft(false);
+      setDraftSaveStatus('idle');
       await refreshSyncState();
       setSelectedAttachments([]);
       form.reset(form.getValues());
@@ -1858,6 +1863,8 @@ export function VisitRecordForm({
           buildDraftMetadata(values, nextVisitGeoLog),
         );
         draftSaveFailureNotifiedRef.current = false;
+        setHasLocalDraft(true);
+        setDraftSaveStatus('saved');
       } catch (error) {
         notifyDraftSaveFailure(error);
         return;
@@ -1946,24 +1953,19 @@ export function VisitRecordForm({
 
   const unsyncedPhotoCount =
     demoUnsyncedPhotoCount ?? countUnsyncedEvidenceDrafts(evidenceDraftSummaries, id);
-  const mobilePendingSyncCount = resolveMobilePendingSyncCount(
-    pendingSyncCount,
-    unsyncedPhotoCount,
-  );
-  const visitSaveState: VisitSaveState =
-    createRecord.isPending ||
-    medicationStockSubmissionState.status === 'saving' ||
-    draftSaveStatus === 'saving'
-      ? 'saving'
-      : syncConflicts.length > 0 || medicationStockSubmissionState.status === 'conflict'
-        ? 'conflict'
-        : isOffline || pendingSyncCount > 0 || unsyncedPhotoCount > 0
-          ? 'sync_waiting'
-          : draftSaveStatus === 'saved'
-            ? 'local_saved'
-            : lastSyncedAt
-              ? 'synced'
-              : 'local_saved';
+  const visitSavePresentation = resolveVisitRecordSavePresentation({
+    scheduleId: id,
+    queueItems: pendingQueue,
+    unsyncedEvidenceCount: unsyncedPhotoCount,
+    draftHydrated,
+    hasLocalDraft,
+    draftSaveStatus,
+    serverSavePending: createRecord.isPending,
+    serverSaved: createRecord.isSuccess,
+    medicationStockStatus: medicationStockSubmissionState.status,
+  });
+  const currentPendingSyncCount = visitSavePresentation.pendingCount;
+  const visitSaveState: VisitSaveState = visitSavePresentation.state;
   // 下部固定バーの「一時保存」(Cmd/Ctrl+S と同じ下書き保存)
   const handleManualDraftSave = useCallback(() => {
     const {
@@ -2204,7 +2206,7 @@ export function VisitRecordForm({
             dateTimeLabel={visitDateTimeLabel}
             safety={headerSafety}
             isOffline={isOffline}
-            pendingSyncCount={mobilePendingSyncCount}
+            pendingSyncCount={currentPendingSyncCount}
             activeStepId={mobileStepId}
             onStepSelect={handleMobileStepSelect}
           />
@@ -2223,7 +2225,7 @@ export function VisitRecordForm({
           dateTimeLabel={visitDateTimeLabel}
           safety={headerSafety}
           isOffline={isOffline}
-          pendingSyncCount={pendingSyncCount}
+          pendingSyncCount={currentPendingSyncCount}
         />
         <div className="mt-4 pb-24 xl:grid xl:grid-cols-[210px_minmax(0,1fr)_220px] xl:items-start xl:gap-6">
           <aside className="mb-4 max-md:hidden xl:sticky xl:top-6 xl:mb-0 xl:self-start">
@@ -2409,7 +2411,7 @@ export function VisitRecordForm({
                 </CardContent>
               </Card>
 
-              {(isOffline || pendingSyncCount > 0) && (
+              {(isOffline || currentPendingSyncCount > 0) && (
                 <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3 text-sm text-state-confirm">
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -2419,9 +2421,9 @@ export function VisitRecordForm({
                           ? '現在オフラインです。保存すると端末に下書きし、再接続後に同期します。'
                           : '同期待ちの訪問記録があります。'}
                       </p>
-                      {pendingSyncCount > 0 ? (
+                      {currentPendingSyncCount > 0 ? (
                         <p className="text-xs text-state-confirm/90">
-                          同期待ち {pendingSyncCount} 件
+                          同期待ち {currentPendingSyncCount} 件
                         </p>
                       ) : null}
                     </div>

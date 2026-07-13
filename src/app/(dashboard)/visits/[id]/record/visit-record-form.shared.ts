@@ -1,3 +1,6 @@
+import type { OfflineSyncStatus } from '@/lib/constants/visual-status-registry';
+import type { SyncQueueItemSummary } from '@/lib/stores/sync-engine';
+
 const MAX_VISIT_ATTACHMENTS = 10;
 const IMAGE_ATTACHMENT_MAX_MB = 10;
 const PDF_ATTACHMENT_MAX_MB = 50;
@@ -9,6 +12,87 @@ const ALLOWED_VISIT_ATTACHMENT_MIME_TYPES = new Set([
   'image/webp',
   'application/pdf',
 ]);
+
+export type VisitRecordSaveState = 'checking' | 'unsaved' | 'saving' | OfflineSyncStatus;
+
+type VisitRecordSavePresentationInput = {
+  scheduleId: string;
+  queueItems: readonly SyncQueueItemSummary[];
+  unsyncedEvidenceCount: number;
+  draftHydrated: boolean;
+  hasLocalDraft: boolean;
+  draftSaveStatus: 'idle' | 'saving' | 'saved';
+  serverSavePending: boolean;
+  serverSaved: boolean;
+  medicationStockStatus: 'idle' | 'saving' | 'error' | 'conflict' | 'unavailable';
+};
+
+export type VisitRecordSavePresentation = {
+  state: VisitRecordSaveState;
+  pendingCount: number;
+};
+
+function readQueueItemScheduleId(item: SyncQueueItemSummary) {
+  const scopedId = item.scope_id?.trim();
+  if (scopedId) return scopedId;
+
+  const payloadScheduleId = item.payload.schedule_id;
+  return typeof payloadScheduleId === 'string' && payloadScheduleId.trim()
+    ? payloadScheduleId.trim()
+    : null;
+}
+
+/**
+ * Resolve record persistence for one visit schedule only. Global queue counts and the
+ * queue-wide last-synced timestamp must never imply that this record is queued or synced.
+ */
+export function resolveVisitRecordSavePresentation({
+  scheduleId,
+  queueItems,
+  unsyncedEvidenceCount,
+  draftHydrated,
+  hasLocalDraft,
+  draftSaveStatus,
+  serverSavePending,
+  serverSaved,
+  medicationStockStatus,
+}: VisitRecordSavePresentationInput): VisitRecordSavePresentation {
+  const currentQueueItems = queueItems.filter(
+    (item) => item.entityType === 'visit_record' && readQueueItemScheduleId(item) === scheduleId,
+  );
+  const normalizedEvidenceCount = Number.isFinite(unsyncedEvidenceCount)
+    ? Math.max(0, Math.trunc(unsyncedEvidenceCount))
+    : 0;
+  const pendingCount = currentQueueItems.length + normalizedEvidenceCount;
+
+  if (serverSavePending || draftSaveStatus === 'saving' || medicationStockStatus === 'saving') {
+    return { state: 'saving', pendingCount };
+  }
+
+  if (
+    medicationStockStatus === 'conflict' ||
+    currentQueueItems.some((item) => item.conflict_state === 'server_conflict')
+  ) {
+    return { state: 'conflict', pendingCount };
+  }
+
+  if (
+    medicationStockStatus === 'error' ||
+    medicationStockStatus === 'unavailable' ||
+    currentQueueItems.some((item) => item.retryCount > 0 || Boolean(item.lastError?.trim()))
+  ) {
+    return { state: 'failed', pendingCount };
+  }
+
+  if (pendingCount > 0) return { state: 'queued', pendingCount };
+  if (serverSaved) return { state: 'synced', pendingCount };
+  if (!draftHydrated) return { state: 'checking', pendingCount };
+  if (hasLocalDraft || draftSaveStatus === 'saved') {
+    return { state: 'saved_locally', pendingCount };
+  }
+
+  return { state: 'unsaved', pendingCount };
+}
 
 export function getVisitAttachmentConstraints() {
   return {

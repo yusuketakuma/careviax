@@ -42,6 +42,7 @@ export default async function VisitRecordPage({ params }: { params: Promise<{ id
       />
 
       <VisitRecordForm
+        key={id}
         id={id}
         facilityVisitContext={null}
         medicationStockObservationWriteEnabled={medicationStockObservationWriteEnabled}

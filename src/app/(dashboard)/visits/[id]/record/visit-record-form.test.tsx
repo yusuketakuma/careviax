@@ -8,6 +8,7 @@ import { createQueryClientWrapper } from '@/test/query-client-test-utils';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import type { SyncQueueItemSummary } from '@/lib/stores/sync-engine';
 import { VisitRecordForm, fetchVisitRecordCdsAlerts } from './visit-record-form';
 import type {
   VisitMedicationStockObservationDraft,
@@ -60,8 +61,7 @@ const {
   offlineStoreState: {
     isOffline: false,
     pendingSyncCount: 0,
-    syncConflicts: [] as Array<{ id: number; conflict_state?: string }>,
-    lastSyncedAt: '2026-07-07T00:00:00.000Z' as string | null,
+    pendingQueue: [] as SyncQueueItemSummary[],
   },
   listEvidenceDraftSummariesForScheduleMock: vi.fn(),
   toastErrorMock: vi.fn(),
@@ -165,8 +165,7 @@ vi.mock('@/lib/stores/offline-store', () => ({
     selector({
       isOffline: offlineStoreState.isOffline,
       pendingSyncCount: offlineStoreState.pendingSyncCount,
-      syncConflicts: offlineStoreState.syncConflicts,
-      lastSyncedAt: offlineStoreState.lastSyncedAt,
+      pendingQueue: offlineStoreState.pendingQueue,
       syncOnlineStatus: syncOnlineStatusMock,
       refreshSyncCount: refreshSyncCountMock,
       refreshSyncState: refreshSyncStateMock,
@@ -460,8 +459,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     });
     offlineStoreState.isOffline = false;
     offlineStoreState.pendingSyncCount = 0;
-    offlineStoreState.syncConflicts = [];
-    offlineStoreState.lastSyncedAt = '2026-07-07T00:00:00.000Z';
+    offlineStoreState.pendingQueue = [];
     listEvidenceDraftSummariesForScheduleMock.mockResolvedValue([]);
     cdsAlertPanelCalls.length = 0;
     medicationManagementSectionCalls.length = 0;
@@ -1267,16 +1265,72 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
       );
     });
 
-    expect(screen.getByTestId('visit-save-state-indicator').textContent).toContain('同期済');
+    await waitFor(() => {
+      expect(screen.getByTestId('visit-save-state-indicator').textContent).toContain('未保存');
+    });
 
     offlineStoreState.pendingSyncCount = 2;
+    offlineStoreState.pendingQueue = [
+      {
+        id: 1,
+        entityType: 'visit_record',
+        payload: { schedule_id: 'schedule_other' },
+        scope_id: 'schedule_other',
+        createdAt: new Date('2026-07-13T00:00:00.000Z'),
+        retryCount: 0,
+        conflict: null,
+      },
+    ];
     rerender(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />);
-    expect(screen.getByTestId('visit-save-state-indicator').textContent).toContain('同期待ち');
+    expect(screen.getByTestId('visit-save-state-indicator').textContent).toContain('未保存');
+    expect(screen.getByTestId('visit-mobile-mode-header').textContent).not.toContain('未同期 1件');
 
-    offlineStoreState.syncConflicts = [{ id: 1, conflict_state: 'server_conflict' }];
+    offlineStoreState.pendingQueue = [
+      {
+        ...offlineStoreState.pendingQueue[0]!,
+        scope_id: 'schedule_partial',
+        payload: { schedule_id: 'schedule_partial' },
+      },
+    ];
     rerender(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />);
-    expect(screen.getByTestId('visit-save-state-indicator').textContent).toContain('競合あり');
+    expect(screen.getByTestId('visit-save-state-indicator').textContent).toContain('送信待ち');
+
+    offlineStoreState.pendingQueue = [
+      {
+        ...offlineStoreState.pendingQueue[0]!,
+        conflict_state: 'server_conflict',
+      },
+    ];
+    rerender(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />);
+    expect(screen.getByTestId('visit-save-state-indicator').textContent).toContain('競合');
+    expect(screen.getByRole('link', { name: '同期状況を確認' }).getAttribute('href')).toBe(
+      '/offline-sync',
+    );
     expect(screen.getByTestId('visit-save-state-indicator').textContent).not.toContain('患者');
+  });
+
+  it('keeps a current-record retry failure visible instead of reporting sync success', async () => {
+    offlineStoreState.pendingSyncCount = 1;
+    offlineStoreState.pendingQueue = [
+      {
+        id: 1,
+        entityType: 'visit_record',
+        payload: { schedule_id: 'schedule_partial' },
+        scope_id: 'schedule_partial',
+        createdAt: new Date('2026-07-13T00:00:00.000Z'),
+        retryCount: 2,
+        lastError: 'HTTP 503 patient name must not render',
+        conflict: null,
+      },
+    ];
+
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visit-save-state-indicator').textContent).toContain('送信失敗');
+    });
+    expect(screen.getByTestId('visit-save-state-indicator').textContent).not.toContain('patient');
+    expect(screen.getByRole('link', { name: '同期状況を確認' })).toBeTruthy();
   });
 
   it('updates the save state from saving to locally saved after a manual draft save', async () => {
