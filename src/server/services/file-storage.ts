@@ -240,7 +240,19 @@ export class FileStorageError extends Error {
   }
 }
 
-const s3Clients = new Map<string, S3Client>();
+export type FileStorageS3ClientHandles = {
+  presigningClient: S3Client;
+  sendClient: Pick<S3Client, 'send'>;
+};
+
+const s3Clients = new Map<string, FileStorageS3ClientHandles>();
+
+export function createFileStorageS3ClientHandles(client: S3Client): FileStorageS3ClientHandles {
+  return {
+    presigningClient: client,
+    sendClient: withAwsClientTimeout(client),
+  };
+}
 
 function getRequiredStorageConfig() {
   const bucketName = process.env.S3_BUCKET_NAME;
@@ -359,14 +371,14 @@ function getS3EncryptionConfig(purpose: AnyFilePurpose) {
   };
 }
 
-function getClient() {
+function getClients() {
   const { region } = getRequiredStorageConfig();
   const cached = s3Clients.get(region);
   if (cached) return cached;
 
-  const client = withAwsClientTimeout(new S3Client({ region, ...awsClientConfig() }));
-  s3Clients.set(region, client);
-  return client;
+  const clients = createFileStorageS3ClientHandles(new S3Client({ region, ...awsClientConfig() }));
+  s3Clients.set(region, clients);
+  return clients;
 }
 
 function bufferToWebStream(value: Uint8Array) {
@@ -1328,7 +1340,7 @@ export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
   });
 
   const uploadUrl = await getSignedUrl(
-    getClient(),
+    getClients().presigningClient,
     new PutObjectCommand({
       Bucket: bucketName,
       Key: storageKey,
@@ -1419,7 +1431,7 @@ export async function storeGeneratedFile(args: StoreGeneratedFileArgs) {
     jobId: args.jobId,
   });
 
-  await getClient().send(
+  await getClients().sendClient.send(
     new PutObjectCommand({
       Bucket: bucketName,
       Key: storageKey,
@@ -1506,7 +1518,7 @@ export async function deleteGeneratedFile(record: StoredFileRecord) {
   }
 
   const { bucketName } = getRequiredStorageConfig();
-  await getClient().send(
+  await getClients().sendClient.send(
     new DeleteObjectCommand({
       Bucket: bucketName,
       Key: record.storageKey,
@@ -1683,7 +1695,7 @@ export async function completeUploadedFile({
   let uploadedEtag: string | null = requestedEtag;
 
   try {
-    const response = await getClient().send(
+    const response = await getClients().sendClient.send(
       new HeadObjectCommand({
         Bucket: bucketName,
         Key: record.storageKey,
@@ -1757,7 +1769,7 @@ export async function createPresignedDownload({
     accessContext,
   });
   const downloadUrl = await getSignedUrl(
-    getClient(),
+    getClients().presigningClient,
     new GetObjectCommand({
       Bucket: bucketName,
       Key: record.storageKey,
@@ -1829,7 +1841,7 @@ export async function openPreparedFileDownload(
   prepared: PreparedFileDownload,
 ): Promise<ReadableStream<Uint8Array>> {
   const { bucketName } = getRequiredStorageConfig();
-  const response = await getClient().send(
+  const response = await getClients().sendClient.send(
     new GetObjectCommand({
       Bucket: bucketName,
       Key: prepared.storageKey,

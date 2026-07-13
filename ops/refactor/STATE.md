@@ -54,7 +54,24 @@
 
 ## 直近の作業
 
-- codex4 + codex1 integration: S3-SSE-DEFAULT-NONKMS-001 (DONE, 2026-07-13; implementation pending commit).
+- codex4 + codex1 integration: S3-PRESIGN-WRAPPED-CLIENT-001 (DONE, 2026-07-13; implementation pending commit).
+  - current task / root cause / ownership:
+    `getClient()`がreal `S3Client`をsend-only timeout wrapperへ置換し、そのwrapperを`getSignedUrl()`へ渡していたため、AWS SDKが
+    必要とする`config`/`middlewareStack`を読めずlegacy upload/download presignがURL生成前に例外化した。Codex4がfile-storage
+    exact 2 pathsを所有し、codex1が全send/presign callsite、production boundary、checksum非変更を独立reviewした。
+  - implementation / security result:
+    Region cacheを1つのreal `S3Client`に対する`presigningClient`と`sendClient`のexplicit handlesへ変更した。
+    2つの`getSignedUrl()`だけがraw clientを受け、Put/Delete/Head/Getの全5 sendは既存`withAwsClientTimeout`を維持する。
+    KMS、Object Lock、checksum、auth、persistence、bucket/key、retention、storage keyは変更していない。Default production PH-OS
+    evidence presignerは別のreal-client + precomputed SHA-256経路で、このwrapper不具合の対象外。影響はdev/test/stagingと
+    explicit enabled legacy files APIに限定されるが、当該flowではrelease-blockingだった。
+  - validation / official reference / remaining:
+    Focused file-storage 1 file / 84 tests、scoped ESLint、Prettier、`git diff --check` PASS。Dummy credentials・networkなしの
+    installed AWS SDK real presigner testがvalid SigV4 URLまで到達し、mocked identity testもpresignへreal clientが渡ることを固定した。
+    AWS SDK JS v3 S3 request presigner READMEとS3 presigned URL docsを2026-07-13確認。Browser/Object Lock checksum header signingは
+    `S3-OBJECT-LOCK-PRESIGNED-CHECKSUM-001`として別sliceに残す。Oracleは現行ユーザー指示により実行しない。
+
+- codex4 + codex1 integration: S3-SSE-DEFAULT-NONKMS-001 (DONE, 2026-07-13; implementation `7f11fc765`, PUSHED).
   - current task / root cause / ownership:
     File storageは`S3_SERVER_SIDE_ENCRYPTION`未指定・typo時にAES256へsilent downgradeし、presigned/generatedの
     要配慮個人情報uploadがcustomer-managed KMS keyなしでも進めた。Codex4がfile-storage実装/testのexact 2 pathsを所有し、
@@ -74,7 +91,7 @@
     Live AWS applyなし。既存P0のsend-only timeout wrapperをpresignerへ渡す不具合は`S3-PRESIGN-WRAPPED-CLIENT-001`へ分離して即時継続し、
     browser/Object Lock checksum契約はその後の独立sliceとする。Oracleは現行ユーザー指示により実行しない。
 
-- codex3 + codex1 integration: PERF-DAYBOARD-ROUTE-ESTIMATOR-DEDUP-001 (DONE, 2026-07-13; implementation pending commit).
+- codex3 + codex1 integration: PERF-DAYBOARD-ROUTE-ESTIMATOR-DEDUP-001 (DONE, 2026-07-13; implementation `c8eae5e30`, PUSHED).
   - current task / root cause / ownership:
     Day-boardのvehicleごとにestimator/provider/cacheを作り、route totalをstop leg単位のsequential external fetchへfan-outしていた。
     Codex3がday-board API、planner、road-routingと各testのexact 6 pathsを所有し、codex1がprovider fallback、consumer impact、

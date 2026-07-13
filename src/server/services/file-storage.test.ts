@@ -21,6 +21,7 @@ const {
   fileAssetUpdateMock,
   fileAssetDeleteManyMock,
   randomUuidMock,
+  s3ClientInstances,
   s3ClientMock,
   s3SendMock,
   loggerWarnMock,
@@ -44,6 +45,7 @@ const {
   fileAssetUpdateMock: vi.fn(),
   fileAssetDeleteManyMock: vi.fn(),
   randomUuidMock: vi.fn(),
+  s3ClientInstances: [] as unknown[],
   s3ClientMock: vi.fn(),
   s3SendMock: vi.fn(),
   loggerWarnMock: vi.fn(),
@@ -64,6 +66,7 @@ vi.mock('@aws-sdk/client-s3', () => ({
     send = s3SendMock;
 
     constructor(config: unknown) {
+      s3ClientInstances.push(this);
       s3ClientMock(config);
     }
   },
@@ -142,6 +145,7 @@ vi.mock('@/lib/db/client', () => ({
 import {
   completeUploadedFile,
   cleanupExpiredGeneratedFiles,
+  createFileStorageS3ClientHandles,
   createPresignedDownload,
   createStreamedDownload,
   createPresignedUpload,
@@ -350,6 +354,7 @@ describe('file-storage', () => {
     });
 
     expect(getSignedUrlMock).toHaveBeenCalledOnce();
+    expect(getSignedUrlMock.mock.calls[0]?.[0]).toBe(s3ClientInstances.at(-1));
     expect(s3ClientMock).toHaveBeenCalledWith(
       expect.objectContaining({
         region: 'ap-northeast-1',
@@ -371,6 +376,43 @@ describe('file-storage', () => {
       'Content-Type': 'application/pdf',
       'x-amz-server-side-encryption': 'AES256',
     });
+  });
+
+  it('preserves a real AWS SDK client for no-network presigning', async () => {
+    const actualS3 =
+      await vi.importActual<typeof import('@aws-sdk/client-s3')>('@aws-sdk/client-s3');
+    const actualPresigner = await vi.importActual<typeof import('@aws-sdk/s3-request-presigner')>(
+      '@aws-sdk/s3-request-presigner',
+    );
+    const client = new actualS3.S3Client({
+      region: 'ap-northeast-1',
+      credentials: {
+        accessKeyId: 'test-access-key-id',
+        secretAccessKey: 'test-secret-access-key',
+      },
+    });
+
+    try {
+      const clients = createFileStorageS3ClientHandles(client);
+      expect(clients.presigningClient).toBe(client);
+      expect(clients.sendClient).not.toBe(client);
+
+      const uploadUrl = await actualPresigner.getSignedUrl(
+        clients.presigningClient,
+        new actualS3.PutObjectCommand({
+          Bucket: 'example-bucket',
+          Key: 'example.pdf',
+          ContentType: 'application/pdf',
+        }),
+        { expiresIn: 60 },
+      );
+      const parsed = new URL(uploadUrl);
+      expect(parsed.protocol).toBe('https:');
+      expect(parsed.searchParams.get('X-Amz-Algorithm')).toBe('AWS4-HMAC-SHA256');
+      expect(parsed.searchParams.get('X-Amz-Credential')).toContain('test-access-key-id');
+    } finally {
+      client.destroy();
+    }
   });
 
   it.each([
