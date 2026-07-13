@@ -55,7 +55,21 @@
 
 ## 直近の作業
 
-- codex1 takeover: API-STATUS-NOTFOUND-LIVE-RESCAN-001I (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1 takeover: API-STATUS-NOTFOUND-LIVE-RESCAN-001J (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Codex3 handoffのIntervention POST候補をcodex1がGET/POST route/test、patient assignment helper、MedicationIssue org/patient predicate、create transaction、
+    installed Next 16.2.9 Route Handler guideと照合した。`patient_id`とoptional `issue_id`はいずれも新規Interventionから参照するlinked FK/scope contextで、
+    path/body mutation ownerではない一方、missing/cross-org/assignment/patient mismatchが別々のroute-specific 404として分類可能だった。
+  - files changed / correctness / security / privacy:
+    Patient denialをgeneric 400 `VALIDATION_ERROR` / `入力値が不正です` + `details.patient_id`、issue denialを同envelope + `details.issue_id`へ統一した。
+    Patient拒否はissue lookup/create transaction 0、issue拒否はcreate transaction 0を維持した。GET/filter/no-store、canVisit、org/assignment/patient predicates、
+    success 201/DTO/query数は変更せず、ID/PHI/存在分類をerrorへ追加していない。
+  - validation / remaining / rollback:
+    Focused 1 test file / 15 tests、handoff2 route combined 2 test files / 35 tests、combined 8 GiB typecheck、API shape 0/0、API authz 0、route auth
+    175 allowlisted / 251 direct / 0 new、raw-org 116 / 0 new、module boundary 0/0、exact ESLint/Prettier/diffをPASS。非視覚API sliceのためimagegen省略。
+    Schema/migration/production data/deploy/Oracleなし。親は全mutation route残scanのためPartial。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
+- codex1 takeover: API-STATUS-NOTFOUND-LIVE-RESCAN-001I (DONE; parent remains Partial, 2026-07-14; implementation `aac78e48c`).
   - current task / files inspected / root cause:
     Codex4 handoffのdispense task groups候補をcodex1がroute/test全文、PackagingGroup/PrescriptionLineのmutation、cycle scope、optimistic conflict、
     transaction/audit/notify順、installed Next 16.2.9 Route Handler guideと照合した。提案された3 branchのうち、`groups[].id`はPackagingGroup update、

@@ -1,6 +1,6 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { success, validationError } from '@/lib/api/response';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
@@ -171,7 +171,11 @@ export const POST = withAuthContext(
       patientId: parsed.data.patient_id,
       accessContext: ctx,
     });
-    if (!canAccessScope) return notFound('患者が見つかりません');
+    if (!canAccessScope) {
+      return validationError('入力値が不正です', {
+        patient_id: ['指定された患者を確認できません'],
+      });
+    }
 
     if (
       !(await canAttachMedicationIssue({
@@ -180,7 +184,9 @@ export const POST = withAuthContext(
         issueId: parsed.data.issue_id,
       }))
     ) {
-      return notFound('服薬課題が見つかりません');
+      return validationError('入力値が不正です', {
+        issue_id: ['指定された服薬課題を確認できません'],
+      });
     }
 
     const intervention = await withOrgContext(ctx.orgId, async (tx) => {

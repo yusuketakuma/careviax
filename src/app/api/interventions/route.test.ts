@@ -248,7 +248,7 @@ describe('/api/interventions', () => {
       );
     });
 
-    it('returns 404 without creating when the patient is outside assignment scope', async () => {
+    it('returns a neutral 400 without creating when the linked patient is outside assignment scope', async () => {
       patientFindFirstMock.mockResolvedValue(null);
 
       const response = (await POST(
@@ -260,11 +260,19 @@ describe('/api/interventions', () => {
         }),
       ))!;
 
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+        details: {
+          patient_id: ['指定された患者を確認できません'],
+        },
+      });
+      expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
       expect(withOrgContextMock).not.toHaveBeenCalled();
     });
 
-    it('returns 404 without creating when the medication issue is outside patient scope', async () => {
+    it('returns a neutral 400 without creating when the linked medication issue is outside patient scope', async () => {
       medicationIssueFindFirstMock.mockResolvedValue(null);
 
       const response = (await POST(
@@ -277,7 +285,14 @@ describe('/api/interventions', () => {
         }),
       ))!;
 
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+        details: {
+          issue_id: ['指定された服薬課題を確認できません'],
+        },
+      });
       expect(medicationIssueFindFirstMock).toHaveBeenCalledWith({
         where: {
           id: 'issue_other',
