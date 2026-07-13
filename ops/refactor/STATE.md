@@ -51,6 +51,31 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZPATCARDHOMEOPSSTRICT patient card home-operations reader (VERIFY_REQUIRED, 2026-07-13; implementation `47693cca5`; shared clean-capacity build pending).
+  - current task / root cause:
+    Patient Cardのhome-operations readerはcompile-time型だけで、固定5-domain欠落/重複、attention count、top alert relation、quick action、
+    internal/external href driftを2xx成功扱いし、文書・MCS・処方・請求・会議のPHI-bearing operational stateへ流し得た。
+  - implementation / operational safety boundary:
+    Exact runtime schemaを追加し、documents/MCS/prescription/billing/conference集合、attention算術、top alert↔item relation、quick action、
+    safe internal/HTTPS external hrefを検証。Domain欠落、count/alert mismatchのnegative testsとconsumer live-shape fixturesを追加した。
+    Aggregation query、各operation write、auth/assignment/tenant/audit/DB/UIは変更していない。非visual response parser/PHI境界のため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/patients/[id]/card-workspace-response-schemas.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace-response-schemas.test.ts`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`,
+    `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Schema/consumer/provider Vitest passed 4 files / 185 tests; checker passed 1 file / 7 tests. Exact zero-warning ESLint, focused Prettier,
+    aggregate typecheck, 8GB no-unused typecheck, client schema (320 backed / 44 allowlisted / 10 files), module boundary, client PHI-log/display,
+    API response shape, colors, format, and diff-check passed. Full build remains NOT_EXECUTED because only 278 MiB is free while existing
+    `.next` consumes 16 GiB; shared generated/user files were not deleted.
+  - security / performance / remaining:
+    Malformed domain/aggregate/alert/URL payloads now fail closed before operational state updates. Network/DB calls, writes, rendering, and
+    dependencies are unchanged. Patient Cardにはoverview 1 object readerだけが残る。次sliceでstrict化してfile allowlist entryを削除する。
+    A clean-capacity runner must complete `pnpm build`.
+
 - codex: API-CONTRACT-001FZPATCARDRISKSTRICT patient card case-risk readers (VERIFY_REQUIRED, 2026-07-13; implementation `374682a78`; shared clean-capacity build pending).
   - current task / root cause:
     Patient Cardのcase-risk cockpit GET、task sync、task waiver計3 readersはstring fallbackだけで、別case/patient/task、section/finding
