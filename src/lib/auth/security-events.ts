@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { logger } from '@/lib/utils/logger';
+import { isValidRequestTraceId } from '@/lib/api/request-correlation';
 
 export type SecurityEventType =
   | 'auth_failure'
@@ -20,6 +21,8 @@ interface SecurityEvent {
   path: string;
   method: string;
   user_agent?: string;
+  request_id?: string;
+  correlation_id?: string;
   details?: Record<string, unknown>;
 }
 
@@ -60,6 +63,8 @@ function resolveTrustedAuditOrgId(event: SecurityEvent): string | null {
       method: event.method,
       operation: 'audit_log_create',
       status: 'skipped',
+      requestId: event.request_id,
+      correlationId: event.correlation_id,
     });
     return null;
   }
@@ -72,6 +77,8 @@ function resolveTrustedAuditOrgId(event: SecurityEvent): string | null {
       method: event.method,
       operation: 'audit_log_create',
       status: 'skipped',
+      requestId: event.request_id,
+      correlationId: event.correlation_id,
     });
     return null;
   }
@@ -133,6 +140,12 @@ function readSafeDetailValue(value: unknown): string | number | boolean | undefi
 
 function buildSafeChanges(event: SecurityEvent): Prisma.InputJsonObject {
   const changes: Record<string, Prisma.InputJsonValue> = { method: event.method };
+  if (isValidRequestTraceId(event.request_id)) {
+    changes.request_id = event.request_id;
+  }
+  if (isValidRequestTraceId(event.correlation_id)) {
+    changes.correlation_id = event.correlation_id;
+  }
   for (const [key, value] of Object.entries(event.details ?? {})) {
     if (!SAFE_DETAIL_KEYS.has(key)) continue;
     const safeValue = readSafeDetailValue(value);
@@ -202,6 +215,8 @@ export function logSecurityEvent(event: SecurityEvent): void {
         code: event.event_type,
         method: event.method,
         operation: 'audit_log_create',
+        requestId: event.request_id,
+        correlationId: event.correlation_id,
       },
       err,
     );

@@ -51,6 +51,7 @@ describe('buildSafeLogContext', () => {
       method: 'POST',
       status: 500,
       requestId: 'req_123',
+      correlationId: 'workflow_123',
       code: 'UNHANDLED_ERROR',
       orgId: { id: 'org_patient_secret' },
       body: 'patient=山田太郎 phone=090-1234-5678',
@@ -69,6 +70,7 @@ describe('buildSafeLogContext', () => {
       method: 'POST',
       status: 500,
       requestId: 'req_123',
+      correlationId: 'workflow_123',
       code: 'UNHANDLED_ERROR',
       orgId: 'redacted',
     });

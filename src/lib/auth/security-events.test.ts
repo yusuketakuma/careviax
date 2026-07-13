@@ -51,6 +51,8 @@ describe('logSecurityEvent', () => {
       path: '/api/patients/patient_123456?name=山田&token=secret-path-token',
       method: 'GET',
       user_agent: 'test-agent',
+      request_id: 'request_1',
+      correlation_id: 'workflow_1',
       details: {
         reason: 'scope_denied',
         raw_patient_name: '山田',
@@ -75,6 +77,8 @@ describe('logSecurityEvent', () => {
         user_agent: 'test-agent',
         changes: {
           method: 'GET',
+          request_id: 'request_1',
+          correlation_id: 'workflow_1',
           reason: 'scope_denied',
         },
       },

@@ -15,8 +15,14 @@ import { withRoutePerformance } from '@/lib/utils/performance';
 import { logSecurityEvent } from './security-events';
 import { getClientIp } from '@/lib/api/request-ip';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import {
+  resolveRequestTraceContext,
+  withRequestTraceHeaders,
+  type RequestTraceContext,
+} from '@/lib/api/request-correlation';
 
 export type AuthContext = RequestAuthContext;
+type TracedAuthContext = AuthContext & RequestTraceContext;
 
 type RequireAuthContextOptions = {
   permission?: PermissionKey;
@@ -37,8 +43,11 @@ type AuthSessionUserWithSite = {
   orgId?: unknown;
 };
 
-async function sensitiveAuthFailure(response: Promise<NextResponse>): Promise<NextResponse> {
-  return withSensitiveNoStore(await response);
+async function sensitiveAuthFailure(
+  response: Promise<NextResponse>,
+  trace: RequestTraceContext,
+): Promise<NextResponse> {
+  return withRequestTraceHeaders(withSensitiveNoStore(await response), trace);
 }
 
 async function authSession() {
@@ -167,8 +176,9 @@ export function isAdmin(role: MemberRole): boolean {
 export async function requireAuthContext(
   request: NextRequest,
   options?: RequireAuthContextOptions,
-): Promise<{ ctx: AuthContext } | { response: NextResponse }> {
+): Promise<{ ctx: TracedAuthContext } | { response: NextResponse }> {
   clearRequestAuthContext();
+  const trace = resolveRequestTraceContext(request);
 
   const session = await authSession();
   const requestedOrgId = request.headers.get('x-org-id');
@@ -192,10 +202,12 @@ export async function requireAuthContext(
       ip_address: ipAddress,
       path,
       method,
+      request_id: trace.requestId,
+      correlation_id: trace.correlationId,
       details: { reason: 'no_user_identity' },
     });
     return {
-      response: await sensitiveAuthFailure(unauthorized()),
+      response: await sensitiveAuthFailure(unauthorized(), trace),
     };
   }
 
@@ -215,9 +227,11 @@ export async function requireAuthContext(
         user_id: userId,
         path,
         method,
+        request_id: trace.requestId,
+        correlation_id: trace.correlationId,
         details: { reason: 'session_version_mismatch' },
       });
-      return { response: await sensitiveAuthFailure(unauthorized()) };
+      return { response: await sensitiveAuthFailure(unauthorized(), trace) };
     }
   }
 
@@ -236,10 +250,12 @@ export async function requireAuthContext(
       user_id: userId,
       path,
       method,
+      request_id: trace.requestId,
+      correlation_id: trace.correlationId,
       details: { reason: 'no_org_id' },
     });
     return {
-      response: await sensitiveAuthFailure(authNoOrg()),
+      response: await sensitiveAuthFailure(authNoOrg(), trace),
     };
   }
 
@@ -251,11 +267,14 @@ export async function requireAuthContext(
       user_id: userId,
       path,
       method,
+      request_id: trace.requestId,
+      correlation_id: trace.correlationId,
       details: { reason: 'no_membership' },
     });
     return {
       response: await sensitiveAuthFailure(
         forbiddenResponse('この組織へのアクセス権限がありません'),
+        trace,
       ),
     };
   }
@@ -270,6 +289,8 @@ export async function requireAuthContext(
       trusted_org_id: orgId,
       path,
       method,
+      request_id: trace.requestId,
+      correlation_id: trace.correlationId,
       details: { reason: 'org_switch' },
     });
   }
@@ -284,13 +305,15 @@ export async function requireAuthContext(
       membership.site_id,
   });
 
-  const ctx: AuthContext = {
+  const ctx: TracedAuthContext = {
     userId,
     orgId,
     role: membership.role,
     ...(actorSiteId ? { actorSiteId } : {}),
     ipAddress,
     userAgent,
+    requestId: trace.requestId,
+    correlationId: trace.correlationId,
   };
 
   if (options?.permission) {
@@ -302,6 +325,8 @@ export async function requireAuthContext(
         trusted_org_id: orgId,
         path,
         method,
+        request_id: trace.requestId,
+        correlation_id: trace.correlationId,
         details: {
           reason: 'insufficient_permission',
           required: options.permission,
@@ -311,6 +336,7 @@ export async function requireAuthContext(
       return {
         response: await sensitiveAuthFailure(
           forbiddenResponse(options.message ?? '権限がありません'),
+          trace,
         ),
       };
     }
@@ -346,9 +372,17 @@ export function withAuthContext<
       const authResult = await requireAuthContext(req, options);
       if ('response' in authResult) return withSensitiveNoStore(authResult.response);
 
+      const trace: RequestTraceContext = {
+        requestId: authResult.ctx.requestId,
+        correlationId: authResult.ctx.correlationId,
+      };
+
       return runWithRequestAuthContext(authResult.ctx, async () => {
         try {
-          return withSensitiveNoStore(await handler(req, authResult.ctx, routeContext));
+          return withRequestTraceHeaders(
+            withSensitiveNoStore(await handler(req, authResult.ctx, routeContext)),
+            trace,
+          );
         } catch (err) {
           // redirect()/notFound()/forbidden()/unauthorized() 等の Next 制御フロー例外は
           // フレームワークに委ねる(該当時のみ再 throw、それ以外は何もしない)
@@ -358,10 +392,12 @@ export function withAuthContext<
               event: 'route_handler_unhandled_error',
               route: req.nextUrl?.pathname,
               method: req.method,
+              requestId: trace.requestId,
+              correlationId: trace.correlationId,
             },
             err,
           );
-          return withSensitiveNoStore(internalError());
+          return withRequestTraceHeaders(withSensitiveNoStore(internalError()), trace);
         }
       });
     });

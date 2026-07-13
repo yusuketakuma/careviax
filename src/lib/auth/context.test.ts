@@ -36,9 +36,14 @@ import { requireAuthContext, withAuthContext } from './context';
 
 const routeContext = { params: Promise.resolve({}) };
 
-function authedRequest() {
+function authedRequest(correlationId?: string) {
   // x-org-id + session.user.id を揃えると requireAuthContext が membership だけで成功する
-  return new NextRequest('http://localhost/api/x', { headers: { 'x-org-id': 'org_1' } });
+  return new NextRequest('http://localhost/api/x', {
+    headers: {
+      'x-org-id': 'org_1',
+      ...(correlationId ? { 'x-correlation-id': correlationId } : {}),
+    },
+  });
 }
 
 function expectSensitiveNoStore(response: Response) {
@@ -64,10 +69,20 @@ describe('withAuthContext error envelope', () => {
         },
       ),
     );
-    const res = await withAuthContext(handler)(authedRequest(), routeContext);
+    const res = await withAuthContext(handler)(authedRequest('workflow_123'), routeContext);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     expect(res.headers.get('X-Handler')).toBe('preserved');
+    expect(res.headers.get('X-Request-Id')).toMatch(/^[0-9a-f-]{36}$/);
+    expect(res.headers.get('X-Correlation-Id')).toBe('workflow_123');
+    expect(handler).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.objectContaining({
+        requestId: res.headers.get('X-Request-Id'),
+        correlationId: 'workflow_123',
+      }),
+      routeContext,
+    );
     expectSensitiveNoStore(res);
     expect(loggerErrorMock).not.toHaveBeenCalled();
   });
@@ -106,11 +121,13 @@ describe('withAuthContext error envelope', () => {
     expectSensitiveNoStore(res);
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      {
+      expect.objectContaining({
         event: 'route_handler_unhandled_error',
         route: '/api/x',
         method: 'GET',
-      },
+        requestId: expect.any(String),
+        correlationId: expect.any(String),
+      }),
       rawError,
     );
     const [logContext] = loggerErrorMock.mock.calls[0] ?? [];
@@ -176,16 +193,22 @@ describe('withAuthContext error envelope', () => {
     authMock.mockResolvedValue(null);
 
     const result = await requireAuthContext(
-      new NextRequest('http://localhost/api/x', { headers: { 'x-org-id': 'org_1' } }),
+      new NextRequest('http://localhost/api/x', {
+        headers: { 'x-org-id': 'org_1', 'x-correlation-id': 'login_attempt_1' },
+      }),
     );
 
     expect('response' in result).toBe(true);
     if (!('response' in result)) throw new Error('Expected an authentication failure response');
     expect(result.response.status).toBe(401);
+    expect(result.response.headers.get('X-Request-Id')).toMatch(/^[0-9a-f-]{36}$/);
+    expect(result.response.headers.get('X-Correlation-Id')).toBe('login_attempt_1');
     expectSensitiveNoStore(result.response);
     expect(logSecurityEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
         event_type: 'auth_failure',
+        request_id: result.response.headers.get('X-Request-Id'),
+        correlation_id: 'login_attempt_1',
         details: { reason: 'no_user_identity' },
       }),
     );

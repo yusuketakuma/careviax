@@ -167,6 +167,8 @@ describe('requireAuthContext', () => {
         userId: 'user_1',
         orgId: 'org_default',
         role: 'admin',
+        requestId: expect.any(String),
+        correlationId: expect.any(String),
       },
     });
   });
@@ -243,6 +245,8 @@ describe('requireAuthContext', () => {
         role: 'admin',
         ipAddress: '203.0.113.10',
         userAgent: 'Vitest Browser',
+        requestId: expect.any(String),
+        correlationId: expect.any(String),
       },
     });
   });
@@ -274,6 +278,8 @@ describe('requireAuthContext', () => {
         actorSiteId: 'site_1',
         ipAddress: '203.0.113.10',
         userAgent: 'Vitest Browser',
+        requestId: expect.any(String),
+        correlationId: expect.any(String),
       },
     });
     expect(pharmacySiteFindFirstMock).toHaveBeenCalledWith({
@@ -308,6 +314,8 @@ describe('requireAuthContext', () => {
         userId: 'user_1',
         orgId: 'org_default',
         role: 'admin',
+        requestId: expect.any(String),
+        correlationId: expect.any(String),
       },
     });
   });

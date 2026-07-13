@@ -26,6 +26,7 @@ type SafeLogContext = {
   count?: SafeLogValue;
   durationMs?: SafeLogValue;
   requestId?: SafeLogValue;
+  correlationId?: SafeLogValue;
   externalProvider?: SafeLogValue;
 };
 type SafeLogContextKey = Exclude<keyof SafeLogContext, 'event'>;
@@ -61,6 +62,7 @@ const SAFE_LOG_CONTEXT_KEYS: readonly SafeLogContextKey[] = [
   'count',
   'durationMs',
   'requestId',
+  'correlationId',
   'externalProvider',
 ];
 

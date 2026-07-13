@@ -9,6 +9,8 @@ export type RequestAuthContext = {
   actorPharmacyId?: string;
   ipAddress?: string;
   userAgent?: string;
+  requestId?: string;
+  correlationId?: string;
 };
 
 const requestAuthContextStorage = new AsyncLocalStorage<RequestAuthContext | undefined>();
