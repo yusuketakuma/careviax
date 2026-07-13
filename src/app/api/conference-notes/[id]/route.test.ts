@@ -27,6 +27,7 @@ const {
   withOrgContextMock,
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
+  requireWritablePatientMock,
 } = vi.hoisted(() => ({
   authPlumbingFailureRef: { current: null as Error | null },
   conferenceNoteFindFirstMock: vi.fn(),
@@ -52,6 +53,7 @@ const {
   withOrgContextMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
+  requireWritablePatientMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -83,6 +85,10 @@ vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
+vi.mock('@/server/services/patient-write-guard', () => ({
+  requireWritablePatient: requireWritablePatientMock,
+}));
+
 import { GET, PATCH } from './route';
 
 function createGetRequest() {
@@ -98,6 +104,28 @@ function createRequest(body?: unknown) {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 }
+
+function expectNoConferenceNotePatchSideEffects() {
+  expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+  expect(careCaseUpdateMock).not.toHaveBeenCalled();
+  expect(auditLogCreateMock).not.toHaveBeenCalled();
+  expect(taskCreateManyMock).not.toHaveBeenCalled();
+  expect(billingCandidateUpsertMock).not.toHaveBeenCalled();
+  expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+  expect(visitScheduleProposalUpdateMock).not.toHaveBeenCalled();
+  expect(careReportCreateManyMock).not.toHaveBeenCalled();
+  expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+  expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+}
+
+const unavailableCaseResponse = {
+  code: 'VALIDATION_ERROR',
+  message: '入力値が不正です',
+  details: {
+    case_id: ['指定されたケースを確認できません'],
+  },
+};
 
 describe('/api/conference-notes/[id] PATCH', () => {
   beforeEach(() => {
@@ -174,6 +202,9 @@ describe('/api/conference-notes/[id] PATCH', () => {
       patient_id: 'patient_1',
       primary_pharmacist_id: 'pharm_1',
       required_visit_support: null,
+    });
+    requireWritablePatientMock.mockResolvedValue({
+      patient: { id: 'patient_1', archived_at: null },
     });
     careCaseUpdateMock.mockResolvedValue({
       id: 'case_1',
@@ -307,6 +338,20 @@ describe('/api/conference-notes/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
+    expect(requireWritablePatientMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      'patient_1',
+    );
+    expect(facilityFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'facility_1',
+        org_id: 'org_1',
+      },
+      select: {
+        id: true,
+      },
+    });
     expect(conferenceNoteLockMock).toHaveBeenCalledTimes(1);
     expect(conferenceNoteFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -522,13 +567,8 @@ describe('/api/conference-notes/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expectNoStore(response);
-    await expect(response.json()).resolves.toEqual({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-      details: {
-        case_id: ['指定されたケースを確認できません'],
-      },
-    });
+    await expect(response.json()).resolves.toEqual(unavailableCaseResponse);
+    expect(requireWritablePatientMock).not.toHaveBeenCalled();
     expect(residenceFindFirstMock).not.toHaveBeenCalled();
     expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
     expect(careCaseUpdateMock).not.toHaveBeenCalled();
@@ -550,13 +590,7 @@ describe('/api/conference-notes/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expectNoStore(response);
-    await expect(response.json()).resolves.toEqual({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-      details: {
-        patient_id: ['指定された患者を確認できません'],
-      },
-    });
+    await expect(response.json()).resolves.toEqual(unavailableCaseResponse);
     expect(residenceFindFirstMock).not.toHaveBeenCalled();
     expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
     expect(careCaseUpdateMock).not.toHaveBeenCalled();
@@ -564,6 +598,197 @@ describe('/api/conference-notes/[id] PATCH', () => {
     expect(taskCreateManyMock).not.toHaveBeenCalled();
     expect(careReportCreateManyMock).not.toHaveBeenCalled();
   });
+
+  it('does not distinguish a metadata patient reference that conflicts with the linked case', async () => {
+    const response = await PATCH(
+      createRequest({
+        metadata: {
+          visit_brief: {
+            patient_id: 'patient_foreign',
+          },
+        },
+      }),
+      {
+        params: Promise.resolve({ id: 'note_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual(unavailableCaseResponse);
+    expect(requireWritablePatientMock).not.toHaveBeenCalled();
+    expect(residenceFindFirstMock).not.toHaveBeenCalled();
+    expectNoConferenceNotePatchSideEffects();
+  });
+
+  it('does not distinguish an unavailable patient derived from the linked case', async () => {
+    requireWritablePatientMock.mockResolvedValueOnce({
+      response: Response.json({ message: '患者が見つかりません' }, { status: 404 }),
+    });
+
+    const response = await PATCH(createRequest({ title: '担当者会議（更新）' }), {
+      params: Promise.resolve({ id: 'note_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual(unavailableCaseResponse);
+    expect(requireWritablePatientMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1' }),
+      'patient_1',
+    );
+    expect(residenceFindFirstMock).not.toHaveBeenCalled();
+    expect(facilityFindFirstMock).not.toHaveBeenCalled();
+    expectNoConferenceNotePatchSideEffects();
+  });
+
+  it('keeps a patient-only unavailable reference on the patient field', async () => {
+    conferenceNoteFindFirstMock.mockResolvedValueOnce({
+      id: 'note_1',
+      case_id: null,
+      patient_id: 'patient_1',
+      facility_id: null,
+      note_type: 'service_manager',
+      title: '担当者会議',
+      content: '会議目的: 訪問頻度の見直し',
+      structured_content: {
+        template: 'service_manager',
+        sections: [{ key: 'meeting_purpose', label: '会議目的', body: '訪問頻度の見直し' }],
+      },
+      metadata: null,
+      billing_eligible: true,
+      billing_code: 'MED_INFO_PROVISION_2_HA',
+      follow_up_date: null,
+      follow_up_completed: false,
+      generated_report_id: null,
+      participants: [],
+      conference_date: new Date('2026-03-30T10:00:00.000Z'),
+      action_items: [],
+    });
+    requireWritablePatientMock.mockResolvedValueOnce({
+      response: Response.json({ message: '患者が見つかりません' }, { status: 404 }),
+    });
+
+    const response = await PATCH(createRequest({ title: '担当者会議（更新）' }), {
+      params: Promise.resolve({ id: 'note_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        patient_id: ['指定された患者を確認できません'],
+      },
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(residenceFindFirstMock).not.toHaveBeenCalled();
+    expect(facilityFindFirstMock).not.toHaveBeenCalled();
+    expectNoConferenceNotePatchSideEffects();
+  });
+
+  it.each(['patient_id', 'facility_id'] as const)(
+    'rejects a whitespace-only %s before opening an org transaction',
+    async (field) => {
+      const response = await PATCH(createRequest({ [field]: '   ' }), {
+        params: Promise.resolve({ id: 'note_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      expectNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expectNoConferenceNotePatchSideEffects();
+    },
+  );
+
+  it('preserves the archived-patient conflict before update side effects', async () => {
+    requireWritablePatientMock.mockResolvedValueOnce({
+      response: Response.json(
+        { message: 'アーカイブ中の患者は復元するまで更新できません' },
+        { status: 409 },
+      ),
+    });
+
+    const response = await PATCH(createRequest({ title: '担当者会議（更新）' }), {
+      params: Promise.resolve({ id: 'note_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectNoStore(response);
+    expect(requireWritablePatientMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1' }),
+      'patient_1',
+    );
+    expect(residenceFindFirstMock).not.toHaveBeenCalled();
+    expect(facilityFindFirstMock).not.toHaveBeenCalled();
+    expectNoConferenceNotePatchSideEffects();
+  });
+
+  it.each(['facility_missing', 'facility_foreign'])(
+    'does not distinguish an unavailable facility reference: %s',
+    async (facilityId) => {
+      conferenceNoteFindFirstMock.mockResolvedValueOnce({
+        id: 'note_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        facility_id: facilityId,
+        note_type: 'service_manager',
+        title: '担当者会議',
+        content: '会議目的: 訪問頻度の見直し',
+        structured_content: {
+          template: 'service_manager',
+          sections: [{ key: 'meeting_purpose', label: '会議目的', body: '訪問頻度の見直し' }],
+        },
+        metadata: null,
+        billing_eligible: true,
+        billing_code: 'MED_INFO_PROVISION_2_HA',
+        follow_up_date: null,
+        follow_up_completed: false,
+        generated_report_id: null,
+        participants: [],
+        conference_date: new Date('2026-03-30T10:00:00.000Z'),
+        action_items: [],
+      });
+      facilityFindFirstMock.mockResolvedValueOnce(null);
+
+      const response = await PATCH(createRequest({ title: '担当者会議（更新）' }), {
+        params: Promise.resolve({ id: 'note_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      expectNoStore(response);
+      await expect(response.json()).resolves.toEqual({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+        details: {
+          facility_id: ['指定された施設を確認できません'],
+        },
+      });
+      expect(facilityFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          id: facilityId,
+          org_id: 'org_1',
+        },
+        select: {
+          id: true,
+        },
+      });
+      expectNoConferenceNotePatchSideEffects();
+    },
+  );
 
   it('returns a sanitized no-store 500 when auth plumbing fails before loading the conference note', async () => {
     authPlumbingFailureRef.current = new Error(

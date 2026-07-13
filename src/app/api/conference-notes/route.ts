@@ -3,7 +3,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { conflict, internalError, success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
@@ -369,49 +369,47 @@ const authenticatedPOST = withAuthContext(
           })
         : null;
       if (case_id && !careCase) {
-        return { error: validationError('ケースが見つかりません') };
+        return {
+          error: validationError('入力値が不正です', {
+            case_id: ['指定されたケースを確認できません'],
+          }),
+        };
       }
-      const requestedPatientId =
-        parsed.data.patient_id ??
-        (metadata?.visit_brief?.patient_id?.trim() ? metadata.visit_brief.patient_id.trim() : null);
+      const unavailablePatientDetails = case_id
+        ? { case_id: ['指定されたケースを確認できません'] }
+        : { patient_id: ['指定された患者を確認できません'] };
       const metadataPatientId = metadata?.visit_brief?.patient_id?.trim()
         ? metadata.visit_brief.patient_id.trim()
         : null;
+      const requestedPatientId = parsed.data.patient_id ?? metadataPatientId;
       if (
         parsed.data.patient_id &&
         metadataPatientId &&
         parsed.data.patient_id !== metadataPatientId
       ) {
-        return { error: validationError('患者ID指定が一致していません') };
+        return {
+          error: validationError('入力値が不正です', unavailablePatientDetails),
+        };
       }
       if (
         careCase?.patient_id &&
         requestedPatientId &&
         requestedPatientId !== careCase.patient_id
       ) {
-        return { error: validationError('ケースと患者が一致していません') };
+        return {
+          error: validationError('入力値が不正です', unavailablePatientDetails),
+        };
       }
       const resolvedPatientId = careCase?.patient_id ?? parsed.data.patient_id ?? metadataPatientId;
-      const resolvedPatient = resolvedPatientId
-        ? await tx.patient.findFirst({
-            where: {
-              id: resolvedPatientId,
-              org_id: ctx.orgId,
-            },
-            select: {
-              id: true,
-            },
-          })
-        : null;
-      if (resolvedPatientId && !resolvedPatient) {
-        return { error: validationError('患者が見つかりません') };
-      }
       if (resolvedPatientId) {
         const writable = await requireWritablePatient(tx, ctx, resolvedPatientId);
         if ('response' in writable) {
-          return {
-            error: writable.response ?? conflict('アーカイブ中の患者は復元するまで更新できません'),
-          };
+          if (writable.response.status === 404) {
+            return {
+              error: validationError('入力値が不正です', unavailablePatientDetails),
+            };
+          }
+          return { error: writable.response };
         }
       }
       const primaryResidence = resolvedPatientId
@@ -426,6 +424,25 @@ const authenticatedPOST = withAuthContext(
             },
           })
         : null;
+      const resolvedFacilityId = parsed.data.facility_id ?? primaryResidence?.facility_id ?? null;
+      const resolvedFacility = resolvedFacilityId
+        ? await tx.facility.findFirst({
+            where: {
+              id: resolvedFacilityId,
+              org_id: ctx.orgId,
+            },
+            select: {
+              id: true,
+            },
+          })
+        : null;
+      if (resolvedFacilityId && !resolvedFacility) {
+        return {
+          error: validationError('入力値が不正です', {
+            facility_id: ['指定された施設を確認できません'],
+          }),
+        };
+      }
       const metadataBilling =
         normalizedMetadata?.billing && typeof normalizedMetadata.billing === 'object'
           ? normalizedMetadata.billing
@@ -442,7 +459,7 @@ const authenticatedPOST = withAuthContext(
           org_id: ctx.orgId,
           case_id: case_id ?? null,
           patient_id: resolvedPatientId,
-          facility_id: parsed.data.facility_id ?? primaryResidence?.facility_id ?? null,
+          facility_id: resolvedFacilityId,
           note_type,
           title,
           content: normalizedContent,

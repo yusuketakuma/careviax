@@ -136,6 +136,43 @@ function createRequest({
   );
 }
 
+function createValidServiceManagerBody(overrides: Record<string, unknown> = {}) {
+  return {
+    conference_type: 'service_manager',
+    title: 'サービス担当者会議',
+    structured_content: {
+      sections: [{ key: 'meeting_purpose', label: '会議目的', body: '服薬支援を確認' }],
+    },
+    participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+    conference_date: '2026-03-28T01:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function expectNoConferenceNoteWriteSideEffects() {
+  expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+  expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+  expect(auditLogCreateMock).not.toHaveBeenCalled();
+  expect(careCaseUpdateMock).not.toHaveBeenCalled();
+  expect(taskCreateManyMock).not.toHaveBeenCalled();
+  expect(billingCandidateUpsertMock).not.toHaveBeenCalled();
+  expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+  expect(visitScheduleProposalUpdateMock).not.toHaveBeenCalled();
+  expect(careReportCreateManyMock).not.toHaveBeenCalled();
+  expect(medicationIssueCreateManyMock).not.toHaveBeenCalled();
+  expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+  expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+}
+
+const unavailableCaseResponse = {
+  code: 'VALIDATION_ERROR',
+  message: '入力値が不正です',
+  details: {
+    case_id: ['指定されたケースを確認できません'],
+  },
+};
+
 /** Build a tx mock that covers all the Prisma models used by ConferenceSyncService */
 function buildTxMock() {
   return {
@@ -767,6 +804,20 @@ describe('/api/conference-notes', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expectNoStore(response);
+    expect(requireWritablePatientMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      'patient_1',
+    );
+    expect(facilityFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'facility_1',
+        org_id: 'org_1',
+      },
+      select: {
+        id: true,
+      },
+    });
     expect(conferenceNoteCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -1163,6 +1214,36 @@ describe('/api/conference-notes', () => {
     expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
   });
 
+  it.each(['case_missing', 'case_foreign'])(
+    'does not distinguish an unavailable case reference: %s',
+    async (caseId) => {
+      careCaseFindFirstMock.mockResolvedValueOnce(null);
+
+      const response = await POST(
+        createRequest({
+          method: 'POST',
+          body: createValidServiceManagerBody({ case_id: caseId }),
+        }),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual(unavailableCaseResponse);
+      expect(careCaseFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          id: caseId,
+          org_id: 'org_1',
+        },
+        select: {
+          patient_id: true,
+        },
+      });
+      expect(requireWritablePatientMock).not.toHaveBeenCalled();
+      expect(residenceFindFirstMock).not.toHaveBeenCalled();
+      expectNoConferenceNoteWriteSideEffects();
+    },
+  );
+
   it('rejects conference note creation when case and patient do not match', async () => {
     const response = await POST(
       createRequest({
@@ -1187,41 +1268,91 @@ describe('/api/conference-notes', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
-    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual(unavailableCaseResponse);
+    expect(requireWritablePatientMock).not.toHaveBeenCalled();
+    expectNoConferenceNoteWriteSideEffects();
   });
 
-  it('rejects patient-only conference note creation when the patient is not visible in the org', async () => {
-    patientFindFirstMock.mockResolvedValueOnce(null);
+  it('does not distinguish an unavailable patient derived from the linked case', async () => {
+    requireWritablePatientMock.mockResolvedValueOnce({
+      response: Response.json({ message: '患者が見つかりません' }, { status: 404 }),
+    });
 
     const response = await POST(
       createRequest({
         method: 'POST',
-        body: {
-          conference_type: 'service_manager',
-          patient_id: 'patient_foreign',
-          title: 'サービス担当者会議',
-          structured_content: {
-            sections: [{ key: 'meeting_purpose', label: '会議目的', body: '服薬支援を確認' }],
-          },
-          participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
-          conference_date: '2026-03-28T01:00:00.000Z',
-        },
+        body: createValidServiceManagerBody({ case_id: 'case_1' }),
       }),
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
-    expect(patientFindFirstMock).toHaveBeenCalledWith({
-      where: {
-        id: 'patient_foreign',
-        org_id: 'org_1',
-      },
-      select: {
-        id: true,
-      },
-    });
-    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual(unavailableCaseResponse);
+    expect(requireWritablePatientMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1' }),
+      'patient_1',
+    );
+    expect(residenceFindFirstMock).not.toHaveBeenCalled();
+    expectNoConferenceNoteWriteSideEffects();
   });
+
+  it('does not distinguish conflicting patient inputs when a linked case is supplied', async () => {
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: createValidServiceManagerBody({
+          case_id: 'case_1',
+          patient_id: 'patient_1',
+          metadata: {
+            visit_brief: {
+              patient_id: 'patient_other',
+            },
+          },
+        }),
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual(unavailableCaseResponse);
+    expect(requireWritablePatientMock).not.toHaveBeenCalled();
+    expectNoConferenceNoteWriteSideEffects();
+  });
+
+  it.each(['patient_missing', 'patient_foreign'])(
+    'does not distinguish an unavailable patient reference: %s',
+    async (patientId) => {
+      requireWritablePatientMock.mockResolvedValueOnce({
+        response: Response.json({ message: '患者が見つかりません' }, { status: 404 }),
+      });
+
+      const response = await POST(
+        createRequest({
+          method: 'POST',
+          body: createValidServiceManagerBody({ patient_id: patientId }),
+        }),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+        details: {
+          patient_id: ['指定された患者を確認できません'],
+        },
+      });
+      expect(requireWritablePatientMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ orgId: 'org_1' }),
+        patientId,
+      );
+      expect(patientFindFirstMock).not.toHaveBeenCalled();
+      expect(residenceFindFirstMock).not.toHaveBeenCalled();
+      expectNoConferenceNoteWriteSideEffects();
+    },
+  );
 
   it('rejects conference note creation when top-level and metadata patient IDs differ', async () => {
     const response = await POST(
@@ -1247,8 +1378,105 @@ describe('/api/conference-notes', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
-    expect(patientFindFirstMock).not.toHaveBeenCalled();
-    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        patient_id: ['指定された患者を確認できません'],
+      },
+    });
+    expect(requireWritablePatientMock).not.toHaveBeenCalled();
+    expectNoConferenceNoteWriteSideEffects();
+  });
+
+  it.each(['case_id', 'patient_id', 'facility_id'] as const)(
+    'rejects a whitespace-only %s before opening an org transaction',
+    async (field) => {
+      const response = await POST(
+        createRequest({
+          method: 'POST',
+          body: createValidServiceManagerBody({ [field]: '   ' }),
+        }),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expectNoConferenceNoteWriteSideEffects();
+    },
+  );
+
+  it.each(['facility_missing', 'facility_foreign'])(
+    'does not distinguish an unavailable facility reference: %s',
+    async (facilityId) => {
+      facilityFindFirstMock.mockResolvedValueOnce(null);
+
+      const response = await POST(
+        createRequest({
+          method: 'POST',
+          body: createValidServiceManagerBody({
+            patient_id: 'patient_1',
+            facility_id: facilityId,
+          }),
+        }),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+        details: {
+          facility_id: ['指定された施設を確認できません'],
+        },
+      });
+      expect(facilityFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          id: facilityId,
+          org_id: 'org_1',
+        },
+        select: {
+          id: true,
+        },
+      });
+      expectNoConferenceNoteWriteSideEffects();
+    },
+  );
+
+  it('validates a facility inferred from the primary residence before creating the note', async () => {
+    residenceFindFirstMock.mockResolvedValueOnce({ facility_id: 'facility_foreign' });
+    facilityFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: createValidServiceManagerBody({ patient_id: 'patient_1' }),
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        facility_id: ['指定された施設を確認できません'],
+      },
+    });
+    expect(facilityFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'facility_foreign',
+        org_id: 'org_1',
+      },
+      select: {
+        id: true,
+      },
+    });
+    expectNoConferenceNoteWriteSideEffects();
   });
 
   it('rejects service_manager notes without the required structured sections', async () => {

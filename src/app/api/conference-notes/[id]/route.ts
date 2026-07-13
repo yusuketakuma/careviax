@@ -11,6 +11,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { ConferenceDataSyncService } from '@/server/services/conference-data-sync';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import {
   buildConferenceContent,
   buildConferenceMetadata,
@@ -253,28 +254,44 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
             }),
           };
         }
-        const requestedPatientId =
-          mergedValidation.data.patient_id ??
-          (mergedValidation.data.metadata?.visit_brief?.patient_id?.trim()
-            ? mergedValidation.data.metadata.visit_brief.patient_id.trim()
-            : null);
+        const unavailablePatientDetails = mergedValidation.data.case_id
+          ? { case_id: ['指定されたケースを確認できません'] }
+          : { patient_id: ['指定された患者を確認できません'] };
+        const metadataPatientId = mergedValidation.data.metadata?.visit_brief?.patient_id?.trim()
+          ? mergedValidation.data.metadata.visit_brief.patient_id.trim()
+          : null;
+        const requestedPatientId = mergedValidation.data.patient_id ?? metadataPatientId;
+        if (
+          mergedValidation.data.patient_id &&
+          metadataPatientId &&
+          mergedValidation.data.patient_id !== metadataPatientId
+        ) {
+          return {
+            error: validationError('入力値が不正です', unavailablePatientDetails),
+          };
+        }
         if (
           careCase?.patient_id &&
           requestedPatientId &&
           requestedPatientId !== careCase.patient_id
         ) {
           return {
-            error: validationError('入力値が不正です', {
-              patient_id: ['指定された患者を確認できません'],
-            }),
+            error: validationError('入力値が不正です', unavailablePatientDetails),
           };
         }
         const resolvedPatientId =
-          careCase?.patient_id ??
-          mergedValidation.data.patient_id ??
-          (mergedValidation.data.metadata?.visit_brief?.patient_id?.trim()
-            ? mergedValidation.data.metadata.visit_brief.patient_id.trim()
-            : null);
+          careCase?.patient_id ?? mergedValidation.data.patient_id ?? metadataPatientId;
+        if (resolvedPatientId) {
+          const writable = await requireWritablePatient(tx, ctx, resolvedPatientId);
+          if ('response' in writable) {
+            if (writable.response.status === 404) {
+              return {
+                error: validationError('入力値が不正です', unavailablePatientDetails),
+              };
+            }
+            return { error: writable.response };
+          }
+        }
         const primaryResidence = resolvedPatientId
           ? await tx.residence.findFirst({
               where: {
@@ -287,6 +304,26 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
               },
             })
           : null;
+        const resolvedFacilityId =
+          mergedValidation.data.facility_id ?? primaryResidence?.facility_id ?? null;
+        const resolvedFacility = resolvedFacilityId
+          ? await tx.facility.findFirst({
+              where: {
+                id: resolvedFacilityId,
+                org_id: ctx.orgId,
+              },
+              select: {
+                id: true,
+              },
+            })
+          : null;
+        if (resolvedFacilityId && !resolvedFacility) {
+          return {
+            error: validationError('入力値が不正です', {
+              facility_id: ['指定された施設を確認できません'],
+            }),
+          };
+        }
         const metadataBilling =
           normalizedMetadata?.billing && typeof normalizedMetadata.billing === 'object'
             ? normalizedMetadata.billing
@@ -309,7 +346,7 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
           where: { id },
           data: {
             patient_id: resolvedPatientId,
-            facility_id: mergedValidation.data.facility_id ?? primaryResidence?.facility_id ?? null,
+            facility_id: resolvedFacilityId,
             note_type: resolvedNoteType,
             title: mergedValidation.data.title,
             content: normalizedContent,

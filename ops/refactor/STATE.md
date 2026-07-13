@@ -54,7 +54,28 @@
 
 ## 直近の作業
 
-- codex3 + codex1 integration: QUERY-SHAPE-VISIT-BRIEF-CASE-SCOPE-003N (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+- codex4 + codex1 integration: AUTHZ-CONFERENCE-REF-SCOPE-001 (DONE, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    ConferenceNote POST/PATCH routes/tests、create/update validation、patient writable guard、case/facility/patient schema、sync/audit transaction、installed
+    Next 16.2.9 Route Handler guide、API/auth/raw-read/module guardsを確認した。ConferenceNoteの3参照はnullable StringだけでFK/relationがなく、POSTの
+    facilityとPATCHのpatient/facilityをorg検証せず保存できた。旧ID schemaはtrim後空文字を許し、truthy guardを迂回できた。
+  - files changed / correctness / security / privacy:
+    POST/PATCH transaction内でcaseとexplicit/derived patient、explicit/primary-residence由来facilityを`ctx.orgId`内に解決し、case-patient整合と
+    `requireWritablePatient`を全write/audit/sync前に確認する。Case経由のmissing/cross-org/mismatch/case-derived patient 404は同じgeneric 400
+    `VALIDATION_ERROR` + neutral `details.case_id`へ統一し、patient-onlyとfacilityも存在・tenantを区別しないfield detailにした。Createのcase/patient/
+    facilityとupdateのpatient/facilityは`trim().min(1).optional()`で空白だけをorg transaction前に拒否する。Primary note exact org-scoped 404、到達可能な
+    archived patient 409、success DTO/no-store、item+audit+sync transactionを維持し、拒否応答にPHI/IDを追加していない。
+  - performance / stability / independent review:
+    ループ、unbounded read、network、retry、cache、lockを追加していない。POSTは旧direct patient readをshared writable guardへ置換し、facilityなしはpatient
+    read数不変、facilityありもfacility存在確認を加えるだけ。PATCHは参照がある時だけindexed single-row patient/facility guardを各1件追加する。Whitespace
+    denialはDB read/write 0へ改善。初回独立reviewでcase経由response差とblank ID bypassをblockし、Codex4修正後の再reviewは両件close・INTEGRATE判定した。
+  - validation / remaining / rollback:
+    Codex4 FREEZE後にcodex1がdiff/schema/guard/write orderingを独立reviewし、focused 3 files / 82 tests、API authz 0、API shape 0/0、route auth
+    176 allowlisted / 252 direct / 0 new、raw-read org 117 allowlisted / 0 new、module boundary 0/0、exact5 ESLint/Prettier/diffをPASS。Oracle、schema/
+    migration、production data access、long gateなし。Guard確認後の並行archiveは既存`DATA-ARCHIVE-WRITE-SERIALIZATION-001`、既存invalid参照の有無と
+    remediationは新規`DATA-CONFERENCE-REF-INVENTORY-001`へ分離した。RollbackはこのcommitのrevertでDB/data rollback不要。
+
+- codex3 + codex1 integration: QUERY-SHAPE-VISIT-BRIEF-CASE-SCOPE-003N (DONE; parent remains Partial, 2026-07-13; implementation `f73d983f6`, PUSHED).
   - current task / files inspected / root cause:
     visit-brief service/focused test、全production caller、patient detail assignment scope、private package boundary、query-shape/read-SLO/raw-org guardsを確認した。
     Serviceがcallerから明示case scopeを受け取れるにもかかわらず、各briefで患者全caseを追加取得するunbounded `careCase.findMany`を常時実行し、

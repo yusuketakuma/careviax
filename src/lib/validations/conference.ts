@@ -400,9 +400,9 @@ export function normalizeConferenceStructuredContent(
 
 export const createConferenceNoteSchema = z
   .object({
-    case_id: z.string().trim().optional(),
-    patient_id: z.string().trim().optional(),
-    facility_id: z.string().trim().optional(),
+    case_id: z.string().trim().min(1).optional(),
+    patient_id: z.string().trim().min(1).optional(),
+    facility_id: z.string().trim().min(1).optional(),
     note_type: conferenceNoteTypeSchema.optional(),
     conference_type: conferenceNoteTypeSchema.optional(),
     title: z.string().min(1).max(200),
@@ -492,8 +492,8 @@ export const createConferenceNoteSchema = z
 
 export const updateConferenceNoteSchema = z
   .object({
-    patient_id: z.string().trim().optional(),
-    facility_id: z.string().trim().optional(),
+    patient_id: z.string().trim().min(1).optional(),
+    facility_id: z.string().trim().min(1).optional(),
     note_type: conferenceNoteTypeSchema.optional(),
     conference_type: conferenceNoteTypeSchema.optional(),
     title: z.string().min(1).max(200).optional(),
