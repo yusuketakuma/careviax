@@ -55,6 +55,27 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-002A (DONE; parent remains Partial, 2026-07-14; implementation `d11727a20`).
+  - current task / files inspected / root cause:
+    Direct-auth success cache境界の0 routes収束後、shared response/auth/request ALS/logger/security event/audit、PHOS Lambdaの既存correlation実装、
+    AuditLog schema、`API-CONTRACT-002/003`仕様、installed Next route/data-security guideを確認した。Nextの標準auth routeはrequest traceを持たず、
+    認証成功・失敗・想定外500・SSE応答から相関IDを追跡できなかった。一方、受信`x-request-id`を信頼すると識別子偽装になり、
+    一般AuditLogの既存`changes` shapeへの一括注入は業務差分contractを壊すため、foundationと残伝播を分離した。
+  - files changed / bugs found / correctness / security / privacy / performance:
+    `request-correlation.ts`を追加し、server-owned UUID request ID、128文字以下の`[A-Za-z0-9._:-]`だけを許すinbound correlation ID、
+    unsafe/blank時のrequest ID fallback、`X-Request-Id` / `X-Correlation-Id`応答headerを共通化した。`requireAuthContext`は認証前に一度だけ
+    traceを生成し、success context/ALS、全auth security event、direct auth failure応答へ同一IDを伝播する。`withAuthContext`はNextResponse/
+    plain streaming Response、想定外500に同一headerを付与し、PHI-safe loggerはvalidated trace用の`correlationId`をallowlist化した。Security eventは
+    安全なIDだけをAuditLog `changes`へ保存し、raw path/body/provider error/PHIは追加しない。DB query/network/payload bodyは不変で、requestあたりUUID生成と
+    2 headersのみを追加した。
+  - validation results / remaining work / next action / rollback:
+    Request correlation/auth/security/logger focused 5 files / 61 tests、auth/security/protected route regression 9 files / 676 passed + 1 skipped、exact ESLint/
+    Prettier、8 GiB aggregate typecheck/no-unused、route-auth 150 allowlisted / 214 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、
+    module boundary 0/0、frontend contract、client schema 361 backed / 0 allowlisted、Plans/format/diffをPASS。最初のtypecheckは実行中の型修正で結果を採用せず
+    停止し、変更後の8 GiB実行を最終PASSとした。Schema/migration/production mutation/deploy/Oracleなし。非視覚server/API変更のため
+    imagegen/browserなし。親`API-CONTRACT-002`にはsuccess meta/error body、一般AuditLog、job/outbox伝播が残る。次は既存error code利用を棚卸し、
+    unknown codeを拒否できるcanonical registry foundationを小さく導入する。Rollbackは`d11727a20`のrevertでDB/data rollback不要。
+
 - codex1: API-CONTRACT-001FZPATIENTLIFECYCLEAUTH (DONE; parent remains Partial, 2026-07-14; implementation `a3fe6f405`).
   - current task / files inspected / root cause:
     Billing Close push/parity後の最後の2 routesとしてPatient archive/restore PATCHを選定した。両route/test、patient archive summary、protected PATCH matrix、
