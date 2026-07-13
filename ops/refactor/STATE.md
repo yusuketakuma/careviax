@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: QUERY-SHAPE-PATIENT-BOARD-STREAMING-003P (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: QUERY-SHAPE-PATIENT-BOARD-STREAMING-003P (DONE; parent remains Partial, 2026-07-14; implementation `c5fc8ec08`, `PUSHED`).
   - current task / files inspected / root cause:
     Goal再開時にattachment、`Plans.md`、本STATE、dirty tree、feature branch/deploy triggerを復元し、未push 6 commitsを
     `agent/continuous-improvement-20260712`へnon-force pushしてorigin parity `0 0`を確認した。次のP1としてpatient board route/test、
