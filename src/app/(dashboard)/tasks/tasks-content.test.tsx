@@ -175,10 +175,12 @@ vi.mock('@/components/ui/select', async () => {
     Select: ({
       value,
       onValueChange,
+      disabled,
       children,
     }: {
       value?: string;
       onValueChange?: (value: string) => void;
+      disabled?: boolean;
       children: React.ReactNode;
     }) => {
       const trigger = findTrigger(children);
@@ -187,6 +189,7 @@ vi.mock('@/components/ui/select', async () => {
           id={trigger?.props.id}
           className={trigger?.props.className}
           value={value ?? ''}
+          disabled={disabled}
           onChange={(event) => onValueChange?.(event.currentTarget.value)}
         >
           <option value="" />
@@ -211,7 +214,8 @@ type BulkCompleteMutationOptions = {
 };
 
 type CreateRequestMutationOptions = {
-  mutationFn: () => Promise<unknown>;
+  mutationFn: (retrySubmission?: unknown) => Promise<unknown>;
+  onSuccess: () => void;
   onError: (error: unknown) => void;
 };
 
@@ -326,16 +330,15 @@ function taskListQueryKeys() {
 }
 
 function getCreateRequestMutationOptions() {
-  const options = useMutationMock.mock.calls
-    .map((call) => call[0] as CreateRequestMutationOptions | undefined)
-    .filter((candidate) => candidate?.mutationFn.length === 0)
-    .at(-1);
+  const options = useMutationMock.mock.calls.at(-2)?.[0] as
+    | CreateRequestMutationOptions
+    | undefined;
   expect(options).toBeTruthy();
   return options as CreateRequestMutationOptions;
 }
 
 function getBulkCompleteMutationOptions() {
-  const options = useMutationMock.mock.calls[1]?.[0] as BulkCompleteMutationOptions | undefined;
+  const options = useMutationMock.mock.calls.at(-1)?.[0] as BulkCompleteMutationOptions | undefined;
   expect(options).toBeTruthy();
   return options as BulkCompleteMutationOptions;
 }
@@ -465,12 +468,18 @@ describe('TasksContent', () => {
     ).toBeTruthy();
     expect(useQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        queryKey: ['tasks', 'org_1', 'status=pending&assigned_to=user_1'],
+        queryKey: ['tasks', 'org_1', 'user_1', 'owner', 'status=pending&assigned_to=user_1'],
       }),
     );
     expect(useQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        queryKey: ['tasks-health-board', 'org_1', '/api/tasks/health-board?scope=mine&limit=500'],
+        queryKey: [
+          'tasks-health-board',
+          'org_1',
+          'user_1',
+          'owner',
+          '/api/tasks/health-board?scope=mine&limit=500',
+        ],
       }),
     );
     expect(screen.getByTestId('staff-workload-board')).toBeTruthy();
@@ -592,6 +601,8 @@ describe('TasksContent', () => {
     expect(healthBoardQueryKeys()).toContainEqual([
       'tasks-health-board',
       'org_1',
+      'user_1',
+      'owner',
       '/api/tasks/health-board?scope=role_default&limit=500&task_type=conference_action_item',
     ]);
 
@@ -603,14 +614,16 @@ describe('TasksContent', () => {
       expect(healthBoardQueryKeys()).toContainEqual([
         'tasks-health-board',
         'org_1',
+        'user_1',
+        'owner',
         '/api/tasks/health-board?scope=role_default&limit=500&risk_domain=medication',
       ]);
     });
     expect(
       healthBoardQueryKeys().some(
         (queryKey) =>
-          String(queryKey[2]).includes('risk_domain=medication') &&
-          String(queryKey[2]).includes('task_type=conference_action_item'),
+          String(queryKey.at(-1)).includes('risk_domain=medication') &&
+          String(queryKey.at(-1)).includes('task_type=conference_action_item'),
       ),
     ).toBe(false);
     const healthBoardSection = screen
@@ -630,11 +643,15 @@ describe('TasksContent', () => {
     expect(taskListQueryKeys()).toContainEqual([
       'tasks',
       'org_1',
+      'user_1',
+      'owner',
       'status=pending&assigned_to=user_1',
     ]);
     expect(healthBoardQueryKeys()).toContainEqual([
       'tasks-health-board',
       'org_1',
+      'user_1',
+      'owner',
       '/api/tasks/health-board?scope=mine&limit=500',
     ]);
 
@@ -646,17 +663,21 @@ describe('TasksContent', () => {
       expect(healthBoardQueryKeys()).toContainEqual([
         'tasks-health-board',
         'org_1',
+        'user_1',
+        'owner',
         '/api/tasks/health-board?scope=team&limit=500',
       ]);
     });
     expect(taskListQueryKeys()).toContainEqual([
       'tasks',
       'org_1',
+      'user_1',
+      'owner',
       'status=pending&assigned_to=user_1',
     ]);
-    expect(taskListQueryKeys().some((queryKey) => String(queryKey[2]) === 'status=pending')).toBe(
-      false,
-    );
+    expect(
+      taskListQueryKeys().some((queryKey) => String(queryKey.at(-1)) === 'status=pending'),
+    ).toBe(false);
   });
 
   it('keeps new health board filter controls at the 44px touch target size', () => {
@@ -1045,6 +1066,8 @@ describe('TasksContent', () => {
         queryKey: [
           'tasks',
           'org_1',
+          'user_1',
+          'owner',
           'status=pending&related_entity_type=dispense_task&related_entity_id=task-tanaka',
         ],
       }),
@@ -1149,7 +1172,7 @@ describe('TasksContent', () => {
     expect(screen.getByTestId('staff-work-request-submit')).toHaveProperty('disabled', true);
   });
 
-  it('clears the selected assignee when the org or authenticated actor fingerprint changes', async () => {
+  it('partitions task caches and clears the assignee when the authenticated actor changes', async () => {
     let authState: { currentUser: { id: string; role: 'owner' | 'admin' } } = {
       currentUser: { id: 'user_1', role: 'owner' },
     };
@@ -1174,25 +1197,96 @@ describe('TasksContent', () => {
         queryKey: ['staff-workload', 'org_1', 'user_1', 'admin'],
       }),
     );
+    expect(taskListQueryKeys()).toContainEqual([
+      'tasks',
+      'org_1',
+      'user_1',
+      'admin',
+      'status=pending',
+    ]);
+    expect(healthBoardQueryKeys()).toContainEqual([
+      'tasks-health-board',
+      'org_1',
+      'user_1',
+      'admin',
+      '/api/tasks/health-board?scope=role_default&limit=500',
+    ]);
 
     fireEvent.change(assigneeSelect, { target: { value: 'user_2' } });
     expect(assigneeSelect).toHaveProperty('value', 'user_2');
 
     authState = { currentUser: { id: 'user_3', role: 'owner' } };
-    useOrgIdMock.mockReturnValue('org_2');
     rendered.rerender(<TasksContent />);
 
     assigneeSelect = screen.getByRole('combobox', { name: '依頼先' });
     expect(assigneeSelect).toHaveProperty('value', '');
     expect(useQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        queryKey: ['staff-workload', 'org_2', 'user_3', 'owner'],
+        queryKey: ['staff-workload', 'org_1', 'user_3', 'owner'],
       }),
     );
+    expect(taskListQueryKeys()).toContainEqual([
+      'tasks',
+      'org_1',
+      'user_3',
+      'owner',
+      'status=pending',
+    ]);
+    expect(healthBoardQueryKeys()).toContainEqual([
+      'tasks-health-board',
+      'org_1',
+      'user_3',
+      'owner',
+      '/api/tasks/health-board?scope=role_default&limit=500',
+    ]);
     await expect(getCreateRequestMutationOptions().mutationFn()).rejects.toThrow(
       '基本権限上、この依頼を割り当てられるスタッフを選択してください',
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not enable task PHI queries before the authenticated actor is hydrated', () => {
+    let authState: {
+      currentUser: { id: string | null; role: 'owner' | null };
+    } = {
+      currentUser: { id: null, role: null },
+    };
+    useAuthStoreMock.mockImplementation((selector: (state: typeof authState) => unknown) =>
+      selector(authState),
+    );
+
+    const rendered = render(<TasksContent />);
+
+    const initialTaskQuery = useQueryMock.mock.calls.find(
+      (call) => call[0]?.queryKey?.[0] === 'tasks',
+    )?.[0];
+    const initialHealthQuery = useQueryMock.mock.calls.find(
+      (call) => call[0]?.queryKey?.[0] === 'tasks-health-board',
+    )?.[0];
+    expect(initialTaskQuery).toEqual(expect.objectContaining({ enabled: false }));
+    expect(initialHealthQuery).toEqual(expect.objectContaining({ enabled: false }));
+
+    authState = { currentUser: { id: 'user_1', role: 'owner' } };
+    rendered.rerender(<TasksContent />);
+
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ['tasks', 'org_1', 'user_1', 'owner', 'status=pending'],
+        enabled: true,
+      }),
+    );
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: [
+          'tasks-health-board',
+          'org_1',
+          'user_1',
+          'owner',
+          '/api/tasks/health-board?scope=role_default&limit=500',
+        ],
+        enabled: true,
+      }),
+    );
   });
 
   it('fails closed without POST when the provider exposes no assignable staff', async () => {
@@ -1306,13 +1400,21 @@ describe('TasksContent', () => {
 
   it('reuses one dedupe key after response loss so a retry cannot create a duplicate task', async () => {
     const invalidateQueriesMock = vi.fn();
+    const mutateMock = vi.fn();
     useQueryClientMock.mockReturnValue({ invalidateQueries: invalidateQueriesMock });
+    useMutationMock.mockReturnValue({ mutate: mutateMock, isPending: false });
     const fetchMock = vi
       .fn()
       .mockRejectedValueOnce(new TypeError('network response lost'))
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ data: { id: 'task_1' } }), {
           status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { id: 'task_2' } }), {
+          status: 201,
           headers: { 'Content-Type': 'application/json' },
         }),
       );
@@ -1344,20 +1446,55 @@ describe('TasksContent', () => {
 
     expect(screen.getByText(/通信の途中で送信結果を確認できませんでした/)).toBeTruthy();
     expect(screen.getByRole('combobox', { name: '依頼先' })).toHaveProperty('value', 'user_2');
+    expect(screen.getByRole('combobox', { name: '依頼先' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('combobox', { name: '依頼内容' })).toHaveProperty('disabled', true);
+    expect(
+      screen.getByLabelText('優先度', { selector: 'select#work-request-priority' }),
+    ).toHaveProperty('disabled', true);
+    expect(screen.getByLabelText('件名')).toHaveProperty('disabled', true);
+    expect(screen.getByLabelText('期限')).toHaveProperty('disabled', true);
+    expect(screen.getByLabelText('補足')).toHaveProperty('disabled', true);
+    expect(screen.getByTestId('staff-work-request-submit')).toHaveProperty('disabled', true);
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['tasks', 'org_1'] });
     expect(invalidateQueriesMock).toHaveBeenCalledWith({
       queryKey: ['tasks-health-board', 'org_1'],
     });
 
-    await expect(createRequestOptions.mutationFn()).resolves.toBeUndefined();
-    const firstBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
-      dedupe_key: string;
-    };
-    const secondBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as {
-      dedupe_key: string;
-    };
+    fireEvent.click(screen.getByRole('button', { name: '同じ内容で結果を確認' }));
+    expect(mutateMock).toHaveBeenCalledTimes(1);
+    const retrySubmission = mutateMock.mock.calls[0]?.[0];
+    expect(retrySubmission).toMatchObject({
+      payload: { title: '応答喪失でも重複しない依頼', assigned_to: 'user_2' },
+      dedupeKey: expect.stringMatching(/^staff-work-request:/),
+    });
+
+    await expect(createRequestOptions.mutationFn(retrySubmission)).resolves.toBeUndefined();
+    const firstBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<
+      string,
+      unknown
+    >;
+    const secondBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as Record<
+      string,
+      unknown
+    >;
     expect(firstBody.dedupe_key).toMatch(/^staff-work-request:/);
-    expect(secondBody.dedupe_key).toBe(firstBody.dedupe_key);
+    expect(secondBody).toEqual(firstBody);
+
+    await act(async () => {
+      createRequestOptions.onSuccess();
+    });
+    expect(screen.queryByText(/通信の途中で送信結果を確認できませんでした/)).toBeNull();
+    expect(screen.getByLabelText('件名')).toHaveProperty('disabled', false);
+    fireEvent.change(screen.getByLabelText('件名'), {
+      target: { value: '結果確認後の新しい依頼' },
+    });
+    await expect(getCreateRequestMutationOptions().mutationFn()).resolves.toBeUndefined();
+    const thirdBody = JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body)) as Record<
+      string,
+      unknown
+    >;
+    expect(thirdBody.dedupe_key).toMatch(/^staff-work-request:/);
+    expect(thirdBody.dedupe_key).not.toBe(firstBody.dedupe_key);
   });
 
   it('locks assignment and persistently refreshes candidates after a create-time eligibility drift', async () => {

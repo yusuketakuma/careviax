@@ -177,6 +177,30 @@ type WorkRequestSubmissionError = Error & {
 
 type WorkRequestSubmissionFailure = 'assignment_eligibility' | 'outcome_unknown' | 'rejected';
 
+type WorkRequestPayload = {
+  task_type: WorkRequestType;
+  title: string;
+  description?: string;
+  priority: string;
+  assigned_to: string;
+  due_date: string | null;
+  related_entity_type?: string;
+  related_entity_id?: string;
+  metadata: {
+    source: 'staff_work_request';
+    requested_by: string | null;
+    request_type_label: string;
+    related_entity_type?: string;
+    related_entity_id?: string;
+  };
+};
+
+type WorkRequestSubmission = {
+  payload: WorkRequestPayload;
+  payloadFingerprint: string;
+  dedupeKey: string;
+};
+
 function createWorkRequestSubmissionError(input: {
   status: number | null;
   outcomeUnknown: boolean;
@@ -366,10 +390,7 @@ function TasksWorkspace({
   const [requestDueDate, setRequestDueDate] = useState('');
   const [requestTitle, setRequestTitle] = useState(initialWorkRequestTitle ?? '');
   const [requestDescription, setRequestDescription] = useState(initialWorkRequestDescription ?? '');
-  const requestSubmissionRef = useRef<{
-    payloadFingerprint: string;
-    dedupeKey: string;
-  } | null>(null);
+  const requestSubmissionRef = useRef<WorkRequestSubmission | null>(null);
   const [requestSubmissionFailure, setRequestSubmissionFailure] =
     useState<WorkRequestSubmissionFailure | null>(null);
   const [assignmentEligibilityRecoveryBaseline, setAssignmentEligibilityRecoveryBaseline] =
@@ -407,7 +428,7 @@ function TasksWorkspace({
   });
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['tasks', orgId, queryParams],
+    queryKey: ['tasks', orgId, currentUserId, currentUserRole, queryParams],
     queryFn: async () => {
       return fetchAllCursorPages<Task>({
         path: '/api/tasks',
@@ -417,7 +438,7 @@ function TasksWorkspace({
         itemSchema: taskSchema,
       });
     },
-    enabled: !!orgId,
+    enabled: Boolean(orgId && currentUserId && currentUserRole),
   });
 
   const tasks = data?.data ?? [];
@@ -428,7 +449,7 @@ function TasksWorkspace({
     isError: isHealthBoardError,
     refetch: refetchHealthBoard,
   } = useQuery({
-    queryKey: ['tasks-health-board', orgId, healthBoardApiPath],
+    queryKey: ['tasks-health-board', orgId, currentUserId, currentUserRole, healthBoardApiPath],
     queryFn: async () => {
       const res = await fetch(healthBoardApiPath, {
         headers: buildOrgHeaders(orgId),
@@ -439,7 +460,7 @@ function TasksWorkspace({
       });
       return payload.data;
     },
-    enabled: !!orgId,
+    enabled: Boolean(orgId && currentUserId && currentUserRole),
   });
 
   const {
@@ -484,6 +505,7 @@ function TasksWorkspace({
     staffWorkloadDataUpdatedAt > assignmentEligibilityRecoveryBaseline;
   const isAssignmentEligibilityRecoveryRequired =
     assignmentEligibilityRecoveryBaseline !== null && !hasRecoveredAssignmentEligibility;
+  const isOutcomeUnknownRecoveryRequired = requestSubmissionFailure === 'outcome_unknown';
   const staffWorkload =
     !isStaffWorkloadError || canRetainCachedStaffWorkload ? (staffWorkloadData?.data ?? []) : [];
   const assignableStaffWorkload =
@@ -506,39 +528,46 @@ function TasksWorkspace({
       : null;
 
   const createRequestMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedAssignee) {
-        throw new Error('基本権限上、この依頼を割り当てられるスタッフを選択してください');
-      }
-      const dueDateIso = requestDueDate
-        ? new Date(`${requestDueDate}T23:59:00+09:00`).toISOString()
-        : null;
-      const requestPayload = {
-        task_type: requestType,
-        title: requestTitle.trim(),
-        description: requestDescription.trim() || undefined,
-        priority: requestPriority,
-        assigned_to: requestAssignee,
-        due_date: dueDateIso,
-        related_entity_type: initialRelatedEntityType ?? undefined,
-        related_entity_id: initialRelatedEntityId ?? undefined,
-        metadata: {
-          source: 'staff_work_request',
-          requested_by: currentUserId,
-          request_type_label: selectedRequestTypeLabel,
+    mutationFn: async (retrySubmission: WorkRequestSubmission | undefined) => {
+      let submission: WorkRequestSubmission;
+      if (retrySubmission) {
+        submission = retrySubmission;
+      } else {
+        if (!selectedAssignee) {
+          throw new Error('基本権限上、この依頼を割り当てられるスタッフを選択してください');
+        }
+        const dueDateIso = requestDueDate
+          ? new Date(`${requestDueDate}T23:59:00+09:00`).toISOString()
+          : null;
+        const requestPayload: WorkRequestPayload = {
+          task_type: requestType,
+          title: requestTitle.trim(),
+          description: requestDescription.trim() || undefined,
+          priority: requestPriority,
+          assigned_to: requestAssignee,
+          due_date: dueDateIso,
           related_entity_type: initialRelatedEntityType ?? undefined,
           related_entity_id: initialRelatedEntityId ?? undefined,
-        },
-      };
-      const payloadFingerprint = JSON.stringify(requestPayload);
-      let submission = requestSubmissionRef.current;
-      if (!submission || submission.payloadFingerprint !== payloadFingerprint) {
-        submission = {
-          payloadFingerprint,
-          dedupeKey: createClientIdempotencyKey('staff-work-request'),
+          metadata: {
+            source: 'staff_work_request',
+            requested_by: currentUserId,
+            request_type_label: selectedRequestTypeLabel,
+            related_entity_type: initialRelatedEntityType ?? undefined,
+            related_entity_id: initialRelatedEntityId ?? undefined,
+          },
         };
-        requestSubmissionRef.current = submission;
+        const payloadFingerprint = JSON.stringify(requestPayload);
+        const previousSubmission = requestSubmissionRef.current;
+        submission =
+          previousSubmission?.payloadFingerprint === payloadFingerprint
+            ? previousSubmission
+            : {
+                payload: requestPayload,
+                payloadFingerprint,
+                dedupeKey: createClientIdempotencyKey('staff-work-request'),
+              };
       }
+      requestSubmissionRef.current = submission;
 
       let res: Response;
       try {
@@ -546,7 +575,7 @@ function TasksWorkspace({
           method: 'POST',
           headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify({
-            ...requestPayload,
+            ...submission.payload,
             dedupe_key: submission.dedupeKey,
           }),
         });
@@ -598,17 +627,19 @@ function TasksWorkspace({
       );
     },
   });
-  const submitDisabledReason = isStaffWorkloadError
-    ? 'スタッフ情報を再取得するまで依頼できません'
-    : isAssignmentEligibilityRecoveryRequired
-      ? '割当候補を再確認するまで依頼できません'
-      : !selectedAssignee
-        ? '基本権限上、この依頼を割り当てられるスタッフを選択してください'
-        : !requestTitle.trim()
-          ? '件名を入力してください'
-          : createRequestMutation.isPending
-            ? '依頼を送信中です'
-            : null;
+  const submitDisabledReason = isOutcomeUnknownRecoveryRequired
+    ? '先に初回送信の結果を確認してください'
+    : isStaffWorkloadError
+      ? 'スタッフ情報を再取得するまで依頼できません'
+      : isAssignmentEligibilityRecoveryRequired
+        ? '割当候補を再確認するまで依頼できません'
+        : !selectedAssignee
+          ? '基本権限上、この依頼を割り当てられるスタッフを選択してください'
+          : !requestTitle.trim()
+            ? '件名を入力してください'
+            : createRequestMutation.isPending
+              ? '依頼を送信中です'
+              : null;
 
   const bulkCompleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
@@ -827,15 +858,18 @@ function TasksWorkspace({
             const isAssignable =
               !isStaffWorkloadError &&
               !isAssignmentEligibilityRecoveryRequired &&
+              !isOutcomeUnknownRecoveryRequired &&
               staff.assignable_work_request_types.includes(requestType);
             const availabilityDescriptionId = `staff-workload-availability-${staff.id}`;
             const availabilityDescription = isStaffWorkloadError
               ? 'スタッフ情報を再取得するまで、この依頼先は選択できません'
               : isAssignmentEligibilityRecoveryRequired
                 ? '割当候補の再確認が完了するまで、この依頼先は選択できません'
-                : isAssignable
-                  ? '基本権限上、この依頼を割り当てできます'
-                  : '基本権限上、この依頼は割り当てできません';
+                : isOutcomeUnknownRecoveryRequired
+                  ? '初回送信の結果を確認するまで、この依頼先は変更できません'
+                  : isAssignable
+                    ? '基本権限上、この依頼を割り当てできます'
+                    : '基本権限上、この依頼は割り当てできません';
             const availabilityContextId = isStaffWorkloadError
               ? 'staff-workload-error'
               : isAssignmentEligibilityRecoveryRequired
@@ -967,6 +1001,7 @@ function TasksWorkspace({
             <Label htmlFor="work-request-type">依頼内容</Label>
             <Select
               value={requestType}
+              disabled={isOutcomeUnknownRecoveryRequired}
               onValueChange={(value) => {
                 if (!isWorkRequestType(value)) return;
                 setRequestType(value);
@@ -995,6 +1030,7 @@ function TasksWorkspace({
             <Label htmlFor="work-request-assignee">依頼先</Label>
             <Select
               value={selectedAssignee?.id ?? ''}
+              disabled={isOutcomeUnknownRecoveryRequired}
               onValueChange={(value) => setRequestAssignee(value ?? '')}
             >
               <SelectTrigger
@@ -1058,14 +1094,17 @@ function TasksWorkspace({
                 className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive"
               >
                 <p>
-                  通信の途中で送信結果を確認できませんでした。入力内容を変えずに再送すると、同じ依頼として照合され重複作成を防げます。
+                  通信の途中で送信結果を確認できませんでした。入力内容を固定しています。同じ依頼を再送して結果を照合してください。
                 </p>
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => createRequestMutation.mutate()}
-                  disabled={createRequestMutation.isPending}
+                  onClick={() => {
+                    const submission = requestSubmissionRef.current;
+                    if (submission) createRequestMutation.mutate(submission);
+                  }}
+                  disabled={createRequestMutation.isPending || !requestSubmissionRef.current}
                 >
                   同じ内容で結果を確認
                 </Button>
@@ -1084,6 +1123,7 @@ function TasksWorkspace({
             <Label htmlFor="work-request-priority">優先度</Label>
             <Select
               value={requestPriority}
+              disabled={isOutcomeUnknownRecoveryRequired}
               onValueChange={(value) => setRequestPriority(value ?? '')}
             >
               <SelectTrigger id="work-request-priority">
@@ -1105,6 +1145,7 @@ function TasksWorkspace({
             <Input
               id="work-request-title"
               value={requestTitle}
+              disabled={isOutcomeUnknownRecoveryRequired}
               onChange={(event) => setRequestTitle(event.target.value)}
               placeholder="例: 山田さんの訪問に行ってほしい"
             />
@@ -1115,6 +1156,7 @@ function TasksWorkspace({
               id="work-request-due-date"
               type="date"
               value={requestDueDate}
+              disabled={isOutcomeUnknownRecoveryRequired}
               onChange={(event) => setRequestDueDate(event.target.value)}
             />
           </div>
@@ -1124,6 +1166,7 @@ function TasksWorkspace({
           <Textarea
             id="work-request-description"
             value={requestDescription}
+            disabled={isOutcomeUnknownRecoveryRequired}
             onChange={(event) => setRequestDescription(event.target.value)}
             placeholder="対象患者、理由、完了条件を短く記録"
           />
@@ -1139,8 +1182,13 @@ function TasksWorkspace({
           </div>
           <Button
             type="button"
-            onClick={() => createRequestMutation.mutate()}
-            disabled={!selectedAssignee || !requestTitle.trim() || createRequestMutation.isPending}
+            onClick={() => createRequestMutation.mutate(undefined)}
+            disabled={
+              isOutcomeUnknownRecoveryRequired ||
+              !selectedAssignee ||
+              !requestTitle.trim() ||
+              createRequestMutation.isPending
+            }
             aria-describedby={
               submitDisabledReason ? 'staff-work-request-submit-disabled-reason' : undefined
             }
