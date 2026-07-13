@@ -709,6 +709,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/partner-pharmacies',
   '/api/patient-self-reports',
   '/api/patient-self-reports/:id',
+  '/api/patient-self-reports/:id/convert-to-task',
   '/api/patient-share-cases',
   '/api/patient-share-cases/:id',
   '/api/patient-share-cases/:id/activate',

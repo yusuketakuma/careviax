@@ -36,6 +36,20 @@ function lineNumberAt(source: string, index: number) {
   return source.slice(0, index).split('\n').length;
 }
 
+function isFileStorageHandleManagedS3Client(filePath: string, source: string, matchIndex: number) {
+  if (filePath !== 'src/server/services/file-storage.ts') return false;
+
+  const declarationContext = source.slice(Math.max(0, matchIndex - 80), matchIndex);
+  const clientVariable = declarationContext.match(/const\s+([A-Za-z_$][\w$]*)\s*=\s*$/)?.[1];
+  if (!clientVariable) return false;
+
+  // The factory keeps the presigner as a no-network handle and wraps the send handle.
+  const factoryContext = source.slice(matchIndex, Math.min(source.length, matchIndex + 500));
+  return new RegExp(`createFileStorageS3ClientHandles\\([^;]*\\b${clientVariable}\\b[^;]*\\)`).test(
+    factoryContext,
+  );
+}
+
 describe('AWS client timeout contract', () => {
   it('keeps production AWS SDK clients behind bounded timeout wrappers', () => {
     const violations = SOURCE_ROOTS.flatMap((root) =>
@@ -45,6 +59,7 @@ describe('AWS client timeout contract', () => {
           const matchIndex = match.index ?? 0;
           const wrapperContext = source.slice(Math.max(0, matchIndex - 180), matchIndex);
           if (TIMEOUT_WRAPPER_PATTERN.test(wrapperContext)) return [];
+          if (isFileStorageHandleManagedS3Client(filePath, source, matchIndex)) return [];
           return `${filePath}:${lineNumberAt(source, matchIndex)} ${match[0]}`;
         });
       }),

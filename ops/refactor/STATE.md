@@ -54,7 +54,21 @@
 
 ## 直近の作業
 
-- codex1: QUERY-SHAPE-DAYBOARD-TYPECHECK-003I1 (DONE, 2026-07-13; implementation in this scoped commit).
+- codex1: FULL-GATE-CONTRACT-RATCHET-001 (DONE focused; full rerun pending, 2026-07-13; implementation in this scoped commit).
+  - current task / root cause / files inspected:
+    Serialized `pnpm test`を完走し、1552 files / 16191 tests PASS、2 contract tests FAILを確認した。新設済み
+    `/api/patient-self-reports/[id]/convert-to-task`が`API_ROUTE_TEMPLATES`へ未登録でroute catalogが1件driftした。またS3 checksum sliceの
+    no-network presigning client + timeout-wrapped send client分離をconstructor-only timeout guardが2件のunwrapped clientと誤判定した。
+    rate-limit catalog/test、AWS timeout contract、file-storage handles/runtime testsを確認した。
+  - files changed / security / correctness:
+    Conversion route templateをcatalogへ追加した。AWS guardは一般wrapper必須を維持し、`src/server/services/file-storage.ts`内でconstructorを
+    named variableへ代入し、その同じvariableが`createFileStorageS3ClientHandles(...)`の引数に入る場合だけを認識するfile-scoped判定を追加した。
+    Factoryはpresignerをno-network handle、send clientを`withAwsClientTimeout`へ分離する既存実装のままで、retry/HTTP timeoutも不変。
+  - validation / remaining / rollback:
+    rate-limit + AWS contract + file-storage focused 3 files / 137 tests、scoped ESLint/Prettier/diff PASS。Guardを広域allowlist化せず、第三の
+    unbound S3 constructorは引き続きfailする。次はfull Vitest rerunとNext build。RollbackはこのcommitのrevertでDB/data rollback不要。
+
+- codex1: QUERY-SHAPE-DAYBOARD-TYPECHECK-003I1 (DONE, 2026-07-13; implementation `3561268e4`, PUSHED).
   - current task / root cause / files inspected:
     Serialized full gateの`pnpm typecheck`を実行し、初回はNode default 4 GiB heapでOOM、8 GiB rerunでは
     `src/app/api/visit-schedules/day-board/route.ts:1295`のPrisma `findMany` argument推論errorを再現した。`003I`で追加したhidden
@@ -221,7 +235,7 @@
     scoped ESLint、Prettier、`git diff --check` PASS。親の全cardinality materializeとBFF分離は引き続き
     `PERF-DB-PATIENT-BOARD-CURSOR`で追跡する。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
 
-- codex2 + codex1 integration: AUTHZ-EXTERNAL-SELF-REPORT-TASK-SCOPE-001 (DONE, 2026-07-13; implementation in this scoped commit).
+- codex2 + codex1 integration: AUTHZ-EXTERNAL-SELF-REPORT-TASK-SCOPE-001 (DONE, 2026-07-13; implementation `640e27389`, PUSHED).
   - current task / root cause / files inspected:
     External self-report UI/provider、generic Task POST、self-report PATCH、Task registry/presentation、daily follow-up job、assignment predicate、
     archive guard、RLS transaction/auditと関連testsを確認した。UIは患者/申告由来のtask payloadをclientで組み、generic Task作成後に
