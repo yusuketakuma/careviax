@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZTASKBULKAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZTASKBULKAUTH (DONE; parent remains Partial, 2026-07-14; implementation `d97606035`).
   - current task / files inspected / root cause:
     Case transition push/parity後の残8 routesからTasks bulk POSTを選定した。Route/test、bulk response contract/messages、dashboard assignment scope、
     task write guard、schedule operational-task UI、allowlist、installed Next guideを確認した。既存handlerは100件cap、assignment、archive/dedicated
