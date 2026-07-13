@@ -140,7 +140,7 @@
         "visit schedules scoped by org_id, case_id, and scheduled_date"
       ],
       "owner": "PERF-DB-READ-SLO-001",
-      "notes": "Patient board remains a cursor redesign target. Do not add deeper all-patient relation includes."
+      "notes": "Implementation evidence: collectPatientBoardRows uses stable name_kana/id ordering, take 80, and id cursor/skip batches for both the exact main result and foundation count basis. Preserve filtered_result_exact and do not add deeper all-patient relation includes."
     },
     {
       "family": "patient-detail-initial",
@@ -291,15 +291,6 @@
     }
   ],
   "known_take_drift": [
-    {
-      "route": "/api/patients/board",
-      "method": "GET",
-      "model": "patient",
-      "rule": "slo_take_missing",
-      "expectedCount": 2,
-      "owner": "PERF-DB-SLO-TAKE-LINT-001",
-      "reason": "Patient board main load and its foundation count-basis twin are bounded by org-scoped RLS filters plus post-query application pagination (limit search param), not a query-level take/cursor. Query-level bound enforcement is tracked by the patients-board cursor/take follow-up; until then this is a known declared-vs-implemented gap, not a regression."
-    },
     {
       "route": "/api/care-reports/today-workspace",
       "method": "GET",

@@ -16,6 +16,7 @@ import {
   derivePatientBoardCard,
   matchesPatientBoardFoundationIssue,
   type DerivedPatientBoardCard,
+  type PatientBoardQueryRow,
 } from './patient-board-card-model';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import {
@@ -41,6 +42,7 @@ import type {
 
 const DEFAULT_PATIENT_BOARD_PAGE_LIMIT = 60;
 const MAX_PATIENT_BOARD_PAGE_LIMIT = 100;
+const PATIENT_BOARD_QUERY_BATCH_SIZE = 80;
 const PATIENT_BOARD_CURSOR_TTL_MS = 10 * 60 * 1000;
 const BLOCKED_REASONS_LIMIT = 2;
 const PATIENT_BOARD_CONTACT_LIMIT = 10;
@@ -748,22 +750,39 @@ const authenticatedGET = withAuthContext(
       },
     } satisfies Prisma.PatientSelect;
 
+    const collectPatientBoardRows = async (where: Prisma.PatientWhereInput) => {
+      const rows: PatientBoardQueryRow[] = [];
+      let cursor: string | undefined;
+
+      // Exact facets and priority sorting still need the complete filtered result. Read it in
+      // stable, SLO-sized keyset batches so no Prisma query can materialize an unbounded patient
+      // set. The id tie-breaker makes the cursor deterministic when kana values are equal.
+      while (true) {
+        const batch = await prisma.patient.findMany({
+          where,
+          orderBy: [{ name_kana: 'asc' }, { id: 'asc' }],
+          take: PATIENT_BOARD_QUERY_BATCH_SIZE,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          select: patientBoardSelect,
+        });
+        rows.push(...batch);
+
+        if (batch.length < PATIENT_BOARD_QUERY_BATCH_SIZE) break;
+        cursor = batch[batch.length - 1]?.id;
+        if (!cursor) break;
+      }
+
+      return rows;
+    };
+
     const shouldFetchFoundationCountBasis =
       foundationIssue != null && hasBoardWhereClause(foundationPrefilterWhere);
 
     const [patients, foundationCountPatients, assignedTotal, auditTasks, openExceptions] =
       await Promise.all([
-        prisma.patient.findMany({
-          where: patientWhere,
-          orderBy: [{ name_kana: 'asc' }, { id: 'asc' }],
-          select: patientBoardSelect,
-        }),
+        collectPatientBoardRows(patientWhere),
         shouldFetchFoundationCountBasis
-          ? prisma.patient.findMany({
-              where: basePatientWhere,
-              orderBy: [{ name_kana: 'asc' }, { id: 'asc' }],
-              select: patientBoardSelect,
-            })
+          ? collectPatientBoardRows(basePatientWhere)
           : Promise.resolve(null),
         prisma.patient.count({ where: basePatientWhere }),
         // 次にやること: 監査待ち(麻薬を最優先)の先頭 1 件

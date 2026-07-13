@@ -94,6 +94,11 @@
       "path": "src/app/api/visit-schedules/day-board/route.ts",
       "owner": "QUERY-SHAPE-DAYBOARD-WATCHLIST-003I",
       "reason": "Day-board is a representative scheduling read path whose staff, visit, proposal, vehicle, and operational-task fan-out must stay bounded and stable."
+    },
+    {
+      "path": "src/app/api/patients/board/route.ts",
+      "owner": "QUERY-SHAPE-WATCHLIST-003J",
+      "reason": "Patient board is a critical PHI read path whose exact facets and priority ordering must use stable bounded patient batches."
     }
   ]
 }

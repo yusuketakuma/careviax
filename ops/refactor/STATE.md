@@ -54,6 +54,24 @@
 
 ## 直近の作業
 
+- codex3 + codex1 integration: QUERY-SHAPE-PATIENT-BOARD-WATCHLIST-003J (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+  - current task / root cause / files inspected:
+    patients board route/card model/tests、query-shape watchlist/checker、read-path SLO registry/drift checkerを確認した。main resultと
+    foundation count basisの`Patient.findMany`はstable orderを持つ一方でquery-level `take`がなく、representative watchlistへ追加すると
+    `slo_take_missing` 2件となった。既存APIは安全優先度、facets、exact countを全filtered cardから導出するため、先頭pageだけをDBで
+    pre-limitすると後方のurgent patientを欠落させる。
+  - files changed / correctness / performance / privacy:
+    両patient readを`name_kana asc, id asc`のstable keyset、`take 80`、`cursor{id}` + `skip 1`のshared collectorへ接続した。
+    81行fixtureで2 queriesに分割されても末尾のurgent patientが先頭へsortされ、exact `total_count=81`、`has_more=true`、payload
+    300 KiB以下、代表全5 modeled DB callsを維持する。DTO、filter、priority、assignment、org/RLS、PHI projection、count_basisは不変。
+    Query-level unbounded debtは2→0となりpatients boardをzero-debt watchlistへ追加した。ただし全filtered cardをrequest内で
+    materializeする既存設計とcard relation projectionは残るため、親`PERF-DB-PATIENT-BOARD-CURSOR`を完了扱いにしない。
+  - validation / security / remaining / rollback:
+    Codex3 validationとcodex1独立rerunでroute/model 2 files / 39 tests、`pnpm db:read-slo:check`、
+    `pnpm db:query-shape:check` 0 allowlisted / 0 new、scoped ESLint、Prettier、`git diff --check` PASS。
+    Auth/authz/DB schema/migration/write path変更なし。残は全cardinality materializeをmain cursor/BFF分離で解消し、実seeded payload/
+    latency/query-count evidenceを取ること。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
 - codex1: PLANS-ACTIVE-QUEUE-DONE-DRIFT-001 (DONE, 2026-07-13; ledger repair in this scoped commit).
   - current task / root cause / files changed:
     `pnpm plans:active:check`をcurrent HEADで再実行し、Implementation queueの分類件数がexpected 44 / actual 48でfailすることを確認した。

@@ -682,7 +682,10 @@ describe('/api/patients/board', () => {
     }))!;
 
     expect(response.status).toBe(200);
-    expect(patientFindManyMock.mock.calls[0][0]).not.toHaveProperty('take');
+    expect(patientFindManyMock.mock.calls[0][0]).toMatchObject({
+      orderBy: [{ name_kana: 'asc' }, { id: 'asc' }],
+      take: 80,
+    });
     const json = await response.json();
     expect(json.data).toHaveLength(1);
     expect(json.data[0]).toMatchObject({
@@ -837,7 +840,15 @@ describe('/api/patients/board', () => {
         },
       ],
     };
-    patientFindManyMock.mockResolvedValue(patients);
+    patientFindManyMock.mockImplementation(
+      (args: { cursor?: { id: string }; skip?: number; take?: number }) => {
+        const cursorIndex = args.cursor
+          ? patients.findIndex((patient) => patient.id === args.cursor?.id)
+          : -1;
+        const start = cursorIndex >= 0 ? cursorIndex + (args.skip ?? 0) : 0;
+        return Promise.resolve(patients.slice(start, start + (args.take ?? patients.length)));
+      },
+    );
     patientCountMock.mockResolvedValue(81);
 
     const response = (await GET(createRequest('?scope=all&foundation_issue=needs_confirmation'), {
@@ -845,7 +856,8 @@ describe('/api/patients/board', () => {
     }))!;
 
     expect(response.status).toBe(200);
-    const json = await response.json();
+    const bodyText = await response.text();
+    const json = JSON.parse(bodyText);
     expect(json.data).toHaveLength(60);
     expect(json.data[0]).toMatchObject({
       patient_id: 'patient_urgent_last_in_db_order',
@@ -854,6 +866,27 @@ describe('/api/patients/board', () => {
     expect(json.meta.total_count).toBe(81);
     expect(json.meta.has_more).toBe(true);
     expect(json.meta.next_cursor).toEqual(expect.any(String));
+    expect(Number(response.headers.get('content-length'))).toBeLessThanOrEqual(307_200);
+
+    const patientQueries = patientFindManyMock.mock.calls.map(([args]) => args);
+    expect(patientQueries).toHaveLength(2);
+    expect(patientQueries.filter((args) => args.cursor == null)).toHaveLength(1);
+    expect(
+      patientQueries.filter((args) => args.cursor?.id === 'patient_79' && args.skip === 1),
+    ).toHaveLength(1);
+    for (const args of patientQueries) {
+      expect(args).toMatchObject({
+        orderBy: [{ name_kana: 'asc' }, { id: 'asc' }],
+        take: 80,
+        select: expect.any(Object),
+      });
+    }
+    expect(
+      patientFindManyMock.mock.calls.length +
+        patientCountMock.mock.calls.length +
+        dispenseTaskFindManyMock.mock.calls.length +
+        workflowExceptionFindManyMock.mock.calls.length,
+    ).toBe(5);
   });
 
   it('returns stable cursor pages with exact non-page-derived counts', async () => {
