@@ -23,6 +23,13 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -50,7 +57,11 @@ vi.mock('@/lib/utils/logger', () => ({
   },
 }));
 
-import { POST, GET } from './route';
+import { POST as rawPOST, GET as rawGET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
 function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {
@@ -123,6 +134,13 @@ describe('/api/presence', () => {
       const res = await POST(req);
       expect(res!.status).toBe(200);
       expect(await res!.json()).toEqual({ data: { ok: true } });
+      expect(requireAuthContextMock).toHaveBeenCalledWith(
+        expect.any(NextRequest),
+        expect.objectContaining({
+          permission: 'canViewDashboard',
+          message: 'プレゼンス更新の権限がありません',
+        }),
+      );
       expect(visitRecordFindFirstMock).toHaveBeenCalledWith({
         where: {
           id: 'vr_1',
@@ -339,6 +357,13 @@ describe('/api/presence', () => {
       expect(res!.status).toBe(200);
       const json = await res!.json();
       expect(json).toEqual({ data: entries });
+      expect(requireAuthContextMock).toHaveBeenCalledWith(
+        expect.any(NextRequest),
+        expect.objectContaining({
+          permission: 'canViewDashboard',
+          message: 'プレゼンス取得の権限がありません',
+        }),
+      );
       expect(visitRecordFindFirstMock).toHaveBeenCalledWith({
         where: {
           id: 'vr_1',

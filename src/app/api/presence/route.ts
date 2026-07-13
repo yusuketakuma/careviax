@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, success, validationError } from '@/lib/api/response';
@@ -19,16 +19,9 @@ const postBodySchema = z.object({
   active_field: z.string().max(200).nullable().default(null),
 });
 
-export async function POST(req: NextRequest) {
+async function updatePresence(req: NextRequest, ctx: AuthContext) {
   // プレゼンス登録はカード参加（同じカードを見ている人）であり、特権的な変更操作ではない。
   // 事務（clerk）も参加者として表示されるため、調剤権限ではなく組織メンバーレベルの canViewDashboard でゲートする。
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: 'プレゼンス更新の権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -81,15 +74,8 @@ export async function POST(req: NextRequest) {
   return success({ data: { ok: true } });
 }
 
-export async function GET(req: NextRequest) {
+async function listPresence(req: NextRequest, ctx: AuthContext) {
   // プレゼンス取得もカード参加者の閲覧であり、組織メンバーレベルの canViewDashboard でゲートする。
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: 'プレゼンス取得の権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { searchParams } = new URL(req.url);
   const entity_type = searchParams.get('entity_type');
   const entity_id = searchParams.get('entity_id');
@@ -108,3 +94,13 @@ export async function GET(req: NextRequest) {
 
   return success({ data: entries });
 }
+
+export const POST = withAuthContext(updatePresence, {
+  permission: 'canViewDashboard',
+  message: 'プレゼンス更新の権限がありません',
+});
+
+export const GET = withAuthContext(listPresence, {
+  permission: 'canViewDashboard',
+  message: 'プレゼンス取得の権限がありません',
+});

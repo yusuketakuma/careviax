@@ -55,6 +55,24 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZPRESENCEAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Push Subscription push/parity後に残12 routesをlive再分類し、Patient archive/restoreはpolicy gap隣接のため回避してPresence POST/GETを選定した。
+    Route/test、collaboration entity access、presence store/client/hook/avatar、org realtime policy、rate-limit registry、allowlist、installed Next guideを確認した。
+    既存handlersはcanViewDashboard、org/assignment entity access、best-effort broadcast、access-before-readを持つ一方、2 direct auth callsの参加者名・
+    active fieldを含むsuccess/validation/not-found responseが標準no-store/performance/sanitized-500境界を通らなかった。
+  - files changed / bugs found / correctness / security / privacy / performance:
+    POST/GETをtyped named handler + `withAuthContext`へ移行し、permission message、ctx、strict body/query/entity validation、entity access、user-name fallback、
+    in-memory heartbeat、realtime channel/payload、broadcast failure時の200継続とPHI-safe warning metadata、GET entriesを維持した。Test auth mockをwrapper
+    signatureへ同期し、両permission/messageを明示回帰した。Allowlist 1 entryを除去し、direct debtは162→161 routes、227→225 calls、
+    helper未使用success routeは12→11へ減った。DB/read/store/network/payloadは増減させず、共通header/performance計測だけを追加した。
+  - validation results / remaining work / next action / rollback:
+    Baseline/focused route + checker 2 files / 18 tests、collaboration/realtime/client/hook領域7 files / 54 tests、exact ESLint/Prettier、8 GiB
+    typecheck / no-unused、route-auth 161 allowlisted / 225 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、module boundary 0/0、
+    frontend contract、client schema 361 backed / 0 allowlisted、Plans active、format/diffをPASS。新規security/privacy/performance issueなし。Schema/migration/
+    production data/deploy/Oracleなし。非視覚API変更のためimagegen/browserなし。親にはdirect-auth success未収束11 routes、request_id/correlation_id、
+    error registryが残る。次は残routeを再scoreし、archive/restoreはhuman/high-risk policy gap隣接のため引き続き回避する。Rollbackはscoped commitのrevert。
+
 - codex1: API-CONTRACT-001FZPUSHSUBAUTH (DONE; parent remains Partial, 2026-07-14; implementation `9bc37e7c6`).
   - current task / files inspected / root cause:
     Intervention push/parity後に残13 routesを再scoreし、既存`PUSH-SUB-ATOMICITY-001`でatomic RLS hardening済みのPush Subscription POST/DELETEを
