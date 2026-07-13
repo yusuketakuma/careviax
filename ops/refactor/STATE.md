@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZSHIFTTEMPLATEAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZSHIFTTEMPLATEAUTH (DONE; parent remains Partial, 2026-07-14; implementation `ce97918ba`).
   - current task / files inspected / root cause:
     Goal attachment、HEAD/parity、dirty tree、Plans/STATE/memory/gbrain、route-auth allowlist、Pharmacist Shift Templates root/detail/apply routes/tests、
     admin shifts strict consumer、rate-limit registry、installed Next 16.2.9 Route Handler/Data Security guideを確認した。GET/POST/DELETE/applyは
