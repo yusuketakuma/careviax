@@ -114,6 +114,9 @@ import type {
   PatientHomeOperationsSnapshot,
 } from '@/types/patient-home-operations';
 import {
+  buildCaseRiskCockpitResponseSchema,
+  buildCaseRiskTaskResolutionResponseSchema,
+  buildCaseRiskTaskSyncResponseSchema,
   buildPatientDocumentsResponseSchema,
   buildPatientHeaderSummaryResponseSchema,
 } from './card-workspace-response-schemas';
@@ -4940,10 +4943,10 @@ export function CardWorkspace({
       const response = await fetch(buildCaseRiskCockpitPath(commandCenterCaseForQuery.id), {
         headers: buildOrgHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: CaseRiskCockpitResponse }>(
-        response,
-        'Case Risk Cockpit の取得に失敗しました',
-      );
+      const payload = await readApiJson<{ data: CaseRiskCockpitResponse }>(response, {
+        fallbackMessage: 'Case Risk Cockpit の取得に失敗しました',
+        schema: buildCaseRiskCockpitResponseSchema(commandCenterCaseForQuery.id),
+      });
       return payload.data;
     },
     enabled: Boolean(orgId && commandCenterCaseForQuery?.id && isDetailTabMounted('command')),
@@ -5304,10 +5307,10 @@ export function CardWorkspace({
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
       });
-      const payload = await readApiJson<{ data: CaseRiskTaskSyncUiResult }>(
-        response,
-        'リスクタスク同期に失敗しました',
-      );
+      const payload = await readApiJson<{ data: CaseRiskTaskSyncUiResult }>(response, {
+        fallbackMessage: 'リスクタスク同期に失敗しました',
+        schema: buildCaseRiskTaskSyncResponseSchema(caseId, patientId),
+      });
       return payload.data;
     },
     onSuccess: async (result) => {
@@ -5342,10 +5345,10 @@ export function CardWorkspace({
           reason_code: input.reasonCode,
         }),
       });
-      const payload = await readApiJson<{ data: CaseRiskTaskResolutionUiResult }>(
-        response,
-        'リスクタスク免除に失敗しました',
-      );
+      const payload = await readApiJson<{ data: CaseRiskTaskResolutionUiResult }>(response, {
+        fallbackMessage: 'リスクタスク免除に失敗しました',
+        schema: buildCaseRiskTaskResolutionResponseSchema(input.caseId, input.taskId),
+      });
       return payload.data;
     },
     onSuccess: async (result) => {

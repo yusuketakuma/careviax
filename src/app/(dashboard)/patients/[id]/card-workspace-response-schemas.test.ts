@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildCaseRiskCockpitResponseSchema,
+  buildCaseRiskTaskResolutionResponseSchema,
+  buildCaseRiskTaskSyncResponseSchema,
   buildPatientDocumentsResponseSchema,
   buildPatientHeaderSummaryResponseSchema,
 } from './card-workspace-response-schemas';
@@ -104,5 +107,94 @@ describe('card workspace response schemas', () => {
     expect(buildPatientHeaderSummaryResponseSchema('patient_1').safeParse(response).success).toBe(
       false,
     );
+  });
+
+  it('validates case risk identity and aggregate counts', () => {
+    const response = {
+      data: {
+        generated_at: '2026-07-13T00:00:00.000Z',
+        patient: { id: 'patient_1', display_id: null, name: '患者 太郎' },
+        case: { id: 'case_1', display_id: null, status: 'active' },
+        overall: {
+          status: 'blocked',
+          blocking_count: 1,
+          urgent_count: 0,
+          warning_count: 0,
+        },
+        sections: [
+          {
+            domain: 'medication',
+            label: '薬剤リスク',
+            status: 'blocked',
+            findings: [
+              {
+                key: 'stock',
+                domain: 'medication',
+                severity: 'blocking',
+                title: '残薬確認',
+                detail: '残薬確認が必要です。',
+                patient_id: 'patient_1',
+                case_id: 'case_1',
+                action_href: '/patients/patient_1',
+                action_label: '確認する',
+                resolution_state: 'open',
+                source: 'computed',
+              },
+            ],
+          },
+        ],
+        next_actions: [],
+      },
+    };
+    const schema = buildCaseRiskCockpitResponseSchema('case_1');
+    expect(schema.safeParse(response).success).toBe(true);
+    response.data.overall.blocking_count = 0;
+    expect(schema.safeParse(response).success).toBe(false);
+    response.data.overall.blocking_count = 1;
+    response.data.sections[0]!.findings[0]!.case_id = 'case_2';
+    expect(schema.safeParse(response).success).toBe(false);
+  });
+
+  it('validates risk task sync counts and strips task refs', () => {
+    const response = {
+      data: {
+        generated_at: '2026-07-13T00:00:00.000Z',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        overall_status: 'attention',
+        taskable_finding_count: 1,
+        skipped_finding_count: 0,
+        upserted_task_count: 1,
+        upserted_tasks: [{ id: 'task_1', display_id: null }],
+        resolved_stale_task_count: 0,
+        resolved_stale_tasks: [],
+      },
+    };
+    const parsed = buildCaseRiskTaskSyncResponseSchema('case_1', 'patient_1').safeParse(response);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) throw new Error('risk task sync response should parse');
+    expect(parsed.data.data).not.toHaveProperty('upserted_tasks');
+    response.data.upserted_task_count = 2;
+    expect(
+      buildCaseRiskTaskSyncResponseSchema('case_1', 'patient_1').safeParse(response).success,
+    ).toBe(false);
+  });
+
+  it('requires the requested risk task resolution and audited single update', () => {
+    const response = {
+      data: {
+        task_id: 'task_1',
+        display_id: null,
+        case_id: 'case_1',
+        resolution_state: 'waived',
+        task_status: 'cancelled',
+        updated_count: 1,
+        audit_logged: true,
+      },
+    };
+    const schema = buildCaseRiskTaskResolutionResponseSchema('case_1', 'task_1');
+    expect(schema.safeParse(response).success).toBe(true);
+    response.data.updated_count = 0;
+    expect(schema.safeParse(response).success).toBe(false);
   });
 });

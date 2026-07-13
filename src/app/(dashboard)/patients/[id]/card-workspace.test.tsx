@@ -1566,7 +1566,10 @@ describe('CardWorkspace', () => {
               skipped_finding_count: 3,
               upserted_task_count: 2,
               resolved_stale_task_count: 1,
-              upserted_tasks: [{ id: 'task_1', display_id: 'tsk0000000001' }],
+              upserted_tasks: [
+                { id: 'task_1', display_id: 'tsk0000000001' },
+                { id: 'task_2', display_id: 'tsk0000000002' },
+              ],
               resolved_stale_tasks: [{ id: 'task_9', display_id: 'tsk0000000009' }],
             },
           }),
