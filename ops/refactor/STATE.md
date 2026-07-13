@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZAUTHNOSTORE (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZAUTHNOSTORE (DONE; parent remains Partial, 2026-07-14; implementation `ef25ef695`).
   - current task / files inspected / root cause:
     Goal objective、`Plans.md`、本STATE、git/branch parity、gbrain、API contract ratchets、`src/lib/auth/context.ts`/test、
     sensitive response helper、route-performance wrapper、installed Next 16.2.9 data-security guide、PH-OS UI/UX SSOTのcache規範を再確認した。
@@ -76,7 +76,9 @@
     client schema 361 backed / 0 allowlisted、raw-org 116 / 0 new、module boundary 0/0、frontend contract、Plans active、colors、typography、
     client PHI-log/displayをPASSした。視覚・copy・layout・motion変更のないshared server/auth contract sliceのためimagegen/browserを省略した。
     Schema/migration/production data/deploy/Oracleなし。親にはdirect-auth success responseで`withSensitiveNoStore`を未使用の25 routes、
-    request_id/correlation_id、error registryが残る。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+    request_id/correlation_id、error registryが残る。Reusable decisionはgbrain
+    `projects/careviax/decisions/2026-07-14/authenticated-response-no-store-boundary`へPHI/secretなしで記録した。
+    Rollbackは`ef25ef695`のrevertでDB/data rollback不要。
 
 - codex1: QUERY-SHAPE-PATIENT-BOARD-STREAMING-003P (DONE; parent remains Partial, 2026-07-14; implementation `c5fc8ec08`, `PUSHED`).
   - current task / files inspected / root cause:
