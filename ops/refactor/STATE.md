@@ -54,6 +54,33 @@
 
 ## 直近の作業
 
+- codex2 + codex1 integration: AUTHZ-EXTERNAL-SELF-REPORT-TASK-SCOPE-001 (DONE, 2026-07-13; implementation in this scoped commit).
+  - current task / root cause / files inspected:
+    External self-report UI/provider、generic Task POST、self-report PATCH、Task registry/presentation、daily follow-up job、assignment predicate、
+    archive guard、RLS transaction/auditと関連testsを確認した。UIは患者/申告由来のtask payloadをclientで組み、generic Task作成後に
+    self-report statusを別PATCHしていたため、前半だけ成功するpartial state、stale assignment、`patient_self_report` relationによる
+    patient task visibility不整合を作れた。Dailyのgeneric upsertは既存completed/cancelled taskも毎run pendingへ戻し得た。
+  - files changed / correctness / security / privacy:
+    UIは`id`と`updated_at`だけをdedicated POSTへ送り、serverはreport単位advisory lockと単一`withOrgContext`内でorg/report、
+    current patient assignment、archive、versionを再検証する。同じtransactionでdeterministic task upsert、`converted_to_task` CAS、
+    PHI-safe auditを完結させ、missing/inaccessibleは同一404、stale/state/archiveは副作用前409とした。Task relationは`patient`、
+    metadataは`report_id`を含み、assigneeはprimary→backup→assigned pharmacist/trainee converter→null team queue。既存nonnull assigneeと
+    terminal/in-progress statusは維持し、response-loss retryでもlegacy relation/metadataだけを収束させる。Dailyも同じservice/selectorへ
+    接続し、global patient prefetchは`org_id:patient_id`一致かつ非archiveだけを処理するため、別org/missing/archived参照をtask/
+    notificationへ流さない。患者名、申告subject、contact timeをaudit/client payloadへ追加していない。
+  - independent review / UI / performance:
+    Codex1初回current-tree rerunは、cross-org/archive hardening後のpositive fixture shape不足を5 failuresとして検出した。Codex2が
+    `org_id`/`archived_at` fixturesと3拒否caseを追補し、再runで全PASSへ修復した。PH-OS UI/UX SSOTと`emil-design-eng`を照合し、
+    既存44px action、pending二重送信防止、固定回復文言を維持。視覚再配置のないdata/action source変更なのでimagegenを省略した。
+    Patient prefetchのquery回数は不変で、必要なorg/archive fieldsだけを追加。DB schema/migration、新dependency、external送信なし。
+  - validation / remaining / rollback:
+    Codex2 finalとCodex1独立rerunでUI/route/service/daily 4 files / 45 tests、exact-path ESLint、Prettier、`git diff --check`、
+    route-auth 176 allowlisted / 252 direct / 0 new、API response shape 0/0、task registry 77/144、module boundary 0/0、client schema
+    361/0、client PHI display/log guards PASS。Installed Next 16.2.9 Route Handler guideを確認しasync params契約に適合。
+    残るpatient archiveとの厳密なconcurrent linearizationは既存`DATA-ARCHIVE-WRITE-SERIALIZATION-001`で追跡し、本sliceでDB lockを
+    推測追加しない。全parallel slice後にserialized typecheck/no-unused/full test/build。Rollbackはこのscoped commitのrevertで
+    DB/data rollback不要。
+
 - codex3 + codex1 integration: QUERY-SHAPE-PATIENT-BOARD-WATCHLIST-003J (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
   - current task / root cause / files inspected:
     patients board route/card model/tests、query-shape watchlist/checker、read-path SLO registry/drift checkerを確認した。main resultと
@@ -283,9 +310,9 @@
     DB/data rollback不要。gbrain: `projects/careviax/decisions/2026-07-13/anchor-daily-jobs-to-japan-business-dates`。
 
 - parallel assignments (ACTIVE, 2026-07-13):
-  - codex2: `API-STATUS-AUTHZ-403-AS-400-001` READY、AST guard追補とcodex1独立review済み、scoped統合中。
-  - codex3: `PERF-DB-PATIENT-BOARD-CURSOR` / `QUERY-SHAPE-WATCHLIST-003J`。patients main boardのstable cursor、
-    bounded select/take、payload/query budgetを7-path API/service/model sliceで実装中。
+  - codex2: `AUTHZ-EXTERNAL-SELF-REPORT-TASK-SCOPE-001` READY修復をcodex1が独立review済み、scoped統合中。
+  - codex3: `QUERY-SHAPE-REPORT-WORKSPACE-WATCHLIST-003K`。report today-workspaceのbounded stable readsと
+    zero-debt watchlist admissionをexact 3 pathsで実装中。
   - codex4: `S3-OBJECT-LOCK-PRESIGNED-CHECKSUM-001`。legacy prescriptionのfinal upload File digestをFE→presign→metadata→
     HeadObject complete verificationまで一貫させる10-path FE/BE sliceを実装中。
   - codex1: completed IDsのactive queue driftを修復し、single ledger、exact staging、各slice独立review、

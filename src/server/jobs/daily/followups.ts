@@ -2,14 +2,14 @@ import { addDays } from 'date-fns';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { runJob } from '../runner';
-import {
-  buildCommunityFollowupTaskKey,
-  buildGeocodeTaskKey,
-  buildSelfReportTaskKey,
-} from '../daily-helpers';
+import { buildCommunityFollowupTaskKey, buildGeocodeTaskKey } from '../daily-helpers';
 import { scheduleManagementPlanReviewAlert } from '@/server/services/management-plans';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
+import {
+  buildPatientSelfReportTaskKey,
+  upsertPatientSelfReportTask,
+} from '@/server/services/patient-self-report-task';
 import { buildVisitScheduleContactFollowupTask } from '@/server/services/visit-schedule-communication';
 
 export async function checkManagementPlanReviews() {
@@ -184,7 +184,9 @@ export async function checkSelfReportFollowups() {
             },
             select: {
               id: true,
+              org_id: true,
               name: true,
+              archived_at: true,
               cases: {
                 where: {
                   status: { in: ['assessment', 'active', 'on_hold'] },
@@ -194,50 +196,45 @@ export async function checkSelfReportFollowups() {
                 select: {
                   id: true,
                   primary_pharmacist_id: true,
+                  backup_pharmacist_id: true,
                 },
               },
             },
           });
-    const patientMap = new Map(patients.map((patient) => [patient.id, patient]));
+    const patientMap = new Map(
+      patients.map((patient) => [`${patient.org_id}:${patient.id}`, patient]),
+    );
 
     for (const report of reports) {
-      const patient = patientMap.get(report.patient_id);
-      const careCase = patient?.cases[0];
-      const dueAt = report.requested_callback
-        ? addDays(new Date(report.created_at), 1)
-        : addDays(new Date(report.created_at), 2);
+      const patient = patientMap.get(`${report.org_id}:${report.patient_id}`);
+      if (!patient || patient.archived_at) continue;
+      const careCase = patient.cases[0];
 
       await withOrgContext(report.org_id, async (tx) => {
-        await upsertOperationalTask(tx, {
+        const task = await upsertPatientSelfReportTask(tx, {
           orgId: report.org_id,
-          taskType: 'patient_self_report_followup',
-          title: `${patient?.name ?? '患者'} からの自己申告対応`,
-          description: `${report.subject}${report.preferred_contact_time ? ` / 希望時間 ${report.preferred_contact_time}` : ''}`,
-          priority: report.requested_callback ? 'urgent' : 'high',
-          assignedTo: careCase?.primary_pharmacist_id ?? null,
-          dueDate: dueAt,
-          slaDueAt: dueAt,
-          relatedEntityType: 'patient_self_report',
-          relatedEntityId: report.id,
-          dedupeKey: buildSelfReportTaskKey(report.id),
-          metadata: {
-            patient_id: report.patient_id,
-            case_id: careCase?.id ?? null,
-            patient_name: patient?.name ?? null,
-            requested_callback: report.requested_callback,
-          },
+          reportId: report.id,
+          patientId: report.patient_id,
+          patientName: patient.name,
+          subject: report.subject,
+          preferredContactTime: report.preferred_contact_time,
+          requestedCallback: report.requested_callback,
+          createdAt: report.created_at,
+          caseId: careCase?.id ?? null,
+          primaryPharmacistId: careCase?.primary_pharmacist_id ?? null,
+          backupPharmacistId: careCase?.backup_pharmacist_id ?? null,
         });
 
-        if (careCase?.primary_pharmacist_id) {
+        if (task.assignedTo) {
           await dispatchNotificationEvent(tx, {
             orgId: report.org_id,
             eventType: 'patient_self_report_followup_due',
             type: report.requested_callback ? 'urgent' : 'business',
             title: '患者・家族の自己申告対応が必要です',
-            message: `${patient?.name ?? '患者'}さんの自己申告「${report.subject}」への対応が必要です。`,
+            message: `${patient.name}さんの自己申告「${report.subject}」への対応が必要です。`,
             link: '/external',
-            explicitUserIds: [careCase.primary_pharmacist_id],
-            dedupeKey: buildSelfReportTaskKey(report.id),
+            explicitUserIds: [task.assignedTo],
+            dedupeKey: buildPatientSelfReportTaskKey(report.id),
             metadata: {
               patient_id: report.patient_id,
               report_id: report.id,

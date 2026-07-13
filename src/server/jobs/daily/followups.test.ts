@@ -9,6 +9,7 @@ const {
   scheduleManagementPlanReviewAlertMock,
   dispatchNotificationEventMock,
   upsertOperationalTaskMock,
+  upsertPatientSelfReportTaskMock,
   withOrgContextMock,
   runJobMock,
 } = vi.hoisted(() => ({
@@ -20,6 +21,7 @@ const {
   scheduleManagementPlanReviewAlertMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
+  upsertPatientSelfReportTaskMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   runJobMock: vi.fn(async (_jobType: string, fn: () => Promise<unknown>) => fn()),
 }));
@@ -55,6 +57,11 @@ vi.mock('@/server/services/operational-tasks', () => ({
   upsertOperationalTask: upsertOperationalTaskMock,
 }));
 
+vi.mock('@/server/services/patient-self-report-task', () => ({
+  buildPatientSelfReportTaskKey: (reportId: string) => `patient-self-report:${reportId}`,
+  upsertPatientSelfReportTask: upsertPatientSelfReportTaskMock,
+}));
+
 vi.mock('@/server/services/visit-schedule-communication', () => ({
   buildVisitScheduleContactFollowupTask: vi.fn(),
 }));
@@ -74,6 +81,14 @@ beforeEach(() => {
   withOrgContextMock.mockImplementation(
     async (orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn({ orgId }),
   );
+  upsertPatientSelfReportTaskMock.mockImplementation(async (_tx, input) => ({
+    id: `task_${input.reportId}`,
+    displayId: null,
+    status: 'pending',
+    assignedTo:
+      input.primaryPharmacistId ?? input.backupPharmacistId ?? input.converterUserId ?? null,
+    created: true,
+  }));
 });
 
 describe('checkManagementPlanReviews', () => {
@@ -262,13 +277,29 @@ describe('checkSelfReportFollowups', () => {
     patientFindManyMock.mockResolvedValue([
       {
         id: 'patient_a',
+        org_id: 'org_a',
         name: '山田 太郎',
-        cases: [{ id: 'case_a', primary_pharmacist_id: 'pharmacist_a' }],
+        archived_at: null,
+        cases: [
+          {
+            id: 'case_a',
+            primary_pharmacist_id: 'pharmacist_a',
+            backup_pharmacist_id: 'backup_a',
+          },
+        ],
       },
       {
         id: 'patient_b',
+        org_id: 'org_b',
         name: '佐藤 花子',
-        cases: [{ id: 'case_b', primary_pharmacist_id: 'pharmacist_b' }],
+        archived_at: null,
+        cases: [
+          {
+            id: 'case_b',
+            primary_pharmacist_id: 'pharmacist_b',
+            backup_pharmacist_id: 'backup_b',
+          },
+        ],
       },
     ]);
 
@@ -303,19 +334,33 @@ describe('checkSelfReportFollowups', () => {
         created_at: new Date('2026-06-01T00:00:00.000Z'),
       },
     ]);
-    patientFindManyMock.mockResolvedValue([{ id: 'patient_a', name: '山田 太郎', cases: [] }]);
+    patientFindManyMock.mockResolvedValue([
+      {
+        id: 'patient_a',
+        org_id: 'org_a',
+        name: '山田 太郎',
+        archived_at: null,
+        cases: [],
+      },
+    ]);
 
     const result = await checkSelfReportFollowups();
 
     expect(result).toEqual({ processedCount: 1 });
-    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+    expect(upsertPatientSelfReportTaskMock).toHaveBeenCalledWith(
       { orgId: 'org_a' },
-      expect.objectContaining({ assignedTo: null }),
+      expect.objectContaining({
+        orgId: 'org_a',
+        reportId: 'report_a',
+        patientId: 'patient_a',
+        primaryPharmacistId: null,
+        backupPharmacistId: null,
+      }),
     );
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
   });
 
-  it('sets a 1-day due date when a callback was requested and 2 days otherwise (boundary)', async () => {
+  it('passes callback and creation-time inputs to the shared due-date policy', async () => {
     patientSelfReportFindManyMock.mockResolvedValue([
       {
         id: 'report_callback',
@@ -339,28 +384,204 @@ describe('checkSelfReportFollowups', () => {
     patientFindManyMock.mockResolvedValue([
       {
         id: 'patient_a',
+        org_id: 'org_a',
         name: '山田 太郎',
-        cases: [{ id: 'case_a', primary_pharmacist_id: 'p_a' }],
+        archived_at: null,
+        cases: [
+          {
+            id: 'case_a',
+            primary_pharmacist_id: 'p_a',
+            backup_pharmacist_id: 'backup_a',
+          },
+        ],
       },
     ]);
 
     await checkSelfReportFollowups();
 
-    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+    expect(upsertPatientSelfReportTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        relatedEntityId: 'report_callback',
-        priority: 'urgent',
-        dueDate: new Date('2026-06-02T00:00:00.000Z'),
+        reportId: 'report_callback',
+        requestedCallback: true,
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
       }),
     );
-    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+    expect(upsertPatientSelfReportTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        relatedEntityId: 'report_no_callback',
-        priority: 'high',
-        dueDate: new Date('2026-06-03T00:00:00.000Z'),
+        reportId: 'report_no_callback',
+        requestedCallback: false,
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
       }),
+    );
+  });
+
+  it('skips cross-org, missing, and archived patient references without task or notification side effects', async () => {
+    patientSelfReportFindManyMock.mockResolvedValue([
+      {
+        id: 'report_cross_org',
+        org_id: 'org_a',
+        patient_id: 'patient_foreign',
+        subject: '別組織参照',
+        preferred_contact_time: null,
+        requested_callback: false,
+        created_at: new Date('2026-06-01T00:00:00.000Z'),
+      },
+      {
+        id: 'report_missing',
+        org_id: 'org_a',
+        patient_id: 'patient_missing',
+        subject: '欠損参照',
+        preferred_contact_time: null,
+        requested_callback: false,
+        created_at: new Date('2026-06-01T00:00:00.000Z'),
+      },
+      {
+        id: 'report_archived',
+        org_id: 'org_a',
+        patient_id: 'patient_archived',
+        subject: 'アーカイブ参照',
+        preferred_contact_time: null,
+        requested_callback: false,
+        created_at: new Date('2026-06-01T00:00:00.000Z'),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([
+      {
+        id: 'patient_foreign',
+        org_id: 'org_b',
+        name: '別組織患者',
+        archived_at: null,
+        cases: [
+          {
+            id: 'case_foreign',
+            primary_pharmacist_id: 'foreign_pharmacist',
+            backup_pharmacist_id: null,
+          },
+        ],
+      },
+      {
+        id: 'patient_archived',
+        org_id: 'org_a',
+        name: 'アーカイブ患者',
+        archived_at: new Date('2026-05-01T00:00:00.000Z'),
+        cases: [
+          {
+            id: 'case_archived',
+            primary_pharmacist_id: 'archived_pharmacist',
+            backup_pharmacist_id: null,
+          },
+        ],
+      },
+    ]);
+
+    const result = await checkSelfReportFollowups();
+
+    expect(result).toEqual({ processedCount: 3 });
+    expect(patientFindManyMock).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['patient_foreign', 'patient_missing', 'patient_archived'] },
+      },
+      select: expect.objectContaining({
+        id: true,
+        org_id: true,
+        name: true,
+        archived_at: true,
+      }),
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(upsertPatientSelfReportTaskMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+  });
+
+  it('uses backup assignment when the active case has no primary pharmacist', async () => {
+    patientSelfReportFindManyMock.mockResolvedValue([
+      {
+        id: 'report_a',
+        org_id: 'org_a',
+        patient_id: 'patient_a',
+        subject: '体調不良',
+        preferred_contact_time: null,
+        requested_callback: false,
+        created_at: new Date('2026-06-01T00:00:00.000Z'),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([
+      {
+        id: 'patient_a',
+        org_id: 'org_a',
+        name: '山田 太郎',
+        archived_at: null,
+        cases: [
+          {
+            id: 'case_a',
+            primary_pharmacist_id: null,
+            backup_pharmacist_id: 'backup_a',
+          },
+        ],
+      },
+    ]);
+
+    await checkSelfReportFollowups();
+
+    expect(upsertPatientSelfReportTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        primaryPharmacistId: null,
+        backupPharmacistId: 'backup_a',
+      }),
+    );
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ explicitUserIds: ['backup_a'] }),
+    );
+  });
+
+  it('notifies the preserved task assignee instead of reallocating to the current primary', async () => {
+    patientSelfReportFindManyMock.mockResolvedValue([
+      {
+        id: 'report_a',
+        org_id: 'org_a',
+        patient_id: 'patient_a',
+        subject: '体調不良',
+        preferred_contact_time: null,
+        requested_callback: false,
+        created_at: new Date('2026-06-01T00:00:00.000Z'),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([
+      {
+        id: 'patient_a',
+        org_id: 'org_a',
+        name: '山田 太郎',
+        archived_at: null,
+        cases: [
+          {
+            id: 'case_a',
+            primary_pharmacist_id: 'new_primary',
+            backup_pharmacist_id: null,
+          },
+        ],
+      },
+    ]);
+    upsertPatientSelfReportTaskMock.mockResolvedValue({
+      id: 'task_report_a',
+      displayId: null,
+      status: 'in_progress',
+      assignedTo: 'preserved_assignee',
+      created: false,
+    });
+
+    await checkSelfReportFollowups();
+
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ explicitUserIds: ['preserved_assignee'] }),
+    );
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ explicitUserIds: ['new_primary'] }),
     );
   });
 });

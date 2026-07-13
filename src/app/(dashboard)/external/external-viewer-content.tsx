@@ -177,7 +177,7 @@ export function ExternalViewerContent({
       updated_at,
     }: {
       id: string;
-      status: 'triaged' | 'resolved' | 'dismissed' | 'converted_to_task';
+      status: 'triaged' | 'resolved' | 'dismissed';
       updated_at: string;
     }) => {
       const response = await fetch(`/api/patient-self-reports/${id}`, {
@@ -194,37 +194,23 @@ export function ExternalViewerContent({
   });
 
   const createTaskMutation = useMutation({
-    mutationFn: async (report: SelfReport) => {
-      const response = await fetch('/api/tasks', {
+    mutationFn: async ({ id, updated_at }: Pick<SelfReport, 'id' | 'updated_at'>) => {
+      const response = await fetch(`/api/patient-self-reports/${id}/convert-to-task`, {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({
-          task_type: 'patient_self_report_followup',
-          title: `${report.patient_name ?? '患者'}: ${report.subject}`,
-          description: `${report.category}\n${report.reported_by_name ?? '報告者非表示'}${report.requested_callback ? '\n折返し希望あり' : ''}`,
-          priority: report.requested_callback ? 'high' : 'normal',
-          related_entity_type: 'patient_self_report',
-          related_entity_id: report.id,
-          dedupe_key: `patient-self-report:${report.id}`,
-          metadata: {
-            patient_id: report.patient_id,
-            category: report.category,
-            requested_callback: report.requested_callback,
-          },
-        }),
+        body: JSON.stringify({ updated_at }),
       });
-      await readApiAcknowledgement(response, 'タスク作成に失敗しました');
-      await updateSelfReportMutation.mutateAsync({
-        id: report.id,
-        status: 'converted_to_task',
-        updated_at: report.updated_at,
-      });
+      return readApiAcknowledgement(response, '自己申告のタスク化に失敗しました');
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient-self-reports', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['tasks', orgId] }),
+      ]);
       toast.success('自己申告をタスク化しました');
     },
-    onError: (error: Error) => toast.error(messageFromError(error, 'タスク作成に失敗しました')),
+    onError: (error: Error) =>
+      toast.error(messageFromError(error, '自己申告のタスク化に失敗しました')),
   });
 
   const shareCard = (
@@ -344,7 +330,12 @@ export function ExternalViewerContent({
               <Button
                 size="sm"
                 className="sm:h-11 sm:min-h-[44px]"
-                onClick={() => createTaskMutation.mutate(report)}
+                onClick={() =>
+                  createTaskMutation.mutate({
+                    id: report.id,
+                    updated_at: report.updated_at,
+                  })
+                }
                 disabled={updateSelfReportMutation.isPending || createTaskMutation.isPending}
               >
                 タスク化
