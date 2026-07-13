@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
-import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -197,7 +197,13 @@ async function authenticatedPOST(req: NextRequest) {
       ),
       select: { id: true },
     });
-    if (!patient) return withSensitiveNoStore(notFound('患者が見つかりません'));
+    if (!patient) {
+      return withSensitiveNoStore(
+        validationError('入力値が不正です', {
+          patient_id: ['指定された患者を確認できません'],
+        }),
+      );
+    }
 
     const created = await withOrgContext(ctx.orgId, async (tx) => {
       const report = await tx.patientSelfReport.create({

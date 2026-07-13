@@ -259,7 +259,7 @@ describe('/api/management-plans', () => {
     expect(JSON.stringify(payload)).not.toContain('raw management plan failure');
   });
 
-  it('denies management plan creation for a case not in the org before write', async () => {
+  it('returns a non-enumerating body validation error for an inaccessible case reference', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
@@ -270,7 +270,14 @@ describe('/api/management-plans', () => {
       }),
     ))!;
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        case_id: ['指定されたケースを確認できません'],
+      },
+    });
     expect(careCaseFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'case_unassigned',
@@ -280,6 +287,7 @@ describe('/api/management-plans', () => {
         id: true,
       },
     });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(managementPlanCreateMock).not.toHaveBeenCalled();
   });
 
@@ -398,7 +406,7 @@ describe('/api/management-plans', () => {
     expect(managementPlanCreateMock).not.toHaveBeenCalled();
   });
 
-  it('rejects an inaccessible or cross-case source plan before cloning', async () => {
+  it('returns a non-enumerating body validation error for an inaccessible source plan', async () => {
     managementPlanFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
@@ -410,7 +418,14 @@ describe('/api/management-plans', () => {
       }),
     ))!;
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        source_plan_id: ['指定された複製元を確認できません'],
+      },
+    });
     expect(managementPlanFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'plan_unassigned',

@@ -54,7 +54,26 @@
 
 ## 直近の作業
 
-- codex4 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001C (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+- codex2 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001A (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    pharmacist detail、case create、management-plan create/clone、medication-profile create、patient-self-report create、cycle-hold create/updateの
+    6 routes/testsとresponse/no-store/auth/static guardsを確認した。Body/linked FK failuresが404でprimary targetと混在し、pharmacistのmembership
+    absenceだけ400だった。初稿ではbody所在だけを根拠にcycle-hold PATCH `id`も400化していた。
+  - files changed / security / correctness / privacy:
+    case/profile/self-reportの`patient_id`、management-planの`case_id`/`source_plan_id`、cycle-hold POSTの`cycle_id`をgeneric 400
+    `VALIDATION_ERROR` / `入力値が不正です` + neutral field detailへ統一した。Pharmacist path targetはuser missingとmembership missingを同じ
+    exact 404 `薬剤師が見つかりません`へ統一した。Codex1 reviewでcycle-hold PATCH `id`はbody内でもprimary mutation targetと判定し、
+    exact 404 `指定された保留が見つかりません`へ戻した。拒否後のtransaction/create/update/audit/notifyは0。Auth/tenant/assignment、
+    success DTO、schema/migration、PHI/log、query/network数は不変。
+  - validation / review / coordination:
+    Codex2 exact12 snapshotをcodex1がtakeoverし、focused 6 files / 97 tests、exact 12-path ESLint/Prettier/diff、API response shape 0/0、
+    authz status 0、route auth 176 allowlisted / 252 direct / 0 new、module boundary 0/0、raw-read org guard 117 allowlisted / 0 new PASS。
+    Codex2 inbox/sessionがfeedbackをconsumeしなかったためownershipを明示reclaimしてrootが分類1件だけ修復した。Oracle、gbrain、shared helper、
+    typecheck/build/full suiteは使用・変更していない。
+  - remaining / rollback:
+    親は残存live scanとserialized full gatesが残るためPartial。RollbackはこのcommitのrevertでDB/data rollback不要。
+
+- codex4 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001C (DONE; parent remains Partial, 2026-07-13; implementation `3087191b0`, PUSHED).
   - current task / files inspected / root cause:
     patient lab create、first-visit document create、consent record create、visit schedule updateの4 routes/testsとresponse/no-store/auth/static
     guards、installed Next 16.2.9 Route Handler guideを確認した。Body/linked FKのmissing/inaccessible 400が存在・tenant・assignmentを示唆する
@@ -443,12 +462,11 @@
     `d8fdb8b9c` / `c56d86781`をfeature branchへnon-force push済み。Rollbackは逆順に`git revert c56d86781 d8fdb8b9c`、
     DB/data rollback不要。gbrain: `projects/careviax/decisions/2026-07-13/anchor-daily-jobs-to-japan-business-dates`。
 
-- parallel assignments (ACTIVE, 2026-07-13):
-  - codex2: `API-STATUS-NOTFOUND-LIVE-RESCAN-001A`。primary targetとbody FKの分類1件をcodex1 review後に修復中。
-  - codex3: `QUERY-SHAPE-VISIT-BRIEF-SERVICE-003L`は`0dd51f444`でPUSHED、ownership release待ち。
-  - codex4: `001B`は`9e238feb1`でPUSHED。`API-STATUS-NOTFOUND-LIVE-RESCAN-001C` exact 8 pathsはscoped統合中。
-  - codex1: API status scoped統合、single ledger、exact staging、各slice独立review、
-    serialized long gates、VERIFY_REQUIRED reconciliationと次候補scoringを管理する。
+- parallel assignments (FROZEN FOR SERIALIZED GATES, 2026-07-13):
+  - codex2: `API-STATUS-NOTFOUND-LIVE-RESCAN-001A`はcodex1がownership reclaimし、scoped統合中。追加編集禁止。
+  - codex3: `QUERY-SHAPE-VISIT-BRIEF-SERVICE-003L`は`0dd51f444`でPUSHED、ownership release済み。
+  - codex4: `001B`は`9e238feb1`、`001C`は`3087191b0`でPUSHED、ownership release済み。
+  - codex1: 001A scoped統合後、全writers freezeを維持してtypecheck/no-unused/full test/build、VERIFY_REQUIRED reconciliationを直列実行する。
 
 - codex1: MEDPROFILE-SYNC-RACE-001 MedicationProfile sync serialization (DONE, 2026-07-13; implementation `30fcf954e`, PUSHED).
   - current task / root cause / inspected:

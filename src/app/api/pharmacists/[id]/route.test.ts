@@ -221,6 +221,48 @@ describe('/api/pharmacists/[id] PATCH', () => {
     expect(userUpdateMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['missing user', null],
+    [
+      'user without an org membership',
+      {
+        id: 'user_1',
+        org_id: 'org_1',
+        cognito_username: 'pharmacist@example.com',
+        email: 'pharmacist@example.com',
+        account_status: 'active',
+        memberships: [],
+      },
+    ],
+  ])('returns the same non-enumerating 404 for a %s path target', async (_label, target) => {
+    userFindFirstMock.mockResolvedValue(target);
+
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'suspend',
+          reason: '長期休職',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'user_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '薬剤師が見つかりません',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(disableCognitoUserMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(userUpdateMock).not.toHaveBeenCalled();
+    expect(membershipUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('updates pharmacist profile and membership', async () => {
     const response = await PATCH(
       createRequest(

@@ -66,7 +66,7 @@ async function authenticatedPATCH(
 
   const membership = pharmacist.memberships[0];
   if (!membership) {
-    return validationError('薬剤師の所属情報が見つかりません');
+    return notFound('薬剤師が見つかりません');
   }
 
   if (parsed.data.action === 'update') {

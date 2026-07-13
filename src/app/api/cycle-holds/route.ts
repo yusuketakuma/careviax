@@ -44,10 +44,7 @@ const createCycleHoldSchema = z
     line_id: z.string().min(1).optional(),
     day_number: z.number().int().optional(),
     slot: z.string().min(1).optional(),
-    due_at: z
-      .string()
-      .datetime({ offset: true })
-      .optional(),
+    due_at: z.string().datetime({ offset: true }).optional(),
     assigned_to: z.string().min(1).optional(),
     note: z.string().optional(),
   })
@@ -149,7 +146,11 @@ export const POST = withAuthContext(
       return hold;
     });
 
-    if (!result) return notFound('指定された服薬サイクルが見つかりません');
+    if (!result) {
+      return validationError('入力値が不正です', {
+        cycle_id: ['指定された服薬サイクルを確認できません'],
+      });
+    }
 
     await notifyWorkflowMutation({
       orgId: ctx.orgId,

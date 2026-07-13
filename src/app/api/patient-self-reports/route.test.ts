@@ -570,7 +570,7 @@ describe('/api/patient-self-reports', () => {
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
-  it('does not create a self report for an unassigned patient', async () => {
+  it('returns a non-enumerating body validation error for an inaccessible patient reference', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
@@ -584,8 +584,16 @@ describe('/api/patient-self-reports', () => {
       { params: Promise.resolve({}) },
     ))!;
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        patient_id: ['指定された患者を確認できません'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientSelfReportCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });

@@ -1,7 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, internalError } from '@/lib/api/response';
+import { success, validationError, internalError } from '@/lib/api/response';
 import { createCaseSchema } from '@/lib/validations/case';
 import { buildCursorPage, parseOptionalBoundedIntegerParam } from '@/lib/api/pagination';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -255,7 +255,11 @@ const authenticatedPOST = withAuthContext(
     const patient = await prisma.patient.findFirst({
       where: applyPatientAssignmentWhere({ id: patient_id, org_id: ctx.orgId }, ctx),
     });
-    if (!patient) return notFound('患者が見つかりません');
+    if (!patient) {
+      return validationError('入力値が不正です', {
+        patient_id: ['指定された患者を確認できません'],
+      });
+    }
 
     const careCase = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.careCase.create({

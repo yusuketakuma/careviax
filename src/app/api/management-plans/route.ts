@@ -7,7 +7,7 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { withOrgContext } from '@/lib/db/rls';
 import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
-import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { createManagementPlanSchema } from '@/lib/validations/management-plan';
@@ -149,7 +149,11 @@ export async function POST(req: NextRequest) {
       id: true,
     },
   });
-  if (!careCase) return notFound('ケースが見つかりません');
+  if (!careCase) {
+    return validationError('入力値が不正です', {
+      case_id: ['指定されたケースを確認できません'],
+    });
+  }
 
   if (parsed.data.source_plan_id) {
     const sourcePlan = await prisma.managementPlan.findFirst({
@@ -161,7 +165,11 @@ export async function POST(req: NextRequest) {
       },
       select: { id: true },
     });
-    if (!sourcePlan) return notFound('複製元の管理計画書が見つかりません');
+    if (!sourcePlan) {
+      return validationError('入力値が不正です', {
+        source_plan_id: ['指定された複製元を確認できません'],
+      });
+    }
   }
 
   const plan = await withOrgContext(

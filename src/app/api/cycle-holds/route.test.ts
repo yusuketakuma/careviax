@@ -1,31 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  withAuthMock,
-  withOrgContextMock,
-  notifyWorkflowMutationMock,
-  createAuditLogEntryMock,
-} = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (
-      handler: (
-        req: NextRequest,
-        ctx: { orgId: string; userId: string; role: 'pharmacist' },
-      ) => Promise<Response>,
-    ) => {
-      return (req: NextRequest) =>
-        handler(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        });
-    },
-  ),
-  withOrgContextMock: vi.fn(),
-  notifyWorkflowMutationMock: vi.fn(),
-  createAuditLogEntryMock: vi.fn(),
-}));
+const { withAuthMock, withOrgContextMock, notifyWorkflowMutationMock, createAuditLogEntryMock } =
+  vi.hoisted(() => ({
+    withAuthMock: vi.fn(
+      (
+        handler: (
+          req: NextRequest,
+          ctx: { orgId: string; userId: string; role: 'pharmacist' },
+        ) => Promise<Response>,
+      ) => {
+        return (req: NextRequest) =>
+          handler(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          });
+      },
+    ),
+    withOrgContextMock: vi.fn(),
+    notifyWorkflowMutationMock: vi.fn(),
+    createAuditLogEntryMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: withAuthMock,
@@ -134,7 +130,7 @@ describe('/api/cycle-holds POST', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
-  it('returns 404 when the cycle is not found', async () => {
+  it('returns a non-enumerating body validation error when the cycle cannot be confirmed', async () => {
     const cycleFindFirstMock = vi.fn().mockResolvedValue(null);
     const cycleHoldCreateMock = vi.fn();
 
@@ -154,7 +150,14 @@ describe('/api/cycle-holds POST', () => {
       }),
     );
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        cycle_id: ['指定された服薬サイクルを確認できません'],
+      },
+    });
     expect(cycleFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'missing_cycle', org_id: 'org_1' },
@@ -166,16 +169,12 @@ describe('/api/cycle-holds POST', () => {
   });
 
   it('creates a structured hold, writes an audit log, and notifies workflow', async () => {
-    const cycleHoldCreateMock = vi
-      .fn()
-      .mockResolvedValue({ id: 'hold_1', cycle_id: 'cycle_1' });
+    const cycleHoldCreateMock = vi.fn().mockResolvedValue({ id: 'hold_1', cycle_id: 'cycle_1' });
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         medicationCycle: {
-          findFirst: vi
-            .fn()
-            .mockResolvedValue({ id: 'cycle_1', patient_id: 'patient_1' }),
+          findFirst: vi.fn().mockResolvedValue({ id: 'cycle_1', patient_id: 'patient_1' }),
         },
         cycleHold: { create: cycleHoldCreateMock },
       }),
@@ -242,7 +241,7 @@ describe('/api/cycle-holds PATCH', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
-  it('returns 404 when the hold does not exist', async () => {
+  it('returns the primary mutation target as not found when the hold does not exist', async () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         cycleHold: {
@@ -255,6 +254,10 @@ describe('/api/cycle-holds PATCH', () => {
     const response = await PATCH(createPatchRequest({ id: 'missing_hold' }));
 
     expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '指定された保留が見つかりません',
+    });
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
@@ -325,9 +328,7 @@ describe('/api/cycle-holds PATCH', () => {
       }),
     );
 
-    const response = await PATCH(
-      createPatchRequest({ id: 'hold_1', note: '回答受領、再開' }),
-    );
+    const response = await PATCH(createPatchRequest({ id: 'hold_1', note: '回答受領、再開' }));
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({

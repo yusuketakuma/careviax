@@ -352,7 +352,7 @@ describe('/api/cases', () => {
     expect(careCaseCreateMock).not.toHaveBeenCalled();
   });
 
-  it('does not create a case for an unassigned patient', async () => {
+  it('returns a non-enumerating body validation error for an inaccessible patient reference', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
@@ -365,8 +365,16 @@ describe('/api/cases', () => {
       emptyRouteContext,
     ))!;
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        patient_id: ['指定された患者を確認できません'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(careCaseCreateMock).not.toHaveBeenCalled();
   });
 

@@ -441,7 +441,7 @@ describe('/api/medication-profiles', () => {
     expect(medicationProfileCreateMock).not.toHaveBeenCalled();
   });
 
-  it('returns 404 before creating a medication profile for an inaccessible patient', async () => {
+  it('returns a non-enumerating body validation error for an inaccessible patient reference', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
@@ -452,9 +452,16 @@ describe('/api/medication-profiles', () => {
       emptyRouteContext,
     ))!;
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(400);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        patient_id: ['指定された患者を確認できません'],
+      },
+    });
     expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationProfileCreateMock).not.toHaveBeenCalled();

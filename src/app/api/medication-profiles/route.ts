@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
-import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
@@ -195,7 +195,9 @@ async function authenticatedPOST(req: NextRequest) {
         accessContext: { userId: ctx.userId, role: ctx.role },
       }))
     ) {
-      return notFound('患者が見つかりません');
+      return validationError('入力値が不正です', {
+        patient_id: ['指定された患者を確認できません'],
+      });
     }
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
