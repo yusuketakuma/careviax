@@ -15,6 +15,13 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -83,6 +90,13 @@ describe('/api/interventions/[id]', () => {
       const req = createRequest('http://localhost/api/interventions/int_1');
       const res = await GET(req, { params: Promise.resolve({ id: 'int_1' }) });
       expect(res!.status).toBe(200);
+      expect(requireAuthContextMock).toHaveBeenCalledWith(
+        expect.any(NextRequest),
+        expect.objectContaining({
+          permission: 'canVisit',
+          message: '介入記録の閲覧権限がありません',
+        }),
+      );
       // org-wide role (pharmacist) bypasses assignment scoping: no patient-assignment lookup.
       expect(patientFindManyMock).not.toHaveBeenCalled();
       expect(interventionFindFirstMock).toHaveBeenCalledWith({
@@ -179,6 +193,13 @@ describe('/api/interventions/[id]', () => {
       });
       const res = await PATCH(req, { params: Promise.resolve({ id: 'int_1' }) });
       expect(res!.status).toBe(200);
+      expect(requireAuthContextMock).toHaveBeenCalledWith(
+        expect.any(NextRequest),
+        expect.objectContaining({
+          permission: 'canVisit',
+          message: '介入記録の更新権限がありません',
+        }),
+      );
       const json = await res!.json();
       expect(json.data.id).toBe('int_1');
     });

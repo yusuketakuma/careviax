@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -28,14 +28,11 @@ async function buildInterventionAssignmentWhere(args: {
   return { patient_id: { in: patientIds } };
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '介入記録の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function getIntervention(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('介入記録IDが不正です');
@@ -57,14 +54,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   return success({ data: intervention });
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '介入記録の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function updateIntervention(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('介入記録IDが不正です');
@@ -106,3 +100,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return success({ data: intervention });
 }
+
+export const GET = withAuthContext(getIntervention, {
+  permission: 'canVisit',
+  message: '介入記録の閲覧権限がありません',
+});
+
+export const PATCH = withAuthContext(updateIntervention, {
+  permission: 'canVisit',
+  message: '介入記録の更新権限がありません',
+});

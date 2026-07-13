@@ -55,6 +55,24 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZINTERVENTIONAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Shift Templates push/parity後に残14 routesを再scoreし、PHI/medical cache境界の価値からIntervention detail GET/PATCHを選定した。
+    Route/test、root Intervention provider、strict consumer response schema、medication intervention panel、visit assignment/patient access helper、
+    rate-limit registry、installed Next guideを確認した。既存2 handlersはcanVisit、role別patient assignment、org predicate、strict ID/body validation、
+    RLS updateを持つ一方、2 direct `requireAuthContext` callsのsuccess/validation/not-found responseが標準no-store/performance境界を通らなかった。
+  - files changed / correctness / security / privacy / medical safety / performance:
+    GET/PATCHをtyped named handler + `withAuthContext`へ移行し、閲覧/更新permission message、ctx、async params、assignment bypass/filter、org predicate、
+    route/body validation、not-found、RLS update、介入type/outcome/note/performed_at変換とresponse DTOを維持した。Test auth mockをwrapper signatureへ
+    同期し、両permission/messageを明示回帰した。Allowlist 1 entryを除去し、direct debtは164→163 routes、231→229 calls、helper未使用success
+    routeは14→13へ減った。DB query/write/network/payloadは増やさず、共通header/performance計測だけを追加した。
+  - validation / remaining / rollback:
+    Focused detail + checker 2 files / 12 tests、Intervention provider/detail/consumer schema/UI/assignment/patient-access 6 files / 68 tests、exact
+    ESLint/Prettier、8 GiB typecheck / no-unused、route-auth 163 allowlisted / 229 direct / 0 new、API shape 0/0、API authz 0、raw-org
+    116 / 0 new、module boundary 0/0、frontend contract、client schema 361 backed / 0 allowlisted、diffをPASS。Schema/migration/production data/
+    deploy/Oracleなし。視覚変更なしのためimagegen/browserなし。親にはdirect-auth success未収束13 routes、request_id/correlation_id、
+    error registryが残る。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
 - codex1: API-CONTRACT-001FZSHIFTTEMPLATEAUTH (DONE; parent remains Partial, 2026-07-14; implementation `ce97918ba`).
   - current task / files inspected / root cause:
     Goal attachment、HEAD/parity、dirty tree、Plans/STATE/memory/gbrain、route-auth allowlist、Pharmacist Shift Templates root/detail/apply routes/tests、
