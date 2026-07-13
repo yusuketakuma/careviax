@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { readJsonObjectString } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -195,14 +195,7 @@ function isBillingCloseStaleCandidatesError(cause: unknown) {
   return cause instanceof Error && cause.message === 'BILLING_CLOSE_STALE_CANDIDATE';
 }
 
-export async function POST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canManageBilling',
-    message: '請求月次締めの権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function closeBillingMonth(req: NextRequest, ctx: AuthContext) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -280,3 +273,8 @@ export async function POST(req: NextRequest) {
     },
   });
 }
+
+export const POST = withAuthContext(closeBillingMonth, {
+  permission: 'canManageBilling',
+  message: '請求月次締めの権限がありません',
+});

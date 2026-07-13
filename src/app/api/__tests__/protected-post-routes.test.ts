@@ -220,7 +220,7 @@ const routes: RouteEntry[] = [
   },
   {
     name: 'billing-candidates/close POST',
-    handler: (req) => billingCandidatesClosePost(req),
+    handler: (req) => billingCandidatesClosePost(req, emptyRouteContext),
     successBody: { billing_month: '2026-03-01' },
   },
   {

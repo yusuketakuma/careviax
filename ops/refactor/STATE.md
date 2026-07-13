@@ -55,6 +55,26 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZBILLINGCLOSEAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Admin Organizations push/parity後の残3 routesからBilling Candidates Close POSTを選定した。Route/test、billing evidence close service、claims export adapter/
+    site resolution、attempt/success audit、webhook、billing UI consumer、protected POST matrix、rate-limit、allowlist、installed Next guideを確認した。
+    既存handlerはcanManageBilling、strict month/domain、atomic close、stale/blocker conflict、claims export/auditを持つ一方、1 direct auth callの請求success/errorが
+    共通no-store/performance/sanitized-500境界外だった。
+  - files changed / bugs found / correctness / security / privacy / billing / performance:
+    POSTをtyped named handler + `withAuthContext`へ移行し、permission message、billing month/domain validation、org-scoped close、candidate optimistic conflict、
+    blocker summary、webhook、current close attemptのcandidate ID限定read、single-site解決、claims export attempt audit→external send→success audit順序、送信/audit
+    failure isolation、exported ID非公開DTOを不変にした。Auth denial時のRLS/close/webhook/export副作用zeroを追加し、protected POST fixtureをNext 16の空
+    RouteContextへ同期、allowlist 1 entryを除去。Direct debtは153→152 routes、217→216 calls、helper未使用success routeは3→2。
+    DB/network/write/payloadは不変で共通header/計測/500 envelopeだけを追加した。
+  - validation results / remaining work / next action / rollback:
+    Focused route 1 file / 22 tests、billing/protected/adapter/UI領域5 files / 208 tests、fixture同期後route + protected matrix 2 files / 173 tests、exact
+    ESLint/Prettier、8 GiB typecheck/no-unused、route-auth 152 allowlisted / 216 direct / 0 new、API shape 0/0、API authz 0、raw-org 116 / 0 new、
+    module boundary 0/0、frontend contract、client schema 361 backed / 0 allowlisted、format/diffをPASS。初回typecheckはprotected matrixの空RouteContext
+    省略1件だけを検出しfixture同期後に再実行PASS。新規security/privacy/medical/billing/performance issueなし。Claims export/schema/migration/production
+    mutation/deploy/Oracleなし。非視覚server/API変更のためimagegen/browserなし。親のdirect-auth success未収束はPatient archive/restoreの2 routes。
+    次は既存lifecycle semanticsを変えない純wrapper移行を行い、serialization/grant lifecycle gapは既存Plans itemとして残す。Rollbackはscoped commitのrevert。
+
 - codex1: API-CONTRACT-001FZADMINORGAUTH (DONE; parent remains Partial, 2026-07-14; implementation `6df69df3a`).
   - current task / files inspected / root cause:
     Notifications SSE push/parity後の残4 routesからAdmin Organizations POSTを選定した。Route/test、過去envelope/provisioning監査証跡、Cognito admin service、

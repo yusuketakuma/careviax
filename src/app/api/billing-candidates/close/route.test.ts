@@ -23,6 +23,13 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) =>
+    async (req: unknown, routeContext?: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -67,6 +74,10 @@ function createMalformedJsonRequest() {
   });
 }
 
+function invokePOST(request: NextRequest) {
+  return POST(request, { params: Promise.resolve({}) });
+}
+
 describe('/api/billing-candidates/close POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -92,6 +103,28 @@ describe('/api/billing-candidates/close POST', () => {
     });
   });
 
+  it('returns the authentication response before billing, webhook, or claims-export work', async () => {
+    const deniedResponse = Response.json(
+      { code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' },
+      { status: 401 },
+    );
+    requireAuthContextMock.mockResolvedValueOnce({ response: deniedResponse });
+
+    const response = await invokePOST(createMalformedJsonRequest());
+
+    expect(response).toBe(deniedResponse);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canManageBilling',
+      message: '請求月次締めの権限がありません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(closeBillingCandidatesForMonthMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(isClaimsExportConsumerConfiguredMock).not.toHaveBeenCalled();
+    expect(createClaimsExportAdapterMock).not.toHaveBeenCalled();
+    expect(exportClaimsMock).not.toHaveBeenCalled();
+  });
+
   it('closes the month when no review blockers remain', async () => {
     closeBillingCandidatesForMonthMock.mockResolvedValue({
       blocked: false,
@@ -109,7 +142,7 @@ describe('/api/billing-candidates/close POST', () => {
       },
     });
 
-    const response = await POST(createRequest({ billing_month: '2026-03-01' }));
+    const response = await invokePOST(createRequest({ billing_month: '2026-03-01' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -165,7 +198,7 @@ describe('/api/billing-candidates/close POST', () => {
       },
     });
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({ billing_month: '2026-06-01', billing_domain: 'pca_rental' }),
     );
 
@@ -210,7 +243,7 @@ describe('/api/billing-candidates/close POST', () => {
       },
     });
 
-    const response = await POST(createRequest({ billing_month: '2026-03-01' }));
+    const response = await invokePOST(createRequest({ billing_month: '2026-03-01' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
@@ -268,7 +301,7 @@ describe('/api/billing-candidates/close POST', () => {
       },
     });
 
-    const response = await POST(createRequest({ billing_month: '2026-03-01' }));
+    const response = await invokePOST(createRequest({ billing_month: '2026-03-01' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -371,7 +404,7 @@ describe('/api/billing-candidates/close POST', () => {
       },
     });
 
-    const response = await POST(createRequest({ billing_month: '2026-03-01' }));
+    const response = await invokePOST(createRequest({ billing_month: '2026-03-01' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -437,7 +470,7 @@ describe('/api/billing-candidates/close POST', () => {
       },
     });
 
-    const response = await POST(createRequest({ billing_month: '2026-03-01' }));
+    const response = await invokePOST(createRequest({ billing_month: '2026-03-01' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -493,7 +526,7 @@ describe('/api/billing-candidates/close POST', () => {
       },
     });
 
-    const response = await POST(createRequest({ billing_month: '2026-03-01' }));
+    const response = await invokePOST(createRequest({ billing_month: '2026-03-01' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -558,7 +591,7 @@ describe('/api/billing-candidates/close POST', () => {
       },
     });
 
-    const response = await POST(createRequest({ billing_month: '2026-03-01' }));
+    const response = await invokePOST(createRequest({ billing_month: '2026-03-01' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -593,7 +626,7 @@ describe('/api/billing-candidates/close POST', () => {
       },
     });
 
-    const response = await POST(createRequest({ billing_month: '2026-03-01' }));
+    const response = await invokePOST(createRequest({ billing_month: '2026-03-01' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -615,7 +648,7 @@ describe('/api/billing-candidates/close POST', () => {
       new Error('BILLING_CLOSE_STALE_CANDIDATE'),
     );
 
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({ billing_month: '2026-03-01', billing_domain: 'home_care' }),
     );
 
@@ -645,7 +678,7 @@ describe('/api/billing-candidates/close POST', () => {
     ['out-of-range month', { billing_month: '2026-13-01' }],
     ['timezone timestamp', { billing_month: '2026-03-01T00:00:00.000Z' }],
   ])('rejects %s billing_month before transaction work', async (_caseName, body) => {
-    const response = await POST(createRequest(body));
+    const response = await invokePOST(createRequest(body));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -655,7 +688,7 @@ describe('/api/billing-candidates/close POST', () => {
   });
 
   it('rejects invalid billing_domain before transaction work', async () => {
-    const response = await POST(
+    const response = await invokePOST(
       createRequest({ billing_month: '2026-03-01', billing_domain: 'unknown' }),
     );
 
@@ -667,7 +700,7 @@ describe('/api/billing-candidates/close POST', () => {
   });
 
   it('rejects malformed JSON before closing or webhook side effects', async () => {
-    const response = await POST(createMalformedJsonRequest());
+    const response = await invokePOST(createMalformedJsonRequest());
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
