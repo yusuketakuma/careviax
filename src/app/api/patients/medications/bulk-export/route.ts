@@ -2,7 +2,14 @@ import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
-import { conflict, error, internalError, success, validationError } from '@/lib/api/response';
+import {
+  conflict,
+  error,
+  internalError,
+  registeredError,
+  success,
+  validationError,
+} from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import {
   drainMedicationHistoryBulkExportQueue,
@@ -75,7 +82,10 @@ async function authenticatedPOST(req: NextRequest) {
       return error(cause.code, cause.message, cause.status);
     }
 
-    return error('EXTERNAL_PDF_RENDER_FAILED', '薬歴 PDF 一括出力のキュー登録に失敗しました', 500);
+    return registeredError(
+      'EXTERNAL_PDF_RENDER_FAILED',
+      '薬歴 PDF 一括出力のキュー登録に失敗しました',
+    );
   }
 }
 

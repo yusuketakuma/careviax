@@ -1,7 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { error, notFound, validationError } from '@/lib/api/response';
+import { registeredError, notFound, validationError } from '@/lib/api/response';
 import { pdfResponse } from '@/lib/api/pdf-response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     return withSensitiveNoStore(
-      error('EXTERNAL_PDF_RENDER_FAILED', '薬歴 PDF を生成できませんでした', 500),
+      registeredError('EXTERNAL_PDF_RENDER_FAILED', '薬歴 PDF を生成できませんでした'),
     );
   }
 }

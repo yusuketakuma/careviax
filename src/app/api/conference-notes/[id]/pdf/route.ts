@@ -1,7 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { error, notFound, validationError } from '@/lib/api/response';
+import { error, registeredError, notFound, validationError } from '@/lib/api/response';
 import { pdfResponse } from '@/lib/api/pdf-response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -36,7 +36,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     return withSensitiveNoStore(
-      error('EXTERNAL_PDF_RENDER_FAILED', 'カンファレンス記録 PDF を生成できませんでした', 500),
+      registeredError(
+        'EXTERNAL_PDF_RENDER_FAILED',
+        'カンファレンス記録 PDF を生成できませんでした',
+      ),
     );
   }
 

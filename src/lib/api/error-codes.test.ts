@@ -30,6 +30,13 @@ describe('API error code registry', () => {
           "recoveryAction": "sign_in",
           "retryable": false,
         },
+        "EXTERNAL_PDF_RENDER_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.external.pdf_render_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "INTERNAL_ERROR": {
           "httpStatus": 500,
           "logLevel": "error",

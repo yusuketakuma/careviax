@@ -1,7 +1,14 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { conflict, error, internalError, notFound, validationError } from '@/lib/api/response';
+import {
+  conflict,
+  error,
+  internalError,
+  notFound,
+  registeredError,
+  validationError,
+} from '@/lib/api/response';
 import { pdfResponse } from '@/lib/api/pdf-response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -45,7 +52,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     }
 
     return withSensitiveNoStore(
-      error('EXTERNAL_PDF_RENDER_FAILED', '報告書 PDF を生成できませんでした', 500),
+      registeredError('EXTERNAL_PDF_RENDER_FAILED', '報告書 PDF を生成できませんでした'),
     );
   }
 
