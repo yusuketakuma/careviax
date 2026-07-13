@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZPATIENTLIFECYCLEAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZPATIENTLIFECYCLEAUTH (DONE; parent remains Partial, 2026-07-14; implementation `a3fe6f405`).
   - current task / files inspected / root cause:
     Billing Close push/parity後の最後の2 routesとしてPatient archive/restore PATCHを選定した。両route/test、patient archive summary、protected PATCH matrix、
     rate-limit、allowlist、既存`DATA-ARCHIVE-WRITE-SERIALIZATION-001` / `PRIVACY-ARCHIVE-GRANT-LIFECYCLE-001`、installed Next guideを確認した。
