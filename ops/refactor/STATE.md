@@ -51,6 +51,33 @@
 
 ## 直近の作業
 
+- codex: API-CONTRACT-001FZPROPOSALDASHSTRICT schedule proposal dashboard readers (VERIFY_REQUIRED, 2026-07-13; implementation `d0a6ec966`; shared clean-capacity build pending).
+  - current task / root cause:
+    Schedule Proposals dashboardのproposal list、case search、available vehicle resources、billing preview batch、proposal detail計5 readersは
+    string fallbackだけで、filter外proposal、重複identity、count/cursor drift、別billing key、別detail/travel mode、provider-only PHI/metadataを
+    dashboard/確定flow stateへ流し得た。Weekly Optimizerには同じProposal/Billing contractの既存schemaがあったがdashboardは未接続だった。
+  - implementation / scheduling safety boundary:
+    Weekly OptimizerのProposal/Billing item schemasをexportして再利用し、dashboard固有5 request-aware schemasを追加。Requested case/patient/date/status、
+    active case cursor、available vehicle count/filter、billing request key exact set、detail proposal/travel mode、related proposal/schedule identityを検証した。
+    Case patient contact、vehicle notes、proposal provider extras、billing/detail unused fieldsをclient state前にstrip。Provider query/write、proposal generation/
+    approval/contact/confirm/reorder、billing calculation、route engine、auth/assignment/tenant/audit/DB/UIは変更していない。非visual response/PHI境界のため
+    `gpt-image-2`は使用していない。
+  - files:
+    `src/app/(dashboard)/schedules/proposals/schedule-proposals-response-schemas.ts`,
+    `src/app/(dashboard)/schedules/proposals/schedule-proposals-response-schemas.test.ts`,
+    `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`,
+    `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer-response-schemas.ts`,
+    `tools/client-json-schema-allowlist.json`, `Plans.md`, `ops/refactor/STATE.md`.
+  - validation:
+    Schema/consumer/providers Vitest passed 8 files / 261 tests. Exact zero-warning ESLint, focused Prettier, aggregate typecheck,
+    8GB no-unused typecheck, client schema (349 backed / 15 allowlisted / 3 files), module boundary, client PHI-log/display, API response shape,
+    colors, format, and diff-check passed. Full build remains NOT_EXECUTED because only 226 MiB is free while existing `.next` consumes 16 GiB;
+    shared generated/user files were not deleted.
+  - security / performance / remaining:
+    Cross-scope proposal/detail/billing data、malformed clinical/route/count payloads now fail closed and unused PHI/provider metadata no longer enters
+    client state. Network/DB calls, writes, rendering, and dependencies are unchanged. API-CONTRACT-001-RESCAN continues with 15 calls across 3 files.
+    A clean-capacity runner must complete `pnpm build`.
+
 - codex: API-CONTRACT-001FZQRDRAFTSTRICT QR draft detail readers (VERIFY_REQUIRED, 2026-07-13; implementation `3b1386be9`; shared clean-capacity build pending).
   - current task / root cause:
     QR draft detailのdraft GET、active cases GET、confirm POST計3 readersはpartial manual checks/string fallbackだけで、別draft/patient/case、
