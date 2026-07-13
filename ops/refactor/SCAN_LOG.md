@@ -451,6 +451,45 @@
 - Next scan: return to `API-CONTRACT-001-RESCAN`, rerun `pnpm client-json-schema:check`, inspect remaining candidates and
   the patients-board DB query-take residual, and choose the next bounded disjoint slice.
 
+## 2026-07-12 — API-CONTRACT-001FZNOTIFICATIONMUTSTRICT selection
+
+- Scope: the shared event notification-rule POST/PATCH response reader in `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`, the existing notification-rule schema, focused mutation regressions, and one allowlist count.
+- Candidate ranking: selected the one common same-screen mutation response reader after both notification-settings GETs;
+  deferred escalation mutations, billing, audit, contact/external/document delivery, inventory/medication, patient/visit,
+  shared-token, and the patients-board DB query-take residual because they have broader controlled-data, outbound, or
+  performance/PHI impact.
+- Finding: the provider returns broad Prisma rows for POST/PATCH, while the consumer uses only the rule projection and
+  directly mutates state. A legacy/malformed/provider-only response can therefore produce false success or leak unused
+  metadata into state. Request/DB/audit/delivery semantics remain outside this slice.
+- Baseline: notification-settings consumer/escalation-provider suites pass 2 files / 35 tests; client-schema is 185
+  schema-backed / 188 allowlisted schema-less calls across 72 files. Product paths are clean; unrelated harness-memory
+  and personal artifacts remain excluded.
+- Planned fix: strict `{ data }` notification-rule response schema reuse, provider-field stripping, legacy/malformed/
+  missing-field regressions, and one allowlist-count decrement. No visual reconstruction or `gpt-image-2` is needed for
+  this non-visual mutation response/cache boundary.
+
+## 2026-07-12 — API-CONTRACT-001FZNOTIFICATIONMUTSTRICT implementation checkpoint
+
+- Implementation: added the strict `{ data }` notification-rule response envelope, connected the shared POST/PATCH
+  reader, stripped provider-only org/conditions/update fields, removed one allowlist count, and added provider-only,
+  legacy-root, malformed-item, and missing-field success-response regressions.
+- Safety contract: POST/PATCH request payloads, DB writes, provider/auth/tenant/audit/delivery behavior, GETs, escalation
+  mutations, and visual semantics remain unchanged; malformed successful responses now fail closed before local rule state.
+- Tests: focused notification-settings plus notification-rule provider suites pass 3 files / 45 tests.
+- Validation: static contract gates, typecheck, no-unused typecheck, lint, diff-check, and serialized Next build pass;
+  inventory is 186 schema-backed / 187 allowlisted schema-less calls across 72 files. Next 16.2.9 compiled in 2.1 minutes,
+  TypeScript finished in 79 seconds, and 311/311 static pages generated with the two existing CSS optimizer warnings.
+  No browser/E2E or image generation was needed for this non-visual mutation response slice.
+
+## 2026-07-12 — API-CONTRACT-001FZNOTIFICATIONMUTSTRICT landed locally
+
+- Commit: `c5d21827c` (`fix(API-CONTRACT-001FZNOTIFICATIONMUTSTRICT): validate notification mutation response`) is local;
+  push was not requested. The implementation commit contains only the shared notification response schema,
+  notification-settings consumer/test, and client-schema allowlist paths; unrelated harness-memory and personal artifacts
+  remain excluded.
+- Next scan: return to `API-CONTRACT-001-RESCAN`, rerun `pnpm client-json-schema:check`, inspect remaining candidates and
+  the patients-board DB query-take residual, and choose the next bounded disjoint slice.
+
 ## 2026-07-12 — API-CONTRACT-001FZESCALATIONSETTINGSTRICT selection
 
 - Scope: the escalation-rules GET reader in `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`,

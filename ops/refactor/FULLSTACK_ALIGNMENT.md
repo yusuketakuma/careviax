@@ -246,3 +246,16 @@
 | Errors / loading / empty    | Existing loading, error/retry, empty, and toggle behavior remains; malformed or legacy 2xx becomes a settings-load error rather than false event-rule state.                                                         |
 | Tests                       | Notification-settings consumer/provider suite: 2 files / 26 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                            |
 | Alignment                   | ALIGNED for this bounded read slice; escalation GET, mutation response contracts, patient/PHI data, outbound delivery, and visual behavior intentionally unchanged.                                                  |
+
+## API-CONTRACT-001FZNOTIFICATIONMUTSTRICT
+
+| Area                        | Evidence / status                                                                                                                                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| User roles / routes         | Authorized admins continue to use `/admin/notification-settings`; existing notification-rule collection/item POST/PATCH authorization and org scope are unchanged.                                                       |
+| Frontend state / clients    | The shared POST/PATCH reader validates `{ data }` before prepending/replacing an event rule; only the minimal rule projection enters state and provider-only fields are stripped.                                        |
+| Request / response contract | Successful mutation responses validate rule id/event/channel/enabled/recipient/date fields; legacy roots, malformed fields, and missing required fields fail closed.                                                     |
+| Backend / DB                | Existing notification-rule request validation, org-scoped create/update queries, persistence, no-store handling, and route responses are unchanged; no mutation payload or side effect was altered.                      |
+| Auth / tenant / audit       | Existing `canAdmin`, organization scope, audit/delivery semantics, notification GET, escalation GET/mutations, and browser preference remain unchanged; provider-only response metadata is not retained in client state. |
+| Errors / loading / empty    | Existing save success/error toasts, toggle/create state, and loading behavior remain; malformed 2xx becomes a save error rather than false local rule state.                                                             |
+| Tests                       | Notification-settings plus notification-rule provider suite: 3 files / 45 tests; static contract gates, typechecks, lint, diff-check, and serialized Next build passed.                                                  |
+| Alignment                   | ALIGNED for this bounded mutation response slice; request/DB/audit/delivery behavior, patient/PHI data, escalation behavior, and visual semantics intentionally unchanged.                                               |

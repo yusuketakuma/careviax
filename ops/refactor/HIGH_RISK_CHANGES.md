@@ -172,3 +172,15 @@
 - Operational note: authorized escalation configuration remains in-app only; no patient record, raw provider metadata,
   external delivery, browser OS notification, audit, or visual behavior is changed. No image generation or cleanup was
   performed.
+
+## API-CONTRACT-001FZNOTIFICATIONMUTSTRICT
+
+- Classification: Low-risk authorized notification-configuration mutation response contract; not a high-risk controlled change.
+- Scope decision: no request payload, DB write, auth/authz, tenant, audit, delivery, provider, migration, billing, secrets,
+  deployment, escalation behavior, production-data, or external-send implementation changed.
+- Safety control: strict `{ data }` notification-rule response rejects legacy roots, malformed/missing rule fields and
+  provider-only org/conditions/update metadata before local state replacement/prepend; existing canAdmin/org boundaries
+  and side effects remain authoritative.
+- Operational note: notification-rule configuration remains authorized in-app state only; no patient record, raw provider
+  metadata, external delivery, browser OS notification, audit, or visual behavior is changed. No image generation or
+  cleanup was performed.

@@ -338,3 +338,23 @@
   ledger entries.
 - Push evidence: not performed because no current user instruction requested remote publication; local branch is now six
   implementation commits ahead of `origin/agent/continuous-improvement-20260712` before the separate ledger closure.
+
+## API-CONTRACT-001FZNOTIFICATIONMUTSTRICT
+
+- Commit Group: `API-CONTRACT-001FZNOTIFICATIONMUTSTRICT`
+- Commit: `c5d21827c`
+- Push Status: NOT_REQUESTED
+- Branch: `agent/continuous-improvement-20260712`
+- Scope: shared notification-rule POST/PATCH response envelope, consumer regressions, client-schema allowlist ratchet,
+  and required ledgers; notification/escalation GET and escalation mutations remain out of scope.
+- Implementation: reuse the minimal notification-rule item schema in a strict `{ data }` envelope, strip provider-only
+  org/conditions/update fields before local rule state, and reject legacy/malformed/missing-field successful responses.
+- FE/BE impact: invalid 2xx no longer produces false success or an incomplete local rule update; request payloads, DB writes,
+  provider/authz/org scope, audit/delivery semantics, escalation behavior, and visual behavior remain unchanged.
+- Verification: focused 3 files / 45 tests, static contract gates, typecheck, no-unused typecheck, lint, diff-check, and
+  confirmed Next build passed; client-schema inventory is 186 schema-backed / 187 allowlisted / 72 files. Lint retains
+  only the two pre-existing warnings in `src/lib/platform/break-glass.test.ts`; build retains two existing CSS warnings.
+- Rollback: revert the notification-rule single-response schema, consumer/test adapter, allowlist decrement, and ledger
+  entries.
+- Push evidence: not performed because no current user instruction requested remote publication; implementation and ledger
+  commits remain local.

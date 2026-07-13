@@ -29,6 +29,22 @@
 - Browser/E2E: not run; this is a non-visual settings response-contract/cache-boundary slice with no layout change.
 - Migration/auth/tenant: no migration, provider query, authorization, tenant, audit, production-data, or external-send operation changed.
 
+## API-CONTRACT-001FZNOTIFICATIONMUTSTRICT
+
+- Baseline: after the event/escalation GET repairs, the shared notification POST/PATCH response reader remained one
+  schema-less call; notification-settings plus notification-rule provider suites passed 2 files / 35 tests.
+- Focused test: `pnpm exec vitest run 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx' 'src/app/api/notification-rules/route.test.ts' 'src/app/api/notification-rules/[id]/route.test.ts' --reporter=dot --testTimeout=30000` — PASS, 3 files / 45 tests.
+- Static gates: `pnpm format:check`, `pnpm api-response-shape:check`, `pnpm client-json-schema:check`,
+  `pnpm frontend-contract:check`, `pnpm client-phi-log:check`, `pnpm client-phi-display:check`, `pnpm boundaries:check`,
+  `pnpm plans:active:check`, `pnpm colors:check`, `pnpm typography:check`, `git diff --check` — PASS.
+- Client-schema result: 186 schema-backed, 187 allowlisted schema-less calls, 72 files, 0 new debt.
+- Type gates: `pnpm typecheck` — PASS; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused` — PASS.
+- Lint: `pnpm lint` — PASS with the same two pre-existing warnings in `src/lib/platform/break-glass.test.ts`.
+- Build: `pnpm build` — PASS; Next 16.2.9 compiled in 2.1 minutes, TypeScript finished in 79 seconds, 311/311 static
+  pages, optimization/traces complete. Two existing CSS optimizer warnings did not fail the build.
+- Browser/E2E: not run; this is a non-visual mutation response-contract/cache-boundary slice with no layout change.
+- Migration/auth/tenant: no request/DB/provider/authz/tenant/audit/delivery implementation changed; no production data operation executed.
+
 ## API-CONTRACT-001FZNOTIFICATIONSETTINGSTRICT
 
 - Baseline: admin notification-settings consumer/provider suites passed 2 files / 21 tests; the event-rule GET had one

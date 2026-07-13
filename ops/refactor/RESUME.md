@@ -14,32 +14,33 @@
 - Pause Reason: none
 - Paused At: not paused
 - Retry-After: none
-- Last Safe Checkpoint: Notification-settings escalation GET consumer/provider suites pass 2 files / 35 tests; static contract gates, typecheck, no-unused, lint, diff-check, and confirmed serialized Next build passed; client-schema is 185 schema-backed / 188 allowlisted / 72 files; implementation commit `943ea1eca` is local.
-- Last Completed Action: Connected and locally committed the strict escalation-rules GET schema, provider-only projection, malformed/legacy/duplicate/count regressions, and one allowlist ratchet removal.
+- Last Safe Checkpoint: Notification-settings mutation/provider suites pass 3 files / 45 tests; static contract gates, typecheck, no-unused, lint, diff-check, and confirmed serialized Next build passed; client-schema is 186 schema-backed / 187 allowlisted / 72 files; implementation commit `c5d21827c` is local.
+- Last Completed Action: Connected and locally committed the strict `{ data }` notification-rule POST/PATCH response schema, provider-only projection, malformed/legacy/missing-field regressions, and one allowlist ratchet removal.
 - Current Operation: rescan remaining API-CONTRACT-001 debt and the patients board cursor residual, then choose the next disjoint safe slice.
 - Exact Next Action: rerun the client-schema inventory and cursor residual scan, rank remaining candidates by blast radius, and select the next bounded consumer/provider pair without touching unrelated dirty paths.
 - Exact Next Command: `pnpm client-json-schema:check`
-- Changed Files: none for the rescan slice; escalation-settings implementation is committed in `943ea1eca`; preserve inherited harness-memory and personal artifacts.
-- Staged Files: none; escalation-settings implementation and previous slices are committed; unrelated harness-memory and personal artifacts remain unstaged.
+- Changed Files: none for the rescan slice; notification mutation implementation is committed in `c5d21827c`; preserve inherited harness-memory and personal artifacts.
+- Staged Files: none; notification mutation implementation and previous slices are committed; unrelated harness-memory and personal artifacts remain unstaged.
 - Uncommitted Files: see `git status --short --untracked-files=all`; unrelated harness-memory and personal artifacts are excluded.
-- Unpushed Commits: `ba2831aea`, `275d1e8e5`, `696518892`, `07d774705`, `a2b24709a`, `91c11176e`, `943ea1eca` and the pending ledger closure commit (push not requested)
+- Unpushed Commits: `ba2831aea`, `275d1e8e5`, `696518892`, `07d774705`, `91c11176e`, `a2b24709a`, `943ea1eca`, `83479df24`, `c5d21827c` and the pending ledger closure commit (push not requested)
 - Push Status: local implementation/ledger commits remain unpublished because no current user instruction requested remote publication; local/upstream parity is not 0/0.
 - Target Remote Branch: `origin/agent/continuous-improvement-20260712`
-- Commands Completed: notification-settings escalation focused Vitest (2 files / 35 tests); static contract gates; `pnpm typecheck`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`; `pnpm lint`; `git diff --check`; confirmed Next build; prior provider/consumer scans and validation bundle.
+- Commands Completed: notification-settings mutation/provider focused Vitest (3 files / 45 tests); static contract gates; `pnpm typecheck`; `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck:no-unused`; `pnpm lint`; `git diff --check`; confirmed Next build; prior provider/consumer scans and validation bundle.
 - Commands Pending: ledger closure commit, then next API-CONTRACT-001 rescan.
 - Tests Completed: packaging-method slice 2 files / 26 tests, institutions slice 2 files / 43 tests, notification-bell slice 2 files / 12 tests, select-site slice 1 file / 6 tests, operations slice 2 files / 14 tests, staff slice 2 files / 16 tests, jobs slice 2 files / 16 tests, holiday slice 2 files / 39 tests, service-areas slice 2 files / 32 tests, MentionInput 2 files / 34 tests, schedule-conflict/pharmacist provider 2 files / 36 tests, saved-views/preferences provider 3 files / 39 tests, notification-settings event-rule 2 files / 26 tests, and notification-settings escalation 2 files / 35 tests passed.
-- Tests Pending: none for the implemented escalation-settings slice; ledger closure and next rescan remain.
-- Build State: PASS for escalation-settings slice; Next 16.2.9 compiled in 94 seconds, TypeScript finished in 60 seconds, and 311/311 static pages plus traces completed with exit code 0. Existing two CSS optimizer warnings exited 0; no ENOSPC warning was emitted.
+- Tests Pending: none for the implemented notification mutation slice; ledger closure and next rescan remain.
+- Current Slice Tests: notification-settings mutation/provider suites pass 3 files / 45 tests.
+- Build State: PASS for notification mutation slice; Next 16.2.9 compiled in 2.1 minutes, TypeScript finished in 79 seconds, and 311/311 static pages plus traces completed with exit code 0. Existing two CSS optimizer warnings exited 0; no ENOSPC warning was emitted.
 - Typecheck State: PASS
 - Lint State: PASS with two existing warnings in `src/lib/platform/break-glass.test.ts`.
 - Migration State: NOT_APPLICABLE
-- Frontend State: notifications inbox, notification-bell summary/list, institutions GET, packaging-method GET, master-hub GET, vehicle GET, operating-hours GET/PUT, service-areas GET, MentionInput staff lookup, schedule-conflict pharmacist lookup, saved-views preferences/named-view readers, and notification-settings event/escalation GETs use strict runtime schemas; no visual change planned.
-- Backend State: `/api/notification-rules` and `/api/admin/escalation-rules` remain existing bounded org-scoped `canAdmin` providers; all mutations remain out of scope.
-- FE/BE Alignment State: notification-settings consumes only validated event/escalation fields and counted metadata; provider-only data remains out of query state while notification/escalation mutation and audit semantics remain unchanged.
+- Frontend State: notifications inbox, notification-bell summary/list, institutions GET, packaging-method GET, master-hub GET, vehicle GET, operating-hours GET/PUT, service-areas GET, MentionInput staff lookup, schedule-conflict pharmacist lookup, saved-views preferences/named-view readers, and notification-settings event/escalation GET plus notification mutation responses use strict runtime schemas; no visual change planned.
+- Backend State: `/api/notification-rules` and `/api/admin/escalation-rules` remain existing bounded org-scoped `canAdmin` providers; request/DB/mutation side effects are unchanged.
+- FE/BE Alignment State: notification-settings consumes only validated event/escalation fields and counted metadata plus validated notification mutation data; provider-only data remains out of state while request, audit, delivery, and escalation semantics remain unchanged.
 - UI Verification State: no visual reconstruction; no browser run for this contract-only slice.
 - Browser Verification State: NOT_EXECUTED
-- High-Risk Change State: low-risk authorized notification/escalation configuration read projection; no DB/auth/tenant/migration/provider/audit/mutation change made; invalid event/escalation payloads fail closed.
-- Rollback Point: revert `943ea1eca` for the escalation-rule schema/consumer/test/allowlist slice; event-rule remains in `a2b24709a`.
+- High-Risk Change State: low-risk authorized notification/escalation configuration response projection; no DB/auth/tenant/migration/provider/audit/request/side-effect change made; invalid event/escalation/mutation responses fail closed.
+- Rollback Point: revert `c5d21827c` for the notification mutation response schema/consumer/test/allowlist slice; escalation GET remains in `943ea1eca`.
 - Resume Preconditions: confirm no target-file writer, preserve unrelated dirty paths, keep build/typecheck serialized.
 - Known Blockers: none; remaining candidates include higher-risk billing/audit/PHI/outbound readers and the patients-board DB query-take residual.
 - External Changes Detected: none in target files during the checkpoint.
