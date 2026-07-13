@@ -48,14 +48,35 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `OPS-MEDPROFILE-SYNC-RECOVERY-001A`の
-  Plans/STATE evidence同期（実装2 pathsはcommit `eff075e10`でRELEASE済み）、`codex2`: `API-CONTRACT-003H`のerror registry / presigned-upload
-  4 paths。`codex3/codex4`は停止のまま。
+  共有surfaceとlong gateは事前通知で直列化する。`codex1`の`OPS-MEDPROFILE-SYNC-RECOVERY-001A`実装/docsと、`codex2`の
+  `API-CONTRACT-003H`実装4 pathsはいずれもcommit/push済み。現在の共有surface ownershipはなく、`codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex2: API-CONTRACT-003H (DONE; parent remains Partial, 2026-07-14; implementation `998995085`, `PUSHED`).
+  - current task / files inspected / root cause:
+    Error registry/response、presigned-upload route/test、file-storage、auth wrapper、sensitive no-store、offline evidence consumerを照合。
+    同一`EXTERNAL_FILE_UPLOAD_FAILED` / 502を2 catchで重複指定し、純粋なローカルupload constraintの想定外例外まで外部依存の
+    retryable failureとして誤分類していた。Provider側はS3 presignerとmetadata永続化を含むため、同じunknown throwでも分類境界が異なる。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    `src/lib/api/error-codes.ts`とsnapshot、`src/app/api/files/presigned-upload/route.ts`とtestの4 pathsを変更。
+    Registryへ`EXTERNAL_FILE_UPLOAD_FAILED` = 502/error/retryable/retry/`api.error.external.file_upload_failed`を追加し、provider unknown failureだけを
+    typed `registeredError()`へ移行。Constraint unknown failureは再throwして標準`withAuthContext`のPHI-safe structured log + fixed `INTERNAL_ERROR` 500へ分離した。
+    Known `FileStorageError` 400/503、authz/tenant、S3 signing args、metadata persistence、offline最大3回処理、自動retry/query/network/payloadは変更なし。
+    Raw provider error、storage key、患者名、token/secretのresponse非露出、no-store、entity lookup/presign side-effect zeroをexact testで固定した。
+  - validation results / remaining work / next action / rollback:
+    Focused registry/response/files/offline consumer 5 files / 79 tests、auth wrapper 2 files / 19 tests、独立privacy/security reviewとverifier APPROVED
+    （verifier 7 files / 95 tests）、exact ESLint/Prettier、8 GiB typecheck/no-unused、API shape 0/0、API authz、route-auth 150 allowlisted / 214 direct / 0 new、
+    client schema 361 backed / 0 allowlisted、client PHI-log、frontend contract、diffをPASS。AWS公式「Download and upload objects with presigned URLs」
+    (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html) と AWS SDK for JavaScript v3
+    `@aws-sdk/s3-request-presigner` API reference (https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/Package/-aws-sdk-s3-request-presigner/)
+    を2026-07-14に確認し、presigned URLが作成principalの権限に限定されることとv3 presignerの`PutObjectCommand`対応を再確認。AWS実装自体は変更していない。
+    残存低リスクはpresign後段metadata保存失敗時のpending orphanで、registry metadataを自動retryへ接続する前にidempotency/cleanupを別sliceで設計する。
+    Full Vitest/build/E2E/demoはGoal最終batchへ残る。Oracleは現行SSOTの利用停止指示により未使用。非視覚API変更のためimagegen/browserなし。
+    Rollbackは`998995085`のrevertでDB/data rollback不要。
 
 - codex1: OPS-MEDPROFILE-SYNC-RECOVERY-001A (DONE; parent remains Partial, 2026-07-14; implementation `eff075e10`, `PUSHED`).
   - current task / files inspected / root cause:
