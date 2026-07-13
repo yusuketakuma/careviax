@@ -54,7 +54,21 @@
 
 ## 直近の作業
 
-- codex2 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001A (DONE; parent remains Partial, 2026-07-13; implementation in this scoped commit).
+- codex1: QUERY-SHAPE-DAYBOARD-TYPECHECK-003I1 (DONE, 2026-07-13; implementation in this scoped commit).
+  - current task / root cause / files inspected:
+    Serialized full gateの`pnpm typecheck`を実行し、初回はNode default 4 GiB heapでOOM、8 GiB rerunでは
+    `src/app/api/visit-schedules/day-board/route.ts:1295`のPrisma `findMany` argument推論errorを再現した。`003I`で追加したhidden
+    proposal keyset scanの初回`skip: 3` / 後続`cursor + skip: 1` conditional spreadがrequired cursorを持つunionへ狭まり、Prisma genericへ
+    assignできなかった。Route、focused test、pagination helper、package gateを確認した。
+  - files changed / correctness / performance:
+    Conditional object unionをoptional cursor spread +単一numeric `skip`へ正規化し、初回3件skip、後続cursor+1 skipのruntime query shapeを
+    保持した。Query count、page size/ceiling、stable order、DTO、tenant/PHI/write pathは不変。Dependency/schema/migrationなし。
+  - validation / remaining / rollback:
+    day-board focused 1 file / 26 tests、query-shape 0/0、read-SLO 1 known / 0 new、raw-read org 117 allowlisted / 0 new、scoped
+    ESLint/Prettier/diff、`NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` PASS。Default 4 GiB runのOOMはcapacity failureとして明記する。
+    次はno-unused/full test/buildを直列実行する。RollbackはこのcommitのrevertでDB/data rollback不要。
+
+- codex2 + codex1 integration: API-STATUS-NOTFOUND-LIVE-RESCAN-001A (DONE; parent remains Partial, 2026-07-13; implementation `3dc520668`, PUSHED).
   - current task / files inspected / root cause:
     pharmacist detail、case create、management-plan create/clone、medication-profile create、patient-self-report create、cycle-hold create/updateの
     6 routes/testsとresponse/no-store/auth/static guardsを確認した。Body/linked FK failuresが404でprimary targetと混在し、pharmacistのmembership
@@ -463,10 +477,10 @@
     DB/data rollback不要。gbrain: `projects/careviax/decisions/2026-07-13/anchor-daily-jobs-to-japan-business-dates`。
 
 - parallel assignments (FROZEN FOR SERIALIZED GATES, 2026-07-13):
-  - codex2: `API-STATUS-NOTFOUND-LIVE-RESCAN-001A`はcodex1がownership reclaimし、scoped統合中。追加編集禁止。
+  - codex2: `API-STATUS-NOTFOUND-LIVE-RESCAN-001A`は`3dc520668`でPUSHED。追加編集禁止。
   - codex3: `QUERY-SHAPE-VISIT-BRIEF-SERVICE-003L`は`0dd51f444`でPUSHED、ownership release済み。
   - codex4: `001B`は`9e238feb1`、`001C`は`3087191b0`でPUSHED、ownership release済み。
-  - codex1: 001A scoped統合後、全writers freezeを維持してtypecheck/no-unused/full test/build、VERIFY_REQUIRED reconciliationを直列実行する。
+  - codex1: 全writers freezeを維持し、typecheck repair後のno-unused/full test/build、VERIFY_REQUIRED reconciliationを直列実行する。
 
 - codex1: MEDPROFILE-SYNC-RACE-001 MedicationProfile sync serialization (DONE, 2026-07-13; implementation `30fcf954e`, PUSHED).
   - current task / root cause / inspected:

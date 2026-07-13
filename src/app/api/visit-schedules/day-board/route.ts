@@ -1300,9 +1300,8 @@ const authenticatedGET = withAuthContext(
                       { id: 'asc' },
                     ],
                     take: DAY_BOARD_SCAN_PAGE_SIZE,
-                    ...(cursor
-                      ? { cursor: { id: cursor }, skip: 1 }
-                      : { skip: PENDING_PROPOSAL_LIMIT }),
+                    ...(cursor ? { cursor: { id: cursor } } : {}),
+                    skip: cursor ? 1 : PENDING_PROPOSAL_LIMIT,
                     select: { id: true },
                   }),
                 )
