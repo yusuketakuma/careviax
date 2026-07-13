@@ -8,8 +8,6 @@ const allowedAuditCreateFiles = [
   // Break-glass access audit (fail-closed). Design: docs/design/platform-operator-console-design.md,
   // security-reviewed 2026-07-03 (APPROVE). changes carries only session_id/reason/scope/metadata, never PHI.
   'src/lib/audit/break-glass-audit.ts',
-  // W2-R6: PHI 閲覧監査(3省2GL アクセス記録)。設計は docs/security/phi-read-audit-design.md、レビュー済み。
-  'src/lib/audit/phi-read-audit.ts',
   'src/lib/auth/security-events.ts',
   'src/server/services/billing-evidence/core.ts',
   'src/server/services/export-audit.ts',

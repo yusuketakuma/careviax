@@ -86,6 +86,71 @@ describe('recordPhiReadAudit', () => {
     });
   });
 
+  it('adds validated request trace without replacing domain audit metadata', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'audit_trace' });
+
+    await recordPhiReadAudit(
+      { auditLog: { create } },
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        requestId: 'req_phi_123',
+        correlationId: 'corr_phi_456',
+      },
+      {
+        patientId: 'patient_1',
+        view: 'inbound_communication_detail',
+        purpose: 'care_coordination',
+        metadata: { request_id: 'domain_request_789', read_reason_code: 'review_inbound_detail' },
+      },
+    );
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: {
+          view: 'inbound_communication_detail',
+          purpose: 'care_coordination',
+          metadata: {
+            request_id: 'domain_request_789',
+            read_reason_code: 'review_inbound_detail',
+          },
+          request_trace: {
+            request_id: 'req_phi_123',
+            correlation_id: 'corr_phi_456',
+          },
+        },
+      }),
+    });
+  });
+
+  it('omits invalid request trace while preserving the existing audit shape', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'audit_invalid_trace' });
+
+    await recordPhiReadAudit(
+      { auditLog: { create } },
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        requestId: 'patient@example.com',
+        correlationId: 'correlation id with spaces',
+      },
+      {
+        patientId: 'patient_1',
+        view: 'patient_detail',
+        metadata: { request_id: 'domain_request_789' },
+      },
+    );
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: {
+          view: 'patient_detail',
+          metadata: { request_id: 'domain_request_789' },
+        },
+      }),
+    });
+  });
+
   it('records target-only PHI reads when no patient is linked yet', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'audit_target_only' });
 
@@ -202,6 +267,8 @@ describe('recordPhiReadAuditForRequest', () => {
         actorSiteId: 'site_1',
         ipAddress: '203.0.113.10',
         userAgent: 'vitest',
+        requestId: 'req_phi_123',
+        correlationId: 'corr_phi_456',
       },
       { patientId: 'patient_1', view: 'patient_detail', purpose: 'care' },
     );
@@ -216,7 +283,12 @@ describe('recordPhiReadAuditForRequest', () => {
         requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
       }),
     );
-    expect(capturedRequestContext).toMatchObject({ role: 'pharmacist', actorSiteId: 'site_1' });
+    expect(capturedRequestContext).toMatchObject({
+      role: 'pharmacist',
+      actorSiteId: 'site_1',
+      requestId: 'req_phi_123',
+      correlationId: 'corr_phi_456',
+    });
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -226,7 +298,14 @@ describe('recordPhiReadAuditForRequest', () => {
         action: PHI_READ_AUDIT_ACTION,
         target_type: 'patient',
         target_id: 'patient_1',
-        changes: { view: 'patient_detail', purpose: 'care' },
+        changes: {
+          view: 'patient_detail',
+          purpose: 'care',
+          request_trace: {
+            request_id: 'req_phi_123',
+            correlation_id: 'corr_phi_456',
+          },
+        },
         ip_address: '203.0.113.10',
         user_agent: 'vitest',
       }),

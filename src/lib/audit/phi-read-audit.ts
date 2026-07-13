@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import type { RequestAuthContext } from '@/lib/auth/request-context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 
@@ -32,6 +33,8 @@ type PhiReadAuditActor = {
   actorSiteId?: string;
   ipAddress?: string;
   userAgent?: string;
+  requestId?: string;
+  correlationId?: string;
 };
 
 type PhiReadAuditInput = {
@@ -68,20 +71,12 @@ export async function recordPhiReadAudit(
     if (input.purpose) changes.purpose = input.purpose;
     if (input.metadata) changes.metadata = input.metadata;
 
-    await db.auditLog.create({
-      data: {
-        org_id: actor.orgId,
-        actor_id: actor.userId,
-        actor_pharmacy_id: actor.actorPharmacyId ?? actor.orgId,
-        actor_site_id: actor.actorSiteId,
-        patient_id: input.patientId ?? undefined,
-        action: PHI_READ_AUDIT_ACTION,
-        target_type: input.targetType ?? 'patient',
-        target_id: input.targetId ?? input.patientId ?? 'unknown',
-        changes: changes as Prisma.InputJsonValue,
-        ip_address: actor.ipAddress,
-        user_agent: actor.userAgent,
-      },
+    await createAuditLogEntry(db, actor, {
+      action: PHI_READ_AUDIT_ACTION,
+      targetType: input.targetType ?? 'patient',
+      targetId: input.targetId ?? input.patientId ?? 'unknown',
+      patientId: input.patientId ?? undefined,
+      changes: changes as Prisma.InputJsonValue,
     });
   } catch (error) {
     // 監査書込みの失敗はレスポンスを妨げない。識別子を含めず dedicated metric filter へ送る。
@@ -105,6 +100,8 @@ type PhiReadAuditRequestContext = {
   actorSiteId?: string;
   ipAddress?: string;
   userAgent?: string;
+  requestId?: string;
+  correlationId?: string;
 };
 
 /**
@@ -129,6 +126,8 @@ export function recordPhiReadAuditForRequest(
     ...(ctx.actorSiteId ? { actorSiteId: ctx.actorSiteId } : {}),
     ...(ctx.ipAddress ? { ipAddress: ctx.ipAddress } : {}),
     ...(ctx.userAgent ? { userAgent: ctx.userAgent } : {}),
+    ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
+    ...(ctx.correlationId ? { correlationId: ctx.correlationId } : {}),
   };
   const requestContext: RequestAuthContext = {
     userId: ctx.userId,
@@ -138,6 +137,8 @@ export function recordPhiReadAuditForRequest(
     ...(ctx.actorSiteId ? { actorSiteId: ctx.actorSiteId } : {}),
     ...(ctx.ipAddress ? { ipAddress: ctx.ipAddress } : {}),
     ...(ctx.userAgent ? { userAgent: ctx.userAgent } : {}),
+    ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
+    ...(ctx.correlationId ? { correlationId: ctx.correlationId } : {}),
   };
 
   const reportContextFailure = (error: unknown) => {
