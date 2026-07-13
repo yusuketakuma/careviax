@@ -14,6 +14,7 @@ import {
 import { withRoutePerformance } from '@/lib/utils/performance';
 import { logSecurityEvent } from './security-events';
 import { getClientIp } from '@/lib/api/request-ip';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 export type AuthContext = RequestAuthContext;
 
@@ -35,6 +36,10 @@ type AuthSessionUserWithSite = {
   defaultSiteId?: unknown;
   orgId?: unknown;
 };
+
+async function sensitiveAuthFailure(response: Promise<NextResponse>): Promise<NextResponse> {
+  return withSensitiveNoStore(await response);
+}
 
 async function authSession() {
   const { auth } = await import('./config');
@@ -190,7 +195,7 @@ export async function requireAuthContext(
       details: { reason: 'no_user_identity' },
     });
     return {
-      response: await unauthorized(),
+      response: await sensitiveAuthFailure(unauthorized()),
     };
   }
 
@@ -212,7 +217,7 @@ export async function requireAuthContext(
         method,
         details: { reason: 'session_version_mismatch' },
       });
-      return { response: await unauthorized() };
+      return { response: await sensitiveAuthFailure(unauthorized()) };
     }
   }
 
@@ -234,7 +239,7 @@ export async function requireAuthContext(
       details: { reason: 'no_org_id' },
     });
     return {
-      response: await authNoOrg(),
+      response: await sensitiveAuthFailure(authNoOrg()),
     };
   }
 
@@ -249,7 +254,9 @@ export async function requireAuthContext(
       details: { reason: 'no_membership' },
     });
     return {
-      response: await forbiddenResponse('この組織へのアクセス権限がありません'),
+      response: await sensitiveAuthFailure(
+        forbiddenResponse('この組織へのアクセス権限がありません'),
+      ),
     };
   }
 
@@ -302,7 +309,9 @@ export async function requireAuthContext(
         },
       });
       return {
-        response: await forbiddenResponse(options.message ?? '権限がありません'),
+        response: await sensitiveAuthFailure(
+          forbiddenResponse(options.message ?? '権限がありません'),
+        ),
       };
     }
   }
@@ -332,11 +341,11 @@ export function withAuthContext<TParams extends Record<string, string>>(
   return async (req: NextRequest, routeContext: AuthRouteContext<TParams>) => {
     return withRoutePerformance(req, async () => {
       const authResult = await requireAuthContext(req, options);
-      if ('response' in authResult) return authResult.response;
+      if ('response' in authResult) return withSensitiveNoStore(authResult.response);
 
       return runWithRequestAuthContext(authResult.ctx, async () => {
         try {
-          return await handler(req, authResult.ctx, routeContext);
+          return withSensitiveNoStore(await handler(req, authResult.ctx, routeContext));
         } catch (err) {
           // redirect()/notFound()/forbidden()/unauthorized() 等の Next 制御フロー例外は
           // フレームワークに委ねる(該当時のみ再 throw、それ以外は何もしない)
@@ -349,7 +358,7 @@ export function withAuthContext<TParams extends Record<string, string>>(
             },
             err,
           );
-          return internalError();
+          return withSensitiveNoStore(internalError());
         }
       });
     });

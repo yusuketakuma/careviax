@@ -55,6 +55,29 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-001FZAUTHNOSTORE (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+  - current task / files inspected / root cause:
+    Goal objective、`Plans.md`、本STATE、git/branch parity、gbrain、API contract ratchets、`src/lib/auth/context.ts`/test、
+    sensitive response helper、route-performance wrapper、installed Next 16.2.9 data-security guide、PH-OS UI/UX SSOTのcache規範を再確認した。
+    exact-root debtは0、client runtime schemaは361 backed / 0 allowlistedまで解消済みだった一方、標準`withAuthContext`の195 callsites
+    （144 route files）はhandler responseへno-storeを共通適用せずroute-local実装に依存し、251 direct `requireAuthContext` callsの401/403も
+    helper自体ではcache禁止されなかった。Protected PHI/operational responseのcache境界が各routeの記述漏れに依存することが根本原因だった。
+  - files changed / correctness / security / privacy:
+    `requireAuthContext`のno identity、session-version mismatch、no org、no membership、permission denialを共通
+    `withSensitiveNoStore`へ接続し、direct-auth callerの401/403も`private, no-store, max-age=0` + `Pragma: no-cache`へ固定した。
+    `withAuthContext`はauth denial、handlerのsuccess/known error、sanitized unexpected 500の全responseへ同じheaderを最終適用し、handlerが誤って
+    public cacheを指定してもfail-closedに上書きする。既存status/body/custom header、permission、tenant membership、security event、PHI-safe logger、
+    Next control-flow rethrow、request auth context、route performance記録は維持する。
+  - performance / stability / validation / remaining / rollback:
+    DB query、write、network、render、payload bodyを増やさず、responseごとに定数個のheader setだけを追加した。Focused auth/sensitive/route-ratchet
+    2 files / 10 tests、auth context単独1 file / 6 tests、exact ESLint/Prettier、8 GiB typecheck / no-unused、full Vitest 1554 files /
+    16237 tests（3 files / 13 tests skipped）をPASSした。Next 16.2.9 production buildもwebpack compile、TypeScript、static pages 311/311を
+    PASSし、既知generated CSS `var(...)` warning 2件のみ。API shape 0/0、API authz 0、route auth 175 allowlisted / 251 direct / 0 new、
+    client schema 361 backed / 0 allowlisted、raw-org 116 / 0 new、module boundary 0/0、frontend contract、Plans active、colors、typography、
+    client PHI-log/displayをPASSした。視覚・copy・layout・motion変更のないshared server/auth contract sliceのためimagegen/browserを省略した。
+    Schema/migration/production data/deploy/Oracleなし。親にはdirect-auth success responseで`withSensitiveNoStore`を未使用の25 routes、
+    request_id/correlation_id、error registryが残る。Rollbackはこのscoped commitのrevertでDB/data rollback不要。
+
 - codex1: QUERY-SHAPE-PATIENT-BOARD-STREAMING-003P (DONE; parent remains Partial, 2026-07-14; implementation `c5fc8ec08`, `PUSHED`).
   - current task / files inspected / root cause:
     Goal再開時にattachment、`Plans.md`、本STATE、dirty tree、feature branch/deploy triggerを復元し、未push 6 commitsを
