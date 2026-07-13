@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getApiErrorDefinition, type RegisteredApiErrorCode } from '@/lib/api/error-codes';
 
 export type ApiError = {
   code: string;
@@ -9,15 +10,6 @@ export type ApiError = {
 export type ApiSuccess<TData, TMeta extends object = Record<string, unknown>> = {
   data: TData;
   meta?: TMeta;
-};
-
-const defaultLabelKeysByCode: Partial<Record<string, string>> = {
-  AUTH_UNAUTHENTICATED: 'api.error.auth.unauthenticated',
-  AUTH_NO_ORG: 'api.error.auth.no_org',
-  AUTH_FORBIDDEN: 'api.error.auth.forbidden',
-  VALIDATION_ERROR: 'api.error.validation.generic',
-  WORKFLOW_NOT_FOUND: 'api.error.workflow.not_found',
-  WORKFLOW_CONFLICT: 'api.error.workflow.conflict',
 };
 
 export function success<TData, TMeta extends object = Record<string, unknown>>(
@@ -45,8 +37,13 @@ export function error(code: string, message: string, status: number, details?: u
   return NextResponse.json({ code, message, details } satisfies ApiError, { status });
 }
 
+export function registeredError(code: RegisteredApiErrorCode, message: string, details?: unknown) {
+  const definition = getApiErrorDefinition(code);
+  return error(code, message, definition.httpStatus, details);
+}
+
 export function validationError(message: string, details?: unknown) {
-  return error('VALIDATION_ERROR', message, 400, details);
+  return registeredError('VALIDATION_ERROR', message, details);
 }
 
 /**
@@ -54,19 +51,19 @@ export function validationError(message: string, details?: unknown) {
  * 生のエラーメッセージは情報漏洩を避けるため出さず、固定文言を返す。
  */
 export function internalError(message = 'サーバー内部でエラーが発生しました') {
-  return error('INTERNAL_ERROR', message, 500);
+  return registeredError('INTERNAL_ERROR', message);
 }
 
 export function notFound(message = 'リソースが見つかりません') {
-  return error('WORKFLOW_NOT_FOUND', message, 404);
+  return registeredError('WORKFLOW_NOT_FOUND', message);
 }
 
 export function forbidden(message = '権限がありません') {
-  return error('AUTH_FORBIDDEN', message, 403);
+  return registeredError('AUTH_FORBIDDEN', message);
 }
 
 export function conflict(message = '競合が発生しました', details?: unknown) {
-  return error('WORKFLOW_CONFLICT', message, 409, details);
+  return registeredError('WORKFLOW_CONFLICT', message, details);
 }
 
 /**
@@ -77,24 +74,34 @@ export function rateLimited(
   retryAfterSeconds: number,
   message = 'リクエストが多すぎます。しばらくしてから再度お試しください',
 ) {
+  const definition = getApiErrorDefinition('RATE_LIMIT_EXCEEDED');
   const safeRetryAfterSeconds = Number.isFinite(retryAfterSeconds)
     ? Math.max(1, Math.ceil(retryAfterSeconds))
     : 1;
   return NextResponse.json({ code: 'RATE_LIMIT_EXCEEDED', message } satisfies ApiError, {
-    status: 429,
+    status: definition.httpStatus,
     headers: { 'Retry-After': String(safeRetryAfterSeconds) },
   });
 }
 
-async function resolveLocalizedMessage(code: string, message: string, labelKey?: string) {
-  const resolvedLabelKey = labelKey ?? defaultLabelKeysByCode[code];
-  if (!resolvedLabelKey) return message;
+async function resolveLocalizedMessage(message: string, labelKey?: string) {
+  if (!labelKey) return message;
   try {
     const { getLabelDictionaryValue } = await import('@/server/services/label-dictionary');
-    return await getLabelDictionaryValue(resolvedLabelKey, message);
+    return await getLabelDictionaryValue(labelKey, message);
   } catch {
     return message;
   }
+}
+
+async function localizedRegisteredError(
+  code: RegisteredApiErrorCode,
+  message: string,
+  details?: unknown,
+) {
+  const definition = getApiErrorDefinition(code);
+  const localizedMessage = await resolveLocalizedMessage(message, definition.messageLabel);
+  return error(code, localizedMessage, definition.httpStatus, details);
 }
 
 export async function localizedError(
@@ -104,20 +111,20 @@ export async function localizedError(
   details?: unknown,
   labelKey?: string,
 ) {
-  const localizedMessage = await resolveLocalizedMessage(code, message, labelKey);
+  const localizedMessage = await resolveLocalizedMessage(message, labelKey);
   return error(code, localizedMessage, status, details);
 }
 
 export async function unauthorized(message = '認証が必要です', details?: unknown) {
-  return localizedError('AUTH_UNAUTHENTICATED', message, 401, details);
+  return localizedRegisteredError('AUTH_UNAUTHENTICATED', message, details);
 }
 
 export async function authNoOrg(message = '組織IDが必要です', details?: unknown) {
-  return localizedError('AUTH_NO_ORG', message, 400, details);
+  return localizedRegisteredError('AUTH_NO_ORG', message, details);
 }
 
 export async function forbiddenResponse(message = '権限がありません', details?: unknown) {
-  return localizedError('AUTH_FORBIDDEN', message, 403, details);
+  return localizedRegisteredError('AUTH_FORBIDDEN', message, details);
 }
 
 export async function externalError(

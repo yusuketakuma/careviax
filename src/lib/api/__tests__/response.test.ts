@@ -15,6 +15,7 @@ import {
   localizedError,
   notFound,
   rateLimited,
+  registeredError,
   success,
   successWithMeasuredJsonPayload,
   unauthorized,
@@ -36,6 +37,14 @@ function assertApiSuccessInputContract() {
 }
 
 void assertApiSuccessInputContract;
+
+function assertRegisteredErrorInputContract() {
+  void registeredError('VALIDATION_ERROR', '入力値が不正です');
+  // @ts-expect-error shared registered errors reject unknown codes at compile time.
+  void registeredError('UNREGISTERED_ERROR', '処理に失敗しました');
+}
+
+void assertRegisteredErrorInputContract;
 
 describe('api response helpers', () => {
   beforeEach(() => {
@@ -84,6 +93,16 @@ describe('api response helpers', () => {
       code: 'VALIDATION_ERROR',
       message: '入力値が不正です',
       details: { url: ['URLが不正です'] },
+    });
+  });
+
+  it('derives registered helper status from the canonical definition', async () => {
+    const response = registeredError('WORKFLOW_CONFLICT', '再読み込みしてください');
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_CONFLICT',
+      message: '再読み込みしてください',
     });
   });
 
