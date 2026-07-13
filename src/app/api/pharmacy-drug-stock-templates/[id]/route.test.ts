@@ -84,6 +84,10 @@ describe('/api/pharmacy-drug-stock-templates/[id]', () => {
             template_name: '在宅内科 標準セット',
             item_count: 12,
             source_site_id: 'site_1',
+            request_trace: {
+              request_id: expect.any(String),
+              correlation_id: expect.any(String),
+            },
           },
         }),
       }),

@@ -219,6 +219,10 @@ describe('/api/pharmacy-drug-stock-templates', () => {
           changes: {
             source_site_id: 'site_1',
             item_count: 1,
+            request_trace: {
+              request_id: expect.any(String),
+              correlation_id: expect.any(String),
+            },
           },
         }),
       }),

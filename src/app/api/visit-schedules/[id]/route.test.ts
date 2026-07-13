@@ -744,6 +744,10 @@ describe('/api/visit-schedules/[id] GET', () => {
         action: 'visit_schedule_updated',
         changes: {
           schedule_status: { from: 'planned', to: 'in_progress' },
+          request_trace: {
+            request_id: expect.any(String),
+            correlation_id: expect.any(String),
+          },
         },
       }),
     });
@@ -1254,6 +1258,10 @@ describe('/api/visit-schedules/[id] GET', () => {
         target_id: 'schedule_1',
         changes: {
           schedule_status: { from: 'planned', to: 'cancelled' },
+          request_trace: {
+            request_id: expect.any(String),
+            correlation_id: expect.any(String),
+          },
         },
       }),
     });
@@ -1335,6 +1343,10 @@ describe('/api/visit-schedules/[id] GET', () => {
         target_id: 'schedule_1',
         changes: {
           vehicle_resource_id: { from: null, to: 'vehicle_1' },
+          request_trace: {
+            request_id: expect.any(String),
+            correlation_id: expect.any(String),
+          },
         },
       }),
     });

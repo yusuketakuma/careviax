@@ -142,6 +142,10 @@ describe('/api/pharmacy-drug-stocks/review', () => {
           site_id: 'site_1',
           reviewed_count: 2,
           drug_master_ids: ['drug_1', 'drug_2'],
+          request_trace: {
+            request_id: expect.any(String),
+            correlation_id: expect.any(String),
+          },
         },
         ip_address: undefined,
         user_agent: undefined,
