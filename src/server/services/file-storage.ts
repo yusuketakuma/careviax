@@ -31,6 +31,8 @@ const DEFAULT_CONTRACT_DOCUMENT_RETENTION_YEARS = 7;
 const MAX_BULK_EXPORT_CLEANUP_BATCH_SIZE = 100;
 const DEFAULT_BULK_EXPORT_CLEANUP_MAX_PAGES = 10;
 const EXPIRED_GENERATED_FILE_CLEANUP_ERROR = '保持期限切れファイルの削除に失敗しました';
+const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/i;
+const CHECKSUM_SHA256_HEADER = 'x-amz-checksum-sha256';
 
 const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const DOCUMENT_MIME_TYPES = new Set([...IMAGE_MIME_TYPES, 'application/pdf']);
@@ -106,6 +108,7 @@ export type StoredFileRecord = {
   jobId?: string | null;
   uploadedBy?: string | null;
   etag?: string | null;
+  sha256?: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt?: string | null;
@@ -128,6 +131,7 @@ type FileAssetRow = {
   job_id: string | null;
   uploaded_by: string | null;
   etag: string | null;
+  metadata: unknown;
   completed_at: Date | null;
   expires_at: Date | null;
   download_disposition: string;
@@ -171,6 +175,7 @@ type CreatePresignedUploadArgs = {
   patientId?: string | null;
   visitRecordId?: string | null;
   reportId?: string | null;
+  sha256?: string | null;
 };
 
 type CompleteUploadArgs = {
@@ -226,6 +231,7 @@ export class FileStorageError extends Error {
       | 'FILE_UPLOAD_REFERENCE_MISSING'
       | 'FILE_UPLOAD_INVALID_MIME'
       | 'FILE_UPLOAD_TOO_LARGE'
+      | 'FILE_UPLOAD_INVALID_CHECKSUM'
       | 'FILE_METADATA_WRITE_FAILED'
       | 'FILE_COMPLETE_FORBIDDEN'
       | 'FILE_DOWNLOAD_FORBIDDEN'
@@ -247,10 +253,13 @@ export type FileStorageS3ClientHandles = {
 
 const s3Clients = new Map<string, FileStorageS3ClientHandles>();
 
-export function createFileStorageS3ClientHandles(client: S3Client): FileStorageS3ClientHandles {
+export function createFileStorageS3ClientHandles(
+  presigningClient: S3Client,
+  sendClient: S3Client = presigningClient,
+): FileStorageS3ClientHandles {
   return {
-    presigningClient: client,
-    sendClient: withAwsClientTimeout(client),
+    presigningClient,
+    sendClient: withAwsClientTimeout(sendClient),
   };
 }
 
@@ -376,7 +385,16 @@ function getClients() {
   const cached = s3Clients.get(region);
   if (cached) return cached;
 
-  const clients = createFileStorageS3ClientHandles(new S3Client({ region, ...awsClientConfig() }));
+  const sendClient = new S3Client({
+    region,
+    ...awsClientConfig(),
+  });
+  const presigningClient = new S3Client({
+    region,
+    ...awsClientConfig(),
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+  });
+  const clients = createFileStorageS3ClientHandles(presigningClient, sendClient);
   s3Clients.set(region, clients);
   return clients;
 }
@@ -533,6 +551,35 @@ function assertUploadReferenceIds(args: CreatePresignedUploadArgs) {
   );
 }
 
+function normalizeUploadSha256(args: CreatePresignedUploadArgs) {
+  const sha256 = args.sha256?.trim();
+
+  if (args.purpose !== 'prescription') {
+    if (sha256) {
+      throw new FileStorageError(
+        'FILE_UPLOAD_INVALID_CHECKSUM',
+        'SHA-256 は処方箋アップロードでのみ指定できます',
+        400,
+      );
+    }
+    return null;
+  }
+
+  if (!sha256 || !SHA256_HEX_PATTERN.test(sha256)) {
+    throw new FileStorageError(
+      'FILE_UPLOAD_INVALID_CHECKSUM',
+      '処方箋アップロードには64文字の16進SHA-256が必要です',
+      400,
+    );
+  }
+
+  return sha256.toLowerCase();
+}
+
+function sha256HexToBase64(sha256: string) {
+  return Buffer.from(sha256, 'hex').toString('base64');
+}
+
 export function assertFileUploadConstraints(args: {
   purpose: FilePurpose;
   mimeType: string;
@@ -590,6 +637,7 @@ function nullableDateFromIso(value: string | null | undefined) {
 }
 
 function fileAssetRowToStoredRecord(row: FileAssetRow): StoredFileRecord | null {
+  const metadata = readJsonObject(row.metadata);
   return parseStoredFileRecord({
     version: 1,
     id: row.id,
@@ -606,6 +654,7 @@ function fileAssetRowToStoredRecord(row: FileAssetRow): StoredFileRecord | null 
     jobId: row.job_id,
     uploadedBy: row.uploaded_by,
     etag: row.etag,
+    sha256: metadata?.sha256,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     completedAt: row.completed_at?.toISOString() ?? null,
@@ -629,6 +678,7 @@ function storedRecordToFileAssetData(record: StoredFileRecord) {
     job_id: record.jobId ?? null,
     uploaded_by: record.uploadedBy ?? null,
     etag: record.etag ?? null,
+    ...(record.sha256 ? { metadata: { sha256: record.sha256 } } : {}),
     completed_at: nullableDateFromIso(record.completedAt),
     expires_at: nullableDateFromIso(record.expiresAt),
     download_disposition: record.downloadDisposition ?? 'inline',
@@ -639,6 +689,13 @@ function normalizeStoredReferenceId(value: unknown) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeStoredSha256(value: unknown) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  return SHA256_HEX_PATTERN.test(normalized) ? normalized : undefined;
 }
 
 function inferBulkExportJobIdFromStorageKey(storageKey: string, orgId: string) {
@@ -746,6 +803,9 @@ function parseStoredFileRecord(value: unknown): StoredFileRecord | null {
       normalizeStoredReferenceId(record.jobId) ??
       inferBulkExportJobIdFromStorageKey(record.storageKey, record.orgId),
   };
+  const sha256 = normalizeStoredSha256(record.sha256);
+
+  if (sha256 === undefined) return null;
 
   if (!isStoredFileReferenceConsistent(normalizedRecord)) {
     return null;
@@ -767,6 +827,7 @@ function parseStoredFileRecord(value: unknown): StoredFileRecord | null {
     jobId: normalizedRecord.jobId,
     uploadedBy: typeof record.uploadedBy === 'string' ? record.uploadedBy : null,
     etag: typeof record.etag === 'string' ? record.etag : null,
+    ...(sha256 ? { sha256 } : {}),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     completedAt: typeof record.completedAt === 'string' ? record.completedAt : null,
@@ -1300,8 +1361,9 @@ function normalizeContentType(contentType: string | null | undefined) {
 }
 
 function assertUploadedObjectMatchesRecord(
-  response: { ContentLength?: number; ContentType?: string },
+  response: { ContentLength?: number; ContentType?: string; ChecksumSHA256?: string },
   record: StoredFileRecord,
+  expectedChecksumSha256: string | null,
 ) {
   if (typeof response.ContentLength !== 'number' || response.ContentLength !== record.sizeBytes) {
     throw new FileStorageError(
@@ -1318,12 +1380,22 @@ function assertUploadedObjectMatchesRecord(
       409,
     );
   }
+
+  if (expectedChecksumSha256 && response.ChecksumSHA256 !== expectedChecksumSha256) {
+    throw new FileStorageError(
+      'FILE_NOT_READY',
+      'アップロード済みファイルのSHA-256整合性確認に失敗しました',
+      409,
+    );
+  }
 }
 
 export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
   const { bucketName } = getRequiredStorageConfig();
   assertAllowedUpload(args);
   assertUploadReferenceIds(args);
+  const sha256 = normalizeUploadSha256(args);
+  const checksumSha256 = sha256 ? sha256HexToBase64(sha256) : null;
   const objectLock = buildPrescriptionObjectLockRetention(args.purpose);
   const encryption = getS3EncryptionConfig(args.purpose);
 
@@ -1345,6 +1417,12 @@ export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
       Bucket: bucketName,
       Key: storageKey,
       ContentType: args.mimeType,
+      ...(checksumSha256
+        ? {
+            ChecksumAlgorithm: 'SHA256' as const,
+            ChecksumSHA256: checksumSha256,
+          }
+        : {}),
       ...encryption.commandInput,
       ...(objectLock
         ? {
@@ -1353,7 +1431,10 @@ export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
           }
         : {}),
     }),
-    { expiresIn: UPLOAD_EXPIRY_SECONDS },
+    {
+      expiresIn: UPLOAD_EXPIRY_SECONDS,
+      ...(checksumSha256 ? { unhoistableHeaders: new Set<string>([CHECKSUM_SHA256_HEADER]) } : {}),
+    },
   );
 
   const record: StoredFileRecord = {
@@ -1372,6 +1453,7 @@ export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
     jobId: null,
     uploadedBy: null,
     etag: null,
+    ...(sha256 ? { sha256 } : {}),
     createdAt: now,
     updatedAt: now,
     completedAt: null,
@@ -1392,6 +1474,7 @@ export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
     headers: {
       'Content-Type': args.mimeType,
       ...encryption.headers,
+      ...(checksumSha256 ? { [CHECKSUM_SHA256_HEADER]: checksumSha256 } : {}),
       ...(objectLock
         ? {
             'x-amz-object-lock-mode': objectLock.mode,
@@ -1691,6 +1774,16 @@ export async function completeUploadedFile({
   }
 
   const requestedEtag = normalizeEtag(etag ?? record.etag ?? null);
+  const expectedChecksumSha256 =
+    record.purpose === 'prescription' && record.sha256 ? sha256HexToBase64(record.sha256) : null;
+
+  if (record.purpose === 'prescription' && !expectedChecksumSha256) {
+    throw new FileStorageError(
+      'FILE_NOT_READY',
+      '処方箋ファイルのSHA-256整合性情報が見つかりません',
+      409,
+    );
+  }
 
   let uploadedEtag: string | null = requestedEtag;
 
@@ -1699,11 +1792,12 @@ export async function completeUploadedFile({
       new HeadObjectCommand({
         Bucket: bucketName,
         Key: record.storageKey,
+        ...(expectedChecksumSha256 ? { ChecksumMode: 'ENABLED' as const } : {}),
       }),
     );
 
     const remoteEtag = normalizeEtag(response.ETag);
-    assertUploadedObjectMatchesRecord(response, record);
+    assertUploadedObjectMatchesRecord(response, record, expectedChecksumSha256);
 
     if (requestedEtag && remoteEtag && requestedEtag !== remoteEtag) {
       throw new FileStorageError(

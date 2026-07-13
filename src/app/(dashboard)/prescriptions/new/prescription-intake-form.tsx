@@ -34,6 +34,7 @@ import { buildDrugMastersApiPath } from '@/lib/drug-masters/api-paths';
 import { buildPrescriberInstitutionsApiPath } from '@/lib/prescriber-institutions/api-paths';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { buildFileDownloadHref } from '@/lib/files/navigation';
+import { computeUploadSha256Hex } from '@/lib/files/upload-checksum';
 import { PatientMcsSummarySection } from '@/components/patient-mcs/patient-mcs-summary-section';
 import { PatientHeader } from '@/components/features/patients/patient-header';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
@@ -1007,6 +1008,7 @@ export function PrescriptionIntakeForm() {
 
     // 画像/PDF 混在: PDF は downscaleImage 内の image/* 判定で無変換のまま返す(W2-F1)。
     const uploadFile = await downscaleImage(file);
+    const sha256 = await computeUploadSha256Hex(uploadFile);
     const presignResponse = await fetch('/api/files/presigned-upload', {
       method: 'POST',
       headers: buildOrgJsonHeaders(orgId),
@@ -1016,6 +1018,7 @@ export function PrescriptionIntakeForm() {
         file_name: uploadFile.name,
         mime_type: uploadFile.type || 'image/jpeg',
         size_bytes: uploadFile.size,
+        sha256,
       }),
     });
 

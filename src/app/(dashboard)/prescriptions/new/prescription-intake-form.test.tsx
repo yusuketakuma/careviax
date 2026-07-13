@@ -11,6 +11,8 @@ const { useQueryMock, useMutationMock, useOrgIdMock, searchParamsGet } = vi.hois
   useOrgIdMock: vi.fn(),
   searchParamsGet: vi.fn(),
 }));
+const downscaleImageMock = vi.hoisted(() => vi.fn(async (file: File) => file));
+const computeUploadSha256HexMock = vi.hoisted(() => vi.fn(async () => 'ab'.repeat(32)));
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
@@ -23,6 +25,14 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({ useOrgId: useOrgIdMock }));
+
+vi.mock('@/lib/files/downscale-image', () => ({
+  downscaleImage: downscaleImageMock,
+}));
+
+vi.mock('@/lib/files/upload-checksum', () => ({
+  computeUploadSha256Hex: computeUploadSha256HexMock,
+}));
 
 // Debounce is collapsed to the identity so a typed search term is immediately
 // reflected in debouncedPatientSearch without fake timers.
@@ -563,6 +573,91 @@ describe('PrescriptionIntakeForm secondary-lookup fetch-error handling', () => {
           frequency: '1日1回朝食後',
         }),
       );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('hashes the final downscaled prescription bytes before presign and uploads with signed headers', async () => {
+    const sha256 = 'ab'.repeat(32);
+    searchParamsGet.mockImplementation((key: string) =>
+      key === 'patient_id' ? 'patient_1' : key === 'case_id' ? 'case_1' : '',
+    );
+    setupQueries({
+      'selected-patient': {
+        data: {
+          id: 'patient_1',
+          name: '田中 一郎',
+          name_kana: 'タナカ イチロウ',
+          birth_date: '1980-01-01',
+        },
+      },
+      'patient-cases': {
+        data: { data: [{ id: 'case_1', display_id: 'cc0000000123', status: 'active' }] },
+      },
+      'patient-prescriptions': { data: { data: [] } },
+    });
+    const sourceFile = new File(['source-pdf'], 'source.pdf', { type: 'application/pdf' });
+    const downscaledFile = new File(['final-pdf'], 'final.pdf', { type: 'application/pdf' });
+    downscaleImageMock.mockResolvedValueOnce(downscaledFile);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            id: 'file_1',
+            uploadUrl: 'https://uploads.example.com/final.pdf',
+            headers: {
+              'Content-Type': 'application/pdf',
+              'x-amz-server-side-encryption': 'AES256',
+              'x-amz-checksum-sha256': 'checksum-base64',
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200, headers: { etag: 'etag-1' } }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: 'file_1' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const { container } = render(<PrescriptionIntakeForm />);
+      const fileInputs = container.querySelectorAll<HTMLInputElement>('input[type="file"]');
+      expect(fileInputs).toHaveLength(2);
+      fireEvent.change(fileInputs[1]!, { target: { files: [sourceFile] } });
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+      expect(downscaleImageMock).toHaveBeenCalledWith(sourceFile);
+      expect(computeUploadSha256HexMock).toHaveBeenCalledWith(downscaledFile);
+
+      const [presignUrl, presignInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(presignUrl).toBe('/api/files/presigned-upload');
+      expect(JSON.parse(String(presignInit.body))).toEqual({
+        purpose: 'prescription',
+        patient_id: 'patient_1',
+        file_name: 'final.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: downscaledFile.size,
+        sha256,
+      });
+
+      const [putUrl, putInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+      expect(putUrl).toBe('https://uploads.example.com/final.pdf');
+      expect(putInit).toMatchObject({
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/pdf',
+          'x-amz-server-side-encryption': 'AES256',
+          'x-amz-checksum-sha256': 'checksum-base64',
+        },
+        body: downscaledFile,
+      });
+
+      const [completeUrl, completeInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+      expect(completeUrl).toBe('/api/files/complete');
+      expect(JSON.parse(String(completeInit.body))).toEqual({
+        file_id: 'file_1',
+        etag: 'etag-1',
+      });
     } finally {
       vi.unstubAllGlobals();
     }

@@ -21,6 +21,8 @@ const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
 const useOrgIdMock = vi.hoisted(() => vi.fn());
+const downscaleImageMock = vi.hoisted(() => vi.fn(async (file: File) => file));
+const computeUploadSha256HexMock = vi.hoisted(() => vi.fn(async () => 'ab'.repeat(32)));
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
@@ -43,6 +45,14 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
+}));
+
+vi.mock('@/lib/files/downscale-image', () => ({
+  downscaleImage: downscaleImageMock,
+}));
+
+vi.mock('@/lib/files/upload-checksum', () => ({
+  computeUploadSha256Hex: computeUploadSha256HexMock,
 }));
 
 // Actual-backed spy: buildOrgJsonHeaders keeps real behavior by default (so F-081/F-082 header assertions stay
@@ -4933,8 +4943,13 @@ describe('CardWorkspace', () => {
   it('uploads via encoded download URL + helper JSON headers, keeps external PUT headers, preserves exact bodies', async () => {
     const presignId = 'file_raw_42';
     const completeId = 'file/1?x=y#z';
+    const sha256 = 'ab'.repeat(32);
+    const downscaledFile = new File(['downscaled-pdf'], 'prescription-downscaled.pdf', {
+      type: 'application/pdf',
+    });
     const sentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
     vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinel);
+    downscaleImageMock.mockResolvedValueOnce(downscaledFile);
 
     const { prescriptionDocumentMutate } = mockUploadWorkspace();
     const fetchMock = vi
@@ -4945,7 +4960,10 @@ describe('CardWorkspace', () => {
           data: {
             id: presignId,
             uploadUrl: 'https://uploads.example.com/prescription.pdf',
-            headers: { 'x-amz-server-side-encryption': 'AES256' },
+            headers: {
+              'x-amz-server-side-encryption': 'AES256',
+              'x-amz-checksum-sha256': 'checksum-base64',
+            },
           },
         }),
       })
@@ -4975,16 +4993,23 @@ describe('CardWorkspace', () => {
       expect(JSON.parse(String(presignInit.body))).toEqual({
         purpose: 'prescription',
         patient_id: 'patient_1',
-        file_name: 'prescription.pdf',
+        file_name: 'prescription-downscaled.pdf',
         mime_type: 'application/pdf',
-        size_bytes: file.size,
+        size_bytes: downscaledFile.size,
+        sha256,
       });
+      expect(downscaleImageMock).toHaveBeenCalledWith(file);
+      expect(computeUploadSha256HexMock).toHaveBeenCalledWith(downscaledFile);
 
       // external S3 PUT: headers come from the presign response, NOT the org helper.
       const [putUrl, putInit] = fetchMock.mock.calls[1] as [string, RequestInit];
       expect(putUrl).toBe('https://uploads.example.com/prescription.pdf');
-      expect(putInit.headers).toEqual({ 'x-amz-server-side-encryption': 'AES256' });
+      expect(putInit.headers).toEqual({
+        'x-amz-server-side-encryption': 'AES256',
+        'x-amz-checksum-sha256': 'checksum-base64',
+      });
       expect(putInit.headers).not.toBe(sentinel);
+      expect(putInit.body).toBe(downscaledFile);
 
       // complete: helper headers + exact body (file_id is the presign id, not the completed id).
       const [completeUrl, completeInit] = fetchMock.mock.calls[2] as [string, RequestInit];

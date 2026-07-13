@@ -54,6 +54,45 @@
 
 ## 直近の作業
 
+- codex4 + codex1 integration: S3-OBJECT-LOCK-PRESIGNED-CHECKSUM-001 / S3-PRESIGN-SEPARATE-CHECKSUM-CLIENT-001 (DONE code; external deployment gate remains, 2026-07-13; implementation in this scoped commit).
+  - current task / root causes / files inspected:
+    Legacy file presign/complete service、presigned-upload route、患者cardと新規処方入力の2 upload UI、installed AWS SDK v3、
+    PH-OS evidence bucket CORS/IAM、legacy bucket policy/runtime policy templatesと関連testsを確認した。処方箋uploadはObject Lock retentionを
+    付ける一方、final upload bytesのdigestをpresignからcompleteまで保持せず、size/MIME/ETagだけでuploadedへ遷移した。またinstalled
+    `@aws-sdk/client-s3 3.1065.0`のdefault checksum middlewareはBodyなしpresignを空bodyとしてCRC32署名し、非空browser PUTと不一致に
+    なり得た。
+  - files changed / correctness / security / privacy:
+    両UIはdownscale後の実際にPUTする`File`をWeb Crypto SHA-256し、lowercase 64hexを処方箋presignだけへ送る。Route/serviceは処方箋で
+    digest必須、他purposeで指定拒否とし、base64 SHA-256を`PutObject ChecksumAlgorithm/ChecksumSHA256`とunhoistable required headerへ
+    接続した。期待hexはFileAsset metadataとlegacy Settingへ保持し、認可を先に通したcompleteが`HeadObject ChecksumMode=ENABLED`の
+    exact checksum/size/MIMEを照合後だけuploadedへ遷移する。missing/mismatchとlegacy pending prescriptionは副作用前409、public DTOは
+    storage key/digestを返さない。DB schema/migration、患者/医療情報のlog、secret、新dependencyなし。
+  - SDK client separation / performance / UI:
+    region cacheをpresign専用raw S3Client（`requestChecksumCalculation=WHEN_REQUIRED`）と通常send用default S3Client + timeout wrapperへ
+    分けた。これによりnon-prescription presignの空CRC32 query/signatureだけを除き、server-generated PutObjectのSDK default integrityと
+    prescription explicit SHA-256を維持する。cache clientはregion当たり1→2で小さなmemory増、presignerはnetwork sendしない。
+    PH-OS UI/UX SSOTと`emil-design-eng`を照合し、既存upload hierarchy/44px controls/error recoveryを変えないdata-integrity sliceのため
+    imagegenを省略した。
+  - validation / independent review:
+    Codex4 finalとCodex1独立rerunでexact 5 files / 242 tests（file-storage 92）、exact 10-path ESLint/Prettier/diff、route auth
+    176 allowlisted / 252 direct / 0 new、API shape 0/0、module boundary 0/0、client schema 361/0、client PHI display/log、raw-read org guard
+    117 allowlisted / 0 new PASS。Installed-SDK dummy-credential/no-network probesでnon-prescription URLのauto CRC32なし、prescription URLの
+    SHA256 algorithm + `x-amz-checksum-sha256` SignedHeadersを確認した。初回raw-read guard failureは別slice patient-boardの局所scope証明で、
+    `d14c00cf2`に分離修復済み。
+  - AWS official references confirmed 2026-07-13:
+    Amazon S3 User Guide `Managing Object Lock` <https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-managing.html>、
+    S3 API `PutObject` <https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html>、`HeadObject`
+    <https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html>、`Checking object integrity for data uploads`
+    <https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity-upload.html>、AWS SDK for JavaScript v3
+    `S3 checksums` <https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/s3-checksums.html>、AWS SDKs and Tools
+    `Data integrity protection` <https://docs.aws.amazon.com/sdkref/latest/guide/feature-dataintegrity.html>、AWS SDK JS v3
+    `s3-request-presigner README` <https://github.com/aws/aws-sdk-js-v3/blob/main/packages/s3-request-presigner/README.md>を確認した。
+  - remaining / external gate / rollback:
+    RepoのPH-OS EvidenceBucket CORSはchecksum headerを許可し、ECS policy templateはS3 Put/GetとKMS GenerateDataKey/Decryptを宣言するが、
+    実際のlegacy `S3_BUCKET_NAME` bucket CORS、deployed service role/KMS policy、Object Lock + SSE-KMS + checksumのbrowser PUT/completeは
+    未確認。deploy前にactual CORS header、runtime permissions、live round-tripをPHIなしfixtureで確認する。AWS apply/deploy/migrationは
+    実行していない。既存pending prescriptionは再presignが必要。Rollbackはこのscoped commitのrevert、DB schema rollback不要。
+
 - codex1: QUERY-SHAPE-PATIENT-BOARD-TENANT-SCOPE-003J1 (DONE, 2026-07-13; hardening in this scoped commit).
   - current task / root cause / files inspected:
     `321b6fcaf`のpatient board keyset collector、route tests、raw Prisma read org-scope guardを再確認した。callerの
@@ -324,12 +363,11 @@
     DB/data rollback不要。gbrain: `projects/careviax/decisions/2026-07-13/anchor-daily-jobs-to-japan-business-dates`。
 
 - parallel assignments (ACTIVE, 2026-07-13):
-  - codex2: `AUTHZ-EXTERNAL-SELF-REPORT-TASK-SCOPE-001` READY修復をcodex1が独立review済み、scoped統合中。
+  - codex2: `API-STATUS-NOTFOUND-LIVE-RESCAN-001A`。6 route/test pairsでpath primary 404とbody FK generic 400を整合中。
   - codex3: `QUERY-SHAPE-REPORT-WORKSPACE-WATCHLIST-003K`。report today-workspaceのbounded stable readsと
-    zero-debt watchlist admissionをexact 3 pathsで実装中。
-  - codex4: `S3-OBJECT-LOCK-PRESIGNED-CHECKSUM-001`。legacy prescriptionのfinal upload File digestをFE→presign→metadata→
-    HeadObject complete verificationまで一貫させる10-path FE/BE sliceを実装中。
-  - codex1: completed IDsのactive queue driftを修復し、single ledger、exact staging、各slice独立review、
+    zero-debt watchlist/read-SLO admissionをexact 4 pathsで修復中。
+  - codex4: S3 exact 10 pathsはREADY/FREEZE。並行して`API-STATUS-NOTFOUND-LIVE-RESCAN-001B`の非重複route pairsをscan/claim中。
+  - codex1: S3 scoped統合、single ledger、exact staging、各slice独立review、
     serialized long gates、VERIFY_REQUIRED reconciliationと次候補scoringを管理する。
 
 - codex1: MEDPROFILE-SYNC-RACE-001 MedicationProfile sync serialization (DONE, 2026-07-13; implementation `30fcf954e`, PUSHED).

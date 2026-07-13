@@ -166,6 +166,9 @@ const unassignedAccessContext = {
   role: 'pharmacist' as const,
 };
 
+const PRESCRIPTION_SHA256 = 'ab'.repeat(32);
+const PRESCRIPTION_CHECKSUM_SHA256 = Buffer.from(PRESCRIPTION_SHA256, 'hex').toString('base64');
+
 function buildStoredFileRecord(overrides: Partial<StoredFileRecord> = {}): StoredFileRecord {
   return {
     version: 1,
@@ -250,6 +253,7 @@ const fileAccessCases: AccessCase[] = [
       reportId: null,
       storageKey: 'prescriptions/org_1/patient_1/file_1-prescription.pdf',
       originalName: 'prescription.pdf',
+      sha256: PRESCRIPTION_SHA256,
     },
     authorize: () => {
       patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
@@ -355,11 +359,23 @@ describe('file-storage', () => {
 
     expect(getSignedUrlMock).toHaveBeenCalledOnce();
     expect(getSignedUrlMock.mock.calls[0]?.[0]).toBe(s3ClientInstances.at(-1));
-    expect(s3ClientMock).toHaveBeenCalledWith(
+    expect(s3ClientMock).toHaveBeenCalledTimes(2);
+    expect(s3ClientMock).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         region: 'ap-northeast-1',
         maxAttempts: 2,
         requestHandler: expect.anything(),
+      }),
+    );
+    expect(s3ClientMock.mock.calls[0]?.[0]).not.toHaveProperty('requestChecksumCalculation');
+    expect(s3ClientMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        region: 'ap-northeast-1',
+        maxAttempts: 2,
+        requestHandler: expect.anything(),
+        requestChecksumCalculation: 'WHEN_REQUIRED',
       }),
     );
     const putObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
@@ -378,24 +394,31 @@ describe('file-storage', () => {
     });
   });
 
-  it('preserves a real AWS SDK client for no-network presigning', async () => {
+  it('isolates no-network presigning from the default send checksum behavior', async () => {
     const actualS3 =
       await vi.importActual<typeof import('@aws-sdk/client-s3')>('@aws-sdk/client-s3');
     const actualPresigner = await vi.importActual<typeof import('@aws-sdk/s3-request-presigner')>(
       '@aws-sdk/s3-request-presigner',
     );
-    const client = new actualS3.S3Client({
+    const credentials = {
+      accessKeyId: 'test-access-key-id',
+      secretAccessKey: 'test-secret-access-key',
+    };
+    const sendClient = new actualS3.S3Client({
       region: 'ap-northeast-1',
-      credentials: {
-        accessKeyId: 'test-access-key-id',
-        secretAccessKey: 'test-secret-access-key',
-      },
+      credentials,
+    });
+    const presigningClient = new actualS3.S3Client({
+      region: 'ap-northeast-1',
+      credentials,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
     });
 
     try {
-      const clients = createFileStorageS3ClientHandles(client);
-      expect(clients.presigningClient).toBe(client);
-      expect(clients.sendClient).not.toBe(client);
+      const clients = createFileStorageS3ClientHandles(presigningClient, sendClient);
+      expect(clients.presigningClient).toBe(presigningClient);
+      expect(clients.sendClient).not.toBe(sendClient);
+      expect(clients.sendClient).not.toBe(presigningClient);
 
       const uploadUrl = await actualPresigner.getSignedUrl(
         clients.presigningClient,
@@ -410,6 +433,50 @@ describe('file-storage', () => {
       expect(parsed.protocol).toBe('https:');
       expect(parsed.searchParams.get('X-Amz-Algorithm')).toBe('AWS4-HMAC-SHA256');
       expect(parsed.searchParams.get('X-Amz-Credential')).toContain('test-access-key-id');
+      expect(parsed.searchParams.has('x-amz-sdk-checksum-algorithm')).toBe(false);
+      expect(parsed.searchParams.has('x-amz-checksum-crc32')).toBe(false);
+    } finally {
+      presigningClient.destroy();
+      sendClient.destroy();
+    }
+  });
+
+  it('keeps an explicit SHA-256 checksum in required signed headers with the installed SDK', async () => {
+    const actualS3 =
+      await vi.importActual<typeof import('@aws-sdk/client-s3')>('@aws-sdk/client-s3');
+    const actualPresigner = await vi.importActual<typeof import('@aws-sdk/s3-request-presigner')>(
+      '@aws-sdk/s3-request-presigner',
+    );
+    const client = new actualS3.S3Client({
+      region: 'ap-northeast-1',
+      credentials: {
+        accessKeyId: 'test-access-key-id',
+        secretAccessKey: 'test-secret-access-key',
+      },
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+    });
+
+    try {
+      const uploadUrl = await actualPresigner.getSignedUrl(
+        client,
+        new actualS3.PutObjectCommand({
+          Bucket: 'example-bucket',
+          Key: 'prescription.pdf',
+          ContentType: 'application/pdf',
+          ChecksumAlgorithm: 'SHA256',
+          ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256,
+        }),
+        {
+          expiresIn: 60,
+          unhoistableHeaders: new Set(['x-amz-checksum-sha256']),
+        },
+      );
+      const parsed = new URL(uploadUrl);
+      expect(parsed.searchParams.has('x-amz-checksum-sha256')).toBe(false);
+      expect(parsed.searchParams.get('x-amz-sdk-checksum-algorithm')).toBe('SHA256');
+      expect(parsed.searchParams.get('X-Amz-SignedHeaders')?.split(';')).toContain(
+        'x-amz-checksum-sha256',
+      );
     } finally {
       client.destroy();
     }
@@ -495,7 +562,7 @@ describe('file-storage', () => {
       reportId: 'report_1',
     });
 
-    expect(s3ClientMock).toHaveBeenCalledTimes(2);
+    expect(s3ClientMock).toHaveBeenCalledTimes(4);
     expect(s3ClientMock).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -504,12 +571,32 @@ describe('file-storage', () => {
         requestHandler: expect.anything(),
       }),
     );
+    expect(s3ClientMock.mock.calls[0]?.[0]).not.toHaveProperty('requestChecksumCalculation');
     expect(s3ClientMock).toHaveBeenNthCalledWith(
       2,
+      expect.objectContaining({
+        region: 'eu-central-1',
+        maxAttempts: 2,
+        requestHandler: expect.anything(),
+        requestChecksumCalculation: 'WHEN_REQUIRED',
+      }),
+    );
+    expect(s3ClientMock).toHaveBeenNthCalledWith(
+      3,
       expect.objectContaining({
         region: 'ca-central-1',
         maxAttempts: 2,
         requestHandler: expect.anything(),
+      }),
+    );
+    expect(s3ClientMock.mock.calls[2]?.[0]).not.toHaveProperty('requestChecksumCalculation');
+    expect(s3ClientMock).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        region: 'ca-central-1',
+        maxAttempts: 2,
+        requestHandler: expect.anything(),
+        requestChecksumCalculation: 'WHEN_REQUIRED',
       }),
     );
   });
@@ -532,6 +619,51 @@ describe('file-storage', () => {
     expect(randomUuidMock).not.toHaveBeenCalled();
     expect(getSignedUrlMock).not.toHaveBeenCalled();
     expect(settingUpsertMock).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, 'bad', 'g'.repeat(64)] as const)(
+    'rejects prescription uploads with an invalid SHA-256 before signing: %s',
+    async (sha256) => {
+      await expect(
+        createPresignedUpload({
+          orgId: 'org_1',
+          purpose: 'prescription',
+          fileName: 'prescription.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 1024,
+          patientId: 'patient_1',
+          sha256,
+        }),
+      ).rejects.toMatchObject({
+        code: 'FILE_UPLOAD_INVALID_CHECKSUM',
+        status: 400,
+      });
+
+      expect(randomUuidMock).not.toHaveBeenCalled();
+      expect(getSignedUrlMock).not.toHaveBeenCalled();
+      expect(settingUpsertMock).not.toHaveBeenCalled();
+      expect(fileAssetUpsertMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects SHA-256 input for non-prescription uploads before signing', async () => {
+    await expect(
+      createPresignedUpload({
+        orgId: 'org_1',
+        purpose: 'report',
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        reportId: 'report_1',
+        sha256: PRESCRIPTION_SHA256,
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_UPLOAD_INVALID_CHECKSUM',
+      status: 400,
+    });
+
+    expect(randomUuidMock).not.toHaveBeenCalled();
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
   });
 
   it('stores consent-document uploads under patient-scoped consent document keys', async () => {
@@ -1407,6 +1539,7 @@ describe('file-storage', () => {
       mimeType: 'application/pdf',
       sizeBytes: 2048,
       patientId: 'patient_1',
+      sha256: PRESCRIPTION_SHA256,
     });
 
     const putObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
@@ -1426,6 +1559,7 @@ describe('file-storage', () => {
       mimeType: 'application/pdf',
       sizeBytes: 2048,
       patientId: 'patient_1',
+      sha256: PRESCRIPTION_SHA256,
     });
 
     const putObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
@@ -1435,10 +1569,31 @@ describe('file-storage', () => {
       Bucket: 'ph-os-files',
       Key: 'prescriptions/org_1/patient_1/file-uuid-1-prescription.pdf',
       ObjectLockMode: 'COMPLIANCE',
+      ChecksumAlgorithm: 'SHA256',
+      ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256,
     });
     expect(putObjectCommand.input.ObjectLockRetainUntilDate).toBeInstanceOf(Date);
     expect(result.headers['x-amz-object-lock-mode']).toBe('COMPLIANCE');
     expect(result.headers['x-amz-object-lock-retain-until-date']).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(result.headers['x-amz-checksum-sha256']).toBe(PRESCRIPTION_CHECKSUM_SHA256);
+    expect(getSignedUrlMock.mock.calls[0]?.[2]).toEqual({
+      expiresIn: 300,
+      unhoistableHeaders: new Set(['x-amz-checksum-sha256']),
+    });
+    expect(fileAssetUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          metadata: { sha256: PRESCRIPTION_SHA256 },
+        }),
+      }),
+    );
+    expect(settingUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          value: expect.objectContaining({ sha256: PRESCRIPTION_SHA256 }),
+        }),
+      }),
+    );
   });
 
   it('allows PDF attachments for visit records up to the document size limit', async () => {
@@ -1835,7 +1990,7 @@ describe('file-storage', () => {
 
   it.each(fileAccessCases)(
     'allows completion for an org-wide pharmacist regardless of assignment on $purpose files',
-    async ({ record, deny }) => {
+    async ({ purpose, record, deny }) => {
       mockStoredFile({
         ...record,
         status: 'pending_upload',
@@ -1847,6 +2002,7 @@ describe('file-storage', () => {
         ETag: '"etag-123"',
         ContentLength: 2048,
         ContentType: 'application/pdf',
+        ...(purpose === 'prescription' ? { ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256 } : {}),
       });
 
       const result = await completeUploadedFile({
@@ -1872,7 +2028,7 @@ describe('file-storage', () => {
 
   it.each(fileAccessCases)(
     'allows completion for an authorized pharmacist on $purpose files',
-    async ({ record, authorize }) => {
+    async ({ purpose, record, authorize }) => {
       mockStoredFile({
         ...record,
         status: 'pending_upload',
@@ -1883,6 +2039,7 @@ describe('file-storage', () => {
         ETag: '"etag-123"',
         ContentLength: 2048,
         ContentType: 'application/pdf',
+        ...(purpose === 'prescription' ? { ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256 } : {}),
       });
 
       const result = await completeUploadedFile({
@@ -2199,6 +2356,7 @@ describe('file-storage', () => {
       Bucket: 'ph-os-files',
       Key: 'visit-photos/org_1/visit_1/file_1-note.pdf',
     });
+    expect(headObjectCommand.input).not.toHaveProperty('ChecksumMode');
     expect(settingUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'setting_1' },
@@ -2212,6 +2370,139 @@ describe('file-storage', () => {
       }),
     );
     expect(result.etag).toBe('etag-123');
+  });
+
+  it('reads the expected checksum from FileAsset metadata before completing a prescription', async () => {
+    fileAssetFindFirstMock.mockResolvedValue({
+      id: 'file_1',
+      org_id: 'org_1',
+      purpose: 'prescription',
+      storage_key: 'prescriptions/org_1/patient_1/file_1-prescription.pdf',
+      original_name: 'prescription.pdf',
+      mime_type: 'application/pdf',
+      size_bytes: 2048,
+      status: 'pending_upload',
+      patient_id: 'patient_1',
+      visit_record_id: null,
+      report_id: null,
+      job_id: null,
+      uploaded_by: null,
+      etag: null,
+      metadata: { sha256: PRESCRIPTION_SHA256.toUpperCase() },
+      completed_at: null,
+      expires_at: null,
+      download_disposition: 'inline',
+      created_at: new Date('2026-03-28T00:00:00.000Z'),
+      updated_at: new Date('2026-03-28T00:00:00.000Z'),
+    });
+    s3SendMock.mockResolvedValueOnce({
+      ETag: '"etag-123"',
+      ContentLength: 2048,
+      ContentType: 'application/pdf',
+      ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256,
+    });
+
+    const result = await completeUploadedFile({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      uploadedBy: 'user_1',
+      accessContext: assignedAccessContext,
+    });
+
+    const headObjectCommand = s3SendMock.mock.calls[0]?.[0] as {
+      input: Record<string, unknown>;
+    };
+    expect(headObjectCommand.input).toEqual({
+      Bucket: 'ph-os-files',
+      Key: 'prescriptions/org_1/patient_1/file_1-prescription.pdf',
+      ChecksumMode: 'ENABLED',
+    });
+    expect(result).toMatchObject({
+      status: 'uploaded',
+      sha256: PRESCRIPTION_SHA256,
+    });
+    expect(fileAssetUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: 'uploaded',
+          metadata: { sha256: PRESCRIPTION_SHA256 },
+        }),
+      }),
+    );
+    expect(settingFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects prescription completion when S3 returns a different SHA-256 checksum', async () => {
+    mockStoredFile({
+      purpose: 'prescription',
+      patientId: 'patient_1',
+      visitRecordId: null,
+      storageKey: 'prescriptions/org_1/patient_1/file_1-prescription.pdf',
+      originalName: 'prescription.pdf',
+      status: 'pending_upload',
+      completedAt: null,
+      sha256: PRESCRIPTION_SHA256,
+    });
+    s3SendMock.mockResolvedValueOnce({
+      ETag: '"etag-123"',
+      ContentLength: 2048,
+      ContentType: 'application/pdf',
+      ChecksumSHA256: Buffer.from('cd'.repeat(32), 'hex').toString('base64'),
+    });
+
+    await expect(
+      completeUploadedFile({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        uploadedBy: 'user_1',
+        accessContext: assignedAccessContext,
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_NOT_READY',
+      status: 409,
+    });
+
+    expect(settingUpdateMock).not.toHaveBeenCalled();
+    expect(fileAssetUpsertMock).toHaveBeenCalledOnce();
+    expect(fileAssetUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ status: 'pending_upload' }),
+      }),
+    );
+  });
+
+  it('rejects legacy pending prescription completion when the expected checksum is missing', async () => {
+    mockStoredFile({
+      purpose: 'prescription',
+      patientId: 'patient_1',
+      visitRecordId: null,
+      storageKey: 'prescriptions/org_1/patient_1/file_1-prescription.pdf',
+      originalName: 'prescription.pdf',
+      status: 'pending_upload',
+      completedAt: null,
+      sha256: null,
+    });
+
+    await expect(
+      completeUploadedFile({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        uploadedBy: 'user_1',
+        accessContext: assignedAccessContext,
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_NOT_READY',
+      status: 409,
+    });
+
+    expect(s3SendMock).not.toHaveBeenCalled();
+    expect(settingUpdateMock).not.toHaveBeenCalled();
+    expect(fileAssetUpsertMock).toHaveBeenCalledOnce();
+    expect(fileAssetUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ status: 'pending_upload' }),
+      }),
+    );
   });
 
   it('keeps completed file metadata unchanged when completion is retried', async () => {

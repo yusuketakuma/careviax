@@ -62,6 +62,7 @@ import { readApiJson } from '@/lib/api/client-json';
 import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { buildFileDownloadHref } from '@/lib/files/navigation';
+import { computeUploadSha256Hex } from '@/lib/files/upload-checksum';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -5046,6 +5047,7 @@ export function CardWorkspace({
   const uploadPrescriptionDocument = async (file: File) => {
     // 画像/PDF 混在: PDF は downscaleImage 内の image/* 判定で無変換のまま返す(W2-F1)。
     const uploadFile = await downscaleImage(file);
+    const sha256 = await computeUploadSha256Hex(uploadFile);
     const presignResponse = await fetch('/api/files/presigned-upload', {
       method: 'POST',
       headers: buildOrgJsonHeaders(orgId),
@@ -5055,6 +5057,7 @@ export function CardWorkspace({
         file_name: uploadFile.name,
         mime_type: uploadFile.type || 'application/octet-stream',
         size_bytes: uploadFile.size,
+        sha256,
       }),
     });
 

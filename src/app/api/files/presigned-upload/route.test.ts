@@ -79,6 +79,7 @@ vi.mock('@/server/services/file-storage', () => ({
 import { POST } from './route';
 
 const originalDisableLegacyFileApi = process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV];
+const PRESCRIPTION_SHA256 = 'ab'.repeat(32);
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/files/presigned-upload', {
@@ -329,6 +330,7 @@ describe('/api/files/presigned-upload POST', () => {
         mime_type: '   ',
         size_bytes: 1024,
         patient_id: '   ',
+        sha256: PRESCRIPTION_SHA256,
       }),
     );
 
@@ -347,6 +349,62 @@ describe('/api/files/presigned-upload POST', () => {
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['short', 'abc123'],
+    ['non-hex', 'z'.repeat(64)],
+  ] as const)('rejects %s prescription SHA-256 before lookup or presign', async (_case, sha256) => {
+    const response = await POST(
+      createRequest({
+        purpose: 'prescription',
+        file_name: 'prescription.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+        patient_id: 'patient_1',
+        ...(sha256 ? { sha256 } : {}),
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        sha256: expect.any(Array),
+      },
+    });
+    expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects SHA-256 on non-prescription uploads before lookup or presign', async () => {
+    const response = await POST(
+      createRequest({
+        purpose: 'report',
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+        report_id: 'report_1',
+        sha256: PRESCRIPTION_SHA256,
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        sha256: ['sha256 は処方箋アップロードでのみ指定できます'],
+      },
+    });
+    expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(createPresignedUploadMock).not.toHaveBeenCalled();
   });
 
@@ -540,6 +598,7 @@ describe('/api/files/presigned-upload POST', () => {
         mime_type: 'application/pdf',
         size_bytes: 1024,
         patient_id: 'patient_1',
+        sha256: PRESCRIPTION_SHA256,
       }),
     );
 
@@ -750,6 +809,7 @@ describe('/api/files/presigned-upload POST', () => {
         mime_type: 'application/pdf',
         size_bytes: 1024,
         patient_id: 'patient_1',
+        sha256: PRESCRIPTION_SHA256.toUpperCase(),
       }),
     );
 
@@ -770,6 +830,7 @@ describe('/api/files/presigned-upload POST', () => {
       fileName: 'prescription.pdf',
       mimeType: 'application/pdf',
       sizeBytes: 1024,
+      sha256: PRESCRIPTION_SHA256,
       patientId: 'patient_1',
       visitRecordId: undefined,
       reportId: undefined,
@@ -789,6 +850,7 @@ describe('/api/files/presigned-upload POST', () => {
         mime_type: 'application/pdf',
         size_bytes: 1024,
         patient_id: 'patient_1',
+        sha256: PRESCRIPTION_SHA256,
       }),
     );
 
@@ -861,6 +923,7 @@ describe('/api/files/presigned-upload POST', () => {
         mime_type: 'application/pdf',
         size_bytes: 1024,
         patient_id: 'patient_1',
+        sha256: PRESCRIPTION_SHA256,
       }),
     );
 
@@ -895,6 +958,7 @@ describe('/api/files/presigned-upload POST', () => {
         mime_type: 'application/pdf',
         size_bytes: 1024,
         patient_id: 'patient_1',
+        sha256: PRESCRIPTION_SHA256,
       }),
     );
 
@@ -918,6 +982,7 @@ describe('/api/files/presigned-upload POST', () => {
         mime_type: 'application/pdf',
         size_bytes: 1024,
         patient_id: 'patient_1',
+        sha256: PRESCRIPTION_SHA256,
       }),
     );
 
