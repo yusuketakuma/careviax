@@ -55,7 +55,7 @@
 
 ## 直近の作業
 
-- codex1: API-CONTRACT-001FZJOBSAUTH (DONE; parent remains Partial, 2026-07-14; implementation in this scoped commit).
+- codex1: API-CONTRACT-001FZJOBSAUTH (DONE; parent remains Partial, 2026-07-14; implementation `facc17196`).
   - current task / files inspected / root cause:
     Presence push/parity後に残11 routesを再scoreし、read-only Admin Jobs GETを選定した。Route/test、admin consumer strict schema/UI、rate-limit/route catalog、
     proxy job credential境界、allowlist、installed Next guideを確認した。既存handlerはcanAdmin、org/global bounded read、raw job error/input redactionを持つ一方、
