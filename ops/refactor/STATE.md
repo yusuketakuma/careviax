@@ -48,13 +48,28 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: 本docsの`API-CONTRACT-002B` evidence同期、
-  `codex2`: `API-CONTRACT-003G`のerror registry/jobs 7 paths。`codex3/codex4`は停止のまま。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `API-CONTRACT-002A`残のset-batches route tests、
+  `codex2`: 本docsの`API-CONTRACT-003G` evidence同期（実装7 pathsはcommit `38da5830a`でRELEASE済み）。`codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex2: API-CONTRACT-003G (DONE; parent remains Partial, 2026-07-14; implementation `38da5830a`).
+  - current task / files inspected / root cause:
+    3系統のjob/metrics endpoints、shared flush service、registry/response、strict admin consumerを照合。General job routeとshared metrics flush serviceが
+    同じ`EXTERNAL_JOB_FAILED` / 500 / retry可能な固定契約を2 response callsitesで重複指定し、canonical recovery metadataを参照していなかった。
+  - files changed / bugs found / correctness / security / privacy / medical safety / performance:
+    Registryへ`EXTERNAL_JOB_FAILED` = 500/error/retryable/retry/`api.error.external.job_failed`を追加し、2 callsitesをtyped `registeredError()`へ移行。
+    General job、API-key metrics、admin metricsの3 endpointでexact `{code,message}`を固定した。Auth/API-key、job handler、CloudWatch flush、logger code、
+    fixed message、raw provider detail/stack/error_message非露出は不変。自動retry、DB/network/query/payloadは追加せず、failure pathの小さな同期object lookupのみ。
+  - validation results / remaining work / next action / rollback:
+    Focused/independent 5 files / 54 tests、独立verifier APPROVED、exact ESLint/Prettier、8 GiB typecheck/no-unused、API shape 0/0、API authz、
+    route-auth 150 allowlisted / 214 direct / 0 new、module boundary 0/0、frontend contract、client schema 361 backed / 0 allowlisted、diffをPASS。
+    Direct `error/externalError('EXTERNAL_JOB_FAILED', ..., 500)`は2→0、registryは11 codes。Full Vitest収集時の003G 4 failuresは実装途中の一時不整合で、
+    現差分のjob/registry focused regressionはPASS。全体再実行はcodex1のset-batches expectation group着地後に直列化する。Build/E2E/demoはGoal最終batchへ残す。
+    Schema/migration/production mutation/deploy/Oracleなし。非視覚API変更のためimagegen/browserなし。Rollbackは`38da5830a`のrevertでDB/data rollback不要。
 
 - codex1: API-CONTRACT-002B (DONE; parent remains Partial, 2026-07-14; implementation `284616d92`).
   - current task / files inspected / root cause:
