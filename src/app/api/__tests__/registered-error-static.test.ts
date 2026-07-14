@@ -29,10 +29,18 @@ type RawNonliteralMessageUsage = {
   statusExpression: string | null;
 };
 
+type RawErrorDetailsUsage = {
+  filePath: string;
+  helper: RawErrorHelperName;
+  codeExpression: string;
+  detailsExpression: string;
+};
+
 type RawErrorUsages = {
   literal: RawLiteralErrorUsage[];
   dynamic: RawDynamicErrorUsage[];
   nonliteralMessage: RawNonliteralMessageUsage[];
+  details: RawErrorDetailsUsage[];
 };
 
 type RawRegisteredErrorUsage = RawLiteralErrorUsage & {
@@ -429,6 +437,102 @@ const allowedExternalNonliteralMessageUsages: RawNonliteralMessageUsage[] = [
   },
 ];
 
+// Existing wire-visible details are debt, not an approved public contract. This baseline must not grow.
+const allowedRawErrorDetailsUsages: RawErrorDetailsUsage[] = [
+  {
+    filePath: 'src/app/api/billing-candidates/close/route.ts',
+    helper: 'error',
+    codeExpression: "'BILLING_CLOSE_BLOCKED'",
+    detailsExpression: '{ summary: result.summary, blockingCount: result.blockingCount, }',
+  },
+  {
+    filePath: 'src/app/api/billing-candidates/close/route.ts',
+    helper: 'error',
+    codeExpression: "'BILLING_CLOSE_STALE_CANDIDATES'",
+    detailsExpression:
+      '{ billing_month: parsedBillingMonth.start.toISOString(), billing_domain: billingDomain, conflictCount: 1, }',
+  },
+  {
+    filePath: 'src/app/api/billing-candidates/export/route.ts',
+    helper: 'error',
+    codeExpression: "'CLAIMS_EXPORT_FAILED'",
+    detailsExpression: '{ code: cause.code }',
+  },
+  {
+    filePath: 'src/app/api/billing-candidates/export/route.ts',
+    helper: 'error',
+    codeExpression: "'CLAIMS_EXPORT_SITE_UNRESOLVED'",
+    detailsExpression:
+      '{ reason: siteResolution.reason, missing_count: siteResolution.missingCount, site_count: siteResolution.siteCount, }',
+  },
+  {
+    filePath: 'src/app/api/care-reports/[id]/send/route.ts',
+    helper: 'error',
+    codeExpression: "'IDEMPOTENCY_CONFLICT'",
+    detailsExpression: "{ reason: 'key_reused_with_different_request' }",
+  },
+  {
+    filePath: 'src/app/api/care-reports/[id]/send/route.ts',
+    helper: 'error',
+    codeExpression: "'IDEMPOTENCY_CONFLICT'",
+    detailsExpression: "{ reason: 'key_reused_with_different_request' }",
+  },
+  {
+    filePath: 'src/app/api/external-access/[token]/self-report/route.ts',
+    helper: 'error',
+    codeExpression: "'IDEMPOTENCY_CONFLICT'",
+    detailsExpression: "{ reason: 'key_reused_with_different_request', }",
+  },
+  {
+    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
+    helper: 'error',
+    codeExpression: "'AMBIGUOUS_ACTIVE_CYCLE'",
+    detailsExpression: '{ case_ids: Array.from(new Set(cycles.map((cycle) => cycle.case_id))) }',
+  },
+  {
+    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
+    helper: 'error',
+    codeExpression: "'EPRESCRIPTION_CASE_CONFLICT'",
+    detailsExpression: '{ existing_case_id: existing.cycle.case_id }',
+  },
+  {
+    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
+    helper: 'error',
+    codeExpression: "'EPRESCRIPTION_CASE_CONFLICT'",
+    detailsExpression: '{ existing_case_id: existingByRequestId.cycle.case_id }',
+  },
+  {
+    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
+    helper: 'error',
+    codeExpression: "'EPRESCRIPTION_CASE_CONFLICT'",
+    detailsExpression: '{ existing_case_id: replayed.cycle.case_id }',
+  },
+  {
+    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
+    helper: 'error',
+    codeExpression: "'EPRESCRIPTION_CONFIGURATION_ERROR'",
+    detailsExpression: '{ retriable: false }',
+  },
+  {
+    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
+    helper: 'error',
+    codeExpression: "'EPRESCRIPTION_UPSTREAM_FAILURE'",
+    detailsExpression: '{ retriable: cause.retriable, upstream_status: cause.status ?? null, }',
+  },
+  {
+    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
+    helper: 'error',
+    codeExpression: "'EPRESCRIPTION_UPSTREAM_UNAUTHORIZED'",
+    detailsExpression: '{ retriable: false, upstream_status: cause.status ?? null }',
+  },
+  {
+    filePath: 'src/app/api/visit-records/[id]/handoff/extract/route.ts',
+    helper: 'error',
+    codeExpression: "'extraction_failed'",
+    detailsExpression: "{ extraction: { status: 'failed', retryable: true }, }",
+  },
+];
+
 const allowedRawRegisteredErrorUsages: RawRegisteredErrorUsage[] = [
   {
     filePath: 'src/app/api/dispense-audits/route.ts',
@@ -483,10 +587,10 @@ function findErrorUsages(filePath: string, importedHelperName: RawErrorHelperNam
   const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
   const errorHelperNames = collectErrorHelperNames(sourceFile, importedHelperName);
   if (errorHelperNames.size === 0) {
-    return { literal: [], dynamic: [], nonliteralMessage: [] };
+    return { literal: [], dynamic: [], nonliteralMessage: [], details: [] };
   }
 
-  const usages: RawErrorUsages = { literal: [], dynamic: [], nonliteralMessage: [] };
+  const usages: RawErrorUsages = { literal: [], dynamic: [], nonliteralMessage: [], details: [] };
 
   function visit(node: ts.Node): void {
     if (
@@ -494,7 +598,7 @@ function findErrorUsages(filePath: string, importedHelperName: RawErrorHelperNam
       ts.isIdentifier(node.expression) &&
       errorHelperNames.has(node.expression.text)
     ) {
-      const [codeArgument, messageArgument, statusArgument] = node.arguments;
+      const [codeArgument, messageArgument, statusArgument, detailsArgument] = node.arguments;
       if (codeArgument && ts.isStringLiteralLike(codeArgument)) {
         usages.literal.push({
           filePath: relative(process.cwd(), filePath),
@@ -523,6 +627,15 @@ function findErrorUsages(filePath: string, importedHelperName: RawErrorHelperNam
           statusExpression: statusArgument
             ? normalizedExpressionText(sourceFile, statusArgument)
             : null,
+        });
+      }
+
+      if (codeArgument && detailsArgument) {
+        usages.details.push({
+          filePath: relative(process.cwd(), filePath),
+          helper: importedHelperName,
+          codeExpression: normalizedExpressionText(sourceFile, codeArgument),
+          detailsExpression: normalizedExpressionText(sourceFile, detailsArgument),
         });
       }
     }
@@ -561,11 +674,18 @@ function collectSortedErrorUsages(importedHelperName: RawErrorHelperName): RawEr
           `${right.filePath}:${right.helper}:${right.codeExpression}:${right.messageExpression}:${right.statusExpression}`,
         ),
       ),
+    details: usages
+      .flatMap((usage) => usage.details)
+      .sort((left, right) =>
+        `${left.filePath}:${left.helper}:${left.codeExpression}:${left.detailsExpression}`.localeCompare(
+          `${right.filePath}:${right.helper}:${right.codeExpression}:${right.detailsExpression}`,
+        ),
+      ),
   };
 }
 
 describe('raw API error usage', () => {
-  it('keeps code and nonliteral message debt exact and registered bypasses on the one 422 branch', () => {
+  it('keeps code, message, and details debt exact with one registered 422 bypass', () => {
     const rawUsages = collectSortedErrorUsages('error');
     const externalUsages = collectSortedErrorUsages('externalError');
     const registeredRawUsages = rawUsages.literal.flatMap((usage): RawRegisteredErrorUsage[] =>
@@ -586,9 +706,11 @@ describe('raw API error usage', () => {
     expect(rawUsages.literal).toEqual(allowedRawLiteralErrorUsages);
     expect(rawUsages.dynamic).toEqual(allowedRawDynamicErrorUsages);
     expect(rawUsages.nonliteralMessage).toEqual(allowedRawNonliteralMessageUsages);
+    expect(rawUsages.details).toEqual(allowedRawErrorDetailsUsages);
     expect(externalUsages.literal).toEqual(allowedExternalLiteralErrorUsages);
     expect(externalUsages.dynamic).toEqual([]);
     expect(externalUsages.nonliteralMessage).toEqual(allowedExternalNonliteralMessageUsages);
+    expect(externalUsages.details).toEqual([]);
     expect(registeredRawUsages).toEqual(allowedRawRegisteredErrorUsages);
     expect(registeredExternalUsages).toEqual([]);
     expect(registeredRawUsages).toEqual(
