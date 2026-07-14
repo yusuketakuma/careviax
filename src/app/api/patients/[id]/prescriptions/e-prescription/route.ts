@@ -75,7 +75,7 @@ function buildEPrescriptionResponseData(input: {
 
 function ePrescriptionAdapterErrorResponse(cause: EPrescriptionAdapterError) {
   if (cause.code === 'NOT_IMPLEMENTED') {
-    return error('EPRESCRIPTION_NOT_ENABLED', cause.message, 501);
+    return error('EPRESCRIPTION_NOT_ENABLED', '電子処方箋連携はまだ有効化されていません', 501);
   }
   if (cause.code === 'INVALID_CONFIGURATION') {
     return error(
@@ -93,10 +93,15 @@ function ePrescriptionAdapterErrorResponse(cause: EPrescriptionAdapterError) {
       { retriable: false, upstream_status: cause.status ?? null },
     );
   }
-  return error('EPRESCRIPTION_UPSTREAM_FAILURE', cause.message, cause.retriable ? 503 : 502, {
-    retriable: cause.retriable,
-    upstream_status: cause.status ?? null,
-  });
+  return error(
+    'EPRESCRIPTION_UPSTREAM_FAILURE',
+    '電子処方箋取得に失敗しました',
+    cause.retriable ? 503 : 502,
+    {
+      retriable: cause.retriable,
+      upstream_status: cause.status ?? null,
+    },
+  );
 }
 
 type ExistingEPrescriptionIntake = {

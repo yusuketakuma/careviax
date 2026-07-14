@@ -291,7 +291,7 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
     mockAccessiblePatient();
     fetchPrescriptionMock.mockRejectedValue(
       new EPrescriptionAdapterError(
-        '電子処方箋連携はまだ有効化されていません',
+        'UNSAFE_PROVIDER_DETAIL token=unit-test-token patient=患者A',
         'NOT_IMPLEMENTED',
         false,
       ),
@@ -303,8 +303,10 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(501);
-    await expect(response.json()).resolves.toMatchObject({
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
       code: 'EPRESCRIPTION_NOT_ENABLED',
+      message: '電子処方箋連携はまだ有効化されていません',
     });
     expect(createEPrescriptionAdapterMock).toHaveBeenCalledOnce();
     expect(fetchPrescriptionMock).toHaveBeenCalledWith('rx_abc123');
@@ -366,7 +368,12 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
   it('returns 503 and skips transaction/create when the adapter reports a retriable upstream failure', async () => {
     mockAccessiblePatient();
     fetchPrescriptionMock.mockRejectedValue(
-      new EPrescriptionAdapterError('電子処方箋取得に失敗しました', 'UPSTREAM_FAILURE', true, 503),
+      new EPrescriptionAdapterError(
+        'UNSAFE_UPSTREAM_RESPONSE prescription=rx_abc123 patient=患者A',
+        'UPSTREAM_FAILURE',
+        true,
+        503,
+      ),
     );
 
     const response = await POST(createRequest({ prescription_id: 'rx_abc123' }), {
@@ -375,9 +382,39 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
       code: 'EPRESCRIPTION_UPSTREAM_FAILURE',
+      message: '電子処方箋取得に失敗しました',
       details: { retriable: true, upstream_status: 503 },
+    });
+    expect(createEPrescriptionAdapterMock).toHaveBeenCalledOnce();
+    expect(fetchPrescriptionMock).toHaveBeenCalledWith('rx_abc123');
+    expectNoIntakeWrites();
+  });
+
+  it('returns a fixed 502 without leaking a non-retriable upstream failure', async () => {
+    mockAccessiblePatient();
+    fetchPrescriptionMock.mockRejectedValue(
+      new EPrescriptionAdapterError(
+        'UNSAFE_PROVIDER_VALIDATION prescription=rx_abc123 patient=患者A',
+        'UPSTREAM_FAILURE',
+        false,
+        422,
+      ),
+    );
+
+    const response = await POST(createRequest({ prescription_id: 'rx_abc123' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(502);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'EPRESCRIPTION_UPSTREAM_FAILURE',
+      message: '電子処方箋取得に失敗しました',
+      details: { retriable: false, upstream_status: 422 },
     });
     expect(createEPrescriptionAdapterMock).toHaveBeenCalledOnce();
     expect(fetchPrescriptionMock).toHaveBeenCalledWith('rx_abc123');
