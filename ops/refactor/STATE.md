@@ -57,7 +57,7 @@
 
 ## 直近の作業
 
-- codex1 + codex2: UI-PHI-DISCLOSURE / PATIENT-INFO-IA-ALL-SCREENS / FABLE5-PLAN-001 (UI/UX SSOT内plan DONE; `Plans.md` queue sync/runtime rollout pending, 2026-07-14).
+- codex1 + codex2: UI-PHI-DISCLOSURE / PATIENT-INFO-IA-ALL-SCREENS / FABLE5-PLAN-001 (UI/UX SSOT内plan DONE; implementation `fe3f980ec`; `Plans.md` queue sync/runtime rollout pending, 2026-07-14).
   - current task / files inspected / external evidence:
     `docs/ui-ux-design-guidelines.md`のPHI disclosure、患者識別、配置、状態、出力境界、`src/lib/patient/privacy.ts`、
     `src/components/ui/phi-mask-field.tsx`、`src/components/features/patients/patient-header.tsx`、PatientHeader consumer、
