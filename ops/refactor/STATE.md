@@ -48,8 +48,9 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `AUTHZ-SELF-REPORT-READ-AUDIT-001`のevidence同期、
-  `codex2`: `API-CONTRACT-003M-BILLING-EXPORT-AUDIT-ERROR`をland済みで次のexact-path ownership通知待ち。共有docsはcodex1が短時間保持中。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `UI-THEME-CLINICAL-SIGNAL-001`のSSOT/Plans/ledgerと
+  frontend runtime foundation、`codex2`: backend限定の`AUTHZ-QR-DRAFT-READ-AUDIT-001`（`src/app/api/qr-scan-drafts/[id]/route.ts`とtest）。
+  `Plans.md` / `docs/ui-ux-design-guidelines.md` / `ops/refactor/STATE.md` / `RUN_LOCK.md`はcodex1が短時間保持中。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
@@ -57,7 +58,42 @@
 
 ## 直近の作業
 
-- codex1 + codex2: UI-PHI-DISCLOSURE / PATIENT-INFO-IA-ALL-SCREENS / FABLE5-PLAN-001 (UI/UX SSOT内plan DONE; implementation `fe3f980ec`; `Plans.md` queue sync/runtime rollout pending, 2026-07-14).
+- codex1: UI-THEME-CLINICAL-SIGNAL-001 Phase 0 (DONE; runtime parent remains Partial, 2026-07-14; implementation `cb6e3a66c`, `PUSHED`).
+  - current task / files inspected / official evidence:
+    1,418行の`docs/ui-ux-design-guidelines.md`全文、`Plans.md`、`components.json`、`src/app/globals.css`、`src/components/ui/**`、
+    `docs/ui-ux-refresh/phase0/06-design-system.md`、既存patient IA/PHI/Fable5規範と生成済み非PHI design referenceを照合した。
+    shadcn公式のIntroduction、Theming、`components.json`、Tailwind v4、Base UI Alert Dialog / Field / Tableを2026-07-14に再確認し、
+    shadcnを固定theme packageでなくOpen Code / Composition / semantic tokenのsource ownership modelとして採用した。
+  - specification / design fixed:
+    全画面テーマを**Clinical Signal Workspace**として正本化し、Safety Horizon、Clinical Signal Spine、Delta Lens、Evidence Dock、
+    Recovery Anchorの5 signature pattern、Canvas/Navigation/Pinned/Work plane/Evidence/Overlay/Interruptのsurface grammar、
+    Actor→Place→Identity→Safety→Now/next→Current/delta→Evidence→Action→Recovery→Historyの読み順を確定した。
+    geometryや3カラムを一律化せず、auth/legal/public、dashboard/list、single-patient、report/billing/admin、overlay、external share、
+    print/outputへ同じtoken、type role、状態言語、component ownership、responsive変換を縮尺適用する。
+  - shadcn / safety / privacy / illustration:
+    現行`base-nova`、Base UI、RSC/TSX、Tailwind v4 config空欄、CSS variables、neutral base、Lucide、aliasを維持し、再`init`、raw primitiveの
+    semantic component代替、wrapper-on-wrapperを禁止した。認可済み画面の正確値表示と非認可/output境界の最小化を緩和せず、生成画像の
+    架空個人情報、raw-looking ID、赤の広面積、微小文字、常設3カラム、body map正本化を棄却した。参照画像:
+    `/Users/yusuke/.codex/generated_images/019f5db4-8780-7ac2-b984-ef50fa3c3ddc/exec-1ee669d8-62ce-4abc-8fa5-61a1c0d1204a.png`。
+    PromptはPHI/secret-freeであり、画像をnormative screenshotや患者固有記録として扱わない。
+  - files changed / validation / performance / remaining / rollback:
+    `docs/ui-ux-design-guidelines.md`と`Plans.md`を変更し、active queueを39→40へ同期した。Prettier write/check、`git diff --check`、
+    `pnpm frontend-contract:check`、`pnpm plans:active:check`をPASS（新task追加直後の期待件数39/実数40を台帳側40へ修正後再PASS）。
+    Docs-onlyのためruntime性能/DB/API/auth/PHI deliveryは不変。残はPhase 1 token/font/dark/forced-colors runtime proof、Phase 2共通shell/
+    semantic component、Phase 3高頻度surface、Phase 4全route/role/state screenshot・journey・LCP/INP/CLS。Rollbackは`cb6e3a66c`のrevert。
+
+- codex2: AUTHZ-CASE-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `9d398e00d`, `PUSHED`).
+  - current task / root cause / files changed:
+    `src/app/api/cases/[id]/route.ts`とroute test、canonical PHI read-audit helperを照合。Org/assignment-scoped case detailは患者・初回訪問文書を
+    返すが、成功readに標準PHI auditがなかった。Caseとfirst-visit-document lookupの双方が成功した後だけ、linked patient ID、
+    `care_case` target、`care_case_detail` viewをcanonical fire-and-forget auditへ記録した。氏名/カナ/文書本文はaudit payloadへ入れず、
+    blank/unassigned/auth拒否/case query失敗/first-visit-document query失敗はzero-audit。Response/query/no-store/assignment/API contractは不変。
+  - validation / review / performance / rollback:
+    Focused route 17/17、helper+route 28/28、exact lint/format/diff、route-auth/API-authz/API-shape/client-PHI/raw-org、`pnpm typecheck`、
+    bare`pnpm typecheck:no-unused`をPASS。codex1のmedical/privacy/auth/audit reviewはBLOCKER/HIGHなしでAPPROVE。非視覚backend変更のため
+    imagegen/browserなし。既存readに非blocking auditだけを追加し、追加のread query/networkはなし。Rollbackは`9d398e00d`のrevert。
+
+- codex1 + codex2: UI-PHI-DISCLOSURE / PATIENT-INFO-IA-ALL-SCREENS / FABLE5-PLAN-001 (SSOT + Phase 0A inventory DONE; runtime parent remains Partial; implementations `fe3f980ec` / `c4ef6b237`, `PUSHED`, 2026-07-14).
   - current task / files inspected / external evidence:
     `docs/ui-ux-design-guidelines.md`のPHI disclosure、患者識別、配置、状態、出力境界、`src/lib/patient/privacy.ts`、
     `src/components/ui/phi-mask-field.tsx`、`src/components/features/patients/patient-header.tsx`、PatientHeader consumer、
@@ -84,11 +120,13 @@
     source/freshness/current-vs-ended/known-none-vs-withheld/partial/conflictをtyped contract化し、同一情報の独立copyとsilent mergeを禁止。
     task別fetch、pagination/virtualization、固定shell、panel最大4のbounded adaptationを計画し、全件一括取得やlayout shiftをperformance要件にしない。
   - imagegen / validation / remaining work / next action:
-    `imagegen`方針を検討したが、今回はexact label、a11y text fallback、source/state契約をdiff可能に固定するSSOT計画のため、単純diagramは
-    Markdown wireframeを採用しraster生成を省略。PHI/secretを生成promptへ送っていない。対象2 docsのPrettier write/checkと
+    初回`fe3f980ec`の配置SSOT sliceはexact label、a11y text fallback、source/state契約をdiff可能に固定するためMarkdown wireframeを採用し、
+    raster生成を省略した。その後のClinical Signal Workspace theme sliceではPHI-free `gpt-image-2`参照を生成し、上記`cb6e3a66c`で安全な
+    signal/surface規則へ翻訳した。いずれもPHI/secretをpromptへ送っていない。対象2 docsのPrettier write/checkと
     `git diff --check`はPASS。新設sectionの24外部URLはcurlで22件HTTP 200、NHS/AHRQの2件はbot応答403だが事前browser調査で内容を確認済み。
     codex2の国内公式/visual/Fable5 reviewを反映し、旧禁止事項のblanket「PHI生値露出」矛盾とtooltip-only安全値の残存を修正した。
-    最終peer reviewはBLOCKER/HIGHなしでAPPROVE。`Plans.md`へのphase queue同期は未実施。runtimeには、`src/lib/patient/privacy.ts`の`clerk`職種一律mask、
+    最終peer reviewはBLOCKER/HIGHなしでAPPROVE。`Plans.md`へのphase queue同期とpatient route Phase 0A exact inventory/CI gateは完了した。
+    runtimeには、`src/lib/patient/privacy.ts`の`clerk`職種一律mask、
     未使用だがstaleな`PhiMaskField`既定、PatientHeaderの
     適用がpatient subroute全体へ未収束（20 patient pages、主要product consumerは限定的）、safe display ID/multi-row variant、route inventory/CI、
     current medication canonical projection/provenance、offline/conflict/output contract E2Eが残る。次はPhase 0 inventoryとPhase 1 disclosure contractを
