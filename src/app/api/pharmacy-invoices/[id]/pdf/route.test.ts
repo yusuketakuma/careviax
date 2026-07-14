@@ -40,7 +40,7 @@ vi.mock('@/server/services/export-audit', () => ({
 import { PdfNotFoundError } from '@/server/services/pdf-errors';
 import { GET } from './route';
 
-function createRequest(purpose = PHARMACY_INVOICE_PDF_EXPORT_PURPOSE) {
+function createRequest(purpose: string = PHARMACY_INVOICE_PDF_EXPORT_PURPOSE) {
   return new NextRequest(
     `http://localhost/api/pharmacy-invoices/invoice_1/pdf?purpose=${encodeURIComponent(purpose)}`,
   );
