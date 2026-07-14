@@ -55,6 +55,7 @@ function createRequest(url: string) {
   return new NextRequest(url, {
     headers: {
       'x-org-id': 'org_1',
+      'x-correlation-id': 'communication_export_trace',
     },
   });
 }
@@ -125,6 +126,9 @@ describe('/api/communication-requests/export GET', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toContain('text/csv');
     expectSensitiveNoStore(response);
+    const requestId = response.headers.get('X-Request-Id');
+    expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(response.headers.get('X-Correlation-Id')).toBe('communication_export_trace');
     const bytes = new Uint8Array(await response.clone().arrayBuffer());
     expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
     const body = await response.text();
@@ -180,6 +184,10 @@ describe('/api/communication-requests/export GET', () => {
             exported_patient_id_hashes_truncated: false,
             export_snapshot_id: expect.stringMatching(/^[a-f0-9]{16}$/),
           }),
+          request_trace: {
+            request_id: requestId,
+            correlation_id: 'communication_export_trace',
+          },
         }),
       }),
     });

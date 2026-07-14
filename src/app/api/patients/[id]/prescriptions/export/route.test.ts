@@ -18,12 +18,28 @@ vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (
     handler: (
       req: NextRequest,
-      ctx: { orgId: string; userId: string; role: string },
+      ctx: {
+        orgId: string;
+        userId: string;
+        role: string;
+        requestId: string;
+        correlationId: string;
+      },
       routeContext: { params: Promise<{ id: string }> },
     ) => Promise<Response>,
   ) => {
     return (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+      handler(
+        req,
+        {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+          requestId: 'request_prescription_export_1',
+          correlationId: 'correlation_prescription_export_1',
+        },
+        routeContext,
+      );
   },
 }));
 
@@ -165,7 +181,13 @@ describe('/api/patients/[id]/prescriptions/export GET', () => {
     expect(body).toContain('アスピリン');
     expect(body).toContain('2026-04-21');
     expect(body).toContain('2026-04-25');
-    expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        requestId: 'request_prescription_export_1',
+        correlationId: 'correlation_prescription_export_1',
+      }),
+    );
   });
 
   it('neutralizes spreadsheet formula prefixes in prescription export cells', async () => {

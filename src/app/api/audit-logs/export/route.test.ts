@@ -105,7 +105,7 @@ describe('/api/audit-logs/export GET', () => {
 
     const response = (await GET(
       createRequest(
-        { 'x-org-id': 'org_1' },
+        { 'x-org-id': 'org_1', 'x-correlation-id': 'audit_export_trace' },
         'format=csv&actor=user_1&actor_pharmacy_id=org_1&actor_site_id=site_1&patient_id=patient_1&target_type=visit_record&date_from=2026-03-01&date_to=2026-03-31',
       ),
       emptyRouteContext,
@@ -113,6 +113,9 @@ describe('/api/audit-logs/export GET', () => {
 
     expect(response.status).toBe(200);
     expectNoStore(response);
+    const requestId = response.headers.get('X-Request-Id');
+    expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(response.headers.get('X-Correlation-Id')).toBe('audit_export_trace');
     expect(response.headers.get('content-type')).toContain('text/csv');
     expect(findManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -156,6 +159,8 @@ describe('/api/audit-logs/export GET', () => {
           actorSite: 'site_1',
           patient: 'patient_1',
         }),
+        requestId,
+        correlationId: 'audit_export_trace',
       }),
     );
   });

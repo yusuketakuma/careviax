@@ -27,7 +27,7 @@ import {
 
 function createRequest(url = 'http://localhost/api/pharmacy-drug-stocks/export?site_id=site_1') {
   return new NextRequest(url, {
-    headers: { 'x-org-id': 'org_1' },
+    headers: { 'x-org-id': 'org_1', 'x-correlation-id': 'pharmacy_export_trace' },
   });
 }
 
@@ -90,6 +90,9 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    const requestId = response.headers.get('X-Request-Id');
+    expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(response.headers.get('X-Correlation-Id')).toBe('pharmacy_export_trace');
     expect(response.headers.get('content-type')).toContain('text/csv');
     expect(response.headers.get('content-disposition')).toBe(
       `attachment; filename="${encodeURIComponent('formulary-operations-2026-04-02.csv')}"; filename*=UTF-8''${encodeURIComponent('formulary-operations-2026-04-02.csv')}`,
@@ -122,6 +125,10 @@ describe('/api/pharmacy-drug-stocks/export', () => {
             metadata: {
               source: 'pharmacy_drug_stocks_export',
               export_surface_id: 'pharmacy_drug_stocks_operations_csv',
+            },
+            request_trace: {
+              request_id: requestId,
+              correlation_id: 'pharmacy_export_trace',
             },
           },
         }),
@@ -172,6 +179,9 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    const requestId = response.headers.get('X-Request-Id');
+    expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(response.headers.get('X-Correlation-Id')).toBe('pharmacy_export_trace');
     const disposition = response.headers.get('content-disposition') ?? '';
     expect(disposition).toContain('formulary-posting-');
     expect(disposition).not.toContain('site_1');
@@ -193,6 +203,10 @@ describe('/api/pharmacy-drug-stocks/export', () => {
             metadata: {
               source: 'pharmacy_drug_stocks_export',
               export_surface_id: 'pharmacy_drug_stocks_posting_csv',
+            },
+            request_trace: {
+              request_id: requestId,
+              correlation_id: 'pharmacy_export_trace',
             },
           },
         }),
@@ -240,6 +254,9 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    const requestId = response.headers.get('X-Request-Id');
+    expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(response.headers.get('X-Correlation-Id')).toBe('pharmacy_export_trace');
     const csv = await response.text();
     expect(csv).toContain('"メーカー","安全属性","採用"');
     expect(csv).toContain('"PH-OS製薬","麻薬 / 向精神薬 / ハイリスク","採用"');
@@ -254,6 +271,10 @@ describe('/api/pharmacy-drug-stocks/export', () => {
             metadata: {
               source: 'pharmacy_drug_stocks_export',
               export_surface_id: 'pharmacy_drug_stocks_audit_csv',
+            },
+            request_trace: {
+              request_id: requestId,
+              correlation_id: 'pharmacy_export_trace',
             },
           },
         }),
@@ -304,6 +325,9 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    const requestId = response.headers.get('X-Request-Id');
+    expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(response.headers.get('X-Correlation-Id')).toBe('pharmacy_export_trace');
     const csv = await response.text();
     expect(csv).toContain(
       '"YJコード","医薬品名","一般名","薬価","単位","発注点","優先後発品名","最終レビュー日","フォローアップ状態","経過措置期限","安全属性","メモ"',
@@ -321,6 +345,10 @@ describe('/api/pharmacy-drug-stocks/export', () => {
             metadata: {
               source: 'pharmacy_drug_stocks_export',
               export_surface_id: 'pharmacy_drug_stocks_pharmacist_review_csv',
+            },
+            request_trace: {
+              request_id: requestId,
+              correlation_id: 'pharmacy_export_trace',
             },
           },
         }),

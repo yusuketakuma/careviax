@@ -150,6 +150,8 @@ export const GET = withAuthContext(
         },
         ipAddress: authCtx.ipAddress,
         userAgent: authCtx.userAgent,
+        requestId: authCtx.requestId,
+        correlationId: authCtx.correlationId,
       });
     } catch {
       return withSensitiveNoStore(

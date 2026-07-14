@@ -110,6 +110,8 @@ const authenticatedGET = withAuthContext(
       },
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
+      requestId: ctx.requestId,
+      correlationId: ctx.correlationId,
     });
 
     if (format === 'json') {

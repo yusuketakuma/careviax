@@ -28,6 +28,8 @@ const authContext = {
   role: 'admin',
   ipAddress: '127.0.0.1',
   userAgent: 'vitest',
+  requestId: 'request_billing_export_1',
+  correlationId: 'correlation_billing_export_1',
 };
 
 type AuthenticatedRouteHandler = ((
@@ -194,6 +196,8 @@ describe('/api/billing-candidates/export GET', () => {
         metadata: expect.objectContaining({
           export_surface_id: 'billing_candidates_csv',
         }),
+        requestId: 'request_billing_export_1',
+        correlationId: 'correlation_billing_export_1',
       }),
     );
   });

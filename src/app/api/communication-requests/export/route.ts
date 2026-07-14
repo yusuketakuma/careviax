@@ -276,6 +276,8 @@ const authenticatedGET = withAuthContext(
                 }),
                 ipAddress: ctx.ipAddress,
                 userAgent: ctx.userAgent,
+                requestId: ctx.requestId,
+                correlationId: ctx.correlationId,
               });
             } catch (cause) {
               throw new CommunicationRequestExportAuditError(cause);
@@ -387,6 +389,8 @@ const authenticatedGET = withAuthContext(
               }),
               ipAddress: ctx.ipAddress,
               userAgent: ctx.userAgent,
+              requestId: ctx.requestId,
+              correlationId: ctx.correlationId,
             });
           } catch (cause) {
             throw new CommunicationRequestExportAuditError(cause);
