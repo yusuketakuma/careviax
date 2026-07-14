@@ -1860,6 +1860,11 @@ describe('CardWorkspace', () => {
       const status = screen.getByRole('status', { name: label });
       expect(status.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
     }
+
+    openMovementTab();
+
+    expect(screen.getAllByRole('heading', { name: '患者の動き', level: 2 })).toHaveLength(1);
+    expect(screen.getByRole('status', { name: '患者の動きを読み込み中' })).toBeTruthy();
   });
 
   it('does not mix a no-case state with an empty-risk state', () => {
@@ -1927,9 +1932,10 @@ describe('CardWorkspace', () => {
       ),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: '履歴を追加読み込み（最大40件）' })).toBeTruthy();
+    expect(screen.getAllByRole('heading', { name: '患者の動き', level: 2 })).toHaveLength(1);
     expect(screen.getAllByText('訪問記録を保存').length).toBeGreaterThanOrEqual(1);
     expect(
-      Array.from(document.querySelectorAll('[data-testid^="movement-day-card-"] ol > li h3')).map(
+      Array.from(document.querySelectorAll('[data-testid^="movement-day-card-"] ol > li h4')).map(
         (heading) => heading.textContent,
       ),
     ).toEqual(['報告書を作成', '訪問記録を保存']);
@@ -2046,6 +2052,7 @@ describe('CardWorkspace', () => {
 
     openMovementTab();
 
+    expect(screen.getAllByRole('heading', { name: '患者の動き', level: 2 })).toHaveLength(1);
     expect(await screen.findByText('患者の動きを表示できません')).toBeTruthy();
     expect(screen.getByText(/患者の動きの取得に失敗しました。/)).toBeTruthy();
     expect(screen.getByText(/通信状態または権限を確認して再試行してください。/)).toBeTruthy();

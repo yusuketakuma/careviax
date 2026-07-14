@@ -253,6 +253,9 @@ describe('PatientMovementTimeline', () => {
     expect(
       within(april3Card).getByRole('heading', { level: 3, name: /2026年4月3日/ }),
     ).toBeTruthy();
+    expect(
+      within(april3Card).getByRole('heading', { level: 4, name: '訪問記録を登録' }),
+    ).toBeTruthy();
     expect(within(april3Card).getByText('この日の表示中 1件')).toBeTruthy();
 
     for (const button of screen.getAllByRole('button')) {
@@ -305,7 +308,7 @@ describe('PatientMovementTimeline', () => {
     );
 
     const renderedTitles = Array.from(
-      document.querySelectorAll('[data-testid^="movement-day-card-"] ol > li h3'),
+      document.querySelectorAll('[data-testid^="movement-day-card-"] ol > li h4'),
     ).map((node) => node.textContent);
     expect(renderedTitles).toEqual(['最古', '同時刻A', '同時刻B']);
     expect(document.querySelectorAll('[aria-current="time"]')).toHaveLength(1);

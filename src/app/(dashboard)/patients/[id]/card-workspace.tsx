@@ -5497,24 +5497,30 @@ export function CardWorkspace({
   const renderPatientTimelinePanel = () => {
     if (movementTimelineLoading) {
       return (
-        <SegmentLoading
-          label="患者の動きを読み込み中"
-          description="訪問、処方、文書、連絡の発生履歴を部分取得しています。"
-          rows={3}
-          cols={2}
-        />
+        <div className="space-y-4">
+          <h2 className="text-lg font-bold text-foreground">患者の動き</h2>
+          <SegmentLoading
+            label="患者の動きを読み込み中"
+            description="訪問、処方、文書、連絡の発生履歴を部分取得しています。"
+            rows={3}
+            cols={2}
+          />
+        </div>
       );
     }
 
     if (movementTimelineError) {
       return (
-        <SegmentError
-          title="患者の動きを表示できません"
-          cause="患者の動きの取得に失敗しました。"
-          nextAction="通信状態または権限を確認して再試行してください。"
-          onRetry={() => void refetchMovementTimeline()}
-          retryLabel="患者の動きを再取得"
-        />
+        <div className="space-y-4">
+          <h2 className="text-lg font-bold text-foreground">患者の動き</h2>
+          <SegmentError
+            title="患者の動きを表示できません"
+            cause="患者の動きの取得に失敗しました。"
+            nextAction="通信状態または権限を確認して再試行してください。"
+            onRetry={() => void refetchMovementTimeline()}
+            retryLabel="患者の動きを再取得"
+          />
+        </div>
       );
     }
 
@@ -5870,7 +5876,6 @@ export function CardWorkspace({
           {isDetailTabMounted('movement') ? (
             <TabsContent value="movement" keepMounted className="space-y-4">
               <div id="patient-movement" data-testid="patient-movement-panel" className="space-y-4">
-                <h2 className="text-lg font-bold text-foreground">患者の動き</h2>
                 {renderPatientTimelinePanel()}
               </div>
             </TabsContent>
@@ -6056,7 +6061,6 @@ export function CardWorkspace({
                   data-testid="patient-movement-panel"
                   className="space-y-4"
                 >
-                  <h2 className="text-lg font-bold text-foreground">患者の動き</h2>
                   {renderPatientTimelinePanel()}
                 </div>
               </TabsContent>

@@ -857,7 +857,7 @@ function TimelineEntry({
                 </div>
 
                 <div className="space-y-1">
-                  <h3 className="text-sm font-medium text-foreground">{event.title}</h3>
+                  <h4 className="text-sm font-medium text-foreground">{event.title}</h4>
                   {summary ? (
                     <p className="text-sm leading-6 text-muted-foreground">{summary}</p>
                   ) : null}
