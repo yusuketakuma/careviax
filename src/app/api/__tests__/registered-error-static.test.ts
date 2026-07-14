@@ -36,11 +36,22 @@ type RawErrorDetailsUsage = {
   detailsExpression: string;
 };
 
+type RawResponseNamespaceImportUsage = {
+  filePath: string;
+  namespaceName: string;
+};
+
+type ErrorHelperBindings = {
+  helperNames: Set<string>;
+  namespaceNames: Set<string>;
+};
+
 type RawErrorUsages = {
   literal: RawLiteralErrorUsage[];
   dynamic: RawDynamicErrorUsage[];
   nonliteralMessage: RawNonliteralMessageUsage[];
   details: RawErrorDetailsUsage[];
+  namespaceImports: RawResponseNamespaceImportUsage[];
 };
 
 type RawRegisteredErrorUsage = RawLiteralErrorUsage & {
@@ -555,11 +566,12 @@ function isRegisteredErrorCode(code: string): code is RegisteredErrorCode {
   return Object.prototype.hasOwnProperty.call(API_ERROR_CODE_REGISTRY, code);
 }
 
-function collectErrorHelperNames(
+function collectErrorHelperBindings(
   sourceFile: ts.SourceFile,
   importedHelperName: RawErrorHelperName,
-): Set<string> {
-  const names = new Set<string>();
+): ErrorHelperBindings {
+  const helperNames = new Set<string>();
+  const namespaceNames = new Set<string>();
 
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement)) continue;
@@ -567,15 +579,20 @@ function collectErrorHelperNames(
     if (statement.moduleSpecifier.text !== '@/lib/api/response') continue;
 
     const bindings = statement.importClause?.namedBindings;
-    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    if (!bindings) continue;
+    if (ts.isNamespaceImport(bindings)) {
+      namespaceNames.add(bindings.name.text);
+      continue;
+    }
+    if (!ts.isNamedImports(bindings)) continue;
 
     for (const element of bindings.elements) {
       const importedName = element.propertyName?.text ?? element.name.text;
-      if (importedName === importedHelperName) names.add(element.name.text);
+      if (importedName === importedHelperName) helperNames.add(element.name.text);
     }
   }
 
-  return names;
+  return { helperNames, namespaceNames };
 }
 
 function normalizedExpressionText(sourceFile: ts.SourceFile, node: ts.Node): string {
@@ -585,18 +602,24 @@ function normalizedExpressionText(sourceFile: ts.SourceFile, node: ts.Node): str
 function findErrorUsages(filePath: string, importedHelperName: RawErrorHelperName): RawErrorUsages {
   const source = readFileSync(filePath, 'utf8');
   const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
-  const errorHelperNames = collectErrorHelperNames(sourceFile, importedHelperName);
-  if (errorHelperNames.size === 0) {
-    return { literal: [], dynamic: [], nonliteralMessage: [], details: [] };
-  }
-
-  const usages: RawErrorUsages = { literal: [], dynamic: [], nonliteralMessage: [], details: [] };
+  const bindings = collectErrorHelperBindings(sourceFile, importedHelperName);
+  const usages: RawErrorUsages = {
+    literal: [],
+    dynamic: [],
+    nonliteralMessage: [],
+    details: [],
+    namespaceImports: [...bindings.namespaceNames].map((namespaceName) => ({
+      filePath: relative(process.cwd(), filePath),
+      namespaceName,
+    })),
+  };
+  if (bindings.helperNames.size === 0) return usages;
 
   function visit(node: ts.Node): void {
     if (
       ts.isCallExpression(node) &&
       ts.isIdentifier(node.expression) &&
-      errorHelperNames.has(node.expression.text)
+      bindings.helperNames.has(node.expression.text)
     ) {
       const [codeArgument, messageArgument, statusArgument, detailsArgument] = node.arguments;
       if (codeArgument && ts.isStringLiteralLike(codeArgument)) {
@@ -681,10 +704,34 @@ function collectSortedErrorUsages(importedHelperName: RawErrorHelperName): RawEr
           `${right.filePath}:${right.helper}:${right.codeExpression}:${right.detailsExpression}`,
         ),
       ),
+    namespaceImports: usages
+      .flatMap((usage) => usage.namespaceImports)
+      .sort((left, right) =>
+        `${left.filePath}:${left.namespaceName}`.localeCompare(
+          `${right.filePath}:${right.namespaceName}`,
+        ),
+      ),
   };
 }
 
 describe('raw API error usage', () => {
+  it('detects namespace imports that would bypass direct named-helper scanning', () => {
+    const sourceFile = ts.createSourceFile(
+      'namespace-import-fixture.ts',
+      [
+        "import * as apiResponse from '@/lib/api/response';",
+        "import { error as rawError } from '@/lib/api/response';",
+      ].join('\n'),
+      ts.ScriptTarget.Latest,
+      true,
+    );
+
+    const bindings = collectErrorHelperBindings(sourceFile, 'error');
+
+    expect([...bindings.helperNames]).toEqual(['rawError']);
+    expect([...bindings.namespaceNames]).toEqual(['apiResponse']);
+  });
+
   it('keeps code, message, and details debt exact with one registered 422 bypass', () => {
     const rawUsages = collectSortedErrorUsages('error');
     const externalUsages = collectSortedErrorUsages('externalError');
@@ -707,10 +754,12 @@ describe('raw API error usage', () => {
     expect(rawUsages.dynamic).toEqual(allowedRawDynamicErrorUsages);
     expect(rawUsages.nonliteralMessage).toEqual(allowedRawNonliteralMessageUsages);
     expect(rawUsages.details).toEqual(allowedRawErrorDetailsUsages);
+    expect(rawUsages.namespaceImports).toEqual([]);
     expect(externalUsages.literal).toEqual(allowedExternalLiteralErrorUsages);
     expect(externalUsages.dynamic).toEqual([]);
     expect(externalUsages.nonliteralMessage).toEqual(allowedExternalNonliteralMessageUsages);
     expect(externalUsages.details).toEqual([]);
+    expect(externalUsages.namespaceImports).toEqual([]);
     expect(registeredRawUsages).toEqual(allowedRawRegisteredErrorUsages);
     expect(registeredExternalUsages).toEqual([]);
     expect(registeredRawUsages).toEqual(
