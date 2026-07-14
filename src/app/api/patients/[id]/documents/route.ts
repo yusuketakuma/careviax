@@ -1,9 +1,10 @@
 import { unstable_rethrow } from 'next/navigation';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { withAuthContext } from '@/lib/auth/context';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { prisma } from '@/lib/db/client';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { withOrgContext } from '@/lib/db/rls';
 import { getPatientDocumentsData } from '@/server/services/patient-detail';
 
 const authenticatedGET = withAuthContext(
@@ -12,13 +13,24 @@ const authenticatedGET = withAuthContext(
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('患者IDが不正です');
 
-    const documents = await getPatientDocumentsData(prisma, {
-      orgId: ctx.orgId,
-      patientId: id,
-      role: ctx.role,
-      userId: ctx.userId,
-    });
+    const documents = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        getPatientDocumentsData(tx, {
+          orgId: ctx.orgId,
+          patientId: id,
+          role: ctx.role,
+          userId: ctx.userId,
+        }),
+      { requestContext: ctx },
+    );
     if (!documents) return notFound('患者が見つかりません');
+
+    recordPhiReadAuditForRequest(ctx, {
+      patientId: id,
+      view: 'patient_documents',
+      purpose: 'care',
+    });
 
     return success({ data: documents });
   },
