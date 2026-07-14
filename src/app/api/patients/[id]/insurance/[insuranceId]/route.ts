@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
+import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -43,28 +44,25 @@ const patientInsuranceResponseSelect = {
   updated_at: true,
 } as const;
 
-function readExpectedUpdatedAt(req: NextRequest, required: boolean) {
+function readRequiredExpectedUpdatedAt(req: NextRequest) {
   const rawValue = new URL(req.url).searchParams.get('expected_updated_at');
   if (rawValue === null) {
-    if (required) {
-      return {
-        response: validationError('保険情報の更新時刻が必要です', {
-          expected_updated_at: ['更新前に取得したupdated_atを指定してください'],
-        }),
-      };
-    }
-    return { value: null };
+    return {
+      response: validationError('保険情報の更新時刻が必要です', {
+        expected_updated_at: ['更新前に取得したupdated_atを指定してください'],
+      }),
+    };
   }
 
-  const value = new Date(rawValue);
-  if (Number.isNaN(value.getTime())) {
+  const parsed = z.string().datetime().safeParse(rawValue);
+  if (!parsed.success) {
     return {
       response: validationError('保険情報の更新時刻が不正です', {
         expected_updated_at: ['日時形式が不正です'],
       }),
     };
   }
-  return { value };
+  return { value: new Date(parsed.data) };
 }
 
 async function authenticatedPUT(
@@ -92,9 +90,9 @@ async function authenticatedPUT(
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const expectedUpdatedAtResult = readExpectedUpdatedAt(req, true);
+  const expectedUpdatedAtResult = readRequiredExpectedUpdatedAt(req);
   if ('response' in expectedUpdatedAtResult) return expectedUpdatedAtResult.response;
-  const expectedUpdatedAt = expectedUpdatedAtResult.value as Date;
+  const expectedUpdatedAt = expectedUpdatedAtResult.value;
 
   // Fold the patient-assignment access check into the resource query (single
   // round-trip). buildCareCaseAssignmentWhere returns null for owner/admin so
@@ -178,6 +176,9 @@ async function authenticatedPUT(
           patient_id: id,
           org_id: ctx.orgId,
           updated_at: expectedUpdatedAt,
+          ...(caseAssignmentWherePut
+            ? { patient: { cases: { some: caseAssignmentWherePut } } }
+            : {}),
         },
         data: {
           ...rest,
@@ -270,9 +271,9 @@ async function authenticatedDELETE(
   const insuranceId = normalizeRequiredRouteParam(rawInsuranceId);
   if (!insuranceId) return validationError('保険情報IDが不正です');
 
-  const expectedUpdatedAtResult = readExpectedUpdatedAt(req, true);
+  const expectedUpdatedAtResult = readRequiredExpectedUpdatedAt(req);
   if ('response' in expectedUpdatedAtResult) return expectedUpdatedAtResult.response;
-  const expectedUpdatedAt = expectedUpdatedAtResult.value as Date;
+  const expectedUpdatedAt = expectedUpdatedAtResult.value;
 
   const caseAssignmentWhereDelete = buildCareCaseAssignmentWhere({
     userId: ctx.userId,
@@ -308,6 +309,9 @@ async function authenticatedDELETE(
           patient_id: id,
           org_id: ctx.orgId,
           updated_at: expectedUpdatedAt,
+          ...(caseAssignmentWhereDelete
+            ? { patient: { cases: { some: caseAssignmentWhereDelete } } }
+            : {}),
         },
       });
       if (deleteResult.count > 0) return { deleted: true };

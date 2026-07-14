@@ -671,6 +671,7 @@ describe('/api/patients/[id]/insurance', () => {
         provisional_care_level: 'care_2',
         confirmed_care_level: null,
       },
+      select: insuranceRecordSelect,
     });
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
@@ -739,6 +740,7 @@ describe('/api/patients/[id]/insurance', () => {
         application_submitted_at: null,
         decision_at: null,
       },
+      select: insuranceRecordSelect,
     });
   });
 
@@ -779,6 +781,7 @@ describe('/api/patients/[id]/insurance', () => {
         application_submitted_at: new Date('2026-04-12'),
         decision_at: null,
       },
+      select: insuranceRecordSelect,
     });
   });
 
