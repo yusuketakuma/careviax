@@ -48,14 +48,30 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。`API-CONTRACT-003I-COMMUNICATION-EXPORT-ERRORS`の実装・証跡同期後、
-  現在のsource/shared-doc ownershipは両者とも解放済み。次スライス開始前に`agmsg`でexact pathsを再通知する。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `TYPECHECK-NO-UNUSED-HEAP-001`のevidence同期、
+  `codex2`: `API-CONTRACT-003K-PDF-EXPORT-AUDIT-ERRORS`の10 exact paths。共有docsはcodex1が短時間保持中。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: TYPECHECK-NO-UNUSED-HEAP-001 (DONE, 2026-07-14; implementation `2cc59b06b`, `PUSHED`).
+  - current task / files inspected / root cause:
+    `package.json`の通常/no-unused typecheck scripts、TypeScript local binary、shared package-script contract test、直前の4 GiB OOMを照合した。
+    通常`typecheck`は8 GiBで自己完結した一方、full-program `typecheck:no-unused`だけがcaller側の`NODE_OPTIONS`を暗黙に要求し、
+    bare package scriptとCI/local operatorの呼出方法で成否が分岐していた。
+  - files changed / bugs fixed / stability / performance / security:
+    Main no-unused compilerだけをrepo-local `node_modules/typescript/bin/tsc` + 8 GiB Node invocationへ固定。
+    `--incremental false`、`--noUnusedLocals`、`--noUnusedParameters`、`--skipLibCheck`と別service-worker project checkは維持した。
+    Runtime/source/Next config/build/dev、型strictness、API/DB/auth/PHIには変更なし。既存contract testでheap prefixを固定した。
+  - validation results / remaining work / next action / rollback:
+    外部`NODE_OPTIONS`なしのbare `pnpm typecheck:no-unused` PASS、focused contract 1 file / 2 tests、exact ESLint、Prettier、diff、
+    独立codex2 review APPROVE。既存gbrain failure/fix pageを新規重複せずcommit evidenceへ更新した。
+    非視覚tooling変更のためimagegen/browserなし。Rollbackは`2cc59b06b`のrevertでDB/data rollback不要。
+    gbrain memory IDs: `projects/careviax/failures/2026-07-14/next-typegen-stale-tsbuildinfo`、
+    `projects/careviax/fix-patterns/2026-07-14/stable-next-typegen-typecheck`。
 
 - codex2: API-CONTRACT-003J-PHARMACY-STOCK-EXPORT-ERRORS (DONE; parent remains Partial, 2026-07-14; implementation `47d6fb070`, `PUSHED`).
   - current task / files inspected / root cause:
@@ -124,7 +140,8 @@
     payload/query/performance semanticsは不変で、実患者情報・secretをfixture/outputへ追加していない。
   - validation results / remaining work / next action / rollback:
     Scheduling Gantt 5、shared viewer 1、partner cooperation 1、billing/formulary/stock 3などのfocused回帰後、
-    Chromium route-mocked全体は15 passed / 1 project-specific intentional skip。Exact ESLint、Prettier、diff、独立codex2 review APPROVE。
+    Fresh rebuilt standaloneに対するChromium route-mocked全体は15 passed / 1 project-specific intentional skip（46.4秒）。
+    Exact ESLint、Prettier、diff、独立codex2 review APPROVE。
     非視覚test contract修復のためimagegenなし。Rollbackは`625af849f`のrevertでDB/data rollback不要。
 
 - codex2: E2E-BUILD-HEAP-001 (DONE, 2026-07-14; implementation `945452afe`, `PUSHED`).
