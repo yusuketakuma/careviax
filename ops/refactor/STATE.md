@@ -71,6 +71,8 @@
     修正commandはNext 16.2.9 compile 9.4分、TypeScript 116秒、311/311 pages、trace/finalizeまでexit 0。
     Focused 1 test、exact ESLint、Prettier、diff、独立codex1 review APPROVE。ホストmemory pressureでbuild時間は長いが、
     OOM false-failureは解消。非視覚build toolingのためimagegen/browserなし。Rollbackは`945452afe`のrevertでDB/data rollback不要。
+    gbrain memory IDs: `projects/careviax/failures/2026-07-14/e2e-local-build-default-heap-oom`、
+    `projects/careviax/fix-patterns/2026-07-14/align-e2e-next-heap-with-production-build`。
 
 - codex2: PERF-PAYLOAD-MEASURED-ROUTES-001 (DONE, 2026-07-14; implementation `93d4531fe`, `PUSHED`; parent remains Partial).
   - current task / files inspected / root cause:
