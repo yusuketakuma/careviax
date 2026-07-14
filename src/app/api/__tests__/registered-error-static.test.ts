@@ -7,6 +7,7 @@ import { API_ERROR_CODE_REGISTRY } from '@/lib/api/error-codes';
 const apiRoot = join(process.cwd(), 'src', 'app', 'api');
 
 type RegisteredErrorCode = keyof typeof API_ERROR_CODE_REGISTRY;
+type RawErrorHelperName = 'error' | 'externalError';
 
 type RawLiteralErrorUsage = {
   filePath: string;
@@ -203,6 +204,64 @@ const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
   },
 ];
 
+const allowedExternalLiteralErrorUsages: RawLiteralErrorUsage[] = [
+  {
+    filePath: 'src/app/api/auth/mfa/recovery/route.ts',
+    code: 'EXTERNAL_MFA_RECOVERY_FAILED',
+    httpStatus: 502,
+  },
+  {
+    filePath: 'src/app/api/auth/mfa/recovery/route.ts',
+    code: 'EXTERNAL_MFA_RECOVERY_FAILED',
+    httpStatus: 503,
+  },
+  {
+    filePath: 'src/app/api/auth/password/reset/confirm/route.ts',
+    code: 'EXTERNAL_PASSWORD_RESET_CONFIRM_FAILED',
+    httpStatus: null,
+  },
+  {
+    filePath: 'src/app/api/auth/password/reset/request/route.ts',
+    code: 'EXTERNAL_PASSWORD_RESET_REQUEST_FAILED',
+    httpStatus: 502,
+  },
+  {
+    filePath: 'src/app/api/me/logout-all/route.ts',
+    code: 'EXTERNAL_GLOBAL_SIGNOUT_FAILED',
+    httpStatus: 502,
+  },
+  {
+    filePath: 'src/app/api/me/mfa/disable/route.ts',
+    code: 'EXTERNAL_MFA_DISABLE_FAILED',
+    httpStatus: 400,
+  },
+  {
+    filePath: 'src/app/api/me/mfa/setup/route.ts',
+    code: 'EXTERNAL_MFA_SETUP_FAILED',
+    httpStatus: 400,
+  },
+  {
+    filePath: 'src/app/api/me/mfa/verify/route.ts',
+    code: 'AUTH_USER_NOT_FOUND',
+    httpStatus: 404,
+  },
+  {
+    filePath: 'src/app/api/me/mfa/verify/route.ts',
+    code: 'EXTERNAL_MFA_VERIFY_FAILED',
+    httpStatus: 400,
+  },
+  {
+    filePath: 'src/app/api/me/password/route.ts',
+    code: 'EXTERNAL_PASSWORD_CHANGE_FAILED',
+    httpStatus: 400,
+  },
+  {
+    filePath: 'src/app/api/me/profile/route.ts',
+    code: 'EXTERNAL_COGNITO_UPDATE_FAILED',
+    httpStatus: 502,
+  },
+];
+
 const allowedRawRegisteredErrorUsages: RawRegisteredErrorUsage[] = [
   {
     filePath: 'src/app/api/dispense-audits/route.ts',
@@ -225,7 +284,10 @@ function isRegisteredErrorCode(code: string): code is RegisteredErrorCode {
   return Object.prototype.hasOwnProperty.call(API_ERROR_CODE_REGISTRY, code);
 }
 
-function collectErrorHelperNames(sourceFile: ts.SourceFile): Set<string> {
+function collectErrorHelperNames(
+  sourceFile: ts.SourceFile,
+  importedHelperName: RawErrorHelperName,
+): Set<string> {
   const names = new Set<string>();
 
   for (const statement of sourceFile.statements) {
@@ -238,17 +300,20 @@ function collectErrorHelperNames(sourceFile: ts.SourceFile): Set<string> {
 
     for (const element of bindings.elements) {
       const importedName = element.propertyName?.text ?? element.name.text;
-      if (importedName === 'error') names.add(element.name.text);
+      if (importedName === importedHelperName) names.add(element.name.text);
     }
   }
 
   return names;
 }
 
-function findRawLiteralErrorUsages(filePath: string): RawLiteralErrorUsage[] {
+function findLiteralErrorUsages(
+  filePath: string,
+  importedHelperName: RawErrorHelperName,
+): RawLiteralErrorUsage[] {
   const source = readFileSync(filePath, 'utf8');
   const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
-  const errorHelperNames = collectErrorHelperNames(sourceFile);
+  const errorHelperNames = collectErrorHelperNames(sourceFile, importedHelperName);
   if (errorHelperNames.size === 0) return [];
 
   const usages: RawLiteralErrorUsage[] = [];
@@ -279,16 +344,23 @@ function findRawLiteralErrorUsages(filePath: string): RawLiteralErrorUsage[] {
   return usages;
 }
 
+function collectSortedLiteralErrorUsages(
+  importedHelperName: RawErrorHelperName,
+): RawLiteralErrorUsage[] {
+  return collectRouteFiles(apiRoot)
+    .flatMap((filePath) => findLiteralErrorUsages(filePath, importedHelperName))
+    .sort((left, right) =>
+      `${left.filePath}:${left.code}:${left.httpStatus}`.localeCompare(
+        `${right.filePath}:${right.code}:${right.httpStatus}`,
+      ),
+    );
+}
+
 describe('raw API error usage', () => {
-  it('keeps raw literal error debt exact and registered bypasses on the one 422 branch', () => {
-    const usages = collectRouteFiles(apiRoot)
-      .flatMap(findRawLiteralErrorUsages)
-      .sort((left, right) =>
-        `${left.filePath}:${left.code}:${left.httpStatus}`.localeCompare(
-          `${right.filePath}:${right.code}:${right.httpStatus}`,
-        ),
-      );
-    const registeredUsages = usages.flatMap((usage): RawRegisteredErrorUsage[] =>
+  it('keeps literal helper debt exact and registered bypasses on the one 422 branch', () => {
+    const rawUsages = collectSortedLiteralErrorUsages('error');
+    const externalUsages = collectSortedLiteralErrorUsages('externalError');
+    const registeredRawUsages = rawUsages.flatMap((usage): RawRegisteredErrorUsage[] =>
       isRegisteredErrorCode(usage.code)
         ? [
             {
@@ -299,10 +371,15 @@ describe('raw API error usage', () => {
           ]
         : [],
     );
+    const registeredExternalUsages = externalUsages.filter((usage) =>
+      isRegisteredErrorCode(usage.code),
+    );
 
-    expect(usages).toEqual(allowedRawLiteralErrorUsages);
-    expect(registeredUsages).toEqual(allowedRawRegisteredErrorUsages);
-    expect(registeredUsages).toEqual(
+    expect(rawUsages).toEqual(allowedRawLiteralErrorUsages);
+    expect(externalUsages).toEqual(allowedExternalLiteralErrorUsages);
+    expect(registeredRawUsages).toEqual(allowedRawRegisteredErrorUsages);
+    expect(registeredExternalUsages).toEqual([]);
+    expect(registeredRawUsages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           code: 'VALIDATION_ERROR',
