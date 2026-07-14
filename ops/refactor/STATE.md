@@ -57,6 +57,25 @@
 
 ## 直近の作業
 
+- codex2: API-CONTRACT-003J-PHARMACY-STOCK-EXPORT-ERRORS (DONE; parent remains Partial, 2026-07-14; implementation `47d6fb070`, `PUSHED`).
+  - current task / files inspected / root cause:
+    Canonical error registry/response helper、pharmacy drug stock CSV export route/test、auth wrapper、sensitive no-store、export audit helperを照合。
+    Site/stock read失敗の共有constructorとaudit失敗constructorが固定code/message/500を持ちながら互換`error()`でstatusを重複指定し、
+    typed registryのstatus/recovery契約外に残っていた。AuditはCSV生成・返却前に完了し、失敗時は固定JSONへfail-closedする既存設計だった。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    `src/lib/api/error-codes.ts`とsnapshot、pharmacy drug stock export route/testの4 pathsを変更。
+    `PHARMACY_DRUG_STOCK_EXPORT_FAILED`と`PHARMACY_DRUG_STOCK_EXPORT_AUDIT_FAILED`を500/error/retryable/retry metadataで登録し、
+    2 constructorsだけをtyped `registeredError()`へ移行。Testsは固定code/message JSONをexact化し、医薬品名・患者名・hostile raw errorの
+    response非露出を維持強化した。Audit-before-CSV、sensitive no-store、auth/tenant、site/stock query、audit write、success CSV、DB/network回数は不変。
+    Retryable metadataを自動retryへ接続せず、在庫・薬価・採否・安全属性・CSV列の医療意味も変更していない。
+  - validation results / remaining work / next action / rollback:
+    Focused registry/response/export route 3 files / 24 tests、exact ESLint/Prettier/diff、API response shape 0/0、API authz、route-auth
+    150 allowlisted / 214 direct / 0 new、client PHI-log、raw-read org 116 allowlisted / 0 new、`pnpm typecheck`、8 GiB
+    `pnpm typecheck:no-unused`をPASS。独立codex1 medical/privacy/API reviewもAPPROVE。現行STATE.mdの2026-07-10 user SSOTに従いOracleは未使用。
+    非視覚API変更のためimagegen/browserなし。親`API-CONTRACT-003`には他route固有・動的codeが残る。次は既存固定500/no-store testを持つ
+    conference note / tracing report / care report / visit record PDF export audit 4コードを一群として再確認する。Rollbackは`47d6fb070`のrevertで
+    DB/data rollback不要。
+
 - codex2: API-CONTRACT-003I-COMMUNICATION-EXPORT-ERRORS (DONE; parent remains Partial, 2026-07-14; implementation `6695c0491`, `PUSHED`).
   - current task / files inspected / root cause:
     Canonical error registry/response helper、communication request CSV export route/test、auth wrapper、sensitive no-store、export audit transactionを照合。
