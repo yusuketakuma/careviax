@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { requireAuthContext } from '@/lib/auth/context';
 import type { AuthRouteContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
@@ -7,6 +8,7 @@ import { success, validationError, notFound, conflict, internalError } from '@/l
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { formatDateKey } from '@/lib/date-key';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { buildSetPlanPackagingSummary } from '@/lib/dispensing/set-plan-packaging';
@@ -161,7 +163,10 @@ async function authenticatedGET(
   const { ctx } = auth;
 
   return runWithRequestAuthContext(ctx, async () => {
-    const { id } = await routeContext.params;
+    const { id: rawId } = await routeContext.params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('セットプランIDが不正です');
+
     const assignmentWhere = buildSetPlanAssignmentWhere(ctx);
 
     const plan = await withOrgContext(
@@ -195,6 +200,13 @@ async function authenticatedGET(
           ),
         )
       : [];
+
+    recordPhiReadAuditForRequest(ctx, {
+      patientId: plan.cycle.patient_id,
+      targetType: 'set_plan',
+      targetId: plan.id,
+      view: 'set_plan_detail',
+    });
 
     return success({
       data: {

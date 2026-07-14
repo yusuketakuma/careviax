@@ -9,6 +9,7 @@ const {
   withOrgContextMock,
   txMock,
   notifyWorkflowMutationMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   buildSetPlanAssignmentWhereMock: vi.fn(),
@@ -27,6 +28,11 @@ const {
     },
   },
   notifyWorkflowMutationMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -109,6 +115,7 @@ describe('/api/set-plans/[id]', () => {
       packaging_method_id: null,
       updated_at: new Date(currentUpdatedAt),
       cycle: {
+        patient_id: 'patient_1',
         case_: {
           patient: {
             packaging_profile: null,
@@ -150,6 +157,34 @@ describe('/api/set-plans/[id]', () => {
         }),
       }),
     );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'admin' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'set_plan',
+        targetId: 'plan_1',
+        view: 'set_plan_detail',
+      },
+    );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects blank set-plan ids before assignment or database reads', async () => {
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: ' \t\n ' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'セットプランIDが不正です',
+    });
+    expect(buildSetPlanAssignmentWhereMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.setPlan.findFirst).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 for unassigned pharmacist set-plan detail', async () => {
@@ -170,6 +205,7 @@ describe('/api/set-plans/[id]', () => {
       },
       select: expect.any(Object),
     });
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when set plan detail lookup fails unexpectedly', async () => {
@@ -208,6 +244,23 @@ describe('/api/set-plans/[id]', () => {
     expect(serializedRouteContext).not.toContain('東京都千代田区');
     expect(serializedRouteContext).not.toContain('raw set plan packaging detail');
     expect(serializedRouteContext).not.toContain('SetPlanDetailSecretError');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not load or audit set-plan detail when authentication is rejected', async () => {
+    authMock.mockResolvedValueOnce(null);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(buildSetPlanAssignmentWhereMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.setPlan.findFirst).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('updates set plan metadata', async () => {
