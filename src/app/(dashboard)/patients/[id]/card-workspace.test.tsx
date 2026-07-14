@@ -25,6 +25,7 @@ const downscaleImageMock = vi.hoisted(() => vi.fn(async (file: File) => file));
 const computeUploadSha256HexMock = vi.hoisted(() => vi.fn(async () => 'ab'.repeat(32)));
 
 vi.mock('@tanstack/react-query', () => ({
+  keepPreviousData: (previous: unknown) => previous,
   useQuery: useQueryMock,
   useMutation: useMutationMock,
   useQueryClient: useQueryClientMock,
@@ -370,6 +371,7 @@ function mockPatientQuery(
     movementTimelineError?: Error;
     movementTimelineLoading?: boolean;
     movementTimelineRefetch?: ReturnType<typeof vi.fn>;
+    movementTimelineVariesByRequest?: boolean;
     patientOverviewLoading?: boolean;
     executePatientShareCaseMutation?: boolean;
     executeRiskTaskSyncMutation?: boolean;
@@ -831,12 +833,20 @@ function mockPatientQuery(
       },
     ],
     meta: {
-      next_cursor: null,
-      has_more: false,
+      next_cursor: 'opaque_cursor_1',
+      has_more: true,
       returned_count: 2,
       count_basis: 'bounded_latest_window',
       filters: { category: null, date_from: null, date_to: null },
       window_limit: 40,
+      selection_order: 'occurred_at_desc_id_desc',
+      presentation_order: 'occurred_at_asc_id_asc',
+      cursor_direction: 'older',
+      is_current_window: true,
+      current_event_id: 'timeline_visit_record_1',
+      presentation_terminal_event_id: 'timeline_visit_record_1',
+      window_start_at: '2026-06-17T10:00:00.000Z',
+      window_end_at: '2026-06-18T09:00:00.000Z',
     },
   };
 
@@ -929,11 +939,20 @@ function mockPatientQuery(
     }
 
     if (queryKey[0] === 'patient-movement-timeline') {
+      const isMovementDetailRequest =
+        queryKey[3] !== 5 || queryKey.slice(4, 7).some((value) => value !== null);
+      const selectedMovementTimeline =
+        options.movementTimelineVariesByRequest && isMovementDetailRequest
+          ? {
+              ...movementTimelineData,
+              movement_events: movementTimelineData.movement_events.slice(1),
+            }
+          : movementTimelineData;
       return {
         data:
           options.movementTimelineLoading || options.movementTimelineError
             ? undefined
-            : movementTimelineData,
+            : selectedMovementTimeline,
         isLoading: Boolean(options.movementTimelineLoading),
         isFetching: Boolean(options.movementTimelineLoading),
         isError: Boolean(options.movementTimelineError),
@@ -1879,31 +1898,55 @@ describe('CardWorkspace', () => {
     render(<CardWorkspace patientId="patient_1" />);
 
     const initialMovementTimelineConfig = useQueryMock.mock.calls
-      .map(([config]) => config as { queryKey?: unknown[]; enabled?: boolean })
-      .filter((config) => config.queryKey?.[0] === 'patient-movement-timeline')
-      .at(-1);
+      .map(
+        ([config]) =>
+          config as { queryKey?: unknown[]; enabled?: boolean; placeholderData?: unknown },
+      )
+      .find(
+        (config) =>
+          config.queryKey?.[0] === 'patient-movement-timeline' &&
+          config.enabled === true &&
+          config.placeholderData === undefined,
+      );
     expect(initialMovementTimelineConfig).toMatchObject({
-      queryKey: ['patient-movement-timeline', 'patient_1', 'org_1', 5],
+      queryKey: ['patient-movement-timeline', 'patient_1', 'org_1', 5, null, null, null],
       enabled: true,
     });
+    const commandExcerpt = screen.getByTestId('command-timeline-excerpt-panel');
+    expect(
+      within(commandExcerpt)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual([expect.stringContaining('訪問記録を保存'), expect.stringContaining('報告書を作成')]);
 
     fireEvent.click(screen.getByRole('tab', { name: /患者の動き/ }));
 
     expect(
       await screen.findByText(
-        '直近5件の患者の動きを先に表示しています。追加履歴は必要な時だけ読み込みます。',
+        '直近2件の患者の動きを先に表示しています。追加履歴は必要な時だけ読み込みます。',
       ),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: '履歴を追加読み込み（最大40件）' })).toBeTruthy();
     expect(screen.getAllByText('訪問記録を保存').length).toBeGreaterThanOrEqual(1);
+    expect(
+      Array.from(document.querySelectorAll('[data-testid^="movement-day-card-"] ol > li h3')).map(
+        (heading) => heading.textContent,
+      ),
+    ).toEqual(['報告書を作成', '訪問記録を保存']);
 
     const enabledMovementTimelineConfig = useQueryMock.mock.calls
-      .map(([config]) => config as { queryKey?: unknown[]; enabled?: boolean })
+      .map(
+        ([config]) =>
+          config as { queryKey?: unknown[]; enabled?: boolean; placeholderData?: unknown },
+      )
       .find(
-        (config) => config.queryKey?.[0] === 'patient-movement-timeline' && config.enabled === true,
+        (config) =>
+          config.queryKey?.[0] === 'patient-movement-timeline' &&
+          config.enabled === true &&
+          config.placeholderData !== undefined,
       );
     expect(enabledMovementTimelineConfig).toMatchObject({
-      queryKey: ['patient-movement-timeline', 'patient_1', 'org_1', 5],
+      queryKey: ['patient-movement-timeline', 'patient_1', 'org_1', 5, null, null, null],
       enabled: true,
     });
 
@@ -1920,6 +1963,55 @@ describe('CardWorkspace', () => {
         }),
       ).toBe(true);
     });
+  });
+
+  it('keeps the Command excerpt unfiltered while movement filters retain previous data', async () => {
+    mockPatientQuery(buildWorkspace(), null, {}, { movementTimelineVariesByRequest: true });
+
+    render(<CardWorkspace patientId="patient_1" />);
+    openMovementTab();
+    fireEvent.click(await screen.findByRole('button', { name: /^文書1$/ }));
+
+    await waitFor(() => {
+      expect(
+        useQueryMock.mock.calls.some(([config]) => {
+          const queryConfig = config as {
+            queryKey?: unknown[];
+            enabled?: boolean;
+            placeholderData?: (previous: unknown) => unknown;
+          };
+          if (
+            queryConfig.queryKey?.[0] !== 'patient-movement-timeline' ||
+            queryConfig.queryKey[3] !== 40 ||
+            queryConfig.queryKey[4] !== 'document' ||
+            queryConfig.enabled !== true ||
+            !queryConfig.placeholderData
+          ) {
+            return false;
+          }
+          const previous = { movement_events: ['retained'] };
+          return queryConfig.placeholderData(previous) === previous;
+        }),
+      ).toBe(true);
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: /Command/ }));
+    const commandExcerpt = screen.getByTestId('command-timeline-excerpt-panel');
+    expect(
+      within(commandExcerpt)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual([expect.stringContaining('訪問記録を保存'), expect.stringContaining('報告書を作成')]);
+    expect(
+      useQueryMock.mock.calls.some(([config]) => {
+        const queryConfig = config as { queryKey?: unknown[]; enabled?: boolean };
+        return (
+          queryConfig.enabled === true &&
+          JSON.stringify(queryConfig.queryKey) ===
+            JSON.stringify(['patient-movement-timeline', 'patient_1', 'org_1', 5, null, null, null])
+        );
+      }),
+    ).toBe(true);
   });
 
   it('keeps change history separate from the patient movement timeline', async () => {
@@ -2012,6 +2104,54 @@ describe('CardWorkspace', () => {
     ).toBeGreaterThan(0);
     expect(screen.queryByText('SOAP本文と訪問内容の詳細')).toBeNull();
     expect(screen.queryByText('SOAP本文あり')).toBeNull();
+  });
+
+  it('does not render an unsafe movement href in the Command excerpt', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        movementTimeline: {
+          movement_events: [
+            {
+              id: 'unsafe_command_event',
+              event_type: 'communication',
+              category: 'communication',
+              occurred_at: '2026-06-18T09:00:00.000Z',
+              title: '外部URLを含む履歴',
+              summary: null,
+              href: 'https://example.invalid/private',
+              action_label: '外部URLを開く',
+              status: null,
+              status_label: null,
+              actor_name: null,
+              actor_role: null,
+              source_channel: null,
+              source_label: null,
+              related_entity_type: null,
+              related_entity_id: null,
+              severity: 'normal',
+              badges: [],
+              metadata: [],
+              privacy_level: 'summary',
+              raw_available: false,
+            },
+          ],
+        },
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const excerpt = screen.getByTestId('command-timeline-excerpt-panel');
+    expect(within(excerpt).queryByRole('link', { name: '外部URLを開く' })).toBeNull();
+    expect(
+      within(excerpt)
+        .getByRole('button', { name: /詳細導線を確認できません/ })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+    expect(within(excerpt).getByText('詳細導線未設定')).toBeTruthy();
   });
 
   it('switches patient detail tabs when section hashes change', async () => {
@@ -4401,6 +4541,14 @@ describe('CardWorkspace', () => {
       count_basis: 'bounded_latest_window' as const,
       filters: { category: null, date_from: null, date_to: null },
       window_limit: 40,
+      selection_order: 'occurred_at_desc_id_desc' as const,
+      presentation_order: 'occurred_at_asc_id_asc' as const,
+      cursor_direction: 'older' as const,
+      is_current_window: true,
+      current_event_id: null,
+      presentation_terminal_event_id: null,
+      window_start_at: null,
+      window_end_at: null,
     };
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ data: { movement_events: [] }, meta }), {
@@ -4414,7 +4562,15 @@ describe('CardWorkspace', () => {
       render(<CardWorkspace patientId={hostileId} />);
 
       const config = getConfig();
-      expect(config?.queryKey).toEqual(['patient-movement-timeline', hostileId, 'org_1', 5]);
+      expect(config?.queryKey).toEqual([
+        'patient-movement-timeline',
+        hostileId,
+        'org_1',
+        5,
+        null,
+        null,
+        null,
+      ]);
       await expect(config?.queryFn?.()).resolves.toEqual({ movement_events: [], meta });
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];

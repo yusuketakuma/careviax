@@ -1,8 +1,36 @@
 import { notFound } from 'next/navigation';
+import type { PatientMovementTimelineEvent } from '@/types/patient-movement-timeline';
 import { PatientMovementTimeline } from '../[id]/patient-movement-timeline';
 
+function fixtureMovementEvent(
+  event: Pick<
+    PatientMovementTimelineEvent,
+    'id' | 'event_type' | 'category' | 'occurred_at' | 'title' | 'href' | 'action_label'
+  > &
+    Partial<PatientMovementTimelineEvent>,
+): PatientMovementTimelineEvent {
+  return {
+    recorded_at: null,
+    summary: null,
+    status: null,
+    status_label: null,
+    actor_name: null,
+    actor_role: null,
+    source_channel: 'fixture',
+    source_label: 'PH-OS browser fixture',
+    related_entity_type: null,
+    related_entity_id: null,
+    severity: 'normal',
+    badges: [],
+    metadata: [],
+    privacy_level: 'summary',
+    raw_available: false,
+    ...event,
+  };
+}
+
 const fixtureTimelineEvents = [
-  {
+  fixtureMovementEvent({
     id: 'fixture_visit_record',
     event_type: 'visit_record' as const,
     category: 'visit' as const,
@@ -15,8 +43,8 @@ const fixtureTimelineEvents = [
     status_label: '完了',
     actor_name: '薬剤師A',
     metadata: ['次回提案 2026/04/10'],
-  },
-  {
+  }),
+  fixtureMovementEvent({
     id: 'fixture_inbound_signal',
     event_type: 'inbound_mcs' as const,
     category: 'interprofessional' as const,
@@ -29,8 +57,8 @@ const fixtureTimelineEvents = [
     status_label: '確認待ち',
     actor_name: '訪問看護師A',
     metadata: ['MCS', '残数関連'],
-  },
-  {
+  }),
+  fixtureMovementEvent({
     id: 'fixture_document',
     event_type: 'management_plan' as const,
     category: 'document' as const,
@@ -43,8 +71,8 @@ const fixtureTimelineEvents = [
     status_label: '承認済み',
     actor_name: '薬剤師B',
     metadata: [],
-  },
-  {
+  }),
+  fixtureMovementEvent({
     id: 'fixture_unsafe_legacy',
     event_type: 'communication' as const,
     category: 'interprofessional' as const,
@@ -57,7 +85,7 @@ const fixtureTimelineEvents = [
     status_label: '確認待ち',
     actor_name: '連携先',
     metadata: ['legacy href guard'],
-  },
+  }),
 ];
 
 export default function PatientMovementFixturePage() {

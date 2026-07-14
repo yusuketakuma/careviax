@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { memo, useEffect, useState } from 'react';
 import { differenceInYears, format, parseISO } from 'date-fns';
@@ -66,6 +66,7 @@ import { computeUploadSha256Hex } from '@/lib/files/upload-checksum';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { getSafePatientMovementHref } from '@/lib/patient/movement-href';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
@@ -95,6 +96,7 @@ import type {
 } from './patient-detail.types';
 import type { CaseRiskCockpitResponse, CaseRiskNextAction } from '@/types/case-risk-cockpit';
 import { patientMovementTimelineResponseSchema } from '@/types/patient-movement-timeline';
+import type { PatientMovementCategory } from '@/types/patient-movement-timeline';
 import type { PatientMovementTimelineProps } from './patient-movement-timeline';
 import {
   buildCaseRiskCommandPanelModel,
@@ -295,6 +297,57 @@ const SSR_PATIENT_OVERVIEW_STALE_TIME_MS = 30_000;
 const PATIENT_TIMELINE_INITIAL_LIMIT = 5;
 const PATIENT_TIMELINE_FULL_LIMIT = 40;
 const COMMAND_TIMELINE_EXCERPT_LIMIT = 3;
+
+type PatientMovementTimelineFilters = {
+  category: PatientMovementCategory | null;
+  date_from: string | null;
+  date_to: string | null;
+};
+
+const EMPTY_MOVEMENT_TIMELINE_FILTERS: PatientMovementTimelineFilters = {
+  category: null,
+  date_from: null,
+  date_to: null,
+};
+
+function patientMovementTimelineQueryKey(
+  patientId: string,
+  orgId: string,
+  limit: number,
+  filters: PatientMovementTimelineFilters,
+) {
+  return [
+    'patient-movement-timeline',
+    patientId,
+    orgId,
+    limit,
+    filters.category,
+    filters.date_from,
+    filters.date_to,
+  ] as const;
+}
+
+async function fetchPatientMovementTimeline(input: {
+  patientId: string;
+  orgId: string;
+  limit: number;
+  filters: PatientMovementTimelineFilters;
+}): Promise<PatientMovementTimelineSnapshot> {
+  const searchParams = new URLSearchParams({ limit: String(input.limit) });
+  if (input.filters.category) searchParams.set('category', input.filters.category);
+  if (input.filters.date_from) searchParams.set('date_from', input.filters.date_from);
+  if (input.filters.date_to) searchParams.set('date_to', input.filters.date_to);
+  const path = `${buildPatientApiPath(input.patientId, '/movement-timeline')}?${searchParams.toString()}`;
+  const response = await fetch(path, { headers: buildOrgHeaders(input.orgId) });
+  const payload = await readApiJson(response, {
+    fallbackMessage: '患者の動きの取得に失敗しました',
+    schema: patientMovementTimelineResponseSchema,
+  });
+  return {
+    ...payload.data,
+    meta: payload.meta,
+  } satisfies PatientMovementTimelineSnapshot;
+}
 
 type PatientDetailTab =
   | 'command'
@@ -4201,27 +4254,43 @@ function CommandTimelineExcerptPanel({
 
       {excerpt.length > 0 ? (
         <ul className="mt-3 divide-y divide-border/60" role="list">
-          {excerpt.map((event) => (
-            <li key={event.id} className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">{event.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  {formatActivityTime(event.occurred_at)}
-                  {event.status_label ? ` / ${event.status_label}` : ''}
-                </p>
-              </div>
-              <Link
-                href={event.href}
-                className={buttonVariants({
-                  variant: 'outline',
-                  size: 'sm',
-                  className: 'min-h-11 shrink-0',
-                })}
-              >
-                {event.action_label || '開く'}
-              </Link>
-            </li>
-          ))}
+          {excerpt.map((event) => {
+            const safeHref = getSafePatientMovementHref(event.href);
+            return (
+              <li key={event.id} className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{event.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatActivityTime(event.occurred_at)}
+                    {event.status_label ? ` / ${event.status_label}` : ''}
+                  </p>
+                </div>
+                {safeHref ? (
+                  <Link
+                    href={safeHref}
+                    className={buttonVariants({
+                      variant: 'outline',
+                      size: 'sm',
+                      className: 'min-h-11 shrink-0',
+                    })}
+                  >
+                    {event.action_label || '開く'}
+                  </Link>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="min-h-11 shrink-0"
+                    disabled
+                    aria-label={`${event.title}の詳細導線を確認できません`}
+                  >
+                    詳細導線未設定
+                  </Button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </SectionCard>
@@ -4825,11 +4894,18 @@ export function CardWorkspace({
   const [timelineRequest, setTimelineRequest] = useState(() => ({
     patientId,
     limit: PATIENT_TIMELINE_INITIAL_LIMIT,
+    filters: EMPTY_MOVEMENT_TIMELINE_FILTERS,
   }));
-  const timelineLimit =
+  const activeTimelineRequest =
     timelineRequest.patientId === patientId
-      ? timelineRequest.limit
-      : PATIENT_TIMELINE_INITIAL_LIMIT;
+      ? timelineRequest
+      : {
+          patientId,
+          limit: PATIENT_TIMELINE_INITIAL_LIMIT,
+          filters: EMPTY_MOVEMENT_TIMELINE_FILTERS,
+        };
+  const timelineLimit = activeTimelineRequest.limit;
+  const timelineFilters = activeTimelineRequest.filters;
   const [mountedDetailTabs, setMountedDetailTabs] = useState<ReadonlySet<PatientDetailTab>>(
     () => new Set<PatientDetailTab>([resolveInitialPatientDetailTab()]),
   );
@@ -4959,30 +5035,45 @@ export function CardWorkspace({
   });
 
   const {
+    data: commandTimelineSnapshot,
+    isLoading: commandTimelineLoading,
+    isError: commandTimelineError,
+    refetch: refetchCommandTimeline,
+  } = useQuery<PatientMovementTimelineSnapshot>({
+    queryKey: patientMovementTimelineQueryKey(
+      patientId,
+      orgId,
+      PATIENT_TIMELINE_INITIAL_LIMIT,
+      EMPTY_MOVEMENT_TIMELINE_FILTERS,
+    ),
+    queryFn: () =>
+      fetchPatientMovementTimeline({
+        patientId,
+        orgId,
+        limit: PATIENT_TIMELINE_INITIAL_LIMIT,
+        filters: EMPTY_MOVEMENT_TIMELINE_FILTERS,
+      }),
+    enabled: Boolean(orgId && patient && isDetailTabMounted('command')),
+    staleTime: 30_000,
+  });
+
+  const {
     data: movementTimelineSnapshot,
     isLoading: movementTimelineLoading,
     isFetching: movementTimelineFetching,
     isError: movementTimelineError,
     refetch: refetchMovementTimeline,
   } = useQuery<PatientMovementTimelineSnapshot>({
-    queryKey: ['patient-movement-timeline', patientId, orgId, timelineLimit],
-    queryFn: async () => {
-      const path = `${buildPatientApiPath(patientId, '/movement-timeline')}?${new URLSearchParams({
-        limit: String(timelineLimit),
-      }).toString()}`;
-      const response = await fetch(path, { headers: buildOrgHeaders(orgId) });
-      const payload = await readApiJson(response, {
-        fallbackMessage: '患者の動きの取得に失敗しました',
-        schema: patientMovementTimelineResponseSchema,
-      });
-      return {
-        ...payload.data,
-        meta: payload.meta,
-      } satisfies PatientMovementTimelineSnapshot;
-    },
-    enabled: Boolean(
-      orgId && patient && (isDetailTabMounted('command') || isDetailTabMounted('movement')),
-    ),
+    queryKey: patientMovementTimelineQueryKey(patientId, orgId, timelineLimit, timelineFilters),
+    queryFn: () =>
+      fetchPatientMovementTimeline({
+        patientId,
+        orgId,
+        limit: timelineLimit,
+        filters: timelineFilters,
+      }),
+    enabled: Boolean(orgId && patient && isDetailTabMounted('movement')),
+    placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
 
@@ -5429,13 +5520,30 @@ export function CardWorkspace({
 
     return (
       <PatientMovementTimelinePanel
+        key={patientId}
         timelineEvents={movementTimelineSnapshot?.movement_events ?? []}
         selfReports={[]}
-        isPartial={timelineLimit < PATIENT_TIMELINE_FULL_LIMIT}
+        isPartial={Boolean(movementTimelineSnapshot?.meta?.has_more)}
         fullLimit={PATIENT_TIMELINE_FULL_LIMIT}
         isLoadingFull={movementTimelineFetching && timelineLimit >= PATIENT_TIMELINE_FULL_LIMIT}
         partialFailures={movementTimelineSnapshot?.partial_failures}
-        onLoadFull={() => setTimelineRequest({ patientId, limit: PATIENT_TIMELINE_FULL_LIMIT })}
+        currentEventId={movementTimelineSnapshot?.meta?.current_event_id ?? null}
+        presentationTerminalEventId={
+          movementTimelineSnapshot?.meta?.presentation_terminal_event_id ?? null
+        }
+        presentationOrder={movementTimelineSnapshot?.meta?.presentation_order}
+        appliedFilters={movementTimelineSnapshot?.meta?.filters ?? timelineFilters}
+        isFiltering={movementTimelineFetching}
+        onFiltersChange={(filters) =>
+          setTimelineRequest({ patientId, limit: PATIENT_TIMELINE_FULL_LIMIT, filters })
+        }
+        onLoadFull={() =>
+          setTimelineRequest({
+            patientId,
+            limit: PATIENT_TIMELINE_FULL_LIMIT,
+            filters: timelineFilters,
+          })
+        }
       />
     );
   };
@@ -5631,10 +5739,10 @@ export function CardWorkspace({
     onWaive: waiveRiskTaskMutation.mutate,
   };
   const commandTimelineExcerptProps = {
-    events: movementTimelineSnapshot?.movement_events ?? [],
-    isLoading: movementTimelineLoading,
-    error: movementTimelineError,
-    onRetry: () => void refetchMovementTimeline(),
+    events: commandTimelineSnapshot?.movement_events ?? [],
+    isLoading: commandTimelineLoading,
+    error: commandTimelineError,
+    onRetry: () => void refetchCommandTimeline(),
   };
 
   const renderHomeOperationsPanel = (

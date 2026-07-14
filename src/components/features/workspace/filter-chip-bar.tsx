@@ -11,6 +11,7 @@ export type FilterChipOption<T extends string> = {
   value: T;
   label: string;
   count?: number;
+  activeClassName?: string;
   disabled?: boolean;
   disabledReason?: string;
 };
@@ -52,6 +53,7 @@ export function FilterChipBar<T extends string>({
                 : isActive
                   ? 'border-primary/20 bg-primary/10 text-primary'
                   : 'border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+              isActive ? option.activeClassName : null,
             )}
           >
             {option.label}

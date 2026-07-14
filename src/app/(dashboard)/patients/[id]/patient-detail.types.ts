@@ -558,6 +558,14 @@ export type PatientMovementTimelineMeta = {
     date_to: string | null;
   };
   window_limit: number;
+  selection_order: 'occurred_at_desc_id_desc';
+  presentation_order: 'occurred_at_asc_id_asc';
+  cursor_direction: 'older';
+  is_current_window: boolean;
+  current_event_id: string | null;
+  presentation_terminal_event_id: string | null;
+  window_start_at: string | null;
+  window_end_at: string | null;
 };
 
 export type PatientMovementTimelineSnapshot = {

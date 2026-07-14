@@ -37,6 +37,11 @@ type MovementTimelineCursor = {
   id: string;
 };
 
+type MovementTimelineOrderKey = {
+  occurredAt: string;
+  id: string;
+};
+
 type MovementTimelineQuery = {
   limit: number;
   filters: MovementTimelineFilters;
@@ -46,8 +51,11 @@ type MovementTimelineQuery = {
 
 const MOVEMENT_TIMELINE_MAX_LIMIT = 40;
 const MOVEMENT_TIMELINE_WINDOW_LIMIT = MOVEMENT_TIMELINE_MAX_LIMIT;
-const MOVEMENT_CURSOR_VERSION = 1;
+const MOVEMENT_CURSOR_VERSION = 2;
 const MOVEMENT_CURSOR_MAX_LENGTH = 512;
+const MOVEMENT_SELECTION_ORDER = 'occurred_at_desc_id_desc' as const;
+const MOVEMENT_PRESENTATION_ORDER = 'occurred_at_asc_id_asc' as const;
+const MOVEMENT_CURSOR_DIRECTION = 'older' as const;
 const MOVEMENT_CATEGORIES = [
   'visit',
   'prescription',
@@ -73,6 +81,7 @@ function encodeMovementCursor(event: MovementTimelineEvent, filterHash: string) 
     i: event.id,
     w: MOVEMENT_TIMELINE_WINDOW_LIMIT,
     f: filterHash,
+    s: MOVEMENT_SELECTION_ORDER,
   };
   return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
 }
@@ -86,6 +95,7 @@ function decodeMovementCursor(raw: string, filterHash: string) {
     if (record.v !== MOVEMENT_CURSOR_VERSION) return null;
     if (record.w !== MOVEMENT_TIMELINE_WINDOW_LIMIT) return null;
     if (record.f !== filterHash) return null;
+    if (record.s !== MOVEMENT_SELECTION_ORDER) return null;
     if (typeof record.o !== 'string' || typeof record.i !== 'string') return null;
     if (!record.i.trim() || record.i.length > 256) return null;
     const occurredAt = new Date(record.o);
@@ -217,8 +227,21 @@ function movementEventTime(event: MovementTimelineEvent) {
   return new Date(movementOccurredAtIso(event)).getTime();
 }
 
+function compareMovementOrderKeysDesc(
+  left: MovementTimelineOrderKey,
+  right: MovementTimelineOrderKey,
+) {
+  return (
+    new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime() ||
+    right.id.localeCompare(left.id)
+  );
+}
+
 function compareMovementEventsDesc(left: MovementTimelineEvent, right: MovementTimelineEvent) {
-  return movementEventTime(right) - movementEventTime(left) || right.id.localeCompare(left.id);
+  return compareMovementOrderKeysDesc(
+    { occurredAt: movementOccurredAtIso(left), id: left.id },
+    { occurredAt: movementOccurredAtIso(right), id: right.id },
+  );
 }
 
 function matchesMovementFilters(event: MovementTimelineEvent, filters: MovementTimelineFilters) {
@@ -240,9 +263,12 @@ function isAfterMovementCursor(
   cursor: MovementTimelineCursor | null,
 ) {
   if (!cursor) return true;
-  const occurredAt = movementOccurredAtIso(event);
-  if (occurredAt < cursor.occurredAt) return true;
-  return occurredAt === cursor.occurredAt && event.id.localeCompare(cursor.id) < 0;
+  return (
+    compareMovementOrderKeysDesc(cursor, {
+      occurredAt: movementOccurredAtIso(event),
+      id: event.id,
+    }) < 0
+  );
 }
 
 function toMovementTimelineResponse(timeline: PatientTimelineData, query: MovementTimelineQuery) {
@@ -251,8 +277,15 @@ function toMovementTimelineResponse(timeline: PatientTimelineData, query: Moveme
     .filter((event) => matchesMovementFilters(event, query.filters))
     .filter((event) => isAfterMovementCursor(event, query.cursor));
   const page = filtered.slice(0, query.limit);
+  const chronologicalPage = [...page].reverse();
   const hasMore = filtered.length > query.limit;
   const lastEvent = page.at(-1);
+  const presentationStart = chronologicalPage[0];
+  const presentationEnd = chronologicalPage.at(-1);
+  const isCurrentWindow = query.cursor === null;
+  const isUnfiltered = Object.values(query.filters).every((value) => value === null);
+  const hasPartialFailures = Boolean(timeline.partial_failures?.length);
+  const canIdentifyPatientCurrent = isCurrentWindow && isUnfiltered && !hasPartialFailures;
 
   return {
     data: {
@@ -266,6 +299,14 @@ function toMovementTimelineResponse(timeline: PatientTimelineData, query: Moveme
       count_basis: 'bounded_latest_window' as const,
       filters: query.filters,
       window_limit: MOVEMENT_TIMELINE_WINDOW_LIMIT,
+      selection_order: MOVEMENT_SELECTION_ORDER,
+      presentation_order: MOVEMENT_PRESENTATION_ORDER,
+      cursor_direction: MOVEMENT_CURSOR_DIRECTION,
+      is_current_window: isCurrentWindow,
+      current_event_id: canIdentifyPatientCurrent ? (page[0]?.id ?? null) : null,
+      presentation_terminal_event_id: presentationEnd?.id ?? null,
+      window_start_at: presentationStart ? movementOccurredAtIso(presentationStart) : null,
+      window_end_at: presentationEnd ? movementOccurredAtIso(presentationEnd) : null,
     },
   };
 }

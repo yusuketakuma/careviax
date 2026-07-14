@@ -158,6 +158,14 @@ describe('GET /api/patients/[id]/movement-timeline', () => {
         count_basis: 'bounded_latest_window',
         filters: { category: null, date_from: null, date_to: null },
         window_limit: 40,
+        selection_order: 'occurred_at_desc_id_desc',
+        presentation_order: 'occurred_at_asc_id_asc',
+        cursor_direction: 'older',
+        is_current_window: true,
+        current_event_id: null,
+        presentation_terminal_event_id: null,
+        window_start_at: null,
+        window_end_at: null,
       },
     });
     expect(json).not.toHaveProperty('timeline_events');
@@ -189,10 +197,58 @@ describe('GET /api/patients/[id]/movement-timeline', () => {
     const json = await response.json();
     expect(Object.keys(json).sort()).toEqual(['data', 'meta']);
     expect(json.data.movement_events).toHaveLength(2);
+    expect(json.data.movement_events.map((event: { id: string }) => event.id)).toEqual([
+      'visit_b',
+      'visit_a',
+    ]);
     expect(json.meta).toMatchObject({
       has_more: false,
       returned_count: 2,
       window_limit: 40,
+      selection_order: 'occurred_at_desc_id_desc',
+      presentation_order: 'occurred_at_asc_id_asc',
+      cursor_direction: 'older',
+      is_current_window: true,
+      current_event_id: 'visit_b',
+      presentation_terminal_event_id: 'visit_b',
+      window_start_at: '2026-06-18T00:00:00.000Z',
+      window_end_at: '2026-06-18T00:00:00.000Z',
+    });
+  });
+
+  it('does not claim a patient current event when any timeline source is partial', async () => {
+    getPatientTimelineDataMock.mockResolvedValue({
+      timeline_events: [],
+      movement_events: [movementEvent({ id: 'visit_partial' })],
+      self_reports: [],
+      partial_failures: [
+        {
+          source: 'conference_notes',
+          message: '一部のタイムライン情報を取得できませんでした',
+        },
+      ],
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        movement_events: [expect.objectContaining({ id: 'visit_partial' })],
+        partial_failures: [
+          {
+            source: 'conference_notes',
+            message: '一部のタイムライン情報を取得できませんでした',
+          },
+        ],
+      },
+      meta: {
+        is_current_window: true,
+        current_event_id: null,
+        presentation_terminal_event_id: 'visit_partial',
+      },
     });
   });
 
@@ -250,6 +306,12 @@ describe('GET /api/patients/[id]/movement-timeline', () => {
       count_basis: 'bounded_latest_window',
       filters: { category: 'visit', date_from: '2026-06-18', date_to: '2026-06-18' },
       window_limit: 40,
+      selection_order: 'occurred_at_desc_id_desc',
+      presentation_order: 'occurred_at_asc_id_asc',
+      cursor_direction: 'older',
+      is_current_window: true,
+      current_event_id: null,
+      presentation_terminal_event_id: 'visit_b',
     });
     expect(typeof firstJson.meta.next_cursor).toBe('string');
     expect(JSON.stringify(firstJson.meta)).not.toContain('090-0000-0000');
@@ -271,7 +333,13 @@ describe('GET /api/patients/[id]/movement-timeline', () => {
     expect(secondJson.data.movement_events.map((event: { id: string }) => event.id)).toEqual([
       'visit_a',
     ]);
-    expect(secondJson.meta).toMatchObject({ has_more: false, returned_count: 1 });
+    expect(secondJson.meta).toMatchObject({
+      has_more: false,
+      returned_count: 1,
+      is_current_window: false,
+      current_event_id: null,
+      presentation_terminal_event_id: 'visit_a',
+    });
   });
 
   it.each([

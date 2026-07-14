@@ -38,6 +38,10 @@ describe('buildPatientResult', () => {
     const row = buildPatientResult({ id: 'p1', name: '田中 一郎' });
     expect(row.title).toBe('田中 一郎 様');
     expect(row.href).toBe('/patients/p1');
+    expect(row.secondaryAction).toEqual({
+      label: '患者の動き',
+      href: '/patients/p1#patient-movement',
+    });
   });
 
   it('includes conditions (up to 2) joined with ・ in subtitle', () => {
@@ -83,6 +87,9 @@ describe('buildPatientResult', () => {
   it('encodes a malicious id so it cannot escape the /patients/ path segment', () => {
     const row = buildPatientResult({ id: '../settings?x=1#y', name: '田中' });
     expect(row.href).toBe(`/patients/${encodeURIComponent('../settings?x=1#y')}`);
+    expect(row.secondaryAction?.href).toBe(
+      `/patients/${encodeURIComponent('../settings?x=1#y')}#patient-movement`,
+    );
     // raw slash/query/hash がそのまま出ず、別 route へ抜けない。
     expect(row.href).not.toContain('/settings');
     expect(row.href).not.toContain('?x=1');
@@ -346,12 +353,15 @@ describe('search result href helper convergence (F-037)', () => {
   // 各 builder の href が共有 helper の「戻り値」をそのまま使うことを sentinel で証明
   // (helper を validation/副作用だけ呼んで href をローカル再構築する退行を弾く)。
   it('uses each shared helper RETURN VALUE for the row href (not a local reconstruction)', () => {
-    vi.mocked(buildPatientHref).mockReturnValueOnce('/patients/__sentinel_patient__');
-    expect(buildPatientResult({ id: 'p_42', name: '田中' }).href).toBe(
-      '/patients/__sentinel_patient__',
-    );
-    expect(vi.mocked(buildPatientHref)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(buildPatientHref)).toHaveBeenCalledWith('p_42');
+    vi.mocked(buildPatientHref)
+      .mockReturnValueOnce('/patients/__sentinel_patient__')
+      .mockReturnValueOnce('/patients/__sentinel_movement__');
+    const patientRow = buildPatientResult({ id: 'p_42', name: '田中' });
+    expect(patientRow.href).toBe('/patients/__sentinel_patient__');
+    expect(patientRow.secondaryAction?.href).toBe('/patients/__sentinel_movement__');
+    expect(vi.mocked(buildPatientHref)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(buildPatientHref)).toHaveBeenNthCalledWith(1, 'p_42');
+    expect(vi.mocked(buildPatientHref)).toHaveBeenNthCalledWith(2, 'p_42', '#patient-movement');
 
     vi.mocked(buildPrescriptionHref).mockReturnValueOnce('/prescriptions/__sentinel_rx__');
     expect(buildPrescriptionResult({ id: 'rx_42' }).href).toBe('/prescriptions/__sentinel_rx__');

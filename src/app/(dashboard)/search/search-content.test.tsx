@@ -11,6 +11,7 @@ const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
 const useSearchParamsMock = vi.hoisted(() => vi.fn());
 const fetchMock = vi.hoisted(() => vi.fn());
+const routerPushMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -161,7 +162,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
   useOrgIdMock.mockReturnValue('org_1');
-  useRouterMock.mockReturnValue({ replace: vi.fn(), push: vi.fn() });
+  useRouterMock.mockReturnValue({ replace: vi.fn(), push: routerPushMock });
   useSearchParamsMock.mockReturnValue(new URLSearchParams());
   setupFetchMocks();
 });
@@ -214,6 +215,24 @@ describe('SearchContent', () => {
     expect(screen.getByText(/患者 1件 \/ 全カテゴリ/)).toBeTruthy();
     expect(screen.getAllByTestId('list-open-card').length).toBeGreaterThan(0);
     expect(screen.getByText('田中 一郎 様')).toBeTruthy();
+  });
+
+  it('keeps patient detail primary and adds a PHI-safe patient movement action', async () => {
+    render(<SearchContent />);
+    await triggerSearch('田中');
+
+    const primaryAction = screen.getByRole('button', { name: '開く' });
+    const movementAction = screen.getByRole('button', {
+      name: '田中 一郎 様の患者の動きを開く',
+    });
+    expect(movementAction.className).toContain('!min-h-11');
+
+    fireEvent.click(primaryAction);
+    expect(routerPushMock).toHaveBeenLastCalledWith('/patients/patient_1');
+
+    fireEvent.click(movementAction);
+    expect(routerPushMock).toHaveBeenLastCalledWith('/patients/patient_1#patient-movement');
+    expect(routerPushMock.mock.calls.at(-1)?.[0]).not.toContain('?');
   });
 
   it('shows named loading status while search requests are pending', async () => {

@@ -663,14 +663,41 @@ export function SearchContent({
             <div role="list" aria-label={`${selectedCategoryLabel}の検索結果`}>
               <div className="space-y-3">
                 {visibleItems.map((item) => (
-                  <ListOpenCard
+                  <div
                     key={item.id}
-                    badgeLabel={item.badgeLabel}
-                    badgeClassName={item.badgeClassName}
-                    title={item.title}
-                    subtitle={item.subtitle}
-                    onOpen={() => router.push(item.href)}
-                  />
+                    role="listitem"
+                    className={
+                      item.secondaryAction
+                        ? 'overflow-hidden rounded-xl border border-border/70 bg-card shadow-xs'
+                        : undefined
+                    }
+                  >
+                    <ListOpenCard
+                      badgeLabel={item.badgeLabel}
+                      badgeClassName={item.badgeClassName}
+                      title={item.title}
+                      subtitle={item.subtitle}
+                      onOpen={() => router.push(item.href)}
+                      className={
+                        item.secondaryAction ? 'rounded-none border-0 shadow-none' : undefined
+                      }
+                    />
+                    {item.secondaryAction ? (
+                      <div className="flex justify-end border-t border-border/70 bg-muted/20 px-3 py-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="!h-auto !min-h-11 px-4 text-sm font-semibold"
+                          aria-label={`${item.title}の${item.secondaryAction.label}を開く`}
+                          onClick={() => {
+                            if (item.secondaryAction) router.push(item.secondaryAction.href);
+                          }}
+                        >
+                          {item.secondaryAction.label}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
                 ))}
               </div>
             </div>

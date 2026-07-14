@@ -64,6 +64,10 @@ export type SearchResultRow = {
   title: string;
   subtitle: string | null;
   href: string;
+  secondaryAction?: {
+    label: string;
+    href: string;
+  };
 };
 
 // ---------------------------------------------------------------------------
@@ -207,14 +211,22 @@ export function buildPatientResult(item: PatientSearchItem): SearchResultRow {
   if (conditionNames) subtitleParts.push(conditionNames);
   if (nextVisitText) subtitleParts.push(nextVisitText);
 
+  // Both destinations stay on the guarded patient route. The movement action
+  // carries no search term, event id, body, or metadata in the URL.
+  const href = buildPatientHref(item.id);
+  const patientMovementHref = buildPatientHref(item.id, '#patient-movement');
+
   return {
     id: item.id,
     badgeLabel: SEARCH_CATEGORY_LABELS.patient,
     badgeClassName: SEARCH_CATEGORY_BADGE_CLASSES.patient,
     title: `${item.name} 様`,
     subtitle: subtitleParts.length > 0 ? subtitleParts.join('。') : null,
-    // 共有 guarded helper(buildPatientHref)で encode + dot-segment(./..) 拒否。検索結果は API 由来 → 不正 id は fail-fast。
-    href: buildPatientHref(item.id),
+    href,
+    secondaryAction: {
+      label: '患者の動き',
+      href: patientMovementHref,
+    },
   };
 }
 

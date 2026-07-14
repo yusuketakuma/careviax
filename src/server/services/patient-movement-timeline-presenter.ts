@@ -1,4 +1,5 @@
 import type { TimelineEvent } from '@/server/services/patient-detail-timeline-events';
+import { normalizePatientMovementHref } from '@/lib/patient/movement-href';
 import type {
   PatientMovementCategory,
   PatientMovementEventType,
@@ -59,28 +60,6 @@ function concreteMovementTypeOf(eventType: string): PatientMovementEventType | n
     CONCRETE_TIMELINE_EVENT_TYPE_MAP[eventType as keyof typeof CONCRETE_TIMELINE_EVENT_TYPE_MAP] ??
     null
   );
-}
-
-function isInternalApiHref(href: string) {
-  const lowerHref = href.toLowerCase();
-  return (
-    lowerHref === '/api' ||
-    lowerHref.startsWith('/api/') ||
-    lowerHref.startsWith('/api?') ||
-    lowerHref.startsWith('/api#')
-  );
-}
-
-function isLegacyMovementTimelineHref(href: string) {
-  return /^\/patients\/[^/?#]+\/timeline(?:[/?#]|$)/i.test(href);
-}
-
-function normalizeMovementHref(href: string | null | undefined, fallback: string) {
-  const trimmed = href?.trim();
-  if (!trimmed) return fallback;
-  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return fallback;
-  if (isInternalApiHref(trimmed) || isLegacyMovementTimelineHref(trimmed)) return fallback;
-  return trimmed;
 }
 
 function movementCategoryOf(event: TimelineEvent): PatientMovementCategory {
@@ -197,7 +176,7 @@ export function toPatientMovementTimelineEvent(
     recorded_at: null,
     title: event.title,
     summary: summaryOf(event),
-    href: normalizeMovementHref(event.href, fallbackHref),
+    href: normalizePatientMovementHref(event.href, fallbackHref),
     action_label: event.action_label ?? '詳細を開く',
     status: event.status || null,
     status_label: statusLabel,

@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import type { SearchResultRow } from '@/lib/search/result-builders';
 import type { UseGlobalSearchResult } from './use-global-search';
 import { CommandPalette } from './command-palette';
 
@@ -32,15 +33,14 @@ vi.mock('./use-global-search', () => ({ useGlobalSearch: () => useGlobalSearchMo
 
 setupDomTestEnv();
 
-const row = (
-  over: Partial<{ id: string; title: string; subtitle: string | null; href: string }>,
-) => ({
+const row = (over: Partial<SearchResultRow>): SearchResultRow => ({
   id: over.id ?? 'x',
   badgeLabel: '患者',
   badgeClassName: 'bg-blue-50',
   title: over.title ?? 'タイトル',
   subtitle: over.subtitle ?? null,
   href: over.href ?? '/x',
+  secondaryAction: over.secondaryAction,
 });
 
 function withResults(over: Partial<UseGlobalSearchResult>): UseGlobalSearchResult {
@@ -110,6 +110,37 @@ describe('CommandPalette', () => {
 
     expect(mockPush).toHaveBeenCalledWith('/prescriptions/rx1');
     expect(mockClose).toHaveBeenCalled();
+  });
+
+  it('keeps a patient secondary action out of the palette and navigates only to the primary href', () => {
+    useGlobalSearchMock.mockReturnValue(
+      withResults({
+        results: [
+          {
+            category: 'patient',
+            label: '患者',
+            status: 'ok',
+            rows: [
+              row({
+                id: 'p1',
+                title: '山田 太郎 様',
+                href: '/patients/p1',
+                secondaryAction: {
+                  label: '患者の動き',
+                  href: '/patients/p1#patient-movement',
+                },
+              }),
+            ],
+          },
+        ],
+      }),
+    );
+    render(<CommandPalette />);
+
+    expect(screen.queryByText('患者の動き')).toBeNull();
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    expect(mockPush).toHaveBeenCalledWith('/patients/p1');
+    expect(mockPush).not.toHaveBeenCalledWith('/patients/p1#patient-movement');
   });
 
   it('closes on Escape', () => {

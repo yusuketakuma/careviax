@@ -2,8 +2,6 @@
 
 import Link from 'next/link';
 import { useDeferredValue, useState } from 'react';
-import { format, isToday, isYesterday } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import {
   Activity,
   ArrowUpRight,
@@ -25,26 +23,24 @@ import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  FilterChipBar,
+  type FilterChipOption,
+} from '@/components/features/workspace/filter-chip-bar';
+import {
+  addUtcDays,
+  japanCivilTimeParts,
+  japanDateKey,
+  utcDateFromLocalKey,
+} from '@/lib/utils/date-boundary';
+import { getSafePatientMovementHref } from '@/lib/patient/movement-href';
 import { cn } from '@/lib/utils';
 import type {
   PatientMovementCategory,
-  PatientMovementEventType,
+  PatientMovementTimelineEvent,
 } from '@/types/patient-movement-timeline';
 
-type TimelineEvent = {
-  id: string;
-  event_type: PatientMovementEventType;
-  category: PatientMovementCategory;
-  occurred_at: string;
-  title: string;
-  summary: string | null;
-  href: string;
-  action_label: string;
-  status: string | null;
-  status_label: string | null;
-  actor_name: string | null;
-  metadata: string[];
-};
+type TimelineEvent = PatientMovementTimelineEvent;
 
 type SelfReport = {
   id: string;
@@ -74,6 +70,17 @@ type TimelineGroup = {
   items: TimelineEvent[];
 };
 
+export type PatientMovementTimelineFilters = {
+  category: PatientMovementCategory | null;
+  date_from: string | null;
+  date_to: string | null;
+};
+
+type PatientMovementTimelineDateRange = Pick<
+  PatientMovementTimelineFilters,
+  'date_from' | 'date_to'
+>;
+
 export type PatientMovementTimelineProps = {
   timelineEvents: TimelineEvent[];
   selfReports: SelfReport[];
@@ -81,6 +88,12 @@ export type PatientMovementTimelineProps = {
   fullLimit?: number;
   isLoadingFull?: boolean;
   partialFailures?: { source: string; message: string }[];
+  currentEventId?: string | null;
+  presentationTerminalEventId?: string | null;
+  presentationOrder?: 'occurred_at_asc_id_asc';
+  appliedFilters?: PatientMovementTimelineFilters;
+  isFiltering?: boolean;
+  onFiltersChange?: (filters: PatientMovementTimelineFilters) => void;
   onLoadFull?: () => void;
 };
 
@@ -394,37 +407,67 @@ const FOCUS_FILTER_LABELS: Record<TimelineFocusFilter, string> = {
   today: '今日の動き',
 };
 
-function getSafeTimelineHref(href: string) {
-  const trimmed = href.trim();
-  const lowerHref = trimmed.toLowerCase();
+const EMPTY_TIMELINE_FILTERS: PatientMovementTimelineFilters = {
+  category: null,
+  date_from: null,
+  date_to: null,
+};
 
-  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return null;
-  if (
-    lowerHref === '/api' ||
-    lowerHref.startsWith('/api/') ||
-    lowerHref.startsWith('/api?') ||
-    lowerHref.startsWith('/api#')
-  ) {
-    return null;
-  }
-  if (/^\/patients\/[^/?#]+\/timeline(?:[/?#]|$)/i.test(trimmed)) return null;
-  return trimmed;
+const DATE_SCOPE_OPTIONS = (Object.keys(DATE_SCOPE_LABELS) as TimelineDateScope[]).map(
+  (value) =>
+    ({ value, label: DATE_SCOPE_LABELS[value] }) satisfies FilterChipOption<TimelineDateScope>,
+);
+
+function dateRangeForScope(
+  scope: TimelineDateScope,
+): Pick<PatientMovementTimelineFilters, 'date_from' | 'date_to'> {
+  if (scope === 'all') return { date_from: null, date_to: null };
+  const today = japanDateKey();
+  if (scope === 'today') return { date_from: today, date_to: today };
+  const daysAgo = scope === 'yesterday' ? 1 : scope === '7d' ? 6 : 29;
+  const from = japanDateKey(addUtcDays(utcDateFromLocalKey(today), -daysAgo));
+  return {
+    date_from: from,
+    date_to: scope === 'yesterday' ? from : today,
+  };
+}
+
+function formatJapanDateKey(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  return `${year}年${month}月${day}日`;
 }
 
 function formatGroupLabel(value: string) {
-  const date = new Date(value);
-
-  if (isToday(date)) return '今日';
-  if (isYesterday(date)) return '昨日';
-  return format(date, 'yyyy年M月d日', { locale: ja });
+  const key = japanDateKey(new Date(value));
+  const today = japanDateKey();
+  const yesterday = japanDateKey(addUtcDays(utcDateFromLocalKey(today), -1));
+  const relativeLabel = key === today ? '今日' : key === yesterday ? '昨日' : null;
+  return `${formatJapanDateKey(key)}${relativeLabel ? `（${relativeLabel}）` : ''}`;
 }
 
 function formatOccurredAt(value: string) {
-  return format(new Date(value), 'HH:mm', { locale: ja });
+  const { hour, minute } = japanCivilTimeParts(new Date(value));
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
 function formatOccurredAtLong(value: string) {
-  return format(new Date(value), 'yyyy/MM/dd HH:mm', { locale: ja });
+  const { year, monthIndex, day, hour, minute } = japanCivilTimeParts(new Date(value));
+  return `${year}年${monthIndex + 1}月${day}日 ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function compareTimelineEventsAsc(left: TimelineEvent, right: TimelineEvent) {
+  return (
+    Date.parse(left.occurred_at) - Date.parse(right.occurred_at) || left.id.localeCompare(right.id)
+  );
+}
+
+function formatEventSource(event: TimelineEvent) {
+  return event.source_label ?? event.source_channel ?? '確認元未記録';
+}
+
+function formatEventActor(event: TimelineEvent) {
+  if (!event.actor_name) return '更新者未記録';
+  return event.actor_role ? `${event.actor_name}（${event.actor_role}）` : event.actor_name;
 }
 
 function workflowHaystack(event: TimelineEvent) {
@@ -483,16 +526,12 @@ function isReviewRequiredEvent(event: TimelineEvent) {
 function matchesDateScope(event: TimelineEvent, dateScope: TimelineDateScope) {
   if (dateScope === 'all') return true;
 
-  const eventDate = new Date(event.occurred_at);
-  if (dateScope === 'today') return isToday(eventDate);
-  if (dateScope === 'yesterday') return isYesterday(eventDate);
-
-  const now = new Date();
-  const days = dateScope === '7d' ? 7 : 30;
-  const start = new Date(now);
-  start.setDate(now.getDate() - (days - 1));
-  start.setHours(0, 0, 0, 0);
-  return eventDate >= start && eventDate <= now;
+  const eventKey = japanDateKey(new Date(event.occurred_at));
+  const range = dateRangeForScope(dateScope);
+  return (
+    (!range.date_from || eventKey >= range.date_from) &&
+    (!range.date_to || eventKey <= range.date_to)
+  );
 }
 
 function matchesFocusFilter(event: TimelineEvent, focusFilter: TimelineFocusFilter) {
@@ -501,7 +540,9 @@ function matchesFocusFilter(event: TimelineEvent, focusFilter: TimelineFocusFilt
   if (focusFilter === 'review_required') return isReviewRequiredEvent(event);
   if (focusFilter === 'medication_stock') return event.category === 'medication_stock';
   if (focusFilter === 'safety') return event.category === 'safety';
-  if (focusFilter === 'today') return isToday(new Date(event.occurred_at));
+  if (focusFilter === 'today') {
+    return japanDateKey(new Date(event.occurred_at)) === japanDateKey();
+  }
   return true;
 }
 
@@ -514,6 +555,9 @@ function matchesQuery(event: TimelineEvent, query: string) {
     safeEventSummary(event),
     event.status_label,
     event.actor_name,
+    event.actor_role,
+    event.source_label,
+    event.source_channel,
     EVENT_META[event.event_type].label,
     CATEGORY_META[event.category].label,
     workflowFocus ? HOME_OPERATION_FOCUS_META[workflowFocus].label : null,
@@ -544,7 +588,7 @@ function buildGroups(events: TimelineEvent[]) {
   const groups: TimelineGroup[] = [];
 
   for (const event of events) {
-    const key = format(new Date(event.occurred_at), 'yyyy-MM-dd');
+    const key = japanDateKey(new Date(event.occurred_at));
     const lastGroup = groups[groups.length - 1];
 
     if (!lastGroup || lastGroup.key !== key) {
@@ -608,7 +652,7 @@ function TimelineDetailAction({
   size?: 'default' | 'xs' | 'sm' | 'lg' | 'icon' | 'icon-xs' | 'icon-sm' | 'icon-lg';
   selected?: boolean;
 }) {
-  const safeHref = getSafeTimelineHref(event.href);
+  const safeHref = getSafePatientMovementHref(event.href);
 
   if (!safeHref) {
     return (
@@ -680,21 +724,37 @@ function SelectedEventPreview({ event }: { event: TimelineEvent }) {
             ) : null}
           </div>
           <h3 className="text-sm font-semibold leading-6 text-foreground">{event.title}</h3>
-          <p className="text-xs tabular-nums text-muted-foreground">
+          <time dateTime={event.occurred_at} className="text-xs tabular-nums text-muted-foreground">
             {formatOccurredAtLong(event.occurred_at)}
-          </p>
+          </time>
         </div>
       </div>
 
       {summary ? <p className="text-sm leading-6 text-muted-foreground">{summary}</p> : null}
 
       <dl className="grid gap-2 text-sm">
-        {event.actor_name ? (
+        <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
+          <dt className="text-muted-foreground">発生・有効</dt>
+          <dd className="min-w-0 tabular-nums text-foreground">
+            <time dateTime={event.occurred_at}>{formatOccurredAtLong(event.occurred_at)}</time>
+          </dd>
+        </div>
+        {event.recorded_at && event.recorded_at !== event.occurred_at ? (
           <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
-            <dt className="text-muted-foreground">担当</dt>
-            <dd className="min-w-0 text-foreground">{event.actor_name}</dd>
+            <dt className="text-muted-foreground">記録</dt>
+            <dd className="min-w-0 tabular-nums text-foreground">
+              <time dateTime={event.recorded_at}>{formatOccurredAtLong(event.recorded_at)}</time>
+            </dd>
           </div>
         ) : null}
+        <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
+          <dt className="text-muted-foreground">確認元</dt>
+          <dd className="min-w-0 text-foreground">{formatEventSource(event)}</dd>
+        </div>
+        <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
+          <dt className="text-muted-foreground">更新者</dt>
+          <dd className="min-w-0 text-foreground">{formatEventActor(event)}</dd>
+        </div>
         {event.status_label ? (
           <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
             <dt className="text-muted-foreground">状態</dt>
@@ -716,7 +776,7 @@ function SelectedEventPreview({ event }: { event: TimelineEvent }) {
         </div>
       ) : null}
 
-      <TimelineDetailAction event={event} className="w-full" selected />
+      <TimelineDetailAction event={event} className="w-full transition-none" selected />
     </div>
   );
 }
@@ -724,11 +784,17 @@ function SelectedEventPreview({ event }: { event: TimelineEvent }) {
 function TimelineEntry({
   event,
   isLast,
+  isCurrent,
+  isTerminal,
+  terminalLabel,
   isSelected,
   onPreview,
 }: {
   event: TimelineEvent;
   isLast: boolean;
+  isCurrent: boolean;
+  isTerminal: boolean;
+  terminalLabel: string | null;
   isSelected: boolean;
   onPreview: (eventId: string) => void;
 }) {
@@ -739,7 +805,12 @@ function TimelineEntry({
   const metadata = isOccurrenceOnlyCategory(event) ? [] : event.metadata;
 
   return (
-    <li className="px-3 py-3 sm:px-4">
+    <li
+      className={cn('px-3 py-3 sm:px-4', isSelected ? 'bg-primary/[0.04]' : 'bg-transparent')}
+      data-current={isCurrent ? 'true' : undefined}
+      data-terminal={isTerminal ? 'true' : undefined}
+      aria-current={isCurrent ? 'time' : undefined}
+    >
       <div className="grid gap-3 sm:grid-cols-[72px_minmax(0,1fr)]">
         <time
           dateTime={event.occurred_at}
@@ -762,12 +833,7 @@ function TimelineEntry({
             {!isLast ? <div className="mt-2 w-px flex-1 bg-border/70" /> : null}
           </div>
 
-          <article
-            className={cn(
-              'min-w-0 rounded-lg border bg-card px-3 py-3',
-              isSelected ? 'border-primary/50 ring-2 ring-primary/15' : 'border-border/70',
-            )}
-          >
+          <article className="min-w-0 py-1">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap gap-2">
@@ -785,6 +851,9 @@ function TimelineEntry({
                   {event.status_label ? (
                     <Badge variant="secondary">{event.status_label}</Badge>
                   ) : null}
+                  {isTerminal && terminalLabel ? (
+                    <Badge variant="outline">{terminalLabel}</Badge>
+                  ) : null}
                 </div>
 
                 <div className="space-y-1">
@@ -792,25 +861,42 @@ function TimelineEntry({
                   {summary ? (
                     <p className="text-sm leading-6 text-muted-foreground">{summary}</p>
                   ) : null}
-                  {event.actor_name ? (
-                    <p className="text-xs text-muted-foreground">{event.actor_name}</p>
-                  ) : null}
+                  <dl className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                    <div className="flex min-w-0 gap-1">
+                      <dt className="shrink-0">確認元:</dt>
+                      <dd className="min-w-0">{formatEventSource(event)}</dd>
+                    </div>
+                    <div className="flex min-w-0 gap-1">
+                      <dt className="shrink-0">更新者:</dt>
+                      <dd className="min-w-0">{formatEventActor(event)}</dd>
+                    </div>
+                    {event.recorded_at && event.recorded_at !== event.occurred_at ? (
+                      <div className="flex min-w-0 gap-1 sm:col-span-2">
+                        <dt className="shrink-0">記録:</dt>
+                        <dd className="min-w-0 tabular-nums">
+                          <time dateTime={event.recorded_at}>
+                            {formatOccurredAtLong(event.recorded_at)}
+                          </time>
+                        </dd>
+                      </div>
+                    ) : null}
+                  </dl>
                 </div>
               </div>
 
               <div className="flex shrink-0 flex-wrap gap-2">
                 <Button
                   type="button"
-                  variant="secondary"
+                  variant="outline"
                   size="sm"
-                  className="min-h-11"
-                  aria-label={`${event.title}の概要を表示`}
+                  className="min-h-11 transition-none"
+                  aria-label={`${event.title}の証跡を確認`}
+                  aria-controls="patient-movement-evidence-panel"
                   aria-pressed={isSelected}
                   onClick={() => onPreview(event.id)}
                 >
-                  概要
+                  証跡を確認
                 </Button>
-                <TimelineDetailAction event={event} size="sm" />
               </div>
             </div>
 
@@ -819,7 +905,7 @@ function TimelineEntry({
                 {metadata.map((item) => (
                   <span
                     key={`${event.id}-${item}`}
-                    className="rounded-full bg-muted px-2 py-0.5 text-[12px] text-muted-foreground"
+                    className="rounded-md bg-muted px-2 py-0.5 text-[12px] text-muted-foreground"
                   >
                     {item}
                   </span>
@@ -840,18 +926,82 @@ export function PatientMovementTimeline({
   fullLimit = 40,
   isLoadingFull = false,
   partialFailures = [],
+  currentEventId = null,
+  presentationTerminalEventId = null,
+  presentationOrder,
+  appliedFilters = EMPTY_TIMELINE_FILTERS,
+  isFiltering = false,
+  onFiltersChange,
   onLoadFull,
 }: PatientMovementTimelineProps) {
-  const [category, setCategory] = useState<TimelineCategory>('all');
+  const [category, setCategory] = useState<TimelineCategory>(appliedFilters.category ?? 'all');
   const [dateScope, setDateScope] = useState<TimelineDateScope>('all');
   const [focusFilter, setFocusFilter] = useState<TimelineFocusFilter>('all');
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(
-    timelineEvents[0]?.id ?? null,
-  );
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [exactDateFrom, setExactDateFrom] = useState(appliedFilters.date_from ?? '');
+  const [exactDateTo, setExactDateTo] = useState(appliedFilters.date_to ?? '');
+  const [committedDateRange, setCommittedDateRange] = useState<PatientMovementTimelineDateRange>(
+    () => ({
+      date_from: appliedFilters.date_from,
+      date_to: appliedFilters.date_to,
+    }),
+  );
+  const [dateRangeError, setDateRangeError] = useState<string | null>(null);
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
+  const orderedEvents = [...timelineEvents].sort(compareTimelineEventsAsc);
 
-  const filteredEvents = timelineEvents.filter((event) => {
+  const requestTemporalFilters = (
+    nextCategory: TimelineCategory,
+    range: PatientMovementTimelineDateRange,
+  ) => {
+    onFiltersChange?.({
+      category: nextCategory === 'all' ? null : nextCategory,
+      ...range,
+    });
+  };
+
+  const handleCategoryChange = (next: TimelineCategory) => {
+    setCategory(next);
+    requestTemporalFilters(next, committedDateRange);
+  };
+
+  const handleDateScopeChange = (next: TimelineDateScope) => {
+    const range = dateRangeForScope(next);
+    setDateScope(next);
+    setExactDateFrom(range.date_from ?? '');
+    setExactDateTo(range.date_to ?? '');
+    setCommittedDateRange(range);
+    setDateRangeError(null);
+    requestTemporalFilters(category, range);
+  };
+
+  const applyExactDateRange = () => {
+    if (exactDateFrom && exactDateTo && exactDateFrom > exactDateTo) {
+      setDateRangeError('終了日は開始日以降を指定してください。');
+      return;
+    }
+    const range = {
+      date_from: exactDateFrom || null,
+      date_to: exactDateTo || null,
+    } satisfies PatientMovementTimelineDateRange;
+    setDateScope('all');
+    setCommittedDateRange(range);
+    setDateRangeError(null);
+    requestTemporalFilters(category, range);
+  };
+
+  const resetTemporalFilters = () => {
+    setCategory('all');
+    setDateScope('all');
+    setExactDateFrom('');
+    setExactDateTo('');
+    setCommittedDateRange({ date_from: null, date_to: null });
+    setDateRangeError(null);
+    onFiltersChange?.(EMPTY_TIMELINE_FILTERS);
+  };
+
+  const filteredEvents = orderedEvents.filter((event) => {
     if (category !== 'all' && event.category !== category) {
       return false;
     }
@@ -867,34 +1017,70 @@ export function PatientMovementTimeline({
 
   const timelineGroups = buildGroups(filteredEvents);
   const isFiltered =
-    category !== 'all' || dateScope !== 'all' || focusFilter !== 'all' || Boolean(deferredQuery);
+    category !== 'all' ||
+    committedDateRange.date_from !== null ||
+    committedDateRange.date_to !== null ||
+    focusFilter !== 'all' ||
+    Boolean(deferredQuery);
+  const canShowPatientCurrent =
+    !isFiltering &&
+    !isFiltered &&
+    partialFailures.length === 0 &&
+    Object.values(appliedFilters).every((value) => value === null);
+  const currentEvent =
+    canShowPatientCurrent && currentEventId
+      ? (orderedEvents.find((event) => event.id === currentEventId) ?? null)
+      : null;
+  const terminalEvent =
+    (presentationTerminalEventId
+      ? orderedEvents.find((event) => event.id === presentationTerminalEventId)
+      : null) ??
+    orderedEvents.at(-1) ??
+    null;
+  const visibleTerminalEvent =
+    filteredEvents.find((event) => event.id === terminalEvent?.id) ?? filteredEvents.at(-1) ?? null;
   const selectedEvent =
-    filteredEvents.find((event) => event.id === selectedEventId) ?? filteredEvents[0] ?? null;
+    filteredEvents.find((event) => event.id === selectedEventId) ??
+    filteredEvents.find((event) => event.id === currentEvent?.id) ??
+    visibleTerminalEvent ??
+    null;
+  const terminalLabel = visibleTerminalEvent
+    ? currentEvent?.id === visibleTerminalEvent.id
+      ? '現在 / 最新'
+      : partialFailures.length > 0 && isFiltered
+        ? '取得できた絞込範囲の最新'
+        : partialFailures.length > 0
+          ? '取得できた範囲の最新'
+          : Object.values(appliedFilters).some((value) => value !== null)
+            ? '絞込内最新'
+            : isFiltered
+              ? '読込済み絞込内最新'
+              : '取得範囲内最新'
+    : null;
   const categoryCounts = Object.fromEntries(
     (Object.keys(CATEGORY_META) as TimelineCategory[]).map((key) => [
       key,
       key === 'all'
-        ? timelineEvents.length
-        : timelineEvents.filter((event) => event.category === key).length,
+        ? orderedEvents.length
+        : orderedEvents.filter((event) => event.category === key).length,
     ]),
   ) as Record<TimelineCategory, number>;
   const homeOperationCounts = {
-    documents: timelineEvents.filter((event) => getHomeOperationFocus(event) === 'documents')
+    documents: orderedEvents.filter((event) => getHomeOperationFocus(event) === 'documents').length,
+    mcs: orderedEvents.filter((event) => getHomeOperationFocus(event) === 'mcs').length,
+    prescription: orderedEvents.filter((event) => getHomeOperationFocus(event) === 'prescription')
       .length,
-    mcs: timelineEvents.filter((event) => getHomeOperationFocus(event) === 'mcs').length,
-    prescription: timelineEvents.filter((event) => getHomeOperationFocus(event) === 'prescription')
-      .length,
-    billing: timelineEvents.filter((event) => getHomeOperationFocus(event) === 'billing').length,
-    conference: timelineEvents.filter((event) => getHomeOperationFocus(event) === 'conference')
+    billing: orderedEvents.filter((event) => getHomeOperationFocus(event) === 'billing').length,
+    conference: orderedEvents.filter((event) => getHomeOperationFocus(event) === 'conference')
       .length,
   } satisfies Record<HomeOperationFocus, number>;
-  const latestEvent = filteredEvents[0] ?? null;
+  const latestEvent = visibleTerminalEvent;
   const recentSelfReports = selfReports.slice(0, 3);
   const movementSummaryCards = [
     {
       key: 'inbound',
       label: '未処理の受信',
-      value: timelineEvents.filter(
+      value: orderedEvents.filter(
         (event) =>
           event.category === 'interprofessional' &&
           !['resolved', 'completed', 'done'].includes(event.status ?? ''),
@@ -904,7 +1090,7 @@ export function PatientMovementTimeline({
     {
       key: 'review',
       label: '薬剤師確認待ち',
-      value: timelineEvents.filter((event) =>
+      value: orderedEvents.filter((event) =>
         [event.status, event.status_label, event.title].filter(Boolean).join(' ').includes('確認'),
       ).length,
       className: CHART_SERIES_CHIP[5],
@@ -923,18 +1109,47 @@ export function PatientMovementTimeline({
     },
   ];
   const focusFilterCounts: Record<TimelineFocusFilter, number> = {
-    all: timelineEvents.length,
-    unprocessed: timelineEvents.filter(isUnprocessedEvent).length,
-    review_required: timelineEvents.filter(isReviewRequiredEvent).length,
+    all: orderedEvents.length,
+    unprocessed: orderedEvents.filter(isUnprocessedEvent).length,
+    review_required: orderedEvents.filter(isReviewRequiredEvent).length,
     medication_stock: categoryCounts.medication_stock,
     safety: categoryCounts.safety,
-    today: timelineEvents.filter((event) => isToday(new Date(event.occurred_at))).length,
+    today: orderedEvents.filter(
+      (event) => japanDateKey(new Date(event.occurred_at)) === japanDateKey(),
+    ).length,
   };
+  const focusFilterOptions = (Object.keys(FOCUS_FILTER_LABELS) as TimelineFocusFilter[]).map(
+    (value) =>
+      ({
+        value,
+        label: FOCUS_FILTER_LABELS[value],
+        count: focusFilterCounts[value],
+      }) satisfies FilterChipOption<TimelineFocusFilter>,
+  );
+  const categoryOptions = (Object.keys(CATEGORY_META) as TimelineCategory[]).map(
+    (value) =>
+      ({
+        value,
+        label: CATEGORY_META[value].label,
+        count: categoryCounts[value],
+        activeClassName: CATEGORY_META[value].className,
+      }) satisfies FilterChipOption<TimelineCategory>,
+  );
   const loadedCountBadge = isFiltered
-    ? `読込済み ${timelineEvents.length} 件中 ${filteredEvents.length} 件表示`
+    ? `読込済み ${orderedEvents.length} 件中 ${filteredEvents.length} 件表示`
     : isPartial
-      ? `直近 ${timelineEvents.length} 件表示`
-      : `読込済み ${timelineEvents.length} 件表示`;
+      ? `直近 ${orderedEvents.length} 件表示`
+      : `読込済み ${orderedEvents.length} 件表示`;
+  const searchResultStatus = deferredQuery
+    ? `読込済み${orderedEvents.length}件のうち${filteredEvents.length}件が検索条件に一致しました。`
+    : '';
+  const emptyTimelineDescription = isFiltering
+    ? '期間・種別を再取得しています。取得済みの範囲を保持したまま更新しています。'
+    : partialFailures.length > 0
+      ? '取得できた履歴範囲には一致がありません。一部ソースの復旧後に再試行するか、期間・種別を変更してください。'
+      : isFiltered
+        ? '読込済み範囲には一致がありません。検索・確認条件を緩めるか、期間・種別を変更して再取得してください。'
+        : '患者に対する薬局アクションが記録されると、ここに時系列で表示されます。';
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_320px]">
@@ -947,49 +1162,85 @@ export function PatientMovementTimeline({
                 処方、訪問、文書登録、連絡の発生を時系列で確認し、詳細は正本画面で開きます。
               </CardDescription>
             </div>
-            <Badge variant="outline">{loadedCountBadge}</Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">古い順・最新へ</Badge>
+              <Badge variant="outline">{loadedCountBadge}</Badge>
+            </div>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="患者の動きサマリー">
+          <dl
+            className="flex flex-wrap items-stretch divide-x divide-border/70 rounded-md border border-border/70 bg-muted/10"
+            aria-label="患者の動きサマリー"
+          >
             {movementSummaryCards.map((item) => (
-              <div key={item.key} className={cn('rounded-lg border px-3 py-2', item.className)}>
-                <p className="text-xs text-muted-foreground">{item.label}</p>
-                <p className="mt-1 text-xl font-semibold tabular-nums text-foreground">
+              <div key={item.key} className="min-w-[9rem] flex-1 px-3 py-2">
+                <dt className="text-xs text-muted-foreground">{item.label}</dt>
+                <dd className="mt-1 text-base font-semibold tabular-nums text-foreground">
                   {item.value}
                   <span className="ml-1 text-xs font-medium text-muted-foreground">件</span>
-                </p>
+                </dd>
               </div>
             ))}
-          </div>
+          </dl>
 
           <div className="space-y-3">
             <div className="space-y-2">
               <Label className="text-xs">日付範囲</Label>
-              <div className="flex flex-wrap gap-2" aria-label="日付範囲フィルタ">
-                {(Object.keys(DATE_SCOPE_LABELS) as TimelineDateScope[]).map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-pressed={dateScope === key}
-                    onClick={() => setDateScope(key)}
-                    className={cn(
-                      'inline-flex min-h-11 items-center rounded-full border px-3 text-sm transition-colors',
-                      dateScope === key
-                        ? 'border-primary/40 bg-primary/10 text-foreground'
-                        : 'border-border/70 bg-background text-muted-foreground hover:bg-muted/50',
-                    )}
-                  >
-                    {DATE_SCOPE_LABELS[key]}
-                  </button>
-                ))}
-                <button
+              <FilterChipBar
+                options={DATE_SCOPE_OPTIONS}
+                value={dateScope}
+                onChange={handleDateScopeChange}
+                ariaLabel="日付範囲フィルタ"
+              />
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] sm:items-end">
+                <div className="space-y-1">
+                  <Label htmlFor="patient-activity-date-from" className="text-xs">
+                    開始日
+                  </Label>
+                  <Input
+                    id="patient-activity-date-from"
+                    type="date"
+                    value={exactDateFrom}
+                    onChange={(event) => setExactDateFrom(event.target.value)}
+                    className="min-h-11"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="patient-activity-date-to" className="text-xs">
+                    終了日
+                  </Label>
+                  <Input
+                    id="patient-activity-date-to"
+                    type="date"
+                    value={exactDateTo}
+                    onChange={(event) => setExactDateTo(event.target.value)}
+                    className="min-h-11"
+                  />
+                </div>
+                <Button
                   type="button"
-                  disabled
-                  className="inline-flex min-h-11 items-center rounded-full border border-border/50 bg-muted/30 px-3 text-sm text-muted-foreground"
+                  variant="outline"
+                  className="min-h-11"
+                  onClick={applyExactDateRange}
+                  disabled={isFiltering}
                 >
-                  日付選択
-                </button>
+                  期間を適用
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="min-h-11"
+                  onClick={resetTemporalFilters}
+                  disabled={isFiltering}
+                >
+                  リセット
+                </Button>
               </div>
+              {dateRangeError ? (
+                <p role="alert" className="text-xs text-state-blocked">
+                  {dateRangeError}
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-1">
@@ -1002,78 +1253,53 @@ export function PatientMovementTimeline({
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="例: MCS、電話、処方、訪問、文書登録、残数、確認待ち"
                 className="min-h-11"
+                aria-describedby="patient-activity-search-scope patient-activity-search-result"
               />
+              <p id="patient-activity-search-scope" className="text-xs text-muted-foreground">
+                最新最大{fullLimit}
+                件の読込済み範囲を即時検索します。期間と種別も同じ取得範囲内で再取得します。
+              </p>
+              <p
+                id="patient-activity-search-result"
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {searchResultStatus}
+              </p>
             </div>
 
             <div className="space-y-2">
               <Label className="text-xs">確認フィルタ</Label>
-              <div className="flex flex-wrap gap-2" aria-label="確認フィルタ">
-                {(Object.keys(FOCUS_FILTER_LABELS) as TimelineFocusFilter[]).map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-label={`確認フィルタ: ${FOCUS_FILTER_LABELS[key]}`}
-                    aria-pressed={focusFilter === key}
-                    onClick={() => setFocusFilter(key)}
-                    className={cn(
-                      'inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-sm transition-colors',
-                      focusFilter === key
-                        ? 'border-primary/40 bg-primary/10 text-foreground'
-                        : 'border-border/70 bg-background text-muted-foreground hover:bg-muted/50',
-                    )}
-                  >
-                    <span>{FOCUS_FILTER_LABELS[key]}</span>
-                    <span
-                      className={cn(
-                        'rounded-full px-1.5 py-0.5 text-xs',
-                        focusFilter === key
-                          ? 'bg-primary/15 text-foreground'
-                          : 'bg-muted text-muted-foreground',
-                      )}
-                    >
-                      {focusFilterCounts[key]}
-                    </span>
-                  </button>
-                ))}
-              </div>
+              <FilterChipBar
+                options={focusFilterOptions}
+                value={focusFilter}
+                onChange={setFocusFilter}
+                ariaLabel="確認フィルタ"
+              />
             </div>
 
-            <div className="flex flex-wrap gap-2" aria-label="タイムライン種別フィルタ">
-              {(Object.keys(CATEGORY_META) as TimelineCategory[]).map((key) => {
-                const meta = CATEGORY_META[key];
-                const isActive = category === key;
-
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-label={`種別: ${meta.label}`}
-                    aria-pressed={isActive}
-                    onClick={() => setCategory(key)}
-                    className={cn(
-                      'inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-sm transition-colors',
-                      isActive
-                        ? meta.className
-                        : 'border-border/70 bg-background text-muted-foreground hover:bg-muted/50',
-                    )}
-                  >
-                    <span>{meta.label}</span>
-                    <span
-                      className={cn(
-                        'rounded-full px-1.5 py-0.5 text-[12px]',
-                        isActive ? meta.countClassName : 'bg-muted text-muted-foreground',
-                      )}
-                    >
-                      {categoryCounts[key]}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            <FilterChipBar
+              options={categoryOptions}
+              value={category}
+              onChange={handleCategoryChange}
+              ariaLabel="タイムライン種別フィルタ"
+            />
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              {isFiltering
+                ? '期間・種別を再取得しています。現在の履歴を保持したまま更新します。'
+                : presentationOrder === 'occurred_at_asc_id_asc'
+                  ? `最新最大${fullLimit}件の取得範囲を、画面では過去から最新の順に表示しています。`
+                  : '読込済み範囲内を表示しています。'}
+            </p>
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-4 pt-4">
+        <CardContent
+          className="space-y-4 pt-4"
+          aria-busy={isFiltering || isLoadingFull ? 'true' : undefined}
+        >
           <p
             data-testid="timeline-completeness-note"
             className="flex flex-wrap items-start gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs leading-5 text-muted-foreground"
@@ -1081,7 +1307,7 @@ export function PatientMovementTimeline({
             <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
             <span className="min-w-0 flex-1">
               {isPartial
-                ? '直近5件の患者の動きを先に表示しています。追加履歴は必要な時だけ読み込みます。'
+                ? `直近${orderedEvents.length}件の患者の動きを先に表示しています。追加履歴は必要な時だけ読み込みます。`
                 : `患者の動きを最大${fullLimit}件まで読み込んでいます。検索と種別フィルタで絞り込めます。`}
             </span>
             {isPartial && onLoadFull ? (
@@ -1121,11 +1347,7 @@ export function PatientMovementTimeline({
             <EmptyState
               icon={Activity}
               title="表示できるアクションがありません"
-              description={
-                deferredQuery
-                  ? '検索条件かフィルタを緩めると、該当するアクションを表示できます。'
-                  : '患者に対する薬局アクションが記録されると、ここに時系列で表示されます。'
-              }
+              description={emptyTimelineDescription}
             />
           ) : (
             timelineGroups.map((group) => (
@@ -1150,12 +1372,18 @@ export function PatientMovementTimeline({
                   </div>
                   <DaySummary events={group.items} />
                 </div>
-                <ol>
+                <ol
+                  className="divide-y divide-border/70"
+                  aria-labelledby={`movement-day-heading-${group.key}`}
+                >
                   {group.items.map((event, index) => (
                     <TimelineEntry
                       key={event.id}
                       event={event}
                       isLast={index === group.items.length - 1}
+                      isCurrent={event.id === currentEvent?.id}
+                      isTerminal={event.id === visibleTerminalEvent?.id}
+                      terminalLabel={terminalLabel}
                       isSelected={selectedEvent?.id === event.id}
                       onPreview={setSelectedEventId}
                     />
@@ -1168,7 +1396,12 @@ export function PatientMovementTimeline({
       </Card>
 
       <div className="space-y-4">
-        <Card className="border border-border/70">
+        <Card
+          id="patient-movement-evidence-panel"
+          role="region"
+          aria-label="選択中イベントの証跡"
+          className="border border-border/70"
+        >
           <CardHeader>
             <h2 className="font-heading text-base leading-snug font-medium">選択中のイベント</h2>
             <CardDescription>
@@ -1176,6 +1409,9 @@ export function PatientMovementTimeline({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+              {selectedEvent ? `${selectedEvent.title}の証跡を表示しました。` : ''}
+            </p>
             {selectedEvent ? (
               <SelectedEventPreview event={selectedEvent} />
             ) : (
