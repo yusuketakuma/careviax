@@ -44,10 +44,15 @@ const patientInsuranceResponseSelect = {
   updated_at: true,
 } as const;
 
-function readRequiredExpectedUpdatedAt(req: NextRequest) {
+type ExpectedUpdatedAtResult =
+  | { kind: 'response'; response: Response }
+  | { kind: 'value'; value: Date };
+
+function readRequiredExpectedUpdatedAt(req: NextRequest): ExpectedUpdatedAtResult {
   const rawValue = new URL(req.url).searchParams.get('expected_updated_at');
   if (rawValue === null) {
     return {
+      kind: 'response',
       response: validationError('保険情報の更新時刻が必要です', {
         expected_updated_at: ['更新前に取得したupdated_atを指定してください'],
       }),
@@ -57,18 +62,19 @@ function readRequiredExpectedUpdatedAt(req: NextRequest) {
   const parsed = z.string().datetime().safeParse(rawValue);
   if (!parsed.success) {
     return {
+      kind: 'response',
       response: validationError('保険情報の更新時刻が不正です', {
         expected_updated_at: ['日時形式が不正です'],
       }),
     };
   }
-  return { value: new Date(parsed.data) };
+  return { kind: 'value', value: new Date(parsed.data) };
 }
 
 async function authenticatedPUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; insuranceId: string }> },
-) {
+): Promise<Response> {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者保険情報の更新権限がありません',
@@ -91,7 +97,7 @@ async function authenticatedPUT(
   }
 
   const expectedUpdatedAtResult = readRequiredExpectedUpdatedAt(req);
-  if ('response' in expectedUpdatedAtResult) return expectedUpdatedAtResult.response;
+  if (expectedUpdatedAtResult.kind === 'response') return expectedUpdatedAtResult.response;
   const expectedUpdatedAt = expectedUpdatedAtResult.value;
 
   // Fold the patient-assignment access check into the resource query (single
@@ -107,7 +113,9 @@ async function authenticatedPUT(
     ctx.orgId,
     async (tx) => {
       const writable = await requireWritablePatient(tx, ctx, id);
-      if ('response' in writable) return { response: writable.response };
+      if ('response' in writable) {
+        return { kind: 'response' as const, response: writable.response };
+      }
 
       const existing = await tx.patientInsurance.findFirst({
         where: {
@@ -134,15 +142,21 @@ async function authenticatedPUT(
           updated_at: true,
         },
       });
-      if (!existing) return { response: notFound('保険情報が見つかりません') };
+      if (!existing) {
+        return { kind: 'response' as const, response: notFound('保険情報が見つかりません') };
+      }
 
       if (existing.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
-        return { response: staleInsuranceConflict(expectedUpdatedAt, existing.updated_at) };
+        return {
+          kind: 'response' as const,
+          response: staleInsuranceConflict(expectedUpdatedAt, existing.updated_at),
+        };
       }
 
       const effectiveValidation = validateEffectivePatientInsuranceUpdate(existing, parsed.data);
       if (!effectiveValidation.success) {
         return {
+          kind: 'response' as const,
           response: validationError(
             '入力値が不正です',
             effectiveValidation.error.flatten().fieldErrors,
@@ -213,24 +227,29 @@ async function authenticatedPUT(
         },
         select: patientInsuranceResponseSelect,
       });
-      if (!current) return { response: notFound('保険情報が見つかりません') };
-      if (updateResult.count === 0) {
-        return { response: staleInsuranceConflict(expectedUpdatedAt, current.updated_at) };
+      if (!current) {
+        return { kind: 'response' as const, response: notFound('保険情報が見つかりません') };
       }
-      return { updated: current };
+      if (updateResult.count === 0) {
+        return {
+          kind: 'response' as const,
+          response: staleInsuranceConflict(expectedUpdatedAt, current.updated_at),
+        };
+      }
+      return { kind: 'updated' as const, updated: current };
     },
     { requestContext: ctx },
   ).catch((cause: unknown) => {
-    if (cause instanceof PatientInsuranceOverlapError) return { overlap: true as const };
+    if (cause instanceof PatientInsuranceOverlapError) return { kind: 'overlap' as const };
     throw cause;
   });
 
-  if ('overlap' in result) {
+  if (result.kind === 'overlap') {
     return validationError('同じ期間に有効な保険情報が既に存在します', {
       valid_from: ['同一患者・同一保険種別の有効期間が重複しています'],
     });
   }
-  if ('response' in result) return result.response;
+  if (result.kind === 'response') return result.response;
   return success({ data: result.updated });
 }
 
@@ -257,7 +276,7 @@ function staleInsuranceConflict(expectedUpdatedAt: Date, currentUpdatedAt: Date 
 async function authenticatedDELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; insuranceId: string }> },
-) {
+): Promise<Response> {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者保険情報の削除権限がありません',
@@ -272,7 +291,7 @@ async function authenticatedDELETE(
   if (!insuranceId) return validationError('保険情報IDが不正です');
 
   const expectedUpdatedAtResult = readRequiredExpectedUpdatedAt(req);
-  if ('response' in expectedUpdatedAtResult) return expectedUpdatedAtResult.response;
+  if (expectedUpdatedAtResult.kind === 'response') return expectedUpdatedAtResult.response;
   const expectedUpdatedAt = expectedUpdatedAtResult.value;
 
   const caseAssignmentWhereDelete = buildCareCaseAssignmentWhere({
@@ -284,7 +303,9 @@ async function authenticatedDELETE(
     ctx.orgId,
     async (tx) => {
       const writable = await requireWritablePatient(tx, ctx, id);
-      if ('response' in writable) return { response: writable.response };
+      if ('response' in writable) {
+        return { kind: 'response' as const, response: writable.response };
+      }
 
       const existing = await tx.patientInsurance.findFirst({
         where: {
@@ -297,10 +318,15 @@ async function authenticatedDELETE(
         },
         select: { id: true, updated_at: true },
       });
-      if (!existing) return { response: notFound('保険情報が見つかりません') };
+      if (!existing) {
+        return { kind: 'response' as const, response: notFound('保険情報が見つかりません') };
+      }
 
       if (existing.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
-        return { response: staleInsuranceConflict(expectedUpdatedAt, existing.updated_at) };
+        return {
+          kind: 'response' as const,
+          response: staleInsuranceConflict(expectedUpdatedAt, existing.updated_at),
+        };
       }
 
       const deleteResult = await tx.patientInsurance.deleteMany({
@@ -314,7 +340,7 @@ async function authenticatedDELETE(
             : {}),
         },
       });
-      if (deleteResult.count > 0) return { deleted: true };
+      if (deleteResult.count > 0) return { kind: 'deleted' as const, deleted: true };
 
       const current = await tx.patientInsurance.findFirst({
         where: {
@@ -327,13 +353,18 @@ async function authenticatedDELETE(
         },
         select: { updated_at: true },
       });
-      if (!current) return { response: notFound('保険情報が見つかりません') };
-      return { response: staleInsuranceConflict(expectedUpdatedAt, current.updated_at) };
+      if (!current) {
+        return { kind: 'response' as const, response: notFound('保険情報が見つかりません') };
+      }
+      return {
+        kind: 'response' as const,
+        response: staleInsuranceConflict(expectedUpdatedAt, current.updated_at),
+      };
     },
     { requestContext: ctx },
   );
 
-  if ('response' in result) return result.response;
+  if (result.kind === 'response') return result.response;
   return success({ data: { id: insuranceId, deleted: result.deleted } });
 }
 

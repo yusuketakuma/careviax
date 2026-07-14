@@ -103,6 +103,33 @@ describe('patient insurance validation', () => {
     ).toBe(false);
   });
 
+  it('treats an unknown persisted care level as missing while preserving inactive history', () => {
+    const legacyHistory = {
+      ...existingCareInsurance,
+      confirmed_care_level: 'legacy_unknown_level',
+      is_active: false,
+    };
+
+    expect(
+      buildEffectivePatientInsuranceInput(legacyHistory, { notes: '履歴を保持' }),
+    ).toMatchObject({
+      confirmed_care_level: null,
+      is_active: false,
+    });
+    expect(
+      validateEffectivePatientInsuranceUpdate(legacyHistory, { notes: '履歴を保持' }).success,
+    ).toBe(true);
+
+    const reactivation = validateEffectivePatientInsuranceUpdate(legacyHistory, {
+      is_active: true,
+    });
+    expect(reactivation.success).toBe(false);
+    if (reactivation.success) throw new Error('validation should fail');
+    expect(reactivation.error.flatten().fieldErrors).toMatchObject({
+      confirmed_care_level: ['確定済みの介護保険には要介護状態区分が必要です'],
+    });
+  });
+
   it('requires a two-digit public program code for public subsidy records', () => {
     const missing = patientInsuranceCreateSchema.safeParse({
       insurance_type: 'public_subsidy',

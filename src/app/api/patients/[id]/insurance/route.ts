@@ -130,7 +130,9 @@ async function authenticatedPOST(
     ctx.orgId,
     async (tx) => {
       const writable = await requireWritablePatient(tx, ctx, id);
-      if ('response' in writable) return { response: writable.response };
+      if ('response' in writable) {
+        return { kind: 'response' as const, response: writable.response };
+      }
 
       if (rest.is_active !== false) {
         const overlappingInsurance = await tx.patientInsurance.findFirst({
@@ -163,21 +165,21 @@ async function authenticatedPOST(
         },
         select: patientInsuranceResponseSelect,
       });
-      return { created };
+      return { kind: 'created' as const, created };
     },
     { requestContext: ctx },
   ).catch((cause: unknown) => {
-    if (cause instanceof PatientInsuranceOverlapError) return { overlap: true as const };
+    if (cause instanceof PatientInsuranceOverlapError) return { kind: 'overlap' as const };
     throw cause;
   });
 
-  if ('overlap' in result) {
+  if (result.kind === 'overlap') {
     return validationError('同じ期間に有効な保険情報が既に存在します', {
       valid_from: ['同一患者・同一保険種別の有効期間が重複しています'],
     });
   }
 
-  if ('response' in result) return result.response;
+  if (result.kind === 'response') return result.response;
   return success({ data: result.created });
 }
 

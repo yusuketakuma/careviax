@@ -193,6 +193,11 @@ export type PatientInsuranceApplicationStatus =
 export type OfficialCareLevel = (typeof OFFICIAL_CARE_LEVELS)[number];
 export type PatientInsuranceUpdateInput = z.infer<typeof patientInsuranceUpdateSchema>;
 
+function normalizePersistedCareLevel(value: string | null): OfficialCareLevel | null {
+  const parsed = officialCareLevelSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 export type PersistedPatientInsuranceInvariantState = {
   insurance_type: PatientInsuranceType;
   application_status: PatientInsuranceApplicationStatus;
@@ -238,15 +243,24 @@ export function buildEffectivePatientInsuranceInput(
     decision_at: patchedValue(patch.decision_at, toDateKey(existing.decision_at)),
     previous_care_level:
       insuranceType === 'care'
-        ? patchedValue(patch.previous_care_level, existing.previous_care_level)
+        ? patchedValue(
+            patch.previous_care_level,
+            normalizePersistedCareLevel(existing.previous_care_level),
+          )
         : (patch.previous_care_level ?? null),
     provisional_care_level:
       insuranceType === 'care'
-        ? patchedValue(patch.provisional_care_level, existing.provisional_care_level)
+        ? patchedValue(
+            patch.provisional_care_level,
+            normalizePersistedCareLevel(existing.provisional_care_level),
+          )
         : (patch.provisional_care_level ?? null),
     confirmed_care_level:
       insuranceType === 'care'
-        ? patchedValue(patch.confirmed_care_level, existing.confirmed_care_level)
+        ? patchedValue(
+            patch.confirmed_care_level,
+            normalizePersistedCareLevel(existing.confirmed_care_level),
+          )
         : (patch.confirmed_care_level ?? null),
     is_active: patch.is_active ?? existing.is_active,
   };
