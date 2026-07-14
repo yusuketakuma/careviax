@@ -48,13 +48,31 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `API-CONTRACT-002D`のauth/request-correlation/job trace、
-  `codex2`: `E2E-PREFLIGHT-RLS-EXEMPT-001`のRLS intentional-exclusion SSOTとmedical UI preflight。`codex3/codex4`は停止のまま。
+  共有surfaceとlong gateは事前通知で直列化する。`codex1`の`API-CONTRACT-002D`は完了し、次sliceを選定中。
+  現在のownershipは`codex2`: `E2E-PREFLIGHT-RLS-EXEMPT-001`のRLS intentional-exclusion SSOTとmedical UI preflight。
+  `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: API-CONTRACT-002D-JOB-TRACE (DONE; parent remains Partial, 2026-07-14; implementation `5998ae5ee`, `PUSHED`).
+  - current task / files inspected / root cause:
+    Dynamic jobs route、auth/API-key context、request correlation、generic job runner、IntegrationJob schema、notification/webhook/outbox境界を照合。
+    Auth routeで生成済みのtraceとAPI-key requestの安全なcorrelation IDがjob handlerへ渡らず、generic runnerのIntegrationJob rowにも起点traceが
+    保存されないため、HTTP response、job row、retry/failure logを相関できなかった。`IntegrationJob.input`は既存nullable JSONでmigration不要。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    request-trace専用AsyncLocalStorageを追加し、auth branchは既存`TracedAuthContext`を再発行せず再利用、API-key branchだけserver-owned traceを生成した。
+    jobs routeのsuccess、validation、404、500に同一trace headerを付与し、handler全体をscope化。runner入口で両IDを再検証し、valid時だけ
+    `IntegrationJob.input.request_trace.{request_id,correlation_id}`を保存、traceなし/不正時は`input`自体を省略した。dedupe key、output、retry、
+    notification、WebhookDelivery外部payload/HMAC契約、DB schema/query/network数は不変。PHI、secret、provider detailを新規payloadへ含めていない。
+  - validation results / remaining work / next action / rollback:
+    Focused route/correlation/runner/auth 4 files / 70 tests、独立privacy/security verifier APPROVED（3 files / 63 tests）、exact ESLint、Prettier、
+    `pnpm typecheck`、8 GiB `pnpm typecheck:no-unused`、`git diff --check`をPASS。最初のaggregate typecheckはpeer-owned RLS testの型エラーで失敗したが、
+    codex2の修正後に再実行してPASS。Schema/migration/production mutation/deploy/Oracleなし。非視覚server/API変更のためimagegen/browserなし。
+    親にはsuccess meta/error body、helper外AuditLog、trace元のないSSR capture、outbox origin trace設計が残る。WebhookDeliveryへのtrace追加は外部POST/HMAC
+    contract変更になるため本sliceから明示除外し、既存`delivery_id`相関を維持した。Rollbackは`5998ae5ee`のrevertでDB/data rollback不要。
 
 - codex2: PERF-FE-CSS-SOURCE-001 (DONE, 2026-07-14; implementation `d6fbcbb7c`, `PUSHED`).
   - current task / files inspected / root cause:
