@@ -70,9 +70,9 @@
   - validation results / remaining work / next action / rollback:
     Focused checker 1 file / 43 tests、CDS API/panel込み3 files / 51 tests、exact ESLint/Prettier/diff、`pnpm typecheck`、8 GiB
     `pnpm typecheck:no-unused`、API response shape 0/0、API authz status、query-shape 0/0、read-SLO 0 new drift、raw-org 116 / 0 newをPASS。
-    `pnpm api-authz:check`は不存在で1回失敗し、実在する`pnpm api-authz-status:check`へ直ちに訂正してPASS。codex1へmedical-safety reviewを依頼済みで
-    verdict待ちだが、可逆なcoherent sliceとしてcommit/push済み。非視覚server safety変更のためimagegen/browserなし。Rollbackは`c8132e7bf`のrevertで
-    DB/data rollback不要。
+    `pnpm api-authz:check`は不存在で1回失敗し、実在する`pnpm api-authz-status:check`へ直ちに訂正してPASS。独立codex1 medical-safety reviewerも
+    90日境界、tenant/patient/analyte scope、stale fail-closed、fresh abnormal値維持をAPPROVE。非blocking residualはstaleとnever-recordedのcopy/metadata分離。
+    非視覚server safety変更のためimagegen/browserなし。Rollbackは`c8132e7bf`のrevertでDB/data rollback不要。
 
 - codex2: E2E-PREFLIGHT-BROWSER-001 (DONE, 2026-07-14; implementation `a4260e832`, `PUSHED`).
   - current task / files inspected / root cause:
