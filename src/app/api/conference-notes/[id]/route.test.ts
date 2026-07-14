@@ -24,6 +24,7 @@ const {
   facilityFindFirstMock,
   patientSchedulePreferenceUpsertMock,
   auditLogCreateMock,
+  recordPhiReadAuditForRequestMock,
   withOrgContextMock,
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
@@ -50,10 +51,15 @@ const {
   facilityFindFirstMock: vi.fn(),
   patientSchedulePreferenceUpsertMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
   requireWritablePatientMock: vi.fn(),
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -892,6 +898,7 @@ describe('/api/conference-notes/[id] PATCH', () => {
 describe('/api/conference-notes/[id] GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authPlumbingFailureRef.current = null;
     conferenceNoteFindFirstMock.mockResolvedValue({
       id: 'note_1',
       org_id: 'org_1',
@@ -967,6 +974,72 @@ describe('/api/conference-notes/[id] GET', () => {
         }),
       },
     });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'conference_note',
+        targetId: 'note_1',
+        view: 'conference_note_detail',
+      },
+    );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    const auditPayload = JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls[0]?.[1]);
+    expect(auditPayload).not.toContain('訪問頻度の見直し');
+    expect(auditPayload).not.toContain('佐藤CM');
+  });
+
+  it('audits an unlinked conference note by target id without including note content', async () => {
+    conferenceNoteFindFirstMock.mockResolvedValueOnce({
+      id: 'note_unlinked',
+      org_id: 'org_1',
+      case_id: null,
+      patient_id: null,
+      facility_id: 'facility_1',
+      note_type: 'regular',
+      title: '未紐付け担当者会議',
+      content: '未紐付け患者の服薬状況を確認',
+      structured_content: null,
+      metadata: null,
+      billing_eligible: false,
+      billing_code: null,
+      follow_up_date: null,
+      follow_up_completed: false,
+      generated_report_id: null,
+      participants: [{ name: '山田CM', role: 'care_manager' }],
+      conference_date: new Date('2026-03-30T10:00:00.000Z'),
+      action_items: [{ title: '残薬を再確認', assignee: '薬剤師' }],
+      created_at: new Date('2026-03-30T11:00:00.000Z'),
+      updated_at: new Date('2026-03-30T11:30:00.000Z'),
+    });
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'note_unlinked' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'note_unlinked',
+        patient_id: null,
+        content: '未紐付け患者の服薬状況を確認',
+      },
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      {
+        patientId: null,
+        targetType: 'conference_note',
+        targetId: 'note_unlinked',
+        view: 'conference_note_detail',
+      },
+    );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    const auditPayload = JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls[0]?.[1]);
+    expect(auditPayload).not.toContain('未紐付け患者');
+    expect(auditPayload).not.toContain('山田CM');
   });
 
   it('returns 404 when the conference note is not visible in the org', async () => {
@@ -977,6 +1050,7 @@ describe('/api/conference-notes/[id] GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
     expectNoStore(response);
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects an invalid conference note id before querying', async () => {
@@ -986,6 +1060,7 @@ describe('/api/conference-notes/[id] GET', () => {
     expect(response.status).toBe(400);
     expectNoStore(response);
     expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when conference note detail lookup fails unexpectedly', async () => {
@@ -1003,5 +1078,29 @@ describe('/api/conference-notes/[id] GET', () => {
       code: 'INTERNAL_ERROR',
     });
     expect(JSON.stringify(body)).not.toContain('participant secret');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 without auditing when auth plumbing fails', async () => {
+    authPlumbingFailureRef.current = new Error(
+      'raw conference-note GET auth patient 山田花子 token secret',
+    );
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'note_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('token secret');
+    expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 });

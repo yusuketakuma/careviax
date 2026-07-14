@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
 import type { NextResponse } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -83,6 +84,13 @@ const authenticatedGET = withAuthContext<{ id: string }>(
     const metadata = readJsonObject(note.metadata);
     const billing = readJsonObject(metadata?.billing);
     const syncSummary = readConferenceSyncSummary(note.metadata);
+
+    recordPhiReadAuditForRequest(ctx, {
+      patientId: note.patient_id,
+      targetType: 'conference_note',
+      targetId: note.id,
+      view: 'conference_note_detail',
+    });
 
     return success({
       data: {
