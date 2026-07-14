@@ -57,6 +57,25 @@
 
 ## 直近の作業
 
+- codex2: API-CONTRACT-003K-PDF-EXPORT-AUDIT-ERRORS (DONE; parent remains Partial, 2026-07-14; implementation `e6a550258`, `PUSHED`).
+  - current task / files inspected / root cause:
+    Canonical error registry/response helper、conference note / tracing report / care report / visit record PDF routes/tests、PDF response、
+    export audit helper、auth/tenant/no-store境界を照合。4 routesのrender失敗は既にshared `EXTERNAL_PDF_RENDER_FAILED`へ収束していた一方、
+    render後のaudit失敗だけがroute固有固定code/message/500を互換`error()`で重複指定していた。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    `src/lib/api/error-codes.ts`とsnapshot、4 PDF route filesの6 pathsを変更。Conference note / tracing report / care report / visit recordの
+    `*_PDF_EXPORT_AUDIT_FAILED` 4コードを500/error/retryable/retry metadataで登録し、4 constructorsだけをtyped `registeredError()`へ移行。
+    Existing route testsはaudit call後の固定code/message/no-storeと`pdfResponse`未呼出しを固定済みで、そのまま全件PASSした。
+    Render/auth/tenant/audit-before-PDF ordering、PDF buffer/file name、permission、query/write/network回数、raw provider/患者/薬剤detail非露出は不変。
+    Retryable metadataを自動retryへ接続せず、報告書確認状態やPDF内容の医療意味も変更していない。
+  - validation results / remaining work / next action / rollback:
+    Focused registry/response/4 route tests 6 files / 44 tests、10 owned pathsのexact ESLint/Prettier、diff、API response shape 0/0、API authz、
+    route-auth 150 allowlisted / 214 direct / 0 new、client PHI-log、raw-read org 116 allowlisted / 0 new、`pnpm typecheck`、bare
+    `pnpm typecheck:no-unused`をPASS。独立codex1 medical/privacy/API reviewもAPPROVE。現行STATE.mdのno-Oracle user SSOTに従いOracle未使用。
+    非視覚API変更のためimagegen/browserなし。親`API-CONTRACT-003`には他route固有・動的codeが残る。次の低リスク候補は既存固定body/no-store
+    testを持つcare report print auditで、billing/exportやexternal-access revoke隣接コードとは分離して扱う。Rollbackは`e6a550258`のrevertで
+    DB/data rollback不要。
+
 - codex1: TYPECHECK-NO-UNUSED-HEAP-001 (DONE, 2026-07-14; implementation `2cc59b06b`, `PUSHED`).
   - current task / files inspected / root cause:
     `package.json`の通常/no-unused typecheck scripts、TypeScript local binary、shared package-script contract test、直前の4 GiB OOMを照合した。
