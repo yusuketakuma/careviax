@@ -718,6 +718,11 @@ describe('/api/patients/[id]', () => {
       caseIds: [],
       role: 'pharmacist',
       userId: 'user_1',
+      billingContext: {
+        visitRecordIds: [],
+        cycleIds: [],
+        blockers: [],
+      },
     });
   });
 
@@ -2315,6 +2320,7 @@ describe('/api/patients/[id]', () => {
     expect(billingEvidenceBlockersMock).not.toHaveBeenCalled();
     expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
     expect(auditLogFindManyMock).not.toHaveBeenCalled();
+    expect(patientVisitBriefMock.mock.calls.at(-1)?.[1]).not.toHaveProperty('billingContext');
     const json = await response.json();
     expect(json.data.billing_summary.evidence).toEqual([]);
     expect(json.data.billing_summary.candidates).toEqual([]);

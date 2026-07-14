@@ -982,6 +982,15 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
         billingRefs.cycleIds.length === 0
           ? { id: { in: [] } }
           : { cycle_id: { in: billingRefs.cycleIds } };
+      const billingEvidenceBlockersPromise = canManageBilling
+        ? listBillingEvidenceBlockers(tx, {
+            orgId: ctx.orgId,
+            patientId: id,
+            visitRecordIds: billingRefs.visitRecordIds,
+            cycleIds: billingRefs.cycleIds,
+            limit: 6,
+          })
+        : Promise.resolve([]);
       // scheduled_date(@db.Date)比較用: ローカル今月の月初/翌月初を UTC 深夜で表す
       const todayKey = localDateKey();
       const [currentYear, currentMonth] = todayKey.split('-').map(Number);
@@ -1232,15 +1241,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
               },
             })
           : Promise.resolve([]),
-        canManageBilling
-          ? listBillingEvidenceBlockers(tx, {
-              orgId: ctx.orgId,
-              patientId: id,
-              visitRecordIds: billingRefs.visitRecordIds,
-              cycleIds: billingRefs.cycleIds,
-              limit: 6,
-            })
-          : Promise.resolve([]),
+        billingEvidenceBlockersPromise,
         canManageBilling
           ? tx.billingCandidate.findMany({
               where: {
@@ -1273,14 +1274,30 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
           patientId: id,
           caseIds,
         }),
-        getPatientVisitBrief(tx, {
-          orgId: ctx.orgId,
-          patientId: id,
-          context: 'patient',
-          caseIds,
-          role: ctx.role,
-          userId: ctx.userId,
-        }),
+        canManageBilling
+          ? billingEvidenceBlockersPromise.then((blockers) =>
+              getPatientVisitBrief(tx, {
+                orgId: ctx.orgId,
+                patientId: id,
+                context: 'patient',
+                caseIds,
+                role: ctx.role,
+                userId: ctx.userId,
+                billingContext: {
+                  visitRecordIds: billingRefs.visitRecordIds,
+                  cycleIds: billingRefs.cycleIds,
+                  blockers,
+                },
+              }),
+            )
+          : getPatientVisitBrief(tx, {
+              orgId: ctx.orgId,
+              patientId: id,
+              context: 'patient',
+              caseIds,
+              role: ctx.role,
+              userId: ctx.userId,
+            }),
         caseIds.length === 0
           ? Promise.resolve([])
           : tx.firstVisitDocument.findMany({
