@@ -7,7 +7,7 @@ import { API_ERROR_CODE_REGISTRY } from '@/lib/api/error-codes';
 const apiRoot = join(process.cwd(), 'src', 'app', 'api');
 
 type RegisteredErrorCode = keyof typeof API_ERROR_CODE_REGISTRY;
-type RawErrorHelperName = 'error' | 'externalError';
+type RawErrorHelperName = 'error' | 'externalError' | 'localizedError';
 
 type RawLiteralErrorUsage = {
   filePath: string;
@@ -730,6 +730,16 @@ describe('raw API error usage', () => {
 
     expect([...bindings.helperNames]).toEqual(['rawError']);
     expect([...bindings.namespaceNames]).toEqual(['apiResponse']);
+  });
+
+  it('keeps direct localized raw-error bypasses at zero', () => {
+    expect(collectSortedErrorUsages('localizedError')).toEqual({
+      literal: [],
+      dynamic: [],
+      nonliteralMessage: [],
+      details: [],
+      namespaceImports: [],
+    });
   });
 
   it('keeps code, message, and details debt exact with one registered 422 bypass', () => {
