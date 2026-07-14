@@ -175,16 +175,13 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     unstable_rethrow(err);
-    logger.error(
-      {
-        event: 'yrese.webhook_import_failed',
-        route: ROUTE,
-        operation: 'receive_yrese_webhook',
-        code: 'YRESE_WEBHOOK_IMPORT_FAILED',
-        count: Buffer.byteLength(bodyText, 'utf8'),
-      },
-      err,
-    );
+    logger.error({
+      event: 'yrese.webhook_import_failed',
+      route: ROUTE,
+      operation: 'receive_yrese_webhook',
+      code: 'YRESE_WEBHOOK_IMPORT_FAILED',
+      count: Buffer.byteLength(bodyText, 'utf8'),
+    });
     return noStore(error('YRESE_WEBHOOK_IMPORT_FAILED', 'Webhook import failed', 500));
   }
 }

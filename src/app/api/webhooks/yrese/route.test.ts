@@ -2,12 +2,17 @@ import { createHmac } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { importYreseClinicalWebhookMock } = vi.hoisted(() => ({
+const { importYreseClinicalWebhookMock, loggerErrorMock } = vi.hoisted(() => ({
   importYreseClinicalWebhookMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/server/services/standard-clinical-integration-import', () => ({
   importYreseClinicalWebhook: importYreseClinicalWebhookMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
 }));
 
 import { POST } from './route';
@@ -153,5 +158,41 @@ describe('/api/webhooks/yrese POST', () => {
 
     expect(response.status).toBe(413);
     expect(importYreseClinicalWebhookMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed failure and logs only coded metadata when import rejects', async () => {
+    const payload = {
+      event_id: 'evt_failure_001',
+      event_type: 'dispensing.confirmed',
+      tenant_id: 'org_1',
+      patient_ref: 'Patient/patient_secret_123',
+    };
+    const body = JSON.stringify(payload);
+    const rawError = new Error(
+      'patient 山田太郎 / bearer secret-yrese-token / MedicationRequest/private_123',
+    );
+    importYreseClinicalWebhookMock.mockRejectedValueOnce(rawError);
+
+    const response = await POST(signedRequest(payload));
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    const responseBody = await response.json();
+    expect(responseBody).toEqual({
+      code: 'YRESE_WEBHOOK_IMPORT_FAILED',
+      message: 'Webhook import failed',
+    });
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith({
+      event: 'yrese.webhook_import_failed',
+      route: '/api/webhooks/yrese',
+      operation: 'receive_yrese_webhook',
+      code: 'YRESE_WEBHOOK_IMPORT_FAILED',
+      count: Buffer.byteLength(body, 'utf8'),
+    });
+    expect(loggerErrorMock.mock.calls[0]).toHaveLength(1);
+    expect(loggerErrorMock.mock.calls.flat()).not.toContain(rawError);
+    expect(JSON.stringify(responseBody)).not.toContain('山田太郎');
+    expect(JSON.stringify(responseBody)).not.toContain('secret-yrese-token');
   });
 });
