@@ -48,14 +48,32 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `PERM-DOC-SYNC-001A`のevidence同期、
-  `codex2`: `API-CONTRACT-003L-CARE-REPORT-PRINT-AUDIT-ERROR`の4 exact paths。共有docsはcodex1が短時間保持中。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `AUTHZ-SELF-REPORT-READ-AUDIT-001`の2 source pathsと
+  `AUTHZ-PRESCRIPTION-INTAKE-READ-AUDIT-001`のevidence同期、`codex2`: `API-CONTRACT-003M-BILLING-EXPORT-AUDIT-ERROR`の4 exact paths。
+  共有docsはcodex1が短時間保持中。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: AUTHZ-PRESCRIPTION-INTAKE-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `d5ecb9f9c`, `PUSHED`).
+  - current task / files inspected / root cause:
+    `src/app/api/prescription-intakes/[id]/route.ts`とroute tests、canonical `phi-read-audit` helper/tests、患者detail read-audit callsites、
+    `Plans.md`の`ROUTE-AUTHZ-COVERAGE-001`を照合。Detail GETは`canVisit`、org/assignment scope、sensitive no-storeを実装済みだったが、
+    患者名、保険/JAHIS detail、処方薬、疑義照会を返す成功readに標準PHI access auditがなかった。
+  - files changed / bugs fixed / authorization / privacy / medical safety / performance:
+    Assignment-scoped detail lookup成功後だけcanonical fire-and-forget `recordPhiReadAuditForRequest`を呼び、linked patient ID、
+    `prescription_intake` target、detail viewをPHI本文なしで記録する。患者未紐付けintakeもtarget IDで追跡可能。
+    Permission、assignment predicate、query/include、response、no-store、error body、PATCH、DB read/network回数は不変で、監査は既存の
+    request trace + FORCE RLS org-context helperを再利用しresponse latencyをblockしない。
+  - validation results / remaining work / next action / rollback:
+    Focused route 1 file / 26 tests、exact ESLint、Prettier、diff、API authz、route-auth、API response shape、client PHI-log、raw-org guard、
+    共有tree上の`pnpm typecheck`とbare `pnpm typecheck:no-unused`をPASS。Linked/unlinked successだけ監査し、blank/404/throw/auth拒否は
+    zero-audit。独立codex2 medical/privacy/auth/audit reviewもAPPROVE。非視覚audit contract変更のためimagegen/browser未使用。
+    親`ROUTE-AUTHZ-COVERAGE-001`には他PHI detail GET棚卸しとroute matrix固定が残る。Rollbackは`d5ecb9f9c`のrevertでDB/data rollback不要。
+    gbrain memory ID: `projects/careviax/decisions/2026-07-14/audit-prescription-intake-detail-reads`。
 
 - codex2: API-CONTRACT-003L-CARE-REPORT-PRINT-AUDIT-ERROR (DONE; parent remains Partial, 2026-07-14; implementation `d1e99dc08`, `PUSHED`).
   - current task / files inspected / root cause:
