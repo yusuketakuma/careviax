@@ -4,21 +4,41 @@ import { NextRequest } from 'next/server';
 type TestAuthContext = { orgId: string; userId: string; role: 'pharmacist' };
 type DraftRouteContext = { params: Promise<{ id: string }> };
 
-const { withAuthContextMock, withOrgContextMock, careCaseFindManyMock } = vi.hoisted(() => ({
-  withAuthContextMock: vi.fn(
-    (
-      handler: (
-        req: NextRequest,
-        authContext: TestAuthContext,
-        ctx: DraftRouteContext,
-      ) => Promise<Response>,
-    ) => {
-      return (req: NextRequest, ctx: DraftRouteContext) =>
-        handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, ctx);
-    },
-  ),
-  withOrgContextMock: vi.fn(),
-  careCaseFindManyMock: vi.fn().mockResolvedValue([{ patient_id: 'patient_1' }]),
+const {
+  withAuthContextMock,
+  authGateResponseMock,
+  withOrgContextMock,
+  careCaseFindManyMock,
+  recordPhiReadAuditForRequestMock,
+} = vi.hoisted(() => {
+  const authGateResponseMock = vi.fn<() => Response | undefined>();
+  return {
+    authGateResponseMock,
+    withAuthContextMock: vi.fn(
+      (
+        handler: (
+          req: NextRequest,
+          authContext: TestAuthContext,
+          ctx: DraftRouteContext,
+        ) => Promise<Response>,
+      ) => {
+        return (req: NextRequest, ctx: DraftRouteContext) => {
+          const authResponse = authGateResponseMock();
+          return (
+            authResponse ??
+            handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, ctx)
+          );
+        };
+      },
+    ),
+    withOrgContextMock: vi.fn(),
+    careCaseFindManyMock: vi.fn().mockResolvedValue([{ patient_id: 'patient_1' }]),
+    recordPhiReadAuditForRequestMock: vi.fn(),
+  };
+});
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -69,12 +89,14 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
     });
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns 200 with the draft when found', async () => {
     const mockDraft = {
       id: 'draft_1',
       org_id: 'org_1',
+      patient_id: 'patient_1',
       status: 'pending',
       raw_qr_texts: ['JAHISTC08,1\n1,山田 太郎'],
       qr_payload_hash: 'a'.repeat(64),
@@ -109,6 +131,65 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
     expect(body.data.parsed_data).not.toHaveProperty('rawText');
     expect(JSON.stringify(body)).not.toContain('rawLine');
     expect(JSON.stringify(body)).not.toContain('JAHISTC08');
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'qr_scan_draft',
+        targetId: 'draft_1',
+        view: 'qr_scan_draft_detail',
+      },
+    );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    const auditPayload = JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls[0]?.[1]);
+    expect(auditPayload).not.toContain('山田 太郎');
+    expect(auditPayload).not.toContain('JAHISTC08');
+  });
+
+  it('audits an unlinked draft by target id without exposing raw QR content', async () => {
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'draft_1',
+            org_id: 'org_1',
+            patient_id: null,
+            status: 'pending',
+            raw_qr_texts: ['JAHISTC08,1\n1,未紐付け 患者'],
+            qr_payload_hash: 'b'.repeat(64),
+            parsed_data: {
+              patientName: '未紐付け 患者',
+              rawText: 'JAHISTC08,1\n1,未紐付け 患者',
+            },
+          }),
+        },
+      }),
+    );
+
+    const response = await GET(createRequest(), DRAFT_PARAMS);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body.data).toMatchObject({ id: 'draft_1', patient_id: null, status: 'pending' });
+    expect(body.data).not.toHaveProperty('raw_qr_texts');
+    expect(body.data).not.toHaveProperty('qr_payload_hash');
+    expect(body.data.parsed_data).not.toHaveProperty('rawText');
+    expect(JSON.stringify(body)).not.toContain('JAHISTC08');
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      {
+        patientId: null,
+        targetType: 'qr_scan_draft',
+        targetId: 'draft_1',
+        view: 'qr_scan_draft_detail',
+      },
+    );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    const auditPayload = JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls[0]?.[1]);
+    expect(auditPayload).not.toContain('未紐付け 患者');
+    expect(auditPayload).not.toContain('JAHISTC08');
   });
 
   it('returns 404 when draft is not found', async () => {
@@ -125,6 +206,7 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
     expectSensitiveNoStore(response);
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a fixed no-store 500 when the draft detail read fails', async () => {
@@ -144,6 +226,22 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
     });
     expect(JSON.stringify(body)).not.toContain('山田 太郎');
     expect(JSON.stringify(body)).not.toContain('06012345');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not load or audit draft detail when authentication is rejected', async () => {
+    authGateResponseMock.mockReturnValueOnce(
+      new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), { status: 401 }),
+    );
+
+    const response = await GET(createRequest(), DRAFT_PARAMS);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('queries with the correct org_id scope', async () => {

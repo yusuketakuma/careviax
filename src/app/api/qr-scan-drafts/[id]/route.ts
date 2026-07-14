@@ -1,5 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, notFound, validationError, conflict, internalError } from '@/lib/api/response';
@@ -76,6 +77,13 @@ const authenticatedGET = withAuthContext(
     if (!draft) {
       return notFound('QRスキャン下書きが見つかりません');
     }
+
+    recordPhiReadAuditForRequest(ctx, {
+      patientId: draft.patient_id,
+      targetType: 'qr_scan_draft',
+      targetId: draft.id,
+      view: 'qr_scan_draft_detail',
+    });
 
     return success({ data: toQrDraftResponse(draft) });
   },
