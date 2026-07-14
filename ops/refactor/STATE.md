@@ -49,13 +49,31 @@
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
   共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `E2E-FIXTURE-CONTRACT-001`のroute-mocked fixture修復、
-  `codex2`: `CDS-LAB-STALENESS-RENAL-MONITOR-001`のevidence同期とpeer review follow-up。
+  `codex2`: `PERF-SMOKE-PATH-ID-REDACTION-001`のevidence同期とseeded perf feasibility確認。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex2: PERF-SMOKE-PATH-ID-REDACTION-001 (DONE, 2026-07-14; implementation `0f475dd79`, `PUSHED`; parent remains Partial).
+  - current task / files inspected / root cause:
+    `tools/scripts/perf-smoke.ts`、そのunit tests、route payload budget normalizer、performance smoke runbook、
+    local standalone health runtimeを照合した。既存`safeOutputPath`はquery/hashだけを除去し、dynamic patient/entity IDを
+    JSON artifactの`paths`、matrix entry、warningへ残すため、runbookの「患者IDは出力しない」というprivacy契約と不一致だった。
+  - files changed / bugs fixed / correctness / security / privacy / performance:
+    Perf requestには実pathを維持し、出力経路だけを既存`normalizeRoutePath`へ接続した。aggregateとmatrixの双方で
+    patient IDを含む実URLがfetchされる一方、result path / budget route / warningは`/api/patients/:id/...`となり、
+    serialized resultが実IDを含まないことをtest化。DB/schema/auth、route fetch semantics、payload budget、server lifecycle、
+    request count/concurrency/target判定は変更していない。これによりseeded perf evidenceを安全に保存する前提を整えた。
+  - validation results / remaining work / next action / rollback:
+    Focused 2 files / 35 tests、exact ESLint、Prettier、`git diff --check`、`pnpm typecheck`、8 GiB
+    `pnpm typecheck:no-unused`をPASS。127.0.0.1:3012の`/api/health`へ5 requests / concurrency 1の実smokeも
+    p95/p99 18ms、66 bytes、0 error、target metでPASS。独立codex1 privacy reviewはcommit時点で応答待ちのため、
+    blocking findingが届けば追補修正する。親`PERF-DB-READ-SLO-001`には認証済みseeded route evidenceとregistry/take
+    機械照合が残る。GET routeのread-audit write有無を確認し、DB mutation approvalを迂回しない。
+    非視覚performance tooling変更のためimagegen/browserなし。Rollbackは`0f475dd79`のrevertでDB/data rollback不要。
 
 - codex2: CDS-LAB-STALENESS-RENAL-MONITOR-001 (DONE, 2026-07-14; implementation `c8132e7bf`, `PUSHED`).
   - current task / files inspected / root cause:
