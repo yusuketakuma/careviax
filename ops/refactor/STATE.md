@@ -61,6 +61,69 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: frontend stale state / API error safety / external OTP lockout /
+  SSR authorization / measured response / file-lifecycle integration boundary
+  (DONE / PUSHED, 2026-07-14; implementations `f4881bd84`, `a301ee5a6`, `c9d1d9e85`,
+  `b1c33c805`, `d3bbb32b8`, `1ea5d8a98`, `fbfba2909`, `00a768507`, `55d19d49f`).
+  - workflow / ownership:
+    latest user instructionに従い相互reviewとreview待ちを廃止し、`agmsg`はexact-path ownership、collision回避、
+    freeze/完了handoffだけに使用した。`codex1` frontend、`codex2` backend、`codex3` security implementation、
+    `codex4` performance/responseのnon-overlap sliceを各agentがself-validateし、codex1がhash照合、依存順のexplicit-path
+    staging、scoped commit、単一integration gateを担当した。既存user/harness dirtyとpatient external-share/tool testsを
+    stage、revert、変更していない。
+  - frontend stale-state closure (`f4881bd84`):
+    cached/initial patient overviewが残るbackground refetch errorをsilent successにせず、共通
+    `useStaleAfterRefetchError` + `SegmentStaleBanner`で「前回取得時点」、最終成功取得時刻、44px再取得導線を
+    patient header直下へ固定した。initial failureは既存full ErrorState、cached patient workspaceは維持し、raw Errorに
+    含まれる患者名、電話、token様文字列を表示しない。focused card-workspace `1 file / 99 tests`、exact lint/format/diffを
+    PASS。小さな既存state component接続でvisual reconstructionを行わないためimagegenは省略した。
+  - backend / API safety (`a301ee5a6`, `55d19d49f`):
+    file downloadのaudit failure 500とprovider/open failure 502をtyped error registryへ登録し、fixed constructorだけを移行。
+    same-origin stream、audit-before-open、dynamic typed storage errorは維持した。電子処方adapterのNOT_IMPLEMENTED /
+    UPSTREAM_FAILUREはdynamic provider messageをpublic bodyへ返さず、既存fixed copyへ収束。501/502/503、retriable、
+    upstream_status、no-store、write side effect契約は維持した。self-validationはfile download `2 files / 9 tests`、
+    e-prescription + conventions `2 files / 31 tests`とAPI static gatesをPASS。
+  - external access brute-force closure (`c9d1d9e85`):
+    完了した`EXT-ACCESS-OTP-BRUTEFORCE-001`をunfinished-only Plansから削除した。active grantのOTP validationだけに、
+    domain-separated SHA-256 digestをkeyとするDynamoDB atomic `UpdateItem`をexact-once実行し、cross-IP / GET+self-report
+    合算10回目のmismatch自体からlockする。correct OTPはConditionExpressionでlockをatomic判定し、locked wrong/correctは
+    同じgeneric no-store 404、store unavailable/malformedは両経路ともfixed safe no-store 500へfail-closed化した。
+    raw token、OTP、DB token_hash、PHIをDynamo request/log/errorへ保存せず、missing/malformed/invalid/expired/revoked/
+    scope-invalidはzero-store。31日TTLは`if_not_exists`で延長せず、reissue tokenを別keyにする。active correct validationには
+    1回のbounded Dynamo RTT（abort上限1500ms）が増えるが、grant-wide brute-force防止の明示tradeoffとして採用した。
+    self-validationはexternal/rate `5 files / 128 tests`、pilot/AWS readiness `2 / 12`、API/static gatesをPASS。
+  - SSR authorization / read audit (`00a768507`):
+    `patients/[id]/page.tsx`のSSR overviewをPHI query前の`canVisit` gate、明示request context、
+    `withOrgContext` transaction-only readへ移し、non-null / JSON-safe success後だけ`patient_overview_ssr`を監査する。
+    owner/admin/pharmacist/pharmacist_trainee allow、clerk/driver/external_viewer denyをAPI roleと同期し、missing identity/
+    membership、cross-org null、query throw、denied roleはzero-queryまたはzero-audit。page `13 / 13`、page+overview+
+    permissions+audit `4 files / 37 tests`、authz/raw-org/client-PHI static gatesをPASSした。
+  - measured response performance (`b1c33c805`, `d3bbb32b8`, `fbfba2909`):
+    shared measured JSON success helperはpayloadを一度だけserializeし、そのexact bodyを`NextResponse`とUTF-8
+    Content-Lengthへ再利用する。root `undefined` TypeError、BigInt/circular/throwing/stateful serializer、generic return type parityを
+    regression固定した。PHI-free 35,790-byte AB/BA microbenchmark（1,000 calls x 10）のhelper-time medianは33.1%短縮
+    （wall-clock assertionは未導入）。dispense queue、notifications GET 2 shape、dashboard workflow cache hit/missを採用し、
+    live scanはmeasured helper 12 route / plain `success()`を持つ345 route file。DB/auth/cache/query/no-store/errorは変更せず、
+    self-validationはhelper/3 route/conventions aggregate `5 files / 53 tests`、shape/auth wrapper/static gatesをPASSした。
+  - file lifecycle / official AWS references (`1ea5d8a98`):
+    `createPresignedUpload`のcaller resultからunused `objectKey` / storage keyを除去し、persisted StoredFileRecord、S3 PutObject
+    Key、signed PUT URL、checksum/encryption/ObjectLock headers、public route bodyを維持した。file-storage + public route
+    `2 files / 127 tests`とAPI shape/lint/format/diffをPASS。2026-07-14確認の公式根拠は
+    [S3 Uploading objects with presigned URLs](https://docs.aws.amazon.com/AmazonS3/latest/userguide/PresignedUrlUploadObject.html)、
+    [S3 PutObject API](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html)。OTP lockoutの公式根拠は
+    [DynamoDB UpdateItem API](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_UpdateItem.html)、
+    [Using update expressions](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Expressions.UpdateExpressions.html)、
+    [Using TTL in DynamoDB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html)。migration、IAM/table変更、
+    AWS apply、production mutationは実行していない。
+  - aggregate validation / commits / remaining:
+    全frozen pathをcommit後のcurrent HEADで`pnpm typecheck && pnpm typecheck:no-unused`をcodex1が直列実行してPASS。
+    各sliceのfocused tests、exact ESLint/Prettier/diff、該当API/static gatesもself-validationでPASSした。ユーザー方針により
+    build/Oracleは全agentで実行していない。9 code commitsをfeature branchへnon-force pushし、直後のlocal/remote parityは
+    `0 0`。single-ledger closeoutをpush後、共有docs ownershipをreleaseして各agentは新しいnon-overlap sliceへ進む。
+    `FILE-LIFE-001`はmalware/quarantine、retention/legal hold、
+    broader DTO guard、`ROUTE-AUTHZ-COVERAGE-001`は残GET/PATCH inventory、`FE-PATIENT-DETAIL-001`はpartial/forbidden/
+    offline/conflict stateが残るためPartialを維持する。
+
 - codex1: `FE-PATIENT-MOVEMENT-PLACEHOLDER-PHI-001`
   (DONE / PUSHED, 2026-07-14; implementation `037667413`, ledger `1ba5ec88f`).
   - current task / root cause / reproduction:
