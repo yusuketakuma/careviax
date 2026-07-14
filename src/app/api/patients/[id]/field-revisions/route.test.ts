@@ -8,16 +8,22 @@ const {
   fieldRevisionCountMock,
   userFindManyMock,
   requireAuthContextMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   patientFindFirstMock: vi.fn(),
   fieldRevisionFindManyMock: vi.fn(),
   fieldRevisionCountMock: vi.fn(),
   userFindManyMock: vi.fn(),
   requireAuthContextMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -92,6 +98,79 @@ describe('GET /api/patients/[id]/field-revisions', () => {
       truncated: false,
       count_basis: 'patient_field_revisions',
     });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'patient',
+        targetId: 'patient_1',
+        view: 'patient_field_revision_list',
+      },
+    );
+  });
+
+  it('returns exact sensitive revision values for known internal staff', async () => {
+    fieldRevisionFindManyMock.mockResolvedValue([
+      {
+        ...baseRow,
+        field_key: 'phone',
+        field_label: '電話番号',
+        value_label: '090-0000-0000 → 080-1111-2222',
+        old_value: '090-0000-0000',
+        new_value: '080-1111-2222',
+        change_reason: '家族から連絡あり',
+      },
+    ]);
+
+    const response = await GET(createRequest(), params);
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          value_label: '090-0000-0000 → 080-1111-2222',
+          previous: '090-0000-0000',
+          current: '080-1111-2222',
+          change_reason: '家族から連絡あり',
+        }),
+      ],
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps sensitive revision values masked for external viewers', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { orgId: 'org_1', userId: 'user_ext', role: 'external_viewer' },
+    });
+    fieldRevisionFindManyMock.mockResolvedValue([
+      {
+        ...baseRow,
+        field_key: 'phone',
+        field_label: '電話番号',
+        value_label: '090-0000-0000 → 080-1111-2222',
+        old_value: '090-0000-0000',
+        new_value: '080-1111-2222',
+        change_reason: '家族から連絡あり',
+      },
+    ]);
+
+    const response = await GET(createRequest(), params);
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          value_label: null,
+          previous: '〔記録あり〕',
+          current: '〔記録あり〕',
+          change_reason: null,
+        }),
+      ],
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
   });
 
   it('category and limit filters are reflected in the counted response metadata', async () => {
@@ -133,12 +212,33 @@ describe('GET /api/patients/[id]/field-revisions', () => {
     );
   });
 
+  it('rejects blank patient ids before queries or read audit', async () => {
+    const response = await GET(createRequest(), { params: Promise.resolve({ id: '   ' }) });
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(fieldRevisionFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid query parameters before patient lookup or read audit', async () => {
+    const response = await GET(createRequest('?limit=0'), params);
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(fieldRevisionFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
   it('アクセスできない患者は 404', async () => {
     patientFindFirstMock.mockResolvedValue(null);
     const response = await GET(createRequest(), params);
     expect(response.status).toBe(404);
     expectSensitiveNoStore(response);
     expect(fieldRevisionFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('権限が無い場合は auth レスポンスを返す', async () => {
@@ -148,6 +248,7 @@ describe('GET /api/patients/[id]/field-revisions', () => {
     const response = await GET(createRequest(), params);
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('raw details are omitted from sanitized no-store 500 responses', async () => {
@@ -163,5 +264,6 @@ describe('GET /api/patients/[id]/field-revisions', () => {
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(JSON.stringify(body)).not.toContain('患者A');
     expect(JSON.stringify(body)).not.toContain('モルヒネ');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 });

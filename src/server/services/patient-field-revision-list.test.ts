@@ -9,15 +9,30 @@ function createDb(
   rows: unknown[],
   users: Array<{ id: string; name: string }>,
   count = rows.length,
+  references: {
+    facilities?: Array<{ id: string; name: string }>;
+    facilityUnits?: Array<{ id: string; name: string }>;
+  } = {},
 ) {
   const findMany = vi.fn().mockResolvedValue(rows);
   const countMock = vi.fn().mockResolvedValue(count);
   const userFindMany = vi.fn().mockResolvedValue(users);
+  const facilityFindMany = vi.fn().mockResolvedValue(references.facilities ?? []);
+  const facilityUnitFindMany = vi.fn().mockResolvedValue(references.facilityUnits ?? []);
   const db = {
     patientFieldRevision: { findMany, count: countMock },
     user: { findMany: userFindMany },
+    facility: { findMany: facilityFindMany },
+    facilityUnit: { findMany: facilityUnitFindMany },
   } as unknown as Parameters<typeof listPatientFieldRevisions>[0];
-  return { db, findMany, countMock, userFindMany };
+  return {
+    db,
+    findMany,
+    countMock,
+    userFindMany,
+    facilityFindMany,
+    facilityUnitFindMany,
+  };
 }
 
 const baseRow = {
@@ -91,6 +106,7 @@ describe('listPatientFieldRevisions', () => {
           value_label: '090-0000-0000 → 080-1111-2222',
           old_value: '090-0000-0000',
           new_value: '080-1111-2222',
+          change_reason: '家族から連絡あり',
         },
       ],
       [{ id: 'user_u', name: '田中' }],
@@ -100,6 +116,7 @@ describe('listPatientFieldRevisions', () => {
     expect(result[0].value_label).toBeNull();
     expect(result[0].previous).not.toBe('090-0000-0000');
     expect(result[0].current).not.toBe('080-1111-2222');
+    expect(result[0].change_reason).toBeNull();
     // ただし変更前後に値があった事実(=「変更」バッジ算出)は保持する
     expect(result[0].previous).not.toBeNull();
     expect(result[0].current).not.toBeNull();
@@ -174,6 +191,198 @@ describe('listPatientFieldRevisions', () => {
     expect(serialized).not.toContain('透析導入相談');
     expect(result.every((row) => row.previous === '〔記録あり〕')).toBe(true);
     expect(result.every((row) => row.current === '〔記録あり〕')).toBe(true);
+  });
+
+  it('内部スタッフ向けprojectionでは機微なscalarとstructured valueを正確に返す', async () => {
+    const phoneRow = {
+      ...baseRow,
+      id: 'rev_phone',
+      category: 'basic',
+      field_key: 'phone',
+      field_label: '電話番号',
+      value_label: '090-0000-0000 → 080-1111-2222',
+      old_value: '090-0000-0000',
+      new_value: '080-1111-2222',
+      change_reason: '家族から連絡あり',
+    };
+    const contactsRow = {
+      ...baseRow,
+      id: 'rev_contacts',
+      category: 'contacts',
+      field_key: 'contacts',
+      field_label: '連絡先',
+      value_label: '1件 → 1件',
+      old_value: [{ name: '家族A', phone: '090-0000-0000' }],
+      new_value: [{ name: '家族B', phone: '080-1111-2222' }],
+    };
+    const { db } = createDb([phoneRow, contactsRow], [{ id: 'user_u', name: '田中' }]);
+
+    const result = await listPatientFieldRevisions(db, {
+      orgId: 'org_1',
+      patientId: 'p1',
+      exposeSensitiveValues: true,
+    });
+
+    expect(result[0]).toMatchObject({
+      value_label: phoneRow.value_label,
+      previous: phoneRow.old_value,
+      current: phoneRow.new_value,
+      change_reason: phoneRow.change_reason,
+    });
+    expect(result[1]).toMatchObject({
+      value_label: contactsRow.value_label,
+      previous: contactsRow.old_value,
+      current: contactsRow.new_value,
+    });
+  });
+
+  it('opaque reference valuesを同一組織でbatch解決しraw IDをprimary labelにしない', async () => {
+    const rows = [
+      {
+        ...baseRow,
+        id: 'rev_staff',
+        category: 'basic',
+        field_key: 'primary_pharmacist_id',
+        field_label: '主担当薬剤師',
+        value_label: 'user_old → user_new',
+        old_value: 'user_old',
+        new_value: 'user_new',
+      },
+      {
+        ...baseRow,
+        id: 'rev_facility',
+        category: 'residence',
+        field_key: 'facility_id',
+        field_label: '施設',
+        value_label: 'facility_old → facility_new',
+        old_value: 'facility_old',
+        new_value: 'facility_new',
+      },
+      {
+        ...baseRow,
+        id: 'rev_unit',
+        category: 'residence',
+        field_key: 'facility_unit_id',
+        field_label: '施設ユニット',
+        value_label: 'unit_old → unit_new',
+        old_value: 'unit_old',
+        new_value: 'unit_new',
+      },
+    ];
+    const { db, userFindMany, facilityFindMany, facilityUnitFindMany } = createDb(
+      rows,
+      [
+        { id: 'user_u', name: '更新者' },
+        { id: 'user_c', name: '確認者' },
+        { id: 'user_old', name: '旧担当' },
+        { id: 'user_new', name: '新担当' },
+      ],
+      rows.length,
+      {
+        facilities: [
+          { id: 'facility_old', name: '旧施設' },
+          { id: 'facility_new', name: '新施設' },
+        ],
+        facilityUnits: [
+          { id: 'unit_old', name: '旧ユニット' },
+          { id: 'unit_new', name: '新ユニット' },
+        ],
+      },
+    );
+
+    const result = await listPatientFieldRevisions(db, {
+      orgId: 'org_1',
+      patientId: 'p1',
+      exposeSensitiveValues: true,
+    });
+
+    expect(result.map((row) => row.value_label)).toEqual([
+      '旧担当 → 新担当',
+      '旧施設 → 新施設',
+      '旧ユニット → 新ユニット',
+    ]);
+    expect(result[0]).toMatchObject({ previous: 'user_old', current: 'user_new' });
+    expect(userFindMany).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { in: expect.arrayContaining(['user_u', 'user_c', 'user_old', 'user_new']) },
+      },
+      select: { id: true, name: true },
+    });
+    expect(facilityFindMany).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', id: { in: ['facility_old', 'facility_new'] } },
+      select: { id: true, name: true },
+    });
+    expect(facilityUnitFindMany).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', id: { in: ['unit_old', 'unit_new'] } },
+      select: { id: true, name: true },
+    });
+    expect(JSON.stringify(result.map((row) => row.value_label))).not.toContain('user_old');
+    expect(JSON.stringify(result.map((row) => row.value_label))).not.toContain('facility_old');
+    expect(JSON.stringify(result.map((row) => row.value_label))).not.toContain('unit_old');
+  });
+
+  it('resolver未対応のopaque referenceはraw IDではなく安全な未解決labelを返す', async () => {
+    const { db } = createDb(
+      [
+        {
+          ...baseRow,
+          field_key: 'future_reference_id',
+          value_label: 'secret_old_id → secret_new_id',
+          old_value: 'secret_old_id',
+          new_value: 'secret_new_id',
+        },
+      ],
+      [{ id: 'user_u', name: '田中' }],
+    );
+
+    const result = await listPatientFieldRevisions(db, {
+      orgId: 'org_1',
+      patientId: 'p1',
+      exposeSensitiveValues: true,
+    });
+
+    expect(result[0].value_label).toBe('参照先不明 → 参照先不明');
+    expect(result[0]).toMatchObject({
+      previous: 'secret_old_id',
+      current: 'secret_new_id',
+    });
+    expect(result[0].value_label).not.toContain('secret_old_id');
+    expect(result[0].value_label).not.toContain('secret_new_id');
+  });
+
+  it('fail-closed projectionではopaque referenceのlabel queryを実行しない', async () => {
+    const { db, userFindMany, facilityFindMany, facilityUnitFindMany } = createDb(
+      [
+        {
+          ...baseRow,
+          field_key: 'facility_id',
+          value_label: 'facility_old → facility_new',
+          old_value: 'facility_old',
+          new_value: 'facility_new',
+          change_reason: '転居',
+        },
+      ],
+      [{ id: 'user_u', name: '更新者' }],
+    );
+
+    const result = await listPatientFieldRevisions(db, {
+      orgId: 'org_1',
+      patientId: 'p1',
+    });
+
+    expect(result[0]).toMatchObject({
+      value_label: null,
+      previous: '〔記録あり〕',
+      current: '〔記録あり〕',
+      change_reason: null,
+    });
+    expect(userFindMany).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', id: { in: ['user_u', 'user_c'] } },
+      select: { id: true, name: true },
+    });
+    expect(facilityFindMany).not.toHaveBeenCalled();
+    expect(facilityUnitFindMany).not.toHaveBeenCalled();
   });
 
   it('confirmed_by が無い行は confirmed_by_name を null にする', async () => {

@@ -1,11 +1,13 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { internalError, success, validationError, notFound } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { PATIENT_FIELD_REVISION_CATEGORIES } from '@/lib/patient/field-revision-categories';
+import { getPatientPrivacyFlags } from '@/lib/patient/privacy';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { listPatientFieldRevisionPage } from '@/server/services/patient-field-revision-list';
@@ -48,9 +50,18 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     patientId: id,
     category: parsedQuery.data.category,
     limit: parsedQuery.data.limit,
+    exposeSensitiveValues: !getPatientPrivacyFlags(ctx.role).sensitiveFieldsMasked,
+  });
+  const response = success({ data: revisions.data, meta: revisions.meta });
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: id,
+    targetType: 'patient',
+    targetId: id,
+    view: 'patient_field_revision_list',
   });
 
-  return success({ data: revisions.data, meta: revisions.meta });
+  return response;
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

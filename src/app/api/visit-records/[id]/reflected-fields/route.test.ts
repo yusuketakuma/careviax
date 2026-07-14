@@ -6,15 +6,21 @@ const {
   canAccessVisitScheduleAssignmentMock,
   visitRecordFindFirstMock,
   listFieldRevisionsBySourceVisitRecordMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   canAccessVisitScheduleAssignmentMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   listFieldRevisionsBySourceVisitRecordMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/auth/visit-schedule-access', () => ({
@@ -80,6 +86,7 @@ describe('/api/visit-records/[id]/reflected-fields', () => {
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank visit record ids before loading reflected fields', async () => {
@@ -94,6 +101,7 @@ describe('/api/visit-records/[id]/reflected-fields', () => {
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
     expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
     expect(listFieldRevisionsBySourceVisitRecordMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 with no-store when the visit record is missing', async () => {
@@ -105,6 +113,7 @@ describe('/api/visit-records/[id]/reflected-fields', () => {
     expectSensitiveNoStore(response);
     expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
     expect(listFieldRevisionsBySourceVisitRecordMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when reflected field lookup fails unexpectedly', async () => {
@@ -117,6 +126,24 @@ describe('/api/visit-records/[id]/reflected-fields', () => {
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw reflected field secret');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit when reflected field projection fails after authorization', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr_1',
+      patient_id: 'patient_1',
+      schedule: accessibleSchedule,
+    });
+    listFieldRevisionsBySourceVisitRecordMock.mockRejectedValueOnce(
+      new Error('raw reflected projection secret'),
+    );
+
+    const response = await GET(createRequest(), { params: Promise.resolve({ id: 'vr_1' }) });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns 403 before reading reflected fields when assignment access is denied', async () => {
@@ -136,6 +163,7 @@ describe('/api/visit-records/[id]/reflected-fields', () => {
       accessibleSchedule,
     );
     expect(listFieldRevisionsBySourceVisitRecordMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns reflected fields with no-store headers after assignment access passes', async () => {
@@ -157,9 +185,47 @@ describe('/api/visit-records/[id]/reflected-fields', () => {
       orgId: 'org_1',
       patientId: 'patient_1',
       sourceVisitRecordId: 'vr_1',
+      exposeSensitiveValues: true,
     });
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'rev_1', field_key: 'care_level' }],
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(authCtx.ctx, {
+      patientId: 'patient_1',
+      targetType: 'visit_record',
+      targetId: 'vr_1',
+      view: 'visit_record_reflected_fields',
+    });
+  });
+
+  it('keeps external viewer values fail-closed while auditing the authorized read', async () => {
+    const externalCtx = {
+      ctx: { ...authCtx.ctx, userId: 'user_ext', role: 'external_viewer' },
+    };
+    requireAuthContextMock.mockResolvedValueOnce(externalCtx);
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr_1',
+      patient_id: 'patient_1',
+      schedule: accessibleSchedule,
+    });
+
+    const response = await GET(createRequest(), { params: Promise.resolve({ id: 'vr_1' }) });
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(listFieldRevisionsBySourceVisitRecordMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      sourceVisitRecordId: 'vr_1',
+      exposeSensitiveValues: false,
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(externalCtx.ctx, {
+      patientId: 'patient_1',
+      targetType: 'visit_record',
+      targetId: 'vr_1',
+      view: 'visit_record_reflected_fields',
     });
   });
 });
