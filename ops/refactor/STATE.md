@@ -62,6 +62,31 @@
 
 ## 直近の作業
 
+- codex1 + codex2: GOAL-CONTINUOUS-OPT-20260714 resume / push recovery (IN_PROGRESS, 2026-07-14).
+  - resume / source of truth:
+    `/Users/yusuke/.codex/attachments/f1c66b59-f721-4f9c-91c4-63a2b22f9de8/pasted-text-1.txt` の全3,087行を
+    読み切り、Frame → Explore → Commit → Audit、performance/stability by construction、全到達可能画面の
+    production-like local demo、根本原因単位のfailure clustering、grouped commit、安全なfeature branch pushを現行Goalの
+    収束条件として復元した。project-local規律に従い、新規進捗は本STATEへ集約し、既存の重複台帳は作らない。
+  - live Git / lock / remote evidence:
+    branchは`agent/continuous-improvement-20260712`、再開時HEADは`91a651d5d`、dirtyはuser/harness-owned
+    `.harness-mem/state/continuity.json`と`.harness-mem/state/whisper-budget.json`だけだった。upstream fetch後も
+    localは27 ahead / 0 behind。`.github/workflows/ci.yml`はpush/PRとも`main`限定、production deployも
+    `refs/heads/main`限定かつenvironment approval、container imageはmanual `workflow_dispatch`であることを確認した。
+  - push recovery / validation:
+    `git diff --check @{upstream}..HEAD`、Plans active、frontend contract、module boundaries、raw state colors、typography、
+    API response shape、client JSON schema（361 schema-backed / 0 allowlisted）、route auth wrapper、client PHI log/displayをPASS。
+    prior same-HEAD evidenceとしてtypecheck/no-unused、`build:e2e:local` 311/311、patient/visit E2E 2/2、major screens 32/32、
+    exact history 1/1も確認済み。27 commitsをnon-forceで同feature branchへpushし、remote HEADは`91a651d5d`、
+    local/remote parityは0/0。feature branch pushに紐づくGitHub Actions runは0件でproduction deployは起動していない。
+  - coordination / current queue:
+    codex1として`agmsg` team `phos`を復元。codex2はpatient-prescriptions対象pathsのHOLDを維持し、編集・commit・push・
+    Oracle・long Next gateなしでPlans/STATEの未完了queueをread-only監査中。codex1はshared STATE/RUN_LOCKを一時所有し、
+    次にactive 40件 + frontend 8件を患者安全、security、data integrity、stability、demo impact、verificationで再採点する。
+  - exact next action:
+    codex2のread-only候補表とlive scanを統合し、最初の非重複commit groupを宣言する。その後はfocused test → domain
+    regression → grouped commit/pushを反復し、最後に広範failure collection、full regression、clean restart、全画面demoへ進む。
+
 - codex1 + codex2: ORACLE-GPT-5.6-SOL-DEFAULT-001 (DONE, 2026-07-14; implementations `123bd56a0`, `63ff08820`, `4441a1fed`, not pushed).
   - current task / sources inspected:
     ユーザー指示「今後必ず`gpt-5.6-sol`へ依頼」を、project/user Oracle config、repo/user Codex instructions、Oracle skill、installed CLI、
