@@ -81,7 +81,10 @@
     `pnpm typecheck:no-unused`がPASS。build/E2E/Oracle/migration applyは未実行。codeは`302c3ff9f`、
     integration ledgerは`dc3ebcfa2`へ分離してauthorized non-force pushを完了した。local/remote HEADは
     `dc3ebcfa2a179bff13edea0bc2cd3e3f787d502f`、parity `0 0`。親`API-CONTRACT-003`は残28 literal、6 dynamic、
-    external 11、status/policy/high-risk familiesがあるためPartial。
+    external 11、status/policy/high-risk familiesがあるためPartial。残literalはprovisioning 4、webhook secret 1、billing 4、
+    validation 422 mismatch 1、external access 3、e-prescription 12、break-glass 2、handoff 422 policy 1に集中する。
+    codex1/3/4がusage limit中かつOracle禁止のため、security/billing/medical/auth reviewまたは明示status policyなしの
+    speculative migrationは行わない。次backend再開条件はreview lane復帰または当該familyの明示承認。
 
 - codex2 backend + temporary integration owner: Round 19 medication stock observation fixed-503
   registry migration / PHI-safe failure logging
