@@ -62,6 +62,44 @@
 
 ## 直近の作業
 
+- codex1: MEDSAFE-PATIENT-CONTEXT-SHARE-001 / shared patient context hardening
+  (VERIFY_REQUIRED, 2026-07-14; implementation/push `d3921d72e`).
+  - current task / files inspected / root cause:
+    `docs/ui-ux-design-guidelines.md`全編、Next.js 16同梱のServer/Client Components guide、患者共有page/consumer/schema/tests、
+    `GET /api/patients/[id]` providerとbase select、`PatientPinnedHeader`、AppShell/AppHeader固定geometry、major-screen E2Eを照合した。
+    共有操作は患者名を取得済みなのに恒常的な識別領域を表示せず、malformed 2xxでも共有操作を描画できた。さらに共有
+    `PatientPinnedHeader`の`top-0`は同一scroll containerの固定56px AppHeader背後へ潜る旧geometryだった。
+  - implementation / safety / privacy / performance:
+    overview schemaへauthoritative `display_id` / `name` / `name_kana` / `birth_date`を必須投影し、電話・保険番号等の未使用provider PHIは
+    cache前にstrip。取得完了時にpatient dataが無ければ永続ErrorState + retryへfail-closedし、共有操作を出さない。正確な氏名・カナ・生年月日・年齢・
+    safe patient IDを共有操作より前の既存`PatientPinnedHeader`へ表示し、loadingでも同寸法を予約した。sticky offsetは
+    `--app-header-height`へ収束。外部共有POSTへ識別値を追加せず、public token/OTP/scope境界は不変。追加network/DB query、dependency、client state、
+    手動memo化はない。既存共通部品とClinical Signal Workspace契約の再利用であり視覚再構成ではないためimagegenは省略した。
+
+    | Before                                                             | After                                                               | Why                                                  |
+    | ------------------------------------------------------------------ | ------------------------------------------------------------------- | ---------------------------------------------------- |
+    | 共有操作に患者識別の固定領域がなく、欠落dataでも操作面を描画し得た | 4識別値を操作前に固定し、欠落dataはretry付きErrorStateへfail-closed | 誤患者共有とfalse-emptyを防ぐ                        |
+    | 共通患者headerがAppHeaderと同じ`top-0`                             | `top-[var(--app-header-height)]`                                    | スクロール中も識別値を上部バー背後へ隠さない         |
+    | consumer schemaが患者名nullableでsafe ID等を要求しない             | provider実契約のidentityをstrict required、未使用PHIをstrip         | malformed/cross-boundary payloadをUI stateへ入れない |
+
+  - validation / current blocker:
+    focused 3 filesは初回39/40でstale schema fixtureだけを検出し、専用schema testへcontractを移して再実行39/39 PASS。
+    exact ESLint、Prettier、`git diff --check`、client JSON schema（361/0）、frontend contract、client PHI display/log、Playwright
+    major-screen collection 88 testsをPASS。19:31 JST開始の外部`build:e2e:local` PID 59252/59694が継続中で、開始後にHEAD/dirtyが変わったため
+    current sliceの有効なbuild証跡には使わない。build/typecheckを重ねず、終了後にcurrent HEADで直列再実行する。
+    exact 7 pathsだけを`fix(ui): pin patient identity before external sharing`としてcommitし、safe feature branchへnon-force push済み。
+    remote SHA一致・local/remote 0/0 parityは確認済み。current-HEAD long gateとdesktop/mobile実画面確認が通るまでDONEにはしない。
+
+- codex2: AUTHZ-PATIENT-MEDICATION-TIMELINE-READ-AUDIT-001
+  (DONE, 2026-07-14; implementation/push `03adadd87`).
+  - `src/app/api/patients/[id]/medication-timeline/route.ts`と新規route testのみを変更。org/assignment lookup後のauthoritative
+    `patient.id`をservice/response/canonical `patient_medication_timeline` read auditへ一貫させ、success/emptyだけexact-once、
+    blank/400/auth reject/404/throwはzero-audit。薬剤名、coding、status、dose、quantityをauditへ入れず、既存response/query/no-storeを維持した。
+  - codex1独立reviewとroute+service 2 files / 12 testsをPASS。codex2側のroute+service+audit+auth 4 files / 30 tests、exact lint/format/diff、
+    API/auth/shape/query/RLS/static guardsもPASS。strict Oracleはrequested/resolved GPT-5.6 Sol verified=yes・Extra Highを確認したが、
+    `medication-timeline-audit-review`はCDP ECONNREFUSED、再開session `-2`はprompt-commit-timeoutで回答なし。fallback/duplicate送信なし。
+    exact 2 pathsだけをcommit/pushし、remote SHA一致・0/0 parity・feature branch GitHub run 0・deployなし。
+
 - codex1 + codex2: GOAL-CONTINUOUS-OPT-20260714 resume / push recovery (IN_PROGRESS, 2026-07-14).
   - resume / source of truth:
     `/Users/yusuke/.codex/attachments/f1c66b59-f721-4f9c-91c4-63a2b22f9de8/pasted-text-1.txt` の全3,087行を
