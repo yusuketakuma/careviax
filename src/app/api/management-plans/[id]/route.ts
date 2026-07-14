@@ -1,5 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
@@ -50,10 +51,24 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       org_id: ctx.orgId,
       ...(assignmentWhere ? { case_: assignmentWhere } : {}),
     },
+    include: {
+      case_: {
+        select: { patient_id: true },
+      },
+    },
   });
 
   if (!plan) return notFound('管理計画書が見つかりません');
-  return success({ data: plan });
+  const { case_: planCase, ...publicPlan } = plan;
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: planCase.patient_id,
+    targetType: 'management_plan',
+    targetId: plan.id,
+    view: 'management_plan_detail',
+  });
+
+  return success({ data: publicPlan });
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

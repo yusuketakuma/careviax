@@ -10,6 +10,7 @@ const {
   managementPlanFindUniqueMock,
   managementPlanUpdateMock,
   managementPlanUpdateManyMock,
+  recordPhiReadAuditForRequestMock,
   withOrgContextMock,
   resolveManagementPlanReviewAlertMock,
   scheduleManagementPlanReviewAlertMock,
@@ -21,9 +22,14 @@ const {
   managementPlanFindUniqueMock: vi.fn(),
   managementPlanUpdateMock: vi.fn(),
   managementPlanUpdateManyMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   resolveManagementPlanReviewAlertMock: vi.fn(),
   scheduleManagementPlanReviewAlertMock: vi.fn(),
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -103,6 +109,7 @@ describe('/api/management-plans/[id]', () => {
       status: 'draft',
       effective_from: null,
       next_review_date: new Date('2026-04-30T00:00:00.000Z'),
+      content: { goal: 'アムロジピンの服薬継続を支援' },
       case_: {
         patient_id: 'patient_1',
         primary_pharmacist_id: 'user_2',
@@ -157,12 +164,31 @@ describe('/api/management-plans/[id]', () => {
         id: 'plan_1',
         org_id: 'org_1',
       },
+      include: {
+        case_: {
+          select: { patient_id: true },
+        },
+      },
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: {
         id: 'plan_1',
       },
     });
+    expect(body.data).not.toHaveProperty('case_');
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'management_plan',
+        targetId: 'plan_1',
+        view: 'management_plan_detail',
+      },
+    );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    const auditPayload = JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls[0]?.[1]);
+    expect(auditPayload).not.toContain('アムロジピン');
   });
 
   it('rejects blank management plan ids before loading the plan on GET', async () => {
@@ -181,6 +207,7 @@ describe('/api/management-plans/[id]', () => {
     expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
     expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
     expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns no-store when the management plan is not found on GET', async () => {
@@ -196,6 +223,7 @@ describe('/api/management-plans/[id]', () => {
       code: 'WORKFLOW_NOT_FOUND',
       message: '管理計画書が見つかりません',
     });
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a fixed no-store 500 envelope when loading a management plan throws', async () => {
@@ -213,6 +241,22 @@ describe('/api/management-plans/[id]', () => {
       message: 'サーバー内部でエラーが発生しました',
     });
     expect(JSON.stringify(payload)).not.toContain('raw plan detail failure');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not load or audit a management plan when authentication is rejected', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), { status: 401 }),
+    });
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    }))!;
+
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank management plan ids before parsing or loading the plan on PATCH', async () => {
