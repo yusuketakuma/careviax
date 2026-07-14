@@ -1,5 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -45,6 +46,11 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   });
 
   if (!patient) return notFound('患者が見つかりません');
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: patient.id,
+    view: 'patient_packaging',
+  });
 
   return success({
     data: {

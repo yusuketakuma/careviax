@@ -2,8 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
-const { requireAuthContextMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => ({
+const {
+  requireAuthContextMock,
+  recordPhiReadAuditForRequestMock,
+  prismaMock,
+  withOrgContextMock,
+  txMock,
+} = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
   prismaMock: {
     patient: { findFirst: vi.fn() },
   },
@@ -17,6 +24,10 @@ const { requireAuthContextMock, prismaMock, withOrgContextMock, txMock } = vi.ho
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -63,9 +74,9 @@ describe('/api/patients/[id]/packaging', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
   });
 
-  it('returns the patient packaging profile and effective summary', async () => {
+  it('returns exact packaging values and audits the authoritative patient once', async () => {
     prismaMock.patient.findFirst.mockResolvedValue({
-      id: 'patient_1',
+      id: 'patient_authoritative',
       packaging_profile: {
         default_packaging_method: 'medication_box',
         medication_box_color: '赤',
@@ -83,17 +94,76 @@ describe('/api/patients/[id]/packaging', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       data: {
         packaging_profile: {
           default_packaging_method: 'medication_box',
           medication_box_color: '赤',
+          notes: '昼は別袋',
           special_instructions: '夕食後薬は手渡し',
           cognitive_note: '飲み忘れが続くと家族へ連絡',
+          updated_at: '2026-03-28T10:00:00.000Z',
         },
         effective_summary: 'お薬BOX / BOX色:赤 / 昼は別袋',
       },
     });
+    expect(prismaMock.patient.findFirst).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+      }),
+      {
+        patientId: 'patient_authoritative',
+        view: 'patient_packaging',
+      },
+    );
+    expect(prismaMock.patient.findFirst.mock.invocationCallOrder[0]).toBeLessThan(
+      recordPhiReadAuditForRequestMock.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('audits an empty successful packaging profile read exactly once', async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({
+      id: 'patient_1',
+      packaging_profile: null,
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        packaging_profile: null,
+        effective_summary: null,
+      },
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns an authorization rejection without reading or auditing', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank patient ids before loading packaging data', async () => {
@@ -108,6 +178,21 @@ describe('/api/patients/[id]/packaging', () => {
       message: '患者IDが不正です',
     });
     expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store 404 without auditing when the patient is inaccessible', async () => {
+    prismaMock.patient.findFirst.mockResolvedValue(null);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    expect(prismaMock.patient.findFirst).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when packaging reads fail', async () => {
@@ -126,6 +211,7 @@ describe('/api/patients/[id]/packaging', () => {
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(JSON.stringify(body)).not.toContain('患者A');
     expect(JSON.stringify(body)).not.toContain('一包化');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank patient ids before parsing packaging payloads or upserting', async () => {
@@ -259,5 +345,7 @@ describe('/api/patients/[id]/packaging', () => {
         effective_summary: expect.any(String),
       },
     });
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
   });
 });
