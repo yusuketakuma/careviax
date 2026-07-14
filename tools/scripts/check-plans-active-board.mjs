@@ -18,7 +18,7 @@ const ACTIVE_QUEUE_HEADINGS = [
   'Frontend implementation queue — 未実装だけ',
 ];
 
-const COMPLETED_DERIVED_HEADING = '今回完了した派生タスク（再実装しない）';
+const LEGACY_COMPLETED_SECTION_MARKERS = ['**Done / frozen', '**今回完了した派生タスク'];
 
 function fail(message, details = []) {
   console.error('Plans active board check failed.');
@@ -137,46 +137,11 @@ function readApiResponseAllowlistDebt() {
   }, 0);
 }
 
-function readFirstCellIds(lines, heading) {
-  return dataRows(extractTableAfterHeading(lines, heading))
-    .map((row) => splitTableRow(row)[0])
-    .map((cell) => cell.replace(/`/g, '').trim())
-    .filter(Boolean);
-}
-
-function readCompletedDerivedIds(activeLines) {
-  const headingIndex = findBoldHeadingIndex(activeLines, COMPLETED_DERIVED_HEADING);
-  if (headingIndex === -1) fail(`${COMPLETED_DERIVED_HEADING} is missing`);
-  const ids = [];
-  for (let index = headingIndex + 1; index < activeLines.length; index += 1) {
-    const line = activeLines[index];
-    if (line.startsWith('**') || line.startsWith('### ')) break;
-    const match = line.match(/^- `([^`]+)`:/);
-    if (match) ids.push(match[1]);
-  }
-  if (ids.length === 0) fail(`${COMPLETED_DERIVED_HEADING} has no completed task IDs`);
-  return ids;
-}
-
 function assertCount(counts, bucket, actual) {
   const expected = counts.get(bucket);
   if (expected == null) fail(`classification summary is missing bucket: ${bucket}`);
   if (expected !== actual) {
     fail(`${bucket} count mismatch`, [`expected ${expected}`, `actual ${actual}`]);
-  }
-}
-
-function assertNoCompletedIdsInActiveQueues(activeLines) {
-  const completedIds = new Set(readCompletedDerivedIds(activeLines));
-  const activeIds = ACTIVE_QUEUE_HEADINGS.flatMap((heading) =>
-    readFirstCellIds(activeLines, heading),
-  );
-  const repeated = activeIds.filter((id) => completedIds.has(id));
-  if (repeated.length > 0) {
-    fail(
-      'completed derived task IDs must not remain in active queues',
-      repeated.map((id) => `- ${id}`),
-    );
   }
 }
 
@@ -195,6 +160,37 @@ function assertNoCompletedStatusesInActiveQueues(activeLines) {
     fail(
       'completed statuses must not remain in active implementation queues',
       completedRows.map(({ heading, id, status }) => `- ${heading}: ${id} (${status})`),
+    );
+  }
+}
+
+function assertNoCompletedHistorySections(activeLines, counts) {
+  if (counts.has('Done / frozen')) {
+    fail('unfinished-only Plans board must not include a Done / frozen summary bucket');
+  }
+
+  const completedSections = activeLines
+    .map((line, index) => ({ line: line.trim(), number: index + 1 }))
+    .filter(({ line }) =>
+      LEGACY_COMPLETED_SECTION_MARKERS.some((marker) => line.startsWith(marker)),
+    );
+  if (completedSections.length > 0) {
+    fail(
+      'unfinished-only Plans board must not include completed-history sections',
+      completedSections.map(({ line, number }) => `active line ${number}: ${line}`),
+    );
+  }
+}
+
+function assertNoCompletedTaskEntries(activeLines) {
+  const completedTasks = activeLines
+    .map((line, index) => ({ line: line.trim(), number: index + 1 }))
+    .filter(({ line }) => /^-\s+`[^`]+`:\s+\*\*(?:done|completed)(?:\b|\s*\/)/i.test(line));
+
+  if (completedTasks.length > 0) {
+    fail(
+      'unfinished-only Plans board must not include completed task entries',
+      completedTasks.map(({ line, number }) => `active line ${number}: ${line}`),
     );
   }
 }
@@ -257,11 +253,8 @@ export function checkPlansActiveBoard(content) {
   const activeLines = extractActiveLines(content);
   const counts = readBucketCounts(activeLines);
 
-  assertCount(
-    counts,
-    'Done / frozen',
-    countRows(activeLines, 'Done / frozen — active backlog から削除するもの'),
-  );
+  assertNoCompletedHistorySections(activeLines, counts);
+  assertNoCompletedTaskEntries(activeLines);
   assertCount(
     counts,
     'Partial / residual track',
@@ -279,7 +272,6 @@ export function checkPlansActiveBoard(content) {
   );
 
   assertNoCompletedStatusesInActiveQueues(activeLines);
-  assertNoCompletedIdsInActiveQueues(activeLines);
   assertNoLegacyActiveDashboardRail(activeLines);
   assertNoStaleBoardVersion(activeLines);
   assertApiResponseDebtMatchesAllowlist(activeLines);

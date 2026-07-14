@@ -36,7 +36,6 @@ function fixturePlans(
     overrides.counts ??
     `| Bucket | Count | 入口 |
 | --- | ---: | --- |
-| Done / frozen | 1 | done |
 | Partial / residual track | 1 | partial |
 | Implementation queue | 2 | implementation |
 | Frontend queue | 1 | frontend |
@@ -58,19 +57,13 @@ function fixturePlans(
 
   return `# PH-OS Pharmacy — Implementation Plan
 
-### 2026-07-09 Active Plan Board v9 — 実装済み / 未実装分類 \`cc:ACTIVE\`
+### 2026-07-09 Active Plan Board v9 — 未完了タスクのみ \`cc:ACTIVE\`
 
 ${debtNote}
 
 **現在の分類サマリー**:
 
 ${counts}
-
-**Done / frozen — active backlog から削除するもの**:
-
-| Area | 実装済みとみなす範囲 | 今後の扱い |
-| --- | --- | --- |
-| Dashboard summary rail | done | 再実装しない |
 
 **Partial — 残スコープだけを実装するもの**:
 
@@ -94,11 +87,6 @@ ${implementationRows}
 | --- | --- | --- | --- | --- | --- |
 | \`FE-INBOUND-001\` | Partial | 他職種受信 | inbound | detail | tests |
 
-**今回完了した派生タスク（再実装しない）**:
-
-- \`DASH-SUMMARY-RAIL-001\`: done.
-- \`DASH-PROCESS-TILE-LINKS-001\`: done.
-
 ### 2026-07-09 Archived Plan Board — 旧分類証跡 \`cc:REFERENCE\`
 
 ${archiveNote}
@@ -110,7 +98,7 @@ ${archiveNote}
 }
 
 describe('check-plans-active-board', () => {
-  it('passes when active counts match and archive tasks are reference-only', () => {
+  it('passes when only unfinished work remains and active counts match', () => {
     const root = createFixtureRepo(fixturePlans());
 
     expect(runCheck(root)).toContain('Plans active board check passed');
@@ -121,7 +109,6 @@ describe('check-plans-active-board', () => {
       fixturePlans({
         counts: `| Bucket | Count | 入口 |
 | --- | ---: | --- |
-| Done / frozen | 1 | done |
 | Partial / residual track | 1 | partial |
 | Implementation queue | 3 | implementation |
 | Frontend queue | 1 | frontend |`,
@@ -131,17 +118,57 @@ describe('check-plans-active-board', () => {
     expect(() => runCheck(root)).toThrow(/Implementation queue count mismatch/);
   });
 
-  it('rejects completed derived task IDs that re-enter active queues', () => {
+  it('rejects a Done / frozen bucket even when its count is zero', () => {
     const root = createFixtureRepo(
       fixturePlans({
-        implementationRows: `| ID | Status | Priority | Lane | Plan / DoD | Validation / Stop |
-| --- | --- | --- | --- | --- | --- |
-| \`DASH-SUMMARY-RAIL-001\` | Not started | P1 | Dashboard | stale | tests |
-| \`PLANS-ACTIVE-LINT-001\` | Not started | P2 | Plan hygiene | Check active board | tests |`,
+        counts: `| Bucket | Count | 入口 |
+| --- | ---: | --- |
+| Done / frozen | 0 | completed history |
+| Partial / residual track | 1 | partial |
+| Implementation queue | 2 | implementation |
+| Frontend queue | 1 | frontend |`,
       }),
     );
 
-    expect(() => runCheck(root)).toThrow(/completed derived task IDs/);
+    expect(() => runCheck(root)).toThrow(/must not include a Done \/ frozen summary bucket/);
+  });
+
+  it('rejects the legacy Done / frozen section', () => {
+    const plans = fixturePlans().replace(
+      '**Partial — 残スコープだけを実装するもの**:',
+      `**Done / frozen — active backlog から削除するもの**:
+
+**Partial — 残スコープだけを実装するもの**:`,
+    );
+    const root = createFixtureRepo(plans);
+
+    expect(() => runCheck(root)).toThrow(/must not include completed-history sections/);
+  });
+
+  it('rejects the legacy completed-derived section', () => {
+    const plans = fixturePlans().replace(
+      '### 2026-07-09 Archived Plan Board',
+      `**今回完了した派生タスク（再実装しない）**:
+
+- \`RECENTLY-FINISHED-001\`: done.
+
+### 2026-07-09 Archived Plan Board`,
+    );
+    const root = createFixtureRepo(plans);
+
+    expect(() => runCheck(root)).toThrow(/must not include completed-history sections/);
+  });
+
+  it('rejects explicit completed task bullets outside active queues', () => {
+    const plans = fixturePlans().replace(
+      '**Partial — 残スコープだけを実装するもの**:',
+      `- \`RECENTLY-FINISHED-001\`: **DONE**. Keep this out of Plans.
+
+**Partial — 残スコープだけを実装するもの**:`,
+    );
+    const root = createFixtureRepo(plans);
+
+    expect(() => runCheck(root)).toThrow(/must not include completed task entries/);
   });
 
   it('rejects completed statuses even when the active queue count is updated', () => {
