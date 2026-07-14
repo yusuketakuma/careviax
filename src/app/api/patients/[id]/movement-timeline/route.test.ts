@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { getPerformanceSnapshot, resetPerformanceMetrics } from '@/lib/utils/performance';
 
 const {
   getPatientTimelineDataMock,
@@ -113,6 +114,7 @@ function movementEvent(
 describe('GET /api/patients/[id]/movement-timeline', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetPerformanceMetrics();
     authContextMock.mockReturnValue({ orgId: 'org_1', role: 'pharmacist', userId: 'user_1' });
     authRejectionMock.mockReturnValue(null);
     createScopedTxRunnerMock.mockReturnValue(fakeRunner);
@@ -149,6 +151,20 @@ describe('GET /api/patients/[id]/movement-timeline', () => {
 
     const json = await response.json();
     expectMeasuredJsonContentLength(response, json);
+    const responseBytes = Number(response.headers.get('content-length'));
+    expect(
+      getPerformanceSnapshot({ topRoutes: 100 }).routes.find(
+        (route) => route.method === 'GET' && route.route === '/api/patients/:id/movement-timeline',
+      ),
+    ).toMatchObject({
+      critical_route: true,
+      critical_route_family: 'patient-movement-timeline-list',
+      payload_sample_count: 1,
+      last_payload_bytes: responseBytes,
+      payload_budget_bytes: 256_000,
+      payload_budget_status: 'within_budget',
+      payload_budget_met: true,
+    });
     expect(json).toMatchObject({
       data: { movement_events: [] },
       meta: {

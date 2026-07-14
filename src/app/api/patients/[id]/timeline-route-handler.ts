@@ -15,6 +15,7 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withAuthContext } from '@/lib/auth/context';
 import { createScopedTxRunner } from '@/lib/db/rls';
 import { japanDayInstantRangeFromDateKey } from '@/lib/utils/date-boundary';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { isValidDateKey } from '@/lib/validations/date-key';
 import { getPatientTimelineData } from '@/server/services/patient-detail';
 import type { PatientMovementCategory } from '@/types/patient-movement-timeline';
@@ -349,11 +350,13 @@ export function createPatientMovementTimelineGET() {
   );
 
   return async function GET(req: NextRequest, routeContext: PatientTimelineRouteContext) {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-    } catch (err) {
-      unstable_rethrow(err);
-      return withSensitiveNoStore(internalError());
-    }
+    return withRoutePerformance(req, async () => {
+      try {
+        return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+      } catch (err) {
+        unstable_rethrow(err);
+        return withSensitiveNoStore(internalError());
+      }
+    });
   };
 }
