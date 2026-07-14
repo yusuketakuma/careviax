@@ -70,6 +70,15 @@ function createMalformedJsonRequest() {
   });
 }
 
+function expectRequestTrace(
+  response: Response,
+  requestId = 'request_bulk_1',
+  correlationId = 'correlation_bulk_1',
+) {
+  expect(response.headers.get('x-request-id')).toBe(requestId);
+  expect(response.headers.get('x-correlation-id')).toBe(correlationId);
+}
+
 describe('/api/patients/medications/bulk-export POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -80,6 +89,8 @@ describe('/api/patients/medications/bulk-export POST', () => {
         role: 'admin',
         ipAddress: '127.0.0.1',
         userAgent: 'vitest',
+        requestId: 'request_bulk_1',
+        correlationId: 'correlation_bulk_1',
       },
     });
     queueMedicationHistoryBulkExportMock.mockResolvedValue({
@@ -106,6 +117,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
     }
     expect(response.status).toBe(202);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     expect(queueMedicationHistoryBulkExportMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       requestedBy: 'user_1',
@@ -117,6 +129,10 @@ describe('/api/patients/medications/bulk-export POST', () => {
       auditContext: {
         ipAddress: '127.0.0.1',
         userAgent: 'vitest',
+      },
+      requestTrace: {
+        requestId: 'request_bulk_1',
+        correlationId: 'correlation_bulk_1',
       },
     });
     expect(drainMedicationHistoryBulkExportQueueMock).toHaveBeenCalledWith({
@@ -164,6 +180,8 @@ describe('/api/patients/medications/bulk-export POST', () => {
         targetId: 'job_1',
         jobType: 'medication-history-bulk-export-drain',
         operation: 'drain',
+        requestId: 'request_bulk_1',
+        correlationId: 'correlation_bulk_1',
       },
       expect.any(Error),
     );
@@ -180,7 +198,24 @@ describe('/api/patients/medications/bulk-export POST', () => {
     }
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     expect(queueMedicationHistoryBulkExportMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves the authenticated request trace on known workflow errors', async () => {
+    const { MedicationHistoryBulkExportError } = await import('@/server/services/pdf-bulk-export');
+    queueMedicationHistoryBulkExportMock.mockRejectedValueOnce(
+      new MedicationHistoryBulkExportError('WORKFLOW_CONFLICT', 'queue full', 409),
+    );
+
+    const response = await POST(createRequest({ patient_ids: ['patient_1'] }));
+
+    if (!response) {
+      throw new Error('Expected a response from conflicted bulk export POST');
+    }
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    expectRequestTrace(response);
   });
 
   it('rejects blank patient ids before queueing work', async () => {
@@ -231,11 +266,35 @@ describe('/api/patients/medications/bulk-export POST', () => {
     }
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     const body = await response.text();
     expect(body).toContain('EXTERNAL_PDF_RENDER_FAILED');
     expect(body).not.toContain(rawError);
     expect(body).not.toContain('患者A');
     expect(body).not.toContain('token=secret');
     expect(drainMedicationHistoryBulkExportQueueMock).not.toHaveBeenCalled();
+  });
+
+  it('passes through the trace already attached to pre-auth failures', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), {
+        status: 401,
+        headers: {
+          'content-type': 'application/json',
+          'x-request-id': 'request_auth_failure',
+          'x-correlation-id': 'correlation_auth_failure',
+        },
+      }),
+    });
+
+    const response = await POST(createRequest({ patient_ids: ['patient_1'] }));
+
+    if (!response) {
+      throw new Error('Expected a response from unauthorized bulk export POST');
+    }
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    expectRequestTrace(response, 'request_auth_failure', 'correlation_auth_failure');
+    expect(queueMedicationHistoryBulkExportMock).not.toHaveBeenCalled();
   });
 });

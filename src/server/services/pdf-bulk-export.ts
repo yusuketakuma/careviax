@@ -17,6 +17,7 @@ import { buildMedicationHistoryPdf } from '@/server/services/pdf-documents';
 import { PdfNotFoundError } from '@/server/services/pdf-errors';
 import { deleteGeneratedFile, storeGeneratedFile } from '@/server/services/file-storage';
 import { recordDataExportAudit } from '@/server/services/export-audit';
+import { isValidRequestTraceId, type RequestTraceContext } from '@/lib/api/request-correlation';
 
 const BULK_EXPORT_JOB_TYPE = 'medication-history-bulk-export';
 const MAX_PATIENTS_PER_EXPORT = 500;
@@ -52,6 +53,10 @@ type QueueMedicationHistoryBulkExportArgs = {
   auditContext?: {
     ipAddress?: string;
     userAgent?: string;
+  };
+  requestTrace?: {
+    requestId?: unknown;
+    correlationId?: unknown;
   };
 };
 
@@ -121,20 +126,59 @@ function buildPatientSelectionHash(orgId: string, patientIds: string[]) {
     .digest('hex');
 }
 
+function validateRequestTracePair(
+  requestId: unknown,
+  correlationId: unknown,
+): RequestTraceContext | undefined {
+  if (!isValidRequestTraceId(requestId) || !isValidRequestTraceId(correlationId)) {
+    return undefined;
+  }
+
+  return { requestId, correlationId };
+}
+
+function readPersistedRequestTrace(input: Prisma.JsonValue): RequestTraceContext | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined;
+
+  const requestTrace = (input as Record<string, unknown>).request_trace;
+  if (!requestTrace || typeof requestTrace !== 'object' || Array.isArray(requestTrace)) {
+    return undefined;
+  }
+
+  const traceRecord = requestTrace as Record<string, unknown>;
+  return validateRequestTracePair(traceRecord.request_id, traceRecord.correlation_id);
+}
+
+function buildPersistedRequestTrace(requestTrace: RequestTraceContext | undefined) {
+  return requestTrace
+    ? {
+        request_trace: {
+          request_id: requestTrace.requestId,
+          correlation_id: requestTrace.correlationId,
+        },
+      }
+    : {};
+}
+
 function buildTerminalBulkExportInput(args: {
   orgId: string;
   requestedBy: string;
   patientIds: string[];
+  requestTrace?: RequestTraceContext;
 }) {
   return {
     version: 1,
     requestedBy: args.requestedBy,
     patient_count: args.patientIds.length,
     patient_selection_hash: buildPatientSelectionHash(args.orgId, args.patientIds),
+    ...buildPersistedRequestTrace(args.requestTrace),
   } satisfies Prisma.InputJsonValue;
 }
 
-function buildInvalidTerminalBulkExportInput(input: Prisma.JsonValue) {
+function buildInvalidTerminalBulkExportInput(
+  input: Prisma.JsonValue,
+  requestTrace: RequestTraceContext | undefined,
+) {
   const requestedBy =
     input && typeof input === 'object' && !Array.isArray(input) && 'requestedBy' in input
       ? (input as Record<string, unknown>).requestedBy
@@ -145,6 +189,7 @@ function buildInvalidTerminalBulkExportInput(input: Prisma.JsonValue) {
     requestedBy:
       typeof requestedBy === 'string' && requestedBy.trim() ? requestedBy.trim() : 'unknown',
     invalid_input: true,
+    ...buildPersistedRequestTrace(requestTrace),
   } satisfies Prisma.InputJsonValue;
 }
 
@@ -592,6 +637,10 @@ export async function queueMedicationHistoryBulkExport(args: QueueMedicationHist
   }
 
   const normalizedPatientIds = parsedPatientIds.data;
+  const requestTrace = validateRequestTracePair(
+    args.requestTrace?.requestId,
+    args.requestTrace?.correlationId,
+  );
   if (normalizedPatientIds.length > MAX_PATIENTS_PER_EXPORT) {
     throw new MedicationHistoryBulkExportError(
       'VALIDATION_ERROR',
@@ -648,6 +697,7 @@ export async function queueMedicationHistoryBulkExport(args: QueueMedicationHist
           version: 1,
           requestedBy: args.requestedBy,
           patientIds: normalizedPatientIds,
+          ...buildPersistedRequestTrace(requestTrace),
         } satisfies Prisma.InputJsonValue,
       },
       select: {
@@ -671,6 +721,8 @@ export async function queueMedicationHistoryBulkExport(args: QueueMedicationHist
       },
       ipAddress: args.auditContext?.ipAddress,
       userAgent: args.auditContext?.userAgent,
+      requestId: requestTrace?.requestId,
+      correlationId: requestTrace?.correlationId,
     });
 
     return {
@@ -759,6 +811,7 @@ export async function runMedicationHistoryBulkExportJob(
     return null;
   }
 
+  const requestTrace = readPersistedRequestTrace(job.input);
   const parsedInput = bulkExportInputSchema.safeParse(job.input);
   if (!parsedInput.success) {
     const message = '一括出力ジョブの入力が不正です';
@@ -771,7 +824,7 @@ export async function runMedicationHistoryBulkExportJob(
       data: {
         status: 'failed',
         error_log: message,
-        input: buildInvalidTerminalBulkExportInput(job.input),
+        input: buildInvalidTerminalBulkExportInput(job.input, requestTrace),
         completed_at: new Date(),
         locked_at: null,
         retry_count: { increment: 1 },
@@ -867,6 +920,7 @@ export async function runMedicationHistoryBulkExportJob(
       orgId: job.org_id,
       requestedBy: parsedInput.data.requestedBy,
       patientIds: parsedInput.data.patientIds,
+      requestTrace,
     });
 
     const completed = await prisma.$transaction(async (tx) => {
@@ -905,6 +959,8 @@ export async function runMedicationHistoryBulkExportJob(
           failure_codes: failureCodes,
           patient_selection_hash: terminalInput.patient_selection_hash,
         },
+        requestId: requestTrace?.requestId,
+        correlationId: requestTrace?.correlationId,
       });
 
       return updated;
@@ -997,6 +1053,7 @@ export async function runMedicationHistoryBulkExportJob(
           orgId: job.org_id,
           requestedBy: parsedInput.data.requestedBy,
           patientIds: parsedInput.data.patientIds,
+          requestTrace,
         }),
         completed_at: new Date(),
         locked_at: null,

@@ -11,6 +11,7 @@ import {
   validationError,
 } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { withRequestTraceHeaders } from '@/lib/api/request-correlation';
 import {
   drainMedicationHistoryBulkExportQueue,
   MedicationHistoryBulkExportError,
@@ -32,60 +33,82 @@ async function authenticatedPOST(req: NextRequest) {
   });
   if ('response' in authResult) return authResult.response;
 
-  const payload = await readJsonObjectRequestBody(req);
-  if (!payload) return validationError('リクエストボディが不正です');
-
-  const parsed = bulkMedicationExportSchema.safeParse(payload);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
-
-  const patientIds = Array.from(new Set(parsed.data.patient_ids));
+  const trace = {
+    requestId: authResult.ctx.requestId,
+    correlationId: authResult.ctx.correlationId,
+  };
+  const tracedResponse = <TResponse extends Response>(response: TResponse) =>
+    withRequestTraceHeaders(response, trace);
 
   try {
-    const data = await queueMedicationHistoryBulkExport({
-      orgId: authResult.ctx.orgId,
-      requestedBy: authResult.ctx.userId,
-      patientIds,
-      accessContext: {
-        userId: authResult.ctx.userId,
-        role: authResult.ctx.role,
-      },
-      auditContext: {
-        ipAddress: authResult.ctx.ipAddress,
-        userAgent: authResult.ctx.userAgent,
-      },
-    });
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return tracedResponse(validationError('リクエストボディが不正です'));
 
-    if (data.startedImmediately) {
-      void drainMedicationHistoryBulkExportQueue({ orgId: authResult.ctx.orgId }).catch((cause) => {
-        logger.warn(
-          {
-            event: 'medication_history_bulk_export.drain_failed',
-            orgId: authResult.ctx.orgId,
-            targetId: data.jobId,
-            jobType: 'medication-history-bulk-export-drain',
-            operation: 'drain',
-          },
-          cause,
-        );
-      });
+    const parsed = bulkMedicationExportSchema.safeParse(payload);
+    if (!parsed.success) {
+      return tracedResponse(
+        validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
+      );
     }
 
-    return success({ data }, 202);
-  } catch (cause) {
-    if (cause instanceof MedicationHistoryBulkExportError) {
-      if (cause.code === 'WORKFLOW_CONFLICT') {
-        return conflict(cause.message);
+    const patientIds = Array.from(new Set(parsed.data.patient_ids));
+
+    try {
+      const data = await queueMedicationHistoryBulkExport({
+        orgId: authResult.ctx.orgId,
+        requestedBy: authResult.ctx.userId,
+        patientIds,
+        accessContext: {
+          userId: authResult.ctx.userId,
+          role: authResult.ctx.role,
+        },
+        auditContext: {
+          ipAddress: authResult.ctx.ipAddress,
+          userAgent: authResult.ctx.userAgent,
+        },
+        requestTrace: trace,
+      });
+
+      if (data.startedImmediately) {
+        void drainMedicationHistoryBulkExportQueue({ orgId: authResult.ctx.orgId }).catch(
+          (cause) => {
+            logger.warn(
+              {
+                event: 'medication_history_bulk_export.drain_failed',
+                orgId: authResult.ctx.orgId,
+                targetId: data.jobId,
+                jobType: 'medication-history-bulk-export-drain',
+                operation: 'drain',
+                requestId: trace.requestId,
+                correlationId: trace.correlationId,
+              },
+              cause,
+            );
+          },
+        );
       }
 
-      return error(cause.code, cause.message, cause.status);
-    }
+      return tracedResponse(success({ data }, 202));
+    } catch (cause) {
+      unstable_rethrow(cause);
+      if (cause instanceof MedicationHistoryBulkExportError) {
+        if (cause.code === 'WORKFLOW_CONFLICT') {
+          return tracedResponse(conflict(cause.message));
+        }
 
-    return registeredError(
-      'EXTERNAL_PDF_RENDER_FAILED',
-      '薬歴 PDF 一括出力のキュー登録に失敗しました',
-    );
+        return tracedResponse(error(cause.code, cause.message, cause.status));
+      }
+
+      return tracedResponse(
+        registeredError(
+          'EXTERNAL_PDF_RENDER_FAILED',
+          '薬歴 PDF 一括出力のキュー登録に失敗しました',
+        ),
+      );
+    }
+  } catch (err) {
+    unstable_rethrow(err);
+    return tracedResponse(internalError());
   }
 }
 

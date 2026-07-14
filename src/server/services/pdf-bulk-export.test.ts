@@ -189,6 +189,10 @@ describe('pdf-bulk-export', () => {
         userId: 'user_1',
         role: 'admin',
       },
+      requestTrace: {
+        requestId: 'request_bulk_1',
+        correlationId: 'correlation_bulk_1',
+      },
     });
 
     expect(result).toMatchObject({
@@ -206,6 +210,10 @@ describe('pdf-bulk-export', () => {
           input: expect.objectContaining({
             requestedBy: 'user_1',
             patientIds: ['patient_1', 'patient_2'],
+            request_trace: {
+              request_id: 'request_bulk_1',
+              correlation_id: 'correlation_bulk_1',
+            },
           }),
         }),
       }),
@@ -227,11 +235,45 @@ describe('pdf-bulk-export', () => {
             requested_count: 2,
             patient_selection_hash: expect.any(String),
           },
+          request_trace: {
+            request_id: 'request_bulk_1',
+            correlation_id: 'correlation_bulk_1',
+          },
         }),
       }),
     });
     expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('patient_1');
     expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('patient_2');
+  });
+
+  it.each([
+    {
+      label: 'partial',
+      requestTrace: { requestId: 'request_bulk_1' },
+    },
+    {
+      label: 'invalid',
+      requestTrace: {
+        requestId: 'request bulk 1',
+        correlationId: 'correlation_bulk_1',
+      },
+    },
+  ])('atomically drops a $label queue trace pair', async ({ requestTrace }) => {
+    await queueMedicationHistoryBulkExport({
+      orgId: 'org_1',
+      requestedBy: 'user_1',
+      patientIds: ['patient_1', 'patient_2'],
+      accessContext: {
+        userId: 'user_1',
+        role: 'admin',
+      },
+      requestTrace,
+    });
+
+    expect(integrationJobCreateMock.mock.calls[0]?.[0]?.data.input).not.toHaveProperty(
+      'request_trace',
+    );
+    expect(auditLogCreateMock.mock.calls[0]?.[0]?.data.changes).not.toHaveProperty('request_trace');
   });
 
   it('rejects blank patient ids before queueing a medication history bulk export job', async () => {
@@ -420,6 +462,87 @@ describe('pdf-bulk-export', () => {
     expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain(storedFileId);
   });
 
+  it('preserves a valid queued trace in completed terminal input and the export audit', async () => {
+    integrationJobFindFirstMock.mockResolvedValue(null);
+    integrationJobFindUniqueMock.mockResolvedValueOnce({
+      id: 'job_1',
+      org_id: 'org_1',
+      status: 'pending',
+      job_type: 'medication-history-bulk-export',
+      input: {
+        version: 1,
+        requestedBy: 'user_1',
+        patientIds: ['patient_1', 'patient_2'],
+        request_trace: {
+          request_id: 'request_bulk_1',
+          correlation_id: 'correlation_bulk_1',
+        },
+      },
+    });
+
+    await expect(runMedicationHistoryBulkExportJob('job_1')).resolves.toMatchObject({
+      jobId: 'job_1',
+      fileId: 'file_1',
+      patientCount: 2,
+    });
+
+    expect(integrationJobUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'completed',
+          input: expect.objectContaining({
+            patient_count: 2,
+            patient_selection_hash: expect.any(String),
+            request_trace: {
+              request_id: 'request_bulk_1',
+              correlation_id: 'correlation_bulk_1',
+            },
+          }),
+        }),
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          request_trace: {
+            request_id: 'request_bulk_1',
+            correlation_id: 'correlation_bulk_1',
+          },
+        }),
+      }),
+    });
+  });
+
+  it('drops a partial persisted trace without invalidating the export job', async () => {
+    integrationJobFindFirstMock.mockResolvedValue(null);
+    integrationJobFindUniqueMock.mockResolvedValueOnce({
+      id: 'job_1',
+      org_id: 'org_1',
+      status: 'pending',
+      job_type: 'medication-history-bulk-export',
+      input: {
+        version: 1,
+        requestedBy: 'user_1',
+        patientIds: ['patient_1', 'patient_2'],
+        request_trace: {
+          request_id: 'request_bulk_1',
+        },
+      },
+    });
+
+    await expect(runMedicationHistoryBulkExportJob('job_1')).resolves.toMatchObject({
+      jobId: 'job_1',
+      fileId: 'file_1',
+      patientCount: 2,
+    });
+
+    const completedInput = integrationJobUpdateManyMock.mock.calls.find(
+      ([call]) => call.data?.status === 'completed',
+    )?.[0]?.data?.input;
+    expect(completedInput).not.toHaveProperty('request_trace');
+    expect(auditLogCreateMock.mock.calls[0]?.[0]?.data.changes).not.toHaveProperty('request_trace');
+  });
+
   it('fails jobs with blank persisted patient ids before rendering PDFs', async () => {
     integrationJobFindFirstMock.mockResolvedValue(null);
     integrationJobFindUniqueMock.mockResolvedValueOnce({
@@ -431,6 +554,10 @@ describe('pdf-bulk-export', () => {
         version: 1,
         requestedBy: 'user_1',
         patientIds: ['patient_1', '   '],
+        request_trace: {
+          request_id: 'request_bulk_1',
+          correlation_id: 'correlation_bulk_1',
+        },
       },
     });
 
@@ -450,11 +577,59 @@ describe('pdf-bulk-export', () => {
             version: 1,
             requestedBy: 'user_1',
             invalid_input: true,
+            request_trace: {
+              request_id: 'request_bulk_1',
+              correlation_id: 'correlation_bulk_1',
+            },
           },
           locked_at: null,
         }),
       }),
     );
+    expect(JSON.stringify(integrationJobUpdateManyMock.mock.calls)).not.toContain('patient_1');
+  });
+
+  it('preserves a valid trace in failed terminal input without creating a failure audit', async () => {
+    const rawFailure = 'storage unavailable patient=患者A token=secret';
+    integrationJobFindFirstMock.mockResolvedValue(null);
+    integrationJobFindUniqueMock.mockResolvedValueOnce({
+      id: 'job_1',
+      org_id: 'org_1',
+      status: 'pending',
+      job_type: 'medication-history-bulk-export',
+      input: {
+        version: 1,
+        requestedBy: 'user_1',
+        patientIds: ['patient_1', 'patient_2'],
+        request_trace: {
+          request_id: 'request_bulk_1',
+          correlation_id: 'correlation_bulk_1',
+        },
+      },
+    });
+    storeGeneratedFileMock.mockRejectedValueOnce(new Error(rawFailure));
+
+    await expect(runMedicationHistoryBulkExportJob('job_1')).rejects.toThrow(rawFailure);
+
+    expect(integrationJobUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'failed',
+          error_log: '薬歴 PDF ZIP の生成に失敗しました',
+          input: expect.objectContaining({
+            patient_count: 2,
+            patient_selection_hash: expect.any(String),
+            request_trace: {
+              request_id: 'request_bulk_1',
+              correlation_id: 'correlation_bulk_1',
+            },
+          }),
+        }),
+      }),
+    );
+    expect(JSON.stringify(integrationJobUpdateManyMock.mock.calls)).not.toContain('patient_1');
+    expect(JSON.stringify(integrationJobUpdateManyMock.mock.calls)).not.toContain('patient_2');
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('audits partial exports with the actual successful PDF count', async () => {
@@ -981,10 +1156,17 @@ describe('pdf-bulk-export', () => {
         }),
         data: expect.objectContaining({
           status: 'failed',
+          input: {
+            version: 1,
+            terminal_reason: 'timeout',
+            input_redacted: true,
+          },
           locked_at: null,
         }),
       }),
     );
+    expect(integrationJobFindUniqueMock).not.toHaveBeenCalled();
+    expect(JSON.stringify(integrationJobUpdateManyMock.mock.calls)).not.toContain('request_trace');
   });
 
   it('does not let stale running jobs count against the queue quota', async () => {
