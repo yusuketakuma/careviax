@@ -63,7 +63,7 @@
 
 - codex2 backend + temporary integration owner: Round 20 visit handoff legacy fixed-500
   error-contract migration
-  (DONE / CODE COMMITTED, PUSH PENDING, 2026-07-15; implementation `302c3ff9f`).
+  (DONE / CODE + LEDGER PUSHED, 2026-07-15; implementation `302c3ff9f`, ledger `dc3ebcfa2`).
   - workflow / scope:
     Round19を`a09d336c5` / parity `0 0`でclose後、残registry debtを再分類した。visit handoffの
     `extraction_failed` 1分岐と`internal_error` 3分岐はfixed 500、既存wire tests、extractionの
@@ -78,8 +78,9 @@
     registry/static + 4 handoff route suites `6 files / 67 tests`、exact7 ESLint/Prettier、
     `api-response-shape:check`、`api-authz-status:check`、`dto-direct-prisma-return:check`、
     `route-auth-wrapper:check`、RLS `24/24`、`boundaries:check`、diff-check、serialized `pnpm typecheck`、
-    `pnpm typecheck:no-unused`がPASS。build/E2E/Oracle/migration applyは未実行。codeは`302c3ff9f`へcommit済みで、
-    Plans/STATE/RUN_LOCK closeoutとauthorized non-force pushが残る。親`API-CONTRACT-003`は残28 literal、6 dynamic、
+    `pnpm typecheck:no-unused`がPASS。build/E2E/Oracle/migration applyは未実行。codeは`302c3ff9f`、
+    integration ledgerは`dc3ebcfa2`へ分離してauthorized non-force pushを完了した。local/remote HEADは
+    `dc3ebcfa2a179bff13edea0bc2cd3e3f787d502f`、parity `0 0`。親`API-CONTRACT-003`は残28 literal、6 dynamic、
     external 11、status/policy/high-risk familiesがあるためPartial。
 
 - codex2 backend + temporary integration owner: Round 19 medication stock observation fixed-503
