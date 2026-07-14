@@ -61,6 +61,35 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: Round 14 visit-constraints recovery / error-details ratchet /
+  inbound-detail PHI-safe logging / visit-preparation context-read parallelization boundary
+  (DONE / CODE PUSHED, 2026-07-15; implementations `f83b34f97`, `5e9362ff2`, `335e7f32c`, `09ae475b4`).
+  - workflow / ownership / files inspected:
+    `agmsg` inbox/history、live Git、`Plans.md`、UI SSOT、Next.js client/error guides、visit-constraints component/testsを確認した。
+    4 laneはnon-overlapで、codex1 exact2、codex2 exact1、codex3 exact2、codex4 exact2の全handoff SHA-256をlive filesと照合した。
+    開始HEAD `53a269a66` / parity `0 0`からINDEX/DOCS HARD HOLDを通知し、明示7 pathだけを4 logical groupsへstageした。
+    既存dirtyの`.harness-mem/state/{continuity,whisper-budget}.json`、patient external-share 4 files、
+    `tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`は変更、stage、revertしていない。
+  - frontend / visit-constraints save recovery (`f83b34f97`):
+    `visit-constraints-card.{tsx,test.tsx}`でtoastだけだったPUT保存失敗をfixed PHI-safe inline `ErrorState`へ接続し、
+    現在のdraft/contextを保持したまま、失敗時点でcloneした`VisitConstraintsFormState`を同一patient/org writeへ再試行する。
+    weekday配列もcloneして失敗後の編集値と分離し、raw provider errorは表示しない。query recovery、strict acknowledgement、
+    request projection、invalidation、success resetは維持した。focused component suiteは`1 file / 19 tests`。
+    軽微なstate追加のためimagegenは省略した。
+  - backend / security / performance (`5e9362ff2`, `335e7f32c`, `09ae475b4`):
+    alias-aware AST ratchetはerror helperのwire-visible details expressionをpath/helper/code/details込みでexact baseline化し、raw 15 / external 0を固定した。
+    inbound raw-detail GETはpurpose/read_reason/request_id、assignment-scoped RLS、authorized DTO、minimized auditを維持し、outer catch loggerを
+    fixed one-arg metadata + typed requestIdへ縮小してraw Error/message/stack/sender/contact/raw_textを除外した。
+    visit-preparation GETはprevious visit/open task/contact log/same-day scheduleの4 readを既存post-scope waveへ移し、
+    query body/count/select/order/take、assignment/auth/PHI/billing/DTO/PUTを維持したまま第三の逐次DB waitを除去した。
+  - validation / commit / push / remaining:
+    codex1 focused 19 tests、exact lint/format、frontend contract、client PHI-log/display、state color、typography、diff-checkがPASS。
+    peer handoffはcodex2 grouped `4 files / 22 tests`、codex3 `17 tests` + security/static gates、codex4 route `43 tests` +
+    query-shape/read-SLO/boundaries/API/static gatesがPASS。唯一のaggregate `pnpm typecheck && pnpm typecheck:no-unused`は両方exit 0。
+    build/Oracleは実行していない。4 code commitsをnon-force pushし、local/remote HEAD
+    `09ae475b459e54da37ee332f14d2ad2e8db953bc`、parity `0 0`。active `Plans.md`は完了surface列挙を除き、
+    error details 15/0と未完了server-log acceptanceだけへ更新した。親項目は残surfaceのためPartial。
+
 - codex1 + codex2 + codex3 + codex4: Round 13 patient packaging recovery / nonliteral error-message ratchet /
   medication-stock PHI-safe logging / visit-brief queue parallelization boundary
   (DONE / CODE PUSHED, 2026-07-15; implementations `fcc867f75`, `aa2392953`, `c66eab778`, `1515369ff`;
