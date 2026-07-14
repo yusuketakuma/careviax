@@ -20,6 +20,9 @@ describe('typecheck package scripts', () => {
     };
     const command = packageJson.scripts['typecheck:no-unused'];
 
+    expect(command).toContain(
+      'node --max-old-space-size=8192 node_modules/typescript/bin/tsc --noEmit',
+    );
     expect(command).toContain('tsc --noEmit');
     expect(command).toContain('tsc -p tsconfig.sw.json');
     expect(command.match(/--noUnusedLocals/g)).toHaveLength(2);
