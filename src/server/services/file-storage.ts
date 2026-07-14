@@ -1469,7 +1469,6 @@ export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
   return {
     id: fileId,
     uploadUrl,
-    objectKey: storageKey,
     expiresIn: UPLOAD_EXPIRY_SECONDS,
     headers: {
       'Content-Type': args.mimeType,

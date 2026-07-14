@@ -685,7 +685,8 @@ describe('file-storage', () => {
       Key: 'consent-documents/org_1/patient_1/file-uuid-1-consent.pdf',
       ContentType: 'application/pdf',
     });
-    expect(result.objectKey).toBe('consent-documents/org_1/patient_1/file-uuid-1-consent.pdf');
+    expect(result).not.toHaveProperty('objectKey');
+    expect(result).not.toHaveProperty('storageKey');
   });
 
   it.each([
@@ -734,9 +735,8 @@ describe('file-storage', () => {
     );
     expect(putObjectCommand.input.Key).not.toContain('../');
     expect(putObjectCommand.input.Key).not.toContain('clinical report');
-    expect(result.objectKey).toBe(
-      'reports/org_1/report_1/file-uuid-1-.._..____clinical_report_.pdf',
-    );
+    expect(result).not.toHaveProperty('objectKey');
+    expect(result).not.toHaveProperty('storageKey');
     expect(settingUpsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
@@ -1662,9 +1662,8 @@ describe('file-storage', () => {
         }),
       }),
     );
-    expect(result.objectKey).toBe(
-      'contract-documents/org_1/uploaded/file-uuid-1-signed-contract.pdf',
-    );
+    expect(result).not.toHaveProperty('objectKey');
+    expect(result).not.toHaveProperty('storageKey');
   });
 
   it('rejects non-PDF contract document uploads', async () => {
