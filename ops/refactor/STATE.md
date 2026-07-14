@@ -61,6 +61,27 @@
 
 ## 直近の作業
 
+- codex2 backend + temporary integration owner: Round 20 visit handoff legacy fixed-500
+  error-contract migration
+  (DONE / CODE COMMITTED, PUSH PENDING, 2026-07-15; implementation `302c3ff9f`).
+  - workflow / scope:
+    Round19を`a09d336c5` / parity `0 0`でclose後、残registry debtを再分類した。visit handoffの
+    `extraction_failed` 1分岐と`internal_error` 3分岐はfixed 500、既存wire tests、extractionの
+    retryable detailsが揃うためexact11をclaimした。`no_structured_soap` 422はAPI status policyを先に決める必要があり、
+    今回registryへ固定せずraw baselineへ残した。4 route testsはread-onlyで、既存dirtyとpeer pathsは触っていない。
+  - backend / contract:
+    legacy lowercase wire codeをそのままregistry keyにし、両方を500 / error / retryable / `retry`へ固定した。
+    extraction routeのconstant message + structured retry details、handoff confirm、supervision confirm/requestのfixed messageを
+    `registeredError()`へ移行した。code、message、details、status、sensitive no-store、auth、assignment、RLS、service call、
+    catch orderingは不変。AST debtはliteral raw 32→28、nonliteral message raw 11→10、details raw 12→11。
+  - validation / commit / remaining:
+    registry/static + 4 handoff route suites `6 files / 67 tests`、exact7 ESLint/Prettier、
+    `api-response-shape:check`、`api-authz-status:check`、`dto-direct-prisma-return:check`、
+    `route-auth-wrapper:check`、RLS `24/24`、`boundaries:check`、diff-check、serialized `pnpm typecheck`、
+    `pnpm typecheck:no-unused`がPASS。build/E2E/Oracle/migration applyは未実行。codeは`302c3ff9f`へcommit済みで、
+    Plans/STATE/RUN_LOCK closeoutとauthorized non-force pushが残る。親`API-CONTRACT-003`は残28 literal、6 dynamic、
+    external 11、status/policy/high-risk familiesがあるためPartial。
+
 - codex2 backend + temporary integration owner: Round 19 medication stock observation fixed-503
   registry migration / PHI-safe failure logging
   (DONE / CODE + LEDGER PUSHED, 2026-07-15; implementation `66fd3f51c`, ledger `3a4257b07`).
