@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   findExternalProfessionalSuggestions,
   getRecommendedChannels,
+  listContactProfiles,
   listContactProfileSearchSummaries,
 } from './contact-profiles';
 
@@ -186,6 +187,135 @@ describe('getRecommendedChannels', () => {
         address: '   ',
       }),
     ).toEqual([]);
+  });
+});
+
+describe('listContactProfiles', () => {
+  it('loads pending response counts with one deduplicated aggregate across contact kinds', async () => {
+    const groupBy = vi.fn().mockResolvedValue([
+      { recipient_name: '共通窓口', _count: { _all: 4 } },
+      { recipient_name: '訪問看護B', _count: { _all: 2 } },
+      { recipient_name: '青葉クリニック', _count: { _all: 1 } },
+    ]);
+    const db = {
+      facilityContact: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'facility_contact_1',
+            name: '共通窓口',
+            role: '相談員',
+            phone: '03-1111-1111',
+            email: null,
+            fax: null,
+            preferred_contact_method: 'phone',
+            preferred_contact_time: null,
+            last_contacted_at: null,
+            last_success_channel: null,
+            facility: { name: '青葉苑', address: null, residences: [] },
+          },
+        ]),
+      },
+      externalProfessional: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'external_1',
+            name: '共通窓口',
+            profession_type: 'care_manager',
+            organization_name: '居宅支援A',
+            phone: '03-2222-2222',
+            email: null,
+            fax: '03-2222-2223',
+            address: null,
+            preferred_contact_method: 'fax',
+            preferred_contact_time: null,
+            last_contacted_at: null,
+            last_success_channel: null,
+            care_team_links: [],
+          },
+          {
+            id: 'external_2',
+            name: '訪問看護B',
+            profession_type: 'nurse',
+            organization_name: '訪問看護B',
+            phone: '03-3333-3333',
+            email: null,
+            fax: null,
+            address: null,
+            preferred_contact_method: 'phone',
+            preferred_contact_time: null,
+            last_contacted_at: null,
+            last_success_channel: null,
+            care_team_links: [],
+          },
+        ]),
+      },
+      prescriberInstitution: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'prescriber_1',
+            name: '青葉クリニック',
+            institution_code: null,
+            phone: '03-4444-4444',
+            fax: '03-4444-4445',
+            address: null,
+            preferred_contact_method: 'fax',
+            preferred_contact_time: null,
+            last_contacted_at: null,
+            last_success_channel: null,
+            prescription_intakes: [],
+          },
+        ]),
+      },
+      deliveryRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationRequest: { groupBy },
+    } as unknown as Parameters<typeof listContactProfiles>[0];
+
+    const result = await listContactProfiles(db, 'org_1', { kind: 'all', query: null });
+
+    expect(groupBy).toHaveBeenCalledTimes(1);
+    expect(groupBy).toHaveBeenCalledWith({
+      by: ['recipient_name'],
+      where: {
+        org_id: 'org_1',
+        recipient_name: {
+          in: ['共通窓口', '訪問看護B', '青葉クリニック'],
+        },
+        status: {
+          in: ['draft', 'sent', 'received', 'in_progress', 'escalated'],
+        },
+      },
+      _count: { _all: true },
+    });
+    expect(
+      result.map(({ kind, name, pending_response_count }) => ({
+        kind,
+        name,
+        pending_response_count,
+      })),
+    ).toEqual([
+      { kind: 'facility_contact', name: '共通窓口', pending_response_count: 4 },
+      { kind: 'external_professional', name: '共通窓口', pending_response_count: 4 },
+      { kind: 'external_professional', name: '訪問看護B', pending_response_count: 2 },
+      { kind: 'prescriber_institution', name: '青葉クリニック', pending_response_count: 1 },
+    ]);
+  });
+
+  it('skips the pending response aggregate when no profiles are returned', async () => {
+    const groupBy = vi.fn();
+    const db = {
+      facilityContact: { findMany: vi.fn().mockResolvedValue([]) },
+      externalProfessional: { findMany: vi.fn().mockResolvedValue([]) },
+      prescriberInstitution: { findMany: vi.fn().mockResolvedValue([]) },
+      deliveryRecord: { findMany: vi.fn() },
+      communicationEvent: { findMany: vi.fn() },
+      communicationRequest: { groupBy },
+    } as unknown as Parameters<typeof listContactProfiles>[0];
+
+    await expect(listContactProfiles(db, 'org_1', { kind: 'all', query: null })).resolves.toEqual(
+      [],
+    );
+    expect(groupBy).not.toHaveBeenCalled();
   });
 });
 

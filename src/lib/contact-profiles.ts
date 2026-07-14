@@ -654,55 +654,23 @@ export async function listContactProfiles(
         }),
   ]);
 
-  const channelStatsByName = await getChannelStatsByName(db, orgId, [
-    ...facilityContacts.map((item) => item.name),
-    ...externalProfessionals.map((item) => item.name),
-    ...prescriberInstitutions.map((item) => item.name),
-  ]);
-
-  const [facilityPending, externalPending, prescriberPending] = await Promise.all([
-    facilityContacts.length === 0
+  const recipientNames = Array.from(
+    new Set([
+      ...facilityContacts.map((item) => item.name),
+      ...externalProfessionals.map((item) => item.name),
+      ...prescriberInstitutions.map((item) => item.name),
+    ]),
+  );
+  const [channelStatsByName, pendingResponses] = await Promise.all([
+    getChannelStatsByName(db, orgId, recipientNames),
+    recipientNames.length === 0
       ? Promise.resolve([])
       : db.communicationRequest.groupBy({
           by: ['recipient_name'],
           where: {
             org_id: orgId,
             recipient_name: {
-              in: facilityContacts.map((item) => item.name),
-            },
-            status: {
-              in: ['draft', 'sent', 'received', 'in_progress', 'escalated'],
-            },
-          },
-          _count: {
-            _all: true,
-          },
-        }),
-    externalProfessionals.length === 0
-      ? Promise.resolve([])
-      : db.communicationRequest.groupBy({
-          by: ['recipient_name'],
-          where: {
-            org_id: orgId,
-            recipient_name: {
-              in: externalProfessionals.map((item) => item.name),
-            },
-            status: {
-              in: ['draft', 'sent', 'received', 'in_progress', 'escalated'],
-            },
-          },
-          _count: {
-            _all: true,
-          },
-        }),
-    prescriberInstitutions.length === 0
-      ? Promise.resolve([])
-      : db.communicationRequest.groupBy({
-          by: ['recipient_name'],
-          where: {
-            org_id: orgId,
-            recipient_name: {
-              in: prescriberInstitutions.map((item) => item.name),
+              in: recipientNames,
             },
             status: {
               in: ['draft', 'sent', 'received', 'in_progress', 'escalated'],
@@ -714,14 +682,8 @@ export async function listContactProfiles(
         }),
   ]);
 
-  const facilityPendingMap = new Map(
-    facilityPending.map((item) => [item.recipient_name, item._count._all]),
-  );
-  const externalPendingMap = new Map(
-    externalPending.map((item) => [item.recipient_name, item._count._all]),
-  );
-  const prescriberPendingMap = new Map(
-    prescriberPending.map((item) => [item.recipient_name, item._count._all]),
+  const pendingResponseCountByName = new Map(
+    pendingResponses.map((item) => [item.recipient_name, item._count._all]),
   );
 
   const rows: ContactProfileRow[] = [
@@ -754,7 +716,7 @@ export async function listContactProfiles(
       active_patient_count: new Set(
         item.facility.residences.map((residence) => residence.patient_id),
       ).size,
-      pending_response_count: facilityPendingMap.get(item.name) ?? 0,
+      pending_response_count: pendingResponseCountByName.get(item.name) ?? 0,
     })),
     ...externalProfessionals.map((item) => ({
       id: item.id,
@@ -788,7 +750,7 @@ export async function listContactProfiles(
           .map((link) => link.case_?.patient_id)
           .filter((value): value is string => Boolean(value)),
       ).size,
-      pending_response_count: externalPendingMap.get(item.name) ?? 0,
+      pending_response_count: pendingResponseCountByName.get(item.name) ?? 0,
     })),
     ...prescriberInstitutions.map((item) => ({
       id: item.id,
@@ -820,7 +782,7 @@ export async function listContactProfiles(
           .map((intake) => intake.cycle?.patient_id)
           .filter((value): value is string => Boolean(value)),
       ).size,
-      pending_response_count: prescriberPendingMap.get(item.name) ?? 0,
+      pending_response_count: pendingResponseCountByName.get(item.name) ?? 0,
     })),
   ];
 
