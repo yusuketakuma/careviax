@@ -32,7 +32,7 @@ const authenticatedGET = withAuthContext(
       const eventLimit = parseExactIntegerSearchParam(searchParams, 'event_limit', 0, 50, 12);
       if (!eventLimit.ok) return withSensitiveNoStore(validationError(eventLimit.message));
 
-      const runScoped = createScopedTxRunner(ctx.orgId);
+      const runScoped = createScopedTxRunner(ctx.orgId, { requestContext: ctx });
       const stockSummary = await runScoped((tx) =>
         getPatientMedicationStockSummary(tx, {
           orgId: ctx.orgId,
@@ -48,6 +48,7 @@ const authenticatedGET = withAuthContext(
       recordPhiReadAuditForRequest(ctx, {
         patientId: id,
         view: 'patient_medication_stock',
+        purpose: 'care',
         metadata: {
           visible_item_count: stockSummary.data.summary.visible_item_count,
           recent_event_count: stockSummary.data.recent_events.length,
@@ -62,15 +63,14 @@ const authenticatedGET = withAuthContext(
       );
     } catch (err) {
       unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'patient_medication_stock_get_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
+      logger.error({
+        event: 'patient_medication_stock_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        code: 'PATIENT_MEDICATION_STOCK_READ_FAILED',
+        request_id: ctx.requestId,
+      });
       return withSensitiveNoStore(internalError());
     }
   },
