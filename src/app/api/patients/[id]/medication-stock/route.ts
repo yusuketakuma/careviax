@@ -69,7 +69,7 @@ const authenticatedGET = withAuthContext(
         method: req.method,
         status: 500,
         code: 'PATIENT_MEDICATION_STOCK_READ_FAILED',
-        request_id: ctx.requestId,
+        requestId: ctx.requestId,
       });
       return withSensitiveNoStore(internalError());
     }

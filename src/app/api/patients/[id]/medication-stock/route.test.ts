@@ -285,7 +285,7 @@ describe('GET /api/patients/[id]/medication-stock', () => {
       method: 'GET',
       status: 500,
       code: 'PATIENT_MEDICATION_STOCK_READ_FAILED',
-      request_id: 'req_patient_medication_stock_1',
+      requestId: 'req_patient_medication_stock_1',
     });
     expect(loggerErrorMock.mock.calls[0]).toHaveLength(1);
     expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(rawError);
@@ -312,7 +312,7 @@ describe('GET /api/patients/[id]/medication-stock', () => {
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
         code: 'PATIENT_MEDICATION_STOCK_READ_FAILED',
-        request_id: 'req_patient_medication_stock_1',
+        requestId: 'req_patient_medication_stock_1',
       }),
     );
     expect(loggerErrorMock.mock.calls[0]).toHaveLength(1);
