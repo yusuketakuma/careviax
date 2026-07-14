@@ -5,6 +5,7 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   authCtx,
+  authResponseRef,
   withOrgContextMock,
   dispenseTaskFindFirstMock,
   prescriptionIntakeFindFirstMock,
@@ -18,8 +19,10 @@ const {
   buildMedicationCycleAssignmentWhereMock,
   batchResolveNamesMock,
   notifyWorkflowMutationMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   authCtx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' as MemberRole },
+  authResponseRef: { current: null as Response | null },
   withOrgContextMock: vi.fn(),
   dispenseTaskFindFirstMock: vi.fn(),
   prescriptionIntakeFindFirstMock: vi.fn(),
@@ -33,6 +36,7 @@ const {
   buildMedicationCycleAssignmentWhereMock: vi.fn(),
   batchResolveNamesMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -45,7 +49,7 @@ vi.mock('@/lib/auth/context', () => ({
       ) => Promise<Response>,
     ) =>
     (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
-      handler(req, { ...authCtx }, routeContext),
+      authResponseRef.current ?? handler(req, { ...authCtx }, routeContext),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -80,6 +84,10 @@ vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
 }));
 
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
+}));
+
 vi.mock('@/lib/utils/name-resolver', () => ({
   batchResolveNames: batchResolveNamesMock,
 }));
@@ -112,6 +120,7 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
     authCtx.orgId = 'org_1';
     authCtx.userId = 'user_1';
     authCtx.role = 'pharmacist';
+    authResponseRef.current = null;
     buildMedicationCycleAssignmentWhereMock.mockReturnValue(null);
     prescriptionIntakeFindFirstMock.mockResolvedValue(null);
     dispenseTaskFindFirstMock.mockResolvedValue({
@@ -342,6 +351,16 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
         ],
       },
     });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'clerk' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'dispense_task',
+        targetId: 'task_1',
+        view: 'dispense_task_workbench',
+      },
+    );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
   });
 
   it.each(['driver', 'external_viewer'] as const)(
@@ -358,8 +377,23 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
         message: '調剤ワークベンチの閲覧権限がありません',
       });
       expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+      expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
     },
   );
+
+  it('does not read or audit workbench data when authentication is rejected', async () => {
+    authResponseRef.current = Response.json(
+      { code: 'UNAUTHORIZED', message: '認証が必要です' },
+      { status: 401 },
+    );
+
+    const response = await GET(createGetRequest(), { params: Promise.resolve({ id: 'task_1' }) });
+
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
 
   it('returns no-store on invalid task id', async () => {
     const response = await GET(createGetRequest(), { params: Promise.resolve({ id: ' ' }) });
@@ -371,6 +405,7 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
       message: '調剤タスクIDが不正です',
     });
     expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns no-store when the task is not found', async () => {
@@ -384,6 +419,26 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
       code: 'WORKFLOW_NOT_FOUND',
       message: 'タスクが見つかりません',
     });
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 without auditing when workbench loading fails', async () => {
+    dispenseTaskFindFirstMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 allergy raw dispense workbench detail'),
+    );
+
+    const response = await GET(createGetRequest(), { params: Promise.resolve({ id: 'task_1' }) });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(JSON.parse(bodyText)).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(bodyText).not.toContain('山田太郎');
+    expect(bodyText).not.toContain('allergy');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('compares current intake with the previous same-case intake across cycles', async () => {

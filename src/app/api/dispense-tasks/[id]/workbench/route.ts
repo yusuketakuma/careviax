@@ -1,11 +1,13 @@
 import { format } from 'date-fns';
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, forbidden } from '@/lib/api/response';
+import { success, validationError, notFound, forbidden, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
@@ -456,6 +458,13 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
   const latestResolvedInquiry =
     task.cycle.inquiries.find((inquiry) => inquiry.resolved_at != null) ?? null;
 
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: patient.id,
+    targetType: 'dispense_task',
+    targetId: task.id,
+    view: 'dispense_task_workbench',
+  });
+
   return success({
     data: {
       task: {
@@ -506,8 +515,14 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
   });
 });
 
-export const GET: typeof authenticatedGET = async (req, routeContext) =>
-  withSensitiveNoStore(await authenticatedGET(req, routeContext));
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 // ── POST: 中断(理由必須)──
 

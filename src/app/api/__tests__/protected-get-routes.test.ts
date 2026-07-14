@@ -596,6 +596,14 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
   {
     name: 'cases/[id] GET',
     setupSuccess: () => {
+      prismaMock.careCase.findFirst.mockResolvedValueOnce({
+        id: 'case_1',
+        patient: {
+          id: 'patient_1',
+          name: '患者A',
+          name_kana: 'カンジャ エー',
+        },
+      });
       prismaMock.firstVisitDocument.findFirst.mockResolvedValueOnce(null);
     },
     handler: () =>
@@ -1668,6 +1676,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
   },
   {
     name: 'set-plans/[id] GET',
+    setupSuccess: () => {
+      txMock.setPlan.findFirst.mockResolvedValueOnce({
+        id: 'plan_1',
+        batches: [],
+        cycle: {
+          patient_id: 'patient_1',
+          prescription_intakes: [],
+        },
+      });
+    },
     handler: () =>
       setPlanGet(createRequest('http://localhost/api/set-plans/plan_1', { 'x-org-id': 'org_1' }), {
         params: Promise.resolve({ id: 'plan_1' }),
