@@ -6,15 +6,13 @@
 > validation、remaining/next action はこのファイルへ集約する。
 > 再開手順: このファイル → `git status --short --untracked-files=all` → `git log --oneline -15`。
 
-## 体制（2026-07-14 最新ユーザー指示）
+## 体制（2026-07-15 最新ユーザー指示）
 
-- 現行は`codex1` / `codex2` / `codex3` / `codex4`の協調運用。最新役割は`codex1`がfrontend、
-  `codex2`がbackend、`codex3`がsecurity red-team、`codex4`が動作速度改善・response向上を主担当とし、各agentは`agmsg` team `phos`で
-  exact-path ownership、開始、freeze、完了結果を通知して同一pathを並列編集しない。
-- 各agentは担当sliceをself-validateし、相互reviewやreview待ちは行わない。`agmsg`はexact-path ownership、
-  collision回避、freeze/完了handoffだけに使い、編集は宣言したnon-overlap pathsだけに限定する。
-  Plans/STATE/RUN_LOCK、commit/push、Next生成物を触る共有gateは明示されたslice integration ownerが直列化する。
-  `API-CONTRACT-002K`のintegration/ledger/scoped pushはreview後に`codex1`から`codex4`へ移管済み。
+- 現行は`codex1`が計画、実装統合、検証、単一台帳、commit/pushを一貫して所有する。ユーザーが
+  subagent利用を明示的に再有効化したため、boundedな調査・review・検証と、`codex1`がexact non-overlap pathsを
+  明示した実装にsubagentを利用できる。`codex2` / `codex3` / `codex4` / `agmsg`の旧peer運用は自動復帰させない。
+- subagentを使う場合もshared worktreeを前提に、同一pathを並列編集しない。Plans/STATE/RUN_LOCK、commit/push、
+  Next生成物、長いtype/build/E2E gateは`codex1`が直列化し、最終判断と統合責任を保持する。
 - 既存user/harness dirtyとpeer-owned pathsを保存し、scoped commitは明示owned pathsだけをstageする。
   deploy、migration適用、production mutation、destructive operationはcurrent-taskの明示許可なしに行わない。
 - **Oracleは全agentで使用しない。** 起動、相談、status/read、reattach/restart、別model fallbackを行わず、
@@ -52,14 +50,66 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: 4-agent non-overlap協調（2026-07-14〜）。最新routingは`codex1` frontend、
-  `codex2` backend、`codex3` security implementation、`codex4` performance / response improvement。
-  各agentが担当実装をself-validateしてreview待ちなくfreezeする。Plans/STATE/RUN_LOCKとscoped commit/pushは
-  agmsgで移管されたintegration ownerだけが直列化する。
+- Phase C（実装ループ）: `codex1`統合運用 + bounded subagents（2026-07-15〜）。`codex1`が優先順位、
+  exact-path ownership、実装統合、validation、Plans/STATE/RUN_LOCK、scoped commit/pushを直列化する。
+  subagentは明示されたnon-overlap scopeの調査・review・検証・実装だけを担当する。
   現在の供給源は`Plans.md`の未完了項目とlive code差分。migration、auth/RLS policy変更、full-history event projectionは
   human/high-risk gateとして実装せず、証拠付きの残件へ戻す。
 
 ## 直近の作業
+
+- codex1 integration: pre-existing worktree convergence + MEDSAFE-PATIENT-CONTEXT-SHARE-001 closure
+  (INTEGRATION READY / PUSH PENDING, 2026-07-15; implementations `87f9335ab`, `ce9cae9ab`,
+  `a36b39efc`; harness `a9786e969`).
+  - workflow / scope:
+    最新ユーザー指示に従い新規実装前に全dirtyを再構成し、3つのbounded read-only subagent reviewとrootの
+    live diff確認でexternal-share exact4、visit-record exact2、E2E exact3、harness exact2、Plans/STATE/RUN_LOCKを
+    非重複groupへ分離した。既存変更をrevertせず、各groupをexplicit pathだけでstageした。
+  - implementation / safety:
+    external-shareは患者文脈をloading/errorを含む共有workflowより前へ移し、患者誤認防止の固定順序をprovider/page/
+    client testで固定した。visit-record failure logはraw error metadataを固定PHI-safe eventへ最小化し、durable failure stateと
+    API responseは維持した。E2E local sessionはseeded User + active Membershipのauthoritative DB identityをJWTへ投影し、
+    patient display IDとroute-mocked identityを実契約へ揃えた。DB schema/migration、production data、external send、deployは変更していない。
+  - validation / visual review:
+    focused Vitestはexternal share + page + visit-record `3 files / 123 tests`、visit handoff service `30/30`、
+    logger/error registry `13/13`をPASS。exact ESLint/Prettier/diff、Plans active、client PHI log/display、API shape/authz/wrapper、
+    frontend contract、boundaries、colors、typography、DTO、task types、serialized `pnpm typecheck`と
+    `pnpm typecheck:no-unused`をPASSした。stale ignored `.next/cache`が13 GiBまで肥大化しdev compileが停止したため、
+    tracked fileを含まないことを確認して削除し、clean `pnpm build:e2e:local`をcompile/TypeScript/311 pagesまでPASS。
+    standalone `/api/health`は200。patient-share E2Eは`localhost` cookie境界でdesktop/mobile `2/2`、route-mocked
+    visit retry + formulary freshnessは`2/2`をPASSした。初回desktopだけpatient API 500を記録したが、単独再実行と
+    desktop/mobile再実行で再現せず全PASS。通過時screenshotを目視し、両viewportで患者識別領域が共有workflowより前に
+    判読可能であることを確認した。既存UIの検証・配置修正で視覚再構成ではないためimagegenは省略した。
+  - result / remaining:
+    `MEDSAFE-PATIENT-CONTEXT-SHARE-001`はcurrent-head build、desktop/mobile実画面、screenshot確認を満たしてDONE。
+    外部共有のloading/error中にworkflow contextが非表示であることを直接assertする追加testはnon-blocking follow-up。
+    初回のみの患者API 500は再現時にconnection/query concurrencyを独立診断する。親Goalの他未完了Planは継続する。
+
+- codex2 backend + temporary integration owner: Round 21 API-CONTRACT-001 Route Catalog
+  standard auth-wrapper migration
+  (INTEGRATION READY / PUSH PENDING, 2026-07-15; implementation `80f33084c`).
+  - workflow / ownership:
+    live `git status`、`Plans.md`、このSTATE、RUN_LOCK、agmsg team/inbox、Next.js 16.2.9のRoute Handler・
+    error handling・NextResponse docsを確認した。`improve`はread-only候補監査だけに使い、編集前に終了した。
+    3つのread-only scoutがcorrectness、API contract、implementation-ready queueを並列監査し、rootが一次コード、
+    consumer、dirty、baselineを再検証してP0のRoute Catalog exact3を選んだ。agmsgでcodex1/3/4とYusukeへ
+    exact6のclaim/HARD HOLDを通知した。既存harness、external-share、visit-records、tools dirtyは
+    edit/revert/stageしていない。
+  - backend / API contract / observability:
+    `src/app/api/meta/route-catalog/route.ts`のmanual `requireAuthContext` + `withSensitiveNoStore`を、同じ
+    `canAdmin`、拒否文言、`{ data: routeCatalog, meta: routeCatalogMetadata }` bodyのまま標準
+    `withAuthContext`へ移した。これによりsuccess/auth denialのsensitive no-storeに加え、server-owned
+    request/correlation headers、request auth context、PHI-safe fixed 500、route performance boundaryを共通実装から付与する。
+    DB、PHI、audit、external call、cacheable GET、response bodyは追加していない。route-auth allowlistは
+    150→149 routes、direct callは214→213となり、新規debtは0。
+  - validation / review / remaining:
+    baseline focused `1 file / 2 tests`から、final route + central auth/wrapper `4 files / 25 tests`、exact ESLint、
+    Prettier、`route-auth-wrapper:check`、`api-response-shape:check`、`api-authz-status:check`、
+    `dto-direct-prisma-return:check`、`boundaries:check`、format/diff-check、serialized `pnpm typecheck`、
+    `pnpm typecheck:no-unused`がPASSした。独立read-only verifier 2系統もCLEAN（focused 9 tests / 20 tests、
+    wrapper/shape/authz/lint/format/diff/type evidence）。build/E2E/Oracle/migration apply/deploy/production mutationは
+    現行方針により未実行。implementation `80f33084c`はexplicit exact3だけでcommit済み。親`API-CONTRACT-001`
+    はshared correlation body、error registry、残direct-auth debtがあるためPartial。
 
 - codex2 backend + temporary integration owner: Round 20 visit handoff legacy fixed-500
   error-contract migration
