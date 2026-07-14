@@ -61,6 +61,38 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: Round 11 bounded movement-search recovery / external-error debt ratchet /
+  patient structured-care RLS-audit / contact-profile channel-stat aggregation boundary
+  (DONE / CODE PUSHED, 2026-07-15; implementations `c3222846e`, `0ee908850`, `6329c2079`, `85179db31`).
+  - workflow / ownership / files inspected:
+    `agmsg` inbox/history、live Git、`Plans.md`、UI SSOT、Next.js client/error guides、movement timeline component/testsを確認した。
+    4 laneはnon-overlapで、codex1 exact2、codex2 exact1、codex3 exact2、codex4 exact2の全handoff SHA-256がlive filesと一致した。
+    codex4の最初のinbound-detail計測候補はpayload budget/read-SLO/perf-smoke整合がexact2で成立しないためbyte-clean撤回され、
+    最終bundleには含めていない。開始HEAD `285aa6a9d` / parity `0 0`からINDEX/DOCS HARD HOLDを通知し、明示7 pathだけを
+    4 logical groupsへstageした。既存dirtyの`.harness-mem/state/{continuity,whisper-budget}.json`、patient external-share 4 files、
+    `tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`は変更、stage、revertしていない。
+  - frontend / bounded search recovery (`c3222846e`):
+    `patient-movement-timeline.{tsx,test.tsx}`で、検索・確認・server種別/期間の組合せが0件になったfalse-emptyへpersistent
+    `表示条件を解除` actionを追加した。bounded local query、focus、server filter、stale evidence selectionを一括解除して読込済み行へ戻す。
+    最新40件境界、PHI-safe searchable projection、partial/true-empty、temporal provenance、API/DTO/auth/DB/deep-link境界は不変。
+    component suiteは`1 file / 25 tests`。新規testの初回だけ既存accessible labelを誤認して1件失敗し、live labelへ修正後25/25。
+    視覚再設計ではない軽微なstate/action追加のためimagegenは省略した。
+  - backend / security / performance (`0ee908850`, `6329c2079`, `85179db31`):
+    registered-error AST ratchetを`externalError()`にも広げ、raw `error()` 36、`externalError()` 11、registered overlap raw 1 / external 0を
+    alias-aware exact baseline化した。patient structured-care GETは既存`canVisit`、assignment、masking、envelopeを保ち、prefilterとserviceを
+    同一request-scoped `withOrgContext` txへ移してnon-null successだけをpurpose=care付きaudit、denied/errorをzero-auditにした。
+    contact-profile channel統計はDeliveryRecord/CommunicationEventの全履歴`findMany`をparallel `groupBy`へ置換し、name/channel/outcomeの
+    `_count`をfoldすることで成功/失敗score、dedupe、order/projectionを維持したままDB transfer/application heapをO(history rows)から
+    O(distinct groups)へ縮約した。
+  - validation / commit / push / remaining:
+    codex1 focused 25 tests、exact lint/format、frontend contract、client PHI-log/display、state color、typography、diff-checkがPASS。
+    peer handoffはcodex2 grouped `4 files / 22 tests`、codex3 `23 tests` + auth/RLS static gates、codex4 `4 files / 60 tests` +
+    query-shape/read-SLO/boundariesがPASS。4 code commits後の唯一のaggregate
+    `pnpm typecheck && pnpm typecheck:no-unused`は両方exit 0。build/Oracleはユーザー方針により実行していない。
+    4 code commitsをnon-force pushし、local/remote HEAD `85179db31bff4eadabd854b0093840e073996154`、parity `0 0`。
+    `Plans.md`は今回触れた親項目の完了履歴を増やさず、未完了のtyped-error移行、full-history search design gate、未計測route、
+    authz surface inventory、read-SLOだけへ圧縮した。親項目は残surface/human gateのためPartialのまま。
+
 - codex1 + codex2 + codex3 + codex4: Round 10 source-mapping recovery / raw-error debt ratchet /
   patient header-summary RLS-audit / contact-profile pending aggregate integration boundary
   (DONE / CODE PUSHED, 2026-07-15; implementations `8b65fa606`, `67e56027e`, `7b6ae536b`, `64d1e4c6a`).
