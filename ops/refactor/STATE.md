@@ -61,6 +61,32 @@
 
 ## 直近の作業
 
+- codex2 backend + temporary integration owner: Round 19 medication stock observation fixed-503
+  registry migration / PHI-safe failure logging
+  (DONE / CODE COMMITTED, PUSH PENDING, 2026-07-15; implementation `66fd3f51c`).
+  - workflow / ownership:
+    Round18を`b76dedf06` / parity `0 0`でclose後、live PlansのP0/P1 `API-CONTRACT-003`残33 literalを
+    read-only分類した。billing、auth/break-glass、provisioning、e-prescription、idempotency migration候補は
+    current risk/human gateから除外し、固定503かつ既存route testのあるmedication stock observation exact5を選んだ。
+    target clean/no-openを確認してagmsgでclaim/freezeを通知した。codex1/3/4はusage limitで停止中のためpeer
+    edit/reviewはなく、codex2がself-validationとintegrationを継続した。既存dirtyはedit/revert/stageしていない。
+  - API contract / backend:
+    `MEDICATION_STOCK_OBSERVATION_DISABLED`を503 / info / non-retryable / `return_to_previous`、
+    `MEDICATION_STOCK_OBSERVATION_UNAVAILABLE`を503 / warn / non-retryable / `return_to_previous`としてregistryへ追加した。
+    feature gate disabledとPrisma P2021 capability-unavailable分岐を`registeredError()`へ移し、既存code、message、status、
+    sensitive no-store、auth、RLS transaction、write flowを維持した。AST baselineはliteral raw 33→32、dynamic raw 7→6、
+    nonliteral message raw 12→11、details raw 12据置。
+  - security / privacy:
+    capability-unavailableとunexpected failure loggerがraw Prisma/generic Errorを第2引数へ渡していたため除去し、
+    route/method/status/eventとsafe Prisma codeだけの1 object callへ縮小した。患者名・table/provider textを含むsynthetic
+    errorでもlogger call arrayがcoded metadata 1件だけであること、responseにもraw textがないことをtestで固定した。
+  - validation / commit / remaining:
+    focused `3 files / 14 tests`、exact5 ESLint/Prettier、`api-response-shape:check`、`api-authz-status:check`、
+    `dto-direct-prisma-return:check`、`route-auth-wrapper:check`、RLS `24/24`、`boundaries:check`、diff-check、
+    serialized `pnpm typecheck`、`pnpm typecheck:no-unused`がPASS。build/E2E/Oracle/migration applyは未実行。
+    codeは`66fd3f51c`へcommit済みで、Plans/STATE/RUN_LOCK closeoutとauthorized non-force pushが残る。
+    親`API-CONTRACT-003`と`SERVER-LOG-PHI-SAFE-001`は残surfaceのためPartial。
+
 - codex2 backend + temporary integration owner: Round 18 registered idempotency error contract /
   Round 17 insurance aggregate type-gate repair
   (DONE / CODE + LEDGER PUSHED, 2026-07-15; implementations `5342a8f4e`, `40a181d17`,
