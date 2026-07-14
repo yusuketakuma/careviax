@@ -1337,4 +1337,52 @@ describe('InboundCommunicationsContent', () => {
       queryKey: ['communications-inbound-signals', 'org_1'],
     });
   });
+
+  it('preserves intake input and retries the current payload from a persistent error state', () => {
+    const poisonError = new Error('佐藤花子 様 / 090-1234-5678 / token=secret');
+    let mutationHookIndex = 0;
+    let showIntakeError = false;
+    useMutationMock.mockImplementation((options) => {
+      const isIntakeMutation = mutationHookIndex % 5 === 0;
+      mutationHookIndex += 1;
+      return {
+        mutate: mutateMock,
+        isPending: false,
+        isError: isIntakeMutation && showIntakeError,
+        error: isIntakeMutation && showIntakeError ? poisonError : null,
+        ...options,
+      };
+    });
+
+    const { rerender } = render(<InboundCommunicationsContent />);
+    const intakeForm = within(screen.getByTestId('inbound-intake-form'));
+    fireEvent.change(intakeForm.getByLabelText('患者ID'), { target: { value: 'patient_1' } });
+    fireEvent.change(intakeForm.getByLabelText('受信本文'), {
+      target: { value: '湿布は残り4枚です。' },
+    });
+
+    showIntakeError = true;
+    rerender(<InboundCommunicationsContent />);
+
+    expect(intakeForm.getByText('受信情報を登録できませんでした')).toBeTruthy();
+    expect(
+      intakeForm.getByText(
+        '登録処理に失敗しました。入力内容は保持されています。 通信状態を確認して再試行してください。',
+      ),
+    ).toBeTruthy();
+    expect(intakeForm.queryByText(poisonError.message)).toBeNull();
+    expect((intakeForm.getByLabelText('患者ID') as HTMLInputElement).value).toBe('patient_1');
+    expect((intakeForm.getByLabelText('受信本文') as HTMLTextAreaElement).value).toBe(
+      '湿布は残り4枚です。',
+    );
+
+    fireEvent.click(intakeForm.getByRole('button', { name: '登録を再試行' }));
+
+    expect(mutateMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        patientId: 'patient_1',
+        rawText: '湿布は残り4枚です。',
+      }),
+    );
+  });
 });

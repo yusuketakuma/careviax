@@ -1233,10 +1233,14 @@ export function InboundCommunicationsContent() {
   }, [selectedCommunicationEventId, signalCandidates]);
   const isInitialLoading = isLoading && !inbox;
 
-  const handleIntakeSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitIntake = () => {
     if (!intakeForm.rawText.trim() || !orgId || intakeMutation.isPending) return;
     intakeMutation.mutate(intakeForm);
+  };
+
+  const handleIntakeSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    submitIntake();
   };
 
   const handleSourceMappingSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -1514,6 +1518,19 @@ export function InboundCommunicationsContent() {
               className="min-h-28"
             />
           </label>
+
+          {intakeMutation.isError ? (
+            <ErrorState
+              variant="server"
+              title="受信情報を登録できませんでした"
+              cause="登録処理に失敗しました。入力内容は保持されています。"
+              nextAction="通信状態を確認して再試行してください。"
+              onRetry={submitIntake}
+              retryLabel="登録を再試行"
+              retryDisabled={!intakeForm.rawText.trim() || !orgId || intakeMutation.isPending}
+              headingLevel={3}
+            />
+          ) : null}
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">
