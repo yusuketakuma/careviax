@@ -8,10 +8,12 @@
 
 ## 体制（2026-07-14 最新ユーザー指示）
 
-- 現行は`codex1` / `codex2` / `codex3` / `codex4`の協調運用。`codex1`が統合責任を持ち、各agentは
-  `agmsg` team `phos`でexact-path ownership、開始、freeze、review結果を通知し、同一pathを並列編集しない。
+- 現行は`codex1` / `codex2` / `codex3` / `codex4`の協調運用。最新役割は`codex1`がfrontend、
+  `codex2`がbackend、`codex4`が動作速度改善・response向上を主担当とし、各agentは`agmsg` team `phos`で
+  exact-path ownership、開始、freeze、review結果を通知して同一pathを並列編集しない。
 - 調査・独立review・focused validationは並列化し、編集は宣言したnon-overlap pathsだけに限定する。
-  Plans/STATE/RUN_LOCK、commit/push、Next生成物を触る共有gateは`codex1`が直列化する。
+  Plans/STATE/RUN_LOCK、commit/push、Next生成物を触る共有gateは明示されたslice integration ownerが直列化する。
+  `API-CONTRACT-002K`のintegration/ledger/scoped pushはreview後に`codex1`から`codex4`へ移管済み。
 - 既存user/harness dirtyとpeer-owned pathsを保存し、scoped commitは明示owned pathsだけをstageする。
   deploy、migration適用、production mutation、destructive operationはcurrent-taskの明示許可なしに行わない。
 - **Oracleは全agentで使用しない。** 起動、相談、status/read、reattach/restart、別model fallbackを行わず、
@@ -49,9 +51,9 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: 4-agent non-overlap協調（2026-07-14〜）。current groupは`codex1`の患者movement timeline / search integration、
-  `codex2`のfield revision temporal semantics、`codex3`のmanual-auth PDF trace/audit hardening、`codex4`のsearch/full-history architectureと
-  独立review。`codex1`だけがPlans/STATE/RUN_LOCKとgrouped commit/pushを統合する。
+- Phase C（実装ループ）: 4-agent non-overlap協調（2026-07-14〜）。最新routingは`codex1` frontend、
+  `codex2` backend、`codex4` performance / response improvement。`codex3`を含む調査・review担当はsliceごとに明示し、
+  Plans/STATE/RUN_LOCKとscoped commit/pushはagmsgで移管されたintegration ownerだけが直列化する。
   現在の供給源は`Plans.md`の未完了項目とlive code差分。migration、auth/RLS policy変更、full-history event projectionは
   human/high-risk gateとして実装せず、証拠付きの残件へ戻す。
 
@@ -207,6 +209,28 @@
     API authz/response-shape/route-auth、exact ESLint/Prettier/diffをPASS。3 owned filesだけを`cb2cb7466`へcommitし、safe feature branchへ
     non-force push。Build/Oracleはユーザー方針どおり未実行。最終統合HEADでは単一直列の
     `pnpm typecheck && pnpm typecheck:no-unused`をPASSした。追加query/network/dependency/perf workはない。
+
+- codex4 + codex2/codex3 independent review: API-CONTRACT-002K-BULK-EXPORT-ORIGIN-TRACE
+  (DONE / PUSHED, 2026-07-14; implementation `cd1227a43`; parent `API-CONTRACT-002` remains Partial).
+  - defect / implementation / files changed:
+    Medication history bulk-exportはHTTP requestのvalidated request/correlation pairを202/error responseへ返す一方、
+    queued `IntegrationJob.input`、queued/completion export audit、normal terminal inputへ引き渡さず、非同期job lifetimeを
+    origin requestへ結合できなかった。`route.ts` / `route.test.ts` / `pdf-bulk-export.ts` / service testのexact4だけを変更し、
+    post-auth 202/validation/known/500を同一trace header + sensitive no-storeへ統一した。Queueはpairをatomic validationし、
+    valid pairだけをpending inputとqueued auditへ同一保存する。Workerはpersisted pairを再検証し、completed/failed/invalid-inputの
+    PHI-redacted terminal inputと成功auditへ伝播する。invalid/partial pairはbusiness inputを無効化せず両IDともdropする。
+  - correctness / privacy / performance:
+    Patient IDsはnormal terminal inputから引き続きhash/countへ縮約し、invalid inputでもraw patient IDsを保存しない。
+    Authorization、org/assignment、quota、Serializable retry、heartbeat/lock CAS、render/storage/cleanup/notification、failure-audit zeroは不変。
+    Background drain warningへvalidated trace IDsだけを追加し、raw cause/患者情報をstructured metadataへ加えていない。
+    Stale-timeoutは既存単一`updateMany`のfixed redaction/no-trace/no-auditを明示的residualとして維持し、per-row query、N+1、
+    network、dependency、unbounded work、追加DB queryは0。
+  - review / validation / commit / remaining:
+    Owner focused route+service 2 files / 36 tests、API conventions 1 file / 5 tests、exact ESLint/Prettier/diff、
+    API authz/response-shape（0/0）/route-authをPASS。`codex2` independent reviewと`codex3` final auditはfreeze SHA256
+    4/4一致でAPPROVEし、`codex3`はconfidence 0.99。`pnpm typecheck && pnpm typecheck:no-unused`も単一直列でPASSした。
+    Exact4だけを`cd1227a43`へcommitしsafe feature branchへnon-force push、remote parity `0 0`。Build/Oracleは
+    ユーザー方針どおり未実行。親にはsuccess meta/error body、helper外AuditLog、SSR capture、outbox origin trace設計が残る。
 
 - codex1: MEDSAFE-PATIENT-CONTEXT-SHARE-001 / shared patient context hardening
   (VERIFY_REQUIRED, 2026-07-14; implementation/push `d3921d72e`).
