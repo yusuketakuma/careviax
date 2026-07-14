@@ -3,10 +3,10 @@ import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
 import {
   conflict,
-  error,
   forbiddenResponse,
   internalError,
   notFound,
+  registeredError,
   success,
   validationError,
 } from '@/lib/api/response';
@@ -134,7 +134,7 @@ async function authenticatedPOST(req: NextRequest, { params }: PrintAuditRouteCo
     });
   } catch {
     return withSensitiveNoStore(
-      error('PRINT_AUDIT_FAILED', '報告書の印刷監査を記録できませんでした', 500),
+      registeredError('PRINT_AUDIT_FAILED', '報告書の印刷監査を記録できませんでした'),
     );
   }
 

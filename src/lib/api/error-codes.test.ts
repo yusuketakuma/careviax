@@ -107,6 +107,13 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "PRINT_AUDIT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.care_report.print_audit_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "RATE_LIMIT_EXCEEDED": {
           "httpStatus": 429,
           "logLevel": "warn",
