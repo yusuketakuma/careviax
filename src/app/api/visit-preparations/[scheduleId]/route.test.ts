@@ -993,6 +993,33 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
     );
   });
 
+  it('starts independent visit-context reads while billing reads are still pending', async () => {
+    let releaseBillingCandidates!: () => void;
+    let billingCandidatesResolved = false;
+    const pendingBillingCandidates = new Promise<never[]>((resolve) => {
+      releaseBillingCandidates = () => {
+        billingCandidatesResolved = true;
+        resolve([]);
+      };
+    });
+    billingCandidateFindManyMock.mockReturnValueOnce(pendingBillingCandidates);
+
+    const responsePromise = GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    await vi.waitFor(() => {
+      expect(visitRecordFindFirstMock).toHaveBeenCalledOnce();
+      expect(taskFindManyMock).toHaveBeenCalledOnce();
+      expect(visitScheduleContactLogFindManyMock).toHaveBeenCalledOnce();
+      expect(peerVisitScheduleFindManyMock).toHaveBeenCalledOnce();
+    });
+    expect(billingCandidatesResolved).toBe(false);
+
+    releaseBillingCandidates();
+    await expect(responsePromise).resolves.toMatchObject({ status: 200 });
+  });
+
   it('projects outside-med classification from the latest prescription lines (§11-7)', async () => {
     const startDate = new Date('2026-03-27T00:00:00Z');
     const endDate = new Date('2026-04-09T00:00:00Z');

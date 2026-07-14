@@ -984,6 +984,10 @@ async function authenticatedGET(
     recentPrescriptionIntakes,
     firstVisitDoc,
     recentConferenceNotes,
+    previousVisit,
+    openTasks,
+    recentContactLogs,
+    sameDaySchedules,
   ] = await Promise.all([
     listBillingEvidenceBlockers(prisma, {
       orgId: ctx.orgId,
@@ -1099,9 +1103,6 @@ async function authenticatedGET(
         action_items: true,
       },
     }),
-  ]);
-
-  const [previousVisit, openTasks, recentContactLogs, sameDaySchedules] = await Promise.all([
     prisma.visitRecord.findFirst({
       where: {
         org_id: ctx.orgId,
