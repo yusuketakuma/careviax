@@ -199,15 +199,15 @@ export const GET: typeof authenticatedGET = async (req, routeContext) => {
     return withSensitiveNoStore(await authenticatedGET(req, routeContext));
   } catch (err) {
     unstable_rethrow(err);
-    logger.error(
-      {
-        event: 'inbound_communication_detail_get_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-      },
-      err,
-    );
+    const requestIdResult = parseRequestId(req.nextUrl.searchParams);
+    logger.error({
+      event: 'inbound_communication_detail_get_unhandled_error',
+      route: ROUTE,
+      method: req.method,
+      status: 500,
+      code: 'INBOUND_COMMUNICATION_DETAIL_READ_FAILED',
+      ...(requestIdResult.ok ? { requestId: requestIdResult.value } : {}),
+    });
     return withSensitiveNoStore(internalError());
   }
 };

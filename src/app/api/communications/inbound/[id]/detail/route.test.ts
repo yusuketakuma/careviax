@@ -179,6 +179,7 @@ describe('GET /api/communications/inbound/[id]/detail', () => {
     const auditPayload = JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls[0]?.[1]);
     expect(auditPayload).not.toContain('湿布');
     expect(auditPayload).not.toContain('090-0000-0000');
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('rejects missing purpose before reading or auditing detail', async () => {
@@ -191,6 +192,7 @@ describe('GET /api/communications/inbound/[id]/detail', () => {
     expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid read_reason codes before reading or auditing detail', async () => {
@@ -203,6 +205,7 @@ describe('GET /api/communications/inbound/[id]/detail', () => {
     expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('returns a unified 404 without writing an audit when the event is out of scope', async () => {
@@ -213,6 +216,7 @@ describe('GET /api/communications/inbound/[id]/detail', () => {
     expect(response.status).toBe(404);
     expectSensitiveNoStore(response);
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('keeps auth rejections no-store and does not access detail data', async () => {
@@ -226,5 +230,42 @@ describe('GET /api/communications/inbound/[id]/detail', () => {
     expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 and writes only coded PHI-safe log metadata', async () => {
+    const rawError = '患者A 山田 090-0000-0000 湿布残数4枚 database failure';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(
+      createRequest(
+        '?purpose=medication_review&read_reason=medication_stock_review&request_id=req_failure_1',
+      ),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('090-0000-0000');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith({
+      event: 'inbound_communication_detail_get_unhandled_error',
+      route: '/api/communications/inbound/[id]/detail',
+      method: 'GET',
+      status: 500,
+      code: 'INBOUND_COMMUNICATION_DETAIL_READ_FAILED',
+      requestId: 'req_failure_1',
+    });
+    expect(loggerErrorMock.mock.calls[0]).toHaveLength(1);
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(rawError);
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('患者A');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('090-0000-0000');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('湿布');
   });
 });
