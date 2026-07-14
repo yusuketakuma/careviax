@@ -37,6 +37,13 @@ describe('API error code registry', () => {
           "recoveryAction": "sign_in",
           "retryable": false,
         },
+        "BILLING_DOCUMENT_PDF_EXPORT_AUDIT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.billing_document.pdf_export_audit_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "BILLING_EXPORT_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",
@@ -139,6 +146,13 @@ describe('API error code registry', () => {
           "httpStatus": 500,
           "logLevel": "error",
           "messageLabel": "api.error.pharmacy_drug_stock.export_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
+        "PHARMACY_INVOICE_PDF_EXPORT_AUDIT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.pharmacy_invoice.pdf_export_audit_failed",
           "recoveryAction": "retry",
           "retryable": true,
         },

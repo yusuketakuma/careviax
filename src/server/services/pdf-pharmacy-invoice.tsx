@@ -150,7 +150,7 @@ export type PharmacyInvoicePdfAuditMetadata = {
   subtotal: number;
   tax_amount: number;
   total: number;
-  patient_display_mode: string;
+  patient_display_mode: 'management_number';
 };
 
 export type PharmacyInvoicePdfRenderResult = PdfRenderResult & {
@@ -211,8 +211,9 @@ function readStringFromJson(value: unknown, key: string) {
   return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
 }
 
-function readPatientDisplayMode(value: unknown) {
-  return readStringFromJson(value, 'patient_display_mode') ?? 'management_number';
+function readPatientDisplayMode(value: unknown): 'management_number' {
+  const requestedMode = readStringFromJson(value, 'patient_display_mode');
+  return requestedMode === 'management_number' ? requestedMode : 'management_number';
 }
 
 function formatBillingMonth(value: Date) {

@@ -143,6 +143,26 @@ describe('buildPharmacyInvoiceDocumentPdf', () => {
     expect(text).not.toContain('患者 太郎');
   });
 
+  it('normalizes hostile legacy patient display modes before rendering or auditing', async () => {
+    pharmacyInvoiceFindFirstMock.mockResolvedValue(
+      invoice({
+        snapshot: {
+          patient_display_mode: '患者 山田太郎 090-1234-5678',
+          patient_name: '患者 山田太郎',
+        },
+      }),
+    );
+
+    const result = await buildPharmacyInvoiceDocumentPdf('org_1', 'invoice_1');
+
+    expect(result.auditMetadata.patient_display_mode).toBe('management_number');
+    const text = collectPdfText(renderToBufferMock.mock.calls[0]?.[0]).join('\n');
+    expect(text).toContain('患者表示方式');
+    expect(text).toContain('management_number');
+    expect(text).not.toContain('山田太郎');
+    expect(text).not.toContain('090-1234-5678');
+  });
+
   it('renders a free cooperation report with zero totals', async () => {
     pharmacyInvoiceFindFirstMock.mockResolvedValue(
       invoice({

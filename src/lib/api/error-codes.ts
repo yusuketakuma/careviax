@@ -47,6 +47,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'sign_in',
     messageLabel: 'api.error.auth.unauthenticated',
   },
+  BILLING_DOCUMENT_PDF_EXPORT_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.billing_document.pdf_export_audit_failed',
+  },
   BILLING_EXPORT_AUDIT_FAILED: {
     httpStatus: 500,
     logLevel: 'error',
@@ -137,6 +144,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     retryable: true,
     recoveryAction: 'retry',
     messageLabel: 'api.error.medication_history.pdf_export_audit_failed',
+  },
+  PHARMACY_INVOICE_PDF_EXPORT_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.pharmacy_invoice.pdf_export_audit_failed',
   },
   PHARMACY_DRUG_STOCK_EXPORT_AUDIT_FAILED: {
     httpStatus: 500,
