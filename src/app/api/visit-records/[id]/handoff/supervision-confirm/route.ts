@@ -9,10 +9,10 @@ import {
 } from '@/lib/auth/visit-schedule-access';
 import {
   conflict,
-  error,
   forbiddenResponse,
   internalError,
   notFound,
+  registeredError,
   success,
   validationError,
 } from '@/lib/api/response';
@@ -230,7 +230,7 @@ async function authenticatedPOST(
         conflict('上長確認タスクが同時に更新されました。再読み込みしてください'),
       );
     }
-    return withSensitiveNoStore(error('internal_error', '上長確認の確定に失敗しました', 500));
+    return withSensitiveNoStore(registeredError('internal_error', '上長確認の確定に失敗しました'));
   }
 }
 

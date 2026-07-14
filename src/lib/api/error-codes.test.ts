@@ -324,6 +324,20 @@ describe('API error code registry', () => {
           "recoveryAction": "correct_input",
           "retryable": false,
         },
+        "extraction_failed": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.visit_handoff.extraction_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
+        "internal_error": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.visit_handoff.internal_error",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
       }
     `);
   });
@@ -351,6 +365,18 @@ describe('API error code registry', () => {
       logLevel: 'warn',
       retryable: false,
       recoveryAction: 'return_to_previous',
+    });
+    expect(getApiErrorDefinition('extraction_failed')).toMatchObject({
+      httpStatus: 500,
+      retryable: true,
+      recoveryAction: 'retry',
+      messageLabel: 'api.error.visit_handoff.extraction_failed',
+    });
+    expect(getApiErrorDefinition('internal_error')).toMatchObject({
+      httpStatus: 500,
+      retryable: true,
+      recoveryAction: 'retry',
+      messageLabel: 'api.error.visit_handoff.internal_error',
     });
     expect(isRegisteredApiErrorCode('UNREGISTERED_ERROR')).toBe(false);
     expect(() => getApiErrorDefinition('UNREGISTERED_ERROR')).toThrow(

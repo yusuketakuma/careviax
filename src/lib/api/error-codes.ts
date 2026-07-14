@@ -346,6 +346,20 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'correct_input',
     messageLabel: 'api.error.webhook.yrese_signature_invalid',
   },
+  extraction_failed: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.visit_handoff.extraction_failed',
+  },
+  internal_error: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.visit_handoff.internal_error',
+  },
 } as const satisfies Record<string, ApiErrorDefinition>);
 
 export type RegisteredApiErrorCode = keyof typeof API_ERROR_CODE_REGISTRY;

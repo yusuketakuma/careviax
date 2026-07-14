@@ -8,10 +8,10 @@ import {
 } from '@/lib/auth/visit-schedule-access';
 import {
   conflict,
-  error,
   forbiddenResponse,
   internalError,
   notFound,
+  registeredError,
   success,
   validationError,
 } from '@/lib/api/response';
@@ -145,7 +145,7 @@ async function authenticatedPOST(
     if (cause instanceof VisitHandoffAlreadyConfirmedError) {
       return withSensitiveNoStore(conflict('申し送りはすでに確認済みです'));
     }
-    return withSensitiveNoStore(error('internal_error', '上長確認の依頼に失敗しました', 500));
+    return withSensitiveNoStore(registeredError('internal_error', '上長確認の依頼に失敗しました'));
   }
 }
 

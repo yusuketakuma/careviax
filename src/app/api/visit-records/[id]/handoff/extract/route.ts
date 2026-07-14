@@ -8,6 +8,7 @@ import {
   success,
   notFound,
   error,
+  registeredError,
   validationError,
   conflict,
   forbiddenResponse,
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
     return withSensitiveNoStore(
-      error('extraction_failed', VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE, 500, {
+      registeredError('extraction_failed', VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE, {
         extraction: { status: 'failed', retryable: true },
       }),
     );

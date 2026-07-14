@@ -198,28 +198,8 @@ const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
   },
   {
     filePath: 'src/app/api/visit-records/[id]/handoff/extract/route.ts',
-    code: 'extraction_failed',
-    httpStatus: 500,
-  },
-  {
-    filePath: 'src/app/api/visit-records/[id]/handoff/extract/route.ts',
     code: 'no_structured_soap',
     httpStatus: 422,
-  },
-  {
-    filePath: 'src/app/api/visit-records/[id]/handoff/route.ts',
-    code: 'internal_error',
-    httpStatus: 500,
-  },
-  {
-    filePath: 'src/app/api/visit-records/[id]/handoff/supervision-confirm/route.ts',
-    code: 'internal_error',
-    httpStatus: 500,
-  },
-  {
-    filePath: 'src/app/api/visit-records/[id]/handoff/supervision-request/route.ts',
-    code: 'internal_error',
-    httpStatus: 500,
   },
 ];
 
@@ -389,13 +369,6 @@ const allowedRawNonliteralMessageUsages: RawNonliteralMessageUsage[] = [
     messageExpression: 'err.message',
     statusExpression: 'status',
   },
-  {
-    filePath: 'src/app/api/visit-records/[id]/handoff/extract/route.ts',
-    helper: 'error',
-    codeExpression: "'extraction_failed'",
-    messageExpression: 'VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE',
-    statusExpression: '500',
-  },
 ];
 
 const allowedExternalNonliteralMessageUsages: RawNonliteralMessageUsage[] = [
@@ -485,12 +458,6 @@ const allowedRawErrorDetailsUsages: RawErrorDetailsUsage[] = [
     helper: 'error',
     codeExpression: "'EPRESCRIPTION_UPSTREAM_UNAUTHORIZED'",
     detailsExpression: '{ retriable: false, upstream_status: cause.status ?? null }',
-  },
-  {
-    filePath: 'src/app/api/visit-records/[id]/handoff/extract/route.ts',
-    helper: 'error',
-    codeExpression: "'extraction_failed'",
-    detailsExpression: "{ extraction: { status: 'failed', retryable: true }, }",
   },
 ];
 

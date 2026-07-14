@@ -15,7 +15,7 @@ import {
   success,
   validationError,
   notFound,
-  error,
+  registeredError,
   forbiddenResponse,
   internalError,
 } from '@/lib/api/response';
@@ -166,7 +166,9 @@ async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<
     if (cause instanceof VisitHandoffAlreadyConfirmedError) {
       return withSensitiveNoStore(conflict('申し送りはすでに確認済みです'));
     }
-    return withSensitiveNoStore(error('internal_error', '引継ぎの確定処理に失敗しました', 500));
+    return withSensitiveNoStore(
+      registeredError('internal_error', '引継ぎの確定処理に失敗しました'),
+    );
   }
 }
 
