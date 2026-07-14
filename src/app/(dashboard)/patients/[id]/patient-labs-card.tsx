@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ActionRail } from '@/components/ui/action-rail';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -91,6 +92,11 @@ type LabEditForm = {
   reference_low: string;
   reference_high: string;
   note: string;
+};
+
+type LabUpdateInput = {
+  labId: string;
+  form: LabEditForm;
 };
 
 const LAB_ANALYTE_OPTIONS = [
@@ -339,6 +345,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
   const [createForm, setCreateForm] = useState<LabCreateForm>(EMPTY_CREATE_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDrafts, setEditDrafts] = useState<Record<string, LabEditForm>>({});
+  const [failedUpdateInput, setFailedUpdateInput] = useState<LabUpdateInput | null>(null);
 
   const labsQuery = useQuery<LabsResponse>({
     queryKey: ['patient-labs', orgId, patientId],
@@ -378,18 +385,22 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (labId: string) => {
+    mutationFn: async ({ labId, form }: LabUpdateInput) => {
       const response = await fetch(
         buildPatientApiPath(patientId, `/labs/${encodePathSegment(labId)}`),
         {
           method: 'PATCH',
           headers: buildOrgJsonHeaders(orgId),
-          body: JSON.stringify(buildEditPayload(editDrafts[labId])),
+          body: JSON.stringify(buildEditPayload(form)),
         },
       );
       return readApiAcknowledgement(response, '検査値の更新に失敗しました');
     },
+    onMutate: () => {
+      setFailedUpdateInput(null);
+    },
     onSuccess: async () => {
+      setFailedUpdateInput(null);
       toast.success('検査値を更新しました');
       setEditingId(null);
       setEditDrafts({});
@@ -398,8 +409,9 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
         invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
       ]);
     },
-    onError: (error) => {
-      toast.error(messageFromError(error, '検査値の更新に失敗しました'));
+    onError: (_error, input) => {
+      setFailedUpdateInput(input);
+      toast.error('検査値の更新に失敗しました');
     },
   });
 
@@ -415,6 +427,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
             size="sm"
             variant="outline"
             onClick={() => {
+              setFailedUpdateInput(null);
               setEditingId(null);
               setEditDrafts({});
               setIsCreateOpen((current) => !current);
@@ -498,6 +511,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
                             size="sm"
                             variant="outline"
                             onClick={() => {
+                              setFailedUpdateInput(null);
                               setIsCreateOpen(false);
                               setEditingId(lab.id);
                               setEditDrafts((current) => ({
@@ -578,13 +592,34 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
                               },
                             }))
                           }
-                          onSave={() => updateMutation.mutate(lab.id)}
+                          onSave={() =>
+                            updateMutation.mutate({
+                              labId: lab.id,
+                              form: { ...draft },
+                            })
+                          }
                           onCancel={() => {
+                            setFailedUpdateInput(null);
                             setEditingId(null);
                             setEditDrafts({});
                           }}
                           saving={updateMutation.isPending}
                           isCreate={false}
+                        />
+                      ) : null}
+                      {isEditing && failedUpdateInput?.labId === lab.id ? (
+                        <ErrorState
+                          variant="server"
+                          size="inline"
+                          title="検査値を更新できませんでした"
+                          cause="更新処理に失敗しました。入力内容は保持されています。"
+                          nextAction="通信状態を確認して、失敗した時点の検査値を再試行してください。"
+                          detail="再試行は失敗した時点の内容で行います。編集後の内容を更新する場合は「更新する」を選んでください。"
+                          onRetry={() => updateMutation.mutate(failedUpdateInput)}
+                          retryLabel="検査値の更新を再試行"
+                          retryVariant="outline"
+                          retryDisabled={updateMutation.isPending}
+                          headingLevel={4}
                         />
                       ) : null}
                     </div>

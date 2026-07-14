@@ -25,6 +25,20 @@ type QueryOptions = {
 type MutationOptions<TInput = void> = {
   mutationFn: (input: TInput) => Promise<unknown>;
   onSuccess?: () => Promise<void> | void;
+  onError?: (error: unknown, input: TInput) => void;
+};
+
+type LabUpdateInput = {
+  labId: string;
+  form: {
+    value_numeric: string;
+    value_text: string;
+    unit: string;
+    abnormal_flag: string;
+    reference_low: string;
+    reference_high: string;
+    note: string;
+  };
 };
 
 type LabFixture = {
@@ -211,6 +225,16 @@ const baseLab: LabFixture = {
   created_at: '2026-04-10T09:40:00.000Z',
 };
 
+const BASE_LAB_EDIT_FORM: LabUpdateInput['form'] = {
+  value_numeric: '42.1',
+  value_text: '',
+  unit: 'mL/min/1.73m2',
+  abnormal_flag: '',
+  reference_low: '',
+  reference_high: '',
+  note: '',
+};
+
 const invalidateQueriesMock = vi.fn();
 const fetchMock = vi.fn();
 
@@ -254,7 +278,7 @@ function latestCreateMutation(options: Array<MutationOptions<unknown>>) {
 }
 
 function latestUpdateMutation(options: Array<MutationOptions<unknown>>) {
-  return options.at(-1) as MutationOptions<string>;
+  return options.at(-1) as MutationOptions<LabUpdateInput>;
 }
 
 describe('PatientLabsCard', () => {
@@ -427,7 +451,7 @@ describe('PatientLabsCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '補正' }));
     const update = latestUpdateMutation(mutationOptions);
-    await update.mutationFn(hostileLabId);
+    await update.mutationFn({ labId: hostileLabId, form: BASE_LAB_EDIT_FORM });
 
     const [, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
     expect(fetchMock.mock.calls.at(-1)?.[0]).toBe(
@@ -473,7 +497,7 @@ describe('PatientLabsCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '補正' }));
     const update = latestUpdateMutation(mutationOptions);
-    await update.mutationFn(labId);
+    await update.mutationFn({ labId, form: BASE_LAB_EDIT_FORM });
     expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/patients/__helper_patch__/labs/lab_1');
 
     expect(buildPatientApiPath).toHaveBeenNthCalledWith(1, patientId, '/labs');
@@ -501,9 +525,51 @@ describe('PatientLabsCard', () => {
     fireEvent.click(screen.getByRole('button', { name: '補正' }));
 
     fetchMock.mockResolvedValueOnce(jsonResponse({ message: updateError }, 409));
-    await expect(latestUpdateMutation(mutationOptions).mutationFn(baseLab.id)).rejects.toThrow(
-      updateError,
-    );
+    await expect(
+      latestUpdateMutation(mutationOptions).mutationFn({
+        labId: baseLab.id,
+        form: BASE_LAB_EDIT_FORM,
+      }),
+    ).rejects.toThrow(updateError);
+  });
+
+  it('keeps a persistent safe recovery state and retries the exact failed lab update', () => {
+    const poisonMessage = '山田花子 / 090-0000-0000 / token=secret';
+    const { mutationOptions } = setupComponent({ labs: [baseLab] });
+
+    fireEvent.click(screen.getByRole('button', { name: '補正' }));
+    fireEvent.change(screen.getByLabelText('備考'), {
+      target: { value: '失敗時の入力' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '更新する' }));
+
+    const failedInput = mutateMock.mock.calls[0]?.[0] as LabUpdateInput;
+    expect(failedInput).toEqual({
+      labId: baseLab.id,
+      form: { ...BASE_LAB_EDIT_FORM, note: '失敗時の入力' },
+    });
+
+    act(() => {
+      latestUpdateMutation(mutationOptions).onError?.(new Error(poisonMessage), failedInput);
+    });
+
+    expect(screen.getByRole('heading', { name: '検査値を更新できませんでした' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        '更新処理に失敗しました。入力内容は保持されています。 通信状態を確認して、失敗した時点の検査値を再試行してください。',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(poisonMessage)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('備考'), {
+      target: { value: '失敗後の編集' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '検査値の更新を再試行' }));
+
+    expect((screen.getByLabelText('備考') as HTMLTextAreaElement).value).toBe('失敗後の編集');
+    expect(mutateMock).toHaveBeenCalledTimes(2);
+    expect(mutateMock).toHaveBeenNthCalledWith(1, failedInput);
+    expect(mutateMock).toHaveBeenNthCalledWith(2, failedInput);
   });
 
   it('rejects legacy successful lab mutation responses', async () => {
@@ -520,9 +586,12 @@ describe('PatientLabsCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '補正' }));
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }));
-    await expect(latestUpdateMutation(mutationOptions).mutationFn(baseLab.id)).rejects.toThrow(
-      '検査値の更新に失敗しました',
-    );
+    await expect(
+      latestUpdateMutation(mutationOptions).mutationFn({
+        labId: baseLab.id,
+        form: BASE_LAB_EDIT_FORM,
+      }),
+    ).rejects.toThrow('検査値の更新に失敗しました');
     expect(invalidateQueriesMock).not.toHaveBeenCalled();
   });
 
@@ -539,7 +608,9 @@ describe('PatientLabsCard', () => {
     fireEvent.click(screen.getByRole('button', { name: '補正' }));
     const update = latestUpdateMutation(mutationOptions);
 
-    await expect(update.mutationFn(labId)).rejects.toThrow(RangeError);
+    await expect(update.mutationFn({ labId, form: BASE_LAB_EDIT_FORM })).rejects.toThrow(
+      RangeError,
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
