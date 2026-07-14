@@ -266,7 +266,7 @@ describe('/api/files/complete', () => {
     expect(response.status).toBe(502);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(body).toMatchObject({
+    expect(body).toEqual({
       code: 'EXTERNAL_FILE_COMPLETE_FAILED',
       message: 'ファイル状態の更新に失敗しました',
     });

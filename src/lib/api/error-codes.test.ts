@@ -93,6 +93,13 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "EXTERNAL_FILE_COMPLETE_FAILED": {
+          "httpStatus": 502,
+          "logLevel": "error",
+          "messageLabel": "api.error.external.file_complete_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "EXTERNAL_FILE_DOWNLOAD_FAILED": {
           "httpStatus": 502,
           "logLevel": "error",

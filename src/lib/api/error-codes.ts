@@ -103,6 +103,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'retry',
     messageLabel: 'api.error.external_access.view_audit_failed',
   },
+  EXTERNAL_FILE_COMPLETE_FAILED: {
+    httpStatus: 502,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.external.file_complete_failed',
+  },
   EXTERNAL_FILE_DOWNLOAD_FAILED: {
     httpStatus: 502,
     logLevel: 'error',

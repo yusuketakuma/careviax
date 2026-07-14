@@ -2,7 +2,13 @@ import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { error, internalError, success, validationError } from '@/lib/api/response';
+import {
+  error,
+  internalError,
+  registeredError,
+  success,
+  validationError,
+} from '@/lib/api/response';
 import { legacyFileApiDisabledResponse } from '@/lib/api/legacy-file-api-boundary';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -51,7 +57,7 @@ const authenticatedPOST = withAuthContext(async (req, ctx) => {
       return error(cause.code, cause.message, cause.status);
     }
 
-    return error('EXTERNAL_FILE_COMPLETE_FAILED', 'ファイル状態の更新に失敗しました', 502);
+    return registeredError('EXTERNAL_FILE_COMPLETE_FAILED', 'ファイル状態の更新に失敗しました');
   }
 });
 
