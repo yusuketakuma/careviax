@@ -126,56 +126,55 @@ async function authenticatedPOST(
 
   const { valid_from, valid_until, application_submitted_at, decision_at, ...rest } = parsed.data;
 
-  let result;
-  try {
-    result = await withOrgContext(
-      ctx.orgId,
-      async (tx) => {
-        const writable = await requireWritablePatient(tx, ctx, id);
-        if ('response' in writable) return { response: writable.response };
+  const result = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const writable = await requireWritablePatient(tx, ctx, id);
+      if ('response' in writable) return { response: writable.response };
 
-        if (rest.is_active !== false) {
-          const overlappingInsurance = await tx.patientInsurance.findFirst({
-            where: buildPatientInsuranceOverlapWhere({
-              orgId: ctx.orgId,
-              patientId: id,
-              insuranceType: rest.insurance_type,
-              publicProgramCode: rest.public_program_code,
-              validFrom: valid_from,
-              validUntil: valid_until,
-            }),
-            select: { id: true },
-          });
-          if (overlappingInsurance) {
-            throw new PatientInsuranceOverlapError();
-          }
-        }
-
-        const created = await tx.patientInsurance.create({
-          data: {
-            org_id: ctx.orgId,
-            patient_id: id,
-            ...rest,
-            valid_from: valid_from ? new Date(valid_from) : null,
-            valid_until: valid_until ? new Date(valid_until) : null,
-            application_submitted_at: application_submitted_at
-              ? new Date(application_submitted_at)
-              : null,
-            decision_at: decision_at ? new Date(decision_at) : null,
-          },
-          select: patientInsuranceResponseSelect,
+      if (rest.is_active !== false) {
+        const overlappingInsurance = await tx.patientInsurance.findFirst({
+          where: buildPatientInsuranceOverlapWhere({
+            orgId: ctx.orgId,
+            patientId: id,
+            insuranceType: rest.insurance_type,
+            publicProgramCode: rest.public_program_code,
+            validFrom: valid_from,
+            validUntil: valid_until,
+          }),
+          select: { id: true },
         });
-        return { created };
-      },
-      { requestContext: ctx },
-    );
-  } catch (cause) {
-    if (cause instanceof PatientInsuranceOverlapError) {
-      return validationError('同じ期間に有効な保険情報が既に存在します', {
-        valid_from: ['同一患者・同一保険種別の有効期間が重複しています'],
+        if (overlappingInsurance) {
+          throw new PatientInsuranceOverlapError();
+        }
+      }
+
+      const created = await tx.patientInsurance.create({
+        data: {
+          org_id: ctx.orgId,
+          patient_id: id,
+          ...rest,
+          valid_from: valid_from ? new Date(valid_from) : null,
+          valid_until: valid_until ? new Date(valid_until) : null,
+          application_submitted_at: application_submitted_at
+            ? new Date(application_submitted_at)
+            : null,
+          decision_at: decision_at ? new Date(decision_at) : null,
+        },
+        select: patientInsuranceResponseSelect,
       });
-    }
+      return { created };
+    },
+    { requestContext: ctx },
+  ).catch((cause: unknown) => {
+    if (cause instanceof PatientInsuranceOverlapError) return { overlap: true as const };
     throw cause;
+  });
+
+  if ('overlap' in result) {
+    return validationError('同じ期間に有効な保険情報が既に存在します', {
+      valid_from: ['同一患者・同一保険種別の有効期間が重複しています'],
+    });
   }
 
   if ('response' in result) return result.response;
