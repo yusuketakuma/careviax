@@ -57,6 +57,43 @@
 
 ## 直近の作業
 
+- codex1 + codex2: UI-PHI-DISCLOSURE / PATIENT-INFO-IA-ALL-SCREENS / FABLE5-PLAN-001 (UI/UX SSOT内plan DONE; `Plans.md` queue sync/runtime rollout pending, 2026-07-14).
+  - current task / files inspected / external evidence:
+    `docs/ui-ux-design-guidelines.md`のPHI disclosure、患者識別、配置、状態、出力境界、`src/lib/patient/privacy.ts`、
+    `src/components/ui/phi-mask-field.tsx`、`src/components/features/patients/patient-header.tsx`、PatientHeader consumer、
+    `docs/ui-ux-refresh/phase3/inv-05-patients-core.md`、113 dashboard pages / 20 patient pagesを照合。ONC/ASTP SAFER 2025、
+    NISTIR 7804-1 / GCR 15-996、AHRQ EHR usability/MATCH、HL7 IPS/FHIR Provenance、厚労省医療情報system安全管理7.0、
+    PPC/MHLW医療介護guidance 2026-04、JAHIS監査証跡2.2/電子保存5、W3C、2025 systematic reviewとpatient/medication
+    timeline、clinical diagram/photo、composable/problem-oriented EHRの原著研究を2026-07-14に確認した。
+  - root contradiction / files changed / specification fixed:
+    旧「PHIはmaskを既定」「一覧/生成view/履歴は生値非表示」が、認可済み薬剤師/事務/訪問/請求の本人確認・連絡・医療安全に必要な
+    実値を欠落させ得る一方、dashboard完全表示方針と矛盾していた。`docs/ui-ux-design-guidelines.md`を変更し、UI種別/職種名による
+    blanket maskingを禁止。roleだけでなくcapability / assignment / case / purpose / consent / grantをserver境界で評価し、通過したtaskには
+    正確な値を表示、非認可値は`visibility`/`withheld_reason`でfail-closed、OS通知/SSE/log/RUM/audit payload/public URL/export deliveryを
+    別の最小化境界にした。対象薬局に所属する認証済みstaff相互の視認を理由にprivacy filter、blur、伏字、二段階開示を要求しない。
+    離席lockはなりすまし/監査真正性/外部者対策として維持する。
+  - patient placement / visual methods / Fable5-style plan:
+    全認証済みsurfaceを単一患者、複数患者、overlay/action、内部previewへ縮尺し、Identity、Safety、Command、Clinical snapshot、
+    Task evidence、Longitudinal、Source/provenanceの7レイヤとPH-OS 7domainを正本化。exact text/table/diff/timeline/trend/body map/
+    臨床写真/relationship diagram/icon/mini-visual/map/生成AI illustrationの採用条件・必須fallback・禁止用途、単一/複数患者の決定論的
+    wireframeを追加した。正常、押下後、partial、offline/unsynced、stale、concurrent conflict、error、recovery/auditを、臨床安全、運用、
+    privacy/security、data/API、frontend/a11y/performance、QA/監査の6面から反証し、Phase 0 inventoryからPhase 6 controlled rolloutまで
+    gate、dependency、rollback、棄却案を確定。big-bang、全情報平坦表示、図/AIによる正本置換は採用しない。
+  - security / privacy / medical safety / performance:
+    認可を弱めず、過剰maskによる誤認/連絡不能/薬剤情報見逃しと、非認可client取得/端末なりすまし/画面外再利用の双方を分離して低減する。
+    source/freshness/current-vs-ended/known-none-vs-withheld/partial/conflictをtyped contract化し、同一情報の独立copyとsilent mergeを禁止。
+    task別fetch、pagination/virtualization、固定shell、panel最大4のbounded adaptationを計画し、全件一括取得やlayout shiftをperformance要件にしない。
+  - imagegen / validation / remaining work / next action:
+    `imagegen`方針を検討したが、今回はexact label、a11y text fallback、source/state契約をdiff可能に固定するSSOT計画のため、単純diagramは
+    Markdown wireframeを採用しraster生成を省略。PHI/secretを生成promptへ送っていない。対象2 docsのPrettier write/checkと
+    `git diff --check`はPASS。新設sectionの24外部URLはcurlで22件HTTP 200、NHS/AHRQの2件はbot応答403だが事前browser調査で内容を確認済み。
+    codex2の国内公式/visual/Fable5 reviewを反映し、旧禁止事項のblanket「PHI生値露出」矛盾とtooltip-only安全値の残存を修正した。
+    最終peer reviewはBLOCKER/HIGHなしでAPPROVE。`Plans.md`へのphase queue同期は未実施。runtimeには、`src/lib/patient/privacy.ts`の`clerk`職種一律mask、
+    未使用だがstaleな`PhiMaskField`既定、PatientHeaderの
+    適用がpatient subroute全体へ未収束（20 patient pages、主要product consumerは限定的）、safe display ID/multi-row variant、route inventory/CI、
+    current medication canonical projection/provenance、offline/conflict/output contract E2Eが残る。次はPhase 0 inventoryとPhase 1 disclosure contractを
+    separate reviewed slicesで実装し、認可証明なしにmaskを一括解除しない。
+
 - codex1: AUTHZ-SELF-REPORT-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `f9e141185`, `PUSHED`).
   - current task / files inspected / root cause:
     `src/app/api/patient-self-reports/[id]/route.ts`とroute tests、self-report response masking、assignment predicate、canonical
