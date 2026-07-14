@@ -5,6 +5,7 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   buildVisitScheduleAssignmentWhere,
   type VisitScheduleAccessContext,
@@ -677,10 +678,12 @@ const authenticatedGET = withAuthContext(
 );
 
 export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+    } catch (err) {
+      unstable_rethrow(err);
+      return withSensitiveNoStore(internalError());
+    }
+  });
 };

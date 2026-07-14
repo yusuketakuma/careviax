@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { getPerformanceSnapshot, resetPerformanceMetrics } from '@/lib/utils/performance';
 
 const {
   authContextMock,
@@ -150,6 +151,7 @@ describe('/api/visits/today-preparation', () => {
   });
 
   beforeEach(() => {
+    resetPerformanceMetrics();
     vi.clearAllMocks();
     visitScheduleFindManyMock.mockResolvedValue([]);
     workflowExceptionFindManyMock.mockResolvedValue([]);
@@ -168,9 +170,22 @@ describe('/api/visits/today-preparation', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     const responseBody = await response.clone().text();
-    expect(response.headers.get('content-length')).toBe(
-      String(new TextEncoder().encode(responseBody).length),
-    );
+    const responseBytes = new TextEncoder().encode(responseBody).length;
+    expect(response.headers.get('content-length')).toBe(String(responseBytes));
+    expect(
+      getPerformanceSnapshot({ topRoutes: 100 }).routes.find(
+        (route) => route.method === 'GET' && route.route === '/api/visits/today-preparation',
+      ),
+    ).toMatchObject({
+      critical_route: true,
+      critical_route_family: 'visit-preparation',
+      request_count: 1,
+      payload_sample_count: 1,
+      last_payload_bytes: responseBytes,
+      payload_budget_bytes: 204_800,
+      payload_budget_status: 'within_budget',
+      payload_budget_met: true,
+    });
     const json = await response.json();
     expect(json.data.cards).toEqual([]);
     expect(json.data.visit_count).toBe(0);
