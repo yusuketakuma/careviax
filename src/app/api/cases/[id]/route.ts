@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -77,6 +78,13 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       document_url: true,
       created_at: true,
     },
+  });
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: careCase.patient.id,
+    targetType: 'care_case',
+    targetId: careCase.id,
+    view: 'care_case_detail',
   });
 
   return success({

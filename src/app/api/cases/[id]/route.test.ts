@@ -5,6 +5,7 @@ const {
   requireAuthContextMock,
   careCaseFindFirstMock,
   firstVisitDocumentFindFirstMock,
+  recordPhiReadAuditForRequestMock,
   validateOrgReferencesMock,
   careCaseUpdateMock,
   withOrgContextMock,
@@ -12,6 +13,7 @@ const {
   requireAuthContextMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   firstVisitDocumentFindFirstMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   careCaseUpdateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -30,6 +32,10 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: firstVisitDocumentFindFirstMock,
     },
   },
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/api/org-reference', () => ({
@@ -131,6 +137,19 @@ describe('/api/cases/[id]', () => {
         created_at: true,
       },
     });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'care_case',
+        targetId: 'case_1',
+        view: 'care_case_detail',
+      },
+    );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    const auditPayload = JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls[0]?.[1]);
+    expect(auditPayload).not.toContain('患者 太郎');
+    expect(auditPayload).not.toContain('カンジャ タロウ');
   });
 
   it('serializes first visit document delivery state with no-store headers', async () => {
@@ -178,6 +197,7 @@ describe('/api/cases/[id]', () => {
     });
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(firstVisitDocumentFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('does not fetch first visit document details for an unassigned case', async () => {
@@ -191,6 +211,46 @@ describe('/api/cases/[id]', () => {
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(firstVisitDocumentFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit or return case detail when first visit document lookup fails', async () => {
+    firstVisitDocumentFindFirstMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 raw first visit document detail'),
+    );
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('raw first visit document detail');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not read or audit case detail when authentication is rejected', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), { status: 401 }),
+    });
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when case detail lookup fails unexpectedly', async () => {
@@ -215,6 +275,7 @@ describe('/api/cases/[id]', () => {
     expect(JSON.stringify(body)).not.toContain('アムロジピン');
     expect(JSON.stringify(body)).not.toContain('raw case detail');
     expect(firstVisitDocumentFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('updates a case and normalizes empty pharmacist ids to null', async () => {
