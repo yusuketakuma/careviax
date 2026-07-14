@@ -15,12 +15,12 @@ export const REVISION_CATEGORY_LABELS: Record<string, string> =
 export const REVISION_SOURCE_LABELS: Record<string, string> = {
   patient_detail_edit: '患者詳細編集',
   visit_record: '訪問記録',
+  initial_visit_record: '初回訪問記録',
   mcs_sync: 'MCS連携',
   import: '取込',
 };
 
-// 識別子系(電話/住所)は変更履歴で生値を露出しない(UI/UX ガイドライン: PHI の取り扱い)
-const SENSITIVE_FIELD_KEYS = new Set(['phone', 'address', 'building_id']);
+export const LEGACY_MASKED_REVISION_VALUE = '〔記録あり〕';
 
 export interface RevisionChangeTypeMeta {
   label: string;
@@ -42,6 +42,15 @@ export function revisionChangeTypeMeta(item: RevisionPresentationItem): Revision
 }
 
 export function revisionDetailText(item: RevisionPresentationItem): string | null {
-  if (SENSITIVE_FIELD_KEYS.has(item.field_key)) return null; // 生値を出さず変更の事実のみ
   return item.value_label;
+}
+
+export function isLegacyPresenceOnlyRevision(item: RevisionPresentationItem): boolean {
+  if (item.value_label !== null) return false;
+  const values = [item.previous, item.current].filter((value) => value != null && value !== '');
+  return values.length > 0 && values.every((value) => value === LEGACY_MASKED_REVISION_VALUE);
+}
+
+export function hasStructuredRevisionValue(item: RevisionPresentationItem): boolean {
+  return [item.previous, item.current].some((value) => typeof value === 'object' && value !== null);
 }

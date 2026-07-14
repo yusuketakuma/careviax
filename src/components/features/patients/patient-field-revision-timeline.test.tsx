@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientFieldRevisionTimeline } from './patient-field-revision-timeline';
+import { patientFieldRevisionPresentationItemSchema } from './patient-field-revision-timeline-response-schema';
 
 setupDomTestEnv();
 
@@ -38,6 +39,34 @@ function revisionMeta(category: string | null, visibleCount = 0, hiddenCount = 0
 }
 
 describe('PatientFieldRevisionTimeline', () => {
+  it('accepts the longest server-generated exact scalar label', () => {
+    const previous = 'a'.repeat(5_000);
+    const current = 'b'.repeat(5_000);
+
+    expect(
+      patientFieldRevisionPresentationItemSchema.safeParse({
+        id: 'rev_long_scalar',
+        category: 'basic',
+        field_key: 'notes',
+        field_label: '備考',
+        value_label: `${previous} → ${current}`,
+        previous,
+        current,
+        source: 'patient_detail_edit',
+        source_visit_record_id: null,
+        change_reason: null,
+        importance: 'normal',
+        confirmed_by_name: null,
+        confirmed_at: null,
+        valid_from: '2026-06-16T00:00:00.000Z',
+        valid_to: null,
+        is_current: true,
+        updated_by_name: '田中',
+        created_at: '2026-06-16T01:00:00.000Z',
+      }).success,
+    ).toBe(true);
+  });
+
   it('renders a PH-OS skeleton while field revisions load', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({
@@ -125,7 +154,11 @@ describe('PatientFieldRevisionTimeline', () => {
 
     try {
       render(<PatientFieldRevisionTimeline patientId={patientId} />);
-      fireEvent.click(screen.getByRole('button', { name: '基本情報' }));
+      const basicFilter = screen.getByRole('button', { name: '基本情報' });
+      expect(basicFilter.className).toContain('min-h-[44px]');
+      expect(basicFilter.getAttribute('aria-pressed')).toBe('false');
+      fireEvent.click(basicFilter);
+      expect(basicFilter.getAttribute('aria-pressed')).toBe('true');
 
       const latestQuery = capturedQueries.at(-1);
       expect(latestQuery?.queryKey).toEqual([
@@ -181,7 +214,7 @@ describe('PatientFieldRevisionTimeline', () => {
     }
   });
 
-  it('validates and minimizes field revision data before it reaches the timeline cache', async () => {
+  it('validates exact field revision data and strips provider-only fields before caching', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     let capturedQuery: { queryFn: () => Promise<unknown> } | undefined;
     useQueryMock.mockImplementation((config: { queryFn: () => Promise<unknown> }) => {
@@ -198,16 +231,24 @@ describe('PatientFieldRevisionTimeline', () => {
                 {
                   id: 'rev_1',
                   category: 'basic',
-                  field_key: 'gender',
-                  field_label: '性別',
-                  value_label: 'male → female',
-                  previous: 'male',
-                  current: 'female',
+                  field_key: 'phone',
+                  field_label: '電話番号',
+                  value_label: '090-0000-0000 → 080-1111-2222',
+                  previous: '090-0000-0000',
+                  current: '080-1111-2222',
                   source: 'patient_detail_edit',
+                  source_visit_record_id: null,
+                  change_reason: '本人確認',
+                  importance: 'normal',
+                  confirmed_by_name: '佐藤',
+                  confirmed_at: '2026-06-16T02:00:00.000Z',
+                  valid_from: '2026-06-16T00:00:00.000Z',
+                  valid_to: null,
+                  is_current: true,
                   updated_by_name: '田中',
                   created_at: '2026-06-16T01:00:00.000Z',
-                  change_reason: 'provider-only sensitive detail',
                   updated_by: 'user_u',
+                  provider_internal_note: 'strip this field',
                 },
               ],
               meta: revisionMeta(null, 1),
@@ -223,12 +264,20 @@ describe('PatientFieldRevisionTimeline', () => {
           {
             id: 'rev_1',
             category: 'basic',
-            field_key: 'gender',
-            field_label: '性別',
-            value_label: 'male → female',
-            previous: 'male',
-            current: 'female',
+            field_key: 'phone',
+            field_label: '電話番号',
+            value_label: '090-0000-0000 → 080-1111-2222',
+            previous: '090-0000-0000',
+            current: '080-1111-2222',
             source: 'patient_detail_edit',
+            source_visit_record_id: null,
+            change_reason: '本人確認',
+            importance: 'normal',
+            confirmed_by_name: '佐藤',
+            confirmed_at: '2026-06-16T02:00:00.000Z',
+            valid_from: '2026-06-16T00:00:00.000Z',
+            valid_to: null,
+            is_current: true,
             updated_by_name: '田中',
             created_at: '2026-06-16T01:00:00.000Z',
           },
@@ -241,7 +290,7 @@ describe('PatientFieldRevisionTimeline', () => {
     }
   });
 
-  it('rejects legacy, inconsistent, or unmasked successful revision payloads', async () => {
+  it('rejects legacy envelopes, inconsistent metadata, oversized values, and duplicates', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     let capturedQuery: { queryFn: () => Promise<unknown> } | undefined;
     useQueryMock.mockImplementation((config: { queryFn: () => Promise<unknown> }) => {
@@ -259,6 +308,14 @@ describe('PatientFieldRevisionTimeline', () => {
       previous: '〔記録あり〕',
       current: '〔記録あり〕',
       source: 'patient_detail_edit',
+      source_visit_record_id: null,
+      change_reason: null,
+      importance: 'normal',
+      confirmed_by_name: null,
+      confirmed_at: null,
+      valid_from: '2026-06-16T00:00:00.000Z',
+      valid_to: null,
+      is_current: true,
       updated_by_name: '田中',
       created_at: '2026-06-16T01:00:00.000Z',
     };
@@ -266,7 +323,11 @@ describe('PatientFieldRevisionTimeline', () => {
       { revisions: [], meta: revisionMeta(null) },
       { data: [], meta: { ...revisionMeta(null), visible_count: 1 } },
       {
-        data: [{ ...sensitiveRevision, current: '090-1234-5678' }],
+        data: [{ ...sensitiveRevision, is_current: false, valid_to: null }],
+        meta: revisionMeta(null, 1),
+      },
+      {
+        data: [{ ...sensitiveRevision, current: 'x'.repeat(5_001) }],
         meta: revisionMeta(null, 1),
       },
       {

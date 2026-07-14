@@ -56,7 +56,7 @@ describe('VisitReflectedFieldsCard', () => {
     expect(screen.getByText('要介護2 → 要介護4')).toBeTruthy();
   });
 
-  it('電話など機微項目は生値を出さず項目名のみ表示する', async () => {
+  it('認可済みの訪問反映履歴では電話番号の正確な差分を表示する', async () => {
     stubFetch({
       data: [
         {
@@ -65,9 +65,9 @@ describe('VisitReflectedFieldsCard', () => {
           category: 'basic',
           field_key: 'phone',
           field_label: '電話番号',
-          value_label: null,
-          previous: '〔記録あり〕',
-          current: '〔記録あり〕',
+          value_label: '090-1111-2222 → 080-3333-4444',
+          previous: '090-1111-2222',
+          current: '080-3333-4444',
         },
       ],
     });
@@ -76,7 +76,7 @@ describe('VisitReflectedFieldsCard', () => {
 
     await screen.findByTestId('visit-reflected-fields-card');
     expect(screen.getByText('電話番号')).toBeTruthy();
-    expect(screen.queryByText('090-1111-2222')).toBeNull();
+    expect(screen.getByText('090-1111-2222 → 080-3333-4444')).toBeTruthy();
   });
 
   it('hostile visit record ids are encoded as one path segment', async () => {
@@ -99,7 +99,7 @@ describe('VisitReflectedFieldsCard', () => {
     );
   });
 
-  it('legacy, duplicate, reverse-ordered, or unmasked successful data fails closed', async () => {
+  it('legacy, duplicate, reverse-ordered, or oversized successful data fails closed', async () => {
     const sensitiveRevision = {
       ...revision,
       id: 'rev_sensitive',
@@ -119,7 +119,7 @@ describe('VisitReflectedFieldsCard', () => {
           { ...revision, id: 'rev_old', created_at: '2026-06-16T00:00:00.000Z' },
         ],
       },
-      { data: [{ ...sensitiveRevision, current: '090-1111-2222' }] },
+      { data: [{ ...sensitiveRevision, current: 'x'.repeat(5_001) }] },
     ];
 
     for (const payload of payloads) {
@@ -132,7 +132,6 @@ describe('VisitReflectedFieldsCard', () => {
       });
 
       expect(await screen.findByTestId('visit-reflected-fields-card-error')).toBeTruthy();
-      expect(screen.queryByText('090-1111-2222')).toBeNull();
       unmount();
     }
   });

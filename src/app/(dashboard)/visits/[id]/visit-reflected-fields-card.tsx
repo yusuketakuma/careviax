@@ -1,21 +1,14 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import { RefreshCw } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildVisitReflectedFieldsApiPath } from '@/lib/visits/api-paths';
-import { cn } from '@/lib/utils';
-import {
-  REVISION_CATEGORY_LABELS,
-  revisionChangeTypeMeta,
-  revisionDetailText,
-} from '@/components/features/patients/patient-field-revision-presentation';
+import { PatientFieldRevisionList } from '@/components/features/patients/patient-field-revision-entry';
 import { visitReflectedFieldsResponseSchema } from './visit-reflected-fields-response-schema';
 
 /**
@@ -83,38 +76,7 @@ export function VisitReflectedFieldsCard({ recordId }: { recordId: string }) {
         </p>
       </CardHeader>
       <CardContent>
-        <ul className="space-y-2">
-          {items.map((item) => {
-            const meta = revisionChangeTypeMeta(item);
-            const detail = revisionDetailText(item);
-            return (
-              <li
-                key={item.id}
-                className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Badge variant="outline" className="shrink-0 text-xs">
-                      {REVISION_CATEGORY_LABELS[item.category] ?? item.category}
-                    </Badge>
-                    <p className="truncate font-medium text-foreground">
-                      {item.field_label ?? item.field_key}
-                    </p>
-                  </div>
-                  <Badge variant="outline" className={cn('shrink-0 text-xs', meta.className)}>
-                    {meta.label}
-                  </Badge>
-                </div>
-                {detail && <p className="mt-1 text-xs text-muted-foreground">{detail}</p>}
-                <p className="mt-1 text-[12px] text-muted-foreground">
-                  {format(new Date(item.created_at), 'M/d HH:mm')}
-                  {' ・ '}
-                  {item.updated_by_name ?? '—'}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
+        <PatientFieldRevisionList items={items} showSource={false} />
       </CardContent>
     </Card>
   );
