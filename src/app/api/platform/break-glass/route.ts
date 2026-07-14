@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { BreakGlassScope } from '@prisma/client';
-import { error, success, validationError } from '@/lib/api/response';
+import { error, rateLimited, success, validationError } from '@/lib/api/response';
+import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { logger } from '@/lib/utils/logger';
@@ -14,6 +15,7 @@ import {
 import { verifyBreakGlassStepUp } from '@/lib/platform/step-up-mfa';
 
 const MIN_REASON_LENGTH = 10;
+const BREAK_GLASS_STEP_UP_RATE_LIMIT_PATH = '/api/platform/break-glass';
 
 /** Lists the operator's currently-active break-glass sessions. */
 export async function GET(req: NextRequest) {
@@ -58,6 +60,24 @@ export async function POST(req: NextRequest) {
   if (!password || !mfaCode) {
     return withSensitiveNoStore(
       validationError('再認証のためパスワードとMFAコードを入力してください'),
+    );
+  }
+
+  const stepUpRateLimit = await checkAuthRateLimit(
+    operator.operatorId,
+    BREAK_GLASS_STEP_UP_RATE_LIMIT_PATH,
+  );
+  if (!stepUpRateLimit.allowed) {
+    logger.warn({
+      event: 'break_glass_stepup_rate_limited',
+      actorId: operator.userId,
+    });
+    const retryAfterSeconds = Math.ceil((stepUpRateLimit.resetAt - Date.now()) / 1000);
+    return withSensitiveNoStore(
+      rateLimited(
+        retryAfterSeconds,
+        '再認証の試行回数が上限を超えました。しばらくしてから再度お試しください',
+      ),
     );
   }
 

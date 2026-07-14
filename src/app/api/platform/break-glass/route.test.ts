@@ -7,6 +7,7 @@ const {
   serializeSessionMock,
   createBreakGlassSessionMock,
   verifyBreakGlassStepUpMock,
+  checkAuthRateLimitMock,
   loggerWarnMock,
 } = vi.hoisted(() => ({
   requirePlatformOperatorMock: vi.fn(),
@@ -14,6 +15,7 @@ const {
   serializeSessionMock: vi.fn(),
   createBreakGlassSessionMock: vi.fn(),
   verifyBreakGlassStepUpMock: vi.fn(),
+  checkAuthRateLimitMock: vi.fn(),
   loggerWarnMock: vi.fn(),
 }));
 
@@ -41,6 +43,10 @@ vi.mock('@/lib/platform/break-glass', () => {
 
 vi.mock('@/lib/platform/step-up-mfa', () => ({
   verifyBreakGlassStepUp: verifyBreakGlassStepUpMock,
+}));
+
+vi.mock('@/lib/api/rate-limit', () => ({
+  checkAuthRateLimit: checkAuthRateLimitMock,
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
@@ -116,6 +122,11 @@ describe('POST /api/platform/break-glass', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requirePlatformOperatorMock.mockResolvedValue({ operator });
+    checkAuthRateLimitMock.mockResolvedValue({
+      allowed: true,
+      remaining: 4,
+      resetAt: Date.now() + 60_000,
+    });
     verifyBreakGlassStepUpMock.mockResolvedValue(true);
     createBreakGlassSessionMock.mockResolvedValue({
       id: 'bg_2',
@@ -130,10 +141,13 @@ describe('POST /api/platform/break-glass', () => {
     });
   });
 
-  function createPostRequest() {
+  function createPostRequest(options?: { body?: Record<string, unknown>; forwardedFor?: string }) {
     return new NextRequest('http://localhost/api/platform/break-glass', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...(options?.forwardedFor ? { 'x-forwarded-for': options.forwardedFor } : {}),
+      },
       body: JSON.stringify({
         targetOrgId: ' org_2 ',
         reason: ' 障害調査のためアクセスします ',
@@ -141,6 +155,7 @@ describe('POST /api/platform/break-glass', () => {
         scope: 'read_only',
         password: 'test-password',
         mfaCode: ' 123456 ',
+        ...options?.body,
       }),
     });
   }
@@ -153,8 +168,64 @@ describe('POST /api/platform/break-glass', () => {
     const response = await POST(createPostRequest());
 
     expect(response.status).toBe(403);
+    expect(checkAuthRateLimitMock).not.toHaveBeenCalled();
     expect(verifyBreakGlassStepUpMock).not.toHaveBeenCalled();
     expect(createBreakGlassSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('does not consume the step-up budget when required fields are invalid', async () => {
+    const response = await POST(createPostRequest({ body: { reason: 'short' } }));
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expect(checkAuthRateLimitMock).not.toHaveBeenCalled();
+    expect(verifyBreakGlassStepUpMock).not.toHaveBeenCalled();
+    expect(createBreakGlassSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks before Cognito step-up when the operator-scoped attempt budget is exhausted', async () => {
+    const request = createPostRequest();
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+    checkAuthRateLimitMock.mockResolvedValueOnce({
+      allowed: false,
+      remaining: 0,
+      resetAt: 40_000,
+    });
+
+    const response = await POST(request);
+    nowSpy.mockRestore();
+
+    expect(response.status).toBe(429);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('retry-after')).toBe('30');
+    await expect(response.json()).resolves.toEqual({
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: '再認証の試行回数が上限を超えました。しばらくしてから再度お試しください',
+    });
+    expect(checkAuthRateLimitMock).toHaveBeenCalledWith('operator_1', '/api/platform/break-glass');
+    expect(verifyBreakGlassStepUpMock).not.toHaveBeenCalled();
+    expect(createBreakGlassSessionMock).not.toHaveBeenCalled();
+    expect(loggerWarnMock).toHaveBeenCalledWith({
+      event: 'break_glass_stepup_rate_limited',
+      actorId: 'user_1',
+    });
+  });
+
+  it('uses the same operator-scoped budget when the source IP changes', async () => {
+    await POST(createPostRequest({ forwardedFor: '198.51.100.10' }));
+    await POST(createPostRequest({ forwardedFor: '203.0.113.20' }));
+
+    expect(checkAuthRateLimitMock).toHaveBeenNthCalledWith(
+      1,
+      'operator_1',
+      '/api/platform/break-glass',
+    );
+    expect(checkAuthRateLimitMock).toHaveBeenNthCalledWith(
+      2,
+      'operator_1',
+      '/api/platform/break-glass',
+    );
+    expect(verifyBreakGlassStepUpMock).toHaveBeenCalledTimes(2);
   });
 
   it('fails closed without creating a session when step-up authentication fails', async () => {
@@ -169,6 +240,9 @@ describe('POST /api/platform/break-glass', () => {
       password: 'test-password',
       code: '123456',
     });
+    expect(checkAuthRateLimitMock.mock.invocationCallOrder[0]).toBeLessThan(
+      verifyBreakGlassStepUpMock.mock.invocationCallOrder[0],
+    );
     expect(createBreakGlassSessionMock).not.toHaveBeenCalled();
     expect(loggerWarnMock).toHaveBeenCalledWith({
       event: 'break_glass_stepup_failed',
@@ -189,6 +263,7 @@ describe('POST /api/platform/break-glass', () => {
       password: 'test-password',
       code: '123456',
     });
+    expect(checkAuthRateLimitMock).toHaveBeenCalledWith('operator_1', '/api/platform/break-glass');
     expect(createBreakGlassSessionMock).toHaveBeenCalledWith({
       operator,
       targetOrgId: 'org_2',
