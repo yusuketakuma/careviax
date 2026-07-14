@@ -4,6 +4,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { getCaseRiskCockpit } from '@/server/services/case-risk-cockpit';
@@ -32,6 +33,13 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     { requestContext: ctx },
   );
   if (!cockpit) return notFound('ケースが見つかりません');
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: cockpit.patient.id,
+    targetType: 'care_case',
+    targetId: cockpit.case.id,
+    view: 'case_risk_cockpit',
+  });
 
   return success({ data: cockpit });
 }

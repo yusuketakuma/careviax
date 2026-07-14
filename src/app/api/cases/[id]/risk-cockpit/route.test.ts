@@ -2,13 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
-const { requireAuthContextMock, getCaseRiskCockpitMock, withOrgContextMock, loggerErrorMock } =
-  vi.hoisted(() => ({
-    requireAuthContextMock: vi.fn(),
-    getCaseRiskCockpitMock: vi.fn(),
-    withOrgContextMock: vi.fn(),
-    loggerErrorMock: vi.fn(),
-  }));
+const {
+  requireAuthContextMock,
+  getCaseRiskCockpitMock,
+  withOrgContextMock,
+  loggerErrorMock,
+  recordPhiReadAuditForRequestMock,
+} = vi.hoisted(() => ({
+  requireAuthContextMock: vi.fn(),
+  getCaseRiskCockpitMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
@@ -20,6 +26,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
@@ -135,6 +145,16 @@ describe('/api/cases/[id]/risk-cockpit', () => {
     expect(body).not.toHaveProperty('overall');
     expect(body).not.toHaveProperty('sections');
     expect(body).not.toHaveProperty('next_actions');
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'care_case',
+        targetId: 'case_1',
+        view: 'case_risk_cockpit',
+      },
+    );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
   });
 
   it('rejects forbidden roles before loading the cockpit service', async () => {
@@ -152,6 +172,7 @@ describe('/api/cases/[id]/risk-cockpit', () => {
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
     expect(getCaseRiskCockpitMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank case ids before loading the cockpit service', async () => {
@@ -166,6 +187,7 @@ describe('/api/cases/[id]/risk-cockpit', () => {
       message: 'ケースIDが不正です',
     });
     expect(getCaseRiskCockpitMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns no-store 404 for out-of-scope or missing cases', async () => {
@@ -181,6 +203,7 @@ describe('/api/cases/[id]/risk-cockpit', () => {
       code: 'WORKFLOW_NOT_FOUND',
       message: 'ケースが見つかりません',
     });
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when cockpit assembly fails unexpectedly', async () => {
@@ -213,5 +236,6 @@ describe('/api/cases/[id]/risk-cockpit', () => {
     });
     expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田花子');
     expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('アムロジピン');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 });
