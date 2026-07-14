@@ -61,6 +61,35 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: Round 15 patient-lab update recovery / namespace bypass ratchet /
+  inbound source-mapping PHI-safe logging / visit-preparation brief-query reuse boundary
+  (DONE / CODE PUSHED, 2026-07-15; implementations `a8c646e15`, `e7029c049`, `fb646c08c`, `2b2f8326d`).
+  - workflow / ownership / files inspected:
+    `agmsg` inbox/history、live Git、`Plans.md`、UI SSOT、Next.js client/error guides、patient-labs component/testsとPATCH routeを確認した。
+    4 laneはnon-overlapで、codex1 exact2、codex2 exact1、codex3 exact2、codex4 exact4の全handoff SHA-256をlive filesと照合した。
+    開始HEAD `511122aa3` / parity `0 0`からINDEX/DOCS HARD HOLDを通知し、明示9 pathだけを4 logical groupsへstageした。
+    既存dirtyの`.harness-mem/state/{continuity,whisper-budget}.json`、patient external-share 4 files、
+    `tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`は変更、stage、revertしていない。
+  - frontend / patient-lab PATCH recovery (`a8c646e15`):
+    `patient-labs-card.{tsx,test.tsx}`でidempotent lab PATCHだけを`{labId, form}` snapshot mutationへ変更し、affected-lab editorに
+    fixed PHI-safe inline `ErrorState`を接続した。失敗後もdraftを保持し、後続編集と分離した失敗時点の値を再試行する。
+    create POSTには重複作成を避けるため再試行を追加していない。read/path encoding、strict acknowledgement、invalidation、success resetは維持し、
+    raw update errorを表示しない。focused component suiteは`1 file / 23 tests`。軽微なstate追加のためimagegenは省略した。
+  - backend / security / performance (`e7029c049`, `fb646c08c`, `2b2f8326d`):
+    response helper AST scanはnamespace import bindingも検出し、live `response.error()` / `response.externalError()` bypassをexact 0/0に固定した。
+    inbound source-mapping POSTはstrict body、assignment/case/archive/conflict、scoped write、minimal DTOを維持し、outer catch loggerを
+    fixed one-arg event/route/method/status/codeだけへ縮小してraw Error/message/stack/body/patient/case/sender mappingを除外した。
+    visit-preparation detailが既に取得したvisitRecordIds/cycleIds/billingEvidenceをinternal request contextでvisit-briefへ渡し、
+    このcallerだけ重複3 DB readを削減した。他callerのfallback readとblocker limit/order/DTOは維持した。
+    day-boardのPromise.all候補はinteractive Prisma transactionのsingle connection上で実効並列にならないため、編集前にbyte-clean撤回した。
+  - validation / commit / push / remaining:
+    codex1 focused 23 tests、exact lint/format、frontend contract、client PHI-log/display、state color、typography、diff-checkがPASS。
+    peer handoffはcodex2 grouped `4 files / 23 tests`、codex3 route `13 tests` + security/static gates、codex4 exact4
+    `4 files / 69 tests` + query-shape/read-SLO/boundaries/API/DTO/auth gatesがPASS。唯一のaggregate
+    `pnpm typecheck && pnpm typecheck:no-unused`は両方exit 0。build/Oracleは実行していない。
+    4 code commitsをnon-force pushし、local/remote HEAD `2b2f8326dfcf4fd0752d220bc5bb35e78d02a733`、parity `0 0`。
+    親`API-CONTRACT-003`、`SERVER-LOG-PHI-SAFE-001`、`PERF-DB-READ-SLO-001`は残surfaceのためPartial。
+
 - codex1 + codex2 + codex3 + codex4: Round 14 visit-constraints recovery / error-details ratchet /
   inbound-detail PHI-safe logging / visit-preparation context-read parallelization boundary
   (DONE / CODE PUSHED, 2026-07-15; implementations `f83b34f97`, `5e9362ff2`, `335e7f32c`, `09ae475b4`).
