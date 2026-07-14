@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { withAuthContext } from '@/lib/auth/context';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { parseBoundedInteger } from '@/lib/api/pagination';
@@ -57,18 +58,18 @@ const authenticatedGET = withAuthContext(
 
       const items = await listStandardMedicationTimeline(tx, {
         orgId: ctx.orgId,
-        patientId,
+        patientId: patient.id,
         caseId: caseId.value,
         limit,
       });
-      return { kind: 'ok' as const, items };
+      return { kind: 'ok' as const, patientId: patient.id, items };
     });
 
     if (result.kind === 'not_found') return notFound('患者が見つかりません');
 
-    return success({
+    const response = success({
       data: {
-        patient_id: patientId,
+        patient_id: result.patientId,
         items: result.items,
       },
       meta: {
@@ -77,6 +78,15 @@ const authenticatedGET = withAuthContext(
         generated_at: new Date().toISOString(),
       },
     });
+
+    recordPhiReadAuditForRequest(ctx, {
+      patientId: result.patientId,
+      targetType: 'patient',
+      targetId: result.patientId,
+      view: 'patient_medication_timeline',
+    });
+
+    return response;
   },
   {
     permission: 'canVisit',
