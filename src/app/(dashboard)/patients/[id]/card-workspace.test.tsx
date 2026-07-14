@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { PrimaryQueryError } from '@/lib/api/primary-query-json';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { useUIStore } from '@/lib/stores/ui-store';
 import type {
@@ -1145,8 +1146,10 @@ describe('CardWorkspace', () => {
       null,
       {},
       {
-        patientOverviewError: new Error(
+        patientOverviewError: new PrimaryQueryError(
           'refetch failed for patient 佐藤花子 / FAX 03-1111-1111 / token=secret',
+          503,
+          true,
         ),
         patientOverviewUpdatedAt: new Date(2026, 6, 14, 9, 30).getTime(),
         patientOverviewRefetch: refetchPatient,
@@ -1171,6 +1174,41 @@ describe('CardWorkspace', () => {
     fireEvent.click(retryButton);
     expect(refetchPatient).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    [401, 'ログインが必要です', '認証状態を再確認'],
+    [403, 'この画面へのアクセス権限がありません', 'アクセス権を再確認'],
+    [200, '患者情報を表示できません', '再試行'],
+  ])(
+    'hides cached patient data after a non-retainable overview failure with status %i',
+    (status, title, retryLabel) => {
+      const refetchPatient = vi.fn();
+      mockPatientQuery(
+        buildWorkspace(),
+        null,
+        {},
+        {
+          patientOverviewError: new PrimaryQueryError(
+            '患者 佐藤花子 / FAX 03-1111-1111 / token=secret',
+            status,
+            false,
+          ),
+          patientOverviewUpdatedAt: new Date(2026, 6, 14, 9, 30).getTime(),
+          patientOverviewRefetch: refetchPatient,
+        },
+      );
+
+      render(<CardWorkspace patientId="patient_1" />);
+
+      expect(screen.getByText(title)).toBeTruthy();
+      expect(screen.queryByText('田中 一郎')).toBeNull();
+      expect(screen.queryByText('前回取得時点の患者情報を表示中')).toBeNull();
+      expect(screen.queryByText(/佐藤花子|03-1111-1111|token=secret/)).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: retryLabel }));
+      expect(refetchPatient).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('renders the 06_card tabbed workspace: header, safety board, tab sections, prescription, activities, rail', async () => {
     mockPatientQuery(buildWorkspace(), {

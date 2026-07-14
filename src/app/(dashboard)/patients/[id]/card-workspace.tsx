@@ -59,6 +59,11 @@ import {
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { readApiJson } from '@/lib/api/client-json';
+import {
+  canRetainCachedDataAfterPrimaryQueryError,
+  fetchPrimaryQueryJson,
+  PrimaryQueryError,
+} from '@/lib/api/primary-query-json';
 import { formatDisplayEntityLabel } from '@/lib/display-id/display-labels';
 import { downscaleImage } from '@/lib/files/downscale-image';
 import { buildFileDownloadHref } from '@/lib/files/navigation';
@@ -4984,13 +4989,16 @@ export function CardWorkspace({
   } = useQuery<PatientOverview>({
     queryKey: ['patient-overview', patientId, orgId],
     queryFn: async () => {
-      const res = await fetch(buildPatientApiPath(patientId, '/overview'), {
-        headers: buildOrgHeaders(orgId),
-      });
-      const payload = await readApiJson<{ data: PatientOverview }>(res, {
-        fallbackMessage: '患者情報の取得に失敗しました',
-        schema: buildPatientOverviewResponseSchema(patientId),
-      });
+      const payload = await fetchPrimaryQueryJson(
+        () =>
+          fetch(buildPatientApiPath(patientId, '/overview'), {
+            headers: buildOrgHeaders(orgId),
+          }),
+        {
+          fallbackMessage: '患者情報の取得に失敗しました',
+          schema: buildPatientOverviewResponseSchema(patientId),
+        },
+      );
       return payload.data;
     },
     enabled: Boolean(orgId),
@@ -5507,17 +5515,32 @@ export function CardWorkspace({
   });
 
   if (!orgId || isLoading) return <PatientCardWorkspaceLoadingState />;
-  if (!patient) {
+  const canRetainCachedPatient = canRetainCachedDataAfterPrimaryQueryError(error);
+  const mustHideCachedPatient = Boolean(
+    patient && patientOverviewState.isStaleAfterRefetchError && !canRetainCachedPatient,
+  );
+  if (!patient || mustHideCachedPatient) {
     // 取得失敗(error)を「患者が見つかりません」(=不在)に潰さない。
-    // error 時は再試行導線付き ErrorState、患者データが無く error も無い場合のみ not-found。
-    return error ? (
-      <ErrorState
-        variant="server"
-        title="患者情報を表示できません"
-        description="患者情報の取得に失敗しました。再試行してください。"
-        onRetry={() => void refetchPatient()}
-      />
-    ) : (
+    // 401/403・契約不正はcached PHIを維持せず、固定のaccess/error stateへfail-closed化する。
+    if (error) {
+      const status = error instanceof PrimaryQueryError ? error.status : null;
+      const variant = status === 401 ? 'unauthorized' : status === 403 ? 'forbidden' : 'server';
+      return (
+        <ErrorState
+          variant={variant}
+          title={variant === 'server' ? '患者情報を表示できません' : undefined}
+          description={
+            variant === 'server' ? '患者情報の取得に失敗しました。再試行してください。' : undefined
+          }
+          onRetry={() => void refetchPatient()}
+          retryLabel={
+            status === 401 ? '認証状態を再確認' : status === 403 ? 'アクセス権を再確認' : '再試行'
+          }
+        />
+      );
+    }
+
+    return (
       <EmptyState
         icon={FileQuestion}
         title="患者が見つかりません"
@@ -5671,7 +5694,7 @@ export function CardWorkspace({
         }}
         safetyCheckHref={buildPatientHref(patientId, '/safety-check')}
       />
-      {patientOverviewState.isStaleAfterRefetchError ? (
+      {patientOverviewState.isStaleAfterRefetchError && canRetainCachedPatient ? (
         <SegmentStaleBanner
           title="前回取得時点の患者情報を表示中"
           description={`最新の患者情報を取得できませんでした。${
