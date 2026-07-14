@@ -211,9 +211,16 @@ describe('ExternalShareContent', () => {
       isError: false,
     });
 
-    render(<ExternalShareContent patientId="patient_1" />);
+    render(
+      <ExternalShareContent
+        patientId="patient_1"
+        workflowContext={<section data-testid="share-workflow-context">連携導線</section>}
+      />,
+    );
 
     const patientContext = screen.getByRole('region', { name: '患者情報' });
+    const workflowContext = screen.getByTestId('share-workflow-context');
+    const shareButton = screen.getByRole('button', { name: /共有リンクを発行/ });
     expect(patientContext.textContent).toContain('共有対象患者 長い氏名でも省略しない');
     expect(patientContext.textContent).toContain(
       'キョウユウタイショウカンジャ ナガイシメイデモショウリャクシナイ',
@@ -224,9 +231,10 @@ describe('ExternalShareContent', () => {
     expect(patientContext.getAttribute('data-sticky')).toBe('true');
     expect(patientContext.querySelector('.truncate')).toBeNull();
     expect(
-      patientContext.compareDocumentPosition(
-        screen.getByRole('button', { name: /共有リンクを発行/ }),
-      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      patientContext.compareDocumentPosition(workflowContext) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      workflowContext.compareDocumentPosition(shareButton) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 

@@ -33,13 +33,16 @@ export default async function ExternalSharePage({ params }: { params: Promise<{ 
         }
         shortcuts={getPatientShareShortcutLinks(id)}
       />
-      <CollaborationWorkflowPanel
-        focus="share"
-        description="患者単位の外部共有を、訪問時の確認と報告書送付へつながる連携接点として扱います。"
-      />
-
       <Suspense fallback={<Loading label="他職種向け共有ページを読み込み中..." />}>
-        <ExternalShareContent patientId={id} />
+        <ExternalShareContent
+          patientId={id}
+          workflowContext={
+            <CollaborationWorkflowPanel
+              focus="share"
+              description="患者単位の外部共有を、訪問時の確認と報告書送付へつながる連携接点として扱います。"
+            />
+          }
+        />
       </Suspense>
     </PageScaffold>
   );

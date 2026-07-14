@@ -38,11 +38,21 @@ vi.mock('@/components/ui/loading', () => ({
 }));
 
 vi.mock('./external-share-content', () => ({
-  ExternalShareContent: ({ patientId }: { patientId: string }) => {
+  ExternalShareContent: ({
+    patientId,
+    workflowContext,
+  }: {
+    patientId: string;
+    workflowContext?: React.ReactNode;
+  }) => {
     if (externalShareContentMockState.suspend) {
       throw externalShareContentMockState.promise;
     }
-    return <div data-testid="external-share-content" data-patient-id={patientId} />;
+    return (
+      <div data-testid="external-share-content" data-patient-id={patientId}>
+        {workflowContext}
+      </div>
+    );
   },
 }));
 
@@ -66,6 +76,12 @@ describe('ExternalSharePage', () => {
       '/patients/__helper_patient_1__',
     );
     expect(screen.getByTestId('external-share-content').dataset.patientId).toBe('patient_1');
+    expect(screen.getByText('collaboration workflow')).toBeTruthy();
+    expect(
+      screen
+        .getByTestId('external-share-content')
+        .contains(screen.getByText('collaboration workflow')),
+    ).toBe(true);
   });
 
   it('uses a screen-specific loading status for the route shell fallback', async () => {
@@ -78,5 +94,6 @@ describe('ExternalSharePage', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('status', { name: '読み込み中...' })).toBeNull();
     expect(screen.queryByTestId('external-share-content')).toBeNull();
+    expect(screen.queryByText('collaboration workflow')).toBeNull();
   });
 });

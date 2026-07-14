@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -237,7 +237,13 @@ const FOLLOWUP_TASK_PERMISSION_MESSAGE = '運用タスクの作成権限があ�
 
 // --- Main ---
 
-export function ExternalShareContent({ patientId }: { patientId: string }) {
+export function ExternalShareContent({
+  patientId,
+  workflowContext,
+}: {
+  patientId: string;
+  workflowContext?: ReactNode;
+}) {
   const orgId = useOrgId();
   const currentUserId = useAuthStore((state) => state.currentUser.id);
   const currentUserRole = useAuthStore((state) => state.currentUser.role);
@@ -248,6 +254,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       orgId={orgId}
       currentUserId={currentUserId}
       currentUserRole={currentUserRole}
+      workflowContext={workflowContext}
     />
   );
 }
@@ -257,11 +264,13 @@ function ExternalShareWorkspace({
   orgId,
   currentUserId,
   currentUserRole,
+  workflowContext,
 }: {
   patientId: string;
   orgId: string;
   currentUserId: string | null;
   currentUserRole: string | null;
+  workflowContext?: ReactNode;
 }) {
   const queryClient = useQueryClient();
   const isBootstrappingAuthorization = !orgId || !currentUserId || !currentUserRole;
@@ -795,6 +804,8 @@ function ExternalShareWorkspace({
         )}
         cachedDataUpdatedAt={overviewQuery.dataUpdatedAt}
       />
+
+      {workflowContext}
 
       {/* Warning */}
       <div className="flex items-start gap-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
