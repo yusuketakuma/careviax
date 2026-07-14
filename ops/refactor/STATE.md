@@ -61,6 +61,45 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: Round 6 inbound intake recovery / OQC registry remainder /
+  Yrese webhook log minimization / nested route-metric dedup integration boundary
+  (DONE / CODE PUSHED, 2026-07-15; implementations `3870a916c`, `0c5356a28`, `26db4fa7c`, `2a161b575`).
+  - workflow / ownership / files inspected:
+    `agmsg` inbox/history、live Git、`Plans.md`、UI SSOT、Next.js client/error guidesを再確認し、codex1 exact2、codex2 exact4、
+    codex3 exact2、codex4 exact2がnon-overlapであること、3 handoffの全SHA-256がfrozen報告と一致すること、開始HEAD
+    `634dbc80c`とoriginが`0 0`であることを確認した。codex1がgit indexと`Plans.md` /
+    `ops/refactor/{STATE,RUN_LOCK}.md`のexclusive ownershipを通知し、他agentはreleaseまでGit readを含むHARD HOLD。
+    相互reviewなしで明示pathだけを4 logical groupsへstageした。既存dirtyの`.harness-mem/state/{continuity,whisper-budget}.json`、
+    patient external-share 4 files、`tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`は
+    変更、stage、revertしていない。
+  - frontend / inbound intake recovery (`3870a916c`):
+    `src/app/(dashboard)/communications/inbound/inbound-content.{tsx,test.tsx}`を変更し、toastだけだった登録失敗をフォーム内の
+    fixed PHI-safe `ErrorState`へ接続した。入力値を保持し、現在のform payloadを明示ボタンから再試行し、raw errorは表示しない。
+    focused component suite `1 file / 17 tests`、exact lint/format、frontend contract、client PHI-log、state color、typography、diffをPASS。
+    視覚再構成ではない軽微な状態追加のため`gpt-image-2` / imagegenは省略した。
+  - backend API contract (`0c5356a28`):
+    `src/lib/api/error-codes.{ts,test.ts}`と`src/app/api/patients/[id]/qualification-check/route.{ts,test.ts}`を変更し、
+    `OQC_NOT_ENABLED` = 501 / info / nonretry / returnと`OQC_UNAUTHORIZED` = 502 / error / nonretry / returnをtyped registryへ追加。
+    対象fixed branchだけを`registeredError`へ移し、insurance/patient/token非露出を固定した。既存upstream typing、authz、RLS、
+    writable-patient、identity fail-closed、webhook、no-storeは維持。self-validationは`4 files / 41 tests`、exact lint/format、
+    response/auth/static gates、diffをPASSした。
+  - security / Yrese webhook logging (`26db4fa7c`):
+    `src/app/api/webhooks/yrese/route.{ts,test.ts}`を変更し、import failure loggerからraw Error/message/stackを除去して、
+    fixed `event/route/operation/code/count` objectだけへ縮小した。署名済みPHI/secret-bearing Error回帰でfixed no-store 500、
+    one-arg logger、raw object非伝播を固定。signature/body cap/schema/date/import DTO/queue/202は維持し、focused integration
+    `4 files / 28 tests`、exact lint/format、PHI/boundary/API/auth/static gates、diffをPASSした。
+  - performance / nested route measurement (`2a161b575`):
+    `src/lib/utils/performance.{ts,test.ts}`を変更し、同一`NextRequest`をauth wrapperとroute wrapperが二重計測する経路を
+    request-identity `WeakSet` guardでidempotent化した。outermost final responseだけをduration/payload sampleへ記録し、
+    distinct request、status/header/error挙動とerror後のguard解放を維持。focused integration `8 files / 110 tests`、
+    conventions、exact lint/format、route-auth、diffをPASSした。
+  - aggregate validation / commit / push / remaining:
+    4 code commits後にcodex1が`pnpm typecheck && pnpm typecheck:no-unused`を1回だけ直列実行し、両方exit 0。
+    ユーザー方針によりbuild/Oracleは実行していない。code commitsをfeature branchへnon-force pushし、remote/local HEAD
+    `2a161b575`が一致、parityは`0 0`。次はsingle-ledger closeoutをscoped commit/pushし、最終parity確認後に
+    codex2/3/4へexplicit GATE RELEASEを送る。`FE-INBOUND-001`、`API-CONTRACT-003`、
+    `SERVER-LOG-PHI-SAFE-001`、`ROUTE-PERF-MEASURE-001`はいずれも残surfaceがあるためPartialを維持する。
+
 - codex1 + codex2 + codex3 + codex4: Round 5 OQC error registry / patient visits RLS-audit /
   communications inbound payload measurement integration boundary
   (DONE / CODE PUSHED, 2026-07-15; implementations `8f2fcbad0`, `d64a59b07`, `cd9638637`).
