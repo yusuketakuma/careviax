@@ -48,14 +48,31 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `API-CONTRACT-002C`のPlans/STATE evidence同期
-  （実装3 pathsは`d71107c27`でRELEASE済み）、`codex2`: `PERF-FE-CSS-SOURCE-001`の`src/app/globals.css`と
-  `tools/scripts/tailwind-source-boundary.test.ts`。`codex3/codex4`は停止のまま。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `API-CONTRACT-002D`のauth/request-correlation/job trace、
+  `codex2`: `E2E-PREFLIGHT-RLS-EXEMPT-001`のRLS intentional-exclusion SSOTとmedical UI preflight。`codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex2: PERF-FE-CSS-SOURCE-001 (DONE, 2026-07-14; implementation `d6fbcbb7c`, `PUSHED`).
+  - current task / files inspected / root cause:
+    `src/app/globals.css`、tooling typography fixture、Tailwind v4 source detection、Next.js CSS guide、PH-OS UI/UX SSOTを照合。
+    Tailwindの既定自動検出がrepo全体をscanし、`tools/scripts/check-typography-minimum.test.ts`のfixture/commentにある
+    `text-[length:var(...)]` / `text-[var(...)]`を実utilityとしてCSSへ生成して、production optimizer warningと不要CSSを生んでいた。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    `src/app/globals.css`のTailwind importを`source('..')`へ変更してscan rootを`src/`へ限定し、
+    `tools/scripts/tailwind-source-boundary.test.ts`でproduction layoutが範囲内、tooling fixtureが範囲外であることを固定した。
+    独立PostCSS比較はfixture markerを除去し、CSS 288,629→271,149 bytes（17,480 bytes / 約6.1%減）。
+    production source 3,472 importsのscanでは`src/`外のUI class sourceを検出せず、visual token/layout、runtime/auth/PHI/DB/network契約は不変。
+  - validation results / remaining work / next action / rollback:
+    Focused 2 files / 6 tests、独立verifier APPROVED、exact ESLint/Prettier、typography 0 drift、colors 19 allowlisted / 0 drift、
+    8 GiB `pnpm typecheck:no-unused`、diffをPASS。変更前buildはCSS optimizer warning 2、webpack 6.8分、TypeScript 105秒、311 pages、
+    変更後buildはwarning 0、webpack 5.1分、TypeScript 97秒、311 pagesでPASS。Tailwind公式
+    `Detecting classes in source files` (https://tailwindcss.com/docs/detecting-classes-in-source-files) とrepo-local Next.js
+    `node_modules/next/dist/docs/01-app/01-getting-started/11-css.md`を2026-07-14に確認。今後production UIを`src/`外へ置く場合は明示`@source`が必要。
+    非視覚build-pipeline変更のためimagegen/browserなし。Rollbackは`d6fbcbb7c`のrevertでDB/data rollback不要。
 
 - codex1: API-CONTRACT-002C (DONE; parent remains Partial, 2026-07-14; implementation `d71107c27`, `PUSHED`).
   - current task / files inspected / root cause:
