@@ -245,6 +245,7 @@ describe('POST /api/communications/inbound/[id]/source-mapping', () => {
     expect(serialized).not.toContain('raw_text');
     expect(serialized).not.toContain('external_url');
     expect(serialized).not.toContain('org_id');
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('rejects legacy aliases and raw/source fields before touching the database', async () => {
@@ -265,6 +266,7 @@ describe('POST /api/communications/inbound/[id]/source-mapping', () => {
     expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(mappingCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('returns a unified 404 when the inbound event is not visible in the current assignment scope', async () => {
@@ -474,5 +476,66 @@ describe('POST /api/communications/inbound/[id]/source-mapping', () => {
     expect(response.status).toBe(409);
     expectSensitiveNoStore(response);
     expect(mappingCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('returns auth rejection without reading, writing, or error logging', async () => {
+    authRejectionMock.mockReturnValueOnce(
+      Response.json({ code: 'AUTH_FORBIDDEN', message: '権限がありません' }, { status: 403 }),
+    );
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        confidence: 'probable',
+        mapping_status: 'needs_review',
+      }),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(403);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(mappingCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 and logs only fixed coded metadata', async () => {
+    const rawError = '患者A case_1 訪問看護師A 090-1234-5678 external mapping database failure';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        external_patient_label: '外部患者A',
+        external_contact_name: '訪問看護師A',
+        confidence: 'probable',
+        mapping_status: 'needs_review',
+      }),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(mappingCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith({
+      event: 'inbound_source_mapping_post_unhandled_error',
+      route: '/api/communications/inbound/[id]/source-mapping',
+      method: 'POST',
+      status: 500,
+      code: 'INBOUND_SOURCE_MAPPING_WRITE_FAILED',
+    });
+    expect(loggerErrorMock.mock.calls[0]).toHaveLength(1);
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(rawError);
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('患者A');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('case_1');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('訪問看護師A');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('090-1234-5678');
   });
 });
