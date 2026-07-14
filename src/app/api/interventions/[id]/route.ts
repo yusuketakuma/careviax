@@ -1,9 +1,12 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, internalError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { updateInterventionSchema } from '@/lib/validations/intervention';
 import { prisma } from '@/lib/db/client';
 import {
@@ -50,6 +53,13 @@ async function getIntervention(
     },
   });
   if (!intervention) return notFound('介入記録が見つかりません');
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: intervention.patient_id,
+    targetType: 'intervention',
+    targetId: intervention.id,
+    view: 'intervention_detail',
+  });
 
   return success({ data: intervention });
 }
@@ -101,10 +111,19 @@ async function updateIntervention(
   return success({ data: intervention });
 }
 
-export const GET = withAuthContext(getIntervention, {
+const authenticatedGET = withAuthContext(getIntervention, {
   permission: 'canVisit',
   message: '介入記録の閲覧権限がありません',
 });
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const PATCH = withAuthContext(updateIntervention, {
   permission: 'canVisit',

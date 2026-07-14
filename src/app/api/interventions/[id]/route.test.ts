@@ -1,16 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
   patientFindManyMock,
   interventionFindFirstMock,
+  recordPhiReadAuditForRequestMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   interventionFindFirstMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -84,12 +91,19 @@ describe('/api/interventions/[id]', () => {
 
   describe('GET', () => {
     it('returns 200 with intervention data', async () => {
-      const intervention = { id: 'int_1', org_id: 'org_1', type: 'drug_interaction' };
+      const intervention = {
+        id: 'int_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        type: 'drug_interaction',
+        description: 'アムロジピンの相互作用を確認',
+      };
       interventionFindFirstMock.mockResolvedValue(intervention);
 
       const req = createRequest('http://localhost/api/interventions/int_1');
       const res = await GET(req, { params: Promise.resolve({ id: 'int_1' }) });
       expect(res!.status).toBe(200);
+      expectSensitiveNoStore(res!);
       expect(requireAuthContextMock).toHaveBeenCalledWith(
         expect.any(NextRequest),
         expect.objectContaining({
@@ -107,6 +121,18 @@ describe('/api/interventions/[id]', () => {
       });
       const json = await res!.json();
       expect(json.data.id).toBe('int_1');
+      expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+        expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+        {
+          patientId: 'patient_1',
+          targetType: 'intervention',
+          targetId: 'int_1',
+          view: 'intervention_detail',
+        },
+      );
+      expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+      const auditPayload = JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls[0]?.[1]);
+      expect(auditPayload).not.toContain('アムロジピン');
     });
 
     it('returns 404 when intervention not found', async () => {
@@ -115,6 +141,8 @@ describe('/api/interventions/[id]', () => {
       const req = createRequest('http://localhost/api/interventions/missing');
       const res = await GET(req, { params: Promise.resolve({ id: 'missing' }) });
       expect(res!.status).toBe(404);
+      expectSensitiveNoStore(res!);
+      expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
     });
 
     it('returns 404 for an org-wide role when the intervention is not in the org', async () => {
@@ -125,6 +153,7 @@ describe('/api/interventions/[id]', () => {
       const res = await GET(req, { params: Promise.resolve({ id: 'int_1' }) });
 
       expect(res!.status).toBe(404);
+      expectSensitiveNoStore(res!);
       // org-wide role (pharmacist) bypasses assignment scoping: org-only lookup, no patient filter.
       expect(patientFindManyMock).not.toHaveBeenCalled();
       expect(interventionFindFirstMock).toHaveBeenCalledWith({
@@ -133,6 +162,7 @@ describe('/api/interventions/[id]', () => {
           org_id: 'org_1',
         },
       });
+      expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
     });
 
     it('rejects blank intervention ids before assignment lookup or intervention reads', async () => {
@@ -140,12 +170,49 @@ describe('/api/interventions/[id]', () => {
       const res = await GET(req, { params: Promise.resolve({ id: '   ' }) });
 
       expect(res!.status).toBe(400);
+      expectSensitiveNoStore(res!);
       await expect(res!.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: '介入記録IDが不正です',
       });
       expect(patientFindManyMock).not.toHaveBeenCalled();
       expect(interventionFindFirstMock).not.toHaveBeenCalled();
+      expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+    });
+
+    it('returns a fixed no-store 500 without auditing when the detail read fails', async () => {
+      interventionFindFirstMock.mockRejectedValueOnce(
+        new Error('患者 山田花子 raw intervention アムロジピン detail'),
+      );
+
+      const req = createRequest('http://localhost/api/interventions/int_1');
+      const res = await GET(req, { params: Promise.resolve({ id: 'int_1' }) });
+
+      expect(res!.status).toBe(500);
+      expectSensitiveNoStore(res!);
+      const body = await res!.json();
+      expect(body).toEqual({
+        code: 'INTERNAL_ERROR',
+        message: 'サーバー内部でエラーが発生しました',
+      });
+      expect(JSON.stringify(body)).not.toContain('山田花子');
+      expect(JSON.stringify(body)).not.toContain('アムロジピン');
+      expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+    });
+
+    it('does not read or audit intervention detail when authentication is rejected', async () => {
+      requireAuthContextMock.mockResolvedValueOnce({
+        response: new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), { status: 401 }),
+      });
+
+      const req = createRequest('http://localhost/api/interventions/int_1');
+      const res = await GET(req, { params: Promise.resolve({ id: 'int_1' }) });
+
+      expect(res!.status).toBe(401);
+      expectSensitiveNoStore(res!);
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(interventionFindFirstMock).not.toHaveBeenCalled();
+      expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
     });
   });
 
