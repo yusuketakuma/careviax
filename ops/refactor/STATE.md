@@ -48,7 +48,7 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。`codex1`の`API-CONTRACT-002D`は完了し、次sliceを選定中。
+  共有surfaceとlong gateは事前通知で直列化する。`codex1`の`API-CONTRACT-002E`は完了し、次sliceを選定中。
   現在のownershipは`codex2`: `E2E-PREFLIGHT-RLS-EXEMPT-001`のRLS intentional-exclusion SSOTとmedical UI preflight。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
@@ -56,6 +56,24 @@
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: API-CONTRACT-002E-EXPORT-TRACE-FOUNDATION (DONE; parent remains Partial, 2026-07-14; implementation `6c8ee5932`, `PUSHED`).
+  - current task / files inspected / root cause:
+    Shared AuditLog writer、export/print audit sanitizer、患者CSV route、全export helper callsites、direct-writer static ratchetを照合。
+    Export helperがshared writerを経由せずrequest/correlation IDを受け取れず、患者CSV成功・認証後validation応答にもtrace headerがなかったため、
+    患者export responseとfail-closed audit rowを相関できなかった。全callsite一括変更を避け、helper foundationと代表bulk PHI exportだけを切った。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    `recordDataExportAudit`と`recordCareReportPrintAudit`の両方を`createAuditLogEntry`へ収束し、任意trace入力をshared validatorで再検証した。
+    既存sanitizer、`normalizeJsonInput`、action/target、actor pharmacy/site、patient、IP/UA、同期failure契約を維持。不正IDは保存せず、
+    patient CSV routeは認証後validationとCSV成功へ共通trace headerを付与し、同一IDをaudit helperへ渡した。CSV本文、filename、query、response status、
+    masking、DB write数は不変。direct-writer static allowlistからexport helper例外を1件削減した。
+  - validation results / remaining work / next action / rollback:
+    Focused export/patient/static/shared-writer 4 files / 34 tests、独立privacy verifier APPROVED、exact ESLint/Prettier、`pnpm typecheck`、
+    8 GiB `pnpm typecheck:no-unused`、API shape 0/0、API authz 0、route-auth 150 allowlisted / 214 direct / 0 new、raw-org 116 / 0 new、
+    client PHI-log、diffをPASS。codex2のfull Vitest 1,557 files / 16,284 tests / 0 failuresは`42c89cd0d` baseline証拠として扱い、
+    002E後のfull regressionはGoal最終batchへ残す。Schema/migration/production mutation/deploy/Oracleなし。非視覚server/API変更のため
+    imagegen/browserなし。親には他export/print callsiteのtrace引渡し、helper外AuditLog、SSR capture、success/error body、outbox origin trace設計が残る。
+    Rollbackは`6c8ee5932`のrevertでDB/data rollback不要。
 
 - codex1: API-CONTRACT-002D-JOB-TRACE (DONE; parent remains Partial, 2026-07-14; implementation `5998ae5ee`, `PUSHED`).
   - current task / files inspected / root cause:
