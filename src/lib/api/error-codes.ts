@@ -164,6 +164,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'return_to_previous',
     messageLabel: 'api.error.file.presigned_download_json_disabled',
   },
+  IDEMPOTENCY_CONFLICT: {
+    httpStatus: 409,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'correct_input',
+    messageLabel: 'api.error.idempotency_conflict',
+  },
   INTERNAL_ERROR: {
     httpStatus: 500,
     logLevel: 'error',

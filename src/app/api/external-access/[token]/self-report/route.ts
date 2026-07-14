@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
-import { success, validationError, error } from '@/lib/api/response';
+import { error, registeredError, success, validationError } from '@/lib/api/response';
 import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -207,7 +207,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
   if (result.kind === 'idempotency_conflict') {
     return withSensitiveNoStore(
-      error('IDEMPOTENCY_CONFLICT', 'Idempotency-Keyが別の自己申告で使用されています', 409, {
+      registeredError('IDEMPOTENCY_CONFLICT', 'Idempotency-Keyが別の自己申告で使用されています', {
         reason: 'key_reused_with_different_request',
       }),
     );

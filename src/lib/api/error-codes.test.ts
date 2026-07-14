@@ -142,6 +142,13 @@ describe('API error code registry', () => {
           "recoveryAction": "return_to_previous",
           "retryable": false,
         },
+        "IDEMPOTENCY_CONFLICT": {
+          "httpStatus": 409,
+          "logLevel": "warn",
+          "messageLabel": "api.error.idempotency_conflict",
+          "recoveryAction": "correct_input",
+          "retryable": false,
+        },
         "INTERNAL_ERROR": {
           "httpStatus": 500,
           "logLevel": "error",
@@ -312,6 +319,12 @@ describe('API error code registry', () => {
     expect(getApiErrorDefinition('WORKFLOW_CONFLICT')).toMatchObject({
       httpStatus: 409,
       recoveryAction: 'reload',
+    });
+    expect(getApiErrorDefinition('IDEMPOTENCY_CONFLICT')).toMatchObject({
+      httpStatus: 409,
+      retryable: false,
+      recoveryAction: 'correct_input',
+      messageLabel: 'api.error.idempotency_conflict',
     });
     expect(isRegisteredApiErrorCode('UNREGISTERED_ERROR')).toBe(false);
     expect(() => getApiErrorDefinition('UNREGISTERED_ERROR')).toThrow(

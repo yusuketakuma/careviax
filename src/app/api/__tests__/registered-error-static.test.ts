@@ -107,16 +107,6 @@ const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
     httpStatus: 422,
   },
   {
-    filePath: 'src/app/api/care-reports/[id]/send/route.ts',
-    code: 'IDEMPOTENCY_CONFLICT',
-    httpStatus: 409,
-  },
-  {
-    filePath: 'src/app/api/care-reports/[id]/send/route.ts',
-    code: 'IDEMPOTENCY_CONFLICT',
-    httpStatus: 409,
-  },
-  {
     filePath: 'src/app/api/dispense-audits/route.ts',
     code: 'VALIDATION_ERROR',
     httpStatus: 422,
@@ -125,11 +115,6 @@ const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
     filePath: 'src/app/api/external-access/[token]/self-report/route.ts',
     code: 'EXTERNAL_ACCESS_SELF_REPORT_SCOPE_DENIED',
     httpStatus: 403,
-  },
-  {
-    filePath: 'src/app/api/external-access/[token]/self-report/route.ts',
-    code: 'IDEMPOTENCY_CONFLICT',
-    httpStatus: 409,
   },
   {
     filePath: 'src/app/api/external-access/route.ts',
@@ -475,24 +460,6 @@ const allowedRawErrorDetailsUsages: RawErrorDetailsUsage[] = [
     codeExpression: "'CLAIMS_EXPORT_SITE_UNRESOLVED'",
     detailsExpression:
       '{ reason: siteResolution.reason, missing_count: siteResolution.missingCount, site_count: siteResolution.siteCount, }',
-  },
-  {
-    filePath: 'src/app/api/care-reports/[id]/send/route.ts',
-    helper: 'error',
-    codeExpression: "'IDEMPOTENCY_CONFLICT'",
-    detailsExpression: "{ reason: 'key_reused_with_different_request' }",
-  },
-  {
-    filePath: 'src/app/api/care-reports/[id]/send/route.ts',
-    helper: 'error',
-    codeExpression: "'IDEMPOTENCY_CONFLICT'",
-    detailsExpression: "{ reason: 'key_reused_with_different_request' }",
-  },
-  {
-    filePath: 'src/app/api/external-access/[token]/self-report/route.ts',
-    helper: 'error',
-    codeExpression: "'IDEMPOTENCY_CONFLICT'",
-    detailsExpression: "{ reason: 'key_reused_with_different_request', }",
   },
   {
     filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',

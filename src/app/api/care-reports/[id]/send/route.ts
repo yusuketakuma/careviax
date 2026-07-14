@@ -13,11 +13,11 @@ import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   conflict,
-  error,
   forbiddenResponse,
   internalError,
-  validationError,
   notFound,
+  registeredError,
+  validationError,
 } from '@/lib/api/response';
 import {
   canAccessVisitScheduleAssignment,
@@ -1808,10 +1808,9 @@ async function authenticatedPOST(
     return careReportSendJsonResponse(idempotencyPeek.responseBody, idempotencyPeek.responseStatus);
   }
   if (idempotencyPeek.kind === 'idempotency_conflict') {
-    return error(
+    return registeredError(
       'IDEMPOTENCY_CONFLICT',
       'Idempotency-Keyが別の報告書送付リクエストで使用されています',
-      409,
       { reason: 'key_reused_with_different_request' },
     );
   }
@@ -1891,10 +1890,9 @@ async function authenticatedPOST(
     );
   }
   if (idempotencyClaim.kind === 'idempotency_conflict') {
-    return error(
+    return registeredError(
       'IDEMPOTENCY_CONFLICT',
       'Idempotency-Keyが別の報告書送付リクエストで使用されています',
-      409,
       { reason: 'key_reused_with_different_request' },
     );
   }
