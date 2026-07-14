@@ -285,6 +285,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'return_to_previous',
     messageLabel: 'api.error.workflow.not_found',
   },
+  YRESE_WEBHOOK_IMPORT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.webhook.yrese_import_failed',
+  },
 } as const satisfies Record<string, ApiErrorDefinition>);
 
 export type RegisteredApiErrorCode = keyof typeof API_ERROR_CODE_REGISTRY;

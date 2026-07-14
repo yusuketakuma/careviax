@@ -275,6 +275,13 @@ describe('API error code registry', () => {
           "recoveryAction": "return_to_previous",
           "retryable": false,
         },
+        "YRESE_WEBHOOK_IMPORT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.webhook.yrese_import_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
       }
     `);
   });

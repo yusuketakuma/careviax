@@ -1,7 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { error, success, validationError } from '@/lib/api/response';
+import { error, registeredError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObject } from '@/lib/db/json';
 import { logger } from '@/lib/utils/logger';
@@ -182,6 +182,6 @@ export async function POST(req: NextRequest) {
       code: 'YRESE_WEBHOOK_IMPORT_FAILED',
       count: Buffer.byteLength(bodyText, 'utf8'),
     });
-    return noStore(error('YRESE_WEBHOOK_IMPORT_FAILED', 'Webhook import failed', 500));
+    return noStore(registeredError('YRESE_WEBHOOK_IMPORT_FAILED', 'Webhook import failed'));
   }
 }
