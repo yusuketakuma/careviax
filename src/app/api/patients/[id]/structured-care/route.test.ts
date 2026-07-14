@@ -5,25 +5,28 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 const {
   requireAuthContextMock,
   patientFindFirstMock,
+  withOrgContextMock,
   listPatientStructuredCareMock,
   recordPhiReadAuditForRequestMock,
-} = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  patientFindFirstMock: vi.fn(),
-  listPatientStructuredCareMock: vi.fn(),
-  recordPhiReadAuditForRequestMock: vi.fn(),
-}));
+  transactionClient,
+} = vi.hoisted(() => {
+  const patientFindFirstMock = vi.fn();
+  return {
+    requireAuthContextMock: vi.fn(),
+    patientFindFirstMock,
+    withOrgContextMock: vi.fn(),
+    listPatientStructuredCareMock: vi.fn(),
+    recordPhiReadAuditForRequestMock: vi.fn(),
+    transactionClient: { patient: { findFirst: patientFindFirstMock } },
+  };
+});
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    patient: {
-      findFirst: patientFindFirstMock,
-    },
-  },
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
 }));
 
 vi.mock('@/server/services/patient-structured-care-list', () => ({
@@ -36,6 +39,17 @@ vi.mock('@/lib/audit/phi-read-audit', () => ({
 
 import { GET } from './route';
 
+const authContext = {
+  orgId: 'org_1',
+  userId: 'user_1',
+  role: 'pharmacist' as const,
+  actorSiteId: 'site_1',
+  ipAddress: '203.0.113.10',
+  userAgent: 'vitest',
+  requestId: 'req_patient_structured_care_1',
+  correlationId: 'corr_patient_structured_care_1',
+};
+
 function createRequest(url = 'http://localhost/api/patients/patient_1/structured-care') {
   return new NextRequest(url);
 }
@@ -44,12 +58,12 @@ describe('/api/patients/[id]/structured-care GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-      },
+      ctx: authContext,
     });
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (tx: typeof transactionClient) => Promise<unknown>) =>
+        work(transactionClient),
+    );
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     listPatientStructuredCareMock.mockResolvedValue({
       procedures: [],
@@ -95,6 +109,13 @@ describe('/api/patients/[id]/structured-care GET', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '患者情報の閲覧権限がありません',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: authContext,
+    });
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'patient_requested',
@@ -102,14 +123,11 @@ describe('/api/patients/[id]/structured-care GET', () => {
       },
       select: { id: true },
     });
-    expect(listPatientStructuredCareMock).toHaveBeenCalledWith(
-      { patient: { findFirst: patientFindFirstMock } },
-      {
-        orgId: 'org_1',
-        patientId: 'patient_authoritative',
-        includeEnded: false,
-      },
-    );
+    expect(listPatientStructuredCareMock).toHaveBeenCalledWith(transactionClient, {
+      orgId: 'org_1',
+      patientId: 'patient_authoritative',
+      includeEnded: false,
+    });
     await expect(response.json()).resolves.toEqual({
       data: {
         procedures: [procedure],
@@ -128,7 +146,14 @@ describe('/api/patients/[id]/structured-care GET', () => {
       {
         patientId: 'patient_authoritative',
         view: 'patient_structured_care',
+        purpose: 'care',
       },
+    );
+    expect(JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls)).not.toContain(
+      '薬剤師 佐藤',
+    );
+    expect(JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls)).not.toContain(
+      '薬剤師 鈴木',
     );
     expect(listPatientStructuredCareMock.mock.invocationCallOrder[0]).toBeLessThan(
       recordPhiReadAuditForRequestMock.mock.invocationCallOrder[0]!,
@@ -180,6 +205,7 @@ describe('/api/patients/[id]/structured-care GET', () => {
       message: '患者IDが不正です',
     });
     expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(listPatientStructuredCareMock).not.toHaveBeenCalled();
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
@@ -198,7 +224,26 @@ describe('/api/patients/[id]/structured-care GET', () => {
 
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(listPatientStructuredCareMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when the patient scope query fails', async () => {
+    const rawError = '患者A patient assignment query failure';
+    patientFindFirstMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
     expect(listPatientStructuredCareMock).not.toHaveBeenCalled();
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
@@ -231,6 +276,24 @@ describe('/api/patients/[id]/structured-care GET', () => {
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(JSON.stringify(body)).not.toContain('患者A');
     expect(JSON.stringify(body)).not.toContain('モルヒネ');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when org context setup fails', async () => {
+    const rawError = 'raw RLS context failure with structured care data';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(listPatientStructuredCareMock).not.toHaveBeenCalled();
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 });
