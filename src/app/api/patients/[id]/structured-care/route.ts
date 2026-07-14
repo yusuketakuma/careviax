@@ -1,5 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { requireAuthContext } from '@/lib/auth/context';
 import { internalError, success, validationError, notFound } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -33,8 +34,13 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
 
   const data = await listPatientStructuredCare(prisma, {
     orgId: ctx.orgId,
-    patientId: id,
+    patientId: patient.id,
     includeEnded,
+  });
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: patient.id,
+    view: 'patient_structured_care',
   });
 
   return success({ data });
