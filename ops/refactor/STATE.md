@@ -61,6 +61,30 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: Round 16 insurance read recovery / localized helper ratchet /
+  inbound MCS PHI-safe logging / patient-detail billing-context reuse boundary
+  (DONE / CODE PUSHED, 2026-07-15; implementations `f404fb746`, `c159e4fcc`, `8025a0ae7`, `43cb244bd`).
+  - workflow / ownership / files inspected:
+    `agmsg` inbox/history、live Git、`Plans.md`、UI SSOT、Next.js client/error guides、patient-insurance component/testsを確認した。
+    4 laneはnon-overlapで、codex1 exact2、codex2 exact1、codex3 exact2、codex4 exact2の全handoff SHA-256をlive filesと照合した。
+    Round16 INDEX/DOCS HARD HOLD下で明示7 pathだけを4 logical groupsへstageし、既存dirtyの
+    `.harness-mem/state/{continuity,whisper-budget}.json`、patient external-share 4 files、
+    `tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`は変更、stage、revertしていない。
+  - frontend / patient-insurance read recovery (`f404fb746`):
+    `patient-insurance-card.{tsx,test.tsx}`でGET失敗をpersistent PHI-safe `ErrorState`とrefetchへ接続し、障害時に0件、保険追加、
+    editor/delete/empty stateを誤表示しないfail-closed UIへ変更した。focused suiteは`1 file / 17 tests`。軽微なstate追加のためimagegenは省略した。
+  - backend / security / performance (`c159e4fcc`, `8025a0ae7`, `43cb244bd`):
+    registered-error AST ratchetは`localizedError`のalias/namespace bypassも全category exact 0へ固定した。Inbound MCS routeは既存の
+    auth/assignment/case/strict body/scoped writeを維持し、failure loggerからraw Error/message/stackと患者・通信情報を除外した。
+    patient detailは同一request内のbrief billing contextをshared promiseとして再利用し、重複readを削減した。codex4の初回実装は
+    TDZにより`8/42`失敗したが、shared promiseへ修復後`42/42`、grouped `60 tests`がPASSした。
+  - validation / commit / push / remaining:
+    codex1 focused `17 tests` + exact lint/format/frontend-contract/client PHI-log/display/color/typography/diff、codex2 grouped
+    `24 tests`、codex3 `6 tests` + security/static gates、codex4 grouped `60 tests` + query/read-SLO/boundary gatesがPASS。
+    唯一のaggregate `pnpm typecheck && pnpm typecheck:no-unused`は初回で両方exit 0。build/Oracleは実行していない。
+    4 code commitsをnon-force pushし、local/remote HEAD `43cb244bd67b5fde9963102e1480a91d7bce9590`、parity `0 0`。
+    親`API-CONTRACT-003`、`SERVER-LOG-PHI-SAFE-001`、`PERF-DB-READ-SLO-001`は残surfaceのためPartial。
+
 - codex1 + codex2 + codex3 + codex4: Round 15 patient-lab update recovery / namespace bypass ratchet /
   inbound source-mapping PHI-safe logging / visit-preparation brief-query reuse boundary
   (DONE / CODE PUSHED, 2026-07-15; implementations `a8c646e15`, `e7029c049`, `fb646c08c`, `2b2f8326d`).
