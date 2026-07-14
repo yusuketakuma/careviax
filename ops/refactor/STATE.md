@@ -59,7 +59,7 @@
 
 ## 直近の作業
 
-- codex1: UI-SHELL-GEOMETRY-001 / UI-THEME-CLINICAL-SIGNAL-001 Phase 2A (DONE; parent remains Partial, 2026-07-14; scoped commit pending).
+- codex1: UI-SHELL-GEOMETRY-001 / UI-THEME-CLINICAL-SIGNAL-001 Phase 2A (DONE; parent remains Partial, 2026-07-14; implementation `65612698d`, not pushed).
   - current task / files inspected / root cause:
     ユーザー指示「画面のUIは可能な限り共有化」「画面切り替わり時も上部バーの高さを変えない」を、`docs/ui-ux-design-guidelines.md`、
     `AppShell` / `AppHeader` / `PageScaffold`、dashboard layout、患者詳細tab、訪問記録の患者安全header、global focus offset、既存unit/E2E、
@@ -81,7 +81,7 @@
   - imagegen / remaining / rollback:
     上位theme sliceのPHI-free `gpt-image-2`参照を継続使用し、今回は新しい視覚構成を生成するsliceでなく共有geometryの実装・実測だったため追加画像は
     生成していない。残はPhase 1 token/font/dark/forced-colors proof、Phase 2B共通page header/work plane/semantic component、Phase 3高頻度surface、
-    Phase 4全route/role/state journey・CLS/LCP/INP。Rollbackはscoped implementation commitのrevertで、DB/data rollback不要。
+    Phase 4全route/role/state journey・CLS/LCP/INP。Rollbackは`65612698d`のrevertで、DB/data rollback不要。
 
 - codex2: AUTHZ-INTERVENTION-DETAIL-001 (DONE; parent remains Partial, 2026-07-14; implementation `43d7ab989`, `PUSHED`).
   - `src/app/api/interventions/[id]/route.ts`とtestのみ変更。Org/assignment-scoped成功GETへcanonical PHI read auditをexact-onceで追加し、authoritative
