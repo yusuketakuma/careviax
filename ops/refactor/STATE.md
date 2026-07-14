@@ -48,14 +48,32 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `E2E-FIXTURE-CONTRACT-001`と
-  `TYPECHECK-STALE-NEXT-TYPES-001`のevidence同期、`codex2`: `API-CONTRACT-003I-COMMUNICATION-EXPORT-ERRORS`。
+  共有surfaceとlong gateは事前通知で直列化する。`API-CONTRACT-003I-COMMUNICATION-EXPORT-ERRORS`の実装・証跡同期後、
+  現在のsource/shared-doc ownershipは両者とも解放済み。次スライス開始前に`agmsg`でexact pathsを再通知する。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex2: API-CONTRACT-003I-COMMUNICATION-EXPORT-ERRORS (DONE; parent remains Partial, 2026-07-14; implementation `6695c0491`, `PUSHED`).
+  - current task / files inspected / root cause:
+    Canonical error registry/response helper、communication request CSV export route/test、auth wrapper、sensitive no-store、export audit transactionを照合。
+    Read/export失敗の1 constructorとaudit失敗の2 constructorsが固定code/message/500を持ちながら互換`error()`でstatusを重複指定し、
+    typed registryのstatus/recovery契約外に残っていた。既存route testsは両failureをCSV delivery前の固定JSONとして検証済みだった。
+  - files changed / bugs fixed / correctness / security / privacy / performance:
+    `src/lib/api/error-codes.ts`とsnapshot、`src/app/api/communication-requests/export/route.ts`の3 pathsを変更。
+    `COMMUNICATION_REQUEST_EXPORT_FAILED`と`COMMUNICATION_REQUEST_EXPORT_AUDIT_FAILED`を500/error/retryable/retry metadataで登録し、
+    3 constructorsだけをtyped `registeredError()`へ移行した。固定日本語body/status、sensitive no-store、CSV非返却、auth/tenant、query、
+    transaction/audit ordering、success payload、DB/network回数は不変。Raw provider/DB error、患者情報、token/secretをregistry/body/logへ追加せず、
+    retryableは現時点でmetadataのみで自動retryを接続していない。
+  - validation results / remaining work / next action / rollback:
+    Focused registry/response/export route 3 files / 35 tests、exact ESLint/Prettier/diff、API response shape 0/0、API authz、route-auth
+    150 allowlisted / 214 direct / 0 new、client PHI-log、`pnpm typecheck`、8 GiB `pnpm typecheck:no-unused`をPASS。
+    独立codex1 API/privacy reviewもAPPROVE。Oracleは現行SSOTの利用停止指示により未使用。非視覚API変更のためimagegen/browserなし。
+    親`API-CONTRACT-003`には他route固有・動的codeが残る。次の低リスク候補は同じCSV fail-closed契約を持つpharmacy drug stock exportだが、
+    既存code/status/recoveryと監査順序を別sliceで再確認する。Rollbackは`6695c0491`のrevertでDB/data rollback不要。
 
 - codex1: TYPECHECK-STALE-NEXT-TYPES-001 (DONE, 2026-07-14; implementation `5bbb47937`, `PUSHED`).
   - current task / files inspected / root cause:
