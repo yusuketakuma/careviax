@@ -40,12 +40,13 @@
     }
   },
   "itemSchema": {
-    "pk": "string: `${bucketStart}:${methodBucket}:${identifier}:${canonicalRoute}`",
-    "hit_count": "number: atomic ADD counter for the current fixed window",
-    "reset_at": "number: epoch milliseconds when the client budget resets",
+    "pk": "string: fixed-window `${bucketStart}:${methodBucket}:${identifier}:${canonicalRoute}` or durable external OTP lockout `durable:external-access-otp:v1:${domainSeparatedTokenDigest}`",
+    "hit_count": "number: atomic fixed-window request count or lifetime external OTP mismatch count",
+    "reset_at": "optional number: epoch milliseconds when a fixed-window client budget resets; absent from durable lockout items",
     "expires_at": "number: epoch seconds for DynamoDB TTL cleanup",
     "created_at": "string: ISO timestamp, first writer wins",
-    "updated_at": "string: ISO timestamp, latest increment"
+    "updated_at": "optional string: ISO timestamp of the latest counter increment",
+    "counter_kind": "optional string: fixed discriminator for durable external OTP lockout items"
   },
   "applicationRolePolicy": {
     "version": "2012-10-17",
@@ -53,9 +54,7 @@
       {
         "sid": "AllowRateLimitCounterUpdates",
         "effect": "Allow",
-        "actions": [
-          "dynamodb:UpdateItem"
-        ],
+        "actions": ["dynamodb:UpdateItem"],
         "resources": [
           "arn:aws:dynamodb:${AWS_REGION}:${AWS_ACCOUNT_ID}:table/${RATE_LIMIT_DDB_TABLE_NAME}"
         ]
@@ -68,10 +67,7 @@
       {
         "sid": "VerifyRateLimitTableShapeAndTtl",
         "effect": "Allow",
-        "actions": [
-          "dynamodb:DescribeTable",
-          "dynamodb:DescribeTimeToLive"
-        ],
+        "actions": ["dynamodb:DescribeTable", "dynamodb:DescribeTimeToLive"],
         "resources": [
           "arn:aws:dynamodb:${AWS_REGION}:${AWS_ACCOUNT_ID}:table/${RATE_LIMIT_DDB_TABLE_NAME}"
         ]
@@ -79,10 +75,7 @@
       {
         "sid": "VerifyRateLimitWritePath",
         "effect": "Allow",
-        "actions": [
-          "dynamodb:UpdateItem",
-          "dynamodb:DeleteItem"
-        ],
+        "actions": ["dynamodb:UpdateItem", "dynamodb:DeleteItem"],
         "resources": [
           "arn:aws:dynamodb:${AWS_REGION}:${AWS_ACCOUNT_ID}:table/${RATE_LIMIT_DDB_TABLE_NAME}"
         ]
@@ -93,6 +86,7 @@
     "Prefer the runtime IAM role or container task role over static AWS access keys.",
     "The application signs DynamoDB UpdateItem requests from the runtime role credentials and fails closed in production when no distributed credential source is available.",
     "Do not store PHI in rate-limit identifiers. Use user IDs or trusted client IP buckets plus canonical route templates.",
+    "External OTP lockout keys contain only a fixed prefix and a domain-separated SHA-256 digest. Never store the raw token, OTP, OTP hash, DB token hash, grant ID, organization ID, patient ID, or recipient data in the item or logs.",
     "TTL deletion is eventually consistent; authorization must not depend on the physical deletion timing of expired counter rows."
   ]
 }

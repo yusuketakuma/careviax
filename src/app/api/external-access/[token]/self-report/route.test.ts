@@ -7,6 +7,8 @@ const VALID_ORG_ID = 'corgabcdefghijklmnopqrstu';
 
 const {
   checkAuthRateLimitMock,
+  checkExternalAccessOtpLockoutMock,
+  recordExternalAccessOtpFailureMock,
   getClientIpMock,
   validateExternalAccessGrantMock,
   withOrgContextMock,
@@ -15,6 +17,8 @@ const {
   communicationEventCreateMock,
 } = vi.hoisted(() => ({
   checkAuthRateLimitMock: vi.fn(),
+  checkExternalAccessOtpLockoutMock: vi.fn(),
+  recordExternalAccessOtpFailureMock: vi.fn(),
   getClientIpMock: vi.fn(),
   validateExternalAccessGrantMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -25,6 +29,8 @@ const {
 
 vi.mock('@/lib/api/rate-limit', () => ({
   checkAuthRateLimit: checkAuthRateLimitMock,
+  checkExternalAccessOtpLockout: checkExternalAccessOtpLockoutMock,
+  recordExternalAccessOtpFailure: recordExternalAccessOtpFailureMock,
 }));
 
 vi.mock('@/lib/api/request-ip', () => ({
@@ -76,6 +82,16 @@ describe('/api/external-access/[token]/self-report', () => {
       allowed: true,
       remaining: 4,
       resetAt: Date.now() + 60_000,
+    });
+    checkExternalAccessOtpLockoutMock.mockResolvedValue({
+      available: true,
+      locked: false,
+      attempts: 0,
+    });
+    recordExternalAccessOtpFailureMock.mockResolvedValue({
+      available: true,
+      locked: false,
+      attempts: 1,
     });
     getClientIpMock.mockReturnValue('203.0.113.10');
     validateExternalAccessGrantMock.mockResolvedValue({
@@ -134,6 +150,8 @@ describe('/api/external-access/[token]/self-report', () => {
       },
     });
     expect(validateExternalAccessGrantMock).toHaveBeenCalledWith('token_1', '1234');
+    expect(checkExternalAccessOtpLockoutMock).toHaveBeenCalledOnce();
+    expect(recordExternalAccessOtpFailureMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).toHaveBeenCalledWith(VALID_ORG_ID, expect.any(Function));
     expect(patientSelfReportCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -599,5 +617,7 @@ describe('/api/external-access/[token]/self-report', () => {
       message: 'リクエストが多すぎます。しばらく待ってから再試行してください。',
     });
     expect(validateExternalAccessGrantMock).not.toHaveBeenCalled();
+    expect(checkExternalAccessOtpLockoutMock).not.toHaveBeenCalled();
+    expect(recordExternalAccessOtpFailureMock).not.toHaveBeenCalled();
   });
 });

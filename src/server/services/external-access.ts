@@ -342,6 +342,7 @@ export type ExternalAccessValidationResult =
       ok: false;
       kind: 'not_found' | 'validation';
       message: string;
+      failure?: 'otp_mismatch';
     };
 
 export function hashExternalAccessToken(token: string) {
@@ -560,6 +561,7 @@ export async function validateExternalAccessGrant(
       ok: false,
       kind: 'validation',
       message: 'OTPが正しくありません',
+      failure: 'otp_mismatch',
     };
   }
 

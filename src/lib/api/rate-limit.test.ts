@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   API_ROUTE_TEMPLATES,
+  EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES,
+  EXTERNAL_ACCESS_OTP_LOCKOUT_TTL_SECONDS,
   RATE_LIMIT_DDB_TIMEOUT_MS,
   RATE_LIMIT_FEATURE_MUTATION_MAX_DEFAULT,
   RATE_LIMIT_FEATURE_SEARCH_MAX_DEFAULT,
@@ -12,13 +14,18 @@ import {
   acquireSseConnection,
   canonicalizeRateLimitPath,
   checkAuthRateLimit,
+  checkExternalAccessOtpLockout,
   checkFeatureRateLimit,
   checkRateLimit,
   createRateLimiter,
   enforceFeatureRateLimit,
   releaseSseConnection,
+  recordExternalAccessOtpFailure,
   resetRateLimitStoreForTests,
 } from './rate-limit';
+
+const EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST = 'a'.repeat(64);
+const OTHER_EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST = 'b'.repeat(64);
 
 function collectRouteFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -77,6 +84,126 @@ describe('rate-limit', () => {
     await expect(limiter('ip-1')).resolves.toMatchObject({ allowed: false, remaining: 0 });
   });
 
+  it('hard locks the domain-separated external access token digest on the tenth mismatch', async () => {
+    for (let attempt = 1; attempt < EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES; attempt += 1) {
+      await expect(
+        recordExternalAccessOtpFailure(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+      ).resolves.toEqual({
+        available: true,
+        locked: false,
+        attempts: attempt,
+      });
+    }
+
+    await expect(
+      checkExternalAccessOtpLockout(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: true,
+      locked: false,
+      attempts: EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES - 1,
+    });
+    await expect(
+      recordExternalAccessOtpFailure(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: true,
+      locked: true,
+      attempts: EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES,
+    });
+    await expect(
+      checkExternalAccessOtpLockout(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: true,
+      locked: true,
+      attempts: EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES,
+    });
+    await expect(
+      recordExternalAccessOtpFailure(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: true,
+      locked: true,
+      attempts: EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES + 1,
+    });
+    await expect(
+      checkExternalAccessOtpLockout(OTHER_EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: true,
+      locked: false,
+      attempts: 0,
+    });
+  });
+
+  it('linearizes concurrent external access OTP mismatch increments', async () => {
+    const results = await Promise.all(
+      Array.from({ length: EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES }, () =>
+        recordExternalAccessOtpFailure(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+      ),
+    );
+
+    expect(
+      results
+        .map((result) => result.attempts)
+        .filter((attempts): attempts is number => attempts !== null)
+        .sort((left, right) => left - right),
+    ).toEqual(
+      Array.from({ length: EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES }, (_, index) => index + 1),
+    );
+    await expect(
+      checkExternalAccessOtpLockout(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: true,
+      locked: true,
+      attempts: EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES,
+    });
+  });
+
+  it('does not extend durable OTP lockout expiry when the counter is inspected', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-28T00:00:00.000Z'));
+
+    await expect(
+      recordExternalAccessOtpFailure(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toMatchObject({ attempts: 1 });
+    vi.advanceTimersByTime(30 * 24 * 60 * 60 * 1000);
+    await expect(
+      checkExternalAccessOtpLockout(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: true,
+      locked: false,
+      attempts: 1,
+    });
+    vi.advanceTimersByTime(2 * 24 * 60 * 60 * 1000);
+    await expect(
+      checkExternalAccessOtpLockout(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: true,
+      locked: false,
+      attempts: 0,
+    });
+    vi.useRealTimers();
+  });
+
+  it('fails closed without allocating a counter for a non-digest lockout identifier', async () => {
+    await expect(checkExternalAccessOtpLockout('raw-token')).resolves.toEqual({
+      available: false,
+      locked: true,
+      attempts: null,
+      reason: 'store_misconfigured',
+    });
+    await expect(recordExternalAccessOtpFailure('raw-token')).resolves.toEqual({
+      available: false,
+      locked: true,
+      attempts: null,
+      reason: 'store_misconfigured',
+    });
+    await expect(
+      checkExternalAccessOtpLockout(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: true,
+      locked: false,
+      attempts: 0,
+    });
+  });
+
   it('caps active SSE connections per identifier and releases capacity', () => {
     for (let index = 1; index <= SSE_MAX_CONNECTIONS; index += 1) {
       expect(acquireSseConnection('user:1')).toEqual({ allowed: true, count: index });
@@ -129,6 +256,8 @@ describe('rate-limit', () => {
       deploymentVerifierPolicy: {
         statements: Array<{ actions: string[]; resources: string[] }>;
       };
+      itemSchema: Record<string, string>;
+      deploymentNotes: string[];
     };
 
     expect(artifact.table.tableName).toBe('${RATE_LIMIT_DDB_TABLE_NAME}');
@@ -143,6 +272,10 @@ describe('rate-limit', () => {
       enabled: true,
     });
     expect(artifact.table.sseSpecification.enabled).toBe(true);
+    expect(artifact.itemSchema.pk).toContain('durable:external-access-otp:v1:');
+    expect(artifact.itemSchema.hit_count).toContain('lifetime external OTP mismatch count');
+    expect(artifact.itemSchema.reset_at).toContain('absent from durable lockout items');
+    expect(artifact.deploymentNotes.join(' ')).toContain('Never store the raw token, OTP');
 
     const rateLimitStatement = artifact.applicationRolePolicy.statements[0];
     expect(rateLimitStatement.actions).toEqual(['dynamodb:UpdateItem']);
@@ -422,6 +555,221 @@ describe('rate-limit', () => {
     });
     expect(body.Key.pk.S).not.toContain('patient_123');
     vi.useRealTimers();
+  });
+
+  it('uses atomic UpdateItem operations for the durable external access OTP lockout', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-28T00:00:00.000Z'));
+    process.env.RATE_LIMIT_STORE = 'dynamodb';
+    process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';
+    process.env.RATE_LIMIT_DDB_REGION = 'ap-northeast-1';
+    process.env.AWS_ACCESS_KEY_ID = 'AKIA_TEST';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret-test-key';
+
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            Attributes: {
+              hit_count: { N: '10' },
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            Attributes: {
+              hit_count: { N: '0' },
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+    await expect(
+      recordExternalAccessOtpFailure(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: true,
+      locked: true,
+      attempts: 10,
+    });
+    await expect(
+      checkExternalAccessOtpLockout(OTHER_EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: true,
+      locked: false,
+      attempts: 0,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const incrementBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    const inspectBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    const expectedExpiresAt =
+      Math.floor(Date.parse('2026-03-28T00:00:00.000Z') / 1000) +
+      EXTERNAL_ACCESS_OTP_LOCKOUT_TTL_SECONDS;
+    expect(incrementBody).toMatchObject({
+      TableName: 'ph-os-rate-limit',
+      Key: {
+        pk: { S: `durable:external-access-otp:v1:${EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST}` },
+      },
+      UpdateExpression: expect.stringContaining('ADD hit_count :inc'),
+      ReturnValues: 'ALL_NEW',
+    });
+    expect(incrementBody.UpdateExpression).toContain(
+      'expires_at = if_not_exists(expires_at, :expires_at)',
+    );
+    expect(incrementBody.ExpressionAttributeValues).toMatchObject({
+      ':inc': { N: '1' },
+      ':expires_at': { N: String(expectedExpiresAt) },
+      ':counter_kind': { S: 'external_access_otp_lockout_v1' },
+    });
+    expect(inspectBody).toMatchObject({
+      Key: {
+        pk: {
+          S: `durable:external-access-otp:v1:${OTHER_EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST}`,
+        },
+      },
+      ConditionExpression: 'attribute_not_exists(hit_count) OR hit_count < :threshold',
+      ReturnValues: 'ALL_NEW',
+      ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
+    });
+    expect(inspectBody.UpdateExpression).toContain('hit_count = if_not_exists(hit_count, :zero)');
+    expect(inspectBody.ExpressionAttributeValues).toMatchObject({
+      ':zero': { N: '0' },
+      ':threshold': { N: String(EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES) },
+      ':expires_at': { N: String(expectedExpiresAt) },
+    });
+    vi.useRealTimers();
+  });
+
+  it('maps an atomic correct-OTP condition failure to a locked grant', async () => {
+    process.env.RATE_LIMIT_STORE = 'dynamodb';
+    process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';
+    process.env.RATE_LIMIT_DDB_REGION = 'ap-northeast-1';
+    process.env.AWS_ACCESS_KEY_ID = 'AKIA_TEST';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret-test-key';
+    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          __type: 'com.amazonaws.dynamodb.v20120810#ConditionalCheckFailedException',
+          Item: {
+            hit_count: { N: String(EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES) },
+          },
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    await expect(
+      checkExternalAccessOtpLockout(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: true,
+      locked: true,
+      attempts: EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES,
+    });
+    expect(consoleErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed for durable lockout checks when production DynamoDB is unavailable', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.RATE_LIMIT_STORE = 'dynamodb';
+    process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';
+    process.env.RATE_LIMIT_DDB_REGION = 'ap-northeast-1';
+    process.env.AWS_ACCESS_KEY_ID = 'AKIA_TEST';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret-test-key';
+    const rawFailure = 'provider failure token=raw-secret patient=LEAK';
+    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error(rawFailure));
+
+    await expect(
+      recordExternalAccessOtpFailure(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: false,
+      locked: true,
+      attempts: null,
+      reason: 'store_unavailable',
+    });
+    await expect(
+      checkExternalAccessOtpLockout(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: false,
+      locked: true,
+      attempts: null,
+      reason: 'store_unavailable',
+    });
+    expect(consoleErrorMock).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(consoleErrorMock.mock.calls)).not.toContain(rawFailure);
+    expect(JSON.stringify(consoleErrorMock.mock.calls)).not.toContain(
+      EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST,
+    );
+  });
+
+  it('fails closed when DynamoDB omits or malforms the durable lockout counter', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.RATE_LIMIT_STORE = 'dynamodb';
+    process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';
+    process.env.RATE_LIMIT_DDB_REGION = 'ap-northeast-1';
+    process.env.AWS_ACCESS_KEY_ID = 'AKIA_TEST';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret-test-key';
+    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ Attributes: {} }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ Attributes: { hit_count: { N: 'not-a-counter' } } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+    await expect(
+      checkExternalAccessOtpLockout(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: false,
+      locked: true,
+      attempts: null,
+      reason: 'store_unavailable',
+    });
+    await expect(
+      recordExternalAccessOtpFailure(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: false,
+      locked: true,
+      attempts: null,
+      reason: 'store_unavailable',
+    });
+    expect(consoleErrorMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails closed for durable lockout checks in the production DenyAll store', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await expect(
+      checkExternalAccessOtpLockout(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: false,
+      locked: true,
+      attempts: null,
+      reason: 'store_misconfigured',
+    });
+    await expect(
+      recordExternalAccessOtpFailure(EXTERNAL_ACCESS_OTP_LOCKOUT_DIGEST),
+    ).resolves.toEqual({
+      available: false,
+      locked: true,
+      attempts: null,
+      reason: 'store_misconfigured',
+    });
+    expect(consoleErrorMock).toHaveBeenCalledOnce();
   });
 
   it('uses container role credentials for DynamoDB rate limiting without static AWS keys', async () => {

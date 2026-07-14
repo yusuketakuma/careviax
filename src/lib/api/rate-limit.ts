@@ -37,6 +37,16 @@ export const RATE_LIMIT_WRITE_MAX = 60;
  */
 export const RATE_LIMIT_AUTH_MAX = 5;
 
+/** Grant-wide OTP mismatches allowed before an external access token is hard locked. */
+export const EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES = 10;
+
+/** Durable lockout state outlives the maximum 720-hour external access token lifetime. */
+export const EXTERNAL_ACCESS_OTP_LOCKOUT_TTL_SECONDS = 31 * 24 * 60 * 60;
+
+const EXTERNAL_ACCESS_OTP_LOCKOUT_KEY_PREFIX = 'durable:external-access-otp:v1:';
+const EXTERNAL_ACCESS_OTP_LOCKOUT_COUNTER_KIND = 'external_access_otp_lockout_v1';
+const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/;
+
 /**
  * How often (in ms) the cleanup routine removes expired entries.
  * Prevents unbounded memory growth in long-running processes.
@@ -54,8 +64,23 @@ interface RateLimitEntry {
   resetAt: number;
 }
 
+type RateLimitFailureReason = 'store_misconfigured' | 'store_unavailable';
+
+type DurableCounterResult =
+  | { available: true; count: number }
+  | { available: false; count: null; reason: RateLimitFailureReason };
+
 type RateLimitStore = {
   increment(key: string, windowMs: number, maxRequests: number): Promise<RateLimitResult>;
+  inspectDurableCounter(
+    key: string,
+    expiresAtEpochSeconds: number,
+    lockThreshold: number,
+  ): Promise<DurableCounterResult>;
+  incrementDurableCounter(
+    key: string,
+    expiresAtEpochSeconds: number,
+  ): Promise<DurableCounterResult>;
   resetForTests?(): void;
 };
 
@@ -108,6 +133,35 @@ class MemoryRateLimitStore implements RateLimitStore {
     return checkLimit(key, maxRequests, windowMs);
   }
 
+  async inspectDurableCounter(
+    key: string,
+    expiresAtEpochSeconds: number,
+    lockThreshold: number,
+  ): Promise<DurableCounterResult> {
+    void lockThreshold;
+    const now = Date.now();
+    const entry = store.get(key);
+    if (!entry || now > entry.resetAt) {
+      store.set(key, { count: 0, resetAt: expiresAtEpochSeconds * 1000 });
+      return { available: true, count: 0 };
+    }
+    return { available: true, count: entry.count };
+  }
+
+  async incrementDurableCounter(
+    key: string,
+    expiresAtEpochSeconds: number,
+  ): Promise<DurableCounterResult> {
+    const now = Date.now();
+    const entry = store.get(key);
+    if (!entry || now > entry.resetAt) {
+      store.set(key, { count: 1, resetAt: expiresAtEpochSeconds * 1000 });
+      return { available: true, count: 1 };
+    }
+    entry.count += 1;
+    return { available: true, count: entry.count };
+  }
+
   resetForTests() {
     store.clear();
   }
@@ -122,6 +176,14 @@ class DenyAllRateLimitStore implements RateLimitStore {
       resetAt: Date.now() + windowMs,
       reason: 'store_misconfigured',
     };
+  }
+
+  async inspectDurableCounter(): Promise<DurableCounterResult> {
+    return { available: false, count: null, reason: 'store_misconfigured' };
+  }
+
+  async incrementDurableCounter(): Promise<DurableCounterResult> {
+    return { available: false, count: null, reason: 'store_misconfigured' };
   }
 }
 
@@ -234,6 +296,13 @@ function parseDynamoPositiveIntegerAttribute(value: unknown) {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function parseDynamoNonNegativeIntegerAttribute(value: unknown) {
+  const object = readJsonObject(value);
+  if (!object || typeof object.N !== 'string') return null;
+  const parsed = Number(object.N.trim());
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
 function parseDynamoRateLimitResponse(payload: unknown): { count: number; resetAt: number } | null {
   const object = readJsonObject(payload);
   const attributes = readJsonObject(object?.Attributes);
@@ -244,6 +313,21 @@ function parseDynamoRateLimitResponse(payload: unknown): { count: number; resetA
   if (count === null || resetAt === null) return null;
 
   return { count, resetAt };
+}
+
+function parseDynamoDurableCounter(payload: unknown, attributeContainer: 'Attributes' | 'Item') {
+  const object = readJsonObject(payload);
+  const attributes = readJsonObject(object?.[attributeContainer]);
+  if (!attributes) return null;
+  return parseDynamoNonNegativeIntegerAttribute(attributes.hit_count);
+}
+
+function isDynamoConditionalCheckFailure(payload: unknown) {
+  const object = readJsonObject(payload);
+  const rawType = object?.__type ?? object?.code;
+  return (
+    typeof rawType === 'string' && rawType.split('#').at(-1) === 'ConditionalCheckFailedException'
+  );
 }
 
 function createDynamoAbortController() {
@@ -335,6 +419,27 @@ function logRateLimitStoreFailure(
   });
 }
 
+async function sendDynamoUpdateItem(config: DynamoRateLimitConfig, requestBody: string) {
+  const signedRequest = await signAwsJsonRequest({
+    service: 'dynamodb',
+    region: config.region,
+    body: requestBody,
+    target: 'DynamoDB_20120810.UpdateItem',
+    credentials: await resolveAwsCredentials(),
+  });
+  const abort = createDynamoAbortController();
+  try {
+    return await fetch(`https://${signedRequest.host}/`, {
+      method: 'POST',
+      headers: signedRequest.headers,
+      body: requestBody,
+      signal: abort.signal,
+    });
+  } finally {
+    abort.clear();
+  }
+}
+
 class DynamoRateLimitStore implements RateLimitStore {
   constructor(
     private readonly config: DynamoRateLimitConfig,
@@ -365,25 +470,7 @@ class DynamoRateLimitStore implements RateLimitStore {
     });
 
     try {
-      const signedRequest = await signAwsJsonRequest({
-        service: 'dynamodb',
-        region: this.config.region,
-        body: requestBody,
-        target: 'DynamoDB_20120810.UpdateItem',
-        credentials: await resolveAwsCredentials(),
-      });
-      const abort = createDynamoAbortController();
-      let response: Response;
-      try {
-        response = await fetch(`https://${signedRequest.host}/`, {
-          method: 'POST',
-          headers: signedRequest.headers,
-          body: requestBody,
-          signal: abort.signal,
-        });
-      } finally {
-        abort.clear();
-      }
+      const response = await sendDynamoUpdateItem(this.config, requestBody);
 
       if (!response.ok) {
         throw new Error(`DynamoDB rate limit request failed: ${response.status}`);
@@ -423,6 +510,113 @@ class DynamoRateLimitStore implements RateLimitStore {
         operation: 'fallback_to_memory',
       });
       return this.fallback.increment(key, windowMs, maxRequests);
+    }
+  }
+
+  async inspectDurableCounter(
+    key: string,
+    expiresAtEpochSeconds: number,
+    lockThreshold: number,
+  ): Promise<DurableCounterResult> {
+    return this.updateDurableCounter({
+      key,
+      expiresAtEpochSeconds,
+      lockThreshold,
+      operation: 'inspect',
+    });
+  }
+
+  async incrementDurableCounter(
+    key: string,
+    expiresAtEpochSeconds: number,
+  ): Promise<DurableCounterResult> {
+    return this.updateDurableCounter({
+      key,
+      expiresAtEpochSeconds,
+      operation: 'increment',
+    });
+  }
+
+  private async updateDurableCounter(args: {
+    key: string;
+    expiresAtEpochSeconds: number;
+    operation: 'inspect' | 'increment';
+    lockThreshold?: number;
+  }): Promise<DurableCounterResult> {
+    const now = Date.now();
+    const timestamp = new Date(now).toISOString();
+    const inspect = args.operation === 'inspect';
+    const requestBody = JSON.stringify({
+      TableName: this.config.tableName,
+      Key: {
+        pk: { S: args.key },
+      },
+      UpdateExpression: inspect
+        ? 'SET hit_count = if_not_exists(hit_count, :zero), expires_at = if_not_exists(expires_at, :expires_at), created_at = if_not_exists(created_at, :created_at), counter_kind = if_not_exists(counter_kind, :counter_kind)'
+        : 'ADD hit_count :inc SET expires_at = if_not_exists(expires_at, :expires_at), updated_at = :updated_at, created_at = if_not_exists(created_at, :created_at), counter_kind = if_not_exists(counter_kind, :counter_kind)',
+      ...(inspect
+        ? {
+            ConditionExpression: 'attribute_not_exists(hit_count) OR hit_count < :threshold',
+            ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
+          }
+        : {}),
+      ExpressionAttributeValues: {
+        ...(inspect ? { ':zero': { N: '0' } } : { ':inc': { N: '1' } }),
+        ':expires_at': { N: String(args.expiresAtEpochSeconds) },
+        ':created_at': { S: timestamp },
+        ':counter_kind': { S: EXTERNAL_ACCESS_OTP_LOCKOUT_COUNTER_KIND },
+        ...(inspect ? { ':threshold': { N: String(args.lockThreshold) } } : {}),
+        ...(!inspect ? { ':updated_at': { S: timestamp } } : {}),
+      },
+      ReturnValues: 'ALL_NEW',
+    });
+
+    try {
+      const response = await sendDynamoUpdateItem(this.config, requestBody);
+      const responsePayload = await readJsonResponseBody(response);
+      if (!response.ok) {
+        if (
+          inspect &&
+          response.status === 400 &&
+          isDynamoConditionalCheckFailure(responsePayload)
+        ) {
+          const count = parseDynamoDurableCounter(responsePayload, 'Item');
+          if (count !== null && count >= (args.lockThreshold ?? Number.MAX_SAFE_INTEGER)) {
+            return { available: true, count };
+          }
+        }
+        throw new Error(`DynamoDB durable counter request failed: ${response.status}`);
+      }
+
+      const count = parseDynamoDurableCounter(responsePayload, 'Attributes');
+      if (count === null) {
+        throw new Error('DynamoDB durable counter response is missing a valid counter');
+      }
+      return { available: true, count };
+    } catch (error) {
+      if (isProductionRuntime()) {
+        logRateLimitStoreFailure(
+          '[rate-limit] DynamoDB store unavailable; denying request',
+          error,
+          {
+            event: 'rate_limit_dynamodb_store_unavailable',
+            operation: 'deny_request',
+          },
+        );
+        return { available: false, count: null, reason: 'store_unavailable' };
+      }
+
+      logRateLimitStoreFailure('[rate-limit] Falling back to in-memory store', error, {
+        event: 'rate_limit_dynamodb_store_fallback',
+        operation: 'fallback_to_memory',
+      });
+      return inspect
+        ? this.fallback.inspectDurableCounter(
+            args.key,
+            args.expiresAtEpochSeconds,
+            args.lockThreshold ?? EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES,
+          )
+        : this.fallback.incrementDurableCounter(args.key, args.expiresAtEpochSeconds);
     }
   }
 
@@ -961,6 +1155,82 @@ export interface RateLimitResult {
   /** Epoch milliseconds when the current window resets */
   resetAt: number;
   reason?: 'quota_exceeded' | 'store_misconfigured' | 'store_unavailable';
+}
+
+export type ExternalAccessOtpLockoutResult = {
+  available: boolean;
+  locked: boolean;
+  attempts: number | null;
+  reason?: RateLimitFailureReason;
+};
+
+function buildExternalAccessOtpLockoutKey(identifierDigest: string) {
+  return SHA256_HEX_PATTERN.test(identifierDigest)
+    ? `${EXTERNAL_ACCESS_OTP_LOCKOUT_KEY_PREFIX}${identifierDigest}`
+    : null;
+}
+
+function resolveExternalAccessOtpLockoutExpiry() {
+  return Math.floor(Date.now() / 1000) + EXTERNAL_ACCESS_OTP_LOCKOUT_TTL_SECONDS;
+}
+
+function toExternalAccessOtpLockoutResult(
+  result: DurableCounterResult,
+): ExternalAccessOtpLockoutResult {
+  if (!result.available) {
+    return {
+      available: false,
+      locked: true,
+      attempts: null,
+      reason: result.reason,
+    };
+  }
+  return {
+    available: true,
+    locked: result.count >= EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES,
+    attempts: result.count,
+  };
+}
+
+/** Atomically inspects the grant-wide mismatch counter without increasing it. */
+export async function checkExternalAccessOtpLockout(
+  identifierDigest: string,
+): Promise<ExternalAccessOtpLockoutResult> {
+  const key = buildExternalAccessOtpLockoutKey(identifierDigest);
+  if (!key) {
+    return {
+      available: false,
+      locked: true,
+      attempts: null,
+      reason: 'store_misconfigured',
+    };
+  }
+  const result = await getRateLimitStore().inspectDurableCounter(
+    key,
+    resolveExternalAccessOtpLockoutExpiry(),
+    EXTERNAL_ACCESS_OTP_LOCKOUT_MAX_FAILURES,
+  );
+  return toExternalAccessOtpLockoutResult(result);
+}
+
+/** Atomically records one verified active grant's OTP mismatch and returns the post-count. */
+export async function recordExternalAccessOtpFailure(
+  identifierDigest: string,
+): Promise<ExternalAccessOtpLockoutResult> {
+  const key = buildExternalAccessOtpLockoutKey(identifierDigest);
+  if (!key) {
+    return {
+      available: false,
+      locked: true,
+      attempts: null,
+      reason: 'store_misconfigured',
+    };
+  }
+  const result = await getRateLimitStore().incrementDurableCounter(
+    key,
+    resolveExternalAccessOtpLockoutExpiry(),
+  );
+  return toExternalAccessOtpLockoutResult(result);
 }
 
 /**

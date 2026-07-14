@@ -4,11 +4,15 @@ import { createHash } from 'node:crypto';
 
 const {
   checkAuthRateLimitMock,
+  checkExternalAccessOtpLockoutMock,
+  recordExternalAccessOtpFailureMock,
   getClientIpMock,
   validateExternalAccessGrantMock,
   readExternalAccessPayloadMock,
 } = vi.hoisted(() => ({
   checkAuthRateLimitMock: vi.fn(),
+  checkExternalAccessOtpLockoutMock: vi.fn(),
+  recordExternalAccessOtpFailureMock: vi.fn(),
   getClientIpMock: vi.fn(),
   validateExternalAccessGrantMock: vi.fn(),
   readExternalAccessPayloadMock: vi.fn(),
@@ -21,6 +25,8 @@ vi.mock('@/server/services/external-access', () => ({
 
 vi.mock('@/lib/api/rate-limit', () => ({
   checkAuthRateLimit: checkAuthRateLimitMock,
+  checkExternalAccessOtpLockout: checkExternalAccessOtpLockoutMock,
+  recordExternalAccessOtpFailure: recordExternalAccessOtpFailureMock,
 }));
 
 vi.mock('@/lib/api/request-ip', () => ({
@@ -55,6 +61,16 @@ describe('/api/external-access/[token]', () => {
       remaining: 4,
       resetAt: Date.now() + 60_000,
     });
+    checkExternalAccessOtpLockoutMock.mockResolvedValue({
+      available: true,
+      locked: false,
+      attempts: 0,
+    });
+    recordExternalAccessOtpFailureMock.mockResolvedValue({
+      available: true,
+      locked: false,
+      attempts: 1,
+    });
     getClientIpMock.mockReturnValue('203.0.113.10');
     validateExternalAccessGrantMock.mockResolvedValue({
       ok: true,
@@ -82,6 +98,8 @@ describe('/api/external-access/[token]', () => {
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(validateExternalAccessGrantMock).toHaveBeenCalledWith('token_1', '1234');
+    expect(checkExternalAccessOtpLockoutMock).toHaveBeenCalledOnce();
+    expect(recordExternalAccessOtpFailureMock).not.toHaveBeenCalled();
     expect(readExternalAccessPayloadMock).toHaveBeenCalledWith({
       grant: {
         id: 'grant_1',
@@ -132,23 +150,34 @@ describe('/api/external-access/[token]', () => {
   });
 
   it.each([
-    { label: 'missing OTP', otpHeader: null, message: 'OTPが必要です' },
-    { label: 'wrong OTP', otpHeader: '0000', message: 'OTPが正しくありません' },
-  ])('does not mark viewed or build payload for $label', async ({ otpHeader, message }) => {
-    validateExternalAccessGrantMock.mockResolvedValue({
-      ok: false,
-      kind: 'validation',
-      message,
-    });
+    { label: 'missing OTP', otpHeader: null, message: 'OTPが必要です', failure: undefined },
+    {
+      label: 'wrong OTP',
+      otpHeader: '0000',
+      message: 'OTPが正しくありません',
+      failure: 'otp_mismatch' as const,
+    },
+  ])(
+    'does not mark viewed or build payload for $label',
+    async ({ otpHeader, message, failure }) => {
+      validateExternalAccessGrantMock.mockResolvedValue({
+        ok: false,
+        kind: 'validation',
+        message,
+        ...(failure ? { failure } : {}),
+      });
 
-    const response = await GET(makeRequest(otpHeader), {
-      params: Promise.resolve({ token: 'token_1' }),
-    });
+      const response = await GET(makeRequest(otpHeader), {
+        params: Promise.resolve({ token: 'token_1' }),
+      });
 
-    expect(response.status).toBe(400);
-    expect(validateExternalAccessGrantMock).toHaveBeenCalledWith('token_1', otpHeader);
-    expect(readExternalAccessPayloadMock).not.toHaveBeenCalled();
-  });
+      expect(response.status).toBe(400);
+      expect(validateExternalAccessGrantMock).toHaveBeenCalledWith('token_1', otpHeader);
+      expect(recordExternalAccessOtpFailureMock).toHaveBeenCalledTimes(failure ? 1 : 0);
+      expect(checkExternalAccessOtpLockoutMock).not.toHaveBeenCalled();
+      expect(readExternalAccessPayloadMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('does not mark viewed or build payload when the grant is rejected', async () => {
     validateExternalAccessGrantMock.mockResolvedValue({
@@ -239,6 +268,8 @@ describe('/api/external-access/[token]', () => {
       message: 'リクエストが多すぎます。しばらく待ってから再試行してください。',
     });
     expect(validateExternalAccessGrantMock).not.toHaveBeenCalled();
+    expect(checkExternalAccessOtpLockoutMock).not.toHaveBeenCalled();
+    expect(recordExternalAccessOtpFailureMock).not.toHaveBeenCalled();
     expect(readExternalAccessPayloadMock).not.toHaveBeenCalled();
   });
 });

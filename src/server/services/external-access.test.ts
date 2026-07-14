@@ -1511,6 +1511,7 @@ describe('validateExternalAccessGrant', () => {
       ok: false,
       kind: 'validation',
       message: 'OTPが正しくありません',
+      failure: 'otp_mismatch',
     });
   });
 
