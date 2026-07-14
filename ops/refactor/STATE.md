@@ -61,6 +61,41 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: Round 4 patient MCS error registry / patient documents RLS-audit /
+  patient-board payload measurement integration boundary
+  (DONE / CODE PUSHED, 2026-07-15; implementations `ab90a5cb0`, `3837e2833`, `28e795b4e`).
+  - workflow / ownership / files inspected:
+    `agmsg` inbox/historyとlive Gitを再確認し、codex2 exact4、codex3 exact2、codex4 exact2の全handoff SHA-256が
+    frozen報告と一致すること、3 laneがnon-overlapであること、開始HEAD `8d4913eb9`とoriginが`0 0`であることを確認した。
+    codex1がgit indexと`Plans.md` / `ops/refactor/{STATE,RUN_LOCK}.md`のexclusive ownershipを通知し、他agentはreleaseまで
+    Git readを含むHARD HOLD。各agentのfocused/static self-validationを確認し、相互reviewなしで明示pathだけを3 logical groupsへ
+    stageした。既存user/harness dirtyの`.harness-mem/state/{continuity,whisper-budget}.json`、patient external-share 4 files、
+    `tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`は変更、stage、revertしていない。
+  - backend API contract (`ab90a5cb0`):
+    `src/lib/api/error-codes.{ts,test.ts}`と`src/app/api/patients/[id]/mcs-sync/route.{ts,test.ts}`を変更し、固定の外部/未知同期失敗を
+    `PATIENT_MCS_SYNC_FAILED` = 502 / error / retryable / retryとしてtyped registryへ追加した。fixed fallbackだけを
+    `registeredError`へ移し、exact bodyとpatient/provider/session/token非露出を固定。auth、`canVisit` + sensitive role、validation/
+    conflict、writable-patient guard、service、success DTO、no-storeは維持した。self-validationはfinal `4 files / 39 tests`、
+    exact lint/format、response/auth/static gates、diffをPASSした。
+  - security / patient documents (`3837e2833`):
+    `src/app/api/patients/[id]/documents/route.ts`と新規testを変更し、既存`canVisit`を維持したままglobal Prisma PHI readを
+    explicit request context付き`withOrgContext` transaction clientへ移した。non-null successだけを`patient_documents` /
+    purpose `care` / request-correlation traceでexact-once auditし、blank/auth denied/not-found/query/context failureはzero-audit、
+    sensitive no-store、raw error非露出に固定。self-validationはroute `8 / 8`、detail-slices + PHI audit `67 / 67`、service
+    `4 / 4`、protected documents `3 / 3`、raw-read/client-PHI/module/API/auth/static gates、exact lint/format/diffをPASSした。
+  - performance / patient board (`28e795b4e`):
+    `src/app/api/patients/board/route.{ts,test.ts}`のouter GETを`withRoutePerformance`へ接続し、既存single-serialize measured JSONを
+    normalized critical family `patients-board`、300 KiB budget、payload sample count 1、exact last payload bytesとして記録した。
+    `canVisit`、org/patient filters、encrypted cursor、bounded 60-row/query count、PHI projection、no-store、400/500 semanticsは変更なし。
+    self-validationはbaseline `1 file / 35 tests`、performance + route `2 files / 50 tests`、conventions `1 file / 5 tests`、
+    response/auth/query-shape gates、exact lint/format/diffをPASSした。
+  - aggregate validation / commit / push / remaining:
+    3 code commits後にcodex1が`pnpm typecheck && pnpm typecheck:no-unused`を1回だけ直列実行し、両方exit 0。
+    ユーザー方針によりbuild/Oracleは実行していない。code commitsをfeature branchへnon-force pushし、remote HEAD
+    `28e795b4e`とlocal HEADが一致、parityは`0 0`。次はsingle-ledger closeoutをscoped commit/pushし、最終parity確認後に
+    codex2/3/4へexplicit GATE RELEASEを送る。`API-CONTRACT-003`、`ROUTE-AUTHZ-COVERAGE-001`、
+    `RAW-DETAIL-REAUDIT-001`、`ROUTE-PERF-MEASURE-001`はいずれも残surfaceがあるためPartialを維持する。
+
 - codex1 + codex2 + codex3 + codex4: Round 3 file-complete error registry / patient communications RLS-audit /
   medication-stock payload measurement integration boundary
   (DONE / CODE PUSHED, 2026-07-15; implementations `41f634fe9`, `1096d3c93`, `5358c0794`).
