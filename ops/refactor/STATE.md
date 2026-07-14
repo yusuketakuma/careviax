@@ -61,6 +61,51 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: Round 17 patient medical/public/care insurance management
+  (DONE / CODE COMMITTED, NOT PUSHED, 2026-07-15; implementations `f48e10832`, `d563d093a`,
+  `42608f405`, `49f6110b5`, follow-ups `717651f56`, `bc581f14b`).
+  - research / workflow / ownership:
+    厚生労働省のオンライン資格確認、資格確認方法、オンライン資格確認Q&A、公費負担医療のPMH仕様、
+    要介護認定制度、保険者番号設定資料を2026-07-15に確認した。薬局で扱う医療保険の保険者番号・
+    記号・番号・枝番、公費の法別番号・公費負担者番号・受給者番号・有効期間、介護保険の
+    要支援1/2・要介護1〜5と申請/区分変更状態を既存`PatientInsurance`モデルへ割り当てた。
+    参照: `https://www.mhlw.go.jp/stf/newpage_08280.html`、
+    `https://www.mhlw.go.jp/stf/newpage_24976.html`、
+    `https://www.mhlw.go.jp/content/12600000/001632869.pdf`、
+    `https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/hukushi_kaigo/kaigo_koureisha/nintei/gaiyo4.html`、
+    `https://www.mhlw.go.jp/web/t_doc?dataId=00tb0187&dataType=1&pageNo=1`。
+    `agmsg` exact-path ownershipを使い、frontend exact4、backend exact6、security exact2、performance exact4を
+    non-overlapで実装した。既存harness、external-share、tools dirtyとcodex3-owned visit-records exact2は
+    edit/revert/stageしていない。
+  - frontend / operational reachability (`49f6110b5`):
+    既存CRUD cardがproductionから未参照だったため、患者詳細の遅延mount済み`正本・在宅運用`tabへ
+    `#patient-insurance`として接続し、foundation actionも同じcurrent pathへ統一した。医療保険、公費、
+    介護保険で入力名と表示項目を分け、マイナンバーを入力しないことを明示した。公費法別番号、日付順、
+    自己負担割合、active careの確定/区分変更時介護区分をclientでも検証し、状態非互換の介護区分・
+    公費/医療専用項目をpayloadから除去した。編集・失効・削除はlast-observed `updated_at`を送る。
+    Incrementalな既存component統合でvisual reconstructionを行わないためimagegenは省略した。
+  - backend / integrity / authorization (`f48e10832`, `717651f56`, `bc581f14b`):
+    shared validatorでofficial care levels、active care completeness、2桁公費法別番号、effective one-sided date、
+    type transition clearingをcreate/partial update双方へ適用した。inactive legacy historyは保持可能だが、
+    再active化時は区分を必須とする。GET/POST/PUT responseはUI-consumed 19 fieldsへ投影し、
+    `current/upcoming/history`のみ返す。全read/writeを`withOrgContext(..., { requestContext: ctx })`内へ移し、
+    FORCE RLSとactor attributionを維持した。PUT/DELETEのstrict ISO `expected_updated_at`を必須化し、
+    assignment relation + `updated_at`付き`updateMany`/`deleteMany`でlost update、権限変更race、無条件deleteを防いだ。
+  - privacy / performance (`42608f405`, `d563d093a`):
+    `patient_insurance` / defensive `PatientInsurance`をaudit response minimizerへ登録し、audit list/exportから
+    保険者・被保険者・公費・介護区分・日付・備考のraw値を除外した。分類helperの重複`all` bucketを削除し、
+    explicit route projectionと合わせたPHI-free 3-row synthetic responseは4181 Bから1667 B（-60.1%）になった。
+  - validation / failure repair / remaining:
+    frontend focused `2 files / 124 tests`、backend final `3 files / 70 tests`、security grouped
+    `4 files / 121 tests`、performance grouped `3 files / 83 tests`がPASS。exact lint/Prettier/diff、
+    frontend-contract、client PHI-log/display、colors、typography、module boundaries、API authz/shape、DTO、
+    route-auth-wrapper、RLS policyの各gateがPASSした。最初の`pnpm typecheck && pnpm typecheck:no-unused`はPASS後、
+    concurrent backend guard追補が到着したため最終HEADに対して同じ直列gateをrepair rerunし、両方exit 0を確認した。
+    build/Oracle/migration applyはユーザー指示により実行していない。DB-at-restのgeneric
+    `PatientInsurance` audit trigger最小化とlegacy `Patient.medical_insurance_number` /
+    `care_insurance_number`からのSoT cutoverは別migration/移行計画が必要で、現roundはauthorized response境界と
+    current managerを安全化した。current taskではpush許可がないためlocal branchへcommitのみ。
+
 - codex1 + codex2 + codex3 + codex4: Round 16 insurance read recovery / localized helper ratchet /
   inbound MCS PHI-safe logging / patient-detail billing-context reuse boundary
   (DONE / CODE PUSHED, 2026-07-15; implementations `f404fb746`, `c159e4fcc`, `8025a0ae7`, `43cb244bd`).
