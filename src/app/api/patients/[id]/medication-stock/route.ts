@@ -14,6 +14,7 @@ import { createScopedTxRunner } from '@/lib/db/rls';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { getPatientMedicationStockSummary } from '@/modules/pharmacy';
 import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 
 const ROUTE = '/api/patients/[id]/medication-stock';
 
@@ -80,10 +81,12 @@ const authenticatedGET = withAuthContext(
 );
 
 export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return await authenticatedGET(req, routeContext);
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
+  return withRoutePerformance(req, async () => {
+    try {
+      return await authenticatedGET(req, routeContext);
+    } catch (err) {
+      unstable_rethrow(err);
+      return withSensitiveNoStore(internalError());
+    }
+  });
 };

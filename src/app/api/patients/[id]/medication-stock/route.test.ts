@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { getPerformanceSnapshot, resetPerformanceMetrics } from '@/lib/utils/performance';
 
 const {
   authContextMock,
@@ -57,6 +58,7 @@ function createRequest(url = 'http://localhost/api/patients/patient_1/medication
 describe('GET /api/patients/[id]/medication-stock', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetPerformanceMetrics();
     authContextMock.mockReturnValue({ orgId: 'org_1', role: 'pharmacist', userId: 'user_1' });
     authRejectionMock.mockReturnValue(null);
     createScopedTxRunnerMock.mockReturnValue(fakeRunner);
@@ -92,7 +94,21 @@ describe('GET /api/patients/[id]/medication-stock', () => {
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     const payload = await response.json();
     expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
-    expect(response.headers.get('Content-Length')).toBe(String(jsonPayloadBytes(payload)));
+    const responseBytes = jsonPayloadBytes(payload);
+    expect(response.headers.get('Content-Length')).toBe(String(responseBytes));
+    expect(
+      getPerformanceSnapshot({ topRoutes: 100 }).routes.find(
+        (route) => route.method === 'GET' && route.route === '/api/patients/:id/medication-stock',
+      ),
+    ).toMatchObject({
+      critical_route: true,
+      critical_route_family: 'patient-medication-stock-summary',
+      payload_sample_count: 1,
+      last_payload_bytes: responseBytes,
+      payload_budget_bytes: 256_000,
+      payload_budget_status: 'within_budget',
+      payload_budget_met: true,
+    });
     expect(payload.meta).toMatchObject({
       generated_at: '2026-07-07T00:00:00.000Z',
       item_limit: 50,
