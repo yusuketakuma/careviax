@@ -4,11 +4,13 @@
 // The contract is intentionally docs-first, but it must stay complete enough to
 // gate later screen slices. This check verifies the required screen IDs,
 // current entrypoints, state matrix vocabulary, and high-risk stop boundaries.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const REPO_ROOT = process.cwd();
 const CONTRACT_PATH = 'docs/frontend-screen-contracts.md';
+const PATIENT_INVENTORY_PATH = 'docs/ui-ux-refresh/phase3/inv-05-patients-core.md';
+const PATIENT_ROUTE_ROOT = 'src/app/(dashboard)/patients';
 
 const REQUIRED_TOKENS = [
   'FRONTEND-CONTRACT-001',
@@ -65,12 +67,43 @@ function fail(message, details = []) {
   process.exit(1);
 }
 
-function readContract() {
+function readDocument(documentPath) {
   try {
-    return readFileSync(path.join(REPO_ROOT, CONTRACT_PATH), 'utf8');
+    return readFileSync(path.join(REPO_ROOT, documentPath), 'utf8');
   } catch (error) {
-    fail(`missing ${CONTRACT_PATH}`, [String(error)]);
+    fail(`missing ${documentPath}`, [String(error)]);
   }
+}
+
+function discoverPatientRoutes(directory = path.join(REPO_ROOT, PATIENT_ROUTE_ROOT)) {
+  const routes = [];
+
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      routes.push(...discoverPatientRoutes(entryPath));
+      continue;
+    }
+    if (!entry.isFile() || entry.name !== 'page.tsx') continue;
+
+    routes.push(
+      path
+        .relative(path.join(REPO_ROOT, 'src/app'), entryPath)
+        .split(path.sep)
+        .join('/')
+        .replace(/\/page\.tsx$/, ''),
+    );
+  }
+
+  return routes.sort();
+}
+
+function readPatientInventoryRoutes(content) {
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.match(/^\|\s*((?:\(dashboard\)\/patients)(?:\/[^|]+)?)\s*\|/)?.[1]?.trim())
+    .filter(Boolean)
+    .sort();
 }
 
 function assertTokenPresence(content) {
@@ -157,7 +190,30 @@ export function checkFrontendContract(content) {
   assertPhiBoundaryCoverage(content);
 }
 
+export function checkPatientRouteInventory(
+  inventoryContent,
+  actualRoutes = discoverPatientRoutes(),
+) {
+  const inventoryRoutes = readPatientInventoryRoutes(inventoryContent);
+  const duplicates = inventoryRoutes.filter(
+    (route, index) => inventoryRoutes.indexOf(route) !== index,
+  );
+  if (duplicates.length > 0) {
+    fail('patient route inventory contains duplicate rows', [...new Set(duplicates)]);
+  }
+
+  const missing = actualRoutes.filter((route) => !inventoryRoutes.includes(route));
+  const stale = inventoryRoutes.filter((route) => !actualRoutes.includes(route));
+  if (missing.length > 0 || stale.length > 0) {
+    fail('patient route inventory must exactly match live page routes', [
+      ...missing.map((route) => `missing: ${route}`),
+      ...stale.map((route) => `stale: ${route}`),
+    ]);
+  }
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  checkFrontendContract(readContract());
+  checkFrontendContract(readDocument(CONTRACT_PATH));
+  checkPatientRouteInventory(readDocument(PATIENT_INVENTORY_PATH));
   console.log('Frontend contract check passed.');
 }
