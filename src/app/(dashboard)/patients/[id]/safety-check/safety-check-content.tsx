@@ -376,6 +376,8 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
   const [selectedCategory, setSelectedCategory] = useState<ConcernCategory | null>(null);
   const [consultDialogOpen, setConsultDialogOpen] = useState(false);
   const [resolveDialogOpen, setResolveDialogOpen] = useState(false);
+  const [resolveDialogIssueId, setResolveDialogIssueId] = useState<string | null>(null);
+  const [failedResolveIssueId, setFailedResolveIssueId] = useState<string | null>(null);
 
   const issuesQuery = useQuery({
     queryKey: ['medication-issues', orgId, patientId],
@@ -495,14 +497,36 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
       }
       return payload;
     },
+    onMutate: () => {
+      setFailedResolveIssueId(null);
+    },
     onSuccess: async () => {
       await invalidatePatientIssueQueries();
       toast.success('問題なしとして完了しました');
+      setFailedResolveIssueId(null);
+      setResolveDialogIssueId(null);
+      setResolveDialogOpen(false);
     },
-    onError: (error) => {
-      toast.error(messageFromError(error, '課題の完了に失敗しました'));
+    onError: (_error, issueId) => {
+      setFailedResolveIssueId(issueId);
+      toast.error('課題の完了に失敗しました');
     },
   });
+
+  const openResolveDialog = () => {
+    if (!selectedIssue) return;
+    setResolveDialogIssueId(selectedIssue.id);
+    setFailedResolveIssueId(null);
+    setResolveDialogOpen(true);
+  };
+
+  const handleResolveDialogOpenChange = (open: boolean) => {
+    setResolveDialogOpen(open);
+    if (!open) {
+      setResolveDialogIssueId(null);
+      setFailedResolveIssueId(null);
+    }
+  };
 
   const isLoading = !orgId || issuesQuery.isLoading;
   const patient = patientQuery.data;
@@ -570,7 +594,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
               consultationPending={consultationMutation.isPending}
               resolvePending={resolveMutation.isPending}
               onConsult={() => setConsultDialogOpen(true)}
-              onResolve={() => setResolveDialogOpen(true)}
+              onResolve={openResolveDialog}
             />
 
             <div className="grid gap-4 xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)]">
@@ -651,7 +675,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
 
       <ConfirmDialog
         open={resolveDialogOpen}
-        onOpenChange={setResolveDialogOpen}
+        onOpenChange={handleResolveDialogOpenChange}
         title="問題なしにする"
         description={
           selectedConcern
@@ -659,10 +683,29 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
             : '選択中の気になる点を完了します。'
         }
         confirmLabel="問題なしにする"
+        closeOnConfirm={false}
+        confirmDisabled={!resolveDialogIssueId || resolveMutation.isPending}
+        cancelDisabled={resolveMutation.isPending}
         onConfirm={() => {
-          if (selectedIssue) resolveMutation.mutate(selectedIssue.id);
+          if (resolveDialogIssueId) resolveMutation.mutate(resolveDialogIssueId);
         }}
-      />
+      >
+        {failedResolveIssueId ? (
+          <ErrorState
+            variant="server"
+            size="inline"
+            headingLevel={3}
+            live="assertive"
+            title="課題を完了できません"
+            cause="課題の完了処理に失敗しました。"
+            nextAction="選択内容を保持しています。同じ課題で再試行してください。"
+            onRetry={() => resolveMutation.mutate(failedResolveIssueId)}
+            retryLabel="同じ課題で再試行"
+            retryDisabled={resolveMutation.isPending}
+            className="px-4 py-5"
+          />
+        ) : null}
+      </ConfirmDialog>
     </section>
   );
 }

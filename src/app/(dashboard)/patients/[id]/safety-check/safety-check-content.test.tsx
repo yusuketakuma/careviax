@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse, stubJsonFetch } from '@/test/fetch-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -275,6 +275,78 @@ describe('SafetyCheckContent', () => {
 
     expect(screen.queryByTestId('safety-cds-degraded')).toBeNull();
     expect(screen.getByText(/気になる点はありません/)).toBeTruthy();
+  });
+
+  it('keeps a failed resolve dialog open and retries the exact snapshotted issue', async () => {
+    type ResolveMutationConfig = {
+      onError?: (error: Error, issueId: string) => void;
+      onSuccess?: () => Promise<void> | void;
+    };
+    const consultationMutate = vi.fn();
+    const resolveMutate = vi.fn();
+    const mutationConfigs: Array<ResolveMutationConfig | undefined> = [];
+    let mutationHookCall = 0;
+    useMutationMock.mockImplementation((config: ResolveMutationConfig) => {
+      const index = mutationHookCall % 2;
+      mutationHookCall += 1;
+      mutationConfigs[index] = config;
+      return {
+        mutate: index === 0 ? consultationMutate : resolveMutate,
+        isPending: false,
+      };
+    });
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn().mockResolvedValue(undefined) });
+    useQueryMock.mockImplementation((cfg: { queryKey: unknown[] }) => {
+      const key = String((cfg.queryKey as unknown[])[0]);
+      if (key === 'medication-issues') {
+        return {
+          data: {
+            data: [
+              buildIssue({ id: 'issue_original', category: 'interaction' }),
+              buildIssue({ id: 'issue_other', category: 'duplicate' }),
+            ],
+          },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      if (key === 'safety-check-cds') return { data: [], isLoading: false, isError: false };
+      if (key === 'patient-safety-check-summary') {
+        return { data: { name: '山田花子' }, isLoading: false, isError: false };
+      }
+      return { data: undefined, isLoading: false, isError: false };
+    });
+
+    render(<SafetyCheckContent patientId="patient_1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '問題なしにする' }));
+    const dialog = screen.getByRole('alertdialog');
+    fireEvent.click(screen.getByTestId('safety-concern-duplicate'));
+    fireEvent.click(within(dialog).getByRole('button', { name: '問題なしにする' }));
+    expect(resolveMutate).toHaveBeenLastCalledWith('issue_original');
+
+    await act(async () => {
+      mutationConfigs[1]?.onError?.(
+        new Error('山田花子の課題更新でprovider detailが発生しました'),
+        'issue_original',
+      );
+    });
+
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    expect(screen.getByText('課題を完了できません')).toBeTruthy();
+    expect(screen.getByText(/選択内容を保持しています/)).toBeTruthy();
+    expect(screen.queryByText(/山田花子の課題更新/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '同じ課題で再試行' }));
+    expect(resolveMutate).toHaveBeenLastCalledWith('issue_original');
+    expect(resolveMutate).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await mutationConfigs[1]?.onSuccess?.();
+    });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 });
 
