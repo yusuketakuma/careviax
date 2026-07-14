@@ -58,6 +58,24 @@
 
 ## 直近の作業
 
+- codex2: API-CONTRACT-003M-BILLING-EXPORT-AUDIT-ERROR (DONE; parent remains Partial, 2026-07-14; implementation `23b94440e`, `PUSHED`).
+  - current task / files inspected / root cause:
+    Canonical error registry/response helper、billing candidate export route/test、claims export adapter/config、export audit transaction、
+    no-store/auth/tenant境界を照合。`BILLING_EXPORT_AUDIT_FAILED`は固定code/message/500を互換`error()`で重複指定し、同じcodeが
+    Rececom POST前のattempt audit失敗と、POST成功後のsuccess audit失敗の両方に使われていた。
+  - files changed / bugs fixed / correctness / security / privacy / billing safety / performance:
+    `src/lib/api/error-codes.ts`とsnapshot、billing export route/testの4 pathsを変更。固定500/errorをregistry化しつつ、外部POST後の
+    replay安全性が証明されていないためretryable=false/recovery=return_to_previousを採用し、1 constructorだけをtyped `registeredError()`へ移行。
+    Existing pre-adapter failure testへ固定messageを追加し、新testでsuccess-phase audit failure時もfetch 1回、audit 2回、fixed no-store JSON、
+    XML非露出を固定した。Transaction、候補抽出、算定point/quantity、status、patient filter hash、external payload、attempt/success audit順序、
+    DB/network回数は不変で、自動retry/idempotency変更もない。
+  - validation results / remaining work / next action / rollback:
+    Focused registry/response/route tests 3 files / 54 tests、4 pathsのexact ESLint/Prettier、diff、API response shape 0/0、API authz、route-auth
+    150 allowlisted / 214 direct / 0 new、client PHI-log、raw-read org 116 allowlisted / 0 new、`pnpm typecheck`、bare `pnpm typecheck:no-unused`をPASS。
+    独立codex1 billing/privacy/API/idempotency reviewもAPPROVE。現行STATE.mdのno-Oracle user SSOTに従いOracle未使用。非視覚API変更のため
+    imagegen/browserなし。親`API-CONTRACT-003`には他route固有・動的codeが残る。External access revoke/OTP auditなど副作用隣接codeは
+    idempotencyとrecoveryを別途再確認する。Rollbackは`23b94440e`のrevertでDB/data rollback不要。
+
 - codex1: AUTHZ-PRESCRIPTION-INTAKE-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `d5ecb9f9c`, `PUSHED`).
   - current task / files inspected / root cause:
     `src/app/api/prescription-intakes/[id]/route.ts`とroute tests、canonical `phi-read-audit` helper/tests、患者detail read-audit callsites、
