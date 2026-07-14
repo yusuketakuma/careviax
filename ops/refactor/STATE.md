@@ -10,8 +10,9 @@
 
 - 現行は`codex1` / `codex2` / `codex3` / `codex4`の協調運用。最新役割は`codex1`がfrontend、
   `codex2`がbackend、`codex3`がsecurity red-team、`codex4`が動作速度改善・response向上を主担当とし、各agentは`agmsg` team `phos`で
-  exact-path ownership、開始、freeze、review結果を通知して同一pathを並列編集しない。
-- 調査・独立review・focused validationは並列化し、編集は宣言したnon-overlap pathsだけに限定する。
+  exact-path ownership、開始、freeze、完了結果を通知して同一pathを並列編集しない。
+- 各agentは担当sliceをself-validateし、相互reviewやreview待ちは行わない。`agmsg`はexact-path ownership、
+  collision回避、freeze/完了handoffだけに使い、編集は宣言したnon-overlap pathsだけに限定する。
   Plans/STATE/RUN_LOCK、commit/push、Next生成物を触る共有gateは明示されたslice integration ownerが直列化する。
   `API-CONTRACT-002K`のintegration/ledger/scoped pushはreview後に`codex1`から`codex4`へ移管済み。
 - 既存user/harness dirtyとpeer-owned pathsを保存し、scoped commitは明示owned pathsだけをstageする。
@@ -52,15 +53,39 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: 4-agent non-overlap協調（2026-07-14〜）。最新routingは`codex1` frontend、
-  `codex2` backend、`codex4` performance / response improvement。`codex3`を含む調査・review担当はsliceごとに明示し、
-  Plans/STATE/RUN_LOCKとscoped commit/pushはagmsgで移管されたintegration ownerだけが直列化する。
+  `codex2` backend、`codex3` security implementation、`codex4` performance / response improvement。
+  各agentが担当実装をself-validateしてreview待ちなくfreezeする。Plans/STATE/RUN_LOCKとscoped commit/pushは
+  agmsgで移管されたintegration ownerだけが直列化する。
   現在の供給源は`Plans.md`の未完了項目とlive code差分。migration、auth/RLS policy変更、full-history event projectionは
   human/high-risk gateとして実装せず、証拠付きの残件へ戻す。
 
 ## 直近の作業
 
+- codex1: `FE-PATIENT-MOVEMENT-PLACEHOLDER-PHI-001`
+  (DONE / PUSH_PENDING, 2026-07-14; implementation `037667413`).
+  - current task / root cause / reproduction:
+    `card-workspace.tsx`のmovement queryがTanStack Queryのunconditional `keepPreviousData`を使っていたため、
+    同じclient treeでpatient Aからpatient Bへ移動しBのresponseが遅れると、Aのtimeline title、actor、metadata、hrefを
+    Bの患者header配下へ一時表示し得るHIGHのPHI境界欠落を修正した。responseにはpatient ID bindingがないため、
+    render後のeffect clearではなくplaceholder選択時点でfail-closedにする必要があった。
+  - files changed / fix / state contract:
+    `src/app/(dashboard)/patients/[id]/card-workspace.tsx`と同testのexact2だけを変更した。
+    `keepPreviousData` importを除去し、previous queryのscope、patient ID、org IDがcurrent contextとすべて一致する場合だけ
+    prior snapshotを返すtyped placeholderへ置換。不一致、org未確定、previous query不在では`undefined`を返し、既存loading/error
+    stateを表示する。同一patient+orgのfilter/limit変更だけはprior windowを維持し、false-empty/flickerを増やさない。
+  - security / performance / regression evidence:
+    A表示後にBへ切替えてresponseを遅延させてもA eventを表示せずB loadingになること、org不一致が`undefined`になること、
+    B取得がerrorへ遷移してもA event/raw errorを表示しないこと、同一patient+orgだけsnapshotを保持することをrender/query
+    regressionで固定した。新規effect、state、timer、invalidation、query、network request、list traversalは追加せず、
+    placeholder判定は固定長query keyのO(1)比較だけ。視覚再構成を伴わないstate/PHI境界修正のためimagegenは省略した。
+  - validation / policy / next action:
+    focused Vitest `1 file / 99 tests`、exact2 ESLint、Prettier、`git diff --check`、serialized
+    `pnpm typecheck && pnpm typecheck:no-unused`をPASS。ユーザー方針によりbuild/Oracleは実行していない。
+    latest user workflowに従い相互review待ちは使わずself-validationでfreezeし、exact2を`037667413`へscoped commitした。
+    single-ledger commitとsafe push後、`FE-PATIENT-DETAIL-001`のcached refresh失敗を可視化する次のfrontend sliceへ進む。
+
 - codex1 + codex2 + codex3 + codex4: `FE-PATIENT-DETAIL-HEADING-001`
-  (DONE / PUSH_PENDING, 2026-07-14; implementation `11f718ef7`).
+  (DONE / PUSHED, 2026-07-14; implementation `11f718ef7`, ledger `2cc71d530`).
   - current task / files inspected / files changed:
     `Plans.md`の`FE-PATIENT-DETAIL-001`、PH-OS UI/UX SSOT全1,529行、Next.js 16同梱のAccessibilityと
     Server/Client Components guide、patient detailのheading/state/query経路、movement component/testsを確認した。
@@ -82,8 +107,9 @@
     新規visual structureやinteractionを作らないsemantic heading是正のためimagegenは省略し、既存Clinical Signal
     Workspaceの構造と表示を維持した。
   - commit / remaining / next action:
-    frontend exact4だけを`11f718ef7`へscoped commitした。single-ledger commitとsafe push後、同じfrontend exact2
-    ownershipを維持してcross-patient/org placeholder PHIをfail-closed化する。
+    frontend exact4だけを`11f718ef7`、single-ledger exact3を`2cc71d530`へscoped commitし、feature branchへ
+    non-force pushした。follow-upのcross-patient/org placeholder PHIは上記`FE-PATIENT-MOVEMENT-PLACEHOLDER-PHI-001`で
+    fail-closed化済み。次はcached refresh失敗を含む残りstate matrixを閉じる。
 
 - codex1 + codex2 + codex3 + codex4: `FE-PATIENT-MOVEMENT-TEMPORAL-001` / `FE-FIELD-REVISION-TEMPORAL-001` /
   `SEARCH-INTEGRATION-GLOBAL-001` / `API-CONTRACT-002G` / `API-CONTRACT-002H`
