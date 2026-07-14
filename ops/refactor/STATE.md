@@ -57,6 +57,23 @@
 
 ## 直近の作業
 
+- codex2: API-CONTRACT-003L-CARE-REPORT-PRINT-AUDIT-ERROR (DONE; parent remains Partial, 2026-07-14; implementation `d1e99dc08`, `PUSHED`).
+  - current task / files inspected / root cause:
+    Canonical error registry/response helper、care report print-audit route/test、print contract、export audit helper、auth/tenant/no-store境界を照合。
+    Printable contentを返す前のaudit失敗は固定`PRINT_AUDIT_FAILED` code/message/500でfail-closedしていたが、互換`error()`でstatusを重複指定し、
+    typed registryのstatus/recovery契約外に残っていた。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    `src/lib/api/error-codes.ts`とsnapshot、care report print-audit routeの3 pathsを変更。`PRINT_AUDIT_FAILED`を
+    500/error/retryable/retry metadataで登録し、1 constructorだけをtyped `registeredError()`へ移行。Existing route testは固定body/no-storeと
+    print content非露出を固定済みで、そのままPASS。二重report read、二重source access check、confirmed status、expected_updated_at競合、
+    audit-before-content、auth/tenant、query/write/network回数は不変。Retryable metadataを自動retryへ接続せず、報告書本文/印刷契約も変更していない。
+  - validation results / remaining work / next action / rollback:
+    Focused registry/response/route tests 3 files / 34 tests、4 owned pathsのexact ESLint/Prettier、diff、API response shape 0/0、API authz、
+    route-auth 150 allowlisted / 214 direct / 0 new、client PHI-log、raw-read org 116 allowlisted / 0 new、`pnpm typecheck`、bare
+    `pnpm typecheck:no-unused`をPASS。独立codex1 medical/privacy/API reviewもAPPROVE。現行STATE.mdのno-Oracle user SSOTに従いOracle未使用。
+    非視覚API変更のためimagegen/browserなし。親`API-CONTRACT-003`には他route固有・動的codeが残る。Billing export auditやexternal-access
+    revoke隣接codeは財務・外部共有意味を別途再確認してから独立slice化する。Rollbackは`d1e99dc08`のrevertでDB/data rollback不要。
+
 - codex1: PERM-DOC-SYNC-001A / ACCESS-MATRIX-COVERAGE-001 (DONE; parent remains Partial, 2026-07-14; implementation `2c5aa56d7`, `PUSHED`).
   - current task / files inspected / root cause:
     `src/lib/auth/permission-matrix.ts`、既存permission tests、`docs/compliance/access-control-policy.md`のcapability表、`Plans.md`の
