@@ -1,4 +1,4 @@
-import type { CommunicationChannel, Prisma } from '@prisma/client';
+import type { CommunicationChannel, Prisma, ProfessionTypeEnum } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { buildCareTeamContactChannelReadiness } from '@/lib/patient/care-team-contact';
 import type { ContactProfileKind } from './contact-profile-options';
@@ -124,6 +124,22 @@ type ContactProfileReliability = {
   warnings: string[];
   missing_channel_labels: string[];
 };
+
+const PROFESSION_TYPE_VALUES = [
+  'physician',
+  'nurse',
+  'care_manager',
+  'medical_social_worker',
+  'physical_therapist',
+  'occupational_therapist',
+  'speech_therapist',
+  'registered_dietitian',
+  'dentist',
+  'dental_hygienist',
+  'home_helper',
+  'care_staff',
+  'other',
+] as const satisfies readonly ProfessionTypeEnum[];
 
 const CHANNEL_PRIORITY: CommunicationChannel[] = [
   'fax',
@@ -594,14 +610,58 @@ export async function listContactProfiles(
   },
 ): Promise<ContactProfileRow[]> {
   const query = input.query?.trim() || null;
+  const normalizedQuery = query?.toLowerCase() ?? null;
+  const matchingProfessionTypes = normalizedQuery
+    ? PROFESSION_TYPE_VALUES.filter((professionType) => professionType.includes(normalizedQuery))
+    : [];
   const matchesQuery = (fields: Array<string | null | undefined>) =>
-    !query || fields.some((field) => field?.toLowerCase().includes(query.toLowerCase()));
+    !normalizedQuery || fields.some((field) => field?.toLowerCase().includes(normalizedQuery));
+  // Facility subtitles concatenate two columns as "facility / role". Keep composite
+  // separator queries on the exact post-filter path instead of risking false negatives.
+  const facilityQueryWhere: Prisma.FacilityContactWhereInput =
+    query && !/[/\s]/u.test(query)
+      ? {
+          OR: [
+            { name: containsQuery(query) },
+            { role: containsQuery(query) },
+            { phone: containsQuery(query) },
+            { email: containsQuery(query) },
+            { fax: containsQuery(query) },
+            { facility: { name: containsQuery(query) } },
+          ],
+        }
+      : {};
+  const externalProfessionalQueryWhere: Prisma.ExternalProfessionalWhereInput = query
+    ? {
+        OR: [
+          { name: containsQuery(query) },
+          { organization_name: containsQuery(query) },
+          ...(matchingProfessionTypes.length > 0
+            ? [{ profession_type: { in: [...matchingProfessionTypes] } }]
+            : []),
+          { phone: containsQuery(query) },
+          { email: containsQuery(query) },
+          { fax: containsQuery(query) },
+        ],
+      }
+    : {};
+  const prescriberInstitutionQueryWhere: Prisma.PrescriberInstitutionWhereInput = query
+    ? {
+        OR: [
+          { name: containsQuery(query) },
+          { institution_code: containsQuery(query) },
+          { phone: containsQuery(query) },
+          { fax: containsQuery(query) },
+          ...('処方元医療機関'.includes(normalizedQuery ?? '') ? [{ institution_code: null }] : []),
+        ],
+      }
+    : {};
 
   const [facilityContacts, externalProfessionals, prescriberInstitutions] = await Promise.all([
     input.kind && input.kind !== 'all' && input.kind !== 'facility_contact'
       ? Promise.resolve([])
       : db.facilityContact.findMany({
-          where: { org_id: orgId },
+          where: { org_id: orgId, ...facilityQueryWhere },
           include: {
             facility: {
               select: {
@@ -620,7 +680,7 @@ export async function listContactProfiles(
     input.kind && input.kind !== 'all' && input.kind !== 'external_professional'
       ? Promise.resolve([])
       : db.externalProfessional.findMany({
-          where: { org_id: orgId },
+          where: { org_id: orgId, ...externalProfessionalQueryWhere },
           include: {
             care_team_links: {
               select: {
@@ -638,7 +698,7 @@ export async function listContactProfiles(
     input.kind && input.kind !== 'all' && input.kind !== 'prescriber_institution'
       ? Promise.resolve([])
       : db.prescriberInstitution.findMany({
-          where: { org_id: orgId },
+          where: { org_id: orgId, ...prescriberInstitutionQueryWhere },
           include: {
             prescription_intakes: {
               select: {

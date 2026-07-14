@@ -396,6 +396,148 @@ describe('listContactProfiles', () => {
     ]);
   });
 
+  it('pushes displayed-field search predicates into every profile master query', async () => {
+    const facilityContactFindMany = vi.fn().mockResolvedValue([]);
+    const externalProfessionalFindMany = vi.fn().mockResolvedValue([]);
+    const prescriberInstitutionFindMany = vi.fn().mockResolvedValue([]);
+    const db = {
+      facilityContact: { findMany: facilityContactFindMany },
+      externalProfessional: { findMany: externalProfessionalFindMany },
+      prescriberInstitution: { findMany: prescriberInstitutionFindMany },
+      deliveryRecord: { groupBy: vi.fn() },
+      communicationEvent: { groupBy: vi.fn() },
+      communicationRequest: { groupBy: vi.fn() },
+    } as unknown as Parameters<typeof listContactProfiles>[0];
+
+    await expect(
+      listContactProfiles(db, 'org_1', { kind: 'all', query: '処方元' }),
+    ).resolves.toEqual([]);
+
+    expect(facilityContactFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          OR: [
+            { name: { contains: '処方元', mode: 'insensitive' } },
+            { role: { contains: '処方元', mode: 'insensitive' } },
+            { phone: { contains: '処方元', mode: 'insensitive' } },
+            { email: { contains: '処方元', mode: 'insensitive' } },
+            { fax: { contains: '処方元', mode: 'insensitive' } },
+            { facility: { name: { contains: '処方元', mode: 'insensitive' } } },
+          ],
+        },
+      }),
+    );
+    expect(externalProfessionalFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          OR: [
+            { name: { contains: '処方元', mode: 'insensitive' } },
+            { organization_name: { contains: '処方元', mode: 'insensitive' } },
+            { phone: { contains: '処方元', mode: 'insensitive' } },
+            { email: { contains: '処方元', mode: 'insensitive' } },
+            { fax: { contains: '処方元', mode: 'insensitive' } },
+          ],
+        },
+      }),
+    );
+    expect(prescriberInstitutionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          OR: [
+            { name: { contains: '処方元', mode: 'insensitive' } },
+            { institution_code: { contains: '処方元', mode: 'insensitive' } },
+            { phone: { contains: '処方元', mode: 'insensitive' } },
+            { fax: { contains: '処方元', mode: 'insensitive' } },
+            { institution_code: null },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('pushes profession substring searches through enum-safe exact candidates', async () => {
+    const externalProfessionalFindMany = vi.fn().mockResolvedValue([]);
+    const db = {
+      facilityContact: { findMany: vi.fn() },
+      externalProfessional: { findMany: externalProfessionalFindMany },
+      prescriberInstitution: { findMany: vi.fn() },
+      deliveryRecord: { groupBy: vi.fn() },
+      communicationEvent: { groupBy: vi.fn() },
+      communicationRequest: { groupBy: vi.fn() },
+    } as unknown as Parameters<typeof listContactProfiles>[0];
+
+    await expect(
+      listContactProfiles(db, 'org_1', {
+        kind: 'external_professional',
+        query: 'therapist',
+      }),
+    ).resolves.toEqual([]);
+
+    expect(externalProfessionalFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          OR: [
+            { name: { contains: 'therapist', mode: 'insensitive' } },
+            { organization_name: { contains: 'therapist', mode: 'insensitive' } },
+            {
+              profession_type: {
+                in: ['physical_therapist', 'occupational_therapist', 'speech_therapist'],
+              },
+            },
+            { phone: { contains: 'therapist', mode: 'insensitive' } },
+            { email: { contains: 'therapist', mode: 'insensitive' } },
+            { fax: { contains: 'therapist', mode: 'insensitive' } },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('keeps composite facility subtitle searches exact instead of narrowing them prematurely', async () => {
+    const facilityContactFindMany = vi.fn().mockResolvedValue([
+      {
+        id: 'facility_contact_1',
+        name: '共同窓口',
+        role: '相談員',
+        phone: null,
+        email: null,
+        fax: null,
+        preferred_contact_method: null,
+        preferred_contact_time: null,
+        last_contacted_at: null,
+        last_success_channel: null,
+        facility: { name: '青葉苑', address: null, residences: [] },
+      },
+    ]);
+    const db = {
+      facilityContact: { findMany: facilityContactFindMany },
+      externalProfessional: { findMany: vi.fn().mockResolvedValue([]) },
+      prescriberInstitution: { findMany: vi.fn().mockResolvedValue([]) },
+      deliveryRecord: { groupBy: vi.fn().mockResolvedValue([]) },
+      communicationEvent: { groupBy: vi.fn().mockResolvedValue([]) },
+      communicationRequest: { groupBy: vi.fn().mockResolvedValue([]) },
+    } as unknown as Parameters<typeof listContactProfiles>[0];
+
+    const result = await listContactProfiles(db, 'org_1', {
+      kind: 'all',
+      query: '青葉苑 / 相談員',
+    });
+
+    expect(facilityContactFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { org_id: 'org_1' } }),
+    );
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 'facility_contact_1',
+        subtitle: '青葉苑 / 相談員',
+      }),
+    ]);
+  });
+
   it('skips the pending response aggregate when no profiles are returned', async () => {
     const groupBy = vi.fn();
     const db = {
