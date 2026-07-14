@@ -333,7 +333,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     expect(response.status).toBe(502);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(body).toMatchObject({
+    expect(body).toEqual({
       code: 'PATIENT_MCS_SYNC_FAILED',
       message: 'MCS 同期に失敗しました',
     });

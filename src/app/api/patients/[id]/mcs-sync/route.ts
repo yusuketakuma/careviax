@@ -3,9 +3,9 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import {
   conflict,
-  error,
   forbidden,
   internalError,
+  registeredError,
   validationError,
   success,
 } from '@/lib/api/response';
@@ -72,7 +72,7 @@ async function authenticatedPOST(
       }
     }
 
-    return error('PATIENT_MCS_SYNC_FAILED', 'MCS 同期に失敗しました', 502);
+    return registeredError('PATIENT_MCS_SYNC_FAILED', 'MCS 同期に失敗しました');
   }
 }
 

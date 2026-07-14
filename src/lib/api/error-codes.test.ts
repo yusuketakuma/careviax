@@ -170,6 +170,13 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "PATIENT_MCS_SYNC_FAILED": {
+          "httpStatus": 502,
+          "logLevel": "error",
+          "messageLabel": "api.error.patient.mcs_sync_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "PHARMACY_DRUG_STOCK_EXPORT_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",

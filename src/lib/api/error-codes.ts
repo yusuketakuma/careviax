@@ -180,6 +180,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'retry',
     messageLabel: 'api.error.medication_history.pdf_export_audit_failed',
   },
+  PATIENT_MCS_SYNC_FAILED: {
+    httpStatus: 502,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.patient.mcs_sync_failed',
+  },
   PHARMACY_INVOICE_PDF_EXPORT_AUDIT_FAILED: {
     httpStatus: 500,
     logLevel: 'error',
