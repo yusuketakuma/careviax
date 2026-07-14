@@ -143,6 +143,11 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
   },
 };
 
+export const MEMBER_ROLES = Object.freeze(Object.keys(ROLE_PERMISSIONS) as MemberRole[]);
+export const PERMISSION_KEYS = Object.freeze(
+  Object.keys(ROLE_PERMISSIONS.owner) as PermissionKey[],
+);
+
 export function hasPermission(role: MemberRole, permission: PermissionKey): boolean {
   return ROLE_PERMISSIONS[role]?.[permission] ?? false;
 }
