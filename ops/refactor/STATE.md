@@ -48,14 +48,31 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: route-mocked medical UI smokeのruntime/build mismatch診断、
-  `codex2`: `E2E-STANDALONE-START-001` / `E2E-PREFLIGHT-BROWSER-001`のevidence同期。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `E2E-FIXTURE-CONTRACT-001`のroute-mocked fixture修復、
+  `codex2`: `CDS-LAB-STALENESS-RENAL-MONITOR-001`のevidence同期とpeer review follow-up。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex2: CDS-LAB-STALENESS-RENAL-MONITOR-001 (DONE, 2026-07-14; implementation `c8132e7bf`, `PUSHED`).
+  - current task / files inspected / root cause:
+    CDS checker/tests、PatientLabObservation、X04 coverage、monitoring alerts、operational summary、patient detail、visit brief、alert API/panelを照合した。
+    eGFR/PT-INR/Kは最新値だけを日付無制限で取得し、古い値でも用量調整やcritical/warningを駆動し、eGFR未記録coverageを抑制していた。
+    一方、既存operational surfaceは検査値へ90日鮮度閾値を採用しており、CDSだけがstale判定を欠いていた。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    `src/server/cds/checker.ts`とtestだけを変更。eGFR/PT-INR/K queryへ90日前の`measured_at` cutoffを追加し、返却行も同cutoffで再検証した。
+    91日前のeGFRは値域用量alertを出さずX04 `renal_dose_coverage` warningへ、古いPT-INR/Kは値由来critical/warningを出さず未記録infoへ
+    fail-closedに倒した。1日前のfresh値判定は維持。DB読取rowを90日windowへ縮小し、schema/migration/write/query count、alert UI、auth/tenant/PHI、
+    薬剤・検査値の既存critical閾値は変更していない。
+  - validation results / remaining work / next action / rollback:
+    Focused checker 1 file / 43 tests、CDS API/panel込み3 files / 51 tests、exact ESLint/Prettier/diff、`pnpm typecheck`、8 GiB
+    `pnpm typecheck:no-unused`、API response shape 0/0、API authz status、query-shape 0/0、read-SLO 0 new drift、raw-org 116 / 0 newをPASS。
+    `pnpm api-authz:check`は不存在で1回失敗し、実在する`pnpm api-authz-status:check`へ直ちに訂正してPASS。codex1へmedical-safety reviewを依頼済みで
+    verdict待ちだが、可逆なcoherent sliceとしてcommit/push済み。非視覚server safety変更のためimagegen/browserなし。Rollbackは`c8132e7bf`のrevertで
+    DB/data rollback不要。
 
 - codex2: E2E-PREFLIGHT-BROWSER-001 (DONE, 2026-07-14; implementation `a4260e832`, `PUSHED`).
   - current task / files inspected / root cause:
