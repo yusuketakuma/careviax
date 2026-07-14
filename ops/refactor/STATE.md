@@ -15,8 +15,10 @@
 - `codex3/codex4`はSTOP/RELEASEのままで、Claudeと外部maker/checkerも再有効化しない。旧Codex並列実装記述は履歴として扱う。
 - long Next gateは相互通知して引き続き直列実行し、shared dirty worktreeの既存user変更を保存する。scoped commitは各自の明示owned pathだけをstageし、
   push、deploy、migration適用、production mutationはcurrent-taskの明示許可なしに行わない。
-- 2026-07-10 の最新ユーザー指示により、Oracle/GPT-5.5 Pro への相談は行わない。ローカル調査、
-  直接の影響範囲確認、focused/full gate で代替する。
+- 2026-07-14 の最新ユーザー指示は 2026-07-10 のOracle停止指示を上書きする。今後、Oracle相談が
+  escalation条件を満たす場合は必ず`gpt-5.6-sol`、Browser `heavy`（Extra High）、strict selectを使い、
+  GPT-5.5 Proその他へsilent fallbackしない。厳格なSol選択を確認できない場合は相談をblockedとして
+  session evidenceを保存し、ローカル調査とfocused/full gateで補完する。
 - 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
 
 ## 旧体制（2026-07-04/05 履歴）
@@ -48,9 +50,10 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `UI-THEME-CLINICAL-SIGNAL-001`のSSOT/Plans/ledgerと
-  frontend runtime foundation（Phase 2A fixed shell、Phase 2B-a shared page frame、Phase 2B-b shared page section）。`codex2`のbackend sliceは
-  `6a5b4a966`まで完了し、現在は`INTERNAL-STAFF-PRIVACY-001`のbackend helper + exact tests 5 pathsを担当する。`codex1`はfrontend pathsと
+  共有surfaceとlong gateは事前通知で直列化する。`codex1`は`UI-THEME-CLINICAL-SIGNAL-001`のSSOT/Plans/ledgerと
+  frontend runtime foundation（Phase 2A fixed shell、Phase 2B-a shared page frame、Phase 2B-b shared page section、
+  Phase 2B-c最初のshared exact Delta Lens）、overview contacts projectionと患者画面E2Eを完了した。`codex2`は内部6 roleのprivacy projection、
+  field revision / MCS / contacts / conditions / care-team read hardeningを完了し、新規長時間gateを開始せずread-only候補探索中。`codex1`は
   `Plans.md` / `docs/ui-ux-design-guidelines.md` / `ops/refactor/STATE.md`を予約し、`RUN_LOCK.md`に現在のwriterはいない。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
@@ -58,6 +61,56 @@
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1 + codex2: ORACLE-GPT-5.6-SOL-DEFAULT-001 (DONE, 2026-07-14; implementations `123bd56a0`, `63ff08820`, `4441a1fed`, not pushed).
+  - current task / sources inspected:
+    ユーザー指示「今後必ず`gpt-5.6-sol`へ依頼」を、project/user Oracle config、repo/user Codex instructions、Oracle skill、installed CLI、
+    upstream `steipete/oracle` README / bundled skill / browser-mode / configuration / CHANGELOGとPR #320へ照合した。2026-07-14時点の
+    installed Oracle 0.16.0は公式PR #320 head `ea8b1b57f140f2c641a2a8a9cc1dd10bd03bdb18`をbuildしたもの。
+  - files changed / fail-closed behavior:
+    `AGENTS.md`、`.agents/skills/oracle-consult/SKILL.md`、`.oracle/config.json`、skill metadataを`gpt-5.6-sol`へ固定し、
+    Browser `heavy`（Extra High）、`modelStrategy=select`、manual login、reattach、files reportを共通化した。user-level
+    `~/.oracle/config.json`と`~/.codex/AGENTS.md`も同じ既定へ更新。公開版へ戻る可能性がある`npx`ではなく検証済みinstalled `oracle`を直接使い、
+    Sol選択を証明できない場合はconsultをblockedとして保存し、GPT-5.5 Proその他へsilent fallbackしない。
+  - validation / failure handling / security:
+    upstream patchはfocused 72/72、format、typecheck、lint、buildをPASS。`oracle --version`は0.16.0、repo/user configのmodelは双方
+    `gpt-5.6-sol`、installed CLI dry-runは`browser mode (gpt-5.6-sol)`を解決。clean live smoke `oracle-sol-clean-relaunch`は18.1秒で
+    requested/resolved `GPT-5.6 Sol`、strategy `select`、verified `yes`、Extra Highを確認した。患者overview相談の先行2 sessionもモデル選択自体は
+    Sol/Extra Highを確認したが、50,931文字と11,281文字のprompt commit検出でbrowser automationがtimeoutし助言本文は未取得。
+    duplicate送信や別model fallbackをせずsession evidenceを保存した。Oracleへsecret、raw患者情報、production credentialは送信していない。
+
+- codex1 + codex2: FRONTEND-PHI-DISPLAY-001 / UI-THEME-CLINICAL-SIGNAL-001 Phase 1 + 2B-c exact Delta Lens
+  (DONE slice; parents remain Partial, 2026-07-14; API `ea1bf6f3e`, UI `44bc5be8a`, MCS `c0e5fc901`, contacts/conditions `21bfdd094`, care-team `984d7b520`; not pushed).
+  - root cause / implementation:
+    認可済み内部staffの患者変更履歴でもservice既定のpresence-only projectionが使われ、電話、住所、連絡先、病名等の正確なbefore/afterを
+    画面内で確認できなかった。さらに患者詳細と訪問記録が履歴行、日時、provenance、structured diffを別実装していた。
+    既存org/assignment認可後の内部6 roleだけにscalar/structured前後値、変更理由、確認/適用情報を投影し、`external_viewer`・未知role・
+    service既定値はpresence-onlyを維持。`PatientFieldRevisionEntry` / `PatientFieldRevisionList`へ両画面を収束し、44px `FilterChipBar`、
+    current/importance/change badges、1操作のnative details、legacy非復元表示を共有した。MCS/contacts/conditionsも同じ内部role集合へ揃え、
+    care-team成功GETはPHI本文なしのcanonical read auditをexact-once記録し、blank/403/500はzero-auditに固定した。
+  - security / performance / remaining:
+    machine audit diff、通知、SSE、log、外部共有、public URL、exportへの実値拡張はない。履歴APIはbounded 50、UI共有化は追加network/stateを増やさず、
+    masked dataから値を推測しない。全画面のrole×surface inventory、machine-readable withheld reason、残semantic componentは未完了のため親はPartial。
+    視覚構成は既存Clinical Signal Workspace / PHI-free `gpt-image-2`参照を再利用し、重複component収束のため追加画像生成は省略した。
+
+- codex1: PATIENT-OVERVIEW-CONTACTS-NAV-001 (DONE, 2026-07-14; implementation `709125953`, not pushed).
+  - files inspected / bugs fixed:
+    `getPatientOverview`、overview schema/SSR/React Query consumer、contacts panel、risk-finding registry、患者別処方履歴、case cockpit、major-screen E2Eを追跡。
+    overview queryはorg/assignment scope内で最大12件のcontactsを取得済みなのにreturn objectから落としており、遅延表示した正本tabが
+    `initialContacts.length`でcrashしていた。取得済みcontactsを追加queryなしで返し、内部6 roleには正確値、external/未知roleには既存canonical
+    phone/email/address maskを適用した。薬剤マスタ照合riskが存在しない`/medications/reconciliation`へprefetchして404を出す不具合も、
+    実在する`/patients/{id}/prescriptions?line_id=...`へ共有patient builderと`URLSearchParams`で安全に接続した。
+  - E2E / visual / stability:
+    demo fixtureへ実在する家族連絡先revisionを追加し、患者詳細で正本・在宅運用→薬剤・訪問→履歴・構造化を遷移。Safety Horizonの
+    セフェム系/eGFR 38、処方、exact structured diff（電話`090-0000-0000`→`090-1111-2222`）を同じ固定56px AppHeader/患者header下で検証した。
+    先頭患者APIへ依存していたflaky smokeは、beforeAllが保証する固定demo patientへ収束。スクリーンショット
+    `/tmp/careviax-playwright-history-final/ui/patient-detail-history.png`を目視PASS。
+  - validation / security / performance / rollback:
+    patient detail 78/78、overview/schema/contacts/card workspace 109/109、risk registry + case cockpit 25/25、exact ESLint/Prettier/diff、
+    colors、typography、frontend contract、Plans active、client PHI display/log、API response shapeをPASS。`pnpm build:e2e:local`はwebpack 6.2分、
+    TypeScript 3.0分、311/311 static pages、全route manifestをPASS。更新standaloneで患者+訪問2/2、主要32 screen 32/32、exact history 1/1をPASSし、
+    console/page errorと旧404は0。`pnpm typecheck` / `pnpm typecheck:no-unused`もPASS。DB schema/migration/write path、production data、dependency、追加queryは変更なし。
+    残は全surfaceのClinical Signal Workspace rolloutとrole/state screenshot matrix。Rollbackは`709125953`のrevertでDB/data rollback不要。
 
 - codex1: UI-SHARED-PAGE-SECTION-001 / UI-THEME-CLINICAL-SIGNAL-001 Phase 2B-b (DONE; parent remains Partial, 2026-07-14; implementation `5d454836b`, not pushed).
   - current task / files inspected / root cause:
