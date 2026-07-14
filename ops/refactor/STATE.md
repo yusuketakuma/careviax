@@ -62,7 +62,7 @@
 ## 直近の作業
 
 - codex1: `FE-PATIENT-MOVEMENT-PLACEHOLDER-PHI-001`
-  (DONE / PUSH_PENDING, 2026-07-14; implementation `037667413`).
+  (DONE / PUSHED, 2026-07-14; implementation `037667413`, ledger `1ba5ec88f`).
   - current task / root cause / reproduction:
     `card-workspace.tsx`のmovement queryがTanStack Queryのunconditional `keepPreviousData`を使っていたため、
     同じclient treeでpatient Aからpatient Bへ移動しBのresponseが遅れると、Aのtimeline title、actor、metadata、hrefを
@@ -81,8 +81,9 @@
   - validation / policy / next action:
     focused Vitest `1 file / 99 tests`、exact2 ESLint、Prettier、`git diff --check`、serialized
     `pnpm typecheck && pnpm typecheck:no-unused`をPASS。ユーザー方針によりbuild/Oracleは実行していない。
-    latest user workflowに従い相互review待ちは使わずself-validationでfreezeし、exact2を`037667413`へscoped commitした。
-    single-ledger commitとsafe push後、`FE-PATIENT-DETAIL-001`のcached refresh失敗を可視化する次のfrontend sliceへ進む。
+    latest user workflowに従い相互review待ちは使わずself-validationでfreezeし、exact2を`037667413`、single-ledger
+    exact3を`1ba5ec88f`へscoped commitしてfeature branchへnon-force pushした。push直後のlocal/remote parityは`0 0`。
+    次は`FE-PATIENT-DETAIL-001`のcached refresh失敗を可視化するfrontend sliceへ進む。
 
 - codex1 + codex2 + codex3 + codex4: `FE-PATIENT-DETAIL-HEADING-001`
   (DONE / PUSHED, 2026-07-14; implementation `11f718ef7`, ledger `2cc71d530`).
