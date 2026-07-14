@@ -2,15 +2,43 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
-const { requireAuthContextMock } = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-}));
+const { requireAuthContextMock, withAuthContextMock } = vi.hoisted(() => {
+  const requireAuthContextMock = vi.fn();
+  const withAuthContextMock = vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { userId: string; orgId: string; role: string },
+        routeContext: { params: Promise<Record<string, string>> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) => {
+      return async (
+        req: NextRequest,
+        routeContext: { params: Promise<Record<string, string>> },
+      ) => {
+        const authResult = await requireAuthContextMock(req, options);
+        const response =
+          authResult && typeof authResult === 'object' && 'response' in authResult
+            ? authResult.response
+            : await handler(req, authResult.ctx, routeContext);
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+    },
+  );
+
+  return { requireAuthContextMock, withAuthContextMock };
+});
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext: withAuthContextMock,
 }));
 
 import { GET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 function createRequest() {
   return new NextRequest('http://localhost/api/meta/route-catalog', {
@@ -34,7 +62,7 @@ describe('/api/meta/route-catalog GET', () => {
 
   it('returns the route catalog for admins', async () => {
     const request = createRequest();
-    const response = await GET(request);
+    const response = await GET(request, emptyRouteContext);
     expect(response).toBeDefined();
     if (!response) {
       throw new Error('Expected a response from route catalog GET');
@@ -599,7 +627,7 @@ describe('/api/meta/route-catalog GET', () => {
       }),
     });
 
-    const response = await GET(createRequest());
+    const response = await GET(createRequest(), emptyRouteContext);
 
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
