@@ -7,7 +7,7 @@ import {
   UPCOMING_WINDOW_DAYS,
   WORKFLOW_CACHE_TTL_MS,
 } from '@/lib/constants/workflow';
-import { internalError, success, validationError } from '@/lib/api/response';
+import { internalError, successWithMeasuredJsonPayload, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { serverCache } from '@/lib/utils/server-cache';
@@ -96,7 +96,7 @@ async function authenticatedGET(req: NextRequest) {
     );
     const cachedData = serverCache.get<WorkflowDashboardData>(cacheKey);
     if (cachedData) {
-      return success({ data: cachedData });
+      return successWithMeasuredJsonPayload({ data: cachedData });
     }
 
     const upcomingWindow = addUtcDays(today, UPCOMING_WINDOW_DAYS);
@@ -145,7 +145,7 @@ async function authenticatedGET(req: NextRequest) {
     });
 
     serverCache.set(cacheKey, data, WORKFLOW_CACHE_TTL_MS);
-    return success({ data });
+    return successWithMeasuredJsonPayload({ data });
   });
 }
 

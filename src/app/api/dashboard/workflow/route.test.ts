@@ -210,6 +210,15 @@ function createRequest(headers?: Record<string, string>, search = '') {
   return new NextRequest(`http://localhost/api/dashboard/workflow${search}`, { headers });
 }
 
+async function readMeasuredJson(response: Response) {
+  const body = await response.text();
+  expect(response.headers.get('Content-Type')).toBe('application/json');
+  expect(response.headers.get('Content-Length')).toBe(
+    String(new TextEncoder().encode(body).length),
+  );
+  return JSON.parse(body);
+}
+
 describe('/api/dashboard/workflow GET', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -841,8 +850,8 @@ describe('/api/dashboard/workflow GET', () => {
     expect(withRoutePerformanceMock).toHaveBeenCalledTimes(2);
     expect(cycleGroupByMock).toHaveBeenCalledTimes(1);
 
-    const firstPayload = await firstResponse.json();
-    const secondPayload = await secondResponse.json();
+    const firstPayload = await readMeasuredJson(firstResponse);
+    const secondPayload = await readMeasuredJson(secondResponse);
     expect(secondPayload).toEqual(firstPayload);
   });
 
