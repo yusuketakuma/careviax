@@ -8,17 +8,17 @@
 
 ## 体制（2026-07-14 最新ユーザー指示）
 
-- 2026-07-14 の最新ユーザー指示により、現行を`codex1` + `codex2`の対等な2台体制へ切り替えた。両者がそれぞれ
-  調査・実装・focused validationを進め、`agmsg` team `phos`でexact-path ownershipを事前通知して実装箇所の重複を防ぐ。
-- `codex1`からのDELEGATEは必須ではない。各Codexは所有pathsと開始/終了を相互通知し、peer-owned pathを編集・stageしない。
-  Plans/STATE/gbrain、commit/push、long Next gateの共有surfaceは、実行前に短時間ownershipを通知して直列化する。
-- `codex3/codex4`はSTOP/RELEASEのままで、Claudeと外部maker/checkerも再有効化しない。旧Codex並列実装記述は履歴として扱う。
-- long Next gateは相互通知して引き続き直列実行し、shared dirty worktreeの既存user変更を保存する。scoped commitは各自の明示owned pathだけをstageし、
-  push、deploy、migration適用、production mutationはcurrent-taskの明示許可なしに行わない。
-- 2026-07-14 の最新ユーザー指示は 2026-07-10 のOracle停止指示を上書きする。今後、Oracle相談が
-  escalation条件を満たす場合は必ず`gpt-5.6-sol`、Browser `heavy`（Extra High）、strict selectを使い、
-  GPT-5.5 Proその他へsilent fallbackしない。厳格なSol選択を確認できない場合は相談をblockedとして
-  session evidenceを保存し、ローカル調査とfocused/full gateで補完する。
+- 現行は`codex1` / `codex2` / `codex3` / `codex4`の協調運用。`codex1`が統合責任を持ち、各agentは
+  `agmsg` team `phos`でexact-path ownership、開始、freeze、review結果を通知し、同一pathを並列編集しない。
+- 調査・独立review・focused validationは並列化し、編集は宣言したnon-overlap pathsだけに限定する。
+  Plans/STATE/RUN_LOCK、commit/push、Next生成物を触る共有gateは`codex1`が直列化する。
+- 既存user/harness dirtyとpeer-owned pathsを保存し、scoped commitは明示owned pathsだけをstageする。
+  deploy、migration適用、production mutation、destructive operationはcurrent-taskの明示許可なしに行わない。
+- **Oracleは全agentで使用しない。** 起動、相談、status/read、reattach/restart、別model fallbackを行わず、
+  高リスクまたは不確実な変更はローカルの複数review、focused/static/type gates、明示BLOCKEDで扱う。
+- 2026-07-14 21:33 JSTのユーザー指示により、こまめなbuildは行わない。現スライスの
+  `build:e2e:local`は途中停止し、build依存E2Eを含めて大きな統合境界まで保留する。通常sliceは
+  targeted tests、static gates、lint/format、typecheckを主証跡とし、agentはbuildを独自起動しない。
 - 下記2026-07-04/05の運用記述は履歴であり、現行体制と矛盾する場合はこの節を優先する。
 
 ## 旧体制（2026-07-04/05 履歴）
@@ -49,18 +49,66 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。`codex1`は`UI-THEME-CLINICAL-SIGNAL-001`のSSOT/Plans/ledgerと
-  frontend runtime foundation（Phase 2A fixed shell、Phase 2B-a shared page frame、Phase 2B-b shared page section、
-  Phase 2B-c最初のshared exact Delta Lens）、overview contacts projectionと患者画面E2Eを完了した。`codex2`は内部6 roleのprivacy projection、
-  field revision / MCS / contacts / conditions / care-team / labs read hardeningを完了し、current handoff確定まで新規編集をHOLD。`codex1`は
-  `Plans.md` / `docs/ui-ux-design-guidelines.md` / `ops/refactor/STATE.md`を予約し、`RUN_LOCK.md`に現在のwriterはいない。
-  `codex3/codex4`は停止のまま。
-  現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
-  即時実装は W3-E1/E2 の低リスクUI、
-  read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
+- Phase C（実装ループ）: 4-agent non-overlap協調（2026-07-14〜）。current groupは`codex1`の患者movement timeline / search integration、
+  `codex2`のfield revision temporal semantics、`codex3`のmanual-auth PDF trace/audit hardening、`codex4`のsearch/full-history architectureと
+  独立review。`codex1`だけがPlans/STATE/RUN_LOCKとgrouped commit/pushを統合する。
+  現在の供給源は`Plans.md`の未完了項目とlive code差分。migration、auth/RLS policy変更、full-history event projectionは
+  human/high-risk gateとして実装せず、証拠付きの残件へ戻す。
 
 ## 直近の作業
+
+- codex1 + codex2 + codex3 + codex4: `FE-PATIENT-MOVEMENT-TEMPORAL-001` / `FE-FIELD-REVISION-TEMPORAL-001` /
+  `SEARCH-INTEGRATION-GLOBAL-001` / `API-CONTRACT-002G` / `API-CONTRACT-002H`
+  (IMPLEMENTED / VERIFY_REQUIRED, 2026-07-14; code commits `21cc09c4a`, `e43ae131e`, `c0b8d3918`, `97f1524e8`; push pending).
+  - objective / UX contract / evidence:
+    最新Goal source `/Users/yusuke/.codex/attachments/5b966139-3f30-4f72-a8ca-a5460206bbce/pasted-text-1.txt` 全2,467行、
+    live git/Plans/STATE/RUN_LOCK、Next.js 16同梱docs、PH-OS UI/UX SSOTを再確認した。認可済み薬局staffが患者詳細で
+    「取得範囲内の過去→現在」「正確な発生時刻・記録時刻・source・actor」「根拠への安全な導線」を一続きに確認し、
+    filter中の先頭/末尾やpartial windowを患者の絶対的な現在/最新と誤認しないことをsuccess条件とした。
+    PHI-free `gpt-image-2` referenceは
+    `/Users/yusuke/.codex/generated_images/019f6053-bcb6-7e40-8b42-f1f18b3fdd9e/exec-f8447543-ef3f-4948-89b2-8c6857c59602.png`。
+  - patient movement implementation / root cause:
+    APIはselectionを`occurred_at DESC, id DESC`、presentationを`ASC`へ分離し、filter-bound cursor v2、40件上限、
+    current-window/terminal/bounds metadataをexact contract化した。client schemaはevent DTO、ISO日時、category/severity/badge、
+    counts/order/current iff、partial source/fixed copyをstrict検証する。UIはJST grouping、native `ol/li`、source/actor/recorded time、
+    44px evidence action、Evidence Dock、current marker、local query/focusとserver category/date filter、filtered/partial/true-empty、
+    in-flight placeholderを分離した。選択中の古い根拠を「最新」と呼ばず、visible terminalを固定表示する。
+  - search integration — three scopes:
+    1. **bounded in-page search**: 認可済み40件window内だけをtitle/summary/status/actor/source/categoryで即時絞り込みする。
+    2. **global patient search**: primary患者詳細導線を変えず、患者rowだけに`#patient-movement`のsecondary actionを追加する。
+       Command Paletteはprimary-onlyのまま。search term、event ID、本文、metadataをURLへ追加しない。
+    3. **future full-history search**: 現movement serviceは18 sourceのbounded adapterを集約後filterするため、単純なfilter pushdownで
+       全履歴検索を名乗れない。derived/nested occurrence time、source-local order/limitが異なるため、normalized event projection
+       （org/patient/occurred_at/event_key、RLS、atomic writer/outbox、backfill、index、rollback）または全adapter再設計が先に必要。
+       DB migration/high-risk auth境界を伴いOracle禁止のため、本sliceでは実装せずhuman-reviewed design taskへ残す。
+  - navigation / privacy / performance controls:
+    shared WHATWG URL guardをpresenter/schema/movement/Commandへ適用し、external/protocol-relative、backslash/control、encoded separator、
+    normalized/encoded API、legacy timeline pathをfail-closed化した。Commandの無filterlimit=5 queryとmovement mutable queryを分離し、
+    初回同一keyはTanStack Query cacheでdedupe、movement filter変更は`keepPreviousData`でfalse-empty/flickerを防ぐ。追加DB query、
+    unbounded fetch、N+1、search textのURL/log永続化はない。
+  - field revision / PDF integration:
+    field revisionはDB selection `created_at DESC, id DESC`で最新50件をbounded取得し、選択後だけASC表示へ反転。
+    患者timelineだけcurrent terminusを表示し、visit consumerには付けない。8 manual-auth PDF routesはpost-auth responseを
+    no-store + request/correlation traceへ統一し、auditへ同じIDsを渡す。render分類は維持し、audit failureはdistinct typed codeで
+    PDF返却前にfail-closed、late exceptionはfixed `INTERNAL_ERROR`でraw cause/PHIを返さない。
+  - independent review / defects closed:
+    codex2/codex3がmovementを独立APPROVE、codex2が`002H`、codex2/codex4が`002G`、codex4がsearch runtimeをAPPROVEした。
+    codex4がCommand Palette test fixtureで`secondaryAction`を捨てるvacuous testをP2として検出し、fixture projectionを修正後に
+    narrow re-review APPROVE。Oracleは全agentで未使用。
+  - validation / build policy:
+    current frozen bundle `24 files / 448 tests` PASS、movement focused `6 / 231` PASS、search closure `3 / 76` + `2 / 29` PASS、
+    exact ESLint / Prettier / `git diff --check` PASS。`format:check`、frontend contract、client JSON schema（361/0）、API shape、
+    route auth、authz、client PHI log/display、module boundaries、colors、typography、query shape、raw-org guard、Plans、DTO direct return、
+    date slicesの16 gates PASS。`pnpm typecheck` / `pnpm typecheck:no-unused` PASS。
+    `build:e2e:local`はユーザーの「こまめなbuildはしない」指示で最適化途中に停止（exit 137）し、有効なbuild失敗とは扱わない。
+    build/standalone/browser証跡は大きな統合境界まで明示保留する。
+  - remaining / next safe action:
+    `patients/[id]/page.tsx`のSSR overviewはactive membership後にglobal `prisma`を直接渡し、read capability、`withOrgContext`、
+    PHI read auditがない。non-bypass RLSではinitial dataが落ち、bypass環境ではclerk exact PHI露出のdefense-in-depth gapになり得る。
+    `ROUTE-AUTHZ-COVERAGE-001`へSSR/GET/PATCHを別capabilityとして追加し、field revisionの「internal 6」旧文言もlive canVisit 4 roleと
+    product decisionへ同期する。field/full-history paginationにはorg-scoped tx、composite index、migration approvalが必要。
+    code groupsはexact pathsだけでcommit済み。ledger commit/push後、上記high-risk taskはdesign/test matrixを先行し、
+    policy決定なしに権限を拡張しない。
 
 - codex1: MEDSAFE-PATIENT-CONTEXT-SHARE-001 / shared patient context hardening
   (VERIFY_REQUIRED, 2026-07-14; implementation/push `d3921d72e`).

@@ -1,12 +1,12 @@
 # RUN LOCK
 
-- Run ID: `019f54af-bde2-7b40-ae01-9348fefaa8cd`
+- Run ID: `019f6053-bcb6-7e40-8b42-f1f18b3fdd9e`
 - Status: ACTIVE
-- Started At: 2026-07-12 14:05 JST
-- Last Heartbeat: 2026-07-14 19:53 JST
+- Started At: 2026-07-14 21:03 JST
+- Last Heartbeat: 2026-07-14 21:43 JST
 - Branch: `agent/continuous-improvement-20260712`
-- Current Task: `MEDSAFE-PATIENT-CONTEXT-SHARE-001` current-HEAD long-gate/browser closeout; codex2 read-only candidate mapping
-- Current Commit Group: `MEDSAFE-PATIENT-CONTEXT-SHARE-001`
-- Owner / Agent Identifier: `codex1` frontend/SSOT + `codex2` backend (exact-path non-overlap via agmsg team `phos`)
-- Resume Token or Session Reference: `019f54af-bde2-7b40-ae01-9348fefaa8cd`
-- Notes: Remote HEAD `d3921d72e` contains the pushed external-share patient-context slice; current task remains VERIFY_REQUIRED until current-HEAD long gates and browser proof pass. codex1 temporarily owns Plans/STATE/RUN_LOCK; codex2 has no overlapping write path unless separately claimed. Preserve unrelated harness-memory changes. PID 59252/59694 started `build:e2e:local` at 19:31 before current HEAD/dirty and remains an invalid current-slice gate; do not overlap another Next build/typecheck, and stage only exact owned paths.
+- Current Task: timeline temporal semantics + three-scope search integration + field revision/PDF contract integration
+- Current Commit Group: Plans/STATE/RUN_LOCK ledger sync after code commits `21cc09c4a` / `e43ae131e` / `c0b8d3918` / `97f1524e8`
+- Owner / Agent Identifier: `codex1` integration; `codex2` field/review; `codex3` PDF/review; `codex4` search architecture/review via agmsg team `phos`
+- Resume Token or Session Reference: `019f6053-bcb6-7e40-8b42-f1f18b3fdd9e`
+- Notes: HEAD `97f1524e8`, upstream `d842b0ad81`, ahead 4 before ledger commit/push. Frozen bundle is 24 files / 448 tests PASS; 16 static gates, exact lint/format/diff, typecheck and no-unused PASS. Oracle is disabled for every agent. Per user instruction, do not run build in this slice; the in-progress `build:e2e:local` was stopped intentionally (exit 137), and build-dependent E2E is deferred to a large integration boundary. Preserve pre-existing dirty `.harness-mem/state/{continuity,whisper-budget}.json`, patient external-share 4 files, and `tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`. Stage only explicit owned paths; no `git add -A`.
