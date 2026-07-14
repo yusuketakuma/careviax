@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { messageFromError } from '@/lib/utils/error-message';
 import { Skeleton } from '@/components/ui/loading';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Badge } from '@/components/ui/badge';
@@ -94,6 +93,7 @@ function isMedicationBoxMethod(value: PackagingFormState['default_packaging_meth
 export function PatientPackagingCard({ patientId, orgId }: { patientId: string; orgId: string }) {
   const queryClient = useQueryClient();
   const [draftForm, setDraftForm] = useState<PackagingFormState | null>(null);
+  const [failedSaveInput, setFailedSaveInput] = useState<PackagingFormState | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery<PackagingResponse>({
     queryKey: ['patient-packaging', orgId, patientId],
@@ -113,16 +113,16 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
   const form = draftForm ?? serverForm;
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input: PackagingFormState) => {
       const res = await fetch(buildPatientApiPath(patientId, '/packaging'), {
         method: 'PUT',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
-          default_packaging_method: form.default_packaging_method || null,
-          medication_box_color: form.medication_box_color || undefined,
-          notes: form.notes || undefined,
-          special_instructions: form.special_instructions || undefined,
-          cognitive_note: form.cognitive_note || undefined,
+          default_packaging_method: input.default_packaging_method || null,
+          medication_box_color: input.medication_box_color || undefined,
+          notes: input.notes || undefined,
+          special_instructions: input.special_instructions || undefined,
+          cognitive_note: input.cognitive_note || undefined,
         }),
       });
       return readApiJson(res, {
@@ -130,7 +130,11 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
         schema: packagingResponseSchema,
       });
     },
+    onMutate: () => {
+      setFailedSaveInput(null);
+    },
     onSuccess: async () => {
+      setFailedSaveInput(null);
       toast.success('患者固有の配薬設定を保存しました');
       setDraftForm(null);
       await Promise.all([
@@ -138,8 +142,9 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
         invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
       ]);
     },
-    onError: (error) => {
-      toast.error(messageFromError(error, '患者配薬設定の保存に失敗しました'));
+    onError: (_error, input) => {
+      setFailedSaveInput(input);
+      toast.error('患者配薬設定の保存に失敗しました');
     },
   });
 
@@ -286,8 +291,28 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
               />
             </div>
 
+            {failedSaveInput ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                className="md:col-span-2"
+                title="配薬設定を保存できませんでした"
+                cause="保存処理に失敗しました。入力内容は保持されています。"
+                nextAction="通信状態を確認して、失敗した時点の配薬設定を再試行してください。"
+                detail="再試行は失敗した時点の内容で行います。編集後の内容を保存する場合は「保存」を選んでください。"
+                onRetry={() => saveMutation.mutate(failedSaveInput)}
+                retryLabel="配薬設定の保存を再試行"
+                retryVariant="outline"
+                retryDisabled={saveMutation.isPending}
+                headingLevel={3}
+              />
+            ) : null}
+
             <ActionRail align="end" className="items-end">
-              <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+              <Button
+                onClick={() => saveMutation.mutate({ ...form })}
+                disabled={saveMutation.isPending}
+              >
                 保存
               </Button>
             </ActionRail>

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
@@ -33,6 +33,30 @@ vi.mock('@/lib/patient/api-paths', async (importActual) => {
 import { PatientPackagingCard } from './patient-packaging-card';
 
 setupDomTestEnv();
+
+type PackagingMutationInput = {
+  default_packaging_method: string;
+  medication_box_color: string;
+  notes: string;
+  special_instructions: string;
+  cognitive_note: string;
+};
+
+const EMPTY_PACKAGING_INPUT: PackagingMutationInput = {
+  default_packaging_method: '',
+  medication_box_color: '',
+  notes: '',
+  special_instructions: '',
+  cognitive_note: '',
+};
+
+const COMPLETE_PACKAGING_INPUT: PackagingMutationInput = {
+  default_packaging_method: 'medication_box',
+  medication_box_color: '赤',
+  notes: '朝だけ別包',
+  special_instructions: '手渡し順に注意',
+  cognitive_note: '飲み忘れ傾向あり',
+};
 
 describe('PatientPackagingCard', () => {
   it('renders packaging settings with a semantic section heading and shared action row', () => {
@@ -89,8 +113,9 @@ describe('PatientPackagingCard', () => {
   type CapturedConfig = {
     queryKey?: unknown[];
     queryFn?: () => Promise<unknown>;
-    mutationFn?: () => Promise<unknown>;
-    onError?: (error: unknown) => void;
+    mutationFn?: (input: PackagingMutationInput) => Promise<unknown>;
+    onMutate?: (input: PackagingMutationInput) => void;
+    onError?: (error: unknown, input: PackagingMutationInput) => void;
   };
 
   function captureConfigs() {
@@ -210,7 +235,7 @@ describe('PatientPackagingCard', () => {
     try {
       render(<PatientPackagingCard patientId={hostileId} orgId="org_1" />);
 
-      await mutationConfigs[0]?.mutationFn?.();
+      await mutationConfigs[0]?.mutationFn?.(COMPLETE_PACKAGING_INPUT);
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/packaging`);
@@ -241,7 +266,7 @@ describe('PatientPackagingCard', () => {
           effective_summary: 'お薬BOX 赤',
         }),
       );
-      await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(
+      await expect(mutationConfigs[0]?.mutationFn?.(COMPLETE_PACKAGING_INPUT)).rejects.toThrow(
         '患者配薬設定の保存に失敗しました',
       );
     } finally {
@@ -260,10 +285,15 @@ describe('PatientPackagingCard', () => {
     try {
       render(<PatientPackagingCard patientId="patient_1" orgId="org_1" />);
 
-      await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(
+      await expect(mutationConfigs[0]?.mutationFn?.(EMPTY_PACKAGING_INPUT)).rejects.toThrow(
         '配薬設定の更新権限がありません',
       );
-      mutationConfigs[0]?.onError?.(new Error('配薬設定の更新権限がありません'));
+      act(() => {
+        mutationConfigs[0]?.onError?.(
+          new Error('配薬設定の更新権限がありません'),
+          EMPTY_PACKAGING_INPUT,
+        );
+      });
 
       expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/packaging', {
         method: 'PUT',
@@ -276,6 +306,63 @@ describe('PatientPackagingCard', () => {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
     }
+  });
+
+  it('keeps a persistent safe recovery state and retries the exact failed save input', () => {
+    const poisonMessage = '佐藤花子 様 / 090-1234-5678 / token=secret';
+    let mutationConfig: CapturedConfig | undefined;
+    const mutate = vi.fn();
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockReturnValue({
+      data: {
+        data: {
+          packaging_profile: null,
+          effective_summary: null,
+        },
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    useMutationMock.mockImplementation((config: CapturedConfig) => {
+      mutationConfig = config;
+      return { mutate, isPending: false };
+    });
+
+    render(<PatientPackagingCard patientId="patient_1" orgId="org_1" />);
+
+    fireEvent.change(screen.getByLabelText('患者固有メモ'), {
+      target: { value: '失敗時の入力' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    const failedInput = mutate.mock.calls[0]?.[0] as PackagingMutationInput;
+    expect(failedInput).toEqual({ ...EMPTY_PACKAGING_INPUT, notes: '失敗時の入力' });
+
+    act(() => {
+      mutationConfig?.onError?.(new Error(poisonMessage), failedInput);
+    });
+
+    expect(screen.getByRole('heading', { name: '配薬設定を保存できませんでした' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        '保存処理に失敗しました。入力内容は保持されています。 通信状態を確認して、失敗した時点の配薬設定を再試行してください。',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(poisonMessage)).toBeNull();
+    expect(toast.error).toHaveBeenLastCalledWith('患者配薬設定の保存に失敗しました');
+
+    fireEvent.change(screen.getByLabelText('患者固有メモ'), {
+      target: { value: '失敗後の編集' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '配薬設定の保存を再試行' }));
+
+    expect((screen.getByLabelText('患者固有メモ') as HTMLTextAreaElement).value).toBe(
+      '失敗後の編集',
+    );
+    expect(mutate).toHaveBeenCalledTimes(2);
+    expect(mutate).toHaveBeenNthCalledWith(1, failedInput);
+    expect(mutate).toHaveBeenNthCalledWith(2, failedInput);
   });
 
   it('routes packaging reads and writes through the shared patient API path helper', async () => {
@@ -291,7 +378,7 @@ describe('PatientPackagingCard', () => {
       render(<PatientPackagingCard patientId={patientId} orgId="org_1" />);
 
       await queryConfigs[0]?.queryFn?.();
-      await mutationConfigs[0]?.mutationFn?.();
+      await mutationConfigs[0]?.mutationFn?.(EMPTY_PACKAGING_INPUT);
 
       expect(buildPatientApiPath).toHaveBeenNthCalledWith(1, patientId, '/packaging');
       expect(buildPatientApiPath).toHaveBeenNthCalledWith(2, patientId, '/packaging');
@@ -323,7 +410,9 @@ describe('PatientPackagingCard', () => {
         render(<PatientPackagingCard patientId={dotId} orgId="org_1" />);
 
         await expect(queryConfigs[0]?.queryFn?.()).rejects.toThrow(RangeError);
-        await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(RangeError);
+        await expect(mutationConfigs[0]?.mutationFn?.(EMPTY_PACKAGING_INPUT)).rejects.toThrow(
+          RangeError,
+        );
         expect(fetchMock).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllGlobals();
