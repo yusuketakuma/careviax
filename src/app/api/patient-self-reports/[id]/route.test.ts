@@ -559,7 +559,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     );
   });
 
-  it('masks sensitive self report detail fields for clerk users', async () => {
+  it('returns full self report detail fields for internal clerk users', async () => {
     requireAuthContextMock.mockResolvedValueOnce({
       ctx: { orgId: 'org_1', userId: 'user_1', role: 'clerk' },
     });
@@ -573,13 +573,13 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: expect.objectContaining({
-        reported_by_name: null,
-        relation: null,
-        category: '非表示',
-        subject: '自己申告内容は非表示',
-        content: null,
-        preferred_contact_time: null,
-        sensitive_fields_masked: true,
+        reported_by_name: '家族A',
+        relation: 'child',
+        category: 'adherence',
+        subject: '飲み忘れ',
+        content: '夕食後を飲み忘れ',
+        preferred_contact_time: '18時以降',
+        sensitive_fields_masked: false,
       }),
     });
     expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
@@ -613,7 +613,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
-  it('masks sensitive self report fields in patch responses for clerk users', async () => {
+  it('returns full self report fields in patch responses for internal clerk users', async () => {
     authRoleMock.mockReturnValue('clerk');
 
     const response = (await PATCH(
@@ -630,13 +630,13 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: expect.objectContaining({
-        reported_by_name: null,
-        relation: null,
-        category: '非表示',
-        subject: '自己申告内容は非表示',
-        content: null,
-        preferred_contact_time: null,
-        sensitive_fields_masked: true,
+        reported_by_name: '家族A',
+        relation: 'child',
+        category: 'adherence',
+        subject: '飲み忘れ',
+        content: '夕食後を飲み忘れ',
+        preferred_contact_time: '18時以降',
+        sensitive_fields_masked: false,
       }),
     });
   });

@@ -275,7 +275,7 @@ describe('/api/patient-self-reports', () => {
     expect(body.data).toHaveLength(1);
   });
 
-  it('masks sensitive self report fields for clerk list responses', async () => {
+  it('returns full self report fields for internal clerk list responses', async () => {
     authRoleMock.mockReturnValue('clerk');
 
     const response = (await GET(createGetRequest('?status=triaged'), {
@@ -288,15 +288,15 @@ describe('/api/patient-self-reports', () => {
       data: [
         expect.objectContaining({
           id: 'report_1',
-          patient_name: null,
-          patient_name_kana: null,
-          reported_by_name: null,
-          relation: null,
-          category: '非表示',
-          subject: '自己申告内容は非表示',
-          content: null,
-          preferred_contact_time: null,
-          sensitive_fields_masked: true,
+          patient_name: '患者A',
+          patient_name_kana: 'カンジャエー',
+          reported_by_name: '家族A',
+          relation: 'child',
+          category: 'adherence',
+          subject: '飲み忘れ',
+          content: '夕食後を飲み忘れ',
+          preferred_contact_time: '18時以降',
+          sensitive_fields_masked: false,
         }),
       ],
     });
@@ -479,7 +479,7 @@ describe('/api/patient-self-reports', () => {
     });
   });
 
-  it('masks sensitive self report fields for clerk create responses', async () => {
+  it('returns full self report fields for internal clerk create responses', async () => {
     authRoleMock.mockReturnValue('clerk');
 
     const response = (await POST(
@@ -499,13 +499,13 @@ describe('/api/patient-self-reports', () => {
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: expect.objectContaining({
-        reported_by_name: null,
-        relation: null,
-        category: '非表示',
-        subject: '自己申告内容は非表示',
-        content: null,
+        reported_by_name: '家族B',
+        relation: 'spouse',
+        category: 'adherence',
+        subject: '飲み忘れ',
+        content: '朝食後を飲み忘れ',
         preferred_contact_time: null,
-        sensitive_fields_masked: true,
+        sensitive_fields_masked: false,
       }),
     });
   });

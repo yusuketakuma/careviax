@@ -8,23 +8,23 @@ export type PatientPrivacyFlags = {
 
 export function getPatientPrivacyFlags(role: MemberRole | string): PatientPrivacyFlags {
   switch (role) {
-    case 'external_viewer':
-      return {
-        sensitiveFieldsMasked: true,
-        addressFieldsMasked: true,
-        canViewDetail: false,
-      };
+    case 'owner':
+    case 'admin':
+    case 'pharmacist':
+    case 'pharmacist_trainee':
     case 'clerk':
-      return {
-        sensitiveFieldsMasked: true,
-        addressFieldsMasked: false,
-        canViewDetail: true,
-      };
-    default:
+    case 'driver':
       return {
         sensitiveFieldsMasked: false,
         addressFieldsMasked: false,
         canViewDetail: true,
+      };
+    case 'external_viewer':
+    default:
+      return {
+        sensitiveFieldsMasked: true,
+        addressFieldsMasked: true,
+        canViewDetail: false,
       };
   }
 }

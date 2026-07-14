@@ -1532,7 +1532,7 @@ describe('/api/patients GET', () => {
     );
   });
 
-  it('masks phone and insurance fields for users without sensitive data access', async () => {
+  it('returns full phone and insurance fields for internal clerk users', async () => {
     const response = (await GET(
       createAuthenticatedRequest('http://localhost/api/patients', undefined, {
         orgId: 'org_1',
@@ -1555,13 +1555,13 @@ describe('/api/patients GET', () => {
       };
     }>(response);
 
-    expect(payload.privacy.sensitive_fields_masked).toBe(true);
+    expect(payload.privacy.sensitive_fields_masked).toBe(false);
     expect(payload.privacy.address_fields_masked).toBe(false);
     expect(payload.privacy.can_view_detail).toBe(true);
     expect(payload.data[0]).toMatchObject({
       id: 'patient_1',
-      phone: '***-****-0001',
-      medical_insurance_number: '***-001',
+      phone: '090-0000-0001',
+      medical_insurance_number: 'med-001',
     });
   });
 
