@@ -182,6 +182,25 @@ describe('PatientFieldRevisionTimeline', () => {
     ).toBe('time');
   });
 
+  it('does not label a category-filtered projection as the patient current terminus', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: {
+        data: [revisionItem('rev_1', '2026-06-16T01:00:00.000Z')],
+        meta: revisionMeta(null, 1),
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    render(<PatientFieldRevisionTimeline patientId="patient_1" />);
+
+    expect(screen.getByTestId('patient-field-revision-current-terminus')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '基本情報' }));
+    expect(screen.queryByTestId('patient-field-revision-current-terminus')).toBeNull();
+    expect(screen.queryByText('現在')).toBeNull();
+  });
+
   it('routes field revision fetches through the shared patient API path helper', async () => {
     const patientId = 'pt/1?tab=x#frag';
     vi.mocked(buildPatientApiPath).mockReturnValueOnce(

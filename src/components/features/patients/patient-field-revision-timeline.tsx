@@ -88,7 +88,7 @@ export function PatientFieldRevisionTimeline({ patientId }: { patientId: string 
               {meta.hidden_count}件
             </p>
           ) : null}
-          <PatientFieldRevisionList items={revisions} showCurrentTerminus />
+          <PatientFieldRevisionList items={revisions} showCurrentTerminus={category === null} />
         </div>
       )}
     </div>
