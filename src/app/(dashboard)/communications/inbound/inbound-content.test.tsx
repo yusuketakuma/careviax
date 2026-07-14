@@ -1002,6 +1002,49 @@ describe('InboundCommunicationsContent', () => {
     });
   });
 
+  it('shows task failure on the affected signal and retries the same candidate key', () => {
+    const poisonError = new Error('佐藤花子 様 / 090-1234-5678 / token=secret');
+    const taskMutateMock = vi.fn();
+    useMutationMock.mockImplementation((options) => {
+      const isTaskMutation = String(options.mutationFn).includes(
+        '/api/communications/inbound/signals/tasks',
+      );
+      return {
+        mutate: isTaskMutation
+          ? (candidateKey: string) => {
+              taskMutateMock(candidateKey);
+              options.onError?.(poisonError, candidateKey);
+            }
+          : mutateMock,
+        isPending: false,
+        ...options,
+      };
+    });
+
+    render(<InboundCommunicationsContent />);
+
+    const reviewPanel = within(screen.getByTestId('selected-inbound-review-panel'));
+    fireEvent.click(reviewPanel.getByRole('button', { name: '薬剤師確認タスク化' }));
+    expect(taskMutateMock).toHaveBeenCalledWith('inbound_signal:signal_1');
+    const updatedReviewPanel = within(screen.getByTestId('selected-inbound-review-panel'));
+
+    expect(updatedReviewPanel.getAllByText('薬剤師確認タスクを作成できませんでした')).toHaveLength(
+      1,
+    );
+    expect(
+      updatedReviewPanel.getByText(
+        'タスク作成処理に失敗しました。受信シグナルは保持されています。 通信状態を確認して再試行してください。',
+      ),
+    ).toBeTruthy();
+    expect(updatedReviewPanel.queryByText(poisonError.message)).toBeNull();
+
+    fireEvent.click(updatedReviewPanel.getByRole('button', { name: 'タスク作成を再試行' }));
+
+    expect(taskMutateMock).toHaveBeenCalledTimes(2);
+    expect(taskMutateMock).toHaveBeenNthCalledWith(1, 'inbound_signal:signal_1');
+    expect(taskMutateMock).toHaveBeenNthCalledWith(2, 'inbound_signal:signal_1');
+  });
+
   it('updates a signal review action using only the durable signal id and action', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

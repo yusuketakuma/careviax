@@ -903,6 +903,7 @@ export function InboundCommunicationsContent() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailRequestedEventId, setDetailRequestedEventId] = useState<string | null>(null);
   const [intakeForm, setIntakeForm] = useState<InboundIntakeFormState>(EMPTY_INTAKE_FORM);
+  const [taskFailureCandidateKey, setTaskFailureCandidateKey] = useState<string | null>(null);
   const [stockApplyForms, setStockApplyForms] = useState<Record<string, StockApplyFormState>>({});
   const [sourceMappingForm, setSourceMappingForm] =
     useState<InboundSourceMappingFormState>(EMPTY_SOURCE_MAPPING_FORM);
@@ -1002,14 +1003,19 @@ export function InboundCommunicationsContent() {
         schema: inboundSignalTaskResponseSchema,
       });
     },
+    onMutate: () => {
+      setTaskFailureCandidateKey(null);
+    },
     onSuccess: async () => {
+      setTaskFailureCandidateKey(null);
       toast.success('薬剤師確認タスクを作成しました');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['communications-inbound', orgId] }),
         queryClient.invalidateQueries({ queryKey: ['communications-inbound-signals', orgId] }),
       ]);
     },
-    onError: (error) => {
+    onError: (error, candidateKey) => {
+      if (candidateKey) setTaskFailureCandidateKey(candidateKey);
       clientLog.warn('inbound_communication.pharmacist_task_create_failed', error, {
         route: '/communications/inbound',
         entityType: 'inbound_signal_task',
@@ -2504,6 +2510,19 @@ export function InboundCommunicationsContent() {
                                       </div>
                                     )}
                                   </div>
+                                ) : null}
+                                {taskFailureCandidateKey === item.candidate_key ? (
+                                  <ErrorState
+                                    variant="server"
+                                    title="薬剤師確認タスクを作成できませんでした"
+                                    cause="タスク作成処理に失敗しました。受信シグナルは保持されています。"
+                                    nextAction="通信状態を確認して再試行してください。"
+                                    onRetry={() => taskMutation.mutate(item.candidate_key)}
+                                    retryLabel="タスク作成を再試行"
+                                    retryVariant="outline"
+                                    retryDisabled={taskMutation.isPending}
+                                    headingLevel={4}
+                                  />
                                 ) : null}
                                 <div className="flex justify-end">
                                   <div className="flex flex-wrap justify-end gap-2">
