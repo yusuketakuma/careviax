@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { PageHeaderFrame } from '@/components/layout/page-header-frame';
+import { buttonVariants } from '@/components/ui/button-variants';
 import { HelpPopover } from '@/components/ui/help-popover';
-import { cn } from '@/lib/utils';
 import { MainWorkflowCompactNav, type MainWorkflowStepKey } from './main-workflow-route';
 
 type WorkflowPageHeaderAction = {
@@ -22,6 +23,8 @@ type WorkflowPageHeaderProps = {
   children?: ReactNode;
   mainWorkflowSteps?: MainWorkflowStepKey[];
   mainWorkflowDescription?: string;
+  /** Keep the header content inside another shared page-header frame. */
+  embedded?: boolean;
   className?: string;
 };
 
@@ -36,12 +39,13 @@ export function WorkflowPageHeader({
   children,
   mainWorkflowSteps,
   mainWorkflowDescription,
+  embedded = false,
   className,
 }: WorkflowPageHeaderProps) {
   const resolvedActions = actions ?? (action ? [action] : []);
   const effectiveChildrenLabel = children ? (childrenLabel ?? '関連導線') : undefined;
   return (
-    <div className={cn('space-y-5', className)} data-page-header="true">
+    <PageHeaderFrame embedded={embedded} className={className}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1 space-y-3">
           {eyebrow ? (
@@ -58,7 +62,7 @@ export function WorkflowPageHeader({
             </div>
           </div>
           {supportingContent ? (
-            <div className="rounded-2xl border border-border/70 bg-background/80 px-4 py-3 shadow-sm">
+            <div className="rounded-md border border-border/70 bg-muted/20 px-4 py-3">
               {supportingContent}
             </div>
           ) : null}
@@ -70,12 +74,12 @@ export function WorkflowPageHeader({
               <Link
                 key={item.href}
                 href={item.href}
-                className={cn(
-                  'inline-flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto sm:px-3.5',
-                  index === 0
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                    : 'border border-border bg-background text-foreground hover:bg-muted',
-                )}
+                className={buttonVariants({
+                  variant: index === 0 ? 'default' : 'outline',
+                  size: 'lg',
+                  className:
+                    'h-auto min-h-11 w-full px-4 sm:h-auto sm:min-h-11 sm:w-auto sm:px-3.5',
+                })}
               >
                 {item.icon}
                 {item.label}
@@ -86,7 +90,7 @@ export function WorkflowPageHeader({
       </div>
 
       {children ? (
-        <div className="space-y-3 rounded-2xl border border-border/70 bg-background/75 px-4 py-4">
+        <div className="space-y-3 rounded-md border border-border/70 bg-muted/20 px-4 py-4">
           {effectiveChildrenLabel ? (
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               {effectiveChildrenLabel}
@@ -104,6 +108,6 @@ export function WorkflowPageHeader({
           }
         />
       ) : null}
-    </div>
+    </PageHeaderFrame>
   );
 }

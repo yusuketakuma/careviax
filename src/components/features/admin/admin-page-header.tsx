@@ -5,6 +5,8 @@ import {
 } from '@/components/features/workflow/page-shortcut-links';
 import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
+import { PageContextBar } from '@/components/layout/page-context-bar';
+import { PageHeaderFrame } from '@/components/layout/page-header-frame';
 import { SectionIntro } from '@/components/ui/section-intro';
 
 type AdminPageHeaderProps = {
@@ -36,10 +38,10 @@ export function AdminPageHeader({
   childrenLabel = shortcuts.length > 0 ? '関連導線' : undefined,
 }: AdminPageHeaderProps) {
   return (
-    <div className="space-y-4" data-page-header="true">
-      <div className="rounded-xl border border-border/70 bg-background/70 px-4 py-3">
+    <PageHeaderFrame>
+      <PageContextBar>
         <WorkflowBackLink href="/admin" label="マスターへ戻る" />
-      </div>
+      </PageContextBar>
       <WorkflowPageHeader
         eyebrow={eyebrow}
         title={title}
@@ -47,10 +49,10 @@ export function AdminPageHeader({
         action={action}
         supportingContent={supportingContent}
         childrenLabel={childrenLabel}
-        className="mb-0"
+        embedded
       >
         {shortcuts.length > 0 ? <PageShortcutLinks links={shortcuts} /> : null}
       </WorkflowPageHeader>
-    </div>
+    </PageHeaderFrame>
   );
 }

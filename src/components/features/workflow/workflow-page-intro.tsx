@@ -1,10 +1,8 @@
 import type { ReactNode } from 'react';
-import { cn } from '@/lib/utils';
+import { PageContextBar } from '@/components/layout/page-context-bar';
+import { PageHeaderFrame } from '@/components/layout/page-header-frame';
 import { PageShortcutLinks, type PageShortcutLink } from './page-shortcut-links';
-import {
-  MainWorkflowCompactNav,
-  type MainWorkflowStepKey,
-} from './main-workflow-route';
+import { MainWorkflowCompactNav, type MainWorkflowStepKey } from './main-workflow-route';
 import { WorkflowBackLink } from './workflow-back-link';
 import { WorkflowPageHeader } from './workflow-page-header';
 
@@ -47,10 +45,10 @@ export function WorkflowPageIntro({
     ) : null);
 
   return (
-    <div className={cn('space-y-4', className)} data-page-header="true">
-      <div className="rounded-xl border border-border/70 bg-background/70 px-4 py-3">
+    <PageHeaderFrame className={className}>
+      <PageContextBar>
         <WorkflowBackLink href={backHref} label={backLabel} />
-      </div>
+      </PageContextBar>
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0 flex-1">
           <WorkflowPageHeader
@@ -58,11 +56,11 @@ export function WorkflowPageIntro({
             title={title}
             description={description}
             supportingContent={supportingContent}
-            className="mb-0"
+            embedded
           />
         </div>
         {rightRail ? (
-          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/70 bg-background/75 px-4 py-4 xl:justify-end">
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/70 bg-muted/20 px-4 py-4 xl:justify-end">
             {rightRail}
           </div>
         ) : null}
@@ -76,6 +74,6 @@ export function WorkflowPageIntro({
           }
         />
       ) : null}
-    </div>
+    </PageHeaderFrame>
   );
 }

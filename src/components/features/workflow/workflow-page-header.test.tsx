@@ -33,7 +33,10 @@ describe('WorkflowPageHeader', () => {
     expect(screen.getByText('高リスクと同意不足を先に確認します。')).toBeTruthy();
     const primaryAction = screen.getByRole('link', { name: '新規登録' });
     expect(primaryAction.getAttribute('href')).toBe('/patients/new');
-    expect(primaryAction.className).toContain('min-h-[44px]');
+    expect(primaryAction.className).toContain('min-h-11');
+    expect(primaryAction.className).toContain('rounded-lg');
+    expect(primaryAction.className).not.toContain('shadow');
+    expect(primaryAction.className).not.toContain('rounded-xl');
     expect(primaryAction.className).not.toContain('sm:h-10');
     expect(screen.getByText('関連導線')).toBeTruthy();
     expect(screen.getByRole('link', { name: '処方受付' }).getAttribute('href')).toBe(
@@ -41,5 +44,6 @@ describe('WorkflowPageHeader', () => {
     );
     expect(screen.getByTestId('main-workflow-compact-nav')).toBeTruthy();
     expect(screen.getByText('この画面は主業務フロー上の現在地を表示します。')).toBeTruthy();
+    expect(document.querySelectorAll('[data-page-header="true"]')).toHaveLength(1);
   });
 });

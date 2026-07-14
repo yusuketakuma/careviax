@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function PrescriptionsPage() {
   return (
-    <PageScaffold variant="bare" className="pb-0" stackClassName="space-y-3">
+    <PageScaffold variant="bare" canvasInset="flush-bottom" stackClassName="space-y-3">
       <WorkflowPageHeader
         eyebrow="処方受付"
         title="処方受付"

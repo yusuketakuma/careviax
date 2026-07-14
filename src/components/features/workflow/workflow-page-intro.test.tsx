@@ -35,6 +35,8 @@ describe('WorkflowPageIntro', () => {
       '/patients/p1/prescriptions',
     );
     expect(screen.getByRole('button', { name: '印刷' })).toBeTruthy();
+    expect(document.querySelectorAll('[data-page-header="true"]')).toHaveLength(1);
+    expect(document.querySelector('[data-page-context-bar="true"]')).toBeTruthy();
   });
 
   it('accepts mixed controls for pages that need custom right-rail composition', () => {
