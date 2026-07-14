@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { getPerformanceSnapshot, resetPerformanceMetrics } from '@/lib/utils/performance';
 
 const { getPatientOverviewMock, withOrgContextMock, auditCreateMock, authContextMock } = vi.hoisted(
   () => ({
@@ -45,6 +46,7 @@ const flushMicrotasks = () => new Promise((resolve) => setTimeout(resolve, 0));
 describe('GET /api/patients/[id]/overview PHI read audit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetPerformanceMetrics();
     // withOrgContext runs the callback with a fake org-scoped tx that captures audit writes.
     withOrgContextMock.mockImplementation(async (_orgId, work) =>
       work({ auditLog: { create: auditCreateMock } }),
@@ -61,6 +63,24 @@ describe('GET /api/patients/[id]/overview PHI read audit', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    const responseBody = await response.text();
+    const responseBytes = new TextEncoder().encode(responseBody).length;
+    expect(response.headers.get('Content-Length')).toBe(String(responseBytes));
+    expect(JSON.parse(responseBody)).toEqual({ data: { id: 'patient_1' } });
+    expect(
+      getPerformanceSnapshot({ topRoutes: 100 }).routes.find(
+        (route) => route.method === 'GET' && route.route === '/api/patients/:id/overview',
+      ),
+    ).toMatchObject({
+      critical_route: true,
+      critical_route_family: 'patient-detail-initial',
+      payload_sample_count: 1,
+      last_payload_bytes: responseBytes,
+      payload_budget_bytes: 256_000,
+      payload_budget_status: 'within_budget',
+      payload_budget_met: true,
+    });
 
     await flushMicrotasks();
 
