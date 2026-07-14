@@ -48,14 +48,48 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `API-CONTRACT-002F-WRAPPED-EXPORT-TRACE`の
-  5 withAuthContext export routesとtests、`codex2`: `E2E-PREFLIGHT-RLS-EXEMPT-001`のevidence同期と最終regression/build。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: route-mocked medical UI smokeのruntime/build mismatch診断、
+  `codex2`: `E2E-STANDALONE-START-001` / `E2E-PREFLIGHT-BROWSER-001`のevidence同期。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex2: E2E-PREFLIGHT-BROWSER-001 (DONE, 2026-07-14; implementation `a4260e832`, `PUSHED`).
+  - current task / files inspected / root cause:
+    Playwright local config、medical UI preflightとtests、route-mocked smoke、browser executable/channel解決、実local serverを照合した。
+    Bundled Chromiumが未installでもpreflightがbrowser launchを検査せずPASSし、後続smoke 32件がbrowser launch時に0msで全滅した。
+    System Chromeは利用可能だったが、local configに明示channelを選ぶ境界がなく、operator errorを事前検出できなかった。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    Preflightへbundled executableの存在検査と明示channelの実launch/version/close検査を追加し、失敗時はsanitized fixed guidanceでfail-closedにした。
+    `PLAYWRIGHT_CHANNEL`指定時だけdesktop/mobile projectへchannelを適用し、未指定/CIのbundled browser契約は不変。mainをinvoked-path guard付きexportにして
+    missing bundled browser、explicit channel success/rejectionをunit test化した。Browser launch以外のDB/RLS/audit/port検査、auth、PHI、route、UIは変更していない。
+  - validation results / remaining work / next action / rollback:
+    Standalone follow-upとのfocused 2 files / 7 tests、exact ESLint/Prettier/diff、`pnpm typecheck`、8 GiB `pnpm typecheck:no-unused`、
+    独立codex1 verifier APPROVED。`PLAYWRIGHT_CHANNEL=chrome pnpm medical-ui:e2e:preflight`はChrome 149を実launchして137 RLS tables /
+    22 audit triggers、app 3012、DB 5433を全PASS。未installのbundled Chromiumを使う既定preflightは意図どおりexit 1し、false-greenを除去した。
+    Route-mocked smokeは認証後も8件連続FAILして中断（exit 130）。Proposalのbilling preview requestが0件、Ganttはshared schedule fetch error、
+    external viewerも失敗し、plain production buildと`build:e2e:local`のcompile-time envまたはstale `.next`のruntime/build mismatchを疑ってcodex1が診断中。
+    本sectionではsmoke PASSを主張しない。実targeted medical E2EはPOST/PATCH/DELETEとread-audit writeを含み得るためhuman gateなしでは未実行。
+    非視覚test-tooling変更のためimagegenなし。Rollbackは`a4260e832`をrevertし、DB/data rollback不要。
+
+- codex2: E2E-STANDALONE-START-001 (DONE, 2026-07-14; implementation `44743111e` + lifecycle follow-up `9dc451034`, `PUSHED`).
+  - current task / files inspected / root cause:
+    `package.json`、Next standalone output、生成server配置、Dockerfileのasset/env copy、medical UI preflight、server lifecycleを照合した。
+    `start:e2e:local`が`output: "standalone"`で非対応の`next start`を呼び、警告を出しながら生成standalone serverと異なるruntimeを起動していた。
+    単純なchild起動だけではwrapper-only termination時にchildが残り、3012のorphan serverを生む余地もあった。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    固定repo root配下で`public`と`.next/static`を`.next/standalone`の公式配置へ同期して生成`server.js`を起動するTypeScript helperへ置換した。
+    Shell interpolationや外部入力pathは使わず、envはchildへ継承するだけでlog/fileへ出力しない。`SIGTERM`/`SIGINT`を繰り返しchildへ転送し、exit/error時に
+    listenersを除去する。Dockerfileは既に`.next/standalone/.env*`を削除しassetsを別copyしており、production packaging変更は不要だった。
+  - validation results / remaining work / next action / rollback:
+    Focused helper/preflight 2 files / 7 tests、exact ESLint/Prettier/diff、`pnpm typecheck`、8 GiB `pnpm typecheck:no-unused`、独立codex1 re-review APPROVED。
+    実runtimeは非対応warningなしでready、`/api/health`とstatic CSS assetは200。Wrapper PIDだけへTERMを送り3012が1秒未満で解放されることを確認し、再起動後も
+    health 200。Repo-local Next公式`node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/output.md`を2026-07-14に確認し、
+    standalone serverと`public`/`.next/static` copy要件へ準拠した。AWS実装変更なし。非視覚local-runtime toolingのためimagegenなし。
+    Rollbackは`9dc451034`→`44743111e`の順にrevertし、DB/data rollback不要。
 
 - codex1: API-CONTRACT-002F-WRAPPED-EXPORT-TRACE (DONE; parent remains Partial, 2026-07-14; implementation `00d88d9bd`, `PUSHED`).
   - current task / files inspected / root cause:
