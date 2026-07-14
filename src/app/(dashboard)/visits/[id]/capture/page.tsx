@@ -7,6 +7,7 @@ import {
 } from '@/lib/auth/visit-schedule-access';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
 import { resolveLocalUserByIdentity } from '@/lib/auth/user-resolution';
 import { EvidenceCaptureContent } from './capture-content';
 import { resolveCapturePatientContext, type CapturePatientContext } from './capture.shared';
@@ -35,49 +36,51 @@ async function resolveInitialCapturePatientContext(
   if (!membership || !hasPermission(membership.role, 'canVisit')) return null;
 
   const accessContext = { userId: localUser.id, role: membership.role };
+  const requestContext = {
+    orgId,
+    ...accessContext,
+    ...(localUser.default_site_id ? { actorSiteId: localUser.default_site_id } : {}),
+  };
   const assignmentWhere = buildVisitScheduleAssignmentWhere(accessContext);
 
-  const schedule = await prisma.visitSchedule.findFirst({
-    where: {
-      id: visitId,
-      org_id: orgId,
-      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-    },
-    select: {
-      pharmacist_id: true,
-      scheduled_date: true,
-      time_window_start: true,
-      case_: {
-        select: {
-          primary_pharmacist_id: true,
-          backup_pharmacist_id: true,
-          patient: { select: { id: true, name: true } },
+  const schedule = await withOrgContext(
+    orgId,
+    (tx) =>
+      tx.visitSchedule.findFirst({
+        where: {
+          id: visitId,
+          org_id: orgId,
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
         },
-      },
-      visit_record: {
         select: {
-          id: true,
-          version: true,
-          visit_started_at: true,
-          visit_ended_at: true,
+          pharmacist_id: true,
+          scheduled_date: true,
+          time_window_start: true,
+          case_: {
+            select: {
+              primary_pharmacist_id: true,
+              backup_pharmacist_id: true,
+              patient: { select: { id: true, name: true } },
+            },
+          },
+          visit_record: {
+            select: {
+              id: true,
+              version: true,
+              visit_started_at: true,
+              visit_ended_at: true,
+            },
+          },
         },
-      },
-    },
-  });
+      }),
+    { requestContext },
+  );
   if (!schedule) return null;
   if (!canAccessVisitScheduleAssignment(accessContext, schedule)) return null;
 
   const patientId = schedule.case_?.patient.id ?? null;
   if (patientId) {
-    recordPhiReadAuditForRequest(
-      {
-        orgId,
-        userId: localUser.id,
-        role: membership.role,
-        ...(localUser.default_site_id ? { actorSiteId: localUser.default_site_id } : {}),
-      },
-      { patientId, view: 'visit_evidence_capture' },
-    );
+    recordPhiReadAuditForRequest(requestContext, { patientId, view: 'visit_evidence_capture' });
   }
 
   return {

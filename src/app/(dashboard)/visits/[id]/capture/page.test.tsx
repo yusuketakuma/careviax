@@ -13,6 +13,8 @@ const {
   recordPhiReadAuditForRequestMock,
   membershipFindFirstMock,
   visitScheduleFindFirstMock,
+  transactionClient,
+  withOrgContextMock,
   captureContentCalls,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -23,6 +25,10 @@ const {
   recordPhiReadAuditForRequestMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
+  transactionClient: {
+    visitSchedule: { findFirst: vi.fn() },
+  },
+  withOrgContextMock: vi.fn(),
   captureContentCalls: [] as Array<{ visitId: string; initialPatientContext: unknown }>,
 }));
 
@@ -41,9 +47,9 @@ vi.mock('@/lib/audit/phi-read-audit', () => ({
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     membership: { findFirst: membershipFindFirstMock },
-    visitSchedule: { findFirst: visitScheduleFindFirstMock },
   },
 }));
+vi.mock('@/lib/db/rls', () => ({ withOrgContext: withOrgContextMock }));
 vi.mock('./capture-content', () => ({
   EvidenceCaptureContent: (props: { visitId: string; initialPatientContext: unknown }) => {
     captureContentCalls.push(props);
@@ -69,6 +75,11 @@ describe('VisitEvidenceCapturePage initial patient context authorization', () =>
     hasPermissionMock.mockReturnValue(true);
     buildVisitScheduleAssignmentWhereMock.mockReturnValue(null);
     canAccessVisitScheduleAssignmentMock.mockReturnValue(true);
+    transactionClient.visitSchedule.findFirst = visitScheduleFindFirstMock;
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (tx: typeof transactionClient) => Promise<unknown>) =>
+        work(transactionClient),
+    );
     visitScheduleFindFirstMock.mockResolvedValue({
       pharmacist_id: 'user_1',
       scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
@@ -100,6 +111,14 @@ describe('VisitEvidenceCapturePage initial patient context authorization', () =>
       select: { role: true },
     });
     expect(hasPermissionMock).toHaveBeenCalledWith('pharmacist', 'canVisit');
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        actorSiteId: 'site_1',
+      },
+    });
     expect(canAccessVisitScheduleAssignmentMock).toHaveBeenCalledWith(
       { userId: 'user_1', role: 'pharmacist' },
       expect.objectContaining({ pharmacist_id: 'user_1' }),
@@ -134,6 +153,7 @@ describe('VisitEvidenceCapturePage initial patient context authorization', () =>
     await renderPage();
 
     expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
     expect(captureContentCalls).toContainEqual({
       visitId: 'schedule_1',
@@ -177,5 +197,19 @@ describe('VisitEvidenceCapturePage initial patient context authorization', () =>
       visitId: 'schedule_1',
       initialPatientContext: null,
     });
+  });
+
+  it('does not audit or render capture context when the transaction-scoped query throws', async () => {
+    visitScheduleFindFirstMock.mockRejectedValueOnce(new Error('database unavailable'));
+
+    await expect(
+      VisitEvidenceCapturePage({ params: Promise.resolve({ id: 'schedule_1' }) }),
+    ).rejects.toThrow('database unavailable');
+
+    expect(withOrgContextMock).toHaveBeenCalledOnce();
+    expect(visitScheduleFindFirstMock).toHaveBeenCalledOnce();
+    expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+    expect(captureContentCalls).toHaveLength(0);
   });
 });
