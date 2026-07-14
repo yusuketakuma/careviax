@@ -1537,6 +1537,33 @@ export async function getPatientVisitBrief(
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+  const patientPromise = db.patient.findFirst({
+    where: {
+      id: args.patientId,
+      org_id: args.orgId,
+    },
+    select: {
+      id: true,
+      name: true,
+      archived_at: true,
+      scheduling_preference: {
+        select: {
+          visit_before_contact_required: true,
+        },
+      },
+    },
+  });
+  const communicationQueuePromise = patientPromise.then((patient) =>
+    patient
+      ? listCommunicationQueue(db, {
+          orgId: args.orgId,
+          patientId: args.patientId,
+          caseIds: args.caseIds,
+          limit: 6,
+        })
+      : null,
+  );
+
   const [
     patient,
     latestIntakes,
@@ -1559,23 +1586,9 @@ export async function getPatientVisitBrief(
     medicationStockSnapshots,
     inboundCommunicationSignals,
     currentPatientSnapshot,
+    communicationQueue,
   ] = await Promise.all([
-    db.patient.findFirst({
-      where: {
-        id: args.patientId,
-        org_id: args.orgId,
-      },
-      select: {
-        id: true,
-        name: true,
-        archived_at: true,
-        scheduling_preference: {
-          select: {
-            visit_before_contact_required: true,
-          },
-        },
-      },
-    }),
+    patientPromise,
     db.prescriptionIntake.findMany({
       where: {
         org_id: args.orgId,
@@ -1913,9 +1926,10 @@ export async function getPatientVisitBrief(
           source: 'visit_brief_current',
         })
       : Promise.resolve(null),
+    communicationQueuePromise,
   ]);
 
-  if (!patient) {
+  if (!patient || !communicationQueue) {
     throw new Error(`VISIT_BRIEF_PATIENT_NOT_FOUND:${args.patientId}`);
   }
 
@@ -1956,13 +1970,6 @@ export async function getPatientVisitBrief(
   const visitBeforeContactRequired =
     patient.scheduling_preference?.visit_before_contact_required ?? null;
   const baselineContext = buildBaselineContext(intakeData, visitBeforeContactRequired);
-
-  const communicationQueue = await listCommunicationQueue(db, {
-    orgId: args.orgId,
-    patientId: args.patientId,
-    caseIds: args.caseIds,
-    limit: 6,
-  });
 
   const currentIntake = latestIntakes[0] ?? null;
   const previousIntake = latestIntakes[1] ?? null;

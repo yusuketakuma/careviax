@@ -228,6 +228,54 @@ describe('getPatientVisitBrief', () => {
     });
   });
 
+  it('starts the communication queue while independent core reads are still pending', async () => {
+    const db = buildMinimalBriefDb();
+    let releaseIntakes!: () => void;
+    let intakeReadResolved = false;
+    const pendingIntakeRead = new Promise<never[]>((resolve) => {
+      releaseIntakes = () => {
+        intakeReadResolved = true;
+        resolve([]);
+      };
+    });
+    db.prescriptionIntake.findMany.mockReturnValueOnce(pendingIntakeRead);
+
+    const briefPromise = getPatientVisitBrief(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      context: 'patient',
+      caseIds: ['case_1'],
+    });
+
+    await vi.waitFor(() => {
+      expect(listCommunicationQueueMock).toHaveBeenCalledWith(db, {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        caseIds: ['case_1'],
+        limit: 6,
+      });
+    });
+    expect(intakeReadResolved).toBe(false);
+
+    releaseIntakes();
+    await expect(briefPromise).resolves.toMatchObject({ patient: { id: 'patient_1' } });
+  });
+
+  it('does not load the communication queue when the patient does not exist', async () => {
+    const db = buildMinimalBriefDb();
+    db.patient.findFirst.mockResolvedValueOnce(null as never);
+
+    await expect(
+      getPatientVisitBrief(db, {
+        orgId: 'org_1',
+        patientId: 'missing_patient',
+        context: 'patient',
+        caseIds: ['case_1'],
+      }),
+    ).rejects.toThrow('VISIT_BRIEF_PATIENT_NOT_FOUND:missing_patient');
+    expect(listCommunicationQueueMock).not.toHaveBeenCalled();
+  });
+
   it('aggregates prescription, dispensing, communication, and unresolved items', async () => {
     const db = {
       careCase: {
