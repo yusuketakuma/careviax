@@ -21,9 +21,18 @@ type RawDynamicErrorUsage = {
   statusExpression: string | null;
 };
 
+type RawNonliteralMessageUsage = {
+  filePath: string;
+  helper: RawErrorHelperName;
+  codeExpression: string;
+  messageExpression: string;
+  statusExpression: string | null;
+};
+
 type RawErrorUsages = {
   literal: RawLiteralErrorUsage[];
   dynamic: RawDynamicErrorUsage[];
+  nonliteralMessage: RawNonliteralMessageUsage[];
 };
 
 type RawRegisteredErrorUsage = RawLiteralErrorUsage & {
@@ -311,6 +320,115 @@ const allowedRawDynamicErrorUsages: RawDynamicErrorUsage[] = [
   },
 ];
 
+// Reviewed constants and conditional literals stay visible here alongside provider-derived messages.
+// Migrations should make this list smaller; new nonliteral messages require an explicit contract review.
+const allowedRawNonliteralMessageUsages: RawNonliteralMessageUsage[] = [
+  {
+    filePath: 'src/app/api/admin/organizations/route.ts',
+    helper: 'error',
+    codeExpression: "'COGNITO_CREATE_FAILED'",
+    messageExpression: 'COGNITO_CREATE_FAILED_MESSAGE',
+    statusExpression: '502',
+  },
+  {
+    filePath: 'src/app/api/billing-candidates/export/route.ts',
+    helper: 'error',
+    codeExpression: "'CLAIMS_EXPORT_SITE_UNRESOLVED'",
+    messageExpression:
+      "siteResolution.reason === 'missing_site_id' ? 'CLAIMS-XML の薬局拠点を解決できません' : 'CLAIMS-XML は単一薬局拠点の候補だけをエクスポートできます'",
+    statusExpression: '422',
+  },
+  {
+    filePath: 'src/app/api/files/[id]/download/route.ts',
+    helper: 'error',
+    codeExpression: 'cause.code',
+    messageExpression: 'cause.message',
+    statusExpression: 'cause.status',
+  },
+  {
+    filePath: 'src/app/api/files/complete/route.ts',
+    helper: 'error',
+    codeExpression: 'cause.code',
+    messageExpression: 'cause.message',
+    statusExpression: 'cause.status',
+  },
+  {
+    filePath: 'src/app/api/files/presigned-upload/route.ts',
+    helper: 'error',
+    codeExpression: 'cause.code',
+    messageExpression: 'cause.message',
+    statusExpression: 'cause.status',
+  },
+  {
+    filePath: 'src/app/api/files/presigned-upload/route.ts',
+    helper: 'error',
+    codeExpression: 'cause.code',
+    messageExpression: 'cause.message',
+    statusExpression: 'cause.status',
+  },
+  {
+    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
+    helper: 'error',
+    codeExpression: "'AMBIGUOUS_ACTIVE_CYCLE'",
+    messageExpression:
+      "requestedCaseId ? '指定されたケースには受付可能な服薬サイクルが複数あります。サイクルを整理してから再実行してください。' : 'この患者には受付可能なケースが複数あります。case_id を指定してください。'",
+    statusExpression: '409',
+  },
+  {
+    filePath: 'src/app/api/patients/medications/bulk-export/route.ts',
+    helper: 'error',
+    codeExpression: 'cause.code',
+    messageExpression: 'cause.message',
+    statusExpression: 'cause.status',
+  },
+  {
+    filePath: 'src/app/api/pharmacy-contracts/[id]/documents/route.ts',
+    helper: 'error',
+    codeExpression: 'cause.code',
+    messageExpression: 'cause.message',
+    statusExpression: 'cause.status',
+  },
+  {
+    filePath: 'src/app/api/platform/break-glass/route.ts',
+    helper: 'error',
+    codeExpression: "'BREAK_GLASS_DENIED'",
+    messageExpression: 'err.message',
+    statusExpression: 'status',
+  },
+  {
+    filePath: 'src/app/api/visit-records/[id]/handoff/extract/route.ts',
+    helper: 'error',
+    codeExpression: "'extraction_failed'",
+    messageExpression: 'VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE',
+    statusExpression: '500',
+  },
+  {
+    filePath: 'src/app/api/visit-records/[id]/medication-stock-observations/route.ts',
+    helper: 'error',
+    codeExpression: 'VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_CODE',
+    messageExpression: 'VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_MESSAGE',
+    statusExpression: '503',
+  },
+];
+
+const allowedExternalNonliteralMessageUsages: RawNonliteralMessageUsage[] = [
+  {
+    filePath: 'src/app/api/auth/password/reset/confirm/route.ts',
+    helper: 'externalError',
+    codeExpression: "'EXTERNAL_PASSWORD_RESET_CONFIRM_FAILED'",
+    messageExpression: 'classified.message',
+    statusExpression: 'classified.status',
+  },
+  {
+    filePath: 'src/app/api/me/password/route.ts',
+    helper: 'externalError',
+    codeExpression: "'EXTERNAL_PASSWORD_CHANGE_FAILED'",
+    messageExpression:
+      "(error as Error).name === 'NotAuthorizedException' ? '現在のパスワードが正しくありません' : 'パスワードの変更に失敗しました'",
+    statusExpression: '400',
+  },
+];
+
 const allowedRawRegisteredErrorUsages: RawRegisteredErrorUsage[] = [
   {
     filePath: 'src/app/api/dispense-audits/route.ts',
@@ -356,13 +474,19 @@ function collectErrorHelperNames(
   return names;
 }
 
+function normalizedExpressionText(sourceFile: ts.SourceFile, node: ts.Node): string {
+  return node.getText(sourceFile).replace(/\s+/g, ' ').trim();
+}
+
 function findErrorUsages(filePath: string, importedHelperName: RawErrorHelperName): RawErrorUsages {
   const source = readFileSync(filePath, 'utf8');
   const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
   const errorHelperNames = collectErrorHelperNames(sourceFile, importedHelperName);
-  if (errorHelperNames.size === 0) return { literal: [], dynamic: [] };
+  if (errorHelperNames.size === 0) {
+    return { literal: [], dynamic: [], nonliteralMessage: [] };
+  }
 
-  const usages: RawErrorUsages = { literal: [], dynamic: [] };
+  const usages: RawErrorUsages = { literal: [], dynamic: [], nonliteralMessage: [] };
 
   function visit(node: ts.Node): void {
     if (
@@ -370,7 +494,7 @@ function findErrorUsages(filePath: string, importedHelperName: RawErrorHelperNam
       ts.isIdentifier(node.expression) &&
       errorHelperNames.has(node.expression.text)
     ) {
-      const [codeArgument, , statusArgument] = node.arguments;
+      const [codeArgument, messageArgument, statusArgument] = node.arguments;
       if (codeArgument && ts.isStringLiteralLike(codeArgument)) {
         usages.literal.push({
           filePath: relative(process.cwd(), filePath),
@@ -383,8 +507,22 @@ function findErrorUsages(filePath: string, importedHelperName: RawErrorHelperNam
       } else if (codeArgument) {
         usages.dynamic.push({
           filePath: relative(process.cwd(), filePath),
-          codeExpression: codeArgument.getText(sourceFile),
-          statusExpression: statusArgument?.getText(sourceFile) ?? null,
+          codeExpression: normalizedExpressionText(sourceFile, codeArgument),
+          statusExpression: statusArgument
+            ? normalizedExpressionText(sourceFile, statusArgument)
+            : null,
+        });
+      }
+
+      if (codeArgument && messageArgument && !ts.isStringLiteralLike(messageArgument)) {
+        usages.nonliteralMessage.push({
+          filePath: relative(process.cwd(), filePath),
+          helper: importedHelperName,
+          codeExpression: normalizedExpressionText(sourceFile, codeArgument),
+          messageExpression: normalizedExpressionText(sourceFile, messageArgument),
+          statusExpression: statusArgument
+            ? normalizedExpressionText(sourceFile, statusArgument)
+            : null,
         });
       }
     }
@@ -416,11 +554,18 @@ function collectSortedErrorUsages(importedHelperName: RawErrorHelperName): RawEr
           `${right.filePath}:${right.codeExpression}:${right.statusExpression}`,
         ),
       ),
+    nonliteralMessage: usages
+      .flatMap((usage) => usage.nonliteralMessage)
+      .sort((left, right) =>
+        `${left.filePath}:${left.helper}:${left.codeExpression}:${left.messageExpression}:${left.statusExpression}`.localeCompare(
+          `${right.filePath}:${right.helper}:${right.codeExpression}:${right.messageExpression}:${right.statusExpression}`,
+        ),
+      ),
   };
 }
 
 describe('raw API error usage', () => {
-  it('keeps literal and dynamic helper debt exact and registered bypasses on the one 422 branch', () => {
+  it('keeps code and nonliteral message debt exact and registered bypasses on the one 422 branch', () => {
     const rawUsages = collectSortedErrorUsages('error');
     const externalUsages = collectSortedErrorUsages('externalError');
     const registeredRawUsages = rawUsages.literal.flatMap((usage): RawRegisteredErrorUsage[] =>
@@ -440,8 +585,10 @@ describe('raw API error usage', () => {
 
     expect(rawUsages.literal).toEqual(allowedRawLiteralErrorUsages);
     expect(rawUsages.dynamic).toEqual(allowedRawDynamicErrorUsages);
+    expect(rawUsages.nonliteralMessage).toEqual(allowedRawNonliteralMessageUsages);
     expect(externalUsages.literal).toEqual(allowedExternalLiteralErrorUsages);
     expect(externalUsages.dynamic).toEqual([]);
+    expect(externalUsages.nonliteralMessage).toEqual(allowedExternalNonliteralMessageUsages);
     expect(registeredRawUsages).toEqual(allowedRawRegisteredErrorUsages);
     expect(registeredExternalUsages).toEqual([]);
     expect(registeredRawUsages).toEqual(
