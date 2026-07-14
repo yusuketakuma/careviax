@@ -531,9 +531,12 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     name: 'pharmacy-invoices/[id]/pdf GET',
     handler: () =>
       pharmacyInvoicePdfGet(
-        createRequest('http://localhost/api/pharmacy-invoices/invoice_1/pdf?purpose=monthly', {
-          'x-org-id': 'org_1',
-        }),
+        createRequest(
+          'http://localhost/api/pharmacy-invoices/invoice_1/pdf?purpose=partner_cooperation_monthly_pdf',
+          {
+            'x-org-id': 'org_1',
+          },
+        ),
         { params: Promise.resolve({ id: 'invoice_1' }) },
       ),
   },

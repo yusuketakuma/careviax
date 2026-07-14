@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PHARMACY_INVOICE_PDF_EXPORT_PURPOSE } from '@/lib/audit/export-purpose-codes';
 import { expectPhiExportSnapshotRedacted } from '@/test/api-response-assertions';
 
 const { auditLogCreateMock } = vi.hoisted(() => ({
@@ -92,6 +93,99 @@ describe('recordDataExportAudit', () => {
         ip_address: undefined,
         user_agent: undefined,
       },
+    });
+  });
+
+  it.each(['pharmacy_invoice', 'pharmacy_free_cooperation_report'])(
+    'persists the fixed pharmacy PDF purpose and drops PHI siblings for %s',
+    async (targetType) => {
+      auditLogCreateMock.mockResolvedValue({});
+
+      await recordDataExportAudit(db, {
+        orgId: 'org-1',
+        actorId: 'user-1',
+        targetType,
+        targetId: 'invoice-1',
+        format: 'pdf',
+        recordCount: 1,
+        metadata: {
+          export_purpose: PHARMACY_INVOICE_PDF_EXPORT_PURPOSE,
+          patient_name: '患者 山田太郎',
+          phone: '090-1234-5678',
+          raw_document_detail: 'アムロジピン',
+        },
+      });
+
+      expect(auditLogCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          target_type: targetType,
+          changes: {
+            format: 'pdf',
+            record_count: 1,
+            filters: {},
+            metadata: {
+              export_purpose: PHARMACY_INVOICE_PDF_EXPORT_PURPOSE,
+            },
+          },
+        }),
+      });
+      expectPhiExportSnapshotRedacted(JSON.stringify(auditLogCreateMock.mock.calls));
+    },
+  );
+
+  it.each(['pharmacy_invoice', 'pharmacy_free_cooperation_report'])(
+    'drops noncanonical free-text pharmacy PDF purposes for %s',
+    async (targetType) => {
+      auditLogCreateMock.mockResolvedValue({});
+
+      await recordDataExportAudit(db, {
+        orgId: 'org-1',
+        actorId: 'user-1',
+        targetType,
+        targetId: 'invoice-1',
+        format: 'pdf',
+        recordCount: 1,
+        metadata: {
+          export_purpose: 'monthly 患者 山田太郎 090-1234-5678',
+        },
+      });
+
+      expect(auditLogCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          changes: {
+            format: 'pdf',
+            record_count: 1,
+            filters: {},
+            metadata: {},
+          },
+        }),
+      });
+      expectPhiExportSnapshotRedacted(JSON.stringify(auditLogCreateMock.mock.calls));
+    },
+  );
+
+  it('does not allow the pharmacy purpose code for unrelated export targets', async () => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType: 'billing_candidate',
+      format: 'pdf',
+      metadata: {
+        export_purpose: PHARMACY_INVOICE_PDF_EXPORT_PURPOSE,
+      },
+    });
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: {
+          format: 'pdf',
+          record_count: null,
+          filters: {},
+          metadata: {},
+        },
+      }),
     });
   });
 

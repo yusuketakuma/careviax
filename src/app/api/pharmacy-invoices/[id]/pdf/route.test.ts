@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { PHARMACY_INVOICE_PDF_EXPORT_PURPOSE } from '@/lib/audit/export-purpose-codes';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
@@ -39,7 +40,7 @@ vi.mock('@/server/services/export-audit', () => ({
 import { PdfNotFoundError } from '@/server/services/pdf-errors';
 import { GET } from './route';
 
-function createRequest(purpose = '月次請求確認') {
+function createRequest(purpose = PHARMACY_INVOICE_PDF_EXPORT_PURPOSE) {
   return new NextRequest(
     `http://localhost/api/pharmacy-invoices/invoice_1/pdf?purpose=${encodeURIComponent(purpose)}`,
   );
@@ -115,7 +116,7 @@ describe('/api/pharmacy-invoices/[id]/pdf GET', () => {
           subtotal: 5500,
           tax_amount: 550,
           total: 6050,
-          export_purpose: '月次請求確認',
+          export_purpose: PHARMACY_INVOICE_PDF_EXPORT_PURPOSE,
           patient_display_mode: 'management_number',
         },
       }),
@@ -123,7 +124,54 @@ describe('/api/pharmacy-invoices/[id]/pdf GET', () => {
     expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'pharmacy-invoice.pdf');
     expect(JSON.stringify(recordDataExportAuditMock.mock.calls)).not.toContain('患者 山田太郎');
     expect(JSON.stringify(recordDataExportAuditMock.mock.calls)).not.toContain('090-1234-5678');
+    expect(PHARMACY_INVOICE_PDF_EXPORT_PURPOSE).toBe('partner_cooperation_monthly_pdf');
   });
+
+  it.each([
+    ['legacy UI label', '2026-06-01 薬局間月次出力'],
+    ['hostile PHI-like text', '患者 山田太郎 090-1234-5678 の月次請求確認'],
+  ])('normalizes valid %s before passing purpose to the audit service', async (_label, input) => {
+    const response = await GET(createRequest(input), {
+      params: Promise.resolve({ id: 'invoice_1' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      prismaMock,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          export_purpose: PHARMACY_INVOICE_PDF_EXPORT_PURPOSE,
+        }),
+      }),
+    );
+    expect(JSON.stringify(recordDataExportAuditMock.mock.calls)).not.toContain(input);
+  });
+
+  it.each(['pharmacy_invoice', 'pharmacy_free_cooperation_report'])(
+    'persists only the fixed purpose code and drops PHI siblings for %s',
+    async (targetType) => {
+      const { buildDataExportAuditChanges } = await vi.importActual<
+        typeof import('@/server/services/export-audit')
+      >('@/server/services/export-audit');
+
+      const changes = buildDataExportAuditChanges({
+        targetType,
+        format: 'pdf',
+        recordCount: 1,
+        metadata: {
+          export_purpose: PHARMACY_INVOICE_PDF_EXPORT_PURPOSE,
+          patient_name: '患者 山田太郎',
+          phone: '090-1234-5678',
+        },
+      });
+
+      expect(changes).toMatchObject({
+        metadata: { export_purpose: PHARMACY_INVOICE_PDF_EXPORT_PURPOSE },
+      });
+      expect(JSON.stringify(changes)).not.toContain('山田太郎');
+      expect(JSON.stringify(changes)).not.toContain('090-1234-5678');
+    },
+  );
 
   it.each(['pharmacy_invoice', 'pharmacy_free_cooperation_report'])(
     'does not persist raw free-text purpose metadata for %s',
@@ -154,6 +202,22 @@ describe('/api/pharmacy-invoices/[id]/pdf GET', () => {
         params: Promise.resolve({ id: 'invoice_1' }),
       },
     );
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expectRequestTrace(response);
+    expect(buildPharmacyInvoiceDocumentPdfMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['blank', '   '],
+    ['longer than 200 characters', 'x'.repeat(201)],
+  ])('keeps rejecting a %s purpose before side effects', async (_label, purpose) => {
+    const response = await GET(createRequest(purpose), {
+      params: Promise.resolve({ id: 'invoice_1' }),
+    });
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);

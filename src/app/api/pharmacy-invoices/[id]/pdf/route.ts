@@ -12,18 +12,13 @@ import { pdfResponse } from '@/lib/api/pdf-response';
 import { withRequestTraceHeaders } from '@/lib/api/request-correlation';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { normalizePharmacyInvoicePdfExportPurpose } from '@/lib/audit/export-purpose-codes';
 import { prisma } from '@/lib/db/client';
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { PdfNotFoundError } from '@/server/services/pdf-errors';
 import { buildPharmacyInvoiceDocumentPdf } from '@/server/services/pdf-pharmacy-invoice';
 
 export const runtime = 'nodejs';
-
-function parseExportPurpose(value: string | null) {
-  const trimmed = value?.trim() ?? '';
-  if (trimmed.length === 0 || trimmed.length > 200) return null;
-  return trimmed;
-}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -40,7 +35,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return tracedSensitiveResponse(validationError('薬局間請求書IDが不正です'));
 
-    const purpose = parseExportPurpose(req.nextUrl.searchParams.get('purpose'));
+    const purpose = normalizePharmacyInvoicePdfExportPurpose(
+      req.nextUrl.searchParams.get('purpose'),
+    );
     if (!purpose) {
       return tracedSensitiveResponse(
         validationError('purpose は1文字以上200文字以内で指定してください'),

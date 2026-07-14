@@ -29,6 +29,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { apiCursorPageSchema, apiDataSchema } from '@/lib/api/response-schemas';
+import { PHARMACY_INVOICE_PDF_EXPORT_PURPOSE } from '@/lib/audit/export-purpose-codes';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { formatYen } from '@/lib/format/currency';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -616,7 +617,6 @@ function CandidateTable({ candidates }: { candidates: VisitBillingCandidateRow[]
 
 function DraftResultPanel({ draft }: { draft: InvoiceDraftResult | null }) {
   if (!draft) return null;
-  const purpose = encodeURIComponent(`${draft.billing_month} 薬局間月次出力`);
   const documentLabel =
     draft.document_kind === 'free_cooperation_report' ? '無償実績報告書' : '請求書';
 
@@ -636,7 +636,7 @@ function DraftResultPanel({ draft }: { draft: InvoiceDraftResult | null }) {
           </p>
         </div>
         <a
-          href={`/api/pharmacy-invoices/${draft.id}/pdf?purpose=${purpose}`}
+          href={`/api/pharmacy-invoices/${draft.id}/pdf?purpose=${PHARMACY_INVOICE_PDF_EXPORT_PURPOSE}`}
           className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'bg-card')}
         >
           <Download className="size-4" aria-hidden="true" />
@@ -851,10 +851,9 @@ function InvoiceHistoryTable({
         enableSorting: false,
         cell: ({ row }) => {
           const invoice = row.original;
-          const purpose = encodeURIComponent(`${invoice.billing_month} 薬局間月次出力`);
           return (
             <a
-              href={`/api/pharmacy-invoices/${invoice.id}/pdf?purpose=${purpose}`}
+              href={`/api/pharmacy-invoices/${invoice.id}/pdf?purpose=${PHARMACY_INVOICE_PDF_EXPORT_PURPOSE}`}
               className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
               aria-label={`${documentKindLabel(invoice.document_kind)} ${invoiceNumberLabel(invoice)} PDFを開く`}
             >

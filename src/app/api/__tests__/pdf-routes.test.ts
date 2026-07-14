@@ -182,7 +182,9 @@ describe('PDF routes', () => {
     });
 
     const response = await pharmacyInvoicePdfGet(
-      createRequest('http://localhost/api/pharmacy-invoices/invoice_1/pdf?purpose=monthly'),
+      createRequest(
+        'http://localhost/api/pharmacy-invoices/invoice_1/pdf?purpose=partner_cooperation_monthly_pdf',
+      ),
       {
         params: Promise.resolve({ id: 'invoice_1' }),
       },

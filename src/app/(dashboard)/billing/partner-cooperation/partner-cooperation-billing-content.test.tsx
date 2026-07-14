@@ -581,7 +581,7 @@ describe('PartnerCooperationBillingContent', () => {
       within(invoicesTable)
         .getByRole('link', { name: '請求書 INV-001 PDFを開く' })
         .getAttribute('href'),
-    ).toContain('/api/pharmacy-invoices/invoice_existing/pdf?purpose=');
+    ).toBe('/api/pharmacy-invoices/invoice_existing/pdf?purpose=partner_cooperation_monthly_pdf');
     expect(JSON.stringify(document.body.textContent)).not.toContain('山田');
   });
 
@@ -628,7 +628,7 @@ describe('PartnerCooperationBillingContent', () => {
       within(result)
         .getByRole('link', { name: /PDFを開く/ })
         .getAttribute('href'),
-    ).toContain('/api/pharmacy-invoices/invoice_1/pdf?purpose=');
+    ).toBe('/api/pharmacy-invoices/invoice_1/pdf?purpose=partner_cooperation_monthly_pdf');
 
     const postCall = vi
       .mocked(fetch)

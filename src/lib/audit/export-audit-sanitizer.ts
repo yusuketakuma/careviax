@@ -1,3 +1,5 @@
+import { isPharmacyInvoicePdfExportPurpose } from '@/lib/audit/export-purpose-codes';
+
 const blockedAuditKeyPattern =
   /(patient_?ids?|patientIds?|storage_?key|object_?key|token|secret|url|href|raw|error|stack|address|phone|insurance|note|memo|text|body|content)/i;
 const blockedAuditValuePattern =
@@ -206,6 +208,8 @@ const allowedFilterKeysByTarget = new Map<string, Set<string>>([
 ]);
 
 const allowedMetadataKeysByTarget = new Map<string, Set<string>>([
+  ['pharmacy_invoice', new Set(['export_purpose'])],
+  ['pharmacy_free_cooperation_report', new Set(['export_purpose'])],
   [
     'medication_history',
     new Set([
@@ -461,6 +465,8 @@ function sanitizeExportAuditFieldValue(key: string, value: unknown): unknown {
       return sanitizeEnumValue(value, safeSourceValues);
     case 'export_format':
       return sanitizeEnumValue(value, safeExportFormatValues);
+    case 'export_purpose':
+      return isPharmacyInvoicePdfExportPurpose(value) ? value : undefined;
     case 'file_purpose':
     case 'purpose':
       return sanitizeEnumValue(value, safePurposeValues);
@@ -543,6 +549,13 @@ export function sanitizeExportAuditSection(args: {
   const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args.values)) {
     if (!effectiveAllowedKeys.has(key)) continue;
+    if (
+      key === 'export_purpose' &&
+      args.targetType !== 'pharmacy_invoice' &&
+      args.targetType !== 'pharmacy_free_cooperation_report'
+    ) {
+      continue;
+    }
     const sanitizedValue = sanitizeExportAuditFieldValue(key, value);
     if (sanitizedValue !== undefined) {
       sanitized[key] = sanitizedValue;

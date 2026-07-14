@@ -3937,7 +3937,7 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
     await expect(invoiceDraftResult).toBeVisible();
     await expect(invoiceDraftResult.getByRole('link', { name: /PDFを開く/ })).toHaveAttribute(
       'href',
-      new RegExp(`/api/pharmacy-invoices/${PHARMACY_COOP_INVOICE_ID}/pdf\\?purpose=`),
+      `/api/pharmacy-invoices/${PHARMACY_COOP_INVOICE_ID}/pdf?purpose=partner_cooperation_monthly_pdf`,
     );
     await expect(page.getByLabel('月次ドキュメント内検索')).toBeVisible();
     await page.getByLabel('月次ドキュメント内検索').fill('RM-COOP-001');

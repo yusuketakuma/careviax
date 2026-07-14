@@ -2582,7 +2582,7 @@ test.describe('major authenticated screens', () => {
     expect(paidInvoice.paid_at).toEqual(expect.any(String));
 
     const invoicePdfResponse = await page.request.get(
-      `/api/pharmacy-invoices/${invoiceDraft.id}/pdf?purpose=db-backed-e2e-proof`,
+      `/api/pharmacy-invoices/${invoiceDraft.id}/pdf?purpose=partner_cooperation_monthly_pdf`,
     );
     expect(invoicePdfResponse.status()).toBe(200);
     expect(invoicePdfResponse.headers()['content-type']).toContain('application/pdf');
@@ -2640,7 +2640,7 @@ test.describe('major authenticated screens', () => {
       payment_audit_count: 1,
       pdf_export_audit_count: 1,
       latest_pdf_export_target_type: 'pharmacy_invoice',
-      latest_pdf_export_purpose: 'db-backed-e2e-proof',
+      latest_pdf_export_purpose: 'partner_cooperation_monthly_pdf',
     });
     expect(storedInvoice?.invoice_no).toEqual(expect.any(String));
 
@@ -2978,7 +2978,7 @@ test.describe('major authenticated screens', () => {
     expect(issuedReport.invoice_no).toEqual(expect.any(String));
 
     const reportPdfResponse = await page.request.get(
-      `/api/pharmacy-invoices/${reportDraft.id}/pdf?purpose=db-backed-free-report-proof`,
+      `/api/pharmacy-invoices/${reportDraft.id}/pdf?purpose=partner_cooperation_monthly_pdf`,
     );
     expect(reportPdfResponse.status()).toBe(200);
     expect(reportPdfResponse.headers()['content-type']).toContain('application/pdf');
@@ -3032,7 +3032,7 @@ test.describe('major authenticated screens', () => {
       payment_audit_count: 0,
       pdf_export_audit_count: 1,
       latest_pdf_export_target_type: 'pharmacy_free_cooperation_report',
-      latest_pdf_export_purpose: 'db-backed-free-report-proof',
+      latest_pdf_export_purpose: 'partner_cooperation_monthly_pdf',
     });
     expect(storedReport?.invoice_no).toEqual(expect.any(String));
 

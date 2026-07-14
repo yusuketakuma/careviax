@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PHARMACY_INVOICE_PDF_EXPORT_PURPOSE } from '@/lib/audit/export-purpose-codes';
 import {
   minimizeFormularyChangeRequestAuditChanges,
   redactAuditLogChangesForResponse,
@@ -103,6 +104,73 @@ describe('redactAuditLogChangesForResponse', () => {
     expect(resultText).not.toContain('患者A');
     expect(resultText).not.toContain('secret');
   });
+
+  it.each(['pharmacy_invoice', 'pharmacy_free_cooperation_report'])(
+    'keeps only the fixed pharmacy PDF purpose from %s audit rows',
+    (targetType) => {
+      const log = {
+        id: `audit_${targetType}_1`,
+        action: 'export',
+        target_type: targetType,
+        changes: {
+          format: 'pdf',
+          record_count: 1,
+          metadata: {
+            export_purpose: PHARMACY_INVOICE_PDF_EXPORT_PURPOSE,
+            patient_name: '患者 山田太郎',
+            phone: '090-1234-5678',
+            medication_name: 'アムロジピン',
+            raw_document_detail: '処方全文',
+          },
+        },
+      };
+
+      const result = redactAuditLogChangesForResponse(log);
+      const resultText = JSON.stringify(result);
+
+      expect(result.changes).toEqual({
+        format: 'pdf',
+        record_count: 1,
+        filters: {},
+        metadata: {
+          export_purpose: PHARMACY_INVOICE_PDF_EXPORT_PURPOSE,
+        },
+      });
+      expect(resultText).not.toContain('山田太郎');
+      expect(resultText).not.toContain('090-1234-5678');
+      expect(resultText).not.toContain('アムロジピン');
+      expect(resultText).not.toContain('処方全文');
+    },
+  );
+
+  it.each(['pharmacy_invoice', 'pharmacy_free_cooperation_report'])(
+    'drops noncanonical pharmacy PDF purpose text from %s audit rows',
+    (targetType) => {
+      const log = {
+        id: `audit_${targetType}_legacy_1`,
+        action: 'export',
+        target_type: targetType,
+        changes: {
+          format: 'pdf',
+          record_count: 1,
+          metadata: {
+            export_purpose: '2026-06-01 患者 山田太郎 090-1234-5678 月次出力',
+          },
+        },
+      };
+
+      const result = redactAuditLogChangesForResponse(log);
+
+      expect(result.changes).toEqual({
+        format: 'pdf',
+        record_count: 1,
+        filters: {},
+        metadata: {},
+      });
+      expect(JSON.stringify(result)).not.toContain('山田太郎');
+      expect(JSON.stringify(result)).not.toContain('090-1234-5678');
+    },
+  );
 
   it('keeps only canonical care report PDF profile metadata from legacy export rows', () => {
     const log = {
