@@ -170,6 +170,13 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "OQC_UPSTREAM_FAILURE": {
+          "httpStatus": 502,
+          "logLevel": "error",
+          "messageLabel": "api.error.qualification_check.upstream_failure",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "PATIENT_MCS_SYNC_FAILED": {
           "httpStatus": 502,
           "logLevel": "error",

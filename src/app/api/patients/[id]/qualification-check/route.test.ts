@@ -459,7 +459,7 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(response.status).toBe(502);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(body).toMatchObject({
+    expect(body).toEqual({
       code: 'OQC_UPSTREAM_FAILURE',
       message: 'オンライン資格確認の設定に問題があります',
     });
@@ -487,7 +487,7 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(response.status).toBe(502);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(body).toMatchObject({
+    expect(body).toEqual({
       code: 'OQC_UPSTREAM_FAILURE',
       message: 'オンライン資格確認サービスの呼び出しに失敗しました',
     });

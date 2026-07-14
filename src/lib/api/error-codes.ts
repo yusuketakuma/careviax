@@ -180,6 +180,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'retry',
     messageLabel: 'api.error.medication_history.pdf_export_audit_failed',
   },
+  OQC_UPSTREAM_FAILURE: {
+    httpStatus: 502,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.qualification_check.upstream_failure',
+  },
   PATIENT_MCS_SYNC_FAILED: {
     httpStatus: 502,
     logLevel: 'error',

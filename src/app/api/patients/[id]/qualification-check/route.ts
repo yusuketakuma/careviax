@@ -1,7 +1,14 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
-import { success, notFound, error, validationError, internalError } from '@/lib/api/response';
+import {
+  success,
+  notFound,
+  error,
+  registeredError,
+  validationError,
+  internalError,
+} from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -110,7 +117,10 @@ function qualificationCheckAdapterErrorResponse(cause: QualificationCheckAdapter
     case 'INVALID_REQUEST':
     case 'INVALID_CONFIGURATION':
     case 'UPSTREAM_FAILURE':
-      return error('OQC_UPSTREAM_FAILURE', QUALIFICATION_CHECK_ERROR_MESSAGES[cause.code], 502);
+      return registeredError(
+        'OQC_UPSTREAM_FAILURE',
+        QUALIFICATION_CHECK_ERROR_MESSAGES[cause.code],
+      );
   }
 }
 
