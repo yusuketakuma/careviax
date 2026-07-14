@@ -63,7 +63,8 @@
 
 - codex2 backend + temporary integration owner: Round 18 registered idempotency error contract /
   Round 17 insurance aggregate type-gate repair
-  (DONE / CODE COMMITTED, PUSH PENDING, 2026-07-15; implementations `5342a8f4e`, `40a181d17`).
+  (DONE / CODE + LEDGER PUSHED, 2026-07-15; implementations `5342a8f4e`, `40a181d17`,
+  ledger `ff025860a`).
   - workflow / coordination / ownership:
     live `git status`、`Plans.md`、このSTATE、RUN_LOCK、Next.js 16.2.9 route/error guides、API registry、
     patient-insurance validator/routesを確認した。agmsgでcodex1/3/4へ調査・ownershipを通知し、停止中bridgeを
@@ -91,12 +92,14 @@
     `boundaries:check`、`git diff --check`、serialized `pnpm typecheck`、`pnpm typecheck:no-unused`がPASS。
     Phase0でquery-shape、read-SLO、plans-active、API authz、raw-read org guard、client schema、task types、
     dependency auditもPASS（known high vulnerability 0）。build/E2E/Oracle/migration applyは現行方針により未実行。
-    codeは2 logical commitsへ分離済みで、Plans/STATE/RUN_LOCK closeoutとauthorized non-force feature-branch pushが残る。
+    codeは2 logical commits、integration ledgerは`ff025860a`へ分離し、Round17 carry-forwardを含めてauthorized
+    non-force feature-branch pushを完了した。local/remote HEADは`ff025860a0abd122ba2e4f4810b17748fa058999`、
+    parity `0 0`。
     親`API-CONTRACT-001/003`、shared correlation body、残error family、DB-at-rest audit/legacy SoT migration、
     repository-wide demo/full regressionは未完了。
 
 - codex1 + codex2 + codex3 + codex4: Round 17 patient medical/public/care insurance management
-  (DONE / CODE COMMITTED, NOT PUSHED, 2026-07-15; implementations `f48e10832`, `d563d093a`,
+  (DONE / CODE PUSHED, 2026-07-15; implementations `f48e10832`, `d563d093a`,
   `42608f405`, `49f6110b5`, follow-ups `717651f56`, `bc581f14b`).
   - research / workflow / ownership:
     厚生労働省のオンライン資格確認、資格確認方法、オンライン資格確認Q&A、公費負担医療のPMH仕様、
@@ -138,7 +141,8 @@
     build/Oracle/migration applyはユーザー指示により実行していない。DB-at-restのgeneric
     `PatientInsurance` audit trigger最小化とlegacy `Patient.medical_insurance_number` /
     `care_insurance_number`からのSoT cutoverは別migration/移行計画が必要で、現roundはauthorized response境界と
-    current managerを安全化した。current taskではpush許可がないためlocal branchへcommitのみ。
+    current managerを安全化した。Round17 commitsはRound18のauthorized feature-branch integration pushへ含め、
+    `ff025860a`時点でlocal/remote parity `0 0`を確認した。
 
 - codex1 + codex2 + codex3 + codex4: Round 16 insurance read recovery / localized helper ratchet /
   inbound MCS PHI-safe logging / patient-detail billing-context reuse boundary
