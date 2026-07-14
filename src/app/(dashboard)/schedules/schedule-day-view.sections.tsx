@@ -99,7 +99,7 @@ export function RouteBoardSummary({
     <PageSection
       title="週間ルート運用"
       description="服薬最終日より前の訪問候補を生成し、患者住所と既存訪問順からルート効率を加味して提案します"
-      className="overflow-hidden bg-muted/30 ring-1 ring-border"
+      tone="subtle"
       contentClassName="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]"
       headingLevel={headingLevel}
     >

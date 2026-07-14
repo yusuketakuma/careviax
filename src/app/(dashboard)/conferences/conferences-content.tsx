@@ -1234,7 +1234,7 @@ export function ConferencesContent({
       <PageSection
         title="カンファレンス記録"
         description="会議記録は一覧またはカレンダーで確認し、タスク化や報告書生成へつなげます。"
-        className={cn(initialFocus === 'notes' ? 'rounded-2xl ring-2 ring-primary/25' : null)}
+        emphasis={initialFocus === 'notes' ? 'selected' : 'default'}
         contentClassName="space-y-4"
         actions={
           <ActionRail>

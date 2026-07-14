@@ -30,7 +30,6 @@ import { HomeCareFeatureBoard } from '@/components/home-care/home-care-feature-b
 import { WorkflowIntegrationMap } from '@/components/features/workflow/workflow-integration-map';
 import { MainWorkflowRoute } from '@/components/features/workflow/main-workflow-route';
 import { StagnationIndicator } from '@/components/features/workflow/stagnation-indicator';
-import { cn } from '@/lib/utils';
 import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import {
   COMMUNICATION_QUEUE_CHANNEL_LABELS,
@@ -159,7 +158,8 @@ function WorkflowSection({
       description={description}
       tone="subtle"
       data-testid={testId}
-      className={cn('scroll-mt-28', active ? 'ring-2 ring-primary/25' : null)}
+      className="scroll-mt-28"
+      emphasis={active ? 'selected' : 'default'}
     >
       {children}
     </PageSection>

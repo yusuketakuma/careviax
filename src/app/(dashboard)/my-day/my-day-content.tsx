@@ -183,8 +183,6 @@ const STATUS_ICONS: Record<PatientStatusIcon, typeof Star> = {
   paused: CirclePause,
 };
 
-const MY_DAY_SECTION_CLASS_NAME = 'min-w-0 overflow-hidden';
-
 // 絞り込みチップは共有 FilterChipBar(role=group/aria-pressed/44px/focus-visible)に集約する。
 // 静的定義で再生成を避け、型を MyDay*Filter に固定する。
 const VISIT_FILTER_OPTIONS: FilterChipOption<MyDayVisitFilter>[] = [
@@ -498,7 +496,6 @@ export function MyDayContent({
       <PageSection
         title="今日の概要"
         description="次にすることを最初に把握します。"
-        className={MY_DAY_SECTION_CLASS_NAME}
         contentClassName="space-y-3"
       >
         <MyDayNextStepPanel {...nextStep} />
@@ -509,7 +506,6 @@ export function MyDayContent({
           <PageSection
             title="優先対応"
             description="緊急アクションと今日の訪問準備を先に処理するための優先グループです。"
-            className={MY_DAY_SECTION_CLASS_NAME}
             contentClassName="space-y-3"
           >
             {actionsQuery.isError ? (
@@ -695,7 +691,6 @@ export function MyDayContent({
           <PageSection
             title="進行中の業務"
             description="パイプラインと未完了タスクを見て、今日の作業順を組み立てるグループです。"
-            className={MY_DAY_SECTION_CLASS_NAME}
             contentClassName="space-y-3"
           >
             {actionsQuery.isError ? (
@@ -831,7 +826,6 @@ export function MyDayContent({
           <PageSection
             title="補助情報"
             description="患者ステータス変更やショートカットを確認し、必要な別画面へ移動する補助グループです。"
-            className={MY_DAY_SECTION_CLASS_NAME}
             contentClassName="space-y-3"
             tone="subtle"
           >

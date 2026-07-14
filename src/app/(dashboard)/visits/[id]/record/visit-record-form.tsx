@@ -529,12 +529,10 @@ function VisitRecordWorkflowSection({
       description={description}
       // <md はウィザードの 1 ステップ 1 画面(p0_23)。セクションのカード装飾と
       // 見出しを外し、ウィザード側のステップ見出しに置き換える(md 以上は不変)
-      className={cn(
-        'scroll-mt-24 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0',
-        className,
-      )}
+      className={cn('scroll-mt-24', className)}
       headerClassName="max-md:hidden"
       contentClassName="space-y-3 sm:space-y-4"
+      mobileSurface="bare"
     >
       {children}
     </PageSection>
