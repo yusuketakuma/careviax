@@ -15,6 +15,7 @@ import { stageInboundMedicationStockSignalForReview } from '@/modules/pharmacy';
 import { buildInboundCommunicationEventAssignmentWhere } from '@/server/services/communication-request-access';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 
 const ROUTE = '/api/communications/inbound/signals';
 const DEFAULT_LIMIT = 24;
@@ -498,19 +499,21 @@ const authenticatedGET = withAuthContext(
 );
 
 export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return await authenticatedGET(req, routeContext);
-  } catch (err) {
-    unstable_rethrow(err);
-    logger.error(
-      {
-        event: 'inbound_signal_candidates_get_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-      },
-      err,
-    );
-    return withSensitiveNoStore(internalError());
-  }
+  return withRoutePerformance(req, async () => {
+    try {
+      return await authenticatedGET(req, routeContext);
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error(
+        {
+          event: 'inbound_signal_candidates_get_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
+      return withSensitiveNoStore(internalError());
+    }
+  });
 };

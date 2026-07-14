@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { getPerformanceSnapshot, resetPerformanceMetrics } from '@/lib/utils/performance';
 import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
@@ -69,6 +70,7 @@ describe('/api/communications/inbound/signals', () => {
   });
 
   beforeEach(() => {
+    resetPerformanceMetrics();
     vi.clearAllMocks();
     assignmentWhereMock.mockResolvedValue({
       OR: [{ patient_id: { in: ['patient_1'] } }, { patient_id: null }],
@@ -180,7 +182,22 @@ describe('/api/communications/inbound/signals', () => {
 
     expect(response.status).toBe(200);
     expectNoStore(response);
-    expect(response.headers.get('Content-Length')).toBe(String(jsonPayloadBytes(payload)));
+    const responseBytes = jsonPayloadBytes(payload);
+    expect(response.headers.get('Content-Length')).toBe(String(responseBytes));
+    expect(
+      getPerformanceSnapshot({ topRoutes: 100 }).routes.find(
+        (route) => route.method === 'GET' && route.route === '/api/communications/inbound/signals',
+      ),
+    ).toMatchObject({
+      critical_route: true,
+      critical_route_family: 'communications-inbound-signals',
+      request_count: 1,
+      payload_sample_count: 1,
+      last_payload_bytes: responseBytes,
+      payload_budget_bytes: 163_840,
+      payload_budget_status: 'within_budget',
+      payload_budget_met: true,
+    });
     expect(assignmentWhereMock).toHaveBeenCalledWith(expect.objectContaining({ orgId: 'org_1' }));
     expect(inboundCommunicationEventFindManyMock).toHaveBeenCalledWith({
       where: {
