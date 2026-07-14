@@ -235,12 +235,12 @@ function parseVisitRecordListQuery(searchParams: URLSearchParams) {
   return { ok: true as const, data: parsed.data };
 }
 
-function safeHandoffExtractionWarningContext(visitRecordId: string) {
+function safeHandoffExtractionWarningContext() {
   return {
     event: 'visit_records_handoff_extraction_failed',
     route: ROUTE,
     operation: 'process_handoff_extraction',
-    targetId: visitRecordId,
+    code: 'VISIT_RECORD_HANDOFF_EXTRACTION_FAILED',
   };
 }
 
@@ -986,15 +986,13 @@ export async function GET(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedGET(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'visit_records_get_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
+      logger.error({
+        event: 'visit_records_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        code: 'VISIT_RECORDS_READ_FAILED',
+      });
       return withSensitiveNoStore(internalError());
     }
   });
@@ -1266,15 +1264,13 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
         userId: ctx.userId,
         source: 'visit_record',
       });
-    } catch (snapshotError) {
-      logger.error(
-        {
-          event: 'visit_records_patient_state_snapshot_build_failed',
-          route: ROUTE,
-          operation: 'build_patient_state_snapshot',
-        },
-        snapshotError,
-      );
+    } catch {
+      logger.error({
+        event: 'visit_records_patient_state_snapshot_build_failed',
+        route: ROUTE,
+        operation: 'build_patient_state_snapshot',
+        code: 'VISIT_RECORD_PATIENT_STATE_SNAPSHOT_BUILD_FAILED',
+      });
     }
 
     let record;
@@ -1859,8 +1855,8 @@ async function authenticatedPOST(req: NextRequest) {
         soapPlan: result.handoffExtraction.soapPlan,
         expectedVersion: result.handoffExtraction.expectedVersion,
         requestContext,
-      }).catch((cause) => {
-        logger.warn(safeHandoffExtractionWarningContext(result.record.id), cause);
+      }).catch(() => {
+        logger.warn(safeHandoffExtractionWarningContext());
       });
     }
 
@@ -1879,15 +1875,13 @@ export async function POST(req: NextRequest) {
       return withSensitiveNoStore(await authenticatedPOST(req));
     } catch (err) {
       unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'visit_records_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
+      logger.error({
+        event: 'visit_records_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        code: 'VISIT_RECORD_WRITE_FAILED',
+      });
       return withSensitiveNoStore(internalError());
     }
   });
