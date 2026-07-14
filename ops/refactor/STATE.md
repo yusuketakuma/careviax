@@ -57,6 +57,24 @@
 
 ## 直近の作業
 
+- codex1: API-CONTRACT-002F-WRAPPED-EXPORT-TRACE (DONE; parent remains Partial, 2026-07-14; implementation `00d88d9bd`, `PUSHED`).
+  - current task / files inspected / root cause:
+    `withAuthContext`を使う全export route、shared export-audit helper、request-trace wrapper、route tests、API/auth/static ratchetを照合した。
+    Wrapperが生成・検証済みのrequest/correlation IDを保持している一方、audit-log、処方履歴、薬局在庫、連絡依頼、請求候補exportは
+    そのIDを`recordDataExportAudit`へ渡さず、response headerとfail-closed audit rowを同一requestとして相関できなかった。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    5 routeと対応testsだけを変更し、wrapper-owned `ctx.requestId` / `ctx.correlationId`を全export audit invocationへ渡した。
+    response headerは既存wrapperに一任し、手書きheaderや外部入力traceを追加していない。実response IDsとaudit引数/changesの一致を固定し、
+    query/transaction、CSV/XML本文、filename、status、no-store、redaction、audit failure semantics、DB write/network数は維持した。
+    PHI/secretをtraceへ含めず、患者識別子の本文・filename混入もない。Schema/migration、medical decision、UI、production dataは変更していない。
+  - validation results / remaining work / next action / rollback:
+    Focused 5 route files / 106 tests、shared helper込み6 files / 127 tests、独立privacy verifier APPROVED、exact ESLint/Prettier、
+    `pnpm typecheck`、8 GiB `pnpm typecheck:no-unused`、API response shape 0/0、API authz 0、route-auth 150 allowlisted / 214 direct / 0 new、
+    raw-org 116 / 0 new、client PHI-log、diffをPASS。全5 routeの実装commit `00d88d9bd`をfeature branchへpush済み。
+    非視覚server/API変更のためimagegen/browserなし。親にはmanual-auth PDF/print routes、care-report print audit、request-originを持たない
+    async bulk-export service、helper外AuditLog、SSR capture、success/error body、outbox origin trace設計が残る。Rollbackは`00d88d9bd`のrevertで
+    DB/data rollback不要。
+
 - codex2: E2E-PREFLIGHT-RLS-EXEMPT-001 (DONE, 2026-07-14; implementation `ae70862dd` + ratchet follow-up `42c89cd0d`, `PUSHED`).
   - current task / files inspected / root cause:
     Medical UI preflight、RLS schema/migrations/SSOT/contract test、display-id allocator/direct-access ratchet、local e2e DBを照合。
