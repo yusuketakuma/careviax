@@ -1,8 +1,9 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { prepareNextStandaloneRuntime } from './start-next-standalone';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { prepareNextStandaloneRuntime, waitForStandaloneChild } from './start-next-standalone';
 
 const tempRoots: string[] = [];
 
@@ -44,5 +45,26 @@ describe('prepareNextStandaloneRuntime', () => {
     mkdirSync(path.join(root, '.next/standalone'), { recursive: true });
     writeFileSync(path.join(root, '.next/standalone/server.js'), 'server');
     expect(() => prepareNextStandaloneRuntime(root)).toThrow(/asset source is missing: public/);
+  });
+});
+
+describe('waitForStandaloneChild', () => {
+  it('forwards repeated wrapper-only signals and removes listeners after child exit', async () => {
+    const signalSource = new EventEmitter();
+    const child = new EventEmitter() as EventEmitter & {
+      kill: (signal: NodeJS.Signals) => boolean;
+    };
+    child.kill = vi.fn(() => true);
+
+    const completion = waitForStandaloneChild(child, signalSource);
+    signalSource.emit('SIGTERM');
+    signalSource.emit('SIGINT');
+    child.emit('exit', null, 'SIGTERM');
+    await completion;
+
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    expect(child.kill).toHaveBeenCalledWith('SIGINT');
+    expect(signalSource.listenerCount('SIGINT')).toBe(0);
+    expect(signalSource.listenerCount('SIGTERM')).toBe(0);
   });
 });

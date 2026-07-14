@@ -26,18 +26,41 @@ export function prepareNextStandaloneRuntime(root = process.cwd()) {
   return serverPath;
 }
 
-export async function startNextStandalone(root = process.cwd()) {
-  const serverPath = prepareNextStandaloneRuntime(root);
+type StandaloneChild = {
+  kill: (signal: NodeJS.Signals) => boolean;
+  once(event: 'error', listener: (error: Error) => void): unknown;
+  once(
+    event: 'exit',
+    listener: (code: number | null, signal: NodeJS.Signals | null) => void,
+  ): unknown;
+};
 
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(process.execPath, [serverPath], {
-      cwd: root,
-      env: process.env,
-      stdio: 'inherit',
+type SignalSource = {
+  on: (event: 'SIGINT' | 'SIGTERM', listener: () => void) => unknown;
+  removeListener: (event: 'SIGINT' | 'SIGTERM', listener: () => void) => unknown;
+};
+
+export function waitForStandaloneChild(
+  child: StandaloneChild,
+  signalSource: SignalSource = process,
+) {
+  return new Promise<void>((resolve, reject) => {
+    const forwardSignal = (signal: NodeJS.Signals) => child.kill(signal);
+    const handleSigint = () => forwardSignal('SIGINT');
+    const handleSigterm = () => forwardSignal('SIGTERM');
+    const cleanup = () => {
+      signalSource.removeListener('SIGINT', handleSigint);
+      signalSource.removeListener('SIGTERM', handleSigterm);
+    };
+
+    signalSource.on('SIGINT', handleSigint);
+    signalSource.on('SIGTERM', handleSigterm);
+    child.once('error', (error) => {
+      cleanup();
+      reject(error);
     });
-
-    child.once('error', reject);
     child.once('exit', (code, signal) => {
+      cleanup();
       if (code === 0 || signal === 'SIGINT' || signal === 'SIGTERM') {
         resolve();
         return;
@@ -45,6 +68,16 @@ export async function startNextStandalone(root = process.cwd()) {
       reject(new Error(`Next.js standalone server exited with code ${code ?? 'unknown'}`));
     });
   });
+}
+
+export async function startNextStandalone(root = process.cwd()) {
+  const serverPath = prepareNextStandaloneRuntime(root);
+  const child = spawn(process.execPath, [serverPath], {
+    cwd: root,
+    env: process.env,
+    stdio: 'inherit',
+  });
+  await waitForStandaloneChild(child);
 }
 
 const invokedPath = process.argv[1];
