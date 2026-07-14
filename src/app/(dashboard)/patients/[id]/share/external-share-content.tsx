@@ -22,6 +22,7 @@ import {
   PatientWriteAvailabilityNotice,
   PATIENT_WRITE_AVAILABILITY_DESCRIPTION_ID,
 } from '@/components/features/patients/patient-write-availability-notice';
+import { PatientPinnedHeader } from '@/components/ui/patient-pinned-header';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -163,6 +164,17 @@ function ExternalShareLoadingState() {
       aria-label="患者共有ワークスペースを読み込み中"
       aria-live="polite"
     >
+      <div
+        className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-border/70 bg-card px-4 py-3"
+        aria-hidden="true"
+      >
+        <div className="min-w-0 basis-full space-y-2 sm:flex-1">
+          <Skeleton className="h-5 w-64 max-w-full" />
+          <Skeleton className="h-4 w-80 max-w-full" />
+        </div>
+        <Skeleton className="h-4 w-28" />
+      </div>
+
       <div className="flex items-start gap-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-4 py-3">
         <Skeleton className="mt-0.5 size-4 shrink-0 rounded-full" />
         <div className="min-w-0 flex-1 space-y-2">
@@ -289,7 +301,10 @@ function ExternalShareWorkspace({
       const overview = payload.data;
       return {
         id: overview.id,
-        name: overview.name ?? null,
+        display_id: overview.display_id,
+        name: overview.name,
+        name_kana: overview.name_kana,
+        birth_date: overview.birth_date,
         archive: overview.archive,
         patient_share_permissions: overview.patient_share_permissions,
         external_shares: overview.external_shares ?? [],
@@ -726,11 +741,41 @@ function ExternalShareWorkspace({
     );
   }
 
-  const recentShares = overviewQuery.data?.external_shares ?? [];
-  const recentSelfReports = overviewQuery.data?.self_reports ?? [];
+  const overview = overviewQuery.data;
+  if (!overview) {
+    return (
+      <div className="rounded-lg border border-border/70 bg-card p-4">
+        <ErrorState
+          variant="server"
+          title="患者情報を表示できません"
+          description="患者情報が応答に含まれていません。再試行してください。"
+          onRetry={() => void overviewQuery.refetch()}
+          live="polite"
+        />
+      </div>
+    );
+  }
+
+  const recentShares = overview.external_shares ?? [];
+  const recentSelfReports = overview.self_reports ?? [];
 
   return (
     <div className="space-y-4">
+      <PatientPinnedHeader
+        name={overview.name}
+        kana={overview.name_kana ?? undefined}
+        birthDate={overview.birth_date}
+        meta={
+          <span className="inline-flex flex-wrap items-baseline justify-end gap-x-1">
+            <span>患者ID</span>
+            <span className="break-all font-mono font-medium text-foreground">
+              {overview.display_id}
+            </span>
+          </span>
+        }
+        className="rounded-md border border-border/70 bg-card shadow-none"
+      />
+
       <PatientWriteAvailabilityNotice
         archive={effectivePatientArchive}
         patientName={overviewQuery.data?.name ?? null}

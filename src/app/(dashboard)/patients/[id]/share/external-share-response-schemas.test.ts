@@ -12,7 +12,10 @@ describe('external share response schemas', () => {
     const payload = {
       data: {
         id: 'patient_1',
+        display_id: 'PT-0001042',
         name: '佐藤 花子',
+        name_kana: 'サトウ ハナコ',
+        birth_date: '1948-02-03T00:00:00.000Z',
         archived_at: null,
         patient_share_permissions: {
           can_create_external_share: true,
@@ -49,11 +52,22 @@ describe('external share response schemas', () => {
           },
         ],
         org_id: 'must-be-stripped',
+        phone: '090-0000-0000',
+        medical_insurance_number: 'provider-only-insurance',
       },
     };
 
     const parsed = schema.parse(payload);
+    expect(parsed.data).toMatchObject({
+      id: 'patient_1',
+      display_id: 'PT-0001042',
+      name: '佐藤 花子',
+      name_kana: 'サトウ ハナコ',
+      birth_date: '1948-02-03T00:00:00.000Z',
+    });
     expect(parsed.data).not.toHaveProperty('org_id');
+    expect(parsed.data).not.toHaveProperty('phone');
+    expect(parsed.data).not.toHaveProperty('medical_insurance_number');
     expect(parsed.data).not.toHaveProperty('archived_at');
     expect(parsed.data.archive).toEqual({
       status: 'active',
@@ -71,6 +85,12 @@ describe('external share response schemas', () => {
     expect(
       schema.safeParse({ ...payload, data: { ...payload.data, id: 'patient_2' } }).success,
     ).toBe(false);
+    expect(
+      schema.safeParse({ ...payload, data: { ...payload.data, display_id: undefined } }).success,
+    ).toBe(false);
+    expect(schema.safeParse({ ...payload, data: { ...payload.data, name: null } }).success).toBe(
+      false,
+    );
     expect(
       schema.parse({
         ...payload,

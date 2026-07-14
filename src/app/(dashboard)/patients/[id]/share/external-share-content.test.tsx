@@ -189,6 +189,47 @@ describe('ExternalShareContent', () => {
     expect(screen.getByText('疼痛の相談')).toBeTruthy();
   });
 
+  it('pins exact patient identity before share actions without truncating the identifiers', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockReturnValue({
+      data: {
+        id: 'patient_1',
+        display_id: 'PT-0001042',
+        name: '共有対象患者 長い氏名でも省略しない',
+        name_kana: 'キョウユウタイショウカンジャ ナガイシメイデモショウリャクシナイ',
+        birth_date: '1948-02-03T00:00:00.000Z',
+        archive: ACTIVE_PATIENT_ARCHIVE,
+        patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
+        external_shares: [],
+        self_reports: [],
+        current_medications: [],
+        visit_schedules: [],
+        care_reports: [],
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    const patientContext = screen.getByRole('region', { name: '患者情報' });
+    expect(patientContext.textContent).toContain('共有対象患者 長い氏名でも省略しない');
+    expect(patientContext.textContent).toContain(
+      'キョウユウタイショウカンジャ ナガイシメイデモショウリャクシナイ',
+    );
+    expect(patientContext.textContent).toContain('1948/02/03');
+    expect(patientContext.textContent).toContain('患者ID');
+    expect(patientContext.textContent).toContain('PT-0001042');
+    expect(patientContext.getAttribute('data-sticky')).toBe('true');
+    expect(patientContext.querySelector('.truncate')).toBeNull();
+    expect(
+      patientContext.compareDocumentPosition(
+        screen.getByRole('button', { name: /共有リンクを発行/ }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('keeps share setup validation errors visible inline', () => {
     const mutate = vi.fn();
     useOrgIdMock.mockReturnValue('org_1');
@@ -258,7 +299,10 @@ describe('ExternalShareContent', () => {
           JSON.stringify({
             data: {
               id: patientId,
+              display_id: 'PT-0001042',
               name: '佐藤 花子',
+              name_kana: 'サトウ ハナコ',
+              birth_date: '1948-02-03T00:00:00.000Z',
               archived_at: null,
               patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
               external_shares: [],
@@ -575,6 +619,12 @@ describe('ExternalShareContent', () => {
     const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
       expect(String(input)).toBe('/api/external-access');
       expect(init?.method).toBe('POST');
+      const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      expect(requestBody.patient_id).toBe('patient_1');
+      expect(requestBody).not.toHaveProperty('display_id');
+      expect(requestBody).not.toHaveProperty('name');
+      expect(requestBody).not.toHaveProperty('name_kana');
+      expect(requestBody).not.toHaveProperty('birth_date');
       return new Response(
         JSON.stringify({
           data: {
@@ -596,7 +646,10 @@ describe('ExternalShareContent', () => {
     });
     useQueryMock.mockReturnValue({
       data: {
+        display_id: 'PT-0001042',
         name: '佐藤 花子',
+        name_kana: 'サトウ ハナコ',
+        birth_date: '1948-02-03T00:00:00.000Z',
         archive: ACTIVE_PATIENT_ARCHIVE,
         patient_share_permissions: FULL_PATIENT_SHARE_PERMISSIONS,
         external_shares: [],
@@ -1981,6 +2034,26 @@ describe('ExternalShareContent', () => {
 
     // 取得失敗を「共有実績ゼロ」に化けさせず、エラー＋再試行を提示する。
     expect(screen.getByText('共有状況を表示できません')).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 2, name: '共有設定' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed and offers recovery when a completed overview has no patient data', () => {
+    const refetch = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      refetch,
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    expect(screen.getByText('患者情報を表示できません')).toBeTruthy();
     expect(screen.queryByRole('heading', { level: 2, name: '共有設定' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));

@@ -105,7 +105,7 @@ export function PatientPinnedHeader({
       data-sticky={sticky}
       className={cn(
         'flex flex-wrap items-center gap-x-4 gap-y-2 border-b bg-card px-4 py-3 ring-1 ring-foreground/10',
-        sticky && 'sticky top-0 z-20',
+        sticky && 'sticky top-[var(--app-header-height)] z-20',
         className,
       )}
     >

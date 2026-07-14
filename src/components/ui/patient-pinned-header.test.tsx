@@ -93,10 +93,11 @@ describe('PatientPinnedHeader', () => {
     let root = container.querySelector('[data-sticky]') as HTMLElement;
     expect(root.dataset.sticky).toBe('true');
     expect(root.className).toContain('sticky');
+    expect(root.className).toContain('top-[var(--app-header-height)]');
     rerender(<PatientPinnedHeader name="A" sticky={false} now={NOW} />);
     root = container.querySelector('[data-sticky]') as HTMLElement;
     expect(root.dataset.sticky).toBe('false');
-    expect(root.className).not.toContain('sticky top-0');
+    expect(root.className).not.toContain('top-[var(--app-header-height)]');
   });
 
   it('exposes a labelled region for assistive tech', () => {

@@ -16,7 +16,10 @@ export function buildExternalShareOverviewResponseSchema(expectedPatientId: stri
       data: z
         .object({
           id: z.literal(expectedPatientId),
-          name: nullableTextSchema.optional(),
+          display_id: idSchema,
+          name: textSchema,
+          name_kana: nullableTextSchema,
+          birth_date: dateTimeSchema.nullable(),
           archived_at: dateTimeSchema.nullable(),
           patient_share_permissions: z
             .object({

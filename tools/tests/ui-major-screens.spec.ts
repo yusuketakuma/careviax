@@ -2020,6 +2020,12 @@ test.describe('major authenticated screens', () => {
         timeout: 60_000,
       },
     );
+    const patientContext = page.getByRole('region', { name: '患者情報' });
+    await expect(patientContext).toBeVisible();
+    await expect(patientContext).toContainText(demoContext.patientName);
+    await expect(patientContext).toContainText(demoContext.patientKana);
+    await expect(patientContext).toContainText('患者ID');
+    await expect(patientContext).toHaveAttribute('data-sticky', 'true');
     await writeScreenshot(page, 'patient-share-data');
     expect(errors).toEqual([]);
   });
