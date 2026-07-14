@@ -48,14 +48,30 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `TYPECHECK-NO-UNUSED-HEAP-001`のevidence同期、
-  `codex2`: `API-CONTRACT-003K-PDF-EXPORT-AUDIT-ERRORS`の10 exact paths。共有docsはcodex1が短時間保持中。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `PERM-DOC-SYNC-001A`のevidence同期、
+  `codex2`: `API-CONTRACT-003L-CARE-REPORT-PRINT-AUDIT-ERROR`の4 exact paths。共有docsはcodex1が短時間保持中。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: PERM-DOC-SYNC-001A / ACCESS-MATRIX-COVERAGE-001 (DONE; parent remains Partial, 2026-07-14; implementation `2c5aa56d7`, `PUSHED`).
+  - current task / files inspected / root cause:
+    `src/lib/auth/permission-matrix.ts`、既存permission tests、`docs/compliance/access-control-policy.md`のcapability表、`Plans.md`の
+    permission SSOT/coverage要件を照合。Runtime matrixは`Record<MemberRole, Permission>`で型固定されていた一方、policy表は独立管理で、
+    role、capability、permission bitの片側変更をCIで検出するsemantic parity guardがなかった。
+  - files changed / bugs fixed / authorization / privacy / performance:
+    Runtime matrixからfrozen `MEMBER_ROLES` / `PERMISSION_KEYS`を導出し、policy表をstrict parseするfocused testを追加した。
+    Exact role/capability集合、capability重複、row幅、許可cell値、`hasPermission`との全bit一致をfail-closedで検証する。
+    Permission値、account種別、route、RLS、audit、DB/API、PHI表示/外部出力は変更せず、runtime query/render/network costも追加していない。
+  - validation results / remaining work / next action / rollback:
+    Focused permission suites 2 files / 10 tests、exact ESLint、Prettier、diff、共有tree上の`pnpm typecheck`とbare
+    `pnpm typecheck:no-unused`をPASS。独立codex2 auth/privacy/test reviewもAPPROVE。非視覚authorization contract testのため
+    imagegen/browserは未使用。親`PERM-DOC-SYNC-001`には新account/support mode導入時のRLS proof、forbidden tests、audit requirementが残る。
+    Rollbackは`2c5aa56d7`のrevertでDB/data rollback不要。gbrain memory ID:
+    `projects/careviax/decisions/2026-07-14/keep-permission-docs-in-sync`。
 
 - codex2: API-CONTRACT-003K-PDF-EXPORT-AUDIT-ERRORS (DONE; parent remains Partial, 2026-07-14; implementation `e6a550258`, `PUSHED`).
   - current task / files inspected / root cause:
