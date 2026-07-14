@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
@@ -86,16 +87,14 @@ function staleConditionsConflict(expectedUpdatedAt: string, currentUpdatedAt: Da
   });
 }
 
-async function assertPatient(ctx: AuthContext, id: string) {
-  const patient = await prisma.patient.findFirst({
+async function findVisiblePatient(ctx: AuthContext, id: string) {
+  return prisma.patient.findFirst({
     where: applyPatientAssignmentWhere(
       { id, org_id: ctx.orgId },
       { userId: ctx.userId, role: ctx.role },
     ),
     select: { id: true, updated_at: true },
   });
-  if (!patient) throw new Error('PATIENT_NOT_FOUND');
-  return patient;
 }
 
 async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -109,12 +108,8 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
 
-  let patient;
-  try {
-    patient = await assertPatient(ctx, id);
-  } catch {
-    return notFound('患者が見つかりません');
-  }
+  const patient = await findVisiblePatient(ctx, id);
+  if (!patient) return notFound('患者が見つかりません');
 
   const conditions = await prisma.patientCondition.findMany({
     where: {
@@ -124,13 +119,22 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
   });
 
-  return success({
+  const response = success({
     data: conditions,
     meta: {
       expected_updated_at: patient.updated_at.toISOString(),
       version_basis: 'patient_updated_at',
     },
   });
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: patient.id,
+    targetType: 'patient',
+    targetId: patient.id,
+    view: 'patient_conditions',
+  });
+
+  return response;
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

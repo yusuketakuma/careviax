@@ -6,6 +6,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
@@ -24,16 +25,14 @@ import {
 import { detectDuplicatePatientContacts } from '@/lib/patient/duplicate-detection';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 
-async function assertPatient(ctx: AuthContext, id: string) {
-  const patient = await prisma.patient.findFirst({
+async function findVisiblePatient(ctx: AuthContext, id: string) {
+  return prisma.patient.findFirst({
     where: applyPatientAssignmentWhere(
       { id, org_id: ctx.orgId },
       { userId: ctx.userId, role: ctx.role },
     ),
     select: { id: true, updated_at: true },
   });
-  if (!patient) throw new Error('PATIENT_NOT_FOUND');
-  return patient;
 }
 
 function staleContactsConflict(expectedUpdatedAt: string, currentUpdatedAt: Date | null) {
@@ -55,12 +54,8 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
 
-  let patient;
-  try {
-    patient = await assertPatient(ctx, id);
-  } catch {
-    return notFound('患者が見つかりません');
-  }
+  const patient = await findVisiblePatient(ctx, id);
+  if (!patient) return notFound('患者が見つかりません');
 
   const contacts = await prisma.contactParty.findMany({
     where: {
@@ -72,7 +67,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
 
   const privacy = getPatientPrivacyFlags(ctx.role);
 
-  return success({
+  const response = success({
     data: contacts.map((contact) => ({
       ...contact,
       phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
@@ -86,6 +81,15 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       version_basis: 'patient_updated_at',
     },
   });
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: patient.id,
+    targetType: 'patient',
+    targetId: patient.id,
+    view: 'patient_contacts',
+  });
+
+  return response;
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

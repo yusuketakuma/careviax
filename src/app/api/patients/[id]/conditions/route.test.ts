@@ -13,6 +13,7 @@ const {
   deleteManyMock,
   createManyMock,
   findManyMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -24,6 +25,7 @@ const {
   deleteManyMock: vi.fn(),
   createManyMock: vi.fn(),
   findManyMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -47,6 +49,10 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/server/services/patient-field-revision', async (importActual) => {
@@ -156,6 +162,7 @@ describe('/api/patients/[id]/conditions PUT', () => {
     });
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(findManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns no-store condition data on read', async () => {
@@ -177,6 +184,20 @@ describe('/api/patients/[id]/conditions PUT', () => {
         version_basis: 'patient_updated_at',
       },
     });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 'corg1234567890123456789012',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+      {
+        patientId: 'patient_1',
+        targetType: 'patient',
+        targetId: 'patient_1',
+        view: 'patient_conditions',
+      },
+    );
   });
 
   it('adds no-store headers to GET auth rejection responses', async () => {
@@ -196,6 +217,7 @@ describe('/api/patients/[id]/conditions PUT', () => {
     expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(findManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('adds no-store headers when GET cannot find an assigned patient', async () => {
@@ -212,6 +234,24 @@ describe('/api/patients/[id]/conditions PUT', () => {
       message: '患者が見つかりません',
     });
     expect(findManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps patient lookup failures as sanitized 500 responses instead of false 404s', async () => {
+    const rawError = 'patient lookup database unavailable';
+    patientFindFirstMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(createGetRequest({ 'x-org-id': 'corg1234567890123456789012' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(findManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when condition reads fail', async () => {
@@ -230,6 +270,7 @@ describe('/api/patients/[id]/conditions PUT', () => {
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(JSON.stringify(body)).not.toContain('患者A');
     expect(JSON.stringify(body)).not.toContain('ワルファリン');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank patient ids before parsing condition payloads or replacing conditions', async () => {

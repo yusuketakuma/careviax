@@ -11,6 +11,7 @@ const {
   deleteManyMock,
   createManyMock,
   findManyMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   deleteManyMock: vi.fn(),
   createManyMock: vi.fn(),
   findManyMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -43,6 +45,10 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: vi.fn(),
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 import { GET, PUT } from './route';
@@ -127,6 +133,104 @@ describe('/api/patients/[id]/contacts PUT', () => {
     });
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(findManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit GET authorization rejections', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(
+        JSON.stringify({ code: 'FORBIDDEN', message: '患者情報の閲覧権限がありません' }),
+        { status: 403 },
+      ),
+    });
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(findManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('returns exact contact data for internal staff and audits the successful read once', async () => {
+    findManyMock.mockResolvedValueOnce([
+      {
+        id: 'contact_1',
+        name: '田中花子',
+        phone: '03-1234-5678',
+        fax: '03-9999-9999',
+        email: 'care@example.com',
+        address: '東京都千代田区4-5-6',
+      },
+    ]);
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          phone: '03-1234-5678',
+          fax: '03-9999-9999',
+          email: 'care@example.com',
+          address: '東京都千代田区4-5-6',
+        },
+      ],
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 'corg1234567890123456789012',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+      {
+        patientId: 'patient_1',
+        targetType: 'patient',
+        targetId: 'patient_1',
+        view: 'patient_contacts',
+      },
+    );
+  });
+
+  it('returns 404 only when the assigned patient lookup returns null', async () => {
+    patientFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      { params: Promise.resolve({ id: 'patient_unknown' }) },
+    );
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    expect(findManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps patient lookup failures as sanitized 500 responses instead of false 404s', async () => {
+    const rawError = 'patient lookup database unavailable';
+    patientFindFirstMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(findManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when contact reads fail', async () => {
@@ -146,6 +250,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(JSON.stringify(body)).not.toContain('患者A');
     expect(JSON.stringify(body)).not.toContain('090-1111-1111');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank patient ids before parsing contact payloads or replacing contacts', async () => {
@@ -773,5 +878,6 @@ describe('/api/patients/[id]/contacts PUT', () => {
         version_basis: 'patient_updated_at',
       },
     });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
   });
 });
