@@ -777,7 +777,7 @@ describe('InboundCommunicationsContent', () => {
     expect(screen.queryByRole('button', { name: /台帳.*反映|残数.*反映/ })).toBeNull();
   });
 
-  it('enables MedicationStock apply selector only after audited detail and explicit target quantity', async () => {
+  it('enables MedicationStock apply after audited detail and retries the exact failed input', async () => {
     const signalData = buildSignalData();
     signalData.data.items[0].signal.review_status = 'accepted';
     signalData.data.items[0].signal.stock_review!.has_medication_identity = true;
@@ -884,7 +884,7 @@ describe('InboundCommunicationsContent', () => {
     expect((applyButton as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(applyButton);
 
-    expect(mutateMock).toHaveBeenCalledWith({
+    const attemptedInput = {
       signalId: 'signal_1',
       targetStockItemId: 'stock_item_1',
       idempotencyKey: 'inbound-stock-apply:v1:signal_1:stock_item_1:observed_absolute:枚:4:::',
@@ -893,7 +893,8 @@ describe('InboundCommunicationsContent', () => {
         quantity: 4,
         unit: '枚',
       },
-    });
+    } as const;
+    expect(mutateMock).toHaveBeenCalledWith(attemptedInput);
 
     const mutationOptions = useMutationMock.mock.calls.find(([options]) =>
       String(options.mutationFn).includes('apply_to_medication_stock'),
@@ -904,13 +905,9 @@ describe('InboundCommunicationsContent', () => {
         idempotencyKey: string;
         observation: { kind: 'observed_absolute'; quantity: number; unit: string };
       }) => Promise<unknown>;
+      onError: (error: Error, input: typeof attemptedInput) => void;
     };
-    await mutationOptions.mutationFn({
-      signalId: 'signal_1',
-      targetStockItemId: 'stock_item_1',
-      idempotencyKey: 'inbound-stock-apply:v1:signal_1:stock_item_1:observed_absolute:枚:4:::',
-      observation: { kind: 'observed_absolute', quantity: 4, unit: '枚' },
-    });
+    await mutationOptions.mutationFn(attemptedInput);
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/communications/inbound/signals/signal_1',
@@ -939,6 +936,27 @@ describe('InboundCommunicationsContent', () => {
         headers: expect.objectContaining({ 'x-org-id': 'org_1' }),
       }),
     );
+
+    const poisonError = new Error('佐藤花子 様 / ロキソニン / token=secret');
+    act(() => {
+      mutationOptions.onError(poisonError, attemptedInput);
+    });
+
+    const updatedSelector = within(screen.getByTestId('stock-apply-selector-signal_1'));
+    expect(updatedSelector.getByDisplayValue('4')).toBeTruthy();
+    expect(updatedSelector.getAllByText('残数台帳へ反映できませんでした')).toHaveLength(1);
+    expect(
+      updatedSelector.getByText(
+        '反映処理に失敗しました。入力内容と受信シグナルは保持されています。 通信状態を確認して、同じ反映内容を再試行してください。',
+      ),
+    ).toBeTruthy();
+    expect(updatedSelector.queryByText(poisonError.message)).toBeNull();
+
+    fireEvent.click(updatedSelector.getByRole('button', { name: '残数台帳への反映を再試行' }));
+
+    expect(mutateMock).toHaveBeenCalledTimes(2);
+    expect(mutateMock).toHaveBeenNthCalledWith(1, attemptedInput);
+    expect(mutateMock).toHaveBeenNthCalledWith(2, attemptedInput);
   });
 
   it('creates a pharmacist review task from the selected signal candidate key only', async () => {

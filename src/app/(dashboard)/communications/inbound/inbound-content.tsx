@@ -911,6 +911,8 @@ export function InboundCommunicationsContent() {
   const [reviewFailureInput, setReviewFailureInput] = useState<InboundSignalReviewInput | null>(
     null,
   );
+  const [stockApplyFailureInput, setStockApplyFailureInput] =
+    useState<StockApplyMutationInput | null>(null);
   const [stockApplyForms, setStockApplyForms] = useState<Record<string, StockApplyFormState>>({});
   const [sourceMappingForm, setSourceMappingForm] =
     useState<InboundSourceMappingFormState>(EMPTY_SOURCE_MAPPING_FORM);
@@ -1178,7 +1180,11 @@ export function InboundCommunicationsContent() {
         }),
       });
     },
+    onMutate: () => {
+      setStockApplyFailureInput(null);
+    },
     onSuccess: async (response) => {
+      setStockApplyFailureInput(null);
       toast.success(
         response.data.idempotent_replay
           ? '残数台帳への反映は既に処理済みです'
@@ -1200,7 +1206,8 @@ export function InboundCommunicationsContent() {
           : Promise.resolve(),
       ]);
     },
-    onError: (error) => {
+    onError: (error, input) => {
+      if (input) setStockApplyFailureInput(input);
       clientLog.warn('inbound_communication.stock_apply_failed', error, {
         route: '/communications/inbound',
         entityType: 'medication_stock_observation',
@@ -2521,6 +2528,22 @@ export function InboundCommunicationsContent() {
                                         </div>
                                       </div>
                                     )}
+                                    {stockApplyFailureInput?.signalId === item.signal_id ? (
+                                      <ErrorState
+                                        variant="server"
+                                        size="inline"
+                                        title="残数台帳へ反映できませんでした"
+                                        cause="反映処理に失敗しました。入力内容と受信シグナルは保持されています。"
+                                        nextAction="通信状態を確認して、同じ反映内容を再試行してください。"
+                                        onRetry={() =>
+                                          stockApplyMutation.mutate(stockApplyFailureInput)
+                                        }
+                                        retryLabel="残数台帳への反映を再試行"
+                                        retryVariant="outline"
+                                        retryDisabled={stockApplyMutation.isPending}
+                                        headingLevel={4}
+                                      />
+                                    ) : null}
                                   </div>
                                 ) : null}
                                 {taskFailureCandidateKey === item.candidate_key ? (
