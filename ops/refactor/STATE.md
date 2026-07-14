@@ -48,15 +48,33 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `AUTHZ-SELF-REPORT-READ-AUDIT-001`の2 source pathsと
-  `AUTHZ-PRESCRIPTION-INTAKE-READ-AUDIT-001`のevidence同期、`codex2`: `API-CONTRACT-003M-BILLING-EXPORT-AUDIT-ERROR`の4 exact paths。
-  共有docsはcodex1が短時間保持中。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `AUTHZ-SELF-REPORT-READ-AUDIT-001`のevidence同期、
+  `codex2`: `API-CONTRACT-003M-BILLING-EXPORT-AUDIT-ERROR`をland済みで次のexact-path ownership通知待ち。共有docsはcodex1が短時間保持中。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: AUTHZ-SELF-REPORT-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `f9e141185`, `PUSHED`).
+  - current task / files inspected / root cause:
+    `src/app/api/patient-self-reports/[id]/route.ts`とroute tests、self-report response masking、assignment predicate、canonical
+    `phi-read-audit` helper/design、`ROUTE-AUTHZ-COVERAGE-001`を照合。Detail GETはorg/assignment、role別masking、sensitive no-storeを持つ一方、
+    家族名、続柄、自己申告件名/本文、希望連絡時間の成功readに標準PHI auditがなかった。さらにassignment確認後の最終detail queryが
+    `id + org_id`だけで、並行patient再紐付け時に確認済みpatientと返却行がずれるTOCTOU余地があった。
+  - files changed / bugs fixed / authorization / privacy / medical safety / performance:
+    最終detail queryへassignment確認済み`patient_id`を再条件化し、driftを404/no-store/zero-auditへfail-closed化した。成功後だけcanonical
+    fire-and-forget read-auditを呼び、authoritative report/patient IDと`patient_self_report_detail` viewだけを記録する。家族名、続柄、件名、本文、
+    希望連絡時間はauditへ入れない。薬剤師のunmasked responseと事務のmasked response双方を監査する。Permission、masking、response、PATCH、
+    DB/network回数は不変で、既存queryへのpredicate追加と非blocking audit writeだけ。
+  - validation results / remaining work / next action / rollback:
+    Focused route 1 file / 20 tests、exact ESLint、Prettier、diff、API authz、route-auth、API response shape、client PHI-log、raw-org guard、
+    final drift guard後の`pnpm typecheck`とbare `pnpm typecheck:no-unused`をPASS。Success pharmacist/clerkだけ監査し、blank/assignment外/drift/
+    throw/auth拒否はzero-audit。独立codex2 medical/privacy/auth/audit reviewは初回TOCTOU指摘を修正後APPROVE。非視覚audit/auth変更のため
+    imagegen/browser未使用。親`ROUTE-AUTHZ-COVERAGE-001`には他PHI detail GET棚卸しとroute matrix固定が残る。
+    Rollbackは`f9e141185`のrevertでDB/data rollback不要。gbrain memory ID:
+    `projects/careviax/decisions/2026-07-14/audit-self-report-detail-after-stable-assignment`。
 
 - codex2: API-CONTRACT-003M-BILLING-EXPORT-AUDIT-ERROR (DONE; parent remains Partial, 2026-07-14; implementation `23b94440e`, `PUSHED`).
   - current task / files inspected / root cause:
