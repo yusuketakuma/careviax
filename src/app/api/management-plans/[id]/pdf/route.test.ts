@@ -43,6 +43,11 @@ function createGetRequest() {
   return new NextRequest('http://localhost/api/management-plans/plan_1/pdf');
 }
 
+function expectRequestTrace(response: Response) {
+  expect(response.headers.get('X-Request-Id')).toBe('request_management_plan_pdf_1');
+  expect(response.headers.get('X-Correlation-Id')).toBe('correlation_management_plan_pdf_1');
+}
+
 describe('/api/management-plans/[id]/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -51,6 +56,8 @@ describe('/api/management-plans/[id]/pdf', () => {
         orgId: 'org_1',
         userId: 'user_1',
         role: 'pharmacist',
+        requestId: 'request_management_plan_pdf_1',
+        correlationId: 'correlation_management_plan_pdf_1',
       },
     });
     pdfResponseMock.mockReturnValue(
@@ -69,6 +76,7 @@ describe('/api/management-plans/[id]/pdf', () => {
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '管理計画書IDが不正です',
@@ -90,6 +98,7 @@ describe('/api/management-plans/[id]/pdf', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     expect(buildManagementPlanPdfMock).toHaveBeenCalledWith('org_1', 'plan_1', {
       userId: 'user_1',
       role: 'pharmacist',
@@ -97,8 +106,68 @@ describe('/api/management-plans/[id]/pdf', () => {
     expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'plan.pdf');
     expect(recordDataExportAuditMock).toHaveBeenCalledWith(
       expect.any(Object),
-      expect.objectContaining({ targetType: 'management_plan', format: 'pdf', targetId: 'plan_1' }),
+      expect.objectContaining({
+        targetType: 'management_plan',
+        format: 'pdf',
+        targetId: 'plan_1',
+        requestId: 'request_management_plan_pdf_1',
+        correlationId: 'correlation_management_plan_pdf_1',
+      }),
     );
+  });
+
+  it('returns a traced sanitized 500 when response creation fails after the audit', async () => {
+    buildManagementPlanPdfMock.mockResolvedValue({
+      buffer: Buffer.from('pdf'),
+      fileName: 'plan.pdf',
+    });
+    pdfResponseMock.mockImplementationOnce(() => {
+      throw new Error('患者 山田花子 090-1234-5678 raw management plan response detail');
+    });
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expectRequestTrace(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw management plan response detail');
+  });
+
+  it('fails closed when the management plan PDF export audit cannot be recorded', async () => {
+    buildManagementPlanPdfMock.mockResolvedValue({
+      buffer: Buffer.from('pdf'),
+      fileName: 'plan.pdf',
+    });
+    recordDataExportAuditMock.mockRejectedValueOnce(
+      new Error('audit unavailable for 山田 太郎 provider raw error'),
+    );
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expectRequestTrace(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'MANAGEMENT_PLAN_PDF_EXPORT_AUDIT_FAILED',
+      message: '管理計画書 PDF 出力監査を記録できませんでした',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田 太郎');
+    expect(JSON.stringify(body)).not.toContain('provider raw error');
+    expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
+    expect(pdfResponseMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 when the pdf source is missing', async () => {
@@ -110,6 +179,7 @@ describe('/api/management-plans/[id]/pdf', () => {
 
     expect(response.status).toBe(404);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     expect(pdfResponseMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
@@ -141,6 +211,7 @@ describe('/api/management-plans/[id]/pdf', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     const body = await response.text();
     expect(body).toContain('EXTERNAL_PDF_RENDER_FAILED');
     expect(body).toContain('管理計画書 PDF を生成できませんでした');

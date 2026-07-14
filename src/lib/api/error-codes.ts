@@ -117,6 +117,27 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'retry',
     messageLabel: 'api.error.internal',
   },
+  MANAGEMENT_PLAN_PDF_EXPORT_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.management_plan.pdf_export_audit_failed',
+  },
+  MEDICATION_CALENDAR_PDF_EXPORT_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.medication_calendar.pdf_export_audit_failed',
+  },
+  MEDICATION_HISTORY_PDF_EXPORT_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.medication_history.pdf_export_audit_failed',
+  },
   PHARMACY_DRUG_STOCK_EXPORT_AUDIT_FAILED: {
     httpStatus: 500,
     logLevel: 'error',
@@ -158,6 +179,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     retryable: false,
     recoveryAction: 'correct_input',
     messageLabel: 'api.error.validation.generic',
+  },
+  VISIT_RECORD_LIST_PDF_EXPORT_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.visit_record_list.pdf_export_audit_failed',
   },
   VISIT_RECORD_PDF_EXPORT_AUDIT_FAILED: {
     httpStatus: 500,

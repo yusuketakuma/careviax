@@ -107,6 +107,27 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "MANAGEMENT_PLAN_PDF_EXPORT_AUDIT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.management_plan.pdf_export_audit_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
+        "MEDICATION_CALENDAR_PDF_EXPORT_AUDIT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.medication_calendar.pdf_export_audit_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
+        "MEDICATION_HISTORY_PDF_EXPORT_AUDIT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.medication_history.pdf_export_audit_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "PHARMACY_DRUG_STOCK_EXPORT_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",
@@ -148,6 +169,13 @@ describe('API error code registry', () => {
           "messageLabel": "api.error.validation.generic",
           "recoveryAction": "correct_input",
           "retryable": false,
+        },
+        "VISIT_RECORD_LIST_PDF_EXPORT_AUDIT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.visit_record_list.pdf_export_audit_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
         },
         "VISIT_RECORD_PDF_EXPORT_AUDIT_FAILED": {
           "httpStatus": 500,

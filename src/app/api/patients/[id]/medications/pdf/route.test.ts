@@ -43,11 +43,22 @@ function createGetRequest() {
   return new NextRequest('http://localhost/api/patients/patient_1/medications/pdf');
 }
 
+function expectRequestTrace(response: Response) {
+  expect(response.headers.get('X-Request-Id')).toBe('request_medication_history_pdf_1');
+  expect(response.headers.get('X-Correlation-Id')).toBe('correlation_medication_history_pdf_1');
+}
+
 describe('/api/patients/[id]/medications/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
-      ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        requestId: 'request_medication_history_pdf_1',
+        correlationId: 'correlation_medication_history_pdf_1',
+      },
     });
     pdfResponseMock.mockReturnValue(new Response('pdf', { status: 200 }));
     recordDataExportAuditMock.mockResolvedValue(undefined);
@@ -65,6 +76,7 @@ describe('/api/patients/[id]/medications/pdf', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     expect(buildMedicationHistoryPdfMock).toHaveBeenCalledWith('org_1', 'patient_1', {
       userId: 'user_1',
       role: 'pharmacist',
@@ -76,8 +88,64 @@ describe('/api/patients/[id]/medications/pdf', () => {
         targetType: 'medication_history',
         format: 'pdf',
         targetId: 'patient_1',
+        requestId: 'request_medication_history_pdf_1',
+        correlationId: 'correlation_medication_history_pdf_1',
       }),
     );
+  });
+
+  it('returns a traced sanitized 500 when response creation fails after the audit', async () => {
+    buildMedicationHistoryPdfMock.mockResolvedValue({
+      buffer: Buffer.from('pdf'),
+      fileName: 'medications.pdf',
+    });
+    pdfResponseMock.mockImplementationOnce(() => {
+      throw new Error('患者 山田花子 090-1234-5678 raw medication history response detail');
+    });
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expectRequestTrace(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw medication history response detail');
+  });
+
+  it('fails closed when the medication history PDF export audit cannot be recorded', async () => {
+    buildMedicationHistoryPdfMock.mockResolvedValue({
+      buffer: Buffer.from('pdf'),
+      fileName: 'medications.pdf',
+    });
+    recordDataExportAuditMock.mockRejectedValueOnce(
+      new Error('audit unavailable for 山田 太郎 provider raw error'),
+    );
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expectRequestTrace(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'MEDICATION_HISTORY_PDF_EXPORT_AUDIT_FAILED',
+      message: '薬歴 PDF 出力監査を記録できませんでした',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田 太郎');
+    expect(JSON.stringify(body)).not.toContain('provider raw error');
+    expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
+    expect(pdfResponseMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank patient ids before building or auditing the pdf', async () => {
@@ -87,6 +155,7 @@ describe('/api/patients/[id]/medications/pdf', () => {
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
@@ -104,6 +173,7 @@ describe('/api/patients/[id]/medications/pdf', () => {
 
     expect(response.status).toBe(404);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     expect(pdfResponseMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
@@ -119,6 +189,7 @@ describe('/api/patients/[id]/medications/pdf', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     const body = await response.text();
     expect(body).toContain('EXTERNAL_PDF_RENDER_FAILED');
     expect(body).toContain('薬歴 PDF を生成できませんでした');
@@ -156,6 +227,7 @@ describe('/api/patients/[id]/medications/pdf', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     const body = await response.text();
     expect(body).toContain('EXTERNAL_PDF_RENDER_FAILED');
     expect(body).toContain('薬歴 PDF を生成できませんでした');
