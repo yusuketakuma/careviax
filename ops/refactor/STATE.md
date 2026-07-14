@@ -174,6 +174,40 @@
     lifetime等、`API-CONTRACT-003`には他route固有・動的codeの棚卸しが残る。患者overview SSR auth/RLS/read-audit、full-history movement
     projection/migration、purpose strict enumは既存のhuman/high-risk gateを維持する。
 
+- codex1 + codex2 + codex3 + codex4: PLANS-UNFINISHED-ONLY-001
+  (DONE / PUSHED, 2026-07-14; implementation `bed2a5ed2`).
+  - objective / files inspected / root cause:
+    ユーザー最新指示「完了済みタスクはPlans.mdから削除。未実行タスクのみ残す」を正本化した。`Plans.md`、active-board checker/test、
+    `ops/refactor/STATE.md`、git commit evidenceを全agentで照合し、active board内にDone/frozen表、89件のexplicit DONE、256件の
+    completed-derived履歴、確定済みD-01..D-15 decision表が残り、既存checkerもそれらを必須化していたことを確認した。
+  - implementation / safety / remaining preservation:
+    `Plans.md`を719行から263行へ縮約し、完了task/evidenceはSTATE・git・archive/decisions参照へ移した。Partial 7、implementation queue 40、
+    frontend queue 8のIDはHEAD比で不変。Blocked/Discovered/Verify required、full-history search design gate、API契約親taskを保持し、
+    S3 Object Lockの未実施live CORS/role/KMS/browser proofを`S3-OBJECT-LOCK-LIVE-VERIFY-001` Human gateへ書き換えた。初回reviewで
+    広域削除に巻き込んだ非DONE 9件を検出し、元status/gate/stop textのままCurrent unresolvedへ復元。自動set比較で非DONE ID欠落0を確認した。
+  - guard / coordination / review:
+    checkerからDone表・completed-derived ID依存を除去し、Done/frozen summary/legacy section/structured DONE-COMPLETED bulletの再混入を
+    fail-closedにするinverse ratchetを追加。既存の7/40/8件数、active queue status、legacy ID/v8、live API debt、archive境界guardは維持した。
+    `codex1`がPlans、`codex3`がchecker exact2、`codex2`が未完了欠落監査、`codex4`がguard独立reviewを担当し、最終APPROVE。
+  - validation / commit:
+    Checker focused 1 file / 13 tests、`pnpm plans:active:check`、exact ESLint/Prettier、`git diff --check`をPASS。Safe feature branchへ
+    non-force pushし、`bed2a5ed2`はPlans + checker/testの3 filesだけを含む。Docs/tooling整理でruntime query/network/dependencyは不変。
+    Oracleは全agentで未使用。Buildはユーザー方針どおり未実行。最終統合HEADでは単一直列の
+    `pnpm typecheck && pnpm typecheck:no-unused`をPASSした。
+
+- codex2 + codex4 + codex1 integration: API-CONTRACT-003O-FILE-PRESIGNED-JSON-DISABLED
+  (DONE / PUSHED, 2026-07-14; implementation `cb2cb7466`; parent `API-CONTRACT-003` remains Partial).
+  - defect / implementation:
+    `FILE_PRESIGNED_DOWNLOAD_JSON_DISABLED`の固定code/message/410がcompatibility `error()`でstatusを重複指定していた。410/info/
+    retryable=false/return_to_previous/message label付きtyped registryへ追加し、固定constructorだけを`registeredError()`へ移行した。
+    Registryは30から31 codes。Legacy production disable gateはauth前の410、認証経路はvalidation後のsame-origin 307 redirectまたは固定410で、
+    exact body/no-details、sensitive no-store、path-segment encodingを維持した。DB/storage/presign/audit/notification/external call、PHI、signed URL追加は0。
+  - review / validation / commit:
+    `codex4`実装、`codex2`独立reviewでfreeze SHA256一致・APPROVE。Registry/response helper/route/API conventions focused 4 files / 25 tests、
+    API authz/response-shape/route-auth、exact ESLint/Prettier/diffをPASS。3 owned filesだけを`cb2cb7466`へcommitし、safe feature branchへ
+    non-force push。Build/Oracleはユーザー方針どおり未実行。最終統合HEADでは単一直列の
+    `pnpm typecheck && pnpm typecheck:no-unused`をPASSした。追加query/network/dependency/perf workはない。
+
 - codex1: MEDSAFE-PATIENT-CONTEXT-SHARE-001 / shared patient context hardening
   (VERIFY_REQUIRED, 2026-07-14; implementation/push `d3921d72e`).
   - current task / files inspected / root cause:
