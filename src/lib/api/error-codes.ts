@@ -47,6 +47,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'sign_in',
     messageLabel: 'api.error.auth.unauthenticated',
   },
+  CARE_REPORT_PDF_EXPORT_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.care_report.pdf_export_audit_failed',
+  },
   COMMUNICATION_REQUEST_EXPORT_AUDIT_FAILED: {
     httpStatus: 500,
     logLevel: 'error',
@@ -60,6 +67,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     retryable: true,
     recoveryAction: 'retry',
     messageLabel: 'api.error.communication_request.export_failed',
+  },
+  CONFERENCE_NOTE_PDF_EXPORT_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.conference_note.pdf_export_audit_failed',
   },
   EXTERNAL_FILE_UPLOAD_FAILED: {
     httpStatus: 502,
@@ -110,12 +124,26 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'retry',
     messageLabel: 'api.error.rate_limited',
   },
+  TRACING_REPORT_PDF_EXPORT_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.tracing_report.pdf_export_audit_failed',
+  },
   VALIDATION_ERROR: {
     httpStatus: 400,
     logLevel: 'info',
     retryable: false,
     recoveryAction: 'correct_input',
     messageLabel: 'api.error.validation.generic',
+  },
+  VISIT_RECORD_PDF_EXPORT_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.visit_record.pdf_export_audit_failed',
   },
   WORKFLOW_CONFLICT: {
     httpStatus: 409,

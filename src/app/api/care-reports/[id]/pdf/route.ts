@@ -3,7 +3,6 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import {
   conflict,
-  error,
   internalError,
   notFound,
   registeredError,
@@ -74,10 +73,9 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     });
   } catch {
     return withSensitiveNoStore(
-      error(
+      registeredError(
         'CARE_REPORT_PDF_EXPORT_AUDIT_FAILED',
         '報告書 PDF 出力監査を記録できませんでした',
-        500,
       ),
     );
   }

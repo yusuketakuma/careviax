@@ -1,7 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { error, registeredError, notFound, validationError } from '@/lib/api/response';
+import { notFound, registeredError, validationError } from '@/lib/api/response';
 import { pdfResponse } from '@/lib/api/pdf-response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -57,10 +57,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
   } catch {
     return withSensitiveNoStore(
-      error(
+      registeredError(
         'VISIT_RECORD_PDF_EXPORT_AUDIT_FAILED',
         '訪問記録 PDF 出力監査を記録できませんでした',
-        500,
       ),
     );
   }
