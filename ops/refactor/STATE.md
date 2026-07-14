@@ -110,6 +110,41 @@
     code groupsとinitial ledgerはexact pathsだけでcommitし、feature branchへnon-force push済み。CI/deployはmain push限定のため
     feature branch pushで起動していない。上記high-risk taskはdesign/test matrixを先行し、policy決定なしに権限を拡張しない。
 
+- codex1 + codex2 + codex3 + codex4: post-timeline P1 closure / export-purpose and audit-trace convergence
+  (DONE / PUSHED, 2026-07-14; implementations `5bdfb8ba1`, `e131566cd`, `5f44ec61d`, `024ee002c`, `9a8fc4082`).
+  - current tasks / files inspected / defects fixed:
+    Field revision category filterがbounded subsetの末尾を患者全体の「現在」と表示する誤認、pharmacy invoice legacy snapshotの
+    hostile `patient_display_mode`をPDF/auditへ出せる境界、billing/pharmacy PDFのtrace欠落とaudit/render/late failure混同、
+    care report detail成功readのPHI audit欠落、薬局間PDFの自由文字purposeが監査へ保存されない一方でDB E2Eだけ保存を期待する
+    contract drift、care report print-auditのresponse/audit trace不一致を閉じた。Live manual-auth PDFは10 routesであることを再照合し、
+    `002G/H`後に残っていたbilling 2 routesを`002I`で収束した。Typed API error registryは27から29 codes。
+  - implementation / privacy / stability / performance:
+    Filter中はcurrent terminusを非表示。Billing/pharmacy PDFは全post-auth exitをtrace+no-storeへ統一し、auditをPDF responseより先に
+    await、render/audit/late responseをfixed taxonomyへ分離、patient display modeをliteral `management_number`へfail-closed化した。
+    Care report detailはaccess/enrichment/response成功後だけpatient/report/fixed viewをexact-once監査し、失敗枝はzero-audit。
+    PDF purposeはclient-safe typed SSOT `partner_cooperation_monthly_pdf`へ即時正規化し、raw queryをaudit/loggerへ渡さず、
+    `pharmacy_invoice` / `pharmacy_free_cooperation_report`だけでexact codeをwriter/read sanitizerへ保持する。既存1..200 admissionは
+    rollback互換期間だけ維持し、UI 2導線/API callers/DB E2E期待を同期。Print-auditは同じrequest/correlation IDsを全post-auth
+    responseとauditへ渡し、pre-auth、二重access check、OCC、audit-before-contentを維持した。追加DB query、network、dependency、
+    unbounded work、N+1はない。UI変更はhref query値だけで視覚構造を変えないためimagegenは非該当。
+  - agent coordination / review:
+    `codex1`がintegration/partial staging/commit/push、`codex2`がfield closure・dirty E2E hunk map・review、`codex3`が002I/002Jと
+    independent reviews、`codex4`がpurpose design/implementationと002I/002J reviewを担当。Exact-path freeze SHA256を照合し、
+    全sliceが独立APPROVE。Oracleは全agentで未使用。既存dirty `ui-major-screens` / `ui-route-mocked-smoke`はpurpose 5 hunksだけを
+    partial stageし、patientDisplayId/share/auth helper hunksをunstagedのまま保存した。
+  - validation / build policy:
+    Field 1 file / 11、002I focused 5 / 50 + related 10 / 465、care detail route+helper 46、purpose focused 6 / 473、
+    print-audit 1 / 21 tests PASS。Current integrated HEADで`pnpm typecheck`と`pnpm typecheck:no-unused` PASS、変更24 TS/TSXのESLint PASS。
+    `format:check`、Plans、frontend contract、client JSON schema（361/0）、API authz/shape、route auth（150/214/0）、client PHI log/display、
+    DTO direct return（31/0）、module boundaries、query shape、raw-org guard（116/0）、colors、typography、date slicesの16 static gatesと
+    `git diff --check`をPASS。ユーザー指示によりbuildは実行せず、build依存DB/browser E2Eも保留。これはtest failureではなく
+    明示的なverification gapとして残す。
+  - commit / push / remaining:
+    上記5 scoped commitsをsafe feature branchへnon-force pushし、remote HEAD `9a8fc4082ed5`、local/remote `0 0`、branch Actions runは
+    `[]`でdeployなし。次のsmallest Plans 002 candidateはfile download route/helperのresponse=audit trace exact4。
+    Async medication bulk exportはqueue input/job lifetimeまで広がるため別design、purposeのstrict enum移行は互換期間後、患者overview
+    SSR auth/RLS/read-auditはhigh-risk test matrix/human review、full-history movement searchはprojection/migration review後とする。
+
 - codex1: MEDSAFE-PATIENT-CONTEXT-SHARE-001 / shared patient context hardening
   (VERIFY_REQUIRED, 2026-07-14; implementation/push `d3921d72e`).
   - current task / files inspected / root cause:
