@@ -82,6 +82,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'retry',
     messageLabel: 'api.error.conference_note.pdf_export_audit_failed',
   },
+  EXTERNAL_ACCESS_VIEW_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.external_access.view_audit_failed',
+  },
   EXTERNAL_FILE_UPLOAD_FAILED: {
     httpStatus: 502,
     logLevel: 'error',

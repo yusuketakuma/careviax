@@ -72,6 +72,13 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "EXTERNAL_ACCESS_VIEW_AUDIT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.external_access.view_audit_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "EXTERNAL_FILE_UPLOAD_FAILED": {
           "httpStatus": 502,
           "logLevel": "error",

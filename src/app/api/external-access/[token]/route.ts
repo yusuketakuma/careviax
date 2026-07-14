@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { error, success, notFound } from '@/lib/api/response';
+import { registeredError, success, notFound } from '@/lib/api/response';
 import { getClientIp } from '@/lib/api/request-ip';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readExternalAccessPayload } from '@/server/services/external-access';
@@ -28,7 +28,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
       return withSensitiveNoStore(notFound('患者情報が見つかりません'));
     }
     return withSensitiveNoStore(
-      error('EXTERNAL_ACCESS_VIEW_AUDIT_FAILED', '外部共有の閲覧監査を記録できませんでした', 500),
+      registeredError(
+        'EXTERNAL_ACCESS_VIEW_AUDIT_FAILED',
+        '外部共有の閲覧監査を記録できませんでした',
+      ),
     );
   }
   return withSensitiveNoStore(success({ data: readResult.payload }));

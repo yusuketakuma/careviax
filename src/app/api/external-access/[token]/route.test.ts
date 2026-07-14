@@ -181,7 +181,14 @@ describe('/api/external-access/[token]', () => {
   });
 
   it('fails closed when the successful external view cannot be audited', async () => {
-    readExternalAccessPayloadMock.mockResolvedValueOnce({ ok: false, kind: 'audit_failed' });
+    readExternalAccessPayloadMock.mockResolvedValueOnce({
+      ok: false,
+      kind: 'audit_failed',
+      details: {
+        patientName: 'LEAK_PATIENT_NAME',
+        providerMessage: 'LEAK_RAW_AUDIT_ERROR',
+      },
+    });
 
     const response = await GET(makeRequest('1234'), {
       params: Promise.resolve({ token: 'token_1' }),
@@ -189,7 +196,8 @@ describe('/api/external-access/[token]', () => {
 
     expect(response.status).toBe(500);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    await expect(response.json()).resolves.toMatchObject({
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    await expect(response.json()).resolves.toEqual({
       code: 'EXTERNAL_ACCESS_VIEW_AUDIT_FAILED',
       message: '外部共有の閲覧監査を記録できませんでした',
     });
