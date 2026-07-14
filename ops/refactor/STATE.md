@@ -49,15 +49,23 @@
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
   共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `UI-THEME-CLINICAL-SIGNAL-001`のSSOT/Plans/ledgerと
-  frontend runtime foundation（Phase 2A fixed shell、Phase 2B-a shared page frame）、`codex2`: backend限定の
-  `AUTHZ-DISPENSE-WORKBENCH-READ-AUDIT-001`（`src/app/api/dispense-tasks/[id]/workbench/route.ts`とtest）。
-  `ops/refactor/STATE.md`はcodex1が台帳同期のため短時間保持中。`Plans.md` / `docs/ui-ux-design-guidelines.md` / `RUN_LOCK.md`に現在のwriterはいない。
+  frontend runtime foundation（Phase 2A fixed shell、Phase 2B-a shared page frame）。`codex2`のbackend sliceは`ee2e4c395`まで完了し、
+  current UI handoff中は新規claim/editをHOLD。`Plans.md` / `docs/ui-ux-design-guidelines.md` / `ops/refactor/STATE.md` / `RUN_LOCK.md`に現在のwriterはいない。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex2: AUTHZ-DISPENSE-WORKBENCH-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `ee2e4c395`, not pushed).
+  - Active UI consumerを`GET /api/dispense-tasks/[id]/workbench`まで追跡し、production route/testとbackend protected GET harnessのexact 3 pathsのみ変更。
+    Existing org/assignment-scoped task queryがselect済みのauthoritative patient/task IDを使い、アレルギー、腎機能、処方差分、疑義、在庫等の
+    enrichment/projectionが全て成功した後だけcanonical `dispense_task` / `dispense_task_workbench` read auditをexact-once記録した。
+    Audit payloadへPHI本文を入れず、追加query、response shape、POST、performance helperは不変。Unexpected regular GET errorは
+    `unstable_rethrow`を保ったfixed `INTERNAL_ERROR` + sensitive no-storeへ収束し、401/403/blank/404/throwはzero-audit。
+  - Focused helper+route 22/22、protected GET harnessは先行case/set-plan read-auditが実参照するselected patient ID不足を2 fixtureだけ修正後384/384、
+    exact lint/format/diff、5 guards、final typecheck/no-unused、codex1 privacy/auth/audit reviewをPASS。Rollbackは`ee2e4c395`のrevertでDB/data rollback不要。
 
 - codex1: UI-SHARED-PAGE-FRAME-001 / UI-THEME-CLINICAL-SIGNAL-001 Phase 2B-a (DONE; parent remains Partial, 2026-07-14; implementation `c3fc7a53e`, not pushed).
   - current task / files inspected / root cause:
