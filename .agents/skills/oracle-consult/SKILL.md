@@ -117,8 +117,17 @@ The verified upstream behavior confirms first-class Browser/API
 `gpt-5.6-sol` selection, strict Sol selection evidence, `heavy` as Extra High
 for base Sol, minimal file sets, `--dry-run` / `--files-report`, manual-login
 profile reuse, stored sessions, and reattach/restart behavior. The local CLI
-help was also checked with `npx -y @steipete/oracle --help` and reported Oracle
+help was also checked with `oracle --help` and reported Oracle
 CLI v0.16.0.
+
+Local repair pin (2026-07-14): the npm 0.16.0 artifact predates the independent
+Pro-pill fix for base Sol. This workstation's installed `oracle` binary is built
+from official upstream PR #320 head
+`ea8b1b57f140f2c641a2a8a9cc1dd10bd03bdb18`. Until a published upstream
+release containing that fix is verified, use `oracle` directly and never
+`npx -y @steipete/oracle`, because npx can refresh the unfixed registry
+artifact. If the binary or strict Sol evidence cannot be verified, fail closed
+instead of falling back to another model.
 
 ## GitHub Context Requirement
 
@@ -159,7 +168,7 @@ truth.
 If more than a few files may be sent, preview first:
 
 ```bash
-npx -y @steipete/oracle --dry-run summary --files-report \
+oracle --dry-run summary --files-report \
   -p "<consultation prompt>" \
   --file "<minimal relevant files>"
 ```
@@ -167,7 +176,7 @@ npx -y @steipete/oracle --dry-run summary --files-report \
 Before the first Oracle run in a session, run:
 
 ```bash
-npx -y @steipete/oracle --help
+oracle --help
 ```
 
 ## Before Consulting Oracle
@@ -192,8 +201,9 @@ to report whether GitHub access succeeded.
 ## Standard Command
 
 ```bash
-npx -y @steipete/oracle \
+oracle \
   --engine browser \
+  --browser-model-strategy select \
   --browser-manual-login \
   --browser-auto-reattach-delay 5s \
   --browser-auto-reattach-interval 3s \
@@ -268,7 +278,7 @@ run detaches or times out, reattach to the existing session instead of starting 
 duplicate run:
 
 ```bash
-npx -y @steipete/oracle status --hours 72
-npx -y @steipete/oracle session <id> --render
-npx -y @steipete/oracle restart <id>
+oracle status --hours 72
+oracle session <id> --render
+oracle restart <id>
 ```

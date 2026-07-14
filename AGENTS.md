@@ -81,12 +81,21 @@ Oracle README, bundled `skills/oracle/SKILL.md`, `docs/browser-mode.md`, and
 selection evidence, `heavy` as Extra High for base Sol, minimal file sets,
 `--dry-run` / `--files-report`, manual-login profile reuse, stored sessions,
 and reattach/restart behavior. The local CLI help was also checked with
-`npx -y @steipete/oracle --help` and reported Oracle CLI v0.16.0.
+`oracle --help` and reported Oracle CLI v0.16.0.
+
+Local Oracle repair pin (2026-07-14): the npm 0.16.0 artifact predates the
+independent Pro-pill fix for base Sol. This workstation's installed `oracle`
+binary is built from official upstream PR #320 head
+`ea8b1b57f140f2c641a2a8a9cc1dd10bd03bdb18`. Until a published upstream
+release containing that fix is verified, invoke `oracle` directly and do not
+use `npx -y @steipete/oracle`, because npx can refresh the unfixed registry
+artifact. If the installed binary or strict Sol selection cannot be verified,
+fail closed and repair it instead of falling back to another model.
 
 Before the first Oracle run in a session, run:
 
 ```bash
-npx -y @steipete/oracle --help
+oracle --help
 ```
 
 GitHub context requirement for every Oracle/GPT-5.6 Sol consult:
@@ -108,9 +117,10 @@ GitHub context requirement for every Oracle/GPT-5.6 Sol consult:
 Default Oracle command shape:
 
 ```bash
-npx -y @steipete/oracle \
+oracle \
   --engine browser \
   --model gpt-5.6-sol \
+  --browser-model-strategy select \
   --browser-manual-login \
   --browser-auto-reattach-delay 5s \
   --browser-auto-reattach-interval 3s \
@@ -125,7 +135,7 @@ npx -y @steipete/oracle \
 Before sending a large file set, preview first with:
 
 ```bash
-npx -y @steipete/oracle --dry-run summary --files-report \
+oracle --dry-run summary --files-report \
   -p "<focused PH-OS consultation prompt>" \
   --file "<minimal relevant files>"
 ```
@@ -142,9 +152,9 @@ medical records, production credentials, or unredacted PHI/PII to Oracle. Use th
 smallest file set that contains the truth, prefer redacted fixtures, and treat Oracle
 output as advisory until verified by code inspection, tests, typecheck, lint, and local
 execution. If Oracle detaches or times out, do not start duplicate consultations;
-inspect `npx -y @steipete/oracle status --hours 72`,
-`npx -y @steipete/oracle session <id> --render`, or
-`npx -y @steipete/oracle restart <id>`.
+inspect `oracle status --hours 72`,
+`oracle session <id> --render`, or
+`oracle restart <id>`.
 
 Runtime model, approval, sandbox, service tier, MCP, and custom-agent registration belong in the user-level `~/.codex/config.toml`. This repository file defines PH-OS-specific working rules and should not be treated as the effective runtime configuration layer.
 
