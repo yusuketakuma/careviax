@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { messageFromError } from '@/lib/utils/error-message';
 import { Skeleton } from '@/components/ui/loading';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Badge } from '@/components/ui/badge';
@@ -182,6 +181,7 @@ function updateDraftForm(
 export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; orgId: string }) {
   const queryClient = useQueryClient();
   const [draftForm, setDraftForm] = useState<VisitConstraintsFormState | null>(null);
+  const [failedSaveInput, setFailedSaveInput] = useState<VisitConstraintsFormState | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery<VisitConstraintsResponse>({
     queryKey: ['visit-constraints', orgId, patientId],
@@ -201,41 +201,46 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
   const form = draftForm ?? serverForm;
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input: VisitConstraintsFormState) => {
       const res = await fetch(buildPatientApiPath(patientId, '/visit-constraints'), {
         method: 'PUT',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
-          preferred_weekdays: form.preferred_weekdays,
-          preferred_time_from: form.preferred_time_from || undefined,
-          preferred_time_to: form.preferred_time_to || undefined,
-          phone_contact_from: form.phone_contact_from || undefined,
-          phone_contact_to: form.phone_contact_to || undefined,
-          facility_time_from: form.facility_time_from || undefined,
-          facility_time_to: form.facility_time_to || undefined,
-          family_presence_required: form.family_presence_required,
-          visit_buffer_minutes: form.visit_buffer_minutes
-            ? Number(form.visit_buffer_minutes)
+          preferred_weekdays: input.preferred_weekdays,
+          preferred_time_from: input.preferred_time_from || undefined,
+          preferred_time_to: input.preferred_time_to || undefined,
+          phone_contact_from: input.phone_contact_from || undefined,
+          phone_contact_to: input.phone_contact_to || undefined,
+          facility_time_from: input.facility_time_from || undefined,
+          facility_time_to: input.facility_time_to || undefined,
+          family_presence_required: input.family_presence_required,
+          visit_buffer_minutes: input.visit_buffer_minutes
+            ? Number(input.visit_buffer_minutes)
             : undefined,
-          preferred_contact_name: form.preferred_contact_name || undefined,
-          preferred_contact_phone: form.preferred_contact_phone || undefined,
-          notes: form.notes || undefined,
-          residence_lat: form.residence_lat ? Number(form.residence_lat) : undefined,
-          residence_lng: form.residence_lng ? Number(form.residence_lng) : undefined,
-          geocode_status: form.geocode_status || undefined,
-          geocode_source: form.geocode_source || undefined,
-          geocode_accuracy: form.geocode_accuracy || undefined,
+          preferred_contact_name: input.preferred_contact_name || undefined,
+          preferred_contact_phone: input.preferred_contact_phone || undefined,
+          notes: input.notes || undefined,
+          residence_lat: input.residence_lat ? Number(input.residence_lat) : undefined,
+          residence_lng: input.residence_lng ? Number(input.residence_lng) : undefined,
+          geocode_status: input.geocode_status || undefined,
+          geocode_source: input.geocode_source || undefined,
+          geocode_accuracy: input.geocode_accuracy || undefined,
         }),
       });
       return readApiAcknowledgement(res, '訪問条件の保存に失敗しました');
     },
+    onMutate: () => {
+      setFailedSaveInput(null);
+    },
     onSuccess: async () => {
+      setFailedSaveInput(null);
       toast.success('訪問条件を保存しました');
       setDraftForm(null);
       await invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId }));
     },
-    onError: (error) => {
-      toast.error(messageFromError(error, '訪問条件の保存に失敗しました'));
+    onError: (_error, input) => {
+      setFailedSaveInput(input);
+      toast.error('訪問条件の保存に失敗しました');
     },
   });
 
@@ -506,8 +511,32 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
               />
             </div>
 
+            {failedSaveInput ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="訪問条件を保存できませんでした"
+                cause="保存処理に失敗しました。入力内容は保持されています。"
+                nextAction="通信状態を確認して、失敗した時点の訪問条件を再試行してください。"
+                detail="再試行は失敗した時点の内容で行います。編集後の内容を保存する場合は「保存」を選んでください。"
+                onRetry={() => saveMutation.mutate(failedSaveInput)}
+                retryLabel="訪問条件の保存を再試行"
+                retryVariant="outline"
+                retryDisabled={saveMutation.isPending}
+                headingLevel={3}
+              />
+            ) : null}
+
             <ActionRail>
-              <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+              <Button
+                onClick={() =>
+                  saveMutation.mutate({
+                    ...form,
+                    preferred_weekdays: [...form.preferred_weekdays],
+                  })
+                }
+                disabled={saveMutation.isPending}
+              >
                 {saveMutation.isPending ? '保存中...' : '保存'}
               </Button>
             </ActionRail>

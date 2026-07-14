@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
@@ -37,9 +37,9 @@ setupDomTestEnv();
 type CapturedConfig = {
   queryKey?: unknown[];
   queryFn?: () => Promise<unknown>;
-  mutationFn?: () => Promise<unknown>;
+  mutationFn?: (input: unknown) => Promise<unknown>;
   onSuccess?: () => Promise<void> | void;
-  onError?: (error: unknown) => void;
+  onError?: (error: unknown, input: unknown) => void;
 };
 
 const VISIT_CONSTRAINTS_RESPONSE = {
@@ -74,6 +74,26 @@ const VISIT_CONSTRAINTS_RESPONSE = {
       geocoded_at: '2026-06-01T10:00:00.000Z',
     },
   },
+};
+
+const VISIT_CONSTRAINTS_INPUT = {
+  preferred_weekdays: [1, 3],
+  preferred_time_from: '09:00',
+  preferred_time_to: '11:00',
+  phone_contact_from: '13:00',
+  phone_contact_to: '16:00',
+  facility_time_from: '08:30',
+  facility_time_to: '12:30',
+  family_presence_required: true,
+  visit_buffer_minutes: '15',
+  preferred_contact_name: '山田花子',
+  preferred_contact_phone: '090-0000-0000',
+  notes: '玄関で電話',
+  residence_lat: '35.1',
+  residence_lng: '139.1',
+  geocode_status: 'verified',
+  geocode_source: 'manual',
+  geocode_accuracy: 'rooftop',
 };
 
 function captureConfigs() {
@@ -285,7 +305,7 @@ describe('VisitConstraintsCard', () => {
 
     render(<VisitConstraintsCard patientId={hostileId} orgId="org_1" />);
 
-    await mutationConfigs[0]?.mutationFn?.();
+    await mutationConfigs[0]?.mutationFn?.(VISIT_CONSTRAINTS_INPUT);
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/visit-constraints`);
@@ -326,10 +346,15 @@ describe('VisitConstraintsCard', () => {
 
     render(<VisitConstraintsCard patientId="patient_1" orgId="org_1" />);
 
-    await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(
+    await expect(mutationConfigs[0]?.mutationFn?.(VISIT_CONSTRAINTS_INPUT)).rejects.toThrow(
       '訪問条件の更新権限がありません',
     );
-    mutationConfigs[0]?.onError?.(new Error('訪問条件の更新権限がありません'));
+    act(() => {
+      mutationConfigs[0]?.onError?.(
+        new Error('訪問条件の更新権限がありません'),
+        VISIT_CONSTRAINTS_INPUT,
+      );
+    });
 
     expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/visit-constraints', {
       method: 'PUT',
@@ -338,6 +363,56 @@ describe('VisitConstraintsCard', () => {
     });
     expect(toast.error).toHaveBeenCalledWith('訪問条件の保存に失敗しました');
     expect(toast.error).not.toHaveBeenCalledWith('訪問条件の更新権限がありません');
+  });
+
+  it('keeps a persistent safe recovery state and retries the exact failed save input', () => {
+    const poisonMessage = '山田花子 / 090-0000-0000 / token=secret';
+    let mutationConfig: CapturedConfig | undefined;
+    const mutate = vi.fn();
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockReturnValue({
+      data: VISIT_CONSTRAINTS_RESPONSE,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    useMutationMock.mockImplementation((config: CapturedConfig) => {
+      mutationConfig = config;
+      return { mutate, isPending: false };
+    });
+
+    render(<VisitConstraintsCard patientId="patient_1" orgId="org_1" />);
+
+    fireEvent.change(screen.getByLabelText('備考'), {
+      target: { value: '失敗時の入力' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    const failedInput = mutate.mock.calls[0]?.[0] as typeof VISIT_CONSTRAINTS_INPUT;
+    expect(failedInput).toEqual({ ...VISIT_CONSTRAINTS_INPUT, notes: '失敗時の入力' });
+
+    act(() => {
+      mutationConfig?.onError?.(new Error(poisonMessage), failedInput);
+    });
+
+    expect(screen.getByRole('heading', { name: '訪問条件を保存できませんでした' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        '保存処理に失敗しました。入力内容は保持されています。 通信状態を確認して、失敗した時点の訪問条件を再試行してください。',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(poisonMessage)).toBeNull();
+    expect(toast.error).toHaveBeenLastCalledWith('訪問条件の保存に失敗しました');
+
+    fireEvent.change(screen.getByLabelText('備考'), {
+      target: { value: '失敗後の編集' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '訪問条件の保存を再試行' }));
+
+    expect((screen.getByLabelText('備考') as HTMLTextAreaElement).value).toBe('失敗後の編集');
+    expect(mutate).toHaveBeenCalledTimes(2);
+    expect(mutate).toHaveBeenNthCalledWith(1, failedInput);
+    expect(mutate).toHaveBeenNthCalledWith(2, failedInput);
   });
 
   it('rejects a legacy successful visit-constraint save', async () => {
@@ -349,7 +424,7 @@ describe('VisitConstraintsCard', () => {
 
     render(<VisitConstraintsCard patientId="patient_1" orgId="org_1" />);
 
-    await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(
+    await expect(mutationConfigs[0]?.mutationFn?.(VISIT_CONSTRAINTS_INPUT)).rejects.toThrow(
       '訪問条件の保存に失敗しました',
     );
     expect(fetchMock).toHaveBeenCalledWith('/api/patients/patient_1/visit-constraints', {
@@ -372,7 +447,7 @@ describe('VisitConstraintsCard', () => {
 
     expect(queryConfigs[0]?.queryKey).toEqual(['visit-constraints', 'org_1', patientId]);
     await queryConfigs[0]?.queryFn?.();
-    await mutationConfigs[0]?.mutationFn?.();
+    await mutationConfigs[0]?.mutationFn?.(VISIT_CONSTRAINTS_INPUT);
 
     expect(buildPatientApiPath).toHaveBeenNthCalledWith(1, patientId, '/visit-constraints');
     expect(buildPatientApiPath).toHaveBeenNthCalledWith(2, patientId, '/visit-constraints');
@@ -425,7 +500,9 @@ describe('VisitConstraintsCard', () => {
       render(<VisitConstraintsCard patientId={dotId} orgId="org_1" />);
 
       await expect(queryConfigs[0]?.queryFn?.()).rejects.toThrow(RangeError);
-      await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(RangeError);
+      await expect(mutationConfigs[0]?.mutationFn?.(VISIT_CONSTRAINTS_INPUT)).rejects.toThrow(
+        RangeError,
+      );
       expect(fetchMock).not.toHaveBeenCalled();
     },
   );
