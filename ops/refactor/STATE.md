@@ -59,7 +59,7 @@
 
 - codex1 + codex2 + codex3 + codex4: `FE-PATIENT-MOVEMENT-TEMPORAL-001` / `FE-FIELD-REVISION-TEMPORAL-001` /
   `SEARCH-INTEGRATION-GLOBAL-001` / `API-CONTRACT-002G` / `API-CONTRACT-002H`
-  (IMPLEMENTED / VERIFY_REQUIRED, 2026-07-14; code commits `21cc09c4a`, `e43ae131e`, `c0b8d3918`, `97f1524e8`; push pending).
+  (IMPLEMENTED / VERIFY_REQUIRED, 2026-07-14; code commits `21cc09c4a`, `e43ae131e`, `c0b8d3918`, `97f1524e8`; initial ledger `87c214c67`; `PUSHED`).
   - objective / UX contract / evidence:
     最新Goal source `/Users/yusuke/.codex/attachments/5b966139-3f30-4f72-a8ca-a5460206bbce/pasted-text-1.txt` 全2,467行、
     live git/Plans/STATE/RUN_LOCK、Next.js 16同梱docs、PH-OS UI/UX SSOTを再確認した。認可済み薬局staffが患者詳細で
@@ -107,8 +107,8 @@
     PHI read auditがない。non-bypass RLSではinitial dataが落ち、bypass環境ではclerk exact PHI露出のdefense-in-depth gapになり得る。
     `ROUTE-AUTHZ-COVERAGE-001`へSSR/GET/PATCHを別capabilityとして追加し、field revisionの「internal 6」旧文言もlive canVisit 4 roleと
     product decisionへ同期する。field/full-history paginationにはorg-scoped tx、composite index、migration approvalが必要。
-    code groupsはexact pathsだけでcommit済み。ledger commit/push後、上記high-risk taskはdesign/test matrixを先行し、
-    policy決定なしに権限を拡張しない。
+    code groupsとinitial ledgerはexact pathsだけでcommitし、feature branchへnon-force push済み。CI/deployはmain push限定のため
+    feature branch pushで起動していない。上記high-risk taskはdesign/test matrixを先行し、policy決定なしに権限を拡張しない。
 
 - codex1: MEDSAFE-PATIENT-CONTEXT-SHARE-001 / shared patient context hardening
   (VERIFY_REQUIRED, 2026-07-14; implementation/push `d3921d72e`).
