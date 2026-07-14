@@ -2,6 +2,8 @@ import 'dotenv/config';
 import fs from 'node:fs';
 import net from 'node:net';
 import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
+import { chromium, type Browser } from '@playwright/test';
 import { Client } from 'pg';
 import {
   AUDIT_TRIGGER_CATALOG_SQL,
@@ -124,6 +126,51 @@ function checkCommand(command: string): CheckResult {
     name: `command:${command}`,
     status: path ? 'pass' : 'fail',
     detail: path || `${command} is not available on PATH`,
+  };
+}
+
+type PlaywrightBrowserProbe = {
+  channel?: string;
+  executablePath?: string;
+  launch?: (options: {
+    channel: string;
+    headless: boolean;
+  }) => Promise<Pick<Browser, 'close' | 'version'>>;
+};
+
+export async function checkPlaywrightChromium(
+  probe: PlaywrightBrowserProbe = {},
+): Promise<CheckResult> {
+  const channel = probe.channel ?? process.env.PLAYWRIGHT_CHANNEL?.trim();
+  if (channel) {
+    try {
+      const browser = await (probe.launch ?? ((options) => chromium.launch(options)))({
+        channel,
+        headless: true,
+      });
+      const version = browser.version();
+      await browser.close();
+      return {
+        name: 'playwright:chromium',
+        status: 'pass',
+        detail: `explicit ${channel} channel launch passed (${version})`,
+      };
+    } catch {
+      return {
+        name: 'playwright:chromium',
+        status: 'fail',
+        detail: `explicit ${channel} channel launch failed`,
+      };
+    }
+  }
+
+  const executablePath = probe.executablePath ?? chromium.executablePath();
+  return {
+    name: 'playwright:chromium',
+    status: fs.existsSync(executablePath) ? 'pass' : 'fail',
+    detail: fs.existsSync(executablePath)
+      ? 'configured Chromium executable found'
+      : 'bundled Chromium is missing; install it or explicitly set PLAYWRIGHT_CHANNEL=chrome for an available system Chrome',
   };
 }
 
@@ -393,7 +440,7 @@ function printResults(results: CheckResult[]) {
   }
 }
 
-async function main() {
+export async function main() {
   const packageScripts = readPackageScripts();
   const results: CheckResult[] = [
     checkDatabaseUrl('DATABASE_URL'),
@@ -401,6 +448,7 @@ async function main() {
     checkDatabaseUrlPair(),
     checkCommand('pnpm'),
     checkCommand('node'),
+    await checkPlaywrightChromium(),
     ...checkPackageScripts(packageScripts),
     ...checkSpecFiles(),
     ...checkScriptEntries(),
@@ -422,7 +470,8 @@ async function main() {
         '2. Run pnpm --config.verify-deps-before-run=false db:e2e:prepare.',
         '3. Start the app with pnpm dev:e2e:local or pnpm start:e2e:local on localhost:3012, or use pnpm medical-ui:e2e:gate:prod after preparing the database.',
         '4. Run pnpm --config.verify-deps-before-run=false db:e2e:check-care-report-duplicates, db:e2e:check-visit-route-order-conflicts, and db:e2e:verify-migration-preconditions for local release evidence.',
-        '5. Run targeted Playwright/axe specs listed above.',
+        '5. If bundled Chromium is missing, install it or explicitly set PLAYWRIGHT_CHANNEL=chrome when system Chrome is available.',
+        '6. Run targeted Playwright/axe specs listed above.',
       ].join('\n'),
     );
     process.exit(1);
@@ -431,7 +480,10 @@ async function main() {
   console.log('Medical UI/UX E2E gate preflight passed.');
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+const invokedPath = process.argv[1];
+if (invokedPath && import.meta.url === pathToFileURL(invokedPath).href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}

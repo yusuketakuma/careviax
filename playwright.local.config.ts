@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 import { PLAYWRIGHT_OUTPUT_DIR } from './tools/tests/helpers/artifacts';
 
+const browserChannel = process.env.PLAYWRIGHT_CHANNEL?.trim();
+
 export default defineConfig({
   testDir: './tools/tests',
   outputDir: PLAYWRIGHT_OUTPUT_DIR,
@@ -18,11 +20,11 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], ...(browserChannel ? { channel: browserChannel } : {}) },
     },
     {
       name: 'mobile-chromium',
-      use: { ...devices['Pixel 5'] },
+      use: { ...devices['Pixel 5'], ...(browserChannel ? { channel: browserChannel } : {}) },
     },
   ],
 });
