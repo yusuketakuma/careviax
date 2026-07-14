@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { getPerformanceSnapshot, resetPerformanceMetrics } from '@/lib/utils/performance';
 import { expectNoStore } from '@/test/api-response-assertions';
 
 const { listCommunicationQueueMock, withAuthContextOptions } = vi.hoisted(() => ({
@@ -86,6 +87,7 @@ describe('/api/communications/inbound', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetPerformanceMetrics();
     listCommunicationQueueMock.mockResolvedValue({
       summary: {
         pending_count: 4,
@@ -191,7 +193,21 @@ describe('/api/communications/inbound', () => {
 
     expect(response.status).toBe(200);
     expectNoStore(response);
-    expect(response.headers.get('Content-Length')).toBe(String(jsonPayloadBytes(payload)));
+    const responseBytes = jsonPayloadBytes(payload);
+    expect(response.headers.get('Content-Length')).toBe(String(responseBytes));
+    expect(
+      getPerformanceSnapshot({ topRoutes: 100 }).routes.find(
+        (route) => route.method === 'GET' && route.route === '/api/communications/inbound',
+      ),
+    ).toMatchObject({
+      critical_route: true,
+      critical_route_family: 'communications-inbound-inbox',
+      payload_sample_count: 1,
+      last_payload_bytes: responseBytes,
+      payload_budget_bytes: 163_840,
+      payload_budget_status: 'within_budget',
+      payload_budget_met: true,
+    });
     expect(listCommunicationQueueMock).toHaveBeenCalledWith(
       {},
       {

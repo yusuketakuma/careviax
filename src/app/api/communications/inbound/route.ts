@@ -17,6 +17,7 @@ import {
 } from '@/server/services/communication-queue';
 import { canAccessCommunicationRequestRecord } from '@/server/services/communication-request-access';
 import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 
 const ROUTE = '/api/communications/inbound';
 const DEFAULT_LIMIT = 24;
@@ -363,21 +364,23 @@ const authenticatedPOST = withAuthContext(
 );
 
 export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return await authenticatedGET(req, routeContext);
-  } catch (err) {
-    unstable_rethrow(err);
-    logger.error(
-      {
-        event: 'inbound_communications_get_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-      },
-      err,
-    );
-    return withSensitiveNoStore(internalError());
-  }
+  return withRoutePerformance(req, async () => {
+    try {
+      return await authenticatedGET(req, routeContext);
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error(
+        {
+          event: 'inbound_communications_get_unhandled_error',
+          route: ROUTE,
+          method: req.method,
+          status: 500,
+        },
+        err,
+      );
+      return withSensitiveNoStore(internalError());
+    }
+  });
 };
 
 export const POST: typeof authenticatedPOST = async (req, routeContext) => {
