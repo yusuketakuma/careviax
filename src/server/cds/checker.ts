@@ -50,6 +50,21 @@ type DrugMasterForCds = {
   lasa_group_key: string | null;
 };
 
+// Patient operational summaries, patient detail, and visit briefs all use a
+// 90-day lab-staleness threshold (some display surfaces calculate whole-day
+// age). CDS must use that established window so an operationally stale value
+// cannot still drive a dose or monitoring decision.
+const CDS_LAB_FRESHNESS_DAYS = 90;
+const MILLISECONDS_PER_DAY = 24 * 60 * 60_000;
+
+function cdsLabFreshnessCutoff(now = new Date()): Date {
+  return new Date(now.getTime() - CDS_LAB_FRESHNESS_DAYS * MILLISECONDS_PER_DAY);
+}
+
+function isLabObservationFresh(measuredAt: Date, cutoff: Date): boolean {
+  return !Number.isNaN(measuredAt.getTime()) && measuredAt.getTime() >= cutoff.getTime();
+}
+
 const DRUG_MASTER_FOR_CDS_SELECT = {
   id: true,
   yj_code: true,
@@ -1665,14 +1680,25 @@ async function checkRenalDoseAdjustment(
     (line) => line.drug_code !== null && insertByCode.has(line.drug_code),
   );
 
-  // Fetch latest eGFR from PatientLabObservation
+  // Fetch the latest non-stale eGFR. Keep the measured_at post-check as a
+  // defense-in-depth boundary in case a mock or future query refactor omits the
+  // database predicate.
+  const labFreshnessCutoff = cdsLabFreshnessCutoff();
   const latestEgfr = await prisma.patientLabObservation.findFirst({
-    where: { patient_id: patientId, org_id: orgId, analyte_code: 'egfr' },
+    where: {
+      patient_id: patientId,
+      org_id: orgId,
+      analyte_code: 'egfr',
+      measured_at: { gte: labFreshnessCutoff },
+    },
     orderBy: { measured_at: 'desc' },
-    select: { value_numeric: true },
+    select: { value_numeric: true, measured_at: true },
   });
 
-  const egfr = latestEgfr?.value_numeric ?? null;
+  const egfr =
+    latestEgfr && isLabObservationFresh(latestEgfr.measured_at, labFreshnessCutoff)
+      ? latestEgfr.value_numeric
+      : null;
 
   // X04: eGFR 未記録時は無言 clean に倒さず、腎機能用量調整対象薬があれば
   // 「未チェック（要確認）」を明示する（対象薬が無ければ宣言対象が無いので何もしない）。
@@ -1798,19 +1824,24 @@ async function checkMonitoringAlerts(
   if (hasAnticoagulant) analyteCodes.push('pt_inr');
   if (hasDiuretic) analyteCodes.push('k');
 
+  const labFreshnessCutoff = cdsLabFreshnessCutoff();
   const latestLabs = await prisma.patientLabObservation.findMany({
     where: {
       patient_id: patientId,
       org_id: orgId,
       analyte_code: { in: analyteCodes as LabAnalyteCode[] },
+      measured_at: { gte: labFreshnessCutoff },
     },
     orderBy: { measured_at: 'desc' },
-    select: { analyte_code: true, value_numeric: true },
+    select: { analyte_code: true, value_numeric: true, measured_at: true },
   });
 
   const latestByAnalyte = new Map<string, number | null>();
   for (const row of latestLabs) {
-    if (!latestByAnalyte.has(row.analyte_code)) {
+    if (
+      isLabObservationFresh(row.measured_at, labFreshnessCutoff) &&
+      !latestByAnalyte.has(row.analyte_code)
+    ) {
       latestByAnalyte.set(row.analyte_code, row.value_numeric);
     }
   }

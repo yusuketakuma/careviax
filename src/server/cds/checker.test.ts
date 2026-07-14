@@ -780,7 +780,10 @@ describe('checkDispenseAlerts', () => {
         days: 7,
       },
     ]);
-    patientLabObservationFindFirstMock.mockResolvedValue({ value_numeric: 45 });
+    patientLabObservationFindFirstMock.mockResolvedValue({
+      value_numeric: 45,
+      measured_at: new Date(Date.now() - 24 * 60 * 60_000),
+    });
     drugMasterFindManyMock.mockResolvedValue([
       {
         id: 'drug_1',
@@ -883,6 +886,218 @@ describe('checkDispenseAlerts', () => {
           unchecked_drug_names: ['腎機能調整薬錠'],
           unchecked_drug_codes: ['8888001'],
         }),
+      }),
+    ]);
+  });
+
+  it('CDS-LAB-STALENESS-RENAL-MONITOR-001: treats an eGFR older than 90 days as unrecorded instead of deriving a dose recommendation', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_renal_stale',
+        drug_name: '腎機能調整薬錠',
+        drug_code: '8888001',
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 7,
+      },
+    ]);
+    patientLabObservationFindFirstMock.mockResolvedValue({
+      value_numeric: 20,
+      measured_at: new Date(Date.now() - 91 * 24 * 60 * 60_000),
+    });
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_renal_stale',
+        yj_code: '8888001',
+        drug_name: '腎機能調整薬錠',
+        tall_man_name: null,
+        therapeutic_category: '9999',
+        max_administration_days: null,
+        transitional_expiry_date: null,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: false,
+        is_lasa_risk: false,
+        lasa_group_key: null,
+      },
+    ]);
+    drugPackageInsertFindManyMock.mockImplementation(async (args) => {
+      if (!args?.where?.dosage_adjustment_renal) return [];
+      return [
+        {
+          drug_master: { yj_code: '8888001', drug_name: '腎機能調整薬錠' },
+          dosage_adjustment_renal: [
+            { egfr_min: 0, egfr_max: 30, recommendation: '減量してください' },
+          ],
+        },
+      ];
+    });
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(patientLabObservationFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ measured_at: { gte: expect.any(Date) } }),
+        select: { value_numeric: true, measured_at: true },
+      }),
+    );
+    expect(alerts.filter((alert) => alert.type === 'renal_dose')).toEqual([]);
+    expect(alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'cds_data_quality',
+          message: expect.stringContaining('腎機能用量チェック未完了'),
+          details: expect.objectContaining({ source: 'renal_dose_coverage' }),
+        }),
+      ]),
+    );
+  });
+
+  it('CDS-LAB-STALENESS-RENAL-MONITOR-001: treats stale PT-INR and K as unrecorded instead of emitting value-derived critical alerts', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_warfarin',
+        drug_name: 'ワルファリン錠',
+        drug_code: '3332001',
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 7,
+      },
+      {
+        id: 'line_furosemide',
+        drug_name: 'フロセミド錠',
+        drug_code: '2139005',
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 7,
+      },
+    ]);
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_warfarin',
+        yj_code: '3332001',
+        drug_name: 'ワルファリン錠',
+        tall_man_name: null,
+        therapeutic_category: '3332',
+        max_administration_days: null,
+        transitional_expiry_date: null,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: false,
+        is_lasa_risk: false,
+        lasa_group_key: null,
+      },
+      {
+        id: 'drug_furosemide',
+        yj_code: '2139005',
+        drug_name: 'フロセミド錠',
+        tall_man_name: null,
+        therapeutic_category: '2139',
+        max_administration_days: null,
+        transitional_expiry_date: null,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: false,
+        is_lasa_risk: false,
+        lasa_group_key: null,
+      },
+    ]);
+    const staleMeasuredAt = new Date(Date.now() - 91 * 24 * 60 * 60_000);
+    patientLabObservationFindManyMock.mockResolvedValue([
+      { analyte_code: 'pt_inr', value_numeric: 3.5, measured_at: staleMeasuredAt },
+      { analyte_code: 'k', value_numeric: 2.8, measured_at: staleMeasuredAt },
+    ]);
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+    const monitoringAlerts = alerts.filter((alert) => alert.type === 'monitoring');
+
+    expect(patientLabObservationFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ measured_at: { gte: expect.any(Date) } }),
+        select: { analyte_code: true, value_numeric: true, measured_at: true },
+      }),
+    );
+    expect(monitoringAlerts).toEqual([
+      expect.objectContaining({
+        severity: 'info',
+        message: expect.stringContaining('PT-INR の直近値が未記録'),
+        details: { analyte: 'pt_inr' },
+      }),
+      expect.objectContaining({
+        severity: 'info',
+        message: expect.stringContaining('血清K値の直近値が未記録'),
+        details: { analyte: 'k' },
+      }),
+    ]);
+    expect(monitoringAlerts.some((alert) => alert.severity === 'critical')).toBe(false);
+  });
+
+  it('CDS-LAB-STALENESS-RENAL-MONITOR-001: preserves value-derived monitoring alerts for fresh PT-INR and K', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_warfarin_fresh',
+        drug_name: 'ワルファリン錠',
+        drug_code: '3332001',
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 7,
+      },
+      {
+        id: 'line_furosemide_fresh',
+        drug_name: 'フロセミド錠',
+        drug_code: '2139005',
+        dose: '1錠',
+        frequency: '1日1回',
+        days: 7,
+      },
+    ]);
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_warfarin_fresh',
+        yj_code: '3332001',
+        drug_name: 'ワルファリン錠',
+        tall_man_name: null,
+        therapeutic_category: '3332',
+        max_administration_days: null,
+        transitional_expiry_date: null,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: false,
+        is_lasa_risk: false,
+        lasa_group_key: null,
+      },
+      {
+        id: 'drug_furosemide_fresh',
+        yj_code: '2139005',
+        drug_name: 'フロセミド錠',
+        tall_man_name: null,
+        therapeutic_category: '2139',
+        max_administration_days: null,
+        transitional_expiry_date: null,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: false,
+        is_lasa_risk: false,
+        lasa_group_key: null,
+      },
+    ]);
+    const freshMeasuredAt = new Date(Date.now() - 24 * 60 * 60_000);
+    patientLabObservationFindManyMock.mockResolvedValue([
+      { analyte_code: 'pt_inr', value_numeric: 3.5, measured_at: freshMeasuredAt },
+      { analyte_code: 'k', value_numeric: 2.8, measured_at: freshMeasuredAt },
+    ]);
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+    const monitoringAlerts = alerts.filter((alert) => alert.type === 'monitoring');
+
+    expect(monitoringAlerts).toEqual([
+      expect.objectContaining({
+        severity: 'critical',
+        message: expect.stringContaining('PT-INR 高値（3.5）'),
+      }),
+      expect.objectContaining({
+        severity: 'critical',
+        message: expect.stringContaining('K低値（2.8 mEq/L）'),
       }),
     ]);
   });
