@@ -1303,6 +1303,11 @@ async function authenticatedGET(
     caseIds: [schedule.case_id],
     currentScheduleId: schedule.id,
     scheduledDate: schedule.scheduled_date,
+    billingContext: {
+      visitRecordIds: scopedVisitRecordIds,
+      cycleIds: scopedCycleIds,
+      blockers: billingEvidence,
+    },
   });
   const latestIntake = recentPrescriptionIntakes[0] ?? null;
   const previousIntake = recentPrescriptionIntakes[1] ?? null;

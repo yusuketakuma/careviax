@@ -945,6 +945,11 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       caseIds: ['case_1'],
       currentScheduleId: 'schedule_1',
       scheduledDate: new Date('2026-03-27T00:00:00Z'),
+      billingContext: {
+        visitRecordIds: ['record_1'],
+        cycleIds: ['cycle_1'],
+        blockers: [],
+      },
     });
     expect(billingEvidenceBlockersMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',

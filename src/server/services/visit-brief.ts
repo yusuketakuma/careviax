@@ -252,6 +252,12 @@ type PrescriptionLineLike = {
   end_date: Date | null;
 };
 
+type VisitBriefBillingContext = {
+  visitRecordIds: string[];
+  cycleIds: string[];
+  blockers: Awaited<ReturnType<typeof listBillingEvidenceBlockers>>;
+};
+
 type BuildVisitBriefArgs = {
   orgId: string;
   patientId: string;
@@ -264,6 +270,9 @@ type BuildVisitBriefArgs = {
   // patient_changes(前回訪問差分)算出に必要。揃わない経路(schedule バッチ等)は差分を出さない。
   role?: MemberRole;
   userId?: string;
+  // Same-request callers may reuse already scoped billing reads to avoid repeating
+  // visit/cycle reference scans and the billing-evidence query.
+  billingContext?: VisitBriefBillingContext;
 };
 
 type ScheduleBriefRequest = Omit<BuildVisitBriefArgs, 'context' | 'patientId' | 'caseIds'> & {
@@ -1532,7 +1541,12 @@ export async function getPatientVisitBrief(
   const caseScope = {
     OR: [{ case_id: null }, ...(caseIds.length > 0 ? [{ case_id: { in: caseIds } }] : [])],
   };
-  const billingRefs = await listVisitBriefBillingRefs(db, args, caseIds);
+  const billingRefs = args.billingContext
+    ? {
+        visitRecordIds: args.billingContext.visitRecordIds,
+        cycleIds: args.billingContext.cycleIds,
+      }
+    : await listVisitBriefBillingRefs(db, args, caseIds);
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -1815,13 +1829,15 @@ export async function getPatientVisitBrief(
         change_detail: true,
       },
     }),
-    listBillingEvidenceBlockers(db, {
-      orgId: args.orgId,
-      patientId: args.patientId,
-      visitRecordIds: billingRefs.visitRecordIds,
-      cycleIds: billingRefs.cycleIds,
-      limit: 2,
-    }),
+    args.billingContext
+      ? Promise.resolve(args.billingContext.blockers.slice(0, 2))
+      : listBillingEvidenceBlockers(db, {
+          orgId: args.orgId,
+          patientId: args.patientId,
+          visitRecordIds: billingRefs.visitRecordIds,
+          cycleIds: billingRefs.cycleIds,
+          limit: 2,
+        }),
     db.visitRecord.findFirst({
       where: {
         org_id: args.orgId,

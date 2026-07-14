@@ -276,6 +276,49 @@ describe('getPatientVisitBrief', () => {
     expect(listCommunicationQueueMock).not.toHaveBeenCalled();
   });
 
+  it('reuses same-request billing context without repeating reference or blocker reads', async () => {
+    const db = buildMinimalBriefDb();
+
+    const result = await getPatientVisitBrief(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      context: 'schedule',
+      caseIds: ['case_1'],
+      billingContext: {
+        visitRecordIds: ['visit_record_1'],
+        cycleIds: ['cycle_1'],
+        blockers: [
+          {
+            id: 'billing_1',
+            visit_record_id: 'visit_record_1',
+            validation_notes: null,
+            blockers: [
+              {
+                key: 'missing_visit_consent',
+                reason: '同一リクエストで取得済みの算定前提を確認',
+                action_href: '/workflow',
+                action_label: '同意状況を確認',
+                severity: 'urgent',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(db.visitRecord.findMany).not.toHaveBeenCalled();
+    expect(db.medicationCycle.findMany).not.toHaveBeenCalled();
+    expect(listBillingEvidenceBlockersMock).not.toHaveBeenCalled();
+    expect(result.unresolved_items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source_type: 'billing',
+          summary: '同一リクエストで取得済みの算定前提を確認',
+        }),
+      ]),
+    );
+  });
+
   it('aggregates prescription, dispensing, communication, and unresolved items', async () => {
     const db = {
       careCase: {
