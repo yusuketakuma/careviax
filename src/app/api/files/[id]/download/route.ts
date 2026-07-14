@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
-import { error, validationError } from '@/lib/api/response';
+import { error, registeredError, validationError } from '@/lib/api/response';
 import { legacyFileApiDisabledResponse } from '@/lib/api/legacy-file-api-boundary';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -64,7 +64,10 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
       });
     } catch {
       return withSensitiveNoStore(
-        error('FILE_DOWNLOAD_AUDIT_FAILED', 'ファイルダウンロード監査を記録できませんでした', 500),
+        registeredError(
+          'FILE_DOWNLOAD_AUDIT_FAILED',
+          'ファイルダウンロード監査を記録できませんでした',
+        ),
       );
     }
 
@@ -86,7 +89,7 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
     }
 
     return withSensitiveNoStore(
-      error('EXTERNAL_FILE_DOWNLOAD_FAILED', 'ファイルダウンロードに失敗しました', 502),
+      registeredError('EXTERNAL_FILE_DOWNLOAD_FAILED', 'ファイルダウンロードに失敗しました'),
     );
   }
 });

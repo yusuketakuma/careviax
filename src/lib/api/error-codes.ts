@@ -103,6 +103,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'retry',
     messageLabel: 'api.error.external_access.view_audit_failed',
   },
+  EXTERNAL_FILE_DOWNLOAD_FAILED: {
+    httpStatus: 502,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.external.file_download_failed',
+  },
   EXTERNAL_FILE_UPLOAD_FAILED: {
     httpStatus: 502,
     logLevel: 'error',
@@ -123,6 +130,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     retryable: true,
     recoveryAction: 'retry',
     messageLabel: 'api.error.external.pdf_render_failed',
+  },
+  FILE_DOWNLOAD_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.file.download_audit_failed',
   },
   FILE_PRESIGNED_DOWNLOAD_JSON_DISABLED: {
     httpStatus: 410,

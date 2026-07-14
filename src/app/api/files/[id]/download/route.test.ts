@@ -291,9 +291,41 @@ describe('/api/files/[id]/download GET', () => {
     expect(response.headers.get('Content-Disposition')).toBeNull();
     expectSensitiveNoStore(response);
     expect(openPreparedFileDownloadMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       code: 'FILE_DOWNLOAD_AUDIT_FAILED',
+      message: 'ファイルダウンロード監査を記録できませんでした',
     });
+  });
+
+  it('returns a fixed typed error without provider details when opening the file fails', async () => {
+    const unsafeProviderDetail =
+      'UNSAFE_PROVIDER_DETAIL storageKey=private/object secret=unit-test-secret';
+    openPreparedFileDownloadMock.mockRejectedValueOnce(new Error(unsafeProviderDetail));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'file_1' }),
+    });
+
+    if (!response) {
+      throw new Error('Expected a response from file download GET');
+    }
+    expect(response.status).toBe(502);
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.headers.get('Content-Disposition')).toBeNull();
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe(REQUEST_ID);
+    expect(response.headers.get('X-Correlation-Id')).toBe(CORRELATION_ID);
+    expect(recordFileDownloadAuditMock).toHaveBeenCalledOnce();
+    expect(openPreparedFileDownloadMock).toHaveBeenCalledOnce();
+
+    const responseBody = await response.json();
+    expect(responseBody).toEqual({
+      code: 'EXTERNAL_FILE_DOWNLOAD_FAILED',
+      message: 'ファイルダウンロードに失敗しました',
+    });
+    expect(JSON.stringify(responseBody)).not.toContain(unsafeProviderDetail);
+    expect(JSON.stringify(responseBody)).not.toContain('storageKey');
+    expect(JSON.stringify(responseBody)).not.toContain('unit-test-secret');
   });
 
   it('does not audit when download preparation fails', async () => {

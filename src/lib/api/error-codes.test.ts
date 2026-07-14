@@ -93,6 +93,13 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "EXTERNAL_FILE_DOWNLOAD_FAILED": {
+          "httpStatus": 502,
+          "logLevel": "error",
+          "messageLabel": "api.error.external.file_download_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "EXTERNAL_FILE_UPLOAD_FAILED": {
           "httpStatus": 502,
           "logLevel": "error",
@@ -111,6 +118,13 @@ describe('API error code registry', () => {
           "httpStatus": 500,
           "logLevel": "error",
           "messageLabel": "api.error.external.pdf_render_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
+        "FILE_DOWNLOAD_AUDIT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.file.download_audit_failed",
           "recoveryAction": "retry",
           "retryable": true,
         },
