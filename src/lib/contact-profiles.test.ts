@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   findExternalProfessionalSuggestions,
+  getChannelStatsByName,
   getRecommendedChannels,
   listContactProfiles,
   listContactProfileSearchSummaries,
@@ -33,10 +34,10 @@ describe('findExternalProfessionalSuggestions', () => {
         ]),
       },
       deliveryRecord: {
-        findMany: vi.fn().mockResolvedValue([]),
+        groupBy: vi.fn().mockResolvedValue([]),
       },
       communicationEvent: {
-        findMany: vi.fn().mockResolvedValue([]),
+        groupBy: vi.fn().mockResolvedValue([]),
       },
     };
 
@@ -87,10 +88,10 @@ describe('findExternalProfessionalSuggestions', () => {
         ]),
       },
       deliveryRecord: {
-        findMany: vi.fn().mockResolvedValue([]),
+        groupBy: vi.fn().mockResolvedValue([]),
       },
       communicationEvent: {
-        findMany: vi.fn().mockResolvedValue([]),
+        groupBy: vi.fn().mockResolvedValue([]),
       },
     };
 
@@ -134,10 +135,10 @@ describe('findExternalProfessionalSuggestions', () => {
         ]),
       },
       deliveryRecord: {
-        findMany: vi.fn().mockResolvedValue([]),
+        groupBy: vi.fn().mockResolvedValue([]),
       },
       communicationEvent: {
-        findMany: vi.fn().mockResolvedValue([]),
+        groupBy: vi.fn().mockResolvedValue([]),
       },
     };
 
@@ -153,6 +154,100 @@ describe('findExternalProfessionalSuggestions', () => {
         missing_channel_labels: ['電話'],
       },
     });
+  });
+});
+
+describe('getChannelStatsByName', () => {
+  it('folds weighted database groups without materializing delivery and event history rows', async () => {
+    const deliveryGroupBy = vi.fn().mockResolvedValue([
+      {
+        recipient_name: '連携先A',
+        channel: 'fax',
+        status: 'sent',
+        _count: { _all: 3 },
+      },
+      {
+        recipient_name: '連携先A',
+        channel: 'fax',
+        status: 'failed',
+        _count: { _all: 2 },
+      },
+      {
+        recipient_name: '連携先A',
+        channel: 'fax',
+        status: 'draft',
+        _count: { _all: 9 },
+      },
+      {
+        recipient_name: '連携先A',
+        channel: 'phone',
+        status: 'confirmed',
+        _count: { _all: 1 },
+      },
+    ]);
+    const communicationEventGroupBy = vi.fn().mockResolvedValue([
+      {
+        counterpart_name: '連携先A',
+        channel: 'fax',
+        event_type: 'delivery_failure',
+        _count: { _all: 4 },
+      },
+      {
+        counterpart_name: '連携先A',
+        channel: 'email',
+        event_type: 'care_manager_report',
+        _count: { _all: 5 },
+      },
+      {
+        counterpart_name: null,
+        channel: 'phone',
+        event_type: 'care_manager_report',
+        _count: { _all: 7 },
+      },
+    ]);
+    const db = {
+      deliveryRecord: { groupBy: deliveryGroupBy },
+      communicationEvent: { groupBy: communicationEventGroupBy },
+    } as unknown as Parameters<typeof getChannelStatsByName>[0];
+
+    const result = await getChannelStatsByName(db, 'org_1', [' 連携先A ', '連携先A', '', '   ']);
+
+    expect(deliveryGroupBy).toHaveBeenCalledWith({
+      by: ['recipient_name', 'channel', 'status'],
+      where: {
+        org_id: 'org_1',
+        recipient_name: { in: ['連携先A'] },
+      },
+      _count: { _all: true },
+    });
+    expect(communicationEventGroupBy).toHaveBeenCalledWith({
+      by: ['counterpart_name', 'channel', 'event_type'],
+      where: {
+        org_id: 'org_1',
+        direction: 'outbound',
+        counterpart_name: { in: ['連携先A'] },
+      },
+      _count: { _all: true },
+    });
+    expect(result.get('連携先A')).toMatchObject({
+      fax: { success: 3, failure: 6 },
+      phone: { success: 1, failure: 0 },
+      email: { success: 5, failure: 0 },
+    });
+    expect(result.has('')).toBe(false);
+  });
+
+  it('does not query channel history when every requested name is blank', async () => {
+    const deliveryGroupBy = vi.fn();
+    const communicationEventGroupBy = vi.fn();
+    const db = {
+      deliveryRecord: { groupBy: deliveryGroupBy },
+      communicationEvent: { groupBy: communicationEventGroupBy },
+    } as unknown as Parameters<typeof getChannelStatsByName>[0];
+
+    await expect(getChannelStatsByName(db, 'org_1', ['', '   '])).resolves.toEqual(new Map());
+    expect(deliveryGroupBy).not.toHaveBeenCalled();
+    expect(communicationEventGroupBy).not.toHaveBeenCalled();
   });
 });
 
@@ -266,8 +361,8 @@ describe('listContactProfiles', () => {
           },
         ]),
       },
-      deliveryRecord: { findMany: vi.fn().mockResolvedValue([]) },
-      communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
+      deliveryRecord: { groupBy: vi.fn().mockResolvedValue([]) },
+      communicationEvent: { groupBy: vi.fn().mockResolvedValue([]) },
       communicationRequest: { groupBy },
     } as unknown as Parameters<typeof listContactProfiles>[0];
 
@@ -307,8 +402,8 @@ describe('listContactProfiles', () => {
       facilityContact: { findMany: vi.fn().mockResolvedValue([]) },
       externalProfessional: { findMany: vi.fn().mockResolvedValue([]) },
       prescriberInstitution: { findMany: vi.fn().mockResolvedValue([]) },
-      deliveryRecord: { findMany: vi.fn() },
-      communicationEvent: { findMany: vi.fn() },
+      deliveryRecord: { groupBy: vi.fn() },
+      communicationEvent: { groupBy: vi.fn() },
       communicationRequest: { groupBy },
     } as unknown as Parameters<typeof listContactProfiles>[0];
 

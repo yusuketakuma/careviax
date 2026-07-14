@@ -14,20 +14,22 @@ type DbClient = Prisma.TransactionClient | typeof prisma;
 
 type ChannelStatsDbClient = {
   deliveryRecord: {
-    findMany(args: unknown): Promise<
+    groupBy(args: unknown): Promise<
       Array<{
         recipient_name: string;
         channel: CommunicationChannel;
         status: string;
+        _count: { _all: number };
       }>
     >;
   };
   communicationEvent: {
-    findMany(args: unknown): Promise<
+    groupBy(args: unknown): Promise<
       Array<{
         counterpart_name: string | null;
         channel: CommunicationChannel;
         event_type: string;
+        _count: { _all: number };
       }>
     >;
   };
@@ -266,27 +268,25 @@ export async function getChannelStatsByName(
   if (uniqueNames.length === 0) return statsMap;
 
   const [deliveries, events] = await Promise.all([
-    reader.deliveryRecord.findMany({
+    reader.deliveryRecord.groupBy({
+      by: ['recipient_name', 'channel', 'status'],
       where: {
         org_id: orgId,
         recipient_name: { in: uniqueNames },
       },
-      select: {
-        recipient_name: true,
-        channel: true,
-        status: true,
+      _count: {
+        _all: true,
       },
     }),
-    reader.communicationEvent.findMany({
+    reader.communicationEvent.groupBy({
+      by: ['counterpart_name', 'channel', 'event_type'],
       where: {
         org_id: orgId,
         direction: 'outbound',
         counterpart_name: { in: uniqueNames },
       },
-      select: {
-        counterpart_name: true,
-        channel: true,
-        event_type: true,
+      _count: {
+        _all: true,
       },
     }),
   ]);
@@ -302,9 +302,9 @@ export async function getChannelStatsByName(
   for (const delivery of deliveries) {
     const stats = ensure(delivery.recipient_name);
     if (delivery.status === 'failed') {
-      stats[delivery.channel].failure += 1;
+      stats[delivery.channel].failure += delivery._count._all;
     } else if (delivery.status !== 'draft') {
-      stats[delivery.channel].success += 1;
+      stats[delivery.channel].success += delivery._count._all;
     }
   }
 
@@ -312,9 +312,9 @@ export async function getChannelStatsByName(
     if (!event.counterpart_name) continue;
     const stats = ensure(event.counterpart_name);
     if (event.event_type === 'delivery_failure') {
-      stats[event.channel].failure += 1;
+      stats[event.channel].failure += event._count._all;
     } else {
-      stats[event.channel].success += 1;
+      stats[event.channel].success += event._count._all;
     }
   }
 
