@@ -3,7 +3,7 @@ import { unstable_rethrow } from 'next/navigation';
 import type { Prisma } from '@prisma/client';
 import { withAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
-import { internalError, success, validationError } from '@/lib/api/response';
+import { internalError, successWithMeasuredJsonPayload, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
   addUtcDays,
@@ -1499,7 +1499,7 @@ const authenticatedGET = withAuthContext(
       { maxWaitMs: 10_000, timeoutMs: 20_000, requestContext: ctx },
     );
 
-    return success({ data });
+    return successWithMeasuredJsonPayload({ data });
   },
   {
     permission: 'canReport',

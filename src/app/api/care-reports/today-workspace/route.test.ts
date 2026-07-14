@@ -211,6 +211,10 @@ describe('/api/care-reports/today-workspace', () => {
     const res = await GET(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(200);
     expectSensitiveNoStore(res!);
+    const responseBody = await res!.clone().text();
+    expect(res!.headers.get('content-length')).toBe(
+      String(new TextEncoder().encode(responseBody).length),
+    );
     const json = await res!.json();
     expect(json.data.draft_rows).toEqual([]);
     expect(json.data.created_reports).toEqual([]);

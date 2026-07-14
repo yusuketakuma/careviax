@@ -167,6 +167,10 @@ describe('/api/visits/today-preparation', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    const responseBody = await response.clone().text();
+    expect(response.headers.get('content-length')).toBe(
+      String(new TextEncoder().encode(responseBody).length),
+    );
     const json = await response.json();
     expect(json.data.cards).toEqual([]);
     expect(json.data.visit_count).toBe(0);

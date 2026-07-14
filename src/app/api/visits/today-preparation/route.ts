@@ -1,6 +1,6 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { unstable_rethrow } from 'next/navigation';
-import { internalError, success } from '@/lib/api/response';
+import { internalError, successWithMeasuredJsonPayload } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
@@ -668,7 +668,7 @@ const authenticatedGET = withAuthContext(
       },
     };
 
-    return success({ data: responseData });
+    return successWithMeasuredJsonPayload({ data: responseData });
   },
   {
     permission: 'canVisit',
