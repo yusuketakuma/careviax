@@ -14,6 +14,8 @@ const FORMULARY_CHANGE_REQUEST_AUDIT_ACTIONS = new Set([
 
 const SENSITIVE_AUDIT_TARGET_TYPES = new Set([
   'patient',
+  'patient_insurance',
+  'PatientInsurance',
   'consent_record',
   'PatientShareCase',
   'PatientShareConsent',

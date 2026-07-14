@@ -467,6 +467,96 @@ describe('redactAuditLogChangesForResponse', () => {
     expect(resultText).not.toContain('signed.example');
   });
 
+  it.each(['patient_insurance', 'PatientInsurance'])(
+    'minimizes nested insurance identifiers and care details from %s audit rows',
+    (targetType) => {
+      const before = {
+        id: 'insurance_1',
+        patient_id: 'patient_1',
+        insurer_number: '01234567',
+        symbol: '記号壱号',
+        number: '9876543',
+        branch_number: '03',
+        public_program_code: '54',
+        previous_care_level: 'care_2',
+        valid_from: '2026-04-01T00:00:00.000Z',
+        notes: '患者 山田太郎 アムロジピン',
+      };
+      const after = {
+        ...before,
+        insurer_number: '76543210',
+        number: '1234567',
+        public_program_code: '21',
+        previous_care_level: null,
+        confirmed_care_level: 'care_3',
+        decision_at: '2026-05-15T00:00:00.000Z',
+        notes: '利用者 佐藤花子 ロキソプロフェン',
+      };
+      const log = {
+        id: `audit_${targetType}_update_1`,
+        action: 'patient_insurance.update',
+        target_type: targetType,
+        changes: {
+          operation: 'UPDATE',
+          before,
+          after,
+        },
+      };
+
+      const result = redactAuditLogChangesForResponse(log);
+      const resultText = JSON.stringify(result);
+
+      expect(result).not.toBe(log);
+      expect(result.changes).toMatchObject({
+        operation_redacted: true,
+        before: {
+          id: 'insurance_1',
+          patient_id: 'patient_1',
+          insurer_number_redacted: true,
+          symbol_redacted: true,
+          number_redacted: true,
+          branch_number_redacted: true,
+          public_program_code_redacted: true,
+          previous_care_level_redacted: true,
+          valid_from_redacted: true,
+          notes_redacted: true,
+        },
+        after: {
+          id: 'insurance_1',
+          patient_id: 'patient_1',
+          insurer_number_redacted: true,
+          number_redacted: true,
+          public_program_code_redacted: true,
+          previous_care_level: null,
+          confirmed_care_level_redacted: true,
+          decision_at_redacted: true,
+          notes_redacted: true,
+        },
+      });
+
+      for (const rawValue of [
+        before.insurer_number,
+        before.symbol,
+        before.number,
+        before.branch_number,
+        before.public_program_code,
+        before.previous_care_level,
+        before.valid_from,
+        before.notes,
+        after.insurer_number,
+        after.number,
+        after.public_program_code,
+        after.confirmed_care_level,
+        after.decision_at,
+        after.notes,
+      ]) {
+        expect(resultText).not.toContain(rawValue);
+      }
+      expect(log.changes.before.insurer_number).toBe('01234567');
+      expect(log.changes.after.notes).toBe('利用者 佐藤花子 ロキソプロフェン');
+    },
+  );
+
   it('minimizes formulary request free text without hiding structured evidence', () => {
     const log = {
       id: 'audit_formulary_1',
