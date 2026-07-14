@@ -61,6 +61,36 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: Round 13 patient packaging recovery / nonliteral error-message ratchet /
+  medication-stock PHI-safe logging / visit-brief queue parallelization boundary
+  (DONE / CODE PUSHED, 2026-07-15; implementations `fcc867f75`, `aa2392953`, `c66eab778`, `1515369ff`;
+  typed logger repair `c8c97a2b9`).
+  - workflow / ownership / files inspected:
+    `agmsg` inbox/history、live Git、`Plans.md`、UI SSOT、Next.js client/error guides、patient packaging component/testsを確認した。
+    4 laneはnon-overlapで、codex1 exact2、codex2 exact1、codex3 exact2、codex4 exact2の全handoff SHA-256をlive filesと照合した。
+    開始HEAD `142041508` / parity `0 0`からINDEX/DOCS HARD HOLDを通知し、明示7 pathだけを4 logical groupsへstageした。
+    既存dirtyの`.harness-mem/state/{continuity,whisper-budget}.json`、patient external-share 4 files、
+    `tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`は変更、stage、revertしていない。
+  - frontend / patient packaging save recovery (`fcc867f75`):
+    `patient-packaging-card.{tsx,test.tsx}`でtoastだけだったPUT保存失敗をfixed PHI-safe inline `ErrorState`へ接続し、
+    現在のdraft/contextを保持したまま、失敗時点でcloneした`PackagingFormState`を同一patient/org upsertへ再試行する。
+    失敗後の編集値とは分離し、raw provider errorは表示しない。query recovery、request projection、invalidation、success resetは維持した。
+    focused component suiteは`1 file / 10 tests`。軽微なstate追加のためimagegenは省略した。
+  - backend / security / performance (`aa2392953`, `c66eab778`, `1515369ff`, repair `c8c97a2b9`):
+    alias-aware AST ratchetはnonliteral message expressionをpath/helper/code/message/status込みでexact baseline化し、raw 12 / external 2を固定した。
+    medication-stock GETは明示request context、purpose=care success auditを接続し、失敗loggerをraw Error/message/stackや患者・薬剤情報を含まない
+    fixed one-arg metadataへ縮小した。visit-briefはpatient existence確認後のcommunication queue queryを既存core read waveへ移し、
+    missing-patient no-queryとDTO/order/count/error semanticsを維持したまま逐次awaitを除去した。
+  - validation / failure repair / push / remaining:
+    codex1 focused 10 tests、exact lint/format、frontend contract、client PHI-log、state color、typography、diff-checkがPASS。
+    peer handoffはcodex2 grouped `4 files / 22 tests`、codex3 `22 tests` + security/static gates、codex4 grouped
+    `3 files / 25 tests` + query-shape/read-SLO/boundariesがPASS。初回aggregateはmedication-stock loggerの
+    `request_id`がtyped `SafeLogContext.requestId`と不一致のTS2769で通常typecheckが停止し、no-unusedは未実行。
+    codex3 exact2だけをrepair解除してkey/testを`requestId`へ揃え、新hashを照合してfollow-up commitにした。
+    修復後の`pnpm typecheck && pnpm typecheck:no-unused`は両方exit 0。build/Oracleは実行していない。
+    5 code commitsをnon-force pushし、local/remote HEAD `c8c97a2b9f6af10dcccd7764143c7673b2eb002b`、parity `0 0`。
+    親`API-CONTRACT-003`、`ROUTE-AUTHZ-COVERAGE-001`、`SERVER-LOG-PHI-SAFE-001`、`PERF-DB-READ-SLO-001`は残surfaceのためPartial。
+
 - codex1 + codex2 + codex3 + codex4: Round 12 safety resolve recovery / dynamic-error debt ratchet /
   patient field-revision RLS-audit / contact-profile search pushdown boundary
   (DONE / CODE PUSHED, 2026-07-15; implementations `6f36e8b11`, `394f33a67`, `78eec496e`, `c00869947`).
