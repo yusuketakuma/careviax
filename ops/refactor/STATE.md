@@ -63,7 +63,7 @@
 
 - codex2 backend + temporary integration owner: Round 19 medication stock observation fixed-503
   registry migration / PHI-safe failure logging
-  (DONE / CODE COMMITTED, PUSH PENDING, 2026-07-15; implementation `66fd3f51c`).
+  (DONE / CODE + LEDGER PUSHED, 2026-07-15; implementation `66fd3f51c`, ledger `3a4257b07`).
   - workflow / ownership:
     Round18を`b76dedf06` / parity `0 0`でclose後、live PlansのP0/P1 `API-CONTRACT-003`残33 literalを
     read-only分類した。billing、auth/break-glass、provisioning、e-prescription、idempotency migration候補は
@@ -84,7 +84,8 @@
     focused `3 files / 14 tests`、exact5 ESLint/Prettier、`api-response-shape:check`、`api-authz-status:check`、
     `dto-direct-prisma-return:check`、`route-auth-wrapper:check`、RLS `24/24`、`boundaries:check`、diff-check、
     serialized `pnpm typecheck`、`pnpm typecheck:no-unused`がPASS。build/E2E/Oracle/migration applyは未実行。
-    codeは`66fd3f51c`へcommit済みで、Plans/STATE/RUN_LOCK closeoutとauthorized non-force pushが残る。
+    codeは`66fd3f51c`、integration ledgerは`3a4257b07`へ分離してauthorized non-force pushを完了した。
+    local/remote HEADは`3a4257b077b53fc4faaa18be72b5c463028037b5`、parity `0 0`。
     親`API-CONTRACT-003`と`SERVER-LOG-PHI-SAFE-001`は残surfaceのためPartial。
 
 - codex2 backend + temporary integration owner: Round 18 registered idempotency error contract /
