@@ -20,11 +20,16 @@ public URLs, and Oracle/GPT prompts.
 For any AWS-related implementation, consult the relevant AWS official documentation or API reference before editing code, IaC, runtime env, IAM/S3/RDS/ECS/DynamoDB/SES/Cognito/CloudWatch/Route 53/ACM/Secrets Manager/EventBridge configuration, or operational scripts. Record the official reference name, URL, and confirmation date in the implementation notes, PR description, `ops/refactor/STATE.md`, or the relevant docs. If AWS official guidance conflicts with repository planning docs, prefer the official guidance and update `Plans.md` with the delta before implementation.
 
 For high-risk implementation, repeated failure, or unclear technical decisions, consult
-Oracle/GPT-5.5 Pro as an advisory safety gate. Oracle is a senior second-opinion path,
+Oracle/GPT-5.6 Sol as an advisory safety gate. Oracle is a senior second-opinion path,
 not a normal search/completion tool and not a product owner. Use the project
 `.oracle/config.json` defaults and keep machine-local browser paths, remote tokens,
 API keys, cookies, and secrets in `~/.oracle/config.json`, environment variables, or
 explicit CLI flags only.
+
+Oracle model selection is fixed to `gpt-5.6-sol` with browser thinking time `heavy`
+(ChatGPT Extra High). Do not silently fall back to GPT-5.5 Pro or another model. If
+strict GPT-5.6 Sol selection cannot be verified, stop the consult, preserve the failed
+session evidence, and report the blocker.
 
 Use `.agents/skills/oracle-consult/SKILL.md` for the full escalation policy. In short:
 
@@ -56,7 +61,7 @@ billing, audit logs, secrets, or destructive operations.
 Oracle upstream verification requirement:
 
 When modifying Oracle usage rules, Oracle command flags, Browser mode behavior,
-GPT-5.5 Pro model selection, MCP integration, session handling, or Codex/Oracle skill
+GPT-5.6 Sol model selection, MCP integration, session handling, or Codex/Oracle skill
 instructions, first inspect the upstream GitHub repository and relevant current docs:
 
 - `https://github.com/steipete/oracle`
@@ -70,12 +75,13 @@ confident claims about current Oracle behavior. This upstream check is required 
 when changing Oracle itself or its operating instructions, not for every implementation
 consultation.
 
-Last verified against upstream GitHub on 2026-07-06:
+Last verified against upstream GitHub on 2026-07-14:
 Oracle README, bundled `skills/oracle/SKILL.md`, `docs/browser-mode.md`, and
-`CHANGELOG.md` confirm Browser mode with `gpt-5.5-pro`, minimal file sets,
+`CHANGELOG.md` confirm first-class Browser/API `gpt-5.6-sol` selection, strict Sol
+selection evidence, `heavy` as Extra High for base Sol, minimal file sets,
 `--dry-run` / `--files-report`, manual-login profile reuse, stored sessions,
 and reattach/restart behavior. The local CLI help was also checked with
-`npx -y @steipete/oracle --help` and reported Oracle CLI v0.15.1.
+`npx -y @steipete/oracle --help` and reported Oracle CLI v0.16.0.
 
 Before the first Oracle run in a session, run:
 
@@ -83,14 +89,14 @@ Before the first Oracle run in a session, run:
 npx -y @steipete/oracle --help
 ```
 
-GitHub context requirement for every Oracle/GPT-5.5 Pro consult:
+GitHub context requirement for every Oracle/GPT-5.6 Sol consult:
 
 - Before consulting Oracle, inspect the current GitHub repository context:
   `git remote -v`, current branch, current commit, and related PR/issue context
   when available through `gh` or GitHub web.
 - Include that context in the Oracle prompt. At minimum include repository URL,
   branch, current commit, dirty/clean state, and relevant PR/issue URL or state.
-- The Oracle prompt must explicitly instruct GPT-5.5 Pro to access the provided
+- The Oracle prompt must explicitly instruct GPT-5.6 Sol to access the provided
   GitHub repository/PR/issue URLs when its browser or web access allows it, and
   to state clearly if those GitHub URLs are inaccessible.
 - If GitHub or `gh` is unavailable, state that clearly in the prompt and final
@@ -104,7 +110,7 @@ Default Oracle command shape:
 ```bash
 npx -y @steipete/oracle \
   --engine browser \
-  --model gpt-5.5-pro \
+  --model gpt-5.6-sol \
   --browser-manual-login \
   --browser-auto-reattach-delay 5s \
   --browser-auto-reattach-interval 3s \
@@ -127,8 +133,8 @@ npx -y @steipete/oracle --dry-run summary --files-report \
 Before consulting Oracle, prepare a high-signal prompt with the goal, current state,
 exact blocker or uncertainty, files inspected, files changed, commands run, exact errors
 or logs, options considered, constraints, GitHub repository/branch/commit/PR context,
-and the decision needed from GPT-5.5 Pro. Oracle prompts must explicitly ask GPT-5.5
-Pro to access and consider the provided GitHub URLs/context rather than only the
+and the decision needed from GPT-5.6 Sol. Oracle prompts must explicitly ask GPT-5.6
+Sol to access and consider the provided GitHub URLs/context rather than only the
 attached local files, and to report if GitHub access was unavailable.
 
 Never send secrets, `.env` files, private keys, access tokens, raw patient data, raw

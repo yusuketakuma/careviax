@@ -7,6 +7,9 @@
     "manualLogin": true,
     "thinkingTime": "heavy",
     "modelStrategy": "select",
+    "autoReattachDelayMs": 5000,
+    "autoReattachIntervalMs": 3000,
+    "autoReattachTimeoutMs": 60000,
     "archiveConversations": "auto",
     "maxConcurrentTabs": 2
   }
