@@ -46,11 +46,22 @@ function createGetRequest() {
   return new NextRequest('http://localhost/api/visit-records/visit_1/pdf');
 }
 
+function expectRequestTrace(response: Response) {
+  expect(response.headers.get('X-Request-Id')).toBe('request_visit_pdf_1');
+  expect(response.headers.get('X-Correlation-Id')).toBe('correlation_visit_pdf_1');
+}
+
 describe('/api/visit-records/[id]/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
-      ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        requestId: 'request_visit_pdf_1',
+        correlationId: 'correlation_visit_pdf_1',
+      },
     });
     pdfResponseMock.mockReturnValue(new Response('pdf', { status: 200 }));
     recordDataExportAuditMock.mockResolvedValue(undefined);
@@ -70,6 +81,7 @@ describe('/api/visit-records/[id]/pdf', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     expect(buildVisitRecordPdfMock).toHaveBeenCalledWith('org_1', 'visit_1', {
       userId: 'user_1',
       role: 'pharmacist',
@@ -88,12 +100,41 @@ describe('/api/visit-records/[id]/pdf', () => {
       },
       ipAddress: undefined,
       userAgent: undefined,
+      requestId: 'request_visit_pdf_1',
+      correlationId: 'correlation_visit_pdf_1',
     });
     expectPhiExportSnapshotRedacted(JSON.stringify(recordDataExportAuditMock.mock.calls), [
       'Taro',
       'Yamada',
       'storageKey=s3',
     ]);
+  });
+
+  it('returns a traced sanitized 500 when response creation fails after the audit', async () => {
+    buildVisitRecordPdfMock.mockResolvedValue({
+      buffer: Buffer.from('pdf'),
+      fileName: 'visit-record.pdf',
+    });
+    pdfResponseMock.mockImplementationOnce(() => {
+      throw new Error('患者 山田花子 090-1234-5678 raw visit response detail');
+    });
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'visit_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expectRequestTrace(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw visit response detail');
   });
 
   it('fails closed when the visit record PDF export audit cannot be recorded', async () => {
@@ -111,6 +152,7 @@ describe('/api/visit-records/[id]/pdf', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VISIT_RECORD_PDF_EXPORT_AUDIT_FAILED',
       message: '訪問記録 PDF 出力監査を記録できませんでした',
@@ -126,6 +168,7 @@ describe('/api/visit-records/[id]/pdf', () => {
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '訪問記録IDが不正です',

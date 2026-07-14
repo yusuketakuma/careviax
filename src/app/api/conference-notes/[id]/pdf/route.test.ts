@@ -46,6 +46,11 @@ function createRequest() {
   return new NextRequest('http://localhost/api/conference-notes/note_1/pdf');
 }
 
+function expectRequestTrace(response: Response) {
+  expect(response.headers.get('X-Request-Id')).toBe('request_conference_pdf_1');
+  expect(response.headers.get('X-Correlation-Id')).toBe('correlation_conference_pdf_1');
+}
+
 describe('/api/conference-notes/[id]/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -54,6 +59,8 @@ describe('/api/conference-notes/[id]/pdf', () => {
         orgId: 'org_1',
         userId: 'user_1',
         role: 'pharmacist',
+        requestId: 'request_conference_pdf_1',
+        correlationId: 'correlation_conference_pdf_1',
       },
     });
     pdfResponseMock.mockReturnValue(
@@ -79,6 +86,7 @@ describe('/api/conference-notes/[id]/pdf', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     expect(buildConferenceNotePdfMock).toHaveBeenCalledWith('org_1', 'note_1', {
       userId: 'user_1',
       role: 'pharmacist',
@@ -97,12 +105,41 @@ describe('/api/conference-notes/[id]/pdf', () => {
       },
       ipAddress: undefined,
       userAgent: undefined,
+      requestId: 'request_conference_pdf_1',
+      correlationId: 'correlation_conference_pdf_1',
     });
     expectPhiExportSnapshotRedacted(JSON.stringify(recordDataExportAuditMock.mock.calls), [
       'Taro',
       'Yamada',
       'storageKey=s3',
     ]);
+  });
+
+  it('returns a traced sanitized 500 when response creation fails after the audit', async () => {
+    buildConferenceNotePdfMock.mockResolvedValue({
+      buffer: Buffer.from('pdf'),
+      fileName: 'conference-note.pdf',
+    });
+    pdfResponseMock.mockImplementationOnce(() => {
+      throw new Error('患者 山田花子 090-1234-5678 raw conference response detail');
+    });
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'note_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expectRequestTrace(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('raw conference response detail');
   });
 
   it('fails closed when the conference note PDF export audit cannot be recorded', async () => {
@@ -120,6 +157,7 @@ describe('/api/conference-notes/[id]/pdf', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'CONFERENCE_NOTE_PDF_EXPORT_AUDIT_FAILED',
       message: 'カンファレンス記録 PDF 出力監査を記録できませんでした',
@@ -135,6 +173,7 @@ describe('/api/conference-notes/[id]/pdf', () => {
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'カンファレンス記録IDが不正です',
     });
