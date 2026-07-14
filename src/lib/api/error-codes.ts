@@ -1,5 +1,5 @@
 export type ApiErrorLogLevel = 'info' | 'warn' | 'error';
-export type ApiErrorHttpStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 502;
+export type ApiErrorHttpStatus = 400 | 401 | 403 | 404 | 409 | 410 | 429 | 500 | 502;
 
 export type ApiErrorRecoveryAction =
   | 'correct_input'
@@ -88,6 +88,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     retryable: true,
     recoveryAction: 'retry',
     messageLabel: 'api.error.conference_note.pdf_export_audit_failed',
+  },
+  ENDPOINT_REMOVED: {
+    httpStatus: 410,
+    logLevel: 'info',
+    retryable: false,
+    recoveryAction: 'return_to_previous',
+    messageLabel: 'api.error.endpoint.removed',
   },
   EXTERNAL_ACCESS_VIEW_AUDIT_FAILED: {
     httpStatus: 500,

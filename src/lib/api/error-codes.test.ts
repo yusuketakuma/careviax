@@ -79,6 +79,13 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "ENDPOINT_REMOVED": {
+          "httpStatus": 410,
+          "logLevel": "info",
+          "messageLabel": "api.error.endpoint.removed",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
         "EXTERNAL_ACCESS_VIEW_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",

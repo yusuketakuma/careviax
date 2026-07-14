@@ -1,6 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
-import { error, internalError } from '@/lib/api/response';
+import { internalError, registeredError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 const VISIT_SCHEDULE_GENERATE_REMOVED_DETAILS = {
@@ -11,10 +11,9 @@ const VISIT_SCHEDULE_GENERATE_REMOVED_DETAILS = {
 
 const authenticatedPOST = withAuthContext(
   async () =>
-    error(
+    registeredError(
       'ENDPOINT_REMOVED',
       '訪問予定の直接一括生成は廃止されました。自動提案は /api/visit-schedule-proposals を使用してください。',
-      410,
       VISIT_SCHEDULE_GENERATE_REMOVED_DETAILS,
     ),
   {
