@@ -201,15 +201,13 @@ export const POST: typeof authenticatedPOST = async (req, routeContext) => {
     return await authenticatedPOST(req, routeContext);
   } catch (err) {
     unstable_rethrow(err);
-    logger.error(
-      {
-        event: 'inbound_mcs_post_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-      },
-      err,
-    );
+    logger.error({
+      event: 'inbound_mcs_post_unhandled_error',
+      route: ROUTE,
+      method: req.method,
+      status: 500,
+      code: 'INBOUND_MCS_WRITE_FAILED',
+    });
     return withSensitiveNoStore(internalError());
   }
 };

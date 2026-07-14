@@ -7,11 +7,13 @@ const {
   withOrgContextMock,
   canAccessMock,
   withAuthContextOptions,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   inboundCommunicationEventCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   canAccessMock: vi.fn(),
   withAuthContextOptions: [] as Array<{ permission?: string; message?: string }>,
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -38,6 +40,15 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/server/services/communication-request-access', () => ({
   canAccessCommunicationRequestRecord: canAccessMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
 }));
 
 import { POST as rawPOST } from './route';
@@ -161,6 +172,7 @@ describe('/api/communications/inbound/mcs', () => {
     expect(serialized).not.toContain('token=secret');
     expect(serialized).not.toContain('subject');
     expect(serialized).not.toContain('content');
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-MCS source URLs before creating the event', async () => {
@@ -175,6 +187,7 @@ describe('/api/communications/inbound/mcs', () => {
     expect(response.status).toBe(400);
     expectNoStore(response);
     expect(inboundCommunicationEventCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank content before creating the event', async () => {
@@ -188,6 +201,7 @@ describe('/api/communications/inbound/mcs', () => {
     expect(response.status).toBe(400);
     expectNoStore(response);
     expect(inboundCommunicationEventCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('rejects inaccessible patient or case linkage', async () => {
@@ -208,5 +222,56 @@ describe('/api/communications/inbound/mcs', () => {
       message: '患者またはケースを確認できません',
     });
     expect(inboundCommunicationEventCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a generic no-store error and logs only a fixed code when the scoped write fails', async () => {
+    const rawError =
+      'database rejected patient_1 case_1 カロナール 訪問看護師A https://www.medical-care.net/projects/medical/57886227 storage_key=secret token=secret';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        event_type: 'medication_stock_report',
+        sender_name: '訪問看護師A',
+        sender_organization: '訪看ステーション',
+        source_url: 'https://www.medical-care.net/projects/medical/57886227',
+        content: 'カロナールは残り6錠です。storage_key=secret token=secret',
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    expect(payload).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(inboundCommunicationEventCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith({
+      event: 'inbound_mcs_post_unhandled_error',
+      route: '/api/communications/inbound/mcs',
+      method: 'POST',
+      status: 500,
+      code: 'INBOUND_MCS_WRITE_FAILED',
+    });
+    expect(loggerErrorMock.mock.calls[0]).toHaveLength(1);
+
+    const serializedResponse = JSON.stringify(payload);
+    const serializedLogs = JSON.stringify(loggerErrorMock.mock.calls);
+    for (const secret of [
+      rawError,
+      'patient_1',
+      'case_1',
+      'カロナール',
+      '訪問看護師A',
+      '訪看ステーション',
+      'medical-care.net',
+      'storage_key',
+      'token=secret',
+    ]) {
+      expect(serializedResponse).not.toContain(secret);
+      expect(serializedLogs).not.toContain(secret);
+    }
   });
 });
