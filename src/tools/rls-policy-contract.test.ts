@@ -11,9 +11,9 @@ import {
   KNOWN_MISSING_TABLES,
   KNOWN_SSOT_DRIFT_TABLES,
   KNOWN_TENANT_UNIQUE_WITHOUT_ORG_CONSTRAINTS,
-  INTENTIONAL_RLS_EXCLUSIONS,
 } from './rls-known-gaps';
 import { renderRlsGapLedger, LEDGER_PATH } from './rls-gap-ledger';
+import { INTENTIONAL_RLS_EXCLUSIONS } from '../../tools/scripts/rls-intentional-exclusions';
 
 /**
  * RLS contract（機械導出 + ratchet）

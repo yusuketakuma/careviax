@@ -77,20 +77,6 @@ export interface RlsTenantUniqueWithoutOrgGap {
 }
 
 /**
- * Tenant-shaped infrastructure tables that intentionally do not use RLS.
- *
- * These are not unresolved security gaps: each entry needs an explicit SSOT
- * justification and an application-layer access ratchet. Runtime/preflight
- * checks must consume this exact list so they do not drift from the contract.
- */
-export const INTENTIONAL_RLS_EXCLUSIONS = [
-  {
-    model: 'IdSequence',
-    table: 'id_sequence',
-  },
-] as const;
-
-/**
  * RLS が一切無い（ENABLE ROW LEVEL SECURITY がどこにも無い）テナントテーブル。
  * = 本番 DB でも org 分離の DB 層 backstop が欠如。W1-7 で ENABLE+FORCE+POLICY を追加予定。
  */

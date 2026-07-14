@@ -15,7 +15,7 @@ import {
   DEFAULT_E2E_DATABASE_URL,
   parseLocalE2eDatabaseTarget,
 } from './prepare-e2e-db-core';
-import { INTENTIONAL_RLS_EXCLUSIONS } from '../../src/tools/rls-known-gaps';
+import { INTENTIONAL_RLS_EXCLUSIONS } from './rls-intentional-exclusions';
 
 type CheckStatus = 'pass' | 'warn' | 'fail';
 
