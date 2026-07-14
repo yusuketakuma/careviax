@@ -592,7 +592,7 @@ describe('InboundCommunicationsContent', () => {
     ).not.toContain(poisonError.message);
   });
 
-  it('shows source mapping only after audited detail and submits the new source-mapping payload', async () => {
+  it('submits source mapping after audited detail and retries the exact failed input', async () => {
     const fetchMock = vi.fn(async (...args: [RequestInfo | URL, RequestInit?]) => {
       const [input] = args;
       const url = String(input);
@@ -646,7 +646,22 @@ describe('InboundCommunicationsContent', () => {
     });
     fireEvent.click(panel.getByRole('button', { name: '出所mappingを保存' }));
 
-    expect(mutateMock).toHaveBeenCalledWith({
+    const attemptedInput = mutateMock.mock.calls[0]?.[0] as {
+      eventId: string;
+      form: {
+        patientId: string;
+        caseId: string;
+        externalPatientLabel: string;
+        externalThreadId: string;
+        externalRoomId: string;
+        externalContactName: string;
+        externalContactRole: string;
+        externalOrganizationName: string;
+        confidence: 'probable';
+        mappingStatus: 'needs_review';
+      };
+    };
+    expect(attemptedInput).toEqual({
       eventId: 'event_1',
       form: expect.objectContaining({
         patientId: 'patient_1',
@@ -663,21 +678,8 @@ describe('InboundCommunicationsContent', () => {
     const mutationOptions = useMutationMock.mock.calls.find(([options]) =>
       String(options.mutationFn).includes('source-mapping'),
     )?.[0] as {
-      mutationFn: (input: {
-        eventId: string;
-        form: {
-          patientId: string;
-          caseId: string;
-          externalPatientLabel: string;
-          externalThreadId: string;
-          externalRoomId: string;
-          externalContactName: string;
-          externalContactRole: string;
-          externalOrganizationName: string;
-          confidence: 'probable';
-          mappingStatus: 'needs_review';
-        };
-      }) => Promise<unknown>;
+      mutationFn: (input: typeof attemptedInput) => Promise<unknown>;
+      onError: (error: Error, input: typeof attemptedInput) => void;
     };
     await mutationOptions.mutationFn({
       eventId: 'event_1',
@@ -724,6 +726,32 @@ describe('InboundCommunicationsContent', () => {
     expect(JSON.stringify(requestBody)).not.toContain('source_url');
     expect(JSON.stringify(requestBody)).not.toContain('source_system');
     expect(JSON.stringify(requestBody)).not.toContain('externalThreadId');
+
+    const poisonError = new Error('佐藤花子 様 / 090-1234-5678 / token=secret');
+    act(() => {
+      mutationOptions.onError(poisonError, attemptedInput);
+    });
+
+    const updatedPanel = within(screen.getByTestId('inbound-source-mapping-panel'));
+    expect((updatedPanel.getByLabelText('mapping患者ID') as HTMLInputElement).value).toBe(
+      'patient_1',
+    );
+    expect((updatedPanel.getByLabelText('MCS thread key') as HTMLInputElement).value).toBe(
+      'phone:09012345678',
+    );
+    expect(updatedPanel.getAllByText('出所mappingを保存できませんでした')).toHaveLength(1);
+    expect(
+      updatedPanel.getByText(
+        '保存処理に失敗しました。入力内容と監査済み詳細は保持されています。 通信状態を確認して、同じmapping内容を再試行してください。',
+      ),
+    ).toBeTruthy();
+    expect(updatedPanel.queryByText(poisonError.message)).toBeNull();
+
+    fireEvent.click(updatedPanel.getByRole('button', { name: '出所mappingの保存を再試行' }));
+
+    expect(mutateMock).toHaveBeenCalledTimes(2);
+    expect(mutateMock).toHaveBeenNthCalledWith(1, attemptedInput);
+    expect(mutateMock).toHaveBeenNthCalledWith(2, attemptedInput);
   });
 
   it('shows signal candidates only for the selected inbound item in the right review panel', () => {

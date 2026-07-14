@@ -913,6 +913,8 @@ export function InboundCommunicationsContent() {
   );
   const [stockApplyFailureInput, setStockApplyFailureInput] =
     useState<StockApplyMutationInput | null>(null);
+  const [sourceMappingFailureInput, setSourceMappingFailureInput] =
+    useState<SourceMappingMutationInput | null>(null);
   const [stockApplyForms, setStockApplyForms] = useState<Record<string, StockApplyFormState>>({});
   const [sourceMappingForm, setSourceMappingForm] =
     useState<InboundSourceMappingFormState>(EMPTY_SOURCE_MAPPING_FORM);
@@ -1237,11 +1239,16 @@ export function InboundCommunicationsContent() {
         }),
       });
     },
+    onMutate: () => {
+      setSourceMappingFailureInput(null);
+    },
     onSuccess: () => {
+      setSourceMappingFailureInput(null);
       toast.success('出所mappingを保存しました');
       setSourceMappingForm(EMPTY_SOURCE_MAPPING_FORM);
     },
-    onError: (error) => {
+    onError: (error, input) => {
+      if (input) setSourceMappingFailureInput(input);
       clientLog.warn('inbound_communication.source_mapping_save_failed', error, {
         route: '/communications/inbound',
         entityType: 'inbound_source_mapping',
@@ -2140,6 +2147,22 @@ export function InboundCommunicationsContent() {
                                 {sourceMappingMutation.isPending ? '保存中' : '出所mappingを保存'}
                               </Button>
                             </div>
+                            {sourceMappingFailureInput ? (
+                              <ErrorState
+                                variant="server"
+                                size="inline"
+                                title="出所mappingを保存できませんでした"
+                                cause="保存処理に失敗しました。入力内容と監査済み詳細は保持されています。"
+                                nextAction="通信状態を確認して、同じmapping内容を再試行してください。"
+                                onRetry={() =>
+                                  sourceMappingMutation.mutate(sourceMappingFailureInput)
+                                }
+                                retryLabel="出所mappingの保存を再試行"
+                                retryVariant="outline"
+                                retryDisabled={sourceMappingMutation.isPending}
+                                headingLevel={4}
+                              />
+                            ) : null}
                           </form>
                         ) : null}
                       </div>
