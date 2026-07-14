@@ -24,13 +24,19 @@ const jsonPayloadEncoder = new TextEncoder();
 export function successWithMeasuredJsonPayload<
   TData,
   TMeta extends object = Record<string, unknown>,
->(payload: ApiSuccess<TData, TMeta>, status = 200) {
-  const response = success(payload, status);
-  response.headers.set(
-    'Content-Length',
-    String(jsonPayloadEncoder.encode(JSON.stringify(payload)).length),
-  );
-  return response;
+>(payload: ApiSuccess<TData, TMeta>, status = 200): NextResponse<ApiSuccess<TData, TMeta>> {
+  const body = JSON.stringify(payload);
+  if (body === undefined) {
+    throw new TypeError('Value is not JSON serializable');
+  }
+
+  return new NextResponse<ApiSuccess<TData, TMeta>>(body, {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': String(jsonPayloadEncoder.encode(body).length),
+    },
+  });
 }
 
 export function error(code: string, message: string, status: number, details?: unknown) {

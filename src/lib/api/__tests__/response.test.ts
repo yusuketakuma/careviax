@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NextResponse } from 'next/server';
 
 const { getLabelDictionaryValueMock } = vi.hoisted(() => ({
   getLabelDictionaryValueMock: vi.fn(),
@@ -29,6 +30,10 @@ function assertApiSuccessInputContract() {
   } satisfies ApiSuccess<{ ok: boolean }>;
   void success(exactEnvelope);
   void successWithMeasuredJsonPayload(exactEnvelope);
+
+  const measuredResponse: NextResponse<ApiSuccess<{ ok: boolean }>> =
+    successWithMeasuredJsonPayload({ data: { ok: true } });
+  void measuredResponse;
 
   // @ts-expect-error success metadata belongs under meta, never at the root.
   void success({ data: { ok: true }, legacy_metadata: true });
@@ -64,14 +69,87 @@ describe('api response helpers', () => {
     });
   });
 
-  it('measures the encoded exact success envelope', async () => {
-    const payload = { data: { ok: true } };
+  it('serializes and measures the encoded exact success envelope once', async () => {
+    const payload = { data: { ok: true, label: '薬剤💊' } };
+    const expectedBody = JSON.stringify(payload);
+    const stringifySpy = vi.spyOn(JSON, 'stringify');
+
+    let response: Response;
+    try {
+      response = successWithMeasuredJsonPayload(payload, 201);
+      expect(stringifySpy).toHaveBeenCalledOnce();
+      expect(stringifySpy).toHaveBeenCalledWith(payload);
+    } finally {
+      stringifySpy.mockRestore();
+    }
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get('Content-Type')).toBe('application/json');
+    expect(response.headers.get('Content-Length')).toBe(
+      String(new TextEncoder().encode(expectedBody).length),
+    );
+    await expect(response.text()).resolves.toBe(expectedBody);
+  });
+
+  it('keeps stateful serialization, omitted values, and measured bytes consistent', async () => {
+    let serializationCount = 0;
+    const payload = {
+      data: {
+        dynamic: {
+          toJSON() {
+            serializationCount += 1;
+            return `serialized-${serializationCount}`;
+          },
+        },
+        omitted: undefined,
+      },
+    };
+    const expectedBody = '{"data":{"dynamic":"serialized-1"}}';
+
     const response = successWithMeasuredJsonPayload(payload);
 
+    expect(serializationCount).toBe(1);
     expect(response.headers.get('Content-Length')).toBe(
-      String(new TextEncoder().encode(JSON.stringify(payload)).length),
+      String(new TextEncoder().encode(expectedBody).length),
     );
-    await expect(response.json()).resolves.toEqual(payload);
+    await expect(response.text()).resolves.toBe(expectedBody);
+  });
+
+  it('fails before returning a response for unsupported or throwing payloads', () => {
+    const circularData: { self?: unknown } = {};
+    circularData.self = circularData;
+    let undefinedRootSerializationCount = 0;
+    const undefinedRootPayload = {
+      data: { ok: true },
+      toJSON() {
+        undefinedRootSerializationCount += 1;
+        return undefined;
+      },
+    };
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      expect(() => successWithMeasuredJsonPayload(undefinedRootPayload)).toThrow(
+        new TypeError('Value is not JSON serializable'),
+      );
+      expect(undefinedRootSerializationCount).toBe(1);
+      expect(() => successWithMeasuredJsonPayload({ data: { value: BigInt(1) } })).toThrow(
+        TypeError,
+      );
+      expect(() => successWithMeasuredJsonPayload({ data: circularData })).toThrow(TypeError);
+      expect(() =>
+        successWithMeasuredJsonPayload({
+          data: {
+            toJSON() {
+              throw new Error('serialization failed');
+            },
+          },
+        }),
+      ).toThrow('serialization failed');
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 
   it('returns standard errors without legacy root aliases', async () => {
