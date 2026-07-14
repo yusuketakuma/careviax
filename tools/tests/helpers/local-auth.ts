@@ -1,5 +1,6 @@
 import { encode } from 'next-auth/jwt';
 import type { BrowserContext, Page } from '@playwright/test';
+import type { MemberRole } from '@prisma/client';
 import { Client } from 'pg';
 
 export const AUTH_SECRET = 'ph-os-local-auth-secret';
@@ -7,7 +8,15 @@ const DB_CONNECTION_STRING = (
   process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
 ).replace(/\?.*$/, '');
 const NOTIFICATION_STREAM_PATH = '/api/notifications/stream';
-let cachedLocalUserId: string | null = null;
+type LocalSessionIdentity = {
+  userId: string;
+  orgId: string;
+  defaultSiteId: string | null;
+  sessionVersion: number;
+  memberRole: MemberRole;
+};
+
+let cachedLocalSessionIdentity: LocalSessionIdentity | null = null;
 
 export const LOCAL_USER = {
   email: 'demo@ph-os.example.com',
@@ -61,9 +70,9 @@ export function shouldIgnorePageError(message: string) {
   return ignoredMessages.includes(normalized);
 }
 
-async function resolveLocalUserId() {
-  if (cachedLocalUserId) {
-    return cachedLocalUserId;
+async function resolveLocalSessionIdentity() {
+  if (cachedLocalSessionIdentity) {
+    return cachedLocalSessionIdentity;
   }
 
   assertSafeE2eDatabase();
@@ -72,40 +81,69 @@ async function resolveLocalUserId() {
   await client.connect();
 
   try {
-    const result = await client.query<{ id: string }>(
+    const result = await client.query<{
+      id: string;
+      org_id: string;
+      default_site_id: string | null;
+      session_version: number;
+      member_role: MemberRole;
+    }>(
       `
-        SELECT id
-        FROM "User"
-        WHERE cognito_sub = $1 OR lower(email) = lower($2)
-        ORDER BY created_at DESC
+        SELECT
+          u.id,
+          u.org_id,
+          u.default_site_id,
+          u.session_version,
+          m.role AS member_role
+        FROM "User" u
+        JOIN "Membership" m
+          ON m.user_id = u.id
+          AND m.org_id = u.org_id
+          AND m.is_active = true
+        WHERE u.cognito_sub = $1 OR lower(u.email) = lower($2)
+        ORDER BY
+          u.created_at DESC,
+          (m.site_id IS NOT DISTINCT FROM u.default_site_id) DESC,
+          m.created_at ASC
         LIMIT 1
       `,
       [LOCAL_USER.cognitoSub, LOCAL_USER.email],
     );
 
-    const userId = result.rows[0]?.id;
-    if (!userId) {
-      throw new Error('Playwright local auth user could not be resolved from the database');
+    const identity = result.rows[0];
+    if (!identity) {
+      throw new Error(
+        'Playwright local auth user or active membership could not be resolved from the database',
+      );
     }
 
-    cachedLocalUserId = userId;
-    return userId;
+    cachedLocalSessionIdentity = {
+      userId: identity.id,
+      orgId: identity.org_id,
+      defaultSiteId: identity.default_site_id,
+      sessionVersion: identity.session_version,
+      memberRole: identity.member_role,
+    };
+    return cachedLocalSessionIdentity;
   } finally {
     await client.end();
   }
 }
 
-export async function createSessionToken() {
-  const userId = await resolveLocalUserId();
+export async function createSessionToken(options: { userIdOverride?: string } = {}) {
+  const identity = await resolveLocalSessionIdentity();
 
   return encode({
     secret: AUTH_SECRET,
     token: {
-      userId,
+      userId: options.userIdOverride ?? identity.userId,
+      orgId: identity.orgId,
+      defaultSiteId: identity.defaultSiteId,
+      memberRole: identity.memberRole,
       email: LOCAL_USER.email,
       name: LOCAL_USER.name,
       cognitoSub: LOCAL_USER.cognitoSub,
-      sessionVersion: LOCAL_USER.sessionVersion,
+      sessionVersion: identity.sessionVersion,
       sub: LOCAL_USER.cognitoSub,
     },
     maxAge: 30 * 60,

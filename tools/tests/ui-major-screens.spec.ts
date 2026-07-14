@@ -87,6 +87,7 @@ type DemoContext = {
   siteId: string | null;
   userId: string;
   patientId: string;
+  patientDisplayId: string;
   patientName: string;
   patientKana: string;
   address: string;
@@ -163,7 +164,7 @@ async function ensureUiDemoData() {
     const patientName = 'UIデモ E2E 太郎';
     const patientKana = 'ユーデモ イーツーイー タロウ';
 
-    await client.query(
+    const patientResult = await client.query<{ display_id: string }>(
       `
         INSERT INTO "Patient" (
           "id","org_id","name","name_kana","birth_date","gender","billing_support_flag","created_at","updated_at"
@@ -176,9 +177,14 @@ async function ensureUiDemoData() {
             "gender" = EXCLUDED."gender",
             "billing_support_flag" = true,
             "updated_at" = NOW()
+        RETURNING "display_id"
       `,
       [DEMO_IDS.patient, base.org_id, patientName, patientKana],
     );
+    const patientDisplayId = patientResult.rows[0]?.display_id;
+    if (!patientDisplayId) {
+      throw new Error('UI demo patient requires an authoritative display ID');
+    }
 
     await client.query(
       `
@@ -1196,6 +1202,7 @@ async function ensureUiDemoData() {
       siteId: base.site_id,
       userId: base.user_id,
       patientId: DEMO_IDS.patient,
+      patientDisplayId,
       patientName,
       patientKana,
       address,
@@ -2008,7 +2015,9 @@ test.describe('major authenticated screens', () => {
     });
   }
 
-  test('patient share screen exposes backend share and self-report data', async ({ context }) => {
+  test('patient share screen exposes backend share and self-report data', async ({
+    context,
+  }, testInfo) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, `/patients/${demoContext.patientId}/share`);
 
@@ -2016,17 +2025,16 @@ test.describe('major authenticated screens', () => {
       timeout: 60_000,
     });
     await expect(page.locator('main').getByText(demoContext.selfReportSubject).first()).toBeVisible(
-      {
-        timeout: 60_000,
-      },
+      { timeout: 60_000 },
     );
     const patientContext = page.getByRole('region', { name: '患者情報' });
     await expect(patientContext).toBeVisible();
     await expect(patientContext).toContainText(demoContext.patientName);
     await expect(patientContext).toContainText(demoContext.patientKana);
     await expect(patientContext).toContainText('患者ID');
+    await expect(patientContext).toContainText(demoContext.patientDisplayId);
     await expect(patientContext).toHaveAttribute('data-sticky', 'true');
-    await writeScreenshot(page, 'patient-share-data');
+    await writeScreenshot(page, `patient-share-data-${testInfo.project.name}`);
     expect(errors).toEqual([]);
   });
 

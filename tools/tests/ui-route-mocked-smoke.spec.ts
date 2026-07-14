@@ -1,12 +1,10 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { encode } from 'next-auth/jwt';
 import type { PatientMedicationStockSummaryResponse } from '@/types/medication-stock';
 import {
   attachLocalSession,
-  AUTH_SECRET,
+  createSessionToken,
   createInstrumentedPage,
-  LOCAL_USER,
   openStableRoute,
 } from './helpers/local-auth';
 import {
@@ -104,18 +102,7 @@ function summarizeAxeViolations(
 }
 
 async function attachRouteMockSession(context: Parameters<typeof attachLocalSession>[0]) {
-  const token = await encode({
-    secret: AUTH_SECRET,
-    token: {
-      userId: 'route_mock_user',
-      email: LOCAL_USER.email,
-      name: LOCAL_USER.name,
-      cognitoSub: LOCAL_USER.cognitoSub,
-      sessionVersion: LOCAL_USER.sessionVersion,
-      sub: LOCAL_USER.cognitoSub,
-    },
-    maxAge: 30 * 60,
-  });
+  const token = await createSessionToken({ userIdOverride: 'route_mock_user' });
 
   await context.addCookies([
     {
