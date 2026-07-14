@@ -61,6 +61,40 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: Round 3 file-complete error registry / patient communications RLS-audit /
+  medication-stock payload measurement integration boundary
+  (DONE / CODE PUSHED, 2026-07-15; implementations `41f634fe9`, `1096d3c93`, `5358c0794`).
+  - workflow / ownership / files inspected:
+    `agmsg` inbox/historyとlive Gitを再確認し、codex2 exact4、codex3 exact2、codex4 exact2の全handoff SHA-256が
+    frozen報告と一致すること、3 laneがnon-overlapであること、開始HEAD `9ce014acc`とoriginが`0 0`であることを確認した。
+    各agentのfocused/static self-validationを確認し、相互reviewは行わず、codex1が明示pathだけを3 logical groupsへstageした。
+    既存user/harness dirtyの`.harness-mem/state/{continuity,whisper-budget}.json`、patient external-share 4 files、
+    `tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`は変更、stage、revertしていない。
+  - backend API contract (`41f634fe9`):
+    `src/lib/api/error-codes.{ts,test.ts}`と`src/app/api/files/complete/route.{ts,test.ts}`を変更し、固定の未知completion
+    failureを`EXTERNAL_FILE_COMPLETE_FAILED` = 502 / error / retryable / retryとしてtyped registryへ追加した。
+    fixed fallbackだけを`registeredError`へ移し、exact fixed bodyとprovider/PHI detail非露出を固定した。dynamic
+    `FileStorageError`、legacy 410、auth、validation、public DTO、service、no-storeは維持。self-validationはregistry + route +
+    response helper + API conventions `4 files / 31 tests`、exact lint/format、response/auth/static gates、diffをPASSした。
+  - security / patient communications (`1096d3c93`):
+    `src/app/api/patients/[id]/communications/route.ts`と新規testを変更し、既存`canVisit`再認可を維持したまま、全PHI readを
+    explicit request context付き`withOrgContext` transaction clientへ移した。non-null successだけを
+    `patient_communications` / purpose `care` / request-correlation traceでexact-once auditし、blank/auth denied/not-found/query/
+    context failureはzero-audit、sensitive no-store、raw error非露出に固定した。self-validationはfocused + detail-slices + service +
+    PHI audit `4 files / 76 tests`、raw-read-org/client-PHI/module/API/auth/static gates、exact lint/format/diffをPASS。
+  - performance / medication stock (`5358c0794`):
+    `src/app/api/patients/[id]/medication-stock/route.{ts,test.ts}`のouter GETを`withRoutePerformance`へ接続し、既存のsingle-serialize
+    measured JSONをnormalized critical family `patient-medication-stock-summary`、250 KiB budget、payload sample count 1として記録した。
+    `canVisit`、org-scoped transaction、bounded item/event limit、PHI audit、no-store、error semanticsは変更していない。
+    self-validationはbaseline `1 file / 6 tests`、performance + route `2 files / 21 tests`、conventions `1 file / 5 tests`、
+    response/auth static gates、exact lint/format/diffをPASSした。
+  - aggregate validation / commit / push / remaining:
+    3 code commits後にcodex1が`pnpm typecheck && pnpm typecheck:no-unused`を1回だけ直列実行し、両方exit 0。
+    ユーザー方針によりbuild/Oracleは実行していない。code commitsをfeature branchへnon-force pushし、remote HEAD
+    `5358c0794`とlocal HEADが一致、parityは`0 0`。次はこのsingle-ledger closeoutをscoped commit/pushし、最終parity確認後に
+    codex2/3/4へexplicit GATE RELEASEを送る。`API-CONTRACT-003`、`ROUTE-AUTHZ-COVERAGE-001`、
+    `RAW-DETAIL-REAUDIT-001`、`ROUTE-PERF-MEASURE-001`はいずれも残surfaceがあるためPartialを維持する。
+
 - codex1 + codex3 + codex4: patient detail access-loss / break-glass rate limit /
   visit capture SSR RLS / patient payload measurement integration boundary
   (DONE / PUSHED, 2026-07-15; implementations `72def2515`, `baefb8dc5`, `6ef1ef1c8`,
