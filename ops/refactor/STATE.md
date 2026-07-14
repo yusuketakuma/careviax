@@ -61,6 +61,37 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: Round 12 safety resolve recovery / dynamic-error debt ratchet /
+  patient field-revision RLS-audit / contact-profile search pushdown boundary
+  (DONE / CODE PUSHED, 2026-07-15; implementations `6f36e8b11`, `394f33a67`, `78eec496e`, `c00869947`).
+  - workflow / ownership / files inspected:
+    `agmsg` inbox/history、live Git、`Plans.md`、UI SSOT、Next.js client/error guides、safety-check component/testsを確認した。
+    4 laneはnon-overlapで、codex1 exact2、codex2 exact1、codex3 exact2、codex4 exact2の全handoff SHA-256をlive filesと照合した。
+    開始HEAD `fe28761d6` / parity `0 0`からINDEX/DOCS HARD HOLDを通知し、明示7 pathだけを4 logical groupsへstageした。
+    既存dirtyの`.harness-mem/state/{continuity,whisper-budget}.json`、patient external-share 4 files、
+    `tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`は変更、stage、revertしていない。
+  - frontend / safety resolve recovery (`6f36e8b11`):
+    `safety-check-content.{tsx,test.tsx}`で「問題なし」confirmを開いた時点のissue IDをsnapshotし、冪等なresolve PATCH失敗時も
+    dialogと選択を保持するfixed PHI-safe inline `ErrorState`、同一issue ID再試行、success/cancel時だけのclose/resetを接続した。
+    raw provider detail、患者名をerror UIへ出さず、fail-closed path encoding、POST/PATCH契約、invalidation、patient/CDS false-safe防止を維持した。
+    当初候補の医師確認記録はintervention POST→issue PATCHの非atomic二段処理で、response-loss/部分失敗の自動再試行が介入を
+    重複作成し得るため編集前にscopeから外し、`SAFETY-CONSULTATION-IDEMPOTENCY-001`へ残した。軽微なstate追加のためimagegen省略。
+  - backend / security / performance (`394f33a67`, `78eec496e`, `c00869947`):
+    registered-error AST ratchetはliteral raw/external 36/11に加え、dynamic raw 7 / external 0のpath/code-expression/status-expressionを
+    exact baseline化した。patient field-revisions GETは既存`canVisit`、validation、assignment、role masking、projection/metaを保ち、
+    prefilterとserviceを同一request-scoped `withOrgContext` txへ移してnon-null successだけをpurpose=care付きaudit、denied/errorをzero-auditにした。
+    contact-profile searchは表示fieldと同じ保守的predicateをmaster queryへpushdownし、不要なresidence/care-team/prescription relation hydrationを
+    回避した。final JS substring filter、kind/order/channel/pending/DTO、facility composite subtitle fallbackは維持した。
+  - validation / failure repair / push / remaining:
+    codex1 focused `1 file / 31 tests`、grouped `2 files / 52 tests`、exact lint/format、frontend contract、client PHI-log/display、
+    color/typography/diff-checkがPASS。peer handoffはcodex2 `4 files / 22 tests`、codex3 `38 tests` + auth/RLS static gates、
+    codex4 repair後 `4 files / 63 tests` + query-shape/read-SLO/boundariesがPASS。
+    初回aggregateは`profession_type` enumへ`contains`を指定したTS2322で通常typecheckが停止し、no-unusedは未実行。codex4 exact2だけを
+    repair解除し、13 enum値のsubstring候補をtyped `in`へ変換、no-matchはenum predicateを省略する修正をrefreezeしてperformance commitをamendした。
+    修復後の`pnpm typecheck && pnpm typecheck:no-unused`は両方exit 0。build/Oracleは実行していない。
+    4 code commitsをnon-force pushし、local/remote HEAD `c00869947e4a3157bed7fc251ae8fea3c6baedae`、parity `0 0`。
+    親項目は残surfaceのためPartial。`Plans.md`にはdynamic baselineと未解決consultation idempotencyだけを残す。
+
 - codex1 + codex2 + codex3 + codex4: Round 11 bounded movement-search recovery / external-error debt ratchet /
   patient structured-care RLS-audit / contact-profile channel-stat aggregation boundary
   (DONE / CODE PUSHED, 2026-07-15; implementations `c3222846e`, `0ee908850`, `6329c2079`, `85179db31`).
