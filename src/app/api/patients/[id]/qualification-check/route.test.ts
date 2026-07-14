@@ -498,6 +498,33 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
+  it('returns fixed no-store provider authentication failures without echoing credentials', async () => {
+    checkInsuranceMock.mockRejectedValueOnce(
+      new QualificationCheckAdapterErrorMock(
+        'provider rejected insurance 12345678 patient 山田 太郎 access_token=secret',
+        'UNAUTHORIZED',
+      ),
+    );
+
+    const response = await POST(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(502);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'OQC_UNAUTHORIZED',
+      message: 'オンライン資格確認サービスへの認証に失敗しました',
+    });
+    const serializedBody = JSON.stringify(body);
+    expect(serializedBody).not.toContain('12345678');
+    expect(serializedBody).not.toContain('山田 太郎');
+    expect(serializedBody).not.toContain('access_token=secret');
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
   it('keeps not-enabled provider responses no-store and fixed', async () => {
     checkInsuranceMock.mockRejectedValueOnce(
       new QualificationCheckAdapterErrorMock(
@@ -514,7 +541,7 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(response.status).toBe(501);
     expectSensitiveNoStore(response);
     const body = await response.json();
-    expect(body).toMatchObject({
+    expect(body).toEqual({
       code: 'OQC_NOT_ENABLED',
       message: 'オンライン資格確認はまだ有効化されていません',
     });

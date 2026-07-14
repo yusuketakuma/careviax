@@ -4,7 +4,6 @@ import { requireAuthContext } from '@/lib/auth/context';
 import {
   success,
   notFound,
-  error,
   registeredError,
   validationError,
   internalError,
@@ -111,9 +110,9 @@ function clientQualificationCheckResult(
 function qualificationCheckAdapterErrorResponse(cause: QualificationCheckAdapterError): Response {
   switch (cause.code) {
     case 'NOT_IMPLEMENTED':
-      return error('OQC_NOT_ENABLED', QUALIFICATION_CHECK_ERROR_MESSAGES.NOT_IMPLEMENTED, 501);
+      return registeredError('OQC_NOT_ENABLED', QUALIFICATION_CHECK_ERROR_MESSAGES.NOT_IMPLEMENTED);
     case 'UNAUTHORIZED':
-      return error('OQC_UNAUTHORIZED', QUALIFICATION_CHECK_ERROR_MESSAGES.UNAUTHORIZED, 502);
+      return registeredError('OQC_UNAUTHORIZED', QUALIFICATION_CHECK_ERROR_MESSAGES.UNAUTHORIZED);
     case 'INVALID_REQUEST':
     case 'INVALID_CONFIGURATION':
     case 'UPSTREAM_FAILURE':

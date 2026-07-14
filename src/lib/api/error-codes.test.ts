@@ -170,6 +170,20 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "OQC_NOT_ENABLED": {
+          "httpStatus": 501,
+          "logLevel": "info",
+          "messageLabel": "api.error.qualification_check.not_enabled",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
+        "OQC_UNAUTHORIZED": {
+          "httpStatus": 502,
+          "logLevel": "error",
+          "messageLabel": "api.error.qualification_check.unauthorized",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
         "OQC_UPSTREAM_FAILURE": {
           "httpStatus": 502,
           "logLevel": "error",
