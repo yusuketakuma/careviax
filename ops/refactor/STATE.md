@@ -9,7 +9,7 @@
 ## 体制（2026-07-14 最新ユーザー指示）
 
 - 現行は`codex1` / `codex2` / `codex3` / `codex4`の協調運用。最新役割は`codex1`がfrontend、
-  `codex2`がbackend、`codex4`が動作速度改善・response向上を主担当とし、各agentは`agmsg` team `phos`で
+  `codex2`がbackend、`codex3`がsecurity red-team、`codex4`が動作速度改善・response向上を主担当とし、各agentは`agmsg` team `phos`で
   exact-path ownership、開始、freeze、review結果を通知して同一pathを並列編集しない。
 - 調査・独立review・focused validationは並列化し、編集は宣言したnon-overlap pathsだけに限定する。
   Plans/STATE/RUN_LOCK、commit/push、Next生成物を触る共有gateは明示されたslice integration ownerが直列化する。
@@ -58,6 +58,32 @@
   human/high-risk gateとして実装せず、証拠付きの残件へ戻す。
 
 ## 直近の作業
+
+- codex1 + codex2 + codex3 + codex4: `FE-PATIENT-DETAIL-HEADING-001`
+  (DONE / PUSH_PENDING, 2026-07-14; implementation `11f718ef7`).
+  - current task / files inspected / files changed:
+    `Plans.md`の`FE-PATIENT-DETAIL-001`、PH-OS UI/UX SSOT全1,529行、Next.js 16同梱のAccessibilityと
+    Server/Client Components guide、patient detailのheading/state/query経路、movement component/testsを確認した。
+    変更は`card-workspace.tsx` / testと`patient-movement-timeline.tsx` / testのexact4だけ。
+  - bug fixed / UX contract:
+    Movement tab wrapperとtimeline本体が同じ「患者の動き」h2を二重表示し、日付h3配下のevent titleもh3で
+    平坦化されていた。通常状態はtimeline本体のh2だけを正本にし、loading/errorは同じ位置にh2を維持、
+    event titleをh4へ下げた。検索、期間/種別filter、過去→現在DOM順、current/partial/empty copy、Evidence Dock、
+    API/DTO、PHI表示、href、layout、motionは変更していない。
+  - security / performance / multi-angle review:
+    `codex2` backend contract、`codex3` security red-team、`codex4` performanceのread-only reviewでheading exact4は
+    APPROVE。追加query/render/network/dependencyはなく性能退行なし。`codex3`は既存のunconditional
+    `keepPreviousData`が患者/org切替中に旧患者timelineを新患者header配下へ一時表示し得るHIGHを発見した。
+    heading sliceをland後、同じfrontend exact2 ownershipでpatient/org一致時だけplaceholderを保持するfail-closed
+    follow-upを直ちに実装する。broader state matrix完了とは扱わない。
+  - validation / design evidence:
+    focused Vitest `2 files / 122 tests`、exact4 ESLint、Prettier、`git diff --check`、serialized
+    `pnpm typecheck && pnpm typecheck:no-unused`をPASS。ユーザー方針によりbuild/Oracleは実行していない。
+    新規visual structureやinteractionを作らないsemantic heading是正のためimagegenは省略し、既存Clinical Signal
+    Workspaceの構造と表示を維持した。
+  - commit / remaining / next action:
+    frontend exact4だけを`11f718ef7`へscoped commitした。single-ledger commitとsafe push後、同じfrontend exact2
+    ownershipを維持してcross-patient/org placeholder PHIをfail-closed化する。
 
 - codex1 + codex2 + codex3 + codex4: `FE-PATIENT-MOVEMENT-TEMPORAL-001` / `FE-FIELD-REVISION-TEMPORAL-001` /
   `SEARCH-INTEGRATION-GLOBAL-001` / `API-CONTRACT-002G` / `API-CONTRACT-002H`
