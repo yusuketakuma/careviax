@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { getRequestTraceContext, type RequestTraceContext } from '@/lib/api/request-correlation';
 
 const {
   authMock,
@@ -256,11 +257,16 @@ describe('/api/jobs/[jobType] POST', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
 
-    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
-      params: Promise.resolve({ jobType: 'daily-medication-check' }),
-    });
+    const response = await POST(
+      createRequest({ 'x-org-id': 'org_1', 'x-correlation-id': 'denied_job_trace' }),
+      {
+        params: Promise.resolve({ jobType: 'daily-medication-check' }),
+      },
+    );
 
     expect(response.status).toBe(403);
+    expect(response.headers.get('X-Request-Id')).toMatch(/^[0-9a-f-]{36}$/);
+    expect(response.headers.get('X-Correlation-Id')).toBe('denied_job_trace');
     await expect(response.json()).resolves.toMatchObject({
       code: 'AUTH_FORBIDDEN',
     });
@@ -268,12 +274,27 @@ describe('/api/jobs/[jobType] POST', () => {
 
   it('returns 200 when api key is valid', async () => {
     authMock.mockResolvedValue(null);
-
-    const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
-      params: Promise.resolve({ jobType: '  daily-medication-check  ' }),
+    let capturedTrace: RequestTraceContext | undefined;
+    checkMedicationDeadlinesMock.mockImplementationOnce(async () => {
+      capturedTrace = getRequestTraceContext();
+      return { processedCount: 3 };
     });
 
+    const response = await POST(
+      createRequest({
+        'x-api-key': 'job-secret',
+        'x-correlation-id': 'api_key_job_trace',
+      }),
+      { params: Promise.resolve({ jobType: '  daily-medication-check  ' }) },
+    );
+
     expect(response.status).toBe(200);
+    expect(response.headers.get('X-Request-Id')).toMatch(/^[0-9a-f-]{36}$/);
+    expect(response.headers.get('X-Correlation-Id')).toBe('api_key_job_trace');
+    expect(capturedTrace).toEqual({
+      requestId: response.headers.get('X-Request-Id'),
+      correlationId: 'api_key_job_trace',
+    });
     expect(checkMedicationDeadlinesMock).toHaveBeenCalledOnce();
     await expectJobSuccessData(response, {
       jobType: 'daily-medication-check',
@@ -287,11 +308,17 @@ describe('/api/jobs/[jobType] POST', () => {
       authMock.mockResolvedValue(null);
       checkMedicationDeadlinesMock.mockRejectedValueOnce(new Error('job provider secret detail'));
 
-      const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
-        params: Promise.resolve({ jobType: 'daily-medication-check' }),
-      });
+      const response = await POST(
+        createRequest({
+          'x-api-key': 'job-secret',
+          'x-correlation-id': 'failed_job_trace',
+        }),
+        { params: Promise.resolve({ jobType: 'daily-medication-check' }) },
+      );
 
       expect(response.status).toBe(500);
+      expect(response.headers.get('X-Request-Id')).toMatch(/^[0-9a-f-]{36}$/);
+      expect(response.headers.get('X-Correlation-Id')).toBe('failed_job_trace');
       const body = await response.json();
       expect(body).toEqual({
         code: 'EXTERNAL_JOB_FAILED',
@@ -313,6 +340,8 @@ describe('/api/jobs/[jobType] POST', () => {
         operation: 'run_job',
         code: 'EXTERNAL_JOB_FAILED',
         error_name: 'Error',
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: 'failed_job_trace',
       });
       expect(JSON.stringify(logEntry)).not.toContain('job provider secret detail');
       expect(logEntry).not.toHaveProperty('stack');
@@ -325,11 +354,13 @@ describe('/api/jobs/[jobType] POST', () => {
   it('rejects blank job types before running a handler', async () => {
     authMock.mockResolvedValue(null);
 
-    const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
-      params: Promise.resolve({ jobType: '   ' }),
-    });
+    const response = await POST(
+      createRequest({ 'x-api-key': 'job-secret', 'x-correlation-id': 'validation_job_trace' }),
+      { params: Promise.resolve({ jobType: '   ' }) },
+    );
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('X-Correlation-Id')).toBe('validation_job_trace');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'ジョブタイプが不正です',
@@ -342,11 +373,13 @@ describe('/api/jobs/[jobType] POST', () => {
   it('returns 404 for unknown normalized job types before running a handler', async () => {
     authMock.mockResolvedValue(null);
 
-    const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
-      params: Promise.resolve({ jobType: '  unknown-job  ' }),
-    });
+    const response = await POST(
+      createRequest({ 'x-api-key': 'job-secret', 'x-correlation-id': 'unknown_job_trace' }),
+      { params: Promise.resolve({ jobType: '  unknown-job  ' }) },
+    );
 
     expect(response.status).toBe(404);
+    expect(response.headers.get('X-Correlation-Id')).toBe('unknown_job_trace');
     await expect(response.json()).resolves.toEqual({
       code: 'WORKFLOW_NOT_FOUND',
       message: "ジョブタイプ 'unknown-job' は存在しません",
@@ -359,14 +392,48 @@ describe('/api/jobs/[jobType] POST', () => {
   it('returns 200 when authenticated admin executes the job', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
-
-    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
-      params: Promise.resolve({ jobType: 'daily-medication-check' }),
+    let capturedTrace: RequestTraceContext | undefined;
+    checkMedicationDeadlinesMock.mockImplementationOnce(async () => {
+      capturedTrace = getRequestTraceContext();
+      return { processedCount: 3 };
     });
 
+    const response = await POST(
+      createRequest({ 'x-org-id': 'org_1', 'x-correlation-id': 'admin_job_trace' }),
+      { params: Promise.resolve({ jobType: 'daily-medication-check' }) },
+    );
+
     expect(response.status).toBe(200);
+    expect(response.headers.get('X-Request-Id')).toMatch(/^[0-9a-f-]{36}$/);
+    expect(response.headers.get('X-Correlation-Id')).toBe('admin_job_trace');
+    expect(capturedTrace).toEqual({
+      requestId: response.headers.get('X-Request-Id'),
+      correlationId: 'admin_job_trace',
+    });
     expect(checkMedicationDeadlinesMock).toHaveBeenCalledOnce();
   });
+
+  it.each(['patient@example.test', 'contains spaces', 'a'.repeat(129)])(
+    'replaces unsafe API-key correlation ids before handler scope and response: %s',
+    async (correlationId) => {
+      authMock.mockResolvedValue(null);
+      let capturedTrace: RequestTraceContext | undefined;
+      checkMedicationDeadlinesMock.mockImplementationOnce(async () => {
+        capturedTrace = getRequestTraceContext();
+        return { processedCount: 3 };
+      });
+
+      const response = await POST(
+        createRequest({ 'x-api-key': 'job-secret', 'x-correlation-id': correlationId }),
+        { params: Promise.resolve({ jobType: 'daily-medication-check' }) },
+      );
+
+      const requestId = response.headers.get('X-Request-Id');
+      expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(response.headers.get('X-Correlation-Id')).toBe(requestId);
+      expect(capturedTrace).toEqual({ requestId, correlationId: requestId });
+    },
+  );
 
   it('returns 200 when admin executes visit support sync', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });

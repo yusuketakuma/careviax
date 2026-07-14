@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { NextRequest } from 'next/server';
 import {
+  getRequestTraceContext,
   isValidRequestTraceId,
   resolveRequestTraceContext,
+  runWithRequestTraceContext,
   withRequestTraceHeaders,
 } from './request-correlation';
 
@@ -50,5 +52,40 @@ describe('request correlation', () => {
   it('exposes the shared trace-id validator for persistence boundaries', () => {
     expect(isValidRequestTraceId('request_1:attempt-2')).toBe(true);
     expect(isValidRequestTraceId('patient@example.test')).toBe(false);
+  });
+
+  it('restores nested async trace scopes and does not leak after completion', async () => {
+    const outer = { requestId: 'request_outer', correlationId: 'correlation_outer' };
+    const inner = { requestId: 'request_inner', correlationId: 'correlation_inner' };
+
+    expect(getRequestTraceContext()).toBeUndefined();
+    await runWithRequestTraceContext(outer, async () => {
+      expect(getRequestTraceContext()).toEqual(outer);
+      await runWithRequestTraceContext(inner, async () => {
+        await Promise.resolve();
+        expect(getRequestTraceContext()).toEqual(inner);
+      });
+      expect(getRequestTraceContext()).toEqual(outer);
+    });
+    expect(getRequestTraceContext()).toBeUndefined();
+  });
+
+  it('isolates concurrent trace scopes', async () => {
+    const traces = [
+      { requestId: 'request_a', correlationId: 'correlation_a' },
+      { requestId: 'request_b', correlationId: 'correlation_b' },
+    ];
+
+    const observed = await Promise.all(
+      traces.map((trace) =>
+        runWithRequestTraceContext(trace, async () => {
+          await Promise.resolve();
+          return getRequestTraceContext();
+        }),
+      ),
+    );
+
+    expect(observed).toEqual(traces);
+    expect(getRequestTraceContext()).toBeUndefined();
   });
 });

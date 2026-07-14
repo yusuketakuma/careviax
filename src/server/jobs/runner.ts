@@ -1,6 +1,11 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import {
+  getRequestTraceContext,
+  isValidRequestTraceId,
+  type RequestTraceContext,
+} from '@/lib/api/request-correlation';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
@@ -21,6 +26,24 @@ type RunJobResult =
   | { processedCount: number; errors?: string[] }
   | { processedCount: 0; skipped: true };
 const activeJobRuns = new Map<string, Promise<RunJobResult>>();
+
+function getValidatedJobRequestTrace(): RequestTraceContext | undefined {
+  const trace = getRequestTraceContext();
+  if (
+    !trace ||
+    !isValidRequestTraceId(trace.requestId) ||
+    !isValidRequestTraceId(trace.correlationId)
+  ) {
+    return undefined;
+  }
+  return trace;
+}
+
+function jobTraceLogContext(trace: RequestTraceContext | undefined) {
+  return trace
+    ? { requestId: trace.requestId, correlationId: trace.correlationId }
+    : ({} as Record<string, never>);
+}
 
 function resolveJobStaleLockMs(value: string | undefined = process.env.JOB_STALE_LOCK_MS) {
   const parsed = Number(value ?? DEFAULT_JOB_STALE_LOCK_MS);
@@ -57,6 +80,7 @@ async function runJobOnce(
   fn: () => Promise<{ processedCount: number; errors?: string[] }>,
   orgId?: string,
   dedupeKey?: string,
+  requestTrace?: RequestTraceContext,
 ): Promise<RunJobResult> {
   // Skip if the same job type is already in progress
   if (await isJobAlreadyRunning(jobType, orgId)) {
@@ -66,6 +90,7 @@ async function runJobOnce(
       operation: 'run_job',
       code: 'JOB_ALREADY_RUNNING',
       ...(orgId ? { orgId } : {}),
+      ...jobTraceLogContext(requestTrace),
     });
     return { processedCount: 0, skipped: true };
   }
@@ -80,6 +105,16 @@ async function runJobOnce(
       run_at: new Date(),
       locked_at: new Date(),
       started_at: new Date(),
+      ...(requestTrace
+        ? {
+            input: {
+              request_trace: {
+                request_id: requestTrace.requestId,
+                correlation_id: requestTrace.correlationId,
+              },
+            },
+          }
+        : {}),
     },
   });
 
@@ -140,6 +175,7 @@ async function runJobOnce(
             entityId: job.id,
             attempt: attempt + 1,
             ...(orgId ? { orgId } : {}),
+            ...jobTraceLogContext(requestTrace),
           },
           cleanupError,
         );
@@ -157,6 +193,7 @@ async function runJobOnce(
           code: 'JOB_RETRIES_EXHAUSTED',
           attempt: attempt + 1,
           ...(orgId ? { orgId } : {}),
+          ...jobTraceLogContext(requestTrace),
         },
         error,
       );
@@ -175,6 +212,7 @@ export async function runJob(
   orgId?: string,
   dedupeKey?: string,
 ): Promise<RunJobResult> {
+  const requestTrace = getValidatedJobRequestTrace();
   const activeKey = jobRunKey(jobType, orgId, dedupeKey);
   if (activeJobRuns.has(activeKey)) {
     logger.warn({
@@ -183,11 +221,12 @@ export async function runJob(
       operation: 'run_job',
       code: 'JOB_IN_PROCESS_ALREADY_RUNNING',
       ...(orgId ? { orgId } : {}),
+      ...jobTraceLogContext(requestTrace),
     });
     return { processedCount: 0, skipped: true };
   }
 
-  const run = runJobOnce(jobType, fn, orgId, dedupeKey).finally(() => {
+  const run = runJobOnce(jobType, fn, orgId, dedupeKey, requestTrace).finally(() => {
     activeJobRuns.delete(activeKey);
   });
   activeJobRuns.set(activeKey, run);

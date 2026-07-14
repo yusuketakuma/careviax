@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import {
+  resolveRequestTraceContext,
+  runWithRequestTraceContext,
+  withRequestTraceHeaders,
+  type RequestTraceContext,
+} from '@/lib/api/request-correlation';
 import { registeredError, success, validationError } from '@/lib/api/response';
 import { requireApiKeyOrAuthContext } from '@/lib/auth/context';
 import { logger } from '@/lib/utils/logger';
@@ -146,77 +152,100 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
   });
   if ('response' in authResult) return authResult.response as NextResponse;
 
+  const trace: RequestTraceContext =
+    authResult.authType === 'auth'
+      ? {
+          requestId: authResult.ctx.requestId,
+          correlationId: authResult.ctx.correlationId,
+        }
+      : resolveRequestTraceContext(req);
+  const tracedResponse = (response: NextResponse) => withRequestTraceHeaders(response, trace);
+
   const jobType = normalizeRequiredRouteParam(rawJobType);
-  if (!jobType) return validationError('ジョブタイプが不正です') as NextResponse;
+  if (!jobType) {
+    return tracedResponse(validationError('ジョブタイプが不正です') as NextResponse);
+  }
 
   const handler = JOB_HANDLERS[jobType];
   if (!handler) {
-    return registeredError(
-      'WORKFLOW_NOT_FOUND',
-      `ジョブタイプ '${jobType}' は存在しません`,
-    ) as NextResponse;
+    return tracedResponse(
+      registeredError(
+        'WORKFLOW_NOT_FOUND',
+        `ジョブタイプ '${jobType}' は存在しません`,
+      ) as NextResponse,
+    );
   }
 
   try {
-    const result = await handler({
-      authType: authResult.authType,
-      orgId: authResult.authType === 'auth' ? authResult.ctx.orgId : undefined,
-    });
+    const result = await runWithRequestTraceContext(trace, () =>
+      handler({
+        authType: authResult.authType,
+        orgId: authResult.authType === 'auth' ? authResult.ctx.orgId : undefined,
+      }),
+    );
     if (jobType === 'bulk-export-artifact-cleanup') {
-      return success({
-        data: {
-          jobType,
-          processedCount: result.processedCount,
-          scannedCount: result.scannedCount,
-          errorCount: result.errors?.length ?? 0,
-        },
-      }) as NextResponse;
+      return tracedResponse(
+        success({
+          data: {
+            jobType,
+            processedCount: result.processedCount,
+            scannedCount: result.scannedCount,
+            errorCount: result.errors?.length ?? 0,
+          },
+        }) as NextResponse,
+      );
     }
     if (jobType === 'medication-history-bulk-export-drain') {
-      return success({
-        data: {
-          jobType,
-          processedCount: result.processedCount,
-          errorCount: result.errors?.length ?? 0,
-        },
-      }) as NextResponse;
+      return tracedResponse(
+        success({
+          data: {
+            jobType,
+            processedCount: result.processedCount,
+            errorCount: result.errors?.length ?? 0,
+          },
+        }) as NextResponse,
+      );
     }
     if (jobType === 'daily-case-risk-task-sync') {
-      return success({
-        data: {
-          jobType,
-          processedCount: result.processedCount,
-          scannedCount: result.scannedCount,
-          upsertedTaskCount:
-            typeof result.upsertedTaskCount === 'number' ? result.upsertedTaskCount : 0,
-          resolvedStaleTaskCount:
-            typeof result.resolvedStaleTaskCount === 'number' ? result.resolvedStaleTaskCount : 0,
-          taskableFindingCount:
-            typeof result.taskableFindingCount === 'number' ? result.taskableFindingCount : 0,
-          skippedFindingCount:
-            typeof result.skippedFindingCount === 'number' ? result.skippedFindingCount : 0,
-          skippedCaseCount:
-            typeof result.skippedCaseCount === 'number' ? result.skippedCaseCount : 0,
-          errorCount: typeof result.errorCount === 'number' ? result.errorCount : 0,
-          limited: result.limited === true,
-          limit: typeof result.limit === 'number' ? result.limit : undefined,
-        },
-      }) as NextResponse;
+      return tracedResponse(
+        success({
+          data: {
+            jobType,
+            processedCount: result.processedCount,
+            scannedCount: result.scannedCount,
+            upsertedTaskCount:
+              typeof result.upsertedTaskCount === 'number' ? result.upsertedTaskCount : 0,
+            resolvedStaleTaskCount:
+              typeof result.resolvedStaleTaskCount === 'number' ? result.resolvedStaleTaskCount : 0,
+            taskableFindingCount:
+              typeof result.taskableFindingCount === 'number' ? result.taskableFindingCount : 0,
+            skippedFindingCount:
+              typeof result.skippedFindingCount === 'number' ? result.skippedFindingCount : 0,
+            skippedCaseCount:
+              typeof result.skippedCaseCount === 'number' ? result.skippedCaseCount : 0,
+            errorCount: typeof result.errorCount === 'number' ? result.errorCount : 0,
+            limited: result.limited === true,
+            limit: typeof result.limit === 'number' ? result.limit : undefined,
+          },
+        }) as NextResponse,
+      );
     }
     if (jobType === 'clinical-fhir-raw-vault-retention-purge') {
       const safeErrors = safeRawVaultPurgeErrors(result.errors);
-      return success({
-        data: {
-          jobType,
-          processedCount: result.processedCount,
-          scannedCount: typeof result.scannedCount === 'number' ? result.scannedCount : 0,
-          deletedCount: typeof result.deletedCount === 'number' ? result.deletedCount : 0,
-          errorCount: safeErrors.length,
-          ...(safeErrors.length > 0 ? { errors: safeErrors } : {}),
-        },
-      }) as NextResponse;
+      return tracedResponse(
+        success({
+          data: {
+            jobType,
+            processedCount: result.processedCount,
+            scannedCount: typeof result.scannedCount === 'number' ? result.scannedCount : 0,
+            deletedCount: typeof result.deletedCount === 'number' ? result.deletedCount : 0,
+            errorCount: safeErrors.length,
+            ...(safeErrors.length > 0 ? { errors: safeErrors } : {}),
+          },
+        }) as NextResponse,
+      );
     }
-    return success({ data: { jobType, ...result } }) as NextResponse;
+    return tracedResponse(success({ data: { jobType, ...result } }) as NextResponse);
   } catch (err) {
     logger.error(
       {
@@ -224,9 +253,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
         jobType,
         operation: 'run_job',
         code: 'EXTERNAL_JOB_FAILED',
+        requestId: trace.requestId,
+        correlationId: trace.correlationId,
       },
       err,
     );
-    return registeredError('EXTERNAL_JOB_FAILED', 'ジョブの実行に失敗しました') as NextResponse;
+    return tracedResponse(
+      registeredError('EXTERNAL_JOB_FAILED', 'ジョブの実行に失敗しました') as NextResponse,
+    );
   }
 }

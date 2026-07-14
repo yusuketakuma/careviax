@@ -53,6 +53,7 @@ vi.mock('@/lib/utils/logger', () => ({
 }));
 
 import { runJob } from './runner';
+import { runWithRequestTraceContext } from '@/lib/api/request-correlation';
 
 function findLoggerErrorCall(event: string) {
   return loggerErrorMock.mock.calls.find(([context]) => context?.event === event);
@@ -85,6 +86,7 @@ describe('runJob', () => {
     const result = await runJob('test_job', async () => ({ processedCount: 3 }));
 
     expect(result).toEqual({ processedCount: 3 });
+    expect(integrationJobCreateMock.mock.calls[0]?.[0]?.data).not.toHaveProperty('input');
     expect(integrationJobUpdateMock).toHaveBeenCalledWith({
       where: { id: 'job_1' },
       data: expect.objectContaining({
@@ -93,6 +95,45 @@ describe('runJob', () => {
         retry_count: 0,
       }),
     });
+  });
+
+  it('persists only a validated request trace in the job input', async () => {
+    const result = await runWithRequestTraceContext(
+      { requestId: 'request_job_123', correlationId: 'correlation_job_456' },
+      () => runJob('test_job', async () => ({ processedCount: 3 })),
+    );
+
+    expect(result).toEqual({ processedCount: 3 });
+    expect(integrationJobCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        job_type: 'test_job',
+        input: {
+          request_trace: {
+            request_id: 'request_job_123',
+            correlation_id: 'correlation_job_456',
+          },
+        },
+      }),
+    });
+    const serializedCreate = JSON.stringify(integrationJobCreateMock.mock.calls[0]?.[0]);
+    expect(serializedCreate).not.toContain('apiKey');
+    expect(serializedCreate).not.toContain('actorId');
+    expect(serializedCreate).not.toContain('userId');
+    expect(integrationJobUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'job_1' },
+      data: expect.objectContaining({
+        output: { processedCount: 3 },
+      }),
+    });
+  });
+
+  it('omits the entire job input when the scoped trace is invalid', async () => {
+    await runWithRequestTraceContext(
+      { requestId: 'patient@example.test', correlationId: 'contains spaces' },
+      () => runJob('test_job', async () => ({ processedCount: 1 })),
+    );
+
+    expect(integrationJobCreateMock.mock.calls[0]?.[0]?.data).not.toHaveProperty('input');
   });
 
   it('skips execution when a duplicate job is already running', async () => {
@@ -187,7 +228,12 @@ describe('runJob', () => {
       { user_id: 'owner_1', org_id: 'org_1' },
     ]);
 
-    await expect(runJob('test_job', fn, 'org_1')).rejects.toBe(original);
+    await expect(
+      runWithRequestTraceContext(
+        { requestId: 'request_failure_123', correlationId: 'correlation_failure_456' },
+        () => runJob('test_job', fn, 'org_1'),
+      ),
+    ).rejects.toBe(original);
 
     expect(fn).toHaveBeenCalledTimes(4);
     const updatePayloads = integrationJobUpdateMock.mock.calls.map(([arg]) => arg);
@@ -211,7 +257,6 @@ describe('runJob', () => {
         }),
       ]),
     );
-
     // Delivery is routed through the shared pipeline (in-app + web-push) inside an
     // org-scoped RLS transaction, with admins as explicit recipients.
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
@@ -232,6 +277,8 @@ describe('runJob', () => {
     expect(serializedNotifications).not.toContain('token=secret');
     expect(serializedNotifications).not.toContain('db_password=value');
     expect(serializedNotifications).not.toContain('患者A');
+    expect(serializedNotifications).not.toContain('request_failure_123');
+    expect(serializedNotifications).not.toContain('correlation_failure_456');
   });
 
   it('dispatches per-org when admins span multiple organizations', async () => {

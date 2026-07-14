@@ -22,7 +22,7 @@ import {
 } from '@/lib/api/request-correlation';
 
 export type AuthContext = RequestAuthContext;
-type TracedAuthContext = AuthContext & RequestTraceContext;
+export type TracedAuthContext = AuthContext & RequestTraceContext;
 
 type RequireAuthContextOptions = {
   permission?: PermissionKey;
@@ -409,7 +409,7 @@ export async function requireApiKeyOrAuthContext(
   options?: RequireApiKeyOrAuthContextOptions,
 ): Promise<
   | { authType: 'apiKey'; response?: never; ctx?: never }
-  | { authType: 'auth'; ctx: AuthContext; response?: never }
+  | { authType: 'auth'; ctx: TracedAuthContext; response?: never }
   | { authType?: never; ctx?: never; response: NextResponse }
 > {
   clearRequestAuthContext();

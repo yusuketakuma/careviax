@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { NextRequest } from 'next/server';
 
 const REQUEST_TRACE_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -7,6 +8,16 @@ export type RequestTraceContext = {
   requestId: string;
   correlationId: string;
 };
+
+const requestTraceContextStorage = new AsyncLocalStorage<RequestTraceContext | undefined>();
+
+export function runWithRequestTraceContext<T>(trace: RequestTraceContext, fn: () => T): T {
+  return requestTraceContextStorage.run(trace, fn);
+}
+
+export function getRequestTraceContext(): RequestTraceContext | undefined {
+  return requestTraceContextStorage.getStore();
+}
 
 export function isValidRequestTraceId(value: unknown): value is string {
   return typeof value === 'string' && REQUEST_TRACE_ID_PATTERN.test(value);
