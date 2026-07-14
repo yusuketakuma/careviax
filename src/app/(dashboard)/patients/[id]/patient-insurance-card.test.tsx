@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
@@ -53,7 +53,6 @@ describe('PatientInsuranceCard', () => {
           current: [],
           upcoming: [],
           history: [],
-          all: [],
         },
       },
       isLoading: false,
@@ -66,13 +65,13 @@ describe('PatientInsuranceCard', () => {
 
     render(<PatientInsuranceCard patientId="patient_1" orgId="org_1" />);
 
-    expect(screen.getByRole('heading', { level: 2, name: '保険詳細' }).tagName).toBe('H2');
-    fireEvent.click(screen.getByRole('button', { name: '保険追加' }));
-    expect(screen.getByRole('heading', { level: 3, name: 'new-insurance' }).tagName).toBe('H3');
-    fireEvent.change(screen.getByLabelText('番号'), {
+    expect(screen.getByRole('heading', { level: 2, name: '保険・公費管理' }).tagName).toBe('H2');
+    fireEvent.click(screen.getByRole('button', { name: '保険情報を追加' }));
+    expect(screen.getByRole('heading', { level: 3, name: '保険情報を追加' }).tagName).toBe('H3');
+    fireEvent.change(screen.getByLabelText('被保険者等番号'), {
       target: { value: '1234567' },
     });
-    fireEvent.change(screen.getByLabelText('自己負担割合'), {
+    fireEvent.change(screen.getByLabelText('自己負担割合（%）'), {
       target: { value: '30' },
     });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
@@ -106,7 +105,7 @@ describe('PatientInsuranceCard', () => {
       screen.getByText('患者保険情報の取得に失敗しました。 通信状態を確認して再試行してください。'),
     ).toBeTruthy();
     expect(screen.queryByText(/token=secret/)).toBeNull();
-    expect(screen.queryByRole('button', { name: '保険追加' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '保険情報を追加' })).toBeNull();
     expect(screen.queryByText(/現在有効 0/)).toBeNull();
     expect(screen.queryByText('該当する保険情報はありません。')).toBeNull();
 
@@ -186,7 +185,6 @@ describe('PatientInsuranceCard', () => {
               notes: '古い保険証を回収済み',
             },
           ],
-          all: [],
         },
       },
       isLoading: false,
@@ -215,18 +213,22 @@ describe('PatientInsuranceCard', () => {
     expect(screen.getByText('申請中')).toBeTruthy();
     expect(screen.getAllByText('区分変更中').length).toBeGreaterThan(0);
     expect(screen.getByText('54')).toBeTruthy();
-    expect(screen.getByText(/変更前 要介護1 \/ 暫定 要介護2 \/ 確定/)).toBeTruthy();
+    expect(screen.getByText('変更前 要介護1 / 暫定 要介護2')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: '保険追加' }));
+    fireEvent.click(screen.getByRole('button', { name: '保険情報を追加' }));
     fireEvent.change(screen.getByLabelText('保険種別'), {
       target: { value: 'public_subsidy' },
     });
-    fireEvent.change(screen.getByLabelText('資格状態'), {
+    fireEvent.change(screen.getByLabelText('資格・申請状態'), {
       target: { value: 'applying' },
     });
-    fireEvent.change(screen.getByLabelText('公費制度コード'), {
+    fireEvent.change(screen.getByLabelText('法別番号（公費制度コード） *'), {
       target: { value: '21' },
     });
+    expect(screen.getByLabelText('公費負担者番号')).toBeTruthy();
+    expect(screen.getByLabelText('受給者番号')).toBeTruthy();
+    expect(screen.queryByLabelText('記号')).toBeNull();
+    expect(screen.queryByLabelText('枝番')).toBeNull();
     fireEvent.change(screen.getByLabelText('申請日'), {
       target: { value: '2026-06-08' },
     });
@@ -238,6 +240,113 @@ describe('PatientInsuranceCard', () => {
         application_status: 'applying',
         public_program_code: '21',
         application_submitted_at: '2026-06-08',
+      }),
+    });
+  });
+
+  it('requires an official care classification for confirmed care insurance', () => {
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockReturnValue({
+      data: { data: { current: [], upcoming: [], history: [] } },
+      isLoading: false,
+      error: null,
+    });
+    useMutationMock.mockReturnValue({ isPending: false, mutate: mutateMock });
+
+    render(<PatientInsuranceCard patientId="patient_1" orgId="org_1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '保険情報を追加' }));
+    fireEvent.change(screen.getByLabelText('保険種別'), {
+      target: { value: 'care' },
+    });
+
+    const classification = screen.getByLabelText('要介護状態区分（確定） *');
+    expect(within(classification).getByRole('option', { name: '要支援1' })).toBeTruthy();
+    expect(within(classification).getByRole('option', { name: '要介護5' })).toBeTruthy();
+    expect(within(classification).queryByRole('option', { name: '申請中' })).toBeNull();
+    expect(screen.getByLabelText('介護保険者番号')).toBeTruthy();
+    expect(screen.getByLabelText('介護保険被保険者番号')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getAllByText('確定済みの介護保険は認定区分を選択してください。')).toHaveLength(2);
+
+    fireEvent.change(classification, { target: { value: 'care_3' } });
+    const saveButton = screen.getByRole('button', { name: '保存' });
+    expect(saveButton.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(saveButton);
+
+    expect(mutateMock).toHaveBeenCalledWith({
+      form: expect.objectContaining({
+        insurance_type: 'care',
+        application_status: 'confirmed',
+        confirmed_care_level: 'care_3',
+      }),
+    });
+  });
+
+  it('requires both previous and provisional classifications while a care change is pending', () => {
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockReturnValue({
+      data: { data: { current: [], upcoming: [], history: [] } },
+      isLoading: false,
+      error: null,
+    });
+    useMutationMock.mockReturnValue({ isPending: false, mutate: mutateMock });
+
+    render(<PatientInsuranceCard patientId="patient_1" orgId="org_1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '保険情報を追加' }));
+    fireEvent.change(screen.getByLabelText('保険種別'), { target: { value: 'care' } });
+    fireEvent.change(screen.getByLabelText('資格・申請状態'), {
+      target: { value: 'change_pending' },
+    });
+
+    const saveButton = screen.getByRole('button', { name: '保存' });
+    expect(saveButton.hasAttribute('disabled')).toBe(true);
+    fireEvent.change(screen.getByLabelText('変更前の要介護状態区分 *'), {
+      target: { value: 'care_1' },
+    });
+    fireEvent.change(screen.getByLabelText('暫定の要介護状態区分 *'), {
+      target: { value: 'care_2' },
+    });
+
+    expect(saveButton.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(saveButton);
+    expect(mutateMock).toHaveBeenCalledWith({
+      form: expect.objectContaining({
+        insurance_type: 'care',
+        application_status: 'change_pending',
+        previous_care_level: 'care_1',
+        provisional_care_level: 'care_2',
+      }),
+    });
+  });
+
+  it('allows an incomplete historical care record to remain inactive', () => {
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockReturnValue({
+      data: { data: { current: [], upcoming: [], history: [] } },
+      isLoading: false,
+      error: null,
+    });
+    useMutationMock.mockReturnValue({ isPending: false, mutate: mutateMock });
+
+    render(<PatientInsuranceCard patientId="patient_1" orgId="org_1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '保険情報を追加' }));
+    fireEvent.change(screen.getByLabelText('保険種別'), { target: { value: 'care' } });
+    expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'この資格情報を有効として扱う' }));
+    const saveButton = screen.getByRole('button', { name: '保存' });
+    expect(saveButton.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(saveButton);
+
+    expect(mutateMock).toHaveBeenCalledWith({
+      form: expect.objectContaining({
+        insurance_type: 'care',
+        application_status: 'confirmed',
+        confirmed_care_level: '',
+        is_active: false,
       }),
     });
   });
@@ -289,7 +398,6 @@ describe('PatientInsuranceCard', () => {
       current: [],
       upcoming: [],
       history: [],
-      all: [],
     },
   };
 
@@ -334,7 +442,6 @@ describe('PatientInsuranceCard', () => {
           current: [rawProviderRecord],
           upcoming: [],
           history: [],
-          all: [rawProviderRecord],
         },
       }),
     );
@@ -358,7 +465,6 @@ describe('PatientInsuranceCard', () => {
           current: [insuranceRecordResponseFixture],
           upcoming: [],
           history: [],
-          all: [insuranceRecordResponseFixture],
         },
       });
     } finally {
@@ -397,6 +503,10 @@ describe('PatientInsuranceCard', () => {
     {
       name: 'unknown data key',
       payload: { data: { ...emptyInsuranceResponse.data, patient_name: '伊藤 キヨ' } },
+    },
+    {
+      name: 'redundant all bucket',
+      payload: { data: { ...emptyInsuranceResponse.data, all: [] } },
     },
     {
       name: 'string copay ratio',
@@ -439,7 +549,7 @@ describe('PatientInsuranceCard', () => {
     }
   });
 
-  it('encodes both patient and insurance id segments for an update (PUT) without leaking ids into the body', async () => {
+  it('encodes update path segments and sends the optimistic timestamp without leaking ids into the body', async () => {
     const hostilePatientId = 'pt/1?x=y#z';
     const hostileInsuranceId = 'ins/9?a=b#c';
     const { mutationConfigs } = captureConfigs();
@@ -451,6 +561,7 @@ describe('PatientInsuranceCard', () => {
 
       await mutationConfigs[0]?.mutationFn?.({
         insuranceId: hostileInsuranceId,
+        expectedUpdatedAt: '2026-05-01T00:00:00.000Z',
         form: sampleForm,
       });
 
@@ -460,7 +571,7 @@ describe('PatientInsuranceCard', () => {
         `/insurance/${encodeURIComponent(hostileInsuranceId)}`,
       );
       expect(url).toBe(
-        `/api/patients/${encodeURIComponent(hostilePatientId)}/insurance/${encodeURIComponent(hostileInsuranceId)}`,
+        `/api/patients/${encodeURIComponent(hostilePatientId)}/insurance/${encodeURIComponent(hostileInsuranceId)}?expected_updated_at=${encodeURIComponent('2026-05-01T00:00:00.000Z')}`,
       );
       expect(url).not.toContain('?x=y');
       expect(url).not.toContain('#c');
@@ -471,7 +582,45 @@ describe('PatientInsuranceCard', () => {
       // ids live only in the URL path - never in the payload.
       expect(body).not.toContain(hostilePatientId);
       expect(body).not.toContain(hostileInsuranceId);
-      expect(JSON.parse(body)).toMatchObject({ insurance_type: 'medical', number: '1234567' });
+      expect(JSON.parse(body)).toMatchObject({
+        insurance_type: 'medical',
+        number: '1234567',
+      });
+      expect(JSON.parse(body)).not.toHaveProperty('expected_updated_at');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('sends only the care classifications that belong to the selected workflow state', async () => {
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientInsuranceCard patientId="patient_1" orgId="org_1" />);
+
+      await mutationConfigs[0]?.mutationFn?.({
+        insuranceId: 'insurance_care',
+        expectedUpdatedAt: '2026-05-01T00:00:00.000Z',
+        form: {
+          ...sampleForm,
+          insurance_type: 'care',
+          application_status: 'change_pending',
+          previous_care_level: 'care_1',
+          provisional_care_level: 'care_2',
+          confirmed_care_level: 'care_5',
+        },
+      });
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(JSON.parse(init.body as string)).toMatchObject({
+        application_status: 'change_pending',
+        previous_care_level: 'care_1',
+        provisional_care_level: 'care_2',
+        confirmed_care_level: null,
+      });
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
@@ -494,6 +643,7 @@ describe('PatientInsuranceCard', () => {
       expect(url).toBe(`/api/patients/${encodeURIComponent(hostilePatientId)}/insurance`);
       expect(init.method).toBe('POST');
       expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
+      expect(JSON.parse(init.body as string)).not.toHaveProperty('expected_updated_at');
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
@@ -555,7 +705,11 @@ describe('PatientInsuranceCard', () => {
 
       await queryConfigs[0]?.queryFn?.();
       await mutationConfigs[0]?.mutationFn?.({ form: sampleForm });
-      await mutationConfigs[0]?.mutationFn?.({ insuranceId, form: sampleForm });
+      await mutationConfigs[0]?.mutationFn?.({
+        insuranceId,
+        expectedUpdatedAt: '2026-05-01T00:00:00.000Z',
+        form: sampleForm,
+      });
       await mutationConfigs[1]?.mutationFn?.({
         id: insuranceId,
         updated_at: '2026-05-01T00:00:00.000Z',
@@ -568,7 +722,7 @@ describe('PatientInsuranceCard', () => {
       expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
         '/api/patients/__helper_patient__/insurance',
         '/api/patients/__helper_patient__/insurance',
-        '/api/patients/__helper_patient__/insurance/ins_1',
+        `/api/patients/__helper_patient__/insurance/ins_1?expected_updated_at=${encodeURIComponent('2026-05-01T00:00:00.000Z')}`,
         `/api/patients/__helper_patient__/insurance/ins_1?expected_updated_at=${encodeURIComponent('2026-05-01T00:00:00.000Z')}`,
       ]);
       expect(fetchMock).not.toHaveBeenCalledWith(
@@ -593,7 +747,11 @@ describe('PatientInsuranceCard', () => {
 
         await expect(queryConfigs[0]?.queryFn?.()).rejects.toThrow(RangeError);
         await expect(
-          mutationConfigs[0]?.mutationFn?.({ insuranceId: 'ins_1', form: sampleForm }),
+          mutationConfigs[0]?.mutationFn?.({
+            insuranceId: 'ins_1',
+            expectedUpdatedAt: '2026-05-01T00:00:00.000Z',
+            form: sampleForm,
+          }),
         ).rejects.toThrow(RangeError);
         await expect(
           mutationConfigs[1]?.mutationFn?.({ id: 'ins_1', updated_at: '2026-05-01T00:00:00.000Z' }),
@@ -617,7 +775,11 @@ describe('PatientInsuranceCard', () => {
         render(<PatientInsuranceCard patientId="patient_1" orgId="org_1" />);
 
         await expect(
-          mutationConfigs[0]?.mutationFn?.({ insuranceId: dotId, form: sampleForm }),
+          mutationConfigs[0]?.mutationFn?.({
+            insuranceId: dotId,
+            expectedUpdatedAt: '2026-05-01T00:00:00.000Z',
+            form: sampleForm,
+          }),
         ).rejects.toThrow(RangeError);
         await expect(
           mutationConfigs[1]?.mutationFn?.({ id: dotId, updated_at: '2026-05-01T00:00:00.000Z' }),

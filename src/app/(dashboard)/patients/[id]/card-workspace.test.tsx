@@ -56,6 +56,18 @@ vi.mock('@/lib/files/upload-checksum', () => ({
   computeUploadSha256Hex: computeUploadSha256HexMock,
 }));
 
+vi.mock('./patient-insurance-card', () => ({
+  PatientInsuranceCard: ({ patientId, orgId }: { patientId: string; orgId: string }) => (
+    <section
+      data-testid="patient-insurance-card-stub"
+      data-patient-id={patientId}
+      data-org-id={orgId}
+    >
+      <h2>保険・公費管理</h2>
+    </section>
+  ),
+}));
+
 // Actual-backed spy: buildOrgJsonHeaders keeps real behavior by default (so F-081/F-082 header assertions stay
 // valid) but can be given a sentinel return in the F-083 test to prove helper adoption (not just equal shape).
 vi.mock('@/lib/api/org-headers', async (importActual) => {
@@ -1392,6 +1404,7 @@ describe('CardWorkspace', () => {
     expect(screen.getByRole('tab', { name: /請求・会議/ })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /履歴・構造化/ })).toBeTruthy();
     expect(screen.queryByTestId('patient-profile-summary')).toBeNull();
+    expect(screen.queryByTestId('patient-insurance-management')).toBeNull();
     expect(screen.queryByTestId('card-prescription-section')).toBeNull();
     expect(screen.getByTestId('next-action-panel')).toBeTruthy();
     expect(screen.getByTestId('blocked-reasons-panel')).toBeTruthy();
@@ -1414,7 +1427,24 @@ describe('CardWorkspace', () => {
     expect(within(foundationPanel).getByText('薬学的課題2件 / 訪問同意未整備')).toBeTruthy();
     expect(within(foundationPanel).getAllByRole('button', { name: 'タスク化' })).toHaveLength(3);
     expect(container.textContent).not.toMatch(/21540000|54001234|A-1|raw insurance note/);
+    const insuranceManagement = await screen.findByTestId('patient-insurance-management');
+    const insuranceCard = within(insuranceManagement).getByTestId('patient-insurance-card-stub');
+    expect(insuranceManagement.getAttribute('id')).toBe('patient-insurance');
+    expect(insuranceCard.getAttribute('data-patient-id')).toBe('patient_1');
+    expect(insuranceCard.getAttribute('data-org-id')).toBe('org_1');
     expect(screen.getByRole('heading', { name: '患者プロフィール' })).toBeTruthy();
+    expect(
+      Boolean(
+        foundationPanel.compareDocumentPosition(insuranceManagement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
+    expect(
+      Boolean(
+        insuranceManagement.compareDocumentPosition(screen.getByTestId('patient-profile-summary')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
     const contactsPanel = await screen.findByTestId('patient-contacts-panel');
     expect(
       Boolean(
@@ -2354,7 +2384,7 @@ describe('CardWorkspace', () => {
     expect(screen.queryByTestId('patient-profile-summary')).toBeNull();
 
     act(() => {
-      window.history.pushState({}, '', '/patients/patient_1#patient-profile-summary');
+      window.history.pushState({}, '', '/patients/patient_1#patient-insurance');
       window.dispatchEvent(new Event('hashchange'));
     });
 
@@ -2363,6 +2393,9 @@ describe('CardWorkspace', () => {
         screen.getByRole('tab', { name: /正本・在宅運用/ }).getAttribute('aria-selected'),
       ).toBe('true');
     });
+    expect(screen.getByTestId('patient-insurance-management').getAttribute('id')).toBe(
+      'patient-insurance',
+    );
     expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
     expect(screen.getByTestId('patient-contacts-panel')).toBeTruthy();
 

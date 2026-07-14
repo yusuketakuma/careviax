@@ -33,8 +33,8 @@ import { formatDateLabel } from '@/lib/ui/date-format';
 
 const nullableIsoDateTimeSchema = z.string().datetime().nullable();
 
-// The provider currently serializes full Prisma rows. Keep only the bounded fields consumed by
-// this workspace in the query cache while rejecting drift in the envelope and data containers.
+// Keep the client cache bounded to the route projection consumed by this workspace while
+// rejecting drift in the envelope and bucket containers.
 const insuranceRecordSchema = z.object({
   id: z.string().min(1),
   insurance_type: z.enum(['medical', 'care', 'public_subsidy']),
@@ -64,7 +64,6 @@ const insuranceResponseSchema = z
         current: z.array(insuranceRecordSchema),
         upcoming: z.array(insuranceRecordSchema),
         history: z.array(insuranceRecordSchema),
-        all: z.array(insuranceRecordSchema).optional(),
       })
       .strict(),
   })
@@ -72,6 +71,33 @@ const insuranceResponseSchema = z
 
 type InsuranceRecord = z.infer<typeof insuranceRecordSchema>;
 type InsuranceResponse = z.infer<typeof insuranceResponseSchema>;
+
+const OFFICIAL_CARE_LEVEL_VALUES = [
+  'support_1',
+  'support_2',
+  'care_1',
+  'care_2',
+  'care_3',
+  'care_4',
+  'care_5',
+] as const;
+
+type OfficialCareLevel = (typeof OFFICIAL_CARE_LEVEL_VALUES)[number];
+
+const IDENTIFIER_LABELS = {
+  medical: {
+    insurerNumber: '保険者番号',
+    number: '被保険者等番号',
+  },
+  care: {
+    insurerNumber: '介護保険者番号',
+    number: '介護保険被保険者番号',
+  },
+  public_subsidy: {
+    insurerNumber: '公費負担者番号',
+    number: '受給者番号',
+  },
+} as const;
 
 type InsuranceFormState = {
   insurance_type: InsuranceRecord['insurance_type'];
@@ -93,6 +119,20 @@ type InsuranceFormState = {
   notes: string;
 };
 
+type InsuranceFormErrors = Partial<Record<keyof InsuranceFormState, string>>;
+
+type SaveInsuranceArgs =
+  | {
+      insuranceId: string;
+      expectedUpdatedAt: string;
+      form: InsuranceFormState;
+    }
+  | {
+      insuranceId?: undefined;
+      expectedUpdatedAt?: never;
+      form: InsuranceFormState;
+    };
+
 const EMPTY_FORM: InsuranceFormState = {
   insurance_type: 'medical',
   application_status: 'confirmed',
@@ -112,6 +152,58 @@ const EMPTY_FORM: InsuranceFormState = {
   is_active: true,
   notes: '',
 };
+
+function isOfficialCareLevel(value: string): value is OfficialCareLevel {
+  return OFFICIAL_CARE_LEVEL_VALUES.includes(value as OfficialCareLevel);
+}
+
+function validateInsuranceForm(form: InsuranceFormState): InsuranceFormErrors {
+  const errors: InsuranceFormErrors = {};
+
+  if (form.insurance_type === 'public_subsidy' && !/^\d{2}$/.test(form.public_program_code)) {
+    errors.public_program_code = '公費は2桁の法別番号を入力してください。';
+  }
+
+  if (form.is_active && form.insurance_type === 'care' && form.application_status === 'confirmed') {
+    if (!isOfficialCareLevel(form.confirmed_care_level)) {
+      errors.confirmed_care_level = '確定済みの介護保険は認定区分を選択してください。';
+    }
+  }
+
+  if (
+    form.is_active &&
+    form.insurance_type === 'care' &&
+    form.application_status === 'change_pending'
+  ) {
+    if (!isOfficialCareLevel(form.previous_care_level)) {
+      errors.previous_care_level = '区分変更前の認定区分を選択してください。';
+    }
+    if (!isOfficialCareLevel(form.provisional_care_level)) {
+      errors.provisional_care_level = '区分変更中の暫定区分を選択してください。';
+    }
+  }
+
+  if (form.valid_from && form.valid_until && form.valid_from > form.valid_until) {
+    errors.valid_until = '有効終了日は有効開始日以降にしてください。';
+  }
+
+  if (
+    form.application_submitted_at &&
+    form.decision_at &&
+    form.application_submitted_at > form.decision_at
+  ) {
+    errors.decision_at = '決定日は申請日以降にしてください。';
+  }
+
+  if (form.copay_ratio !== '') {
+    const ratio = Number(form.copay_ratio);
+    if (!Number.isInteger(ratio) || ratio < 0 || ratio > 100) {
+      errors.copay_ratio = '自己負担割合は0〜100の整数で入力してください。';
+    }
+  }
+
+  return errors;
+}
 
 function toDateInputValue(value: string | null) {
   return value ? value.slice(0, 10) : '';
@@ -142,6 +234,10 @@ function toFormState(record?: InsuranceRecord): InsuranceFormState {
 }
 
 function buildInsurancePayload(form: InsuranceFormState) {
+  const isConfirmedCare = form.insurance_type === 'care' && form.application_status === 'confirmed';
+  const isPendingCareChange =
+    form.insurance_type === 'care' && form.application_status === 'change_pending';
+
   return {
     insurance_type: form.insurance_type,
     application_status: form.application_status,
@@ -149,14 +245,13 @@ function buildInsurancePayload(form: InsuranceFormState) {
     decision_at: form.decision_at || null,
     public_program_code:
       form.insurance_type === 'public_subsidy' ? form.public_program_code || null : null,
-    previous_care_level: form.insurance_type === 'care' ? form.previous_care_level || null : null,
-    provisional_care_level:
-      form.insurance_type === 'care' ? form.provisional_care_level || null : null,
-    confirmed_care_level: form.insurance_type === 'care' ? form.confirmed_care_level || null : null,
+    previous_care_level: isPendingCareChange ? form.previous_care_level || null : null,
+    provisional_care_level: isPendingCareChange ? form.provisional_care_level || null : null,
+    confirmed_care_level: isConfirmedCare ? form.confirmed_care_level || null : null,
     insurer_number: form.insurer_number || null,
-    symbol: form.symbol || null,
+    symbol: form.insurance_type === 'medical' ? form.symbol || null : null,
     number: form.number || null,
-    branch_number: form.branch_number || null,
+    branch_number: form.insurance_type === 'medical' ? form.branch_number || null : null,
     copay_ratio: form.copay_ratio === '' ? null : Number(form.copay_ratio),
     valid_from: form.valid_from || null,
     valid_until: form.valid_until || null,
@@ -189,7 +284,56 @@ function InsuranceRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function InsuranceFieldError({ id, message }: { id: string; message?: string }) {
+  return message ? (
+    <p id={id} className="text-xs text-state-blocked">
+      {message}
+    </p>
+  ) : null;
+}
+
+function CareLevelField({
+  idPrefix,
+  field,
+  label,
+  value,
+  error,
+  onChange,
+}: {
+  idPrefix: string;
+  field: 'previous_care_level' | 'provisional_care_level' | 'confirmed_care_level';
+  label: string;
+  value: string;
+  error?: string;
+  onChange: (patch: Partial<InsuranceFormState>) => void;
+}) {
+  const inputId = `${idPrefix}-${field.replaceAll('_', '-')}`;
+  const errorId = `${inputId}-error`;
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={inputId}>{label} *</Label>
+      <select
+        id={inputId}
+        value={value}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
+        onChange={(event) => onChange({ [field]: event.target.value })}
+        className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        <option value="">選択してください</option>
+        {OFFICIAL_CARE_LEVEL_VALUES.map((careLevel) => (
+          <option key={careLevel} value={careLevel}>
+            {CARE_LEVEL_LABELS[careLevel]}
+          </option>
+        ))}
+      </select>
+      <InsuranceFieldError id={errorId} message={error} />
+    </div>
+  );
+}
+
 function InsuranceEditor({
+  idPrefix,
   title,
   form,
   onChange,
@@ -197,6 +341,7 @@ function InsuranceEditor({
   onCancel,
   saving,
 }: {
+  idPrefix: string;
   title: string;
   form: InsuranceFormState;
   onChange: (patch: Partial<InsuranceFormState>) => void;
@@ -204,20 +349,57 @@ function InsuranceEditor({
   onCancel: () => void;
   saving: boolean;
 }) {
+  const errors = validateInsuranceForm(form);
+  const errorMessages = [...new Set(Object.values(errors).filter(Boolean))];
+  const identifierLabels = IDENTIFIER_LABELS[form.insurance_type];
+
+  function changeInsuranceType(insuranceType: InsuranceRecord['insurance_type']) {
+    onChange({
+      insurance_type: insuranceType,
+      public_program_code: insuranceType === 'public_subsidy' ? form.public_program_code : '',
+      previous_care_level: insuranceType === 'care' ? form.previous_care_level : '',
+      provisional_care_level: insuranceType === 'care' ? form.provisional_care_level : '',
+      confirmed_care_level: insuranceType === 'care' ? form.confirmed_care_level : '',
+      symbol: insuranceType === 'medical' ? form.symbol : '',
+      branch_number: insuranceType === 'medical' ? form.branch_number : '',
+    });
+  }
+
+  function changeApplicationStatus(applicationStatus: InsuranceRecord['application_status']) {
+    onChange({
+      application_status: applicationStatus,
+      confirmed_care_level:
+        form.insurance_type === 'care' && applicationStatus === 'confirmed'
+          ? form.confirmed_care_level
+          : '',
+      previous_care_level:
+        form.insurance_type === 'care' && applicationStatus === 'change_pending'
+          ? form.previous_care_level
+          : '',
+      provisional_care_level:
+        form.insurance_type === 'care' && applicationStatus === 'change_pending'
+          ? form.provisional_care_level
+          : '',
+    });
+  }
+
   return (
     <div className="space-y-4 rounded-xl border border-border/70 bg-muted/10 p-4">
-      <h3 className="text-sm font-medium text-foreground">{title}</h3>
+      <div>
+        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          薬局で資格・請求確認に使う患者単位の情報です。マイナンバーは入力しません。
+        </p>
+      </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor={`${title}-insurance-type`}>保険種別</Label>
+          <Label htmlFor={`${idPrefix}-insurance-type`}>保険種別</Label>
           <select
-            id={`${title}-insurance-type`}
+            id={`${idPrefix}-insurance-type`}
             value={form.insurance_type}
             onChange={(event) =>
-              onChange({
-                insurance_type: event.target.value as InsuranceRecord['insurance_type'],
-              })
+              changeInsuranceType(event.target.value as InsuranceRecord['insurance_type'])
             }
             className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
           >
@@ -230,14 +412,12 @@ function InsuranceEditor({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor={`${title}-application-status`}>資格状態</Label>
+          <Label htmlFor={`${idPrefix}-application-status`}>資格・申請状態</Label>
           <select
-            id={`${title}-application-status`}
+            id={`${idPrefix}-application-status`}
             value={form.application_status}
             onChange={(event) =>
-              onChange({
-                application_status: event.target.value as InsuranceRecord['application_status'],
-              })
+              changeApplicationStatus(event.target.value as InsuranceRecord['application_status'])
             }
             className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
           >
@@ -251,126 +431,129 @@ function InsuranceEditor({
 
         {form.insurance_type === 'public_subsidy' ? (
           <div className="space-y-1.5">
-            <Label htmlFor={`${title}-public-program-code`}>公費制度コード</Label>
+            <Label htmlFor={`${idPrefix}-public-program-code`}>法別番号（公費制度コード） *</Label>
             <Input
-              id={`${title}-public-program-code`}
+              id={`${idPrefix}-public-program-code`}
               inputMode="numeric"
               maxLength={2}
               value={form.public_program_code}
+              aria-invalid={Boolean(errors.public_program_code)}
+              aria-describedby={
+                errors.public_program_code ? `${idPrefix}-public-program-code-error` : undefined
+              }
               onChange={(event) => onChange({ public_program_code: event.target.value })}
               placeholder="21 / 54"
+            />
+            <InsuranceFieldError
+              id={`${idPrefix}-public-program-code-error`}
+              message={errors.public_program_code}
             />
           </div>
         ) : null}
 
-        {form.insurance_type === 'care' ? (
+        {form.insurance_type === 'care' && form.application_status === 'confirmed' ? (
+          <CareLevelField
+            idPrefix={idPrefix}
+            field="confirmed_care_level"
+            label="要介護状態区分（確定）"
+            value={form.confirmed_care_level}
+            error={errors.confirmed_care_level}
+            onChange={onChange}
+          />
+        ) : null}
+
+        {form.insurance_type === 'care' && form.application_status === 'change_pending' ? (
           <>
-            <div className="space-y-1.5">
-              <Label htmlFor={`${title}-previous-care-level`}>変更前介護度</Label>
-              <select
-                id={`${title}-previous-care-level`}
-                value={form.previous_care_level}
-                onChange={(event) => onChange({ previous_care_level: event.target.value })}
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-              >
-                <option value="">未指定</option>
-                {Object.entries(CARE_LEVEL_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor={`${title}-provisional-care-level`}>暫定介護度</Label>
-              <select
-                id={`${title}-provisional-care-level`}
-                value={form.provisional_care_level}
-                onChange={(event) => onChange({ provisional_care_level: event.target.value })}
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-              >
-                <option value="">未指定</option>
-                {Object.entries(CARE_LEVEL_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor={`${title}-confirmed-care-level`}>確定介護度</Label>
-              <select
-                id={`${title}-confirmed-care-level`}
-                value={form.confirmed_care_level}
-                onChange={(event) => onChange({ confirmed_care_level: event.target.value })}
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-              >
-                <option value="">未指定</option>
-                {Object.entries(CARE_LEVEL_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <CareLevelField
+              idPrefix={idPrefix}
+              field="previous_care_level"
+              label="変更前の要介護状態区分"
+              value={form.previous_care_level}
+              error={errors.previous_care_level}
+              onChange={onChange}
+            />
+            <CareLevelField
+              idPrefix={idPrefix}
+              field="provisional_care_level"
+              label="暫定の要介護状態区分"
+              value={form.provisional_care_level}
+              error={errors.provisional_care_level}
+              onChange={onChange}
+            />
           </>
         ) : null}
 
-        <div className="space-y-1.5">
-          <Label htmlFor={`${title}-copay-ratio`}>自己負担割合</Label>
-          <Input
-            id={`${title}-copay-ratio`}
-            type="number"
-            min={0}
-            max={100}
-            value={form.copay_ratio}
-            onChange={(event) => onChange({ copay_ratio: event.target.value })}
-            placeholder="30"
-          />
-        </div>
+        {form.insurance_type === 'care' && form.application_status === 'applying' ? (
+          <p className="rounded-lg border border-border/70 bg-background px-3 py-2 text-xs leading-5 text-muted-foreground md:col-span-2">
+            申請中は認定区分を未確定として管理します。認定後に「確定済み」へ変更し、要支援1・2または要介護1〜5を登録してください。
+          </p>
+        ) : null}
 
         <div className="space-y-1.5">
-          <Label htmlFor={`${title}-number`}>番号</Label>
+          <Label htmlFor={`${idPrefix}-insurer-number`}>{identifierLabels.insurerNumber}</Label>
           <Input
-            id={`${title}-number`}
-            value={form.number}
-            onChange={(event) => onChange({ number: event.target.value })}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor={`${title}-symbol`}>記号</Label>
-          <Input
-            id={`${title}-symbol`}
-            value={form.symbol}
-            onChange={(event) => onChange({ symbol: event.target.value })}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor={`${title}-branch-number`}>枝番</Label>
-          <Input
-            id={`${title}-branch-number`}
-            value={form.branch_number}
-            onChange={(event) => onChange({ branch_number: event.target.value })}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor={`${title}-insurer-number`}>保険者番号</Label>
-          <Input
-            id={`${title}-insurer-number`}
+            id={`${idPrefix}-insurer-number`}
+            inputMode="numeric"
+            maxLength={8}
             value={form.insurer_number}
             onChange={(event) => onChange({ insurer_number: event.target.value })}
           />
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor={`${title}-valid-from`}>有効開始日</Label>
+          <Label htmlFor={`${idPrefix}-number`}>{identifierLabels.number}</Label>
           <Input
-            id={`${title}-valid-from`}
+            id={`${idPrefix}-number`}
+            value={form.number}
+            onChange={(event) => onChange({ number: event.target.value })}
+          />
+        </div>
+
+        {form.insurance_type === 'medical' ? (
+          <>
+            <div className="space-y-1.5">
+              <Label htmlFor={`${idPrefix}-symbol`}>記号</Label>
+              <Input
+                id={`${idPrefix}-symbol`}
+                value={form.symbol}
+                onChange={(event) => onChange({ symbol: event.target.value })}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor={`${idPrefix}-branch-number`}>枝番</Label>
+              <Input
+                id={`${idPrefix}-branch-number`}
+                inputMode="numeric"
+                maxLength={2}
+                value={form.branch_number}
+                onChange={(event) => onChange({ branch_number: event.target.value })}
+              />
+            </div>
+          </>
+        ) : null}
+
+        <div className="space-y-1.5">
+          <Label htmlFor={`${idPrefix}-copay-ratio`}>自己負担割合（%）</Label>
+          <Input
+            id={`${idPrefix}-copay-ratio`}
+            type="number"
+            min={0}
+            max={100}
+            step={1}
+            value={form.copay_ratio}
+            aria-invalid={Boolean(errors.copay_ratio)}
+            aria-describedby={errors.copay_ratio ? `${idPrefix}-copay-ratio-error` : undefined}
+            onChange={(event) => onChange({ copay_ratio: event.target.value })}
+            placeholder="30"
+          />
+          <InsuranceFieldError id={`${idPrefix}-copay-ratio-error`} message={errors.copay_ratio} />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor={`${idPrefix}-valid-from`}>有効開始日</Label>
+          <Input
+            id={`${idPrefix}-valid-from`}
             type="date"
             value={form.valid_from}
             onChange={(event) => onChange({ valid_from: event.target.value })}
@@ -378,19 +561,23 @@ function InsuranceEditor({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor={`${title}-valid-until`}>有効終了日</Label>
+          <Label htmlFor={`${idPrefix}-valid-until`}>有効終了日</Label>
           <Input
-            id={`${title}-valid-until`}
+            id={`${idPrefix}-valid-until`}
             type="date"
             value={form.valid_until}
+            min={form.valid_from || undefined}
+            aria-invalid={Boolean(errors.valid_until)}
+            aria-describedby={errors.valid_until ? `${idPrefix}-valid-until-error` : undefined}
             onChange={(event) => onChange({ valid_until: event.target.value })}
           />
+          <InsuranceFieldError id={`${idPrefix}-valid-until-error`} message={errors.valid_until} />
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor={`${title}-application-submitted-at`}>申請日</Label>
+          <Label htmlFor={`${idPrefix}-application-submitted-at`}>申請日</Label>
           <Input
-            id={`${title}-application-submitted-at`}
+            id={`${idPrefix}-application-submitted-at`}
             type="date"
             value={form.application_submitted_at}
             onChange={(event) => onChange({ application_submitted_at: event.target.value })}
@@ -398,21 +585,26 @@ function InsuranceEditor({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor={`${title}-decision-at`}>決定日</Label>
+          <Label htmlFor={`${idPrefix}-decision-at`}>決定日</Label>
           <Input
-            id={`${title}-decision-at`}
+            id={`${idPrefix}-decision-at`}
             type="date"
             value={form.decision_at}
+            min={form.application_submitted_at || undefined}
+            aria-invalid={Boolean(errors.decision_at)}
+            aria-describedby={errors.decision_at ? `${idPrefix}-decision-at-error` : undefined}
             onChange={(event) => onChange({ decision_at: event.target.value })}
           />
+          <InsuranceFieldError id={`${idPrefix}-decision-at-error`} message={errors.decision_at} />
         </div>
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor={`${title}-notes`}>備考</Label>
+        <Label htmlFor={`${idPrefix}-notes`}>備考</Label>
         <Textarea
-          id={`${title}-notes`}
+          id={`${idPrefix}-notes`}
           rows={3}
+          maxLength={500}
           value={form.notes}
           onChange={(event) => onChange({ notes: event.target.value })}
         />
@@ -423,14 +615,28 @@ function InsuranceEditor({
           checked={form.is_active}
           onCheckedChange={(checked) => onChange({ is_active: checked === true })}
         />
-        <span>この保険を有効として扱う</span>
+        <span>この資格情報を有効として扱う</span>
       </label>
+
+      {errorMessages.length > 0 ? (
+        <div
+          role="alert"
+          className="rounded-lg border border-state-blocked/30 bg-state-blocked/5 p-3"
+        >
+          <p className="text-sm font-medium text-state-blocked">保存前に確認してください</p>
+          <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-state-blocked">
+            {errorMessages.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <ActionRail>
         <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
           キャンセル
         </Button>
-        <Button type="button" onClick={onSave} disabled={saving}>
+        <Button type="button" onClick={onSave} disabled={saving || errorMessages.length > 0}>
           {saving ? '保存中...' : '保存'}
         </Button>
       </ActionRail>
@@ -445,6 +651,19 @@ function insuranceActionLabel(
   action: string,
 ) {
   return `${sectionTitle} ${index + 1}件目の${INSURANCE_TYPE_LABELS[item.insurance_type]}を${action}`;
+}
+
+function formatCareClassification(item: InsuranceRecord) {
+  if (item.application_status === 'change_pending') {
+    return [
+      `変更前 ${formatCareLevel(item.previous_care_level)}`,
+      `暫定 ${formatCareLevel(item.provisional_care_level)}`,
+    ].join(' / ');
+  }
+  if (item.application_status === 'confirmed') {
+    return formatCareLevel(item.confirmed_care_level);
+  }
+  return item.application_status === 'applying' ? '認定待ち' : '対象外';
 }
 
 function InsuranceBlock({
@@ -467,7 +686,7 @@ function InsuranceBlock({
   savingId: string | null;
   onEdit: (item: InsuranceRecord) => void;
   onDraftChange: (id: string, patch: Partial<InsuranceFormState>) => void;
-  onSave: (id: string) => void;
+  onSave: (item: InsuranceRecord) => void;
   onDeactivate: (item: InsuranceRecord) => void;
   onDelete: (item: InsuranceRecord) => void;
   onCancel: () => void;
@@ -486,6 +705,7 @@ function InsuranceBlock({
             const draft = drafts[item.id] ?? toFormState(item);
             const isEditing = editingId === item.id;
             const isSaving = savingId === item.id;
+            const identifierLabels = IDENTIFIER_LABELS[item.insurance_type];
 
             return (
               <div
@@ -533,25 +753,30 @@ function InsuranceBlock({
                   )}
                 </div>
                 <dl className="space-y-2 text-sm">
-                  <InsuranceRow label="番号" value={item.number ?? '—'} />
                   <InsuranceRow
-                    label="資格状態"
+                    label="資格・申請状態"
                     value={APPLICATION_STATUS_LABELS[item.application_status]}
                   />
-                  <InsuranceRow label="公費制度" value={item.public_program_code ?? '—'} />
+                  {item.insurance_type === 'public_subsidy' ? (
+                    <InsuranceRow
+                      label="法別番号（公費制度コード）"
+                      value={item.public_program_code ?? '—'}
+                    />
+                  ) : null}
+                  {item.insurance_type === 'care' ? (
+                    <InsuranceRow label="要介護状態区分" value={formatCareClassification(item)} />
+                  ) : null}
                   <InsuranceRow
-                    label="介護度"
-                    value={[
-                      `変更前 ${formatCareLevel(item.previous_care_level)}`,
-                      `暫定 ${formatCareLevel(item.provisional_care_level)}`,
-                      `確定 ${formatCareLevel(item.confirmed_care_level)}`,
-                    ].join(' / ')}
+                    label={identifierLabels.insurerNumber}
+                    value={item.insurer_number ?? '—'}
                   />
-                  <InsuranceRow
-                    label="記号・枝番"
-                    value={[item.symbol, item.branch_number].filter(Boolean).join(' / ') || '—'}
-                  />
-                  <InsuranceRow label="保険者番号" value={item.insurer_number ?? '—'} />
+                  <InsuranceRow label={identifierLabels.number} value={item.number ?? '—'} />
+                  {item.insurance_type === 'medical' ? (
+                    <InsuranceRow
+                      label="記号・枝番"
+                      value={[item.symbol, item.branch_number].filter(Boolean).join(' / ') || '—'}
+                    />
+                  ) : null}
                   <InsuranceRow label="自己負担" value={formatCopayRatio(item.copay_ratio)} />
                   <InsuranceRow
                     label="有効期間"
@@ -565,10 +790,11 @@ function InsuranceBlock({
                 </dl>
                 {isEditing ? (
                   <InsuranceEditor
-                    title={`insurance-${item.id}`}
+                    idPrefix={`insurance-${item.id}`}
+                    title={`${INSURANCE_TYPE_LABELS[item.insurance_type]}を編集`}
                     form={draft}
                     onChange={(patch) => onDraftChange(item.id, patch)}
-                    onSave={() => onSave(item.id)}
+                    onSave={() => onSave(item)}
                     onCancel={onCancel}
                     saving={isSaving}
                   />
@@ -605,18 +831,19 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (args: { insuranceId?: string; form: InsuranceFormState }) => {
+    mutationFn: async (args: SaveInsuranceArgs) => {
       const { insuranceId } = args;
-      const response = await fetch(
-        insuranceId
-          ? buildPatientApiPath(patientId, `/insurance/${encodePathSegment(insuranceId)}`)
-          : buildPatientApiPath(patientId, '/insurance'),
-        {
-          method: insuranceId ? 'PUT' : 'POST',
-          headers: buildOrgJsonHeaders(orgId),
-          body: JSON.stringify(buildInsurancePayload(args.form)),
-        },
-      );
+      const basePath = insuranceId
+        ? buildPatientApiPath(patientId, `/insurance/${encodePathSegment(insuranceId)}`)
+        : buildPatientApiPath(patientId, '/insurance');
+      const path = insuranceId
+        ? `${basePath}?expected_updated_at=${encodeURIComponent(args.expectedUpdatedAt)}`
+        : basePath;
+      const response = await fetch(path, {
+        method: insuranceId ? 'PUT' : 'POST',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify(buildInsurancePayload(args.form)),
+      });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(
@@ -696,16 +923,18 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
     setDrafts((current) => mergeInsuranceDraft(current, id, EMPTY_FORM, patch));
   }
 
-  function saveDraft(id: string) {
+  function saveDraft(item: InsuranceRecord) {
     saveMutation.mutate({
-      insuranceId: id,
-      form: drafts[id] ?? EMPTY_FORM,
+      insuranceId: item.id,
+      expectedUpdatedAt: item.updated_at,
+      form: drafts[item.id] ?? EMPTY_FORM,
     });
   }
 
   function deactivateInsurance(item: InsuranceRecord) {
     saveMutation.mutate({
       insuranceId: item.id,
+      expectedUpdatedAt: item.updated_at,
       form: {
         ...toFormState(item),
         is_active: false,
@@ -713,11 +942,10 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
     });
   }
 
-  const allInsurances = insuranceQuery.data?.data.all ?? [
-    ...(insuranceQuery.data?.data.current ?? []),
-    ...(insuranceQuery.data?.data.upcoming ?? []),
-    ...(insuranceQuery.data?.data.history ?? []),
-  ];
+  const insuranceCount =
+    (insuranceQuery.data?.data.current.length ?? 0) +
+    (insuranceQuery.data?.data.upcoming.length ?? 0) +
+    (insuranceQuery.data?.data.history.length ?? 0);
   const hasInsuranceLoadError = insuranceQuery.error instanceof Error;
   const canManageInsurance = !insuranceQuery.isLoading && !hasInsuranceLoadError;
 
@@ -725,7 +953,12 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
     <Card>
       <CardHeader className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="font-heading text-base leading-snug font-medium">保険詳細</h2>
+          <div>
+            <h2 className="font-heading text-base leading-snug font-medium">保険・公費管理</h2>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              医療保険、公費、介護保険の資格・申請状態と有効期間を管理します。
+            </p>
+          </div>
           {canManageInsurance ? (
             <Button
               type="button"
@@ -737,7 +970,7 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
                 setIsCreateOpen((current) => !current);
               }}
             >
-              {isCreateOpen ? '追加フォームを閉じる' : '保険追加'}
+              {isCreateOpen ? '追加フォームを閉じる' : '保険情報を追加'}
             </Button>
           ) : null}
         </div>
@@ -750,7 +983,7 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
               今後有効 {insuranceQuery.data?.data.upcoming.length ?? 0}
             </Badge>
             <Badge variant="outline">履歴 {insuranceQuery.data?.data.history.length ?? 0}</Badge>
-            <Badge variant="outline">総件数 {allInsurances.length}</Badge>
+            <Badge variant="outline">総件数 {insuranceCount}</Badge>
           </div>
         ) : null}
       </CardHeader>
@@ -775,7 +1008,8 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
           <>
             {isCreateOpen ? (
               <InsuranceEditor
-                title="new-insurance"
+                idPrefix="new-insurance"
+                title="保険情報を追加"
                 form={createDraft}
                 onChange={(patch) =>
                   setCreateDraft((current) => ({

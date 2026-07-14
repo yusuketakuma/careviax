@@ -148,6 +148,11 @@ type PatientContactsPanelProps = {
   initialExpectedUpdatedAt?: string | null;
 };
 
+type PatientInsuranceCardProps = {
+  patientId: string;
+  orgId: string;
+};
+
 type PatientIdPanelProps = {
   patientId: string;
 };
@@ -237,6 +242,13 @@ const PatientContactsPanel = dynamic<PatientContactsPanelProps>(
   () => import('./patient-contacts-panel').then((mod) => mod.PatientContactsPanel),
   {
     loading: () => <PatientDetailPanelLoading label="連絡先を読み込み中" />,
+  },
+);
+
+const PatientInsuranceCard = dynamic<PatientInsuranceCardProps>(
+  () => import('./patient-insurance-card').then((mod) => mod.PatientInsuranceCard),
+  {
+    loading: () => <PatientDetailPanelLoading label="保険・公費管理を読み込み中" />,
   },
 );
 
@@ -397,7 +409,7 @@ const PATIENT_DETAIL_TABS: Array<{ value: PatientDetailTab; label: string; descr
     {
       value: 'foundation',
       label: '正本・在宅運用',
-      description: '正本確認、プロフィール、連絡先',
+      description: '正本確認、保険・公費、プロフィール、連絡先',
     },
     {
       value: 'medication',
@@ -429,6 +441,7 @@ const PATIENT_DETAIL_TABS: Array<{ value: PatientDetailTab; label: string; descr
 const PATIENT_DETAIL_HASH_TABS: Record<string, PatientDetailTab> = {
   'patient-foundation': 'foundation',
   'patient-profile-summary': 'foundation',
+  'patient-insurance': 'foundation',
   'patient-contacts': 'foundation',
   'patient-home-operations': 'billing',
   'patient-billing': 'billing',
@@ -5928,6 +5941,9 @@ export function CardWorkspace({
             <TabsContent value="foundation" keepMounted className="space-y-4">
               <h2 className="text-lg font-bold text-foreground">正本・在宅運用</h2>
               <PatientFoundationPanelMemo patient={patient} />
+              <div id="patient-insurance" data-testid="patient-insurance-management">
+                <PatientInsuranceCard patientId={patient.id} orgId={orgId} />
+              </div>
               <PatientProfilePanelMemo patient={patient} />
               <div id="patient-contacts">
                 <PatientContactsPanelMemo
@@ -6143,6 +6159,9 @@ export function CardWorkspace({
               <TabsContent value="foundation" keepMounted className="space-y-4">
                 <h2 className="text-lg font-bold text-foreground">正本・在宅運用</h2>
                 <PatientFoundationPanelMemo patient={patient} />
+                <div id="patient-insurance" data-testid="patient-insurance-management">
+                  <PatientInsuranceCard patientId={patient.id} orgId={orgId} />
+                </div>
                 <PatientProfilePanelMemo patient={patient} />
                 <div id="patient-contacts">
                   <PatientContactsPanelMemo
