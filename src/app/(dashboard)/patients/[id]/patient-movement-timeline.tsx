@@ -1001,6 +1001,13 @@ export function PatientMovementTimeline({
     onFiltersChange?.(EMPTY_TIMELINE_FILTERS);
   };
 
+  const resetAllFilters = () => {
+    setQuery('');
+    setFocusFilter('all');
+    setSelectedEventId(null);
+    resetTemporalFilters();
+  };
+
   const filteredEvents = orderedEvents.filter((event) => {
     if (category !== 'all' && event.category !== category) {
       return false;
@@ -1348,6 +1355,15 @@ export function PatientMovementTimeline({
               icon={Activity}
               title="表示できるアクションがありません"
               description={emptyTimelineDescription}
+              action={
+                isFiltered && !isFiltering
+                  ? {
+                      label: '表示条件を解除',
+                      onClick: resetAllFilters,
+                      variant: 'outline',
+                    }
+                  : undefined
+              }
             />
           ) : (
             timelineGroups.map((group) => (

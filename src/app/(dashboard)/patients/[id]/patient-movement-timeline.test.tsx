@@ -513,6 +513,55 @@ describe('PatientMovementTimeline', () => {
     expect(screen.getByText(/記録されると、ここに時系列で表示/)).toBeTruthy();
   });
 
+  it('recovers a false-empty timeline by clearing local and server-backed filters together', async () => {
+    const onFiltersChange = vi.fn();
+    render(
+      <PatientMovementTimeline
+        timelineEvents={timelineEvents}
+        selfReports={[]}
+        onFiltersChange={onFiltersChange}
+      />,
+    );
+
+    fireEvent.click(
+      within(screen.getByLabelText('タイムライン種別フィルタ')).getByRole('button', {
+        name: /^訪問1$/,
+      }),
+    );
+    fireEvent.click(
+      within(screen.getByLabelText('確認フィルタ')).getByRole('button', {
+        name: /^安全関連0$/,
+      }),
+    );
+    fireEvent.change(screen.getByLabelText('タイムライン検索'), {
+      target: { value: '一致しない検索語' },
+    });
+
+    const clearButton = await screen.findByRole('button', { name: '表示条件を解除' });
+    fireEvent.click(clearButton);
+
+    expect((screen.getByLabelText('タイムライン検索') as HTMLInputElement).value).toBe('');
+    expect(
+      within(screen.getByLabelText('確認フィルタ'))
+        .getByRole('button', { name: /^読込済み4$/ })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(
+      within(screen.getByLabelText('タイムライン種別フィルタ'))
+        .getByRole('button', { name: /^すべて4$/ })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(onFiltersChange).toHaveBeenLastCalledWith({
+      category: null,
+      date_from: null,
+      date_to: null,
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText('訪問記録を登録').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('管理計画書を承認').length).toBeGreaterThan(0);
+    });
+  });
+
   it('filters unprocessed inbound events and updates the selected-event preview', () => {
     render(
       <PatientMovementTimeline
