@@ -61,6 +61,35 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: Round 8 inbound review recovery / Yrese webhook boundary registry /
+  patient workflow-preview RLS-audit / visit preparation payload measurement integration boundary
+  (DONE / CODE PUSHED, 2026-07-15; implementations `dbd4b19e3`, `a883e2036`, `5f3fadd02`, `ddb7e879d`).
+  - workflow / ownership / files inspected:
+    `agmsg` inbox/history、live Git、`Plans.md`、UI SSOT、Next.js client/error guidesを確認し、4 laneがnon-overlapで、
+    codex2 exact4、codex3 exact2、codex4 exact2の全handoff SHA-256がlive filesと一致することを確認した。
+    開始HEAD `6f274bd7d` / origin parity `0 0`からindex/docs HARD HOLDを通知し、相互reviewなしで明示pathだけを
+    4 logical groupsへstageした。既存dirtyの`.harness-mem/state/{continuity,whisper-budget}.json`、patient
+    external-share 4 files、`tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`は
+    変更、stage、revertしていない。
+  - frontend / inbound review recovery (`dbd4b19e3`):
+    `src/app/(dashboard)/communications/inbound/inbound-content.{tsx,test.tsx}`で、toastだけだったreview mutation失敗を
+    対象signal内のfixed PHI-safe `ErrorState`へ接続した。試行した`{signalId, action}`を保持して同じ操作を明示再試行し、
+    raw errorは表示しない。intake/task recovery、success/invalidation、stock apply、source mappingは維持した。
+    component suiteは警告なし`1 file / 19 tests`。軽微な状態追加のためimagegenは省略した。
+  - backend / security / performance (`a883e2036`, `5f3fadd02`, `ddb7e879d`):
+    Yrese webhookのpayload-too-large 413、secret-unavailable 503、signature-invalid 401をtyped registryへ追加し、固定no-store
+    branchだけを`registeredError`へ移した。1 MiB cap、fail-closed順序、import/202、PHI-safe loggerは維持した。
+    patient workflow-preview GETは`canVisit`と全DTOを保ち、PHI readをrequest-scoped `withOrgContext` txへ移し、non-null
+    successだけをtrace付きaudit、denied/errorをzero-auditにした。visit today-preparation GETはouter responseを
+    `withRoutePerformance`へ接続し、nested dedup、exact bytes、200 KiB budget、1 request / 1 payload sampleを固定した。
+  - validation / commit / push / remaining:
+    codex1 exact lint/format、frontend contract、client PHI-log、state color、typography、diff-checkがPASS。peerのfocused/static
+    self-validationもhandoff通りPASSし、4 code commits後の唯一のaggregate
+    `pnpm typecheck && pnpm typecheck:no-unused`は両方exit 0。ユーザー方針によりbuild/Oracleは実行していない。
+    4 code commitsをnon-force pushし、local/remote HEAD `ddb7e879da2c6497b280ba0737a6b9f3d9be0e63`、parity `0 0`。
+    次はsingle-ledger closeoutをscoped commit/pushして最終parityを確認し、codex2/3/4へexplicit GATE RELEASEを送る。
+    親`FE-INBOUND-001`、`API-CONTRACT-003`、`ROUTE-AUTHZ-COVERAGE-001`、`ROUTE-PERF-MEASURE-001`は残surfaceのためPartial。
+
 - codex1 + codex2 + codex3 + codex4: Round 7 inbound task recovery / Yrese import error registry /
   patient readiness RLS-audit / inbound signals payload measurement integration boundary
   (DONE / CODE PUSHED, 2026-07-15; implementations `eaab25c52`, `f4cb41ad1`, `e4441bd65`, `aa3f4d075`).
