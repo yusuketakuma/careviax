@@ -1,12 +1,12 @@
 # RUN LOCK
 
-- Run ID: `019f6053-bcb6-7e40-8b42-f1f18b3fdd9e`
+- Run ID: `7ee6d049-b201-4cf8-95e7-96b6791dcf03`
 - Status: ACTIVE
-- Started At: 2026-07-14 21:03 JST
-- Last Heartbeat: 2026-07-15 04:13 JST
+- Started At: 2026-07-15 05:23 JST
+- Last Heartbeat: 2026-07-15 05:24 JST
 - Branch: `agent/continuous-improvement-20260712`
-- Current Task: Round 16 insurance read recovery / localized helper ratchet / inbound MCS PHI-safe logging / patient-detail billing-context reuse closeout
-- Current Commit Group: 4 scoped code commits through `43cb244bd` pushed with parity `0 0`; single-ledger commit and non-force push in progress
-- Owner / Agent Identifier: `codex1` frontend integration/ledger; `codex2` backend; `codex3` security implementation; `codex4` performance/response improvement via agmsg team `phos`; no mutual review wait
-- Resume Token or Session Reference: `019f6053-bcb6-7e40-8b42-f1f18b3fdd9e`
-- Notes: Round16 adds fail-closed read recovery to patient insurance, guards localized response-helper bypass at exact zero, removes raw Error/PHI from inbound MCS failure logging, and reuses patient-detail brief billing context. The first codex4 TDZ attempt failed 8/42 and was repaired with a shared promise; the final focused/grouped tests and single serialized typecheck/no-unused passed. Code commits are pushed with parity `0 0`; mutual review wait is disabled. Oracle and build are prohibited by user policy. Preserve pre-existing dirty `.harness-mem/state/{continuity,whisper-budget}.json`, patient external-share 4 files, and `tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`. Stage only explicit owned paths; no `git add -A`.
+- Current Task: Round 18 backend API error-contract migration and Round 17 patient-insurance aggregate type-gate repair closeout
+- Current Commit Group: scoped code commits `5342a8f4e` and `40a181d17` are local; Plans/STATE/RUN_LOCK integration and authorized non-force feature-branch push are in progress
+- Owner / Agent Identifier: `codex2` backend and temporary integration/ledger owner via agmsg transfer; `codex1` frontend, `codex3` security, and `codex4` performance/response sessions are blocked by the Codex usage limit until 2026-07-21 11:57 and supplied no Round18 edits or review
+- Resume Token or Session Reference: `7ee6d049-b201-4cf8-95e7-96b6791dcf03`
+- Notes: Round18 registers the fixed `IDEMPOTENCY_CONFLICT` contract and migrates three wire-compatible branches, reducing literal raw error debt 36→33 and raw details debt 15→12. The first aggregate typecheck exposed committed Round17 insurance result-union and persisted care-level typing defects; discriminated results, explicit authenticated response contracts, and schema-backed legacy value normalization repaired them without changing auth/RLS/OCC or wire behavior. Focused tests (83 contract + 71 insurance), exact lint/format, relevant static gates, serialized typecheck, and typecheck:no-unused pass. Oracle, build, migration apply, deploy, and production mutation were not run. Preserve pre-existing dirty `.harness-mem/state/{continuity,whisper-budget}.json`, patient external-share 4 files, visit-records exact2, and `tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`. Stage only explicit owned paths; no `git add -A`.

@@ -61,6 +61,40 @@
 
 ## 直近の作業
 
+- codex2 backend + temporary integration owner: Round 18 registered idempotency error contract /
+  Round 17 insurance aggregate type-gate repair
+  (DONE / CODE COMMITTED, PUSH PENDING, 2026-07-15; implementations `5342a8f4e`, `40a181d17`).
+  - workflow / coordination / ownership:
+    live `git status`、`Plans.md`、このSTATE、RUN_LOCK、Next.js 16.2.9 route/error guides、API registry、
+    patient-insurance validator/routesを確認した。agmsgでcodex1/3/4へ調査・ownershipを通知し、停止中bridgeを
+    resumeしたが、3 sessionすべてがCodex usage limit（2026-07-21 11:57まで）で停止していた。Yusukeを含む
+    teamへintegration owner transferを通知し、codex2がbackend exact5、aggregate gate repair exact4、共有ledger、
+    scoped commit/pushを引き継いだ。peer edit/reviewは未取得であり、代替model/Oracleは使用していない。既存harness、
+    external-share、visit-records、tools dirtyはedit/revert/stageしていない。
+  - backend / API contract (`5342a8f4e`):
+    canonical `IDEMPOTENCY_CONFLICT`を409 / warn / non-retryable / `correct_input`としてregistryへ追加し、
+    care-report send 2分岐とexternal self-report 1分岐を`registeredError()`へ移行した。既存code、message、details、
+    status、sensitive no-storeは不変。alias-aware AST debtはliteral raw 36→33、wire details raw 15→12となり、
+    registry snapshot/direct assertionとroute contractで固定した。live client schema ratchetはPlans記載361ではなく
+    360 backed / 0 allowlistedだったため、active planを実測値へ修正した。
+  - aggregate failure / root-cause repair (`40a181d17`):
+    最初のserialized `pnpm typecheck`はRound17 insuranceのtransaction resultが
+    `NextResponse | undefined`へ崩れる3箇所と、DB上の`string | null` care levelをofficial enumとして扱う3箇所で
+    exit 2になった。POST/PUT/DELETE transaction result、`expected_updated_at` parse結果をdiscriminated unionへ変更し、
+    authenticated PUT/DELETEへ`Promise<Response>`契約を明示した。persisted care levelはshared Zod schemaでnarrowし、
+    unknown legacy値をinactive historyではmissingとして保持可能、再active化では明示validation failureへfail-closedした。
+    mutation payloadはpatch fieldだけのため、notes-only更新でlegacy DB値を暗黙書換えしない。auth、assignment、RLS、
+    OCC、overlap、wire responseは維持した。
+  - validation / commits / remaining:
+    API contract `4 files / 83 tests`、insurance `3 files / 71 tests`、RLS `24/24`、exact9 ESLint/Prettier、
+    `api-response-shape:check`、`dto-direct-prisma-return:check`、`route-auth-wrapper:check`、
+    `boundaries:check`、`git diff --check`、serialized `pnpm typecheck`、`pnpm typecheck:no-unused`がPASS。
+    Phase0でquery-shape、read-SLO、plans-active、API authz、raw-read org guard、client schema、task types、
+    dependency auditもPASS（known high vulnerability 0）。build/E2E/Oracle/migration applyは現行方針により未実行。
+    codeは2 logical commitsへ分離済みで、Plans/STATE/RUN_LOCK closeoutとauthorized non-force feature-branch pushが残る。
+    親`API-CONTRACT-001/003`、shared correlation body、残error family、DB-at-rest audit/legacy SoT migration、
+    repository-wide demo/full regressionは未完了。
+
 - codex1 + codex2 + codex3 + codex4: Round 17 patient medical/public/care insurance management
   (DONE / CODE COMMITTED, NOT PUSHED, 2026-07-15; implementations `f48e10832`, `d563d093a`,
   `42608f405`, `49f6110b5`, follow-ups `717651f56`, `bc581f14b`).
