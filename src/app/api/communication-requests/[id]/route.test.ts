@@ -16,6 +16,7 @@ const {
   careCaseFindFirstMock,
   patientFindFirstMock,
   fetchEmergencyContactsMock,
+  recordPhiReadAuditForRequestMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -30,6 +31,7 @@ const {
   careCaseFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   fetchEmergencyContactsMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -63,6 +65,10 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/patient/emergency-contacts', () => ({
   fetchEmergencyContacts: fetchEmergencyContactsMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 import { GET, PATCH } from './route';
@@ -147,11 +153,13 @@ describe('/api/communication-requests/[id] GET', () => {
         id: 'request_1',
         patient_id: 'patient_1',
         case_id: 'case_1',
+        related_entity_type: null,
       })
       .mockResolvedValueOnce({
         id: 'request_1',
         patient_id: 'patient_1',
         case_id: 'case_1',
+        related_entity_type: null,
         subject: '確認事項',
         content: '処方内容を確認したいです',
         responses: [{ id: 'response_1', content: '承知しました' }],
@@ -184,7 +192,13 @@ describe('/api/communication-requests/[id] GET', () => {
     expect(communicationRequestFindFirstMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        where: { id: 'request_1', org_id: 'org_1' },
+        where: {
+          id: 'request_1',
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          related_entity_type: null,
+        },
         select: expect.objectContaining({
           subject: true,
           content: true,
@@ -199,6 +213,15 @@ describe('/api/communication-requests/[id] GET', () => {
       expect.anything(),
       'org_1',
       'patient_1',
+    );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'communication_request',
+        targetId: 'request_1',
+        view: 'communication_request_detail',
+      },
     );
   });
 
@@ -219,6 +242,7 @@ describe('/api/communication-requests/[id] GET', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(fetchEmergencyContactsMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects care report communication content for callers without report send permission', async () => {
@@ -246,6 +270,7 @@ describe('/api/communication-requests/[id] GET', () => {
     expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(communicationRequestFindFirstMock).toHaveBeenCalledTimes(1);
     expect(fetchEmergencyContactsMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('loads communication content for an org-wide role regardless of case assignment', async () => {
@@ -254,11 +279,13 @@ describe('/api/communication-requests/[id] GET', () => {
         id: 'request_1',
         patient_id: 'patient_1',
         case_id: 'case_1',
+        related_entity_type: null,
       })
       .mockResolvedValueOnce({
         id: 'request_1',
         patient_id: 'patient_1',
         case_id: 'case_1',
+        related_entity_type: null,
         subject: '確認事項',
         content: '処方内容を確認したいです',
         responses: [],
@@ -287,6 +314,63 @@ describe('/api/communication-requests/[id] GET', () => {
       },
     });
     expect(fetchEmergencyContactsMock).toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'communication_request',
+        targetId: 'request_1',
+        view: 'communication_request_detail',
+      },
+    );
+  });
+
+  it('returns no detail or audit when the request scope changes after access validation', async () => {
+    communicationRequestFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'request_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        related_entity_type: null,
+      })
+      .mockResolvedValueOnce(null);
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    expect(communicationRequestFindFirstMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          id: 'request_1',
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          related_entity_type: null,
+        },
+      }),
+    );
+    expect(fetchEmergencyContactsMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not read or audit communication content when authentication is rejected', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), { status: 401 }),
+    });
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(fetchEmergencyContactsMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when request lookup fails unexpectedly', async () => {
@@ -310,6 +394,7 @@ describe('/api/communication-requests/[id] GET', () => {
     expect(JSON.stringify(json)).not.toContain('山田花子');
     expect(JSON.stringify(json)).not.toContain('090-1234-5678');
     expect(JSON.stringify(json)).not.toContain('raw care coordination detail');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 });
 

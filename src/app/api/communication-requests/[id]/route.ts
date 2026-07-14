@@ -1,4 +1,5 @@
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { requireAuthContext } from '@/lib/auth/context';
 import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
 import { withOrgContext } from '@/lib/db/rls';
@@ -80,7 +81,13 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   }
 
   const request = await prisma.communicationRequest.findFirst({
-    where: { id, org_id: orgId },
+    where: {
+      id,
+      org_id: orgId,
+      patient_id: requestScope.patient_id,
+      case_id: requestScope.case_id,
+      related_entity_type: requestScope.related_entity_type,
+    },
     select: {
       id: true,
       org_id: true,
@@ -119,6 +126,13 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   const emergencyContacts = request.patient_id
     ? await fetchEmergencyContacts(prisma, orgId, request.patient_id)
     : [];
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: request.patient_id,
+    targetType: 'communication_request',
+    targetId: request.id,
+    view: 'communication_request_detail',
+  });
 
   return success({
     data: {
