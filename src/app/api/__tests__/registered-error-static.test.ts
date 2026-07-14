@@ -15,6 +15,17 @@ type RawLiteralErrorUsage = {
   httpStatus: number | null;
 };
 
+type RawDynamicErrorUsage = {
+  filePath: string;
+  codeExpression: string;
+  statusExpression: string | null;
+};
+
+type RawErrorUsages = {
+  literal: RawLiteralErrorUsage[];
+  dynamic: RawDynamicErrorUsage[];
+};
+
 type RawRegisteredErrorUsage = RawLiteralErrorUsage & {
   code: RegisteredErrorCode;
   canonicalHttpStatus: number;
@@ -262,6 +273,44 @@ const allowedExternalLiteralErrorUsages: RawLiteralErrorUsage[] = [
   },
 ];
 
+const allowedRawDynamicErrorUsages: RawDynamicErrorUsage[] = [
+  {
+    filePath: 'src/app/api/files/[id]/download/route.ts',
+    codeExpression: 'cause.code',
+    statusExpression: 'cause.status',
+  },
+  {
+    filePath: 'src/app/api/files/complete/route.ts',
+    codeExpression: 'cause.code',
+    statusExpression: 'cause.status',
+  },
+  {
+    filePath: 'src/app/api/files/presigned-upload/route.ts',
+    codeExpression: 'cause.code',
+    statusExpression: 'cause.status',
+  },
+  {
+    filePath: 'src/app/api/files/presigned-upload/route.ts',
+    codeExpression: 'cause.code',
+    statusExpression: 'cause.status',
+  },
+  {
+    filePath: 'src/app/api/patients/medications/bulk-export/route.ts',
+    codeExpression: 'cause.code',
+    statusExpression: 'cause.status',
+  },
+  {
+    filePath: 'src/app/api/pharmacy-contracts/[id]/documents/route.ts',
+    codeExpression: 'cause.code',
+    statusExpression: 'cause.status',
+  },
+  {
+    filePath: 'src/app/api/visit-records/[id]/medication-stock-observations/route.ts',
+    codeExpression: 'VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_CODE',
+    statusExpression: '503',
+  },
+];
+
 const allowedRawRegisteredErrorUsages: RawRegisteredErrorUsage[] = [
   {
     filePath: 'src/app/api/dispense-audits/route.ts',
@@ -307,16 +356,13 @@ function collectErrorHelperNames(
   return names;
 }
 
-function findLiteralErrorUsages(
-  filePath: string,
-  importedHelperName: RawErrorHelperName,
-): RawLiteralErrorUsage[] {
+function findErrorUsages(filePath: string, importedHelperName: RawErrorHelperName): RawErrorUsages {
   const source = readFileSync(filePath, 'utf8');
   const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
   const errorHelperNames = collectErrorHelperNames(sourceFile, importedHelperName);
-  if (errorHelperNames.size === 0) return [];
+  if (errorHelperNames.size === 0) return { literal: [], dynamic: [] };
 
-  const usages: RawLiteralErrorUsage[] = [];
+  const usages: RawErrorUsages = { literal: [], dynamic: [] };
 
   function visit(node: ts.Node): void {
     if (
@@ -326,13 +372,19 @@ function findLiteralErrorUsages(
     ) {
       const [codeArgument, , statusArgument] = node.arguments;
       if (codeArgument && ts.isStringLiteralLike(codeArgument)) {
-        usages.push({
+        usages.literal.push({
           filePath: relative(process.cwd(), filePath),
           code: codeArgument.text,
           httpStatus:
             statusArgument && ts.isNumericLiteral(statusArgument)
               ? Number(statusArgument.text)
               : null,
+        });
+      } else if (codeArgument) {
+        usages.dynamic.push({
+          filePath: relative(process.cwd(), filePath),
+          codeExpression: codeArgument.getText(sourceFile),
+          statusExpression: statusArgument?.getText(sourceFile) ?? null,
         });
       }
     }
@@ -344,23 +396,34 @@ function findLiteralErrorUsages(
   return usages;
 }
 
-function collectSortedLiteralErrorUsages(
-  importedHelperName: RawErrorHelperName,
-): RawLiteralErrorUsage[] {
-  return collectRouteFiles(apiRoot)
-    .flatMap((filePath) => findLiteralErrorUsages(filePath, importedHelperName))
-    .sort((left, right) =>
-      `${left.filePath}:${left.code}:${left.httpStatus}`.localeCompare(
-        `${right.filePath}:${right.code}:${right.httpStatus}`,
+function collectSortedErrorUsages(importedHelperName: RawErrorHelperName): RawErrorUsages {
+  const usages = collectRouteFiles(apiRoot).map((filePath) =>
+    findErrorUsages(filePath, importedHelperName),
+  );
+
+  return {
+    literal: usages
+      .flatMap((usage) => usage.literal)
+      .sort((left, right) =>
+        `${left.filePath}:${left.code}:${left.httpStatus}`.localeCompare(
+          `${right.filePath}:${right.code}:${right.httpStatus}`,
+        ),
       ),
-    );
+    dynamic: usages
+      .flatMap((usage) => usage.dynamic)
+      .sort((left, right) =>
+        `${left.filePath}:${left.codeExpression}:${left.statusExpression}`.localeCompare(
+          `${right.filePath}:${right.codeExpression}:${right.statusExpression}`,
+        ),
+      ),
+  };
 }
 
 describe('raw API error usage', () => {
-  it('keeps literal helper debt exact and registered bypasses on the one 422 branch', () => {
-    const rawUsages = collectSortedLiteralErrorUsages('error');
-    const externalUsages = collectSortedLiteralErrorUsages('externalError');
-    const registeredRawUsages = rawUsages.flatMap((usage): RawRegisteredErrorUsage[] =>
+  it('keeps literal and dynamic helper debt exact and registered bypasses on the one 422 branch', () => {
+    const rawUsages = collectSortedErrorUsages('error');
+    const externalUsages = collectSortedErrorUsages('externalError');
+    const registeredRawUsages = rawUsages.literal.flatMap((usage): RawRegisteredErrorUsage[] =>
       isRegisteredErrorCode(usage.code)
         ? [
             {
@@ -371,12 +434,14 @@ describe('raw API error usage', () => {
           ]
         : [],
     );
-    const registeredExternalUsages = externalUsages.filter((usage) =>
+    const registeredExternalUsages = externalUsages.literal.filter((usage) =>
       isRegisteredErrorCode(usage.code),
     );
 
-    expect(rawUsages).toEqual(allowedRawLiteralErrorUsages);
-    expect(externalUsages).toEqual(allowedExternalLiteralErrorUsages);
+    expect(rawUsages.literal).toEqual(allowedRawLiteralErrorUsages);
+    expect(rawUsages.dynamic).toEqual(allowedRawDynamicErrorUsages);
+    expect(externalUsages.literal).toEqual(allowedExternalLiteralErrorUsages);
+    expect(externalUsages.dynamic).toEqual([]);
     expect(registeredRawUsages).toEqual(allowedRawRegisteredErrorUsages);
     expect(registeredExternalUsages).toEqual([]);
     expect(registeredRawUsages).toEqual(
