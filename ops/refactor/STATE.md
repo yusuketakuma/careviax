@@ -48,14 +48,47 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `TYPECHECK-STALE-NEXT-TYPES-001`、
-  `codex2`: seeded perf evidenceとE2E build heap evidenceの同期。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `E2E-FIXTURE-CONTRACT-001`と
+  `TYPECHECK-STALE-NEXT-TYPES-001`のevidence同期、`codex2`: `API-CONTRACT-003I-COMMUNICATION-EXPORT-ERRORS`。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: TYPECHECK-STALE-NEXT-TYPES-001 (DONE, 2026-07-14; implementation `5bbb47937`, `PUSHED`).
+  - current task / files inspected / root cause:
+    `package.json`、`tsconfig.json` / service-worker config、package-script contract test、repo-local Next 16 CLI/TypeScript docs、
+    `.next/types`とignored build-infoを照合した。`next typegen`は現行route definitionsだけを生成する一方、
+    `tsconfig.tsbuildinfo`が削除済み`.next/types/app/**`を保持し、main `tsc`が大量のTS6053で停止した。
+    Cacheを使わない完全解析へ切り替えるとstale errorは消えたが、Node既定約4 GiBでV8 OOMした。
+  - files changed / bugs fixed / stability / performance / security:
+    `next typegen`を維持し、main TypeScript compilerだけを既存buildと同じ8 GiB Node invocationかつ
+    `--incremental false`へ固定した。Service-worker typecheck、tsconfig、Next build/dev incremental behavior、型strictness、
+    source/runtime/API/DB/auth/PHI処理は変更していない。Static contract testがtypegen→8 GiB compiler→cache無効の順序を固定する。
+  - validation results / remaining work / next action / rollback:
+    修正後`pnpm typecheck`を2回連続PASS、8 GiB `pnpm typecheck:no-unused` PASS、focused contract 1 file / 2 tests、
+    exact ESLint、Prettier、diff、独立codex2 review APPROVE。初回TS6053と中間4 GiB OOMは隠さず根拠として記録した。
+    非視覚tooling変更のためimagegen/browserなし。Rollbackは`5bbb47937`のrevertでDB/data rollback不要。
+    gbrain memory IDs: `projects/careviax/failures/2026-07-14/next-typegen-stale-tsbuildinfo`、
+    `projects/careviax/fix-patterns/2026-07-14/stable-next-typegen-typecheck`。
+
+- codex1: E2E-FIXTURE-CONTRACT-001 (DONE, 2026-07-14; implementation `625af849f`, `PUSHED`).
+  - current task / files inspected / root cause:
+    Route-mocked Playwright specとscheduling、partner cooperation、billing、formulary/stock、shared viewer、offline visit-saveの
+    strict consumer contractsを照合した。Fixtureが旧root envelope / cursor / count metadata、timezoneなしdatetime、
+    optimistic-concurrency tokenなしmutation、旧scope/list/save shapeを返し、全体smokeで8件の連続journey failureを起こしていた。
+    `serviceWorkers: block`でもnavigator APIは残るため、Serwist injected registerがroute mock外のpageerrorも発生させていた。
+  - files changed / bugs fixed / correctness / security / privacy / performance:
+    `tools/tests/ui-route-mocked-smoke.spec.ts`だけを変更し、synthetic fixtureを現行strict envelope/meta/datetime/count/scopeへ同期、
+    bulk rejectの`expected_updated_at`とrequest assertionsを維持強化した。Service-worker prototype removalはこのspecのinit scriptだけに
+    限定し、PWA/SW専用specやproduction registration/cache policyには適用していない。Production UI/API/DB/auth/tenant/PHI、
+    payload/query/performance semanticsは不変で、実患者情報・secretをfixture/outputへ追加していない。
+  - validation results / remaining work / next action / rollback:
+    Scheduling Gantt 5、shared viewer 1、partner cooperation 1、billing/formulary/stock 3などのfocused回帰後、
+    Chromium route-mocked全体は15 passed / 1 project-specific intentional skip。Exact ESLint、Prettier、diff、独立codex2 review APPROVE。
+    非視覚test contract修復のためimagegenなし。Rollbackは`625af849f`のrevertでDB/data rollback不要。
 
 - codex2: E2E-BUILD-HEAP-001 (DONE, 2026-07-14; implementation `945452afe`, `PUSHED`).
   - current task / files inspected / root cause:
