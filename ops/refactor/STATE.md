@@ -61,6 +61,35 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: Round 10 source-mapping recovery / raw-error debt ratchet /
+  patient header-summary RLS-audit / contact-profile pending aggregate integration boundary
+  (DONE / CODE PUSHED, 2026-07-15; implementations `8b65fa606`, `67e56027e`, `7b6ae536b`, `64d1e4c6a`).
+  - workflow / ownership / files inspected:
+    `agmsg` inbox/history、live Git、`Plans.md`、UI SSOT、Next.js client/error guidesを確認し、4 laneがnon-overlapで、
+    codex2 exact1、codex3 exact2のhandoff SHA-256とcodex4 exact2のfinal live SHA-256が一致することを確認した。
+    codex4はfocused/static validationとhash固定後、handoff dispatch直前にmodel-capacityで停止したため、paneの完了証跡と
+    live hashを保存してHARD HOLDを先にqueueした。別model/Oracle fallbackは使用していない。開始HEAD `be8b5d5dc` /
+    origin parity `0 0`から、相互reviewなしで明示pathだけを4 logical groupsへstageした。既存dirtyの
+    `.harness-mem/state/{continuity,whisper-budget}.json`、patient external-share 4 files、
+    `tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`は変更、stage、revertしていない。
+  - frontend / source-mapping recovery (`8b65fa606`):
+    `src/app/(dashboard)/communications/inbound/inbound-content.{tsx,test.tsx}`で、toastだけだったaudited source-mapping保存失敗を
+    form内のfixed PHI-safe `ErrorState`へ接続した。監査済みdetail/form contextを保持し、失敗時の
+    `SourceMappingMutationInput`を明示再試行する。validation blocker、監査前非表示、minimized request projection、success reset、
+    他のrecoveryは維持し、raw errorを表示しない。component suiteは警告なし`1 file / 19 tests`。軽微な状態追加のためimagegen省略。
+  - backend / security / performance (`67e56027e`, `7b6ae536b`, `64d1e4c6a`):
+    registered-error AST ratchetを全raw literal `error()`へ広げ、36 path/code/status usagesとdynamic status 3件をexact baseline化した。
+    patient header-summary GETは`canVisit`、DTO、既存auditを保ち、PHI readをrequest-scoped `withOrgContext` txへ移して
+    purpose=care、success-only audit、denied/error zero-auditを固定した。contact profilesはfacility/external/prescriber別の
+    同一status pending `groupBy` 3往復をdeduplicated recipient-name union 1往復へ縮約し、projection/order/count parityを維持した。
+  - validation / commit / push / remaining:
+    codex1 exact lint/format、frontend contract、client PHI-log、state color、typography、diff-checkがPASS。codex2/3のhandoff gates、
+    codex4の`3 files / 22 tests`、ESLint、Prettier、query-shape、diff-checkもPASS。4 code commits後の唯一のaggregate
+    `pnpm typecheck && pnpm typecheck:no-unused`は両方exit 0。ユーザー方針によりbuild/Oracleは実行していない。
+    4 code commitsをnon-force pushし、local/remote HEAD `64d1e4c6a9ccc2277144c88611a6d39d92abb4bf`、parity `0 0`。
+    次はsingle-ledger closeoutをscoped commit/pushして最終parityを確認し、codex2/3/4へexplicit GATE RELEASEを送る。
+    親`FE-INBOUND-001`、`API-CONTRACT-003`、`ROUTE-AUTHZ-COVERAGE-001`、`PERF-DB-READ-SLO-001`は残surfaceのためPartial。
+
 - codex1 + codex2 + codex3 + codex4: Round 9 inbound stock recovery / registered-error AST ratchet /
   patient home-operations RLS-audit / reports today-workspace payload measurement integration boundary
   (DONE / CODE PUSHED, 2026-07-15; implementations `939e7bf28`, `8309764a5`, `9c051ca70`, `0ea3fa7fb`).
