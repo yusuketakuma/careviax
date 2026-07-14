@@ -56,6 +56,8 @@ describe('/api/patients/export GET', () => {
         orgId: 'org_1',
         userId: 'user_1',
         role: 'pharmacist',
+        requestId: 'request_patient_export_1',
+        correlationId: 'correlation_patient_export_1',
       },
     });
     patientFindManyMock.mockResolvedValue([
@@ -118,8 +120,12 @@ describe('/api/patients/export GET', () => {
           case_status: 'active',
           truncated: false,
         }),
+        requestId: 'request_patient_export_1',
+        correlationId: 'correlation_patient_export_1',
       }),
     );
+    expect(response.headers.get('X-Request-Id')).toBe('request_patient_export_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_patient_export_1');
     const csv = await response.text();
     expect(csv).toContain('active');
     expect(csv).toContain('1950-01-02');
@@ -164,6 +170,8 @@ describe('/api/patients/export GET', () => {
         orgId: 'org_1',
         userId: 'trainee_1',
         role: 'pharmacist_trainee',
+        requestId: 'request_patient_export_trainee',
+        correlationId: 'correlation_patient_export_trainee',
       },
     });
 
@@ -200,6 +208,8 @@ describe('/api/patients/export GET', () => {
         orgId: 'org_1',
         userId: 'admin_1',
         role: 'admin',
+        requestId: 'request_patient_export_admin',
+        correlationId: 'correlation_patient_export_admin',
       },
     });
 
@@ -222,6 +232,8 @@ describe('/api/patients/export GET', () => {
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_patient_export_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_patient_export_1');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {

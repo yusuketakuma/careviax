@@ -32,6 +32,8 @@ describe('recordDataExportAudit', () => {
       metadata: { source: 'admin' },
       ipAddress: '127.0.0.1',
       userAgent: 'TestBrowser/1.0',
+      requestId: 'request-export-1',
+      correlationId: 'correlation-export-1',
     });
 
     expect(auditLogCreateMock).toHaveBeenCalledOnce();
@@ -50,6 +52,10 @@ describe('recordDataExportAudit', () => {
           record_count: 42,
           filters: { status: 'active' },
           metadata: { source: 'admin' },
+          request_trace: {
+            request_id: 'request-export-1',
+            correlation_id: 'correlation-export-1',
+          },
         },
         ip_address: '127.0.0.1',
         user_agent: 'TestBrowser/1.0',
@@ -87,6 +93,23 @@ describe('recordDataExportAudit', () => {
         user_agent: undefined,
       },
     });
+  });
+
+  it('drops invalid request trace identifiers instead of persisting them', async () => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType: 'patients',
+      format: 'csv',
+      requestId: 'patient@example.test',
+      correlationId: 'contains spaces',
+    });
+
+    expect(auditLogCreateMock.mock.calls[0]?.[0]?.data.changes).not.toHaveProperty('request_trace');
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('patient@example.test');
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('contains spaces');
   });
 
   it('records care report print requests with action-specific audit intent', async () => {

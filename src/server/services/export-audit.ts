@@ -1,25 +1,10 @@
 import type { Prisma } from '@prisma/client';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { sanitizeExportAuditSection } from '@/lib/audit/export-audit-sanitizer';
 import { normalizeJsonInput } from '@/lib/db/json';
 
 type AuditClient = {
-  auditLog: {
-    create: (args: {
-      data: {
-        org_id: string;
-        actor_id: string;
-        action: string;
-        target_type: string;
-        target_id: string;
-        actor_pharmacy_id?: string;
-        actor_site_id?: string;
-        patient_id?: string;
-        changes?: Prisma.InputJsonValue;
-        ip_address?: string;
-        user_agent?: string;
-      };
-    }) => Promise<unknown>;
-  };
+  auditLog: Pick<Prisma.TransactionClient['auditLog'], 'create'>;
 };
 
 export function buildDataExportAuditChanges(args: {
@@ -63,24 +48,31 @@ export async function recordDataExportAudit(
     metadata?: Record<string, unknown>;
     ipAddress?: string;
     userAgent?: string;
+    requestId?: string;
+    correlationId?: string;
     action?: string;
   },
 ) {
-  await db.auditLog.create({
-    data: {
-      org_id: args.orgId,
-      actor_id: args.actorId,
-      actor_pharmacy_id: args.actorPharmacyId ?? args.orgId,
-      actor_site_id: args.actorSiteId,
-      patient_id: args.patientId,
-      action: args.action ?? 'export',
-      target_type: args.targetType,
-      target_id: args.targetId ?? 'bulk',
-      changes: buildDataExportAuditChanges(args),
-      ip_address: args.ipAddress,
-      user_agent: args.userAgent,
+  await createAuditLogEntry(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.actorId,
+      actorPharmacyId: args.actorPharmacyId,
+      actorSiteId: args.actorSiteId,
+      ipAddress: args.ipAddress,
+      userAgent: args.userAgent,
+      requestId: args.requestId,
+      correlationId: args.correlationId,
     },
-  });
+    {
+      action: args.action ?? 'export',
+      targetType: args.targetType,
+      targetId: args.targetId ?? 'bulk',
+      patientId: args.patientId,
+      changes: buildDataExportAuditChanges(args),
+    },
+  );
 }
 
 export async function recordCareReportPrintAudit(
@@ -96,21 +88,30 @@ export async function recordCareReportPrintAudit(
     reportUpdatedAt: Date;
     ipAddress?: string;
     userAgent?: string;
+    requestId?: string;
+    correlationId?: string;
   },
 ) {
-  await db.auditLog.create({
-    data: {
-      org_id: args.orgId,
-      actor_id: args.actorId,
-      actor_pharmacy_id: args.actorPharmacyId ?? args.orgId,
-      actor_site_id: args.actorSiteId,
-      patient_id: args.patientId,
+  await createAuditLogEntry(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.actorId,
+      actorPharmacyId: args.actorPharmacyId,
+      actorSiteId: args.actorSiteId,
+      ipAddress: args.ipAddress,
+      userAgent: args.userAgent,
+      requestId: args.requestId,
+      correlationId: args.correlationId,
+    },
+    {
+      patientId: args.patientId,
       action:
         args.intent === 'preview_rendered'
           ? 'care_report_print_previewed'
           : 'care_report_print_requested',
-      target_type: 'care_report',
-      target_id: args.reportId,
+      targetType: 'care_report',
+      targetId: args.reportId,
       changes:
         normalizeJsonInput({
           format: 'print',
@@ -123,8 +124,6 @@ export async function recordCareReportPrintAudit(
             report_updated_at: args.reportUpdatedAt.toISOString(),
           },
         }) ?? {},
-      ip_address: args.ipAddress,
-      user_agent: args.userAgent,
     },
-  });
+  );
 }

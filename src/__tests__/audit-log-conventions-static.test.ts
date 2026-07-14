@@ -10,7 +10,6 @@ const allowedAuditCreateFiles = [
   'src/lib/audit/break-glass-audit.ts',
   'src/lib/auth/security-events.ts',
   'src/server/services/billing-evidence/core.ts',
-  'src/server/services/export-audit.ts',
   'src/server/services/visit-brief.ts',
 ];
 
