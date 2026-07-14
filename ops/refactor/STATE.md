@@ -61,6 +61,41 @@
 
 ## 直近の作業
 
+- codex1 + codex2 + codex3 + codex4: Round 5 OQC error registry / patient visits RLS-audit /
+  communications inbound payload measurement integration boundary
+  (DONE / CODE PUSHED, 2026-07-15; implementations `8f2fcbad0`, `d64a59b07`, `cd9638637`).
+  - workflow / ownership / files inspected:
+    `agmsg` inbox/historyとlive Gitを再確認し、codex2 exact4、codex3 exact2、codex4 exact2の全handoff SHA-256が
+    frozen報告と一致すること、3 laneがnon-overlapであること、開始HEAD `cabbfee6b`とoriginが`0 0`であることを確認した。
+    codex1がgit indexと`Plans.md` / `ops/refactor/{STATE,RUN_LOCK}.md`のexclusive ownershipを通知し、他agentはreleaseまで
+    Git readを含むHARD HOLD。各agentのfocused/static self-validationを確認し、相互reviewなしで明示pathだけを3 logical groupsへ
+    stageした。既存user/harness dirtyの`.harness-mem/state/{continuity,whisper-budget}.json`、patient external-share 4 files、
+    `tools/tests/{helpers/local-auth.ts,ui-major-screens.spec.ts,ui-route-mocked-smoke.spec.ts}`は変更、stage、revertしていない。
+  - backend API contract (`8f2fcbad0`):
+    `src/lib/api/error-codes.{ts,test.ts}`と`src/app/api/patients/[id]/qualification-check/route.{ts,test.ts}`を変更し、固定の
+    qualification upstream失敗を`OQC_UPSTREAM_FAILURE` = 502 / error / retryable / retryとしてtyped registryへ追加した。
+    invalid request/configuration/upstream failureの固定fallbackだけを`registeredError`へ移し、exact bodyとbase URL、patient、insurance、
+    token非露出を固定。not-enabled/unauthorized、`canVisit`、writable-patient guard、identity fail-closed DTO、webhook、no-storeは維持した。
+    self-validationはbaseline `2 files / 15 tests`、final `4 files / 40 tests`、exact lint/format、response/auth/static gates、diffをPASSした。
+  - security / patient visits (`d64a59b07`):
+    `src/app/api/patients/[id]/visits/route.ts`と新規testを変更し、既存`canVisit`を維持したままschedule/record/reasonのglobal Prisma PHI readを
+    request-scoped `withOrgContext` transaction clientへ移した。non-null successだけを`patient_visits` / purpose `care` /
+    request-correlation traceでexact-once auditし、blank/auth denied/not-found/query/context failureはzero-audit、audit metadataは
+    cancellation/revisit PHIを除外した。self-validationはroute `8 / 8`、detail-slices + PHI audit `67 / 67`、service `2 / 2`、
+    protected visits `3 / 3`、raw-read/client-PHI/module/API/auth/static gates、exact lint/format/diffをPASSした。
+  - performance / communications inbound (`cd9638637`):
+    `src/app/api/communications/inbound/route.{ts,test.ts}`のGETだけを`withRoutePerformance`へ接続し、既存single-serialize measured JSONを
+    normalized critical family `communications-inbound-inbox`、160 KiB budget、payload sample count 1、exact last payload bytesとして記録した。
+    POST、`canReport`、list/filter/count basis、safe href、PHI projection、no-store、loggerは変更なし。self-validationはbaseline
+    `1 file / 17 tests`、performance + route `2 files / 32 tests`、conventions `1 file / 5 tests`、response/auth/static gates、
+    exact lint/format/diffをPASSした。
+  - aggregate validation / commit / push / remaining:
+    3 code commits後にcodex1が`pnpm typecheck && pnpm typecheck:no-unused`を1回だけ直列実行し、両方exit 0。
+    ユーザー方針によりbuild/Oracleは実行していない。code commitsをfeature branchへnon-force pushし、remote HEAD
+    `cd9638637`とlocal HEADが一致、parityは`0 0`。次はsingle-ledger closeoutをscoped commit/pushし、最終parity確認後に
+    codex2/3/4へexplicit GATE RELEASEを送る。`API-CONTRACT-003`、`ROUTE-AUTHZ-COVERAGE-001`、
+    `RAW-DETAIL-REAUDIT-001`、`ROUTE-PERF-MEASURE-001`はいずれも残surfaceがあるためPartialを維持する。
+
 - codex1 + codex2 + codex3 + codex4: Round 4 patient MCS error registry / patient documents RLS-audit /
   patient-board payload measurement integration boundary
   (DONE / CODE PUSHED, 2026-07-15; implementations `ab90a5cb0`, `3837e2833`, `28e795b4e`).
