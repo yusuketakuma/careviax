@@ -49,7 +49,8 @@
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
   共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `UI-THEME-CLINICAL-SIGNAL-001`のSSOT/Plans/ledgerと
-  frontend runtime foundation、`codex2`: backend限定の`AUTHZ-QR-DRAFT-READ-AUDIT-001`（`src/app/api/qr-scan-drafts/[id]/route.ts`とtest）。
+  frontend runtime foundation（`UI-SHELL-GEOMETRY-001`のscoped commit/ledger）、`codex2`: backend限定の
+  `AUTHZ-CONFERENCE-NOTE-READ-AUDIT-001`（`src/app/api/conference-notes/[id]/route.ts`とtest）。
   `Plans.md` / `docs/ui-ux-design-guidelines.md` / `ops/refactor/STATE.md` / `RUN_LOCK.md`はcodex1が短時間保持中。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
@@ -57,6 +58,43 @@
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: UI-SHELL-GEOMETRY-001 / UI-THEME-CLINICAL-SIGNAL-001 Phase 2A (DONE; parent remains Partial, 2026-07-14; scoped commit pending).
+  - current task / files inspected / root cause:
+    ユーザー指示「画面のUIは可能な限り共有化」「画面切り替わり時も上部バーの高さを変えない」を、`docs/ui-ux-design-guidelines.md`、
+    `AppShell` / `AppHeader` / `PageScaffold`、dashboard layout、患者詳細tab、訪問記録の患者安全header、global focus offset、既存unit/E2E、
+    Next.js 16.2.9同梱のlayouts/pages・linking/navigation・instant navigation guideと照合した。共通`AppHeader`は全通常dashboard routeで
+    再利用されていたが、高さは`min-h-14`でcontent-sized、直下stickyは`top-14`、focus退避は`72px`へ分散しており、将来のheader内容追加や
+    route差分で上部barと本文開始位置がずれる契約だった。
+  - files changed / UX / accessibility / performance:
+    `src/app/globals.css`へ唯一の`--app-header-height: 3.5rem`を追加し、`AppHeader`を固定block size + `shrink-0`、内部rowを`h-full`へ変更した。
+    患者詳細tabと訪問記録headerのsticky offset、`html` / `#main-content` / focus targetのscroll offsetも同じtokenから導出し、route-local
+    `top-14` / `56px` / `72px`複製を禁止した。`shared-shell-geometry.test.ts`、`AppHeader` unit、訪問記録unit、代表13 routeのdesktop/mobile
+    bounding-box E2E（`y=0`, `height=56`）を追加し、`docs/ui-ux-design-guidelines.md`と`Plans.md`へ全画面契約/Phase 2A実績を同期した。
+    高頻度遷移へanimationを追加せず、共通shellの再配置とCLS原因を減らした。認可、PHI disclosure、API、DB、業務状態、network request数は不変。
+  - validation / failure handling / runtime:
+    exact Prettier / ESLint / `git diff --check`、focused Vitest 3 files 75/75、`colors:check`、`typography:check`、`frontend-contract:check`、
+    `pnpm typecheck`、`pnpm typecheck:no-unused`をPASS。`pnpm build:e2e:local`は初回、`.next`一時領域増加をENOSPC前に中断したが、process終了で
+    23 GiBへ自動回復し、cache再利用の再実行でwebpack 21.3分、TypeScript 115秒、311 static pages、全route manifestをPASSした。
+    Playwright専用browser欠落は既存Google Chrome channelへ切替。初回runtimeはlocal production-mode feature rate limitの429だけで24/26、
+    source/testを緩めずlocal E2E serverだけ既存`RATE_LIMIT_FEATURE_DISABLED=1`で再起動し、最終26/26 PASS。更新済みstandaloneを3012で復帰した。
+  - imagegen / remaining / rollback:
+    上位theme sliceのPHI-free `gpt-image-2`参照を継続使用し、今回は新しい視覚構成を生成するsliceでなく共有geometryの実装・実測だったため追加画像は
+    生成していない。残はPhase 1 token/font/dark/forced-colors proof、Phase 2B共通page header/work plane/semantic component、Phase 3高頻度surface、
+    Phase 4全route/role/state journey・CLS/LCP/INP。Rollbackはscoped implementation commitのrevertで、DB/data rollback不要。
+
+- codex2: AUTHZ-INTERVENTION-DETAIL-001 (DONE; parent remains Partial, 2026-07-14; implementation `43d7ab989`, `PUSHED`).
+  - `src/app/api/interventions/[id]/route.ts`とtestのみ変更。Org/assignment-scoped成功GETへcanonical PHI read auditをexact-onceで追加し、authoritative
+    patient/intervention IDと`intervention_detail`だけを記録、description/outcome等の臨床本文を除外した。GETの200/400/401/404/500をsensitive
+    no-storeへ統一し、unexpected errorを固定sanitized `INTERNAL_ERROR`へ変換、`unstable_rethrow`でframework control flowを維持した。PATCH不変。
+    blank/404/cross-org/throw/auth拒否はzero-audit。Focused 21/21、exact lint/format/diff、5 guards、typecheck/no-unused PASS。codex1 reviewは
+    BLOCKER/HIGH/MEDIUMなしでAPPROVE。追加read/networkなし、auditはnonblocking。Rollbackは`43d7ab989`のrevert。
+
+- codex2: AUTHZ-QR-DRAFT-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `18d9d6263`, `PUSHED`).
+  - `src/app/api/qr-scan-drafts/[id]/route.ts`とtestのみ変更。Org/assignment-scoped成功GETへcanonical auditを追加し、linked/unlinked
+    (`patient_id:null`)双方で`qr_scan_draft` target / `qr_scan_draft_detail` viewをexact-once記録した。raw QR/JAHIS/患者textはresponse/auditへ追加せず、
+    blank/404/throw/auth拒否はzero-audit。Focused helper+route 25/25、exact ESLint/Prettier/diff、5 guards、typecheck/no-unused PASS。
+    codex1がnullable境界test不足を指摘後に追加証明されAPPROVE。Rollbackは`18d9d6263`のrevert。
 
 - codex1: UI-THEME-CLINICAL-SIGNAL-001 Phase 0 (DONE; runtime parent remains Partial, 2026-07-14; implementation `cb6e3a66c`, `PUSHED`).
   - current task / files inspected / official evidence:

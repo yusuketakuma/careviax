@@ -30,6 +30,12 @@ test.describe('page scaffold layout', () => {
       const scaffold = page.getByTestId('page-scaffold');
       await expect(scaffold).toBeVisible();
 
+      const appHeader = page.getByTestId('app-header');
+      await expect(appHeader).toBeVisible();
+      const appHeaderBox = await appHeader.boundingBox();
+      expect(Math.round(appHeaderBox?.y ?? -1)).toBe(0);
+      expect(Math.round(appHeaderBox?.height ?? 0)).toBe(56);
+
       const stack = page.getByTestId('page-scaffold-stack');
       const groupCount = await stack.locator(':scope > *').count();
       expect(groupCount).toBeGreaterThan(0);

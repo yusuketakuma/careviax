@@ -89,6 +89,9 @@
 
 /* PH-OS Medical Theme - Blue-grey, high contrast, professional */
 :root {
+  /* Shared authenticated-shell geometry. Keep route-local sticky offsets tied to this token. */
+  --app-header-height: 3.5rem;
+
   /* Base */
   --background: oklch(1 0 0);
   --foreground: oklch(0.15 0.01 250);
@@ -281,10 +284,10 @@
   }
   html {
     @apply font-sans;
-    scroll-padding-block: 72px 88px;
+    scroll-padding-block: calc(var(--app-header-height) + 1rem) 88px;
   }
   #main-content {
-    scroll-padding-block: 72px 88px;
+    scroll-padding-block: calc(var(--app-header-height) + 1rem) 88px;
   }
   :is(
     a[href],
@@ -297,7 +300,7 @@
     [role='menuitem'],
     [tabindex]:not([tabindex='-1'])
   ):focus {
-    scroll-margin-block: 72px 88px;
+    scroll-margin-block: calc(var(--app-header-height) + 1rem) 88px;
     scroll-margin-inline: 16px;
   }
 }

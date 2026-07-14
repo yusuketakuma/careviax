@@ -216,7 +216,12 @@ describe('AppHeader', () => {
   it('keeps the mobile header row compact instead of pushing right-side controls off screen', () => {
     render(<AppHeader />);
 
-    const headerRow = screen.getByTestId('app-header').firstElementChild as HTMLElement;
+    const header = screen.getByTestId('app-header');
+    const headerRow = header.firstElementChild as HTMLElement;
+    expect(header.className).toContain('h-[var(--app-header-height)]');
+    expect(header.className).toContain('shrink-0');
+    expect(headerRow.className).toContain('h-full');
+    expect(headerRow.className).not.toContain('min-h-14');
     expect(headerRow.className).toContain('min-w-0');
     expect(headerRow.className).toContain('gap-2');
     expect(headerRow.className).toContain('px-2');

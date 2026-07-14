@@ -5820,7 +5820,7 @@ export function CardWorkspace({
             onValueChange={(value) => activateDetailTab(value as PatientDetailTab)}
             className="gap-4"
           >
-            <div className="sticky top-14 z-20 border-b border-border/70 bg-background/95 pb-1 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <div className="sticky top-[var(--app-header-height)] z-20 border-b border-border/70 bg-background/95 pb-1 backdrop-blur supports-[backdrop-filter]:bg-background/80">
               <TabsList
                 variant="line"
                 aria-label="患者詳細セクション"

@@ -166,10 +166,10 @@ export function AppHeader() {
 
   return (
     <header
-      className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur"
+      className="sticky top-0 z-30 h-[var(--app-header-height)] shrink-0 border-b border-border bg-background/95 backdrop-blur"
       data-testid="app-header"
     >
-      <div className="flex min-h-14 min-w-0 items-center gap-2 px-2 sm:gap-3 sm:px-4 md:px-6">
+      <div className="flex h-full min-w-0 items-center gap-2 px-2 sm:gap-3 sm:px-4 md:px-6">
         <Button
           type="button"
           variant="ghost"
