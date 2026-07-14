@@ -8,12 +8,14 @@ const {
   patientLabObservationFindManyMock,
   visitRecordFindFirstMock,
   allocateDisplayIdMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   patientFindFirstMock: vi.fn(),
   patientLabObservationCreateMock: vi.fn(),
   patientLabObservationFindManyMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   allocateDisplayIdMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -39,6 +41,10 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/db/display-id', () => ({
   allocateDisplayId: allocateDisplayIdMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -102,6 +108,7 @@ describe('/api/patients/[id]/labs GET', () => {
     expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(patientLabObservationFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank patient ids before reading labs', async () => {
@@ -116,6 +123,52 @@ describe('/api/patients/[id]/labs GET', () => {
     });
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(patientLabObservationFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('returns exact internal lab values and audits the authoritative patient once', async () => {
+    const lab = {
+      id: 'lab_1',
+      patient_id: 'patient_authoritative',
+      analyte_code: 'egfr',
+      value_numeric: 48.25,
+      value_text: '48.25',
+      unit: 'mL/min/1.73m2',
+      abnormal_flag: 'low',
+      note: '腎機能を継続確認',
+    };
+    patientFindFirstMock.mockResolvedValueOnce({ id: 'patient_authoritative' });
+    patientLabObservationFindManyMock.mockResolvedValueOnce([lab]);
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'patient_requested' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({ data: [lab] });
+    expect(patientLabObservationFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_authoritative',
+        }),
+      }),
+    );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'pharmacist_1',
+        role: 'pharmacist',
+      }),
+      {
+        patientId: 'patient_authoritative',
+        targetType: 'patient',
+        targetId: 'patient_authoritative',
+        view: 'patient_labs',
+      },
+    );
   });
 
   it('filters labs by a supported analyte_code query value', async () => {
@@ -195,10 +248,26 @@ describe('/api/patients/[id]/labs GET', () => {
         take: 50,
       }),
     );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 404 without auditing when the assigned patient is not found', async () => {
+    patientFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'patient_unknown' }),
+    }))!;
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    expect(patientLabObservationFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('uses normalized raw patient ids for DB reads instead of URL-encoded ids', async () => {
     const rawPatientId = 'patient/a b?x=1#frag';
+    patientFindFirstMock.mockResolvedValueOnce({ id: rawPatientId });
+
     const response = (await GET(createGetRequest(), {
       params: Promise.resolve({ id: ` ${rawPatientId} ` }),
     }))!;
@@ -240,6 +309,7 @@ describe('/api/patients/[id]/labs GET', () => {
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(JSON.stringify(body)).not.toContain('患者A');
     expect(JSON.stringify(body)).not.toContain('ワルファリン');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 });
 
@@ -263,6 +333,7 @@ describe('/api/patients/[id]/labs POST', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -310,6 +381,7 @@ describe('/api/patients/[id]/labs POST', () => {
     }))!;
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
     expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
   });
@@ -321,6 +393,7 @@ describe('/api/patients/[id]/labs POST', () => {
     }))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(patientLabObservationCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         display_id: 'plab0000000001',
@@ -344,6 +417,7 @@ describe('/api/patients/[id]/labs POST', () => {
         patient_id: rawPatientId,
       },
     });
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('validates same-org same-patient assigned visit-record provenance before creating', async () => {
@@ -517,5 +591,23 @@ describe('/api/patients/[id]/labs POST', () => {
         source_visit_record_id: null,
       },
     });
+  });
+
+  it('returns a sanitized no-store 500 when lab creation fails', async () => {
+    const rawError = '患者A eGFR 48.25 lab create failure';
+    patientLabObservationCreateMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = (await POST(createPostRequest(baseLabBody), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('48.25');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 });
