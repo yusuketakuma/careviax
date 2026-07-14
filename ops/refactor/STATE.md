@@ -49,14 +49,51 @@
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
   共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `UI-THEME-CLINICAL-SIGNAL-001`のSSOT/Plans/ledgerと
-  frontend runtime foundation（Phase 2A fixed shell、Phase 2B-a shared page frame）。`codex2`のbackend sliceは`8154719e7`まで完了し、
-  current UI handoff中は新規claim/editをHOLD。`Plans.md` / `docs/ui-ux-design-guidelines.md` / `ops/refactor/STATE.md` / `RUN_LOCK.md`に現在のwriterはいない。
+  frontend runtime foundation（Phase 2A fixed shell、Phase 2B-a shared page frame、Phase 2B-b shared page section）。`codex2`のbackend sliceは
+  `6a5b4a966`まで完了し、現在は`INTERNAL-STAFF-PRIVACY-001`のbackend helper + exact tests 5 pathsを担当する。`codex1`はfrontend pathsと
+  `Plans.md` / `docs/ui-ux-design-guidelines.md` / `ops/refactor/STATE.md`を予約し、`RUN_LOCK.md`に現在のwriterはいない。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: UI-SHARED-PAGE-SECTION-001 / UI-THEME-CLINICAL-SIGNAL-001 Phase 2B-b (DONE; parent remains Partial, 2026-07-14; implementation `5d454836b`, not pushed).
+  - current task / files inspected / root cause:
+    ユーザー指示「画面のUIは可能な限り共有化」「画面遷移時に負担が少ない」を、UI SSOT、shadcnのOpen Code / Composition / semantic CSS variables、
+    `PageSection`の78 production call sites / 25 client files、利用画面、unit/E2E、Next.js 16.2.9同梱のlayouts/navigation guideと照合した。
+    共通部品自体が`rounded-xl` + root paddingを持つ一方、conference/workflowは選択ring、scheduleは背景/ring/clip、visit recordはmobileのborder/background/padding解除、
+    My Dayは全sectionへ`overflow-hidden`を画面ローカルで上書きしており、同じ大グループでもroute遷移時のsurface、見出し境界、本文開始位置が一致しなかった。
+  - files changed / shared UI / accessibility / performance:
+    `src/components/layout/page-section.tsx`を`rounded-md` + hairline + semantic surface + `overflow-visible`の共通work planeへ変更し、
+    header/contentの安定`data-slot`、hairline separator、12/16px header rhythm、16px content padding、`font-heading`を一元化した。
+    状態/選択/immersive mobile差は`tone` / `emphasis` / `mobileSurface`のtyped propへ移し、5 consumerのraw rounded/border/background/ring/padding/clip overrideを削除した。
+    ASTで全78 call sitesの外枠geometry overrideを再走査し0件。新しいanimation、client state、dependency、network/DB queryはなく、不要なclipと半透明surfaceを削減した。
+    見出しlevel/label relation、認可、PHI disclosure、表示情報、操作順、API responseは不変で、薬剤師・staffの正確な情報量を減らしていない。
+  - validation / browser / failure handling:
+    focused Vitest 6 files 104/104、exact ESLint / Prettier / `git diff --check`、`colors:check`、`typography:check`、
+    `frontend-contract:check`、`plans:active:check`、`pnpm typecheck`、`pnpm typecheck:no-unused`をPASS。`pnpm build:e2e:local`はwebpack 9.4分、
+    TypeScript 2.2分、311/311 static pages、全route manifestをPASSし、build中の空き容量は最小9.6 GiBを監視後19 GiBへ回復した。
+    更新standaloneをlocal E2E専用`RATE_LIMIT_FEATURE_DISABLED=1`で起動。初回E2Eは`/workflow`が意図したErrorState、`/schedules`が専用day workbenchを
+    初期描画して`PageSection`がDOMにないため28/32。両routeをAppHeader/PageScaffold検証には残し、PageSectionのsurface実測対象だけを初期状態で確実に描画する
+    5 routeへ明示して再実行し、16 route × desktop/mobileの32/32を41.3秒でPASSした。全routeでAppHeader `y=0` / 56px、canvas、horizontal overflow、
+    console/page errorを確認し、対象routeではradius/hairline/no-shadow/no-gradient/no-clip、header separator、16px本文を実測した。
+    `/tmp/phos-page-section-desktop.png`（My Day）と`/tmp/phos-page-section-mobile.png`（conferences）を目視PASS。
+  - SSOT / imagegen / remaining / rollback:
+    `docs/ui-ux-design-guidelines.md`の3.6/7.1/7.6/7.9/historyと`Plans.md`へtyped ownershipと画面ローカルoverride禁止を同期した。
+    Phase 0で生成済みのPHI-free `gpt-image-2`参照を同じsurface grammarの実装に継続使用し、今回は新しい視覚構成でなく共通componentの収束なので追加生成を省略した。
+    残はPhase 1 token/font/dark/forced-colors proof、Phase 2B-c semantic component、Phase 3高頻度surface、Phase 4全route/role/state journey・performance。
+    Rollbackは`5d454836b`のrevertで、DB/data rollback不要。
+
+- codex2: AUTHZ-VISIT-RECORD-DETAIL-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `6a5b4a966`, not pushed).
+  - `src/app/api/visit-records/[id]/route.ts`とtest、`src/server/services/pdf-visit-record.ts`とtestのexact 4 pathsを変更。既存org/assignment scopeと
+    full detail projectionを維持し、成功後だけauthoritative patient/record IDをcanonical `visit_record` / `visit_record_detail` read auditへexact-once記録した。
+    SOAP、添付、位置、患者状態等のPHI本文はauditへ含めず、blank/404/assignment外/throw/auth拒否はzero-audit。Auditはnonblockingでresponse shape不変。
+  - GET/PDFの`last_modified_by`検索をcanonical DB action `visit_record.create` / `visit_record.update`へ限定し、今回の`phi_read`、export、handoff等の後続監査が
+    誤って最終編集者になる情報完全性リスクを解消した。追加read query、DB schema/migration、production data mutationはない。
+  - codex1 reviewはBLOCKER/HIGH/MEDIUMなしでAPPROVE。変更2 test filesの再実行40/40、integrated `pnpm typecheck` / `typecheck:no-unused`、
+    `pnpm build:e2e:local`（311/311）をPASS。Rollbackは`6a5b4a966`のrevertでDB/data rollback不要。
 
 - codex2: AUTHZ-CASE-RISK-COCKPIT-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `8154719e7`, not pushed).
   - Active patient command-center consumerの`src/app/api/cases/[id]/risk-cockpit/route.ts`とtestのみ変更。既存`withOrgContext` +
