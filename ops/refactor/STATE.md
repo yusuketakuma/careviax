@@ -145,6 +145,35 @@
     Async medication bulk exportはqueue input/job lifetimeまで広がるため別design、purposeのstrict enum移行は互換期間後、患者overview
     SSR auth/RLS/read-auditはhigh-risk test matrix/human review、full-history movement searchはprojection/migration review後とする。
 
+- codex1 + codex2 + codex3 + codex4: file-download audit trace + typed endpoint-removed error convergence
+  (DONE / PUSHED, 2026-07-14; implementations `71e1df496`, `3dbc89263`; typecheck test fix `a5f011db8`).
+  - current tasks / files inspected / defects fixed:
+    File download helperがexport auditへresponseのrequest/correlation IDを渡さず、同一操作のresponseとaudit rowを結合できない欠落を閉じた。
+    また、旧visit schedule generate endpointの固定410 `ENDPOINT_REMOVED`がtyped error registry外でstatusを重複指定していたため、
+    shared recovery metadataと型安全性を持つcanonical contractへ収束した。Registryは29から30 codes。
+  - implementation / privacy / stability / performance:
+    `withAuthContext`の同一trace IDsをdownload response headerと`recordFileDownloadAudit`からshared export auditのtop-level contextへ渡す。
+    Traceをmetadataへ混入させず、legacy disable gateのpre-auth 410、prepare/context resolve、audit-before-open/stream、audit failure fail-closed、
+    storage/late failure taxonomy、no-store、content header、PHI-minimal audit projectionは維持した。Endpoint removalは410/info/retryable=false/
+    return_to_previousとしてregistry化し、exact body/details、auth、no-store、DB/write/PHI/external side effect zeroを維持した。
+    追加DB query、network、dependency、unbounded work、N+1はない。非視覚API変更のためimagegen/browserは非該当。
+  - agent coordination / review:
+    `codex3`がfile-download exact4、`codex4`が003N exact3をnon-overlapで実装し、`codex4`と`codex2`が相互に独立read-only review。
+    `codex1`がfreeze SHA256を再照合し、exact pathsだけを別コミットへ統合した。両sliceともAPPROVE、P1 blockerなし。
+    Oracleはユーザー方針どおり全agentで未使用。
+  - validation / build policy:
+    File download focused 2 files / 15 tests、003N focused 3 files / 17 testsをowner/reviewerがPASS。統合HEADで`pnpm typecheck`、
+    `pnpm typecheck:no-unused`、変更7 TS/TSXのESLint/Prettier、API authz/response-shape/route-auth、client PHI log/display、
+    DTO direct return、module boundaries、`git diff --check`をPASS。ユーザー指示によりbuildは実行せず、build依存DB/browser E2Eは
+    明示的verification gapとして保留する。完全直列type gateの初回でpharmacy invoice route test helperのdefault引数がpurpose literalへ
+    狭まるTS2345を検出し、`a5f011db8`で任意legacy/hostile fixture入力を`string`として明示。Focused 17 tests、lint/format/diffをPASS後、
+    単一shellの`typecheck && typecheck:no-unused`を終了コード0まで再実行した。
+  - commit / push / remaining:
+    `71e1df496`、`3dbc89263`、`a5f011db8`をsafe feature branchへnon-force pushし、remote HEAD `a5f011db89686d31d353c0e2264389c7fc3454f5`、
+    code push直後のlocal/remote parityは`0 0`、feature-branch Actions runは`[]`でdeployなし。親`API-CONTRACT-002`にはasync bulk-export
+    lifetime等、`API-CONTRACT-003`には他route固有・動的codeの棚卸しが残る。患者overview SSR auth/RLS/read-audit、full-history movement
+    projection/migration、purpose strict enumは既存のhuman/high-risk gateを維持する。
+
 - codex1: MEDSAFE-PATIENT-CONTEXT-SHARE-001 / shared patient context hardening
   (VERIFY_REQUIRED, 2026-07-14; implementation/push `d3921d72e`).
   - current task / files inspected / root cause:
