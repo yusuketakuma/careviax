@@ -14,6 +14,7 @@ import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { classifyPatientInsurances } from '@/lib/patient/insurance-summary';
 import { buildPatientInsuranceOverlapWhere } from '@/lib/patient/insurance-overlap';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 
 const dateStringSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 const publicProgramCodeSchema = z
@@ -135,13 +136,21 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   const today = utcDateFromLocalKey(localDateKey());
 
   const insurances = await prisma.patientInsurance.findMany({
-    where: { patient_id: id, org_id: ctx.orgId },
+    where: { patient_id: patient.id, org_id: ctx.orgId },
     orderBy: [{ is_active: 'desc' }, { valid_from: 'desc' }, { created_at: 'desc' }],
   });
 
   const { current, upcoming, history, all } = classifyPatientInsurances(insurances, today);
+  const response = success({ data: { current, upcoming, history, all } });
 
-  return success({ data: { current, upcoming, history, all } });
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: patient.id,
+    targetType: 'patient',
+    targetId: patient.id,
+    view: 'patient_insurance',
+  });
+
+  return response;
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

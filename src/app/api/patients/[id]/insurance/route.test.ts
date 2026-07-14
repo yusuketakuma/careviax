@@ -9,6 +9,7 @@ const {
   patientInsuranceOverlapFindFirstMock,
   patientInsuranceCreateMock,
   withOrgContextMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   patientInsuranceOverlapFindFirstMock: vi.fn(),
   patientInsuranceCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -35,6 +37,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 import { GET, POST } from './route';
@@ -116,6 +122,11 @@ describe('/api/patients/[id]/insurance', () => {
   it('GET returns classified insurance records for an assigned patient', async () => {
     const currentInsurance = {
       id: 'insurance_current',
+      insurer_number: '12345678',
+      symbol: 'PHARMACY-A',
+      number: '00001234',
+      copay_ratio: 30,
+      notes: '継続資格を確認済み',
       is_active: true,
       valid_from: new Date('2026-04-01'),
       valid_until: new Date('2026-04-30'),
@@ -148,6 +159,7 @@ describe('/api/patients/[id]/insurance', () => {
       inactiveHistoryInsurance,
       expiredHistoryInsurance,
     ]);
+    patientFindFirstMock.mockResolvedValueOnce({ id: 'patient_authoritative' });
 
     const response = await GET(createGetRequest(), routeParams);
 
@@ -157,12 +169,22 @@ describe('/api/patients/[id]/insurance', () => {
     expectSensitiveNoStore(response);
     expectPatientAssignmentLookup();
     expect(patientInsuranceFindManyMock).toHaveBeenCalledWith({
-      where: { patient_id: 'patient_1', org_id: 'org_1' },
+      where: { patient_id: 'patient_authoritative', org_id: 'org_1' },
       orderBy: [{ is_active: 'desc' }, { valid_from: 'desc' }, { created_at: 'desc' }],
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: {
-        current: [{ id: 'insurance_current' }],
+        current: [
+          {
+            id: 'insurance_current',
+            insurer_number: '12345678',
+            symbol: 'PHARMACY-A',
+            number: '00001234',
+            copay_ratio: 30,
+            notes: '継続資格を確認済み',
+          },
+        ],
         upcoming: [{ id: 'insurance_upcoming' }],
         history: [{ id: 'insurance_inactive_history' }, { id: 'insurance_expired_history' }],
         all: [
@@ -173,8 +195,56 @@ describe('/api/patients/[id]/insurance', () => {
         ],
       },
     });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'pharmacist_1',
+        role: 'pharmacist',
+      }),
+      {
+        patientId: 'patient_authoritative',
+        targetType: 'patient',
+        targetId: 'patient_authoritative',
+        view: 'patient_insurance',
+      },
+    );
+    const auditPayload = JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls[0]?.[1]);
+    expect(auditPayload).not.toContain('12345678');
+    expect(auditPayload).not.toContain('PHARMACY-A');
+    expect(auditPayload).not.toContain('00001234');
+    expect(auditPayload).not.toContain('継続資格を確認済み');
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('GET audits a successful empty insurance read exactly once', async () => {
+    const response = await GET(createGetRequest(), routeParams);
+
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      data: { current: [], upcoming: [], history: [], all: [] },
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('GET does not audit when authorization is denied', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'FORBIDDEN' }), { status: 403 }),
+    });
+
+    const response = await GET(createGetRequest(), routeParams);
+
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('GET classifies a record valid from today as current even in JST mornings (@db.Date boundary)', async () => {
@@ -234,6 +304,7 @@ describe('/api/patients/[id]/insurance', () => {
     expectSensitiveNoStore(response);
     expectPatientAssignmentLookup();
     expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
   });
@@ -279,6 +350,7 @@ describe('/api/patients/[id]/insurance', () => {
     });
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
   });
@@ -297,6 +369,7 @@ describe('/api/patients/[id]/insurance', () => {
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(JSON.stringify(body)).not.toContain('患者A');
     expect(JSON.stringify(body)).not.toContain('12345678');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('POST returns 404 for an inaccessible patient without reading or writing insurance records', async () => {
@@ -511,6 +584,7 @@ describe('/api/patients/[id]/insurance', () => {
         confirmed_care_level: null,
       },
     });
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('POST rejects overlapping active insurance before creating duplicate validity windows', async () => {
