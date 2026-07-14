@@ -25,7 +25,6 @@ const downscaleImageMock = vi.hoisted(() => vi.fn(async (file: File) => file));
 const computeUploadSha256HexMock = vi.hoisted(() => vi.fn(async () => 'ab'.repeat(32)));
 
 vi.mock('@tanstack/react-query', () => ({
-  keepPreviousData: (previous: unknown) => previous,
   useQuery: useQueryMock,
   useMutation: useMutationMock,
   useQueryClient: useQueryClientMock,
@@ -1971,6 +1970,127 @@ describe('CardWorkspace', () => {
     });
   });
 
+  it('keeps movement placeholder data only within the same patient and organization', () => {
+    mockPatientQuery(buildWorkspace());
+    const baseUseQuery = useQueryMock.getMockImplementation();
+    if (!baseUseQuery) throw new Error('useQuery mock implementation is required');
+
+    const patientAQueryKey = [
+      'patient-movement-timeline',
+      'patient_1',
+      'org_1',
+      5,
+      null,
+      null,
+      null,
+    ];
+    const patientAOverview = (
+      baseUseQuery({ queryKey: ['patient-overview', 'patient_1', 'org_1'] }) as {
+        data: PatientOverview;
+      }
+    ).data;
+    const patientATimeline = (
+      baseUseQuery({ queryKey: patientAQueryKey }) as {
+        data: PatientMovementTimelineSnapshot;
+      }
+    ).data;
+    const previousPatientQuery = { queryKey: patientAQueryKey };
+    let patientBMovementState: 'loading' | 'error' = 'loading';
+
+    type TimelineQueryConfig = {
+      queryKey: unknown[];
+      placeholderData?: (
+        previousData: PatientMovementTimelineSnapshot | undefined,
+        previousQuery: { queryKey: readonly unknown[] } | undefined,
+      ) => PatientMovementTimelineSnapshot | undefined;
+    };
+
+    useQueryMock.mockImplementation((config: TimelineQueryConfig) => {
+      if (config.queryKey[0] === 'patient-overview' && config.queryKey[1] === 'patient_2') {
+        return {
+          data: {
+            ...patientAOverview,
+            id: 'patient_2',
+            name: '鈴木 二郎',
+            name_kana: 'スズキ ジロウ',
+          },
+          isLoading: false,
+          error: null,
+          refetch: vi.fn(),
+        };
+      }
+
+      if (
+        config.queryKey[0] === 'patient-movement-timeline' &&
+        config.queryKey[1] === 'patient_2'
+      ) {
+        const placeholder = config.placeholderData?.(patientATimeline, previousPatientQuery);
+        return {
+          data: placeholder,
+          isLoading: patientBMovementState === 'loading' && placeholder === undefined,
+          isFetching: patientBMovementState === 'loading',
+          isError: patientBMovementState === 'error',
+          error:
+            patientBMovementState === 'error'
+              ? new Error('internal patient A movement detail')
+              : null,
+          refetch: vi.fn(),
+        };
+      }
+
+      return baseUseQuery(config);
+    });
+
+    const { rerender } = render(<CardWorkspace patientId="patient_1" />);
+    openMovementTab();
+    expect(
+      within(getVisibleTestId('patient-movement-panel')).getAllByText('訪問記録を保存').length,
+    ).toBeGreaterThan(0);
+
+    rerender(<CardWorkspace patientId="patient_2" />);
+
+    const patientBMovementPanel = getVisibleTestId('patient-movement-panel');
+    expect(within(patientBMovementPanel).queryByText('訪問記録を保存')).toBeNull();
+    expect(
+      within(patientBMovementPanel).getByRole('status', {
+        name: '患者の動きを読み込み中',
+      }),
+    ).toBeTruthy();
+
+    const patientBMovementConfig = [...useQueryMock.mock.calls]
+      .reverse()
+      .map(([config]) => config as TimelineQueryConfig)
+      .find(
+        (config) =>
+          config.queryKey[0] === 'patient-movement-timeline' && config.queryKey[1] === 'patient_2',
+      );
+    const placeholderData = patientBMovementConfig?.placeholderData;
+    expect(placeholderData).toBeTypeOf('function');
+    expect(
+      placeholderData?.(patientATimeline, {
+        queryKey: ['patient-movement-timeline', 'patient_2', 'org_1', 5, null, null, null],
+      }),
+    ).toBe(patientATimeline);
+    expect(
+      placeholderData?.(patientATimeline, {
+        queryKey: ['patient-movement-timeline', 'patient_1', 'org_1', 5, null, null, null],
+      }),
+    ).toBeUndefined();
+    expect(
+      placeholderData?.(patientATimeline, {
+        queryKey: ['patient-movement-timeline', 'patient_2', 'org_2', 5, null, null, null],
+      }),
+    ).toBeUndefined();
+
+    patientBMovementState = 'error';
+    rerender(<CardWorkspace patientId="patient_2" />);
+
+    const patientBErrorPanel = getVisibleTestId('patient-movement-panel');
+    expect(within(patientBErrorPanel).queryByText('訪問記録を保存')).toBeNull();
+    expect(within(patientBErrorPanel).getByText('患者の動きを表示できません')).toBeTruthy();
+    expect(within(patientBErrorPanel).queryByText('internal patient A movement detail')).toBeNull();
+  });
+
   it('keeps the Command excerpt unfiltered while movement filters retain previous data', async () => {
     mockPatientQuery(buildWorkspace(), null, {}, { movementTimelineVariesByRequest: true });
 
@@ -1984,7 +2104,10 @@ describe('CardWorkspace', () => {
           const queryConfig = config as {
             queryKey?: unknown[];
             enabled?: boolean;
-            placeholderData?: (previous: unknown) => unknown;
+            placeholderData?: (
+              previous: unknown,
+              previousQuery: { queryKey: readonly unknown[] },
+            ) => unknown;
           };
           if (
             queryConfig.queryKey?.[0] !== 'patient-movement-timeline' ||
@@ -1996,7 +2119,11 @@ describe('CardWorkspace', () => {
             return false;
           }
           const previous = { movement_events: ['retained'] };
-          return queryConfig.placeholderData(previous) === previous;
+          return (
+            queryConfig.placeholderData(previous, {
+              queryKey: ['patient-movement-timeline', 'patient_1', 'org_1', 5, null, null, null],
+            }) === previous
+          );
         }),
       ).toBe(true);
     });

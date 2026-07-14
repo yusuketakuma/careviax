@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { memo, useEffect, useState } from 'react';
 import { differenceInYears, format, parseISO } from 'date-fns';
@@ -325,6 +325,29 @@ function patientMovementTimelineQueryKey(
     filters.date_from,
     filters.date_to,
   ] as const;
+}
+
+function keepSamePatientMovementTimelinePlaceholder(
+  previousData: PatientMovementTimelineSnapshot | undefined,
+  previousQuery: { queryKey: readonly unknown[] } | undefined,
+  currentPatientId: string,
+  currentOrgId: string | null | undefined,
+): PatientMovementTimelineSnapshot | undefined {
+  if (!previousData || !currentOrgId) return undefined;
+
+  const previousQueryKey = previousQuery?.queryKey;
+  if (!previousQueryKey) return undefined;
+
+  const [scope, previousPatientId, previousOrgId] = previousQueryKey;
+  if (
+    scope !== 'patient-movement-timeline' ||
+    previousPatientId !== currentPatientId ||
+    previousOrgId !== currentOrgId
+  ) {
+    return undefined;
+  }
+
+  return previousData;
 }
 
 async function fetchPatientMovementTimeline(input: {
@@ -5073,7 +5096,8 @@ export function CardWorkspace({
         filters: timelineFilters,
       }),
     enabled: Boolean(orgId && patient && isDetailTabMounted('movement')),
-    placeholderData: keepPreviousData,
+    placeholderData: (previousData, previousQuery) =>
+      keepSamePatientMovementTimelinePlaceholder(previousData, previousQuery, patientId, orgId),
     staleTime: 30_000,
   });
 
