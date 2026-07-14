@@ -22,6 +22,7 @@ const {
   toVisitRecordAttachmentMock,
   listBillingEvidenceBlockersMock,
   allocateDisplayIdRangeMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
@@ -43,6 +44,7 @@ const {
   toVisitRecordAttachmentMock: vi.fn(),
   listBillingEvidenceBlockersMock: vi.fn(),
   allocateDisplayIdRangeMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -71,6 +73,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/db/display-id', () => ({
@@ -340,6 +346,47 @@ describe('/api/visit-records/[id]', () => {
         }),
       }),
     );
+    expect(auditLogFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        target_type: 'visit_record',
+        target_id: 'visit_1',
+        action: {
+          in: ['visit_record.create', 'visit_record.update'],
+        },
+      },
+      orderBy: { created_at: 'desc' },
+      select: { actor_id: true },
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+      }),
+      {
+        patientId: 'patient_1',
+        targetType: 'visit_record',
+        targetId: 'visit_1',
+        view: 'visit_record_detail',
+      },
+    );
+  });
+
+  it('does not audit rejected GET authentication', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'AUTH_FORBIDDEN' }), { status: 403 }),
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'visit_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank visit record ids before loading visit details', async () => {
@@ -359,6 +406,7 @@ describe('/api/visit-records/[id]', () => {
     expect(auditLogFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(patientSchedulePreferenceFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns not found with no-store when the visit record is missing', async () => {
@@ -379,6 +427,7 @@ describe('/api/visit-records/[id]', () => {
     expect(auditLogFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(patientSchedulePreferenceFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns forbidden with no-store when the schedule assignment is inaccessible', async () => {
@@ -428,6 +477,7 @@ describe('/api/visit-records/[id]', () => {
     expect(auditLogFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(patientSchedulePreferenceFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a fixed no-store internal error when visit record loading fails', async () => {
@@ -448,6 +498,48 @@ describe('/api/visit-records/[id]', () => {
     expect(auditLogFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(patientSchedulePreferenceFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit when visit detail enrichment fails', async () => {
+    txVisitRecordFindFirstMock.mockReset();
+    txVisitRecordFindFirstMock.mockResolvedValue({
+      id: 'visit_1',
+      org_id: 'org_1',
+      schedule_id: 'schedule_1',
+      patient_id: 'patient_1',
+      pharmacist_id: 'user_1',
+      attachments: [],
+      schedule: {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        site_id: null,
+        pharmacist_id: 'user_1',
+        visit_type: 'home_visit',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        recurrence_rule: null,
+        time_window_start: null,
+        time_window_end: null,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      },
+    });
+    auditLogFindFirstMock.mockRejectedValueOnce(new Error('audit lookup failed'));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'visit_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('allows an org-wide pharmacist to read a visit record on another schedule assignment', async () => {

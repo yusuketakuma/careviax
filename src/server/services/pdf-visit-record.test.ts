@@ -144,7 +144,7 @@ describe('pdf visit record fetchers', () => {
     expect(residualMedicationFindManyMock).not.toHaveBeenCalled();
   });
 
-  it('hydrates patient, residual, pharmacist, and latest audit actor details', async () => {
+  it('hydrates patient, residual, pharmacist, and latest modification actor details', async () => {
     residualMedicationFindManyMock.mockResolvedValue([
       {
         id: 'residual_1',
@@ -206,6 +206,22 @@ describe('pdf visit record fetchers', () => {
         birth_date: true,
         gender: true,
         archived_at: true,
+      },
+    });
+    expect(auditLogFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        target_type: 'visit_record',
+        target_id: { in: ['visit_1'] },
+        action: {
+          in: ['visit_record.create', 'visit_record.update'],
+        },
+      },
+      orderBy: [{ created_at: 'desc' }],
+      select: {
+        target_id: true,
+        actor_id: true,
+        created_at: true,
       },
     });
     expect(userFindManyMock).toHaveBeenCalledWith({

@@ -163,6 +163,9 @@ async function getVisitRecordEntries(
         org_id: orgId,
         target_type: 'visit_record',
         target_id: { in: recordIds },
+        action: {
+          in: ['visit_record.create', 'visit_record.update'],
+        },
       },
       orderBy: [{ created_at: 'desc' }],
       select: {

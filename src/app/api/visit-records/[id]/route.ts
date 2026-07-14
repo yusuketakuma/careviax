@@ -19,6 +19,7 @@ import {
   validationError,
 } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import {
@@ -149,7 +150,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問記録IDが不正です');
 
-  return withOrgContext(
+  const result = await withOrgContext(
     ctx.orgId,
     async (tx) => {
       const record = await tx.visitRecord.findFirst({
@@ -177,19 +178,30 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
         },
       });
 
-      if (!record) return notFound('訪問記録が見つかりません');
+      if (!record) {
+        return {
+          response: notFound('訪問記録が見つかりません'),
+          auditTarget: null,
+        };
+      }
       if (!canAccessVisitScheduleAssignment(ctx, record.schedule)) {
-        return forbiddenResponse('この訪問記録を閲覧する権限がありません');
+        return {
+          response: forbiddenResponse('この訪問記録を閲覧する権限がありません'),
+          auditTarget: null,
+        };
       }
 
       const caseId = record.schedule?.case_id ?? null;
       const patientId = record.patient_id;
-      const [latestAudit, activeCase, patientSchedulePref] = await Promise.all([
+      const [latestModificationAudit, activeCase, patientSchedulePref] = await Promise.all([
         tx.auditLog.findFirst({
           where: {
             org_id: ctx.orgId,
             target_type: 'visit_record',
             target_id: id,
+            action: {
+              in: ['visit_record.create', 'visit_record.update'],
+            },
           },
           orderBy: { created_at: 'desc' },
           select: {
@@ -209,7 +221,9 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       ]);
 
       const userIds = Array.from(
-        new Set([record.pharmacist_id, latestAudit?.actor_id].filter(Boolean) as string[]),
+        new Set(
+          [record.pharmacist_id, latestModificationAudit?.actor_id].filter(Boolean) as string[],
+        ),
       );
       const userById = await batchResolveNames(tx, ctx.orgId, userIds);
 
@@ -221,22 +235,41 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       delete (publicRecord as { patient_state_snapshot?: unknown }).patient_state_snapshot;
       delete (publicRecord as { visit_geo_log?: unknown }).visit_geo_log;
 
-      return success({
-        data: {
-          ...publicRecord,
-          attachments: parseStoredVisitRecordAttachments(record.attachments),
-          pharmacist_name: userById.get(record.pharmacist_id) ?? null,
-          last_modified_by_id: latestAudit?.actor_id ?? record.pharmacist_id,
-          last_modified_by_name:
-            (latestAudit?.actor_id ? userById.get(latestAudit.actor_id) : null) ??
-            userById.get(record.pharmacist_id) ??
-            null,
-          baseline_context: baselineContext,
+      return {
+        response: success({
+          data: {
+            ...publicRecord,
+            attachments: parseStoredVisitRecordAttachments(record.attachments),
+            pharmacist_name: userById.get(record.pharmacist_id) ?? null,
+            last_modified_by_id: latestModificationAudit?.actor_id ?? record.pharmacist_id,
+            last_modified_by_name:
+              (latestModificationAudit?.actor_id
+                ? userById.get(latestModificationAudit.actor_id)
+                : null) ??
+              userById.get(record.pharmacist_id) ??
+              null,
+            baseline_context: baselineContext,
+          },
+        }),
+        auditTarget: {
+          patientId: record.patient_id,
+          recordId: record.id,
         },
-      });
+      };
     },
     { requestContext: ctx },
   );
+
+  if (result.auditTarget) {
+    recordPhiReadAuditForRequest(ctx, {
+      patientId: result.auditTarget.patientId,
+      targetType: 'visit_record',
+      targetId: result.auditTarget.recordId,
+      view: 'visit_record_detail',
+    });
+  }
+
+  return result.response;
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
