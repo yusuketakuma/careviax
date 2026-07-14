@@ -177,6 +177,20 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "MEDICATION_STOCK_OBSERVATION_DISABLED": {
+          "httpStatus": 503,
+          "logLevel": "info",
+          "messageLabel": "api.error.medication_stock_observation.disabled",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
+        "MEDICATION_STOCK_OBSERVATION_UNAVAILABLE": {
+          "httpStatus": 503,
+          "logLevel": "warn",
+          "messageLabel": "api.error.medication_stock_observation.unavailable",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
         "OQC_NOT_ENABLED": {
           "httpStatus": 501,
           "logLevel": "info",
@@ -325,6 +339,18 @@ describe('API error code registry', () => {
       retryable: false,
       recoveryAction: 'correct_input',
       messageLabel: 'api.error.idempotency_conflict',
+    });
+    expect(getApiErrorDefinition('MEDICATION_STOCK_OBSERVATION_DISABLED')).toMatchObject({
+      httpStatus: 503,
+      logLevel: 'info',
+      retryable: false,
+      recoveryAction: 'return_to_previous',
+    });
+    expect(getApiErrorDefinition('MEDICATION_STOCK_OBSERVATION_UNAVAILABLE')).toMatchObject({
+      httpStatus: 503,
+      logLevel: 'warn',
+      retryable: false,
+      recoveryAction: 'return_to_previous',
     });
     expect(isRegisteredApiErrorCode('UNREGISTERED_ERROR')).toBe(false);
     expect(() => getApiErrorDefinition('UNREGISTERED_ERROR')).toThrow(

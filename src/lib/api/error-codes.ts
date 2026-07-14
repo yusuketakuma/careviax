@@ -199,6 +199,20 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'retry',
     messageLabel: 'api.error.medication_history.pdf_export_audit_failed',
   },
+  MEDICATION_STOCK_OBSERVATION_DISABLED: {
+    httpStatus: 503,
+    logLevel: 'info',
+    retryable: false,
+    recoveryAction: 'return_to_previous',
+    messageLabel: 'api.error.medication_stock_observation.disabled',
+  },
+  MEDICATION_STOCK_OBSERVATION_UNAVAILABLE: {
+    httpStatus: 503,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'return_to_previous',
+    messageLabel: 'api.error.medication_stock_observation.unavailable',
+  },
   OQC_NOT_ENABLED: {
     httpStatus: 501,
     logLevel: 'info',

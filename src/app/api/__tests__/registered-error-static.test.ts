@@ -221,11 +221,6 @@ const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
     code: 'internal_error',
     httpStatus: 500,
   },
-  {
-    filePath: 'src/app/api/visit-records/[id]/medication-stock-observations/route.ts',
-    code: 'MEDICATION_STOCK_OBSERVATION_UNAVAILABLE',
-    httpStatus: 503,
-  },
 ];
 
 const allowedExternalLiteralErrorUsages: RawLiteralErrorUsage[] = [
@@ -317,11 +312,6 @@ const allowedRawDynamicErrorUsages: RawDynamicErrorUsage[] = [
     codeExpression: 'cause.code',
     statusExpression: 'cause.status',
   },
-  {
-    filePath: 'src/app/api/visit-records/[id]/medication-stock-observations/route.ts',
-    codeExpression: 'VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_CODE',
-    statusExpression: '503',
-  },
 ];
 
 // Reviewed constants and conditional literals stay visible here alongside provider-derived messages.
@@ -405,13 +395,6 @@ const allowedRawNonliteralMessageUsages: RawNonliteralMessageUsage[] = [
     codeExpression: "'extraction_failed'",
     messageExpression: 'VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE',
     statusExpression: '500',
-  },
-  {
-    filePath: 'src/app/api/visit-records/[id]/medication-stock-observations/route.ts',
-    helper: 'error',
-    codeExpression: 'VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_CODE',
-    messageExpression: 'VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_MESSAGE',
-    statusExpression: '503',
   },
 ];
 

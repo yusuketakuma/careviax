@@ -7,11 +7,15 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 const {
   applyVisitMedicationStockObservationsMock,
   isVisitMedicationStockObservationWriteEnabledMock,
+  loggerErrorMock,
+  loggerWarnMock,
   withAuthContextOptions,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   applyVisitMedicationStockObservationsMock: vi.fn(),
   isVisitMedicationStockObservationWriteEnabledMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
   withAuthContextOptions: [] as Array<{ permission?: string; message?: string }>,
   withOrgContextMock: vi.fn(),
 }));
@@ -45,6 +49,13 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/modules/pharmacy', () => ({
   applyVisitMedicationStockObservations: applyVisitMedicationStockObservationsMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+    warn: loggerWarnMock,
+  },
 }));
 
 vi.mock('@/lib/visits/medication-stock-observation-gate.server', () => ({
@@ -292,6 +303,16 @@ describe('POST /api/visit-records/[id]/medication-stock-observations', () => {
     expectSensitiveNoStore(response);
     expect(JSON.stringify(payload)).not.toContain('database unavailable');
     expect(JSON.stringify(payload)).not.toContain('patient name');
+    expect(loggerErrorMock.mock.calls).toEqual([
+      [
+        {
+          event: 'visit_medication_stock_observation_post_unhandled_error',
+          route: '/api/visit-records/[id]/medication-stock-observations',
+          method: 'POST',
+          status: 500,
+        },
+      ],
+    ]);
   });
 
   it('fails closed with a capability-unavailable response when the visit observation tables are missing', async () => {
@@ -317,6 +338,17 @@ describe('POST /api/visit-records/[id]/medication-stock-observations', () => {
     });
     expect(JSON.stringify(payload)).not.toContain('MedicationStockObservationContext');
     expect(JSON.stringify(payload)).not.toContain('山田太郎');
+    expect(loggerWarnMock.mock.calls).toEqual([
+      [
+        {
+          event: 'visit_medication_stock_observation_capability_unavailable',
+          route: '/api/visit-records/[id]/medication-stock-observations',
+          method: 'POST',
+          status: 503,
+          code: 'P2021',
+        },
+      ],
+    ]);
     expect(applyVisitMedicationStockObservationsMock).not.toHaveBeenCalled();
   });
 });

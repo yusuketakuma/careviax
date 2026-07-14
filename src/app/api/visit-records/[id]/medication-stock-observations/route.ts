@@ -7,10 +7,10 @@ import { withAuthContext } from '@/lib/auth/context';
 import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
 import {
   conflict,
-  error,
   forbiddenResponse,
   internalError,
   notFound,
+  registeredError,
   success,
   validationError,
 } from '@/lib/api/response';
@@ -156,20 +156,16 @@ function isMedicationStockObservationCapabilityUnavailable(
 function mapObservationWriteException(req: NextRequest, err: unknown) {
   unstable_rethrow(err);
   if (isMedicationStockObservationCapabilityUnavailable(err)) {
-    logger.warn(
-      {
-        event: 'visit_medication_stock_observation_capability_unavailable',
-        route: ROUTE,
-        method: req.method,
-        status: 503,
-        code: err.code,
-      },
-      err,
-    );
-    return error(
+    logger.warn({
+      event: 'visit_medication_stock_observation_capability_unavailable',
+      route: ROUTE,
+      method: req.method,
+      status: 503,
+      code: err.code,
+    });
+    return registeredError(
       'MEDICATION_STOCK_OBSERVATION_UNAVAILABLE',
       '残数観測の登録機能はDB連携確認中です。従来の残薬記録を使用してください。',
-      503,
     );
   }
   if (
@@ -178,15 +174,12 @@ function mapObservationWriteException(req: NextRequest, err: unknown) {
   ) {
     return conflict('残数観測が他の操作と競合しました。最新データを取得してから再試行してください');
   }
-  logger.error(
-    {
-      event: 'visit_medication_stock_observation_post_unhandled_error',
-      route: ROUTE,
-      method: req.method,
-      status: 500,
-    },
-    err,
-  );
+  logger.error({
+    event: 'visit_medication_stock_observation_post_unhandled_error',
+    route: ROUTE,
+    method: req.method,
+    status: 500,
+  });
   return internalError();
 }
 
@@ -231,10 +224,9 @@ const authenticatedPOST = withAuthContext(
     if (!visitRecordId) return validationError('訪問記録IDが不正です');
 
     if (!isVisitMedicationStockObservationWriteEnabled()) {
-      return error(
+      return registeredError(
         VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_CODE,
         VISIT_MEDICATION_STOCK_OBSERVATION_DISABLED_MESSAGE,
-        503,
       );
     }
 
