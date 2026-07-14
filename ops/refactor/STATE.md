@@ -48,14 +48,47 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `E2E-FIXTURE-CONTRACT-001`のroute-mocked fixture修復、
-  `codex2`: `PERF-SMOKE-PATH-ID-REDACTION-001`のevidence同期とseeded perf feasibility確認。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `TYPECHECK-STALE-NEXT-TYPES-001`、
+  `codex2`: seeded perf evidenceとE2E build heap evidenceの同期。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex2: E2E-BUILD-HEAP-001 (DONE, 2026-07-14; implementation `945452afe`, `PUSHED`).
+  - current task / files inspected / root cause:
+    `package.json`のproduction/E2E build scripts、repo-local Next Route Handler docs、standalone output、build diagnosticsを照合した。
+    `build:e2e:local`だけが通常`build`の8 GiB heap設定を欠き、Next compileがV8既定約4 GiBでOOM終了して
+    `.next/BUILD_ID`とstandalone serverを生成できなかった。
+  - files changed / bugs fixed / stability / performance / security:
+    E2E env、local auth secret、DB URL、font mock、browser flags、webpack semanticsを維持し、Next compiler invocationだけを
+    production buildと同じ`node --max-old-space-size=8192 node_modules/next/dist/bin/next build --webpack`へ収束した。
+    Exact package-script contract testを追加。secret値の出力・保存、DB/schema/data、runtime/API/UIは変更していない。
+  - validation results / remaining work / next action / rollback:
+    旧commandはcompile中に`Ineffective mark-compacts near heap limit` / `JavaScript heap out of memory`でexit 1を再現。
+    修正commandはNext 16.2.9 compile 9.4分、TypeScript 116秒、311/311 pages、trace/finalizeまでexit 0。
+    Focused 1 test、exact ESLint、Prettier、diff、独立codex1 review APPROVE。ホストmemory pressureでbuild時間は長いが、
+    OOM false-failureは解消。非視覚build toolingのためimagegen/browserなし。Rollbackは`945452afe`のrevertでDB/data rollback不要。
+
+- codex2: PERF-PAYLOAD-MEASURED-ROUTES-001 (DONE, 2026-07-14; implementation `93d4531fe`, `PUSHED`; parent remains Partial).
+  - current task / files inspected / root cause:
+    critical payload registry、perf-smoke matrix、performance wrapper、JSON response helper、reports today workspace、visit preparation、
+    route tests、seeded local runtimeを照合した。2 routeだけが通常`success()`を使い、body fallbackではbytesを読めても
+    runtime wrapperは`Content-Length`を観測できず、matrixが`PAYLOAD_UNMEASURED`でfailしていた。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    成功responseだけを既存`successWithMeasuredJsonPayload`へ収束し、UTF-8 body byte数とheaderのexact一致をtest化。
+    response body/status/no-store、auth/tenant、DB query、medical projection、error response、payload budgetは不変。
+    Nonpatient critical 13 routesだけを選び、session token/org IDはprocess memory内で扱って出力せず、AuditLogの前後件数だけをSELECTした。
+  - validation results / remaining work / next action / rollback:
+    Focused 2 files / 49 tests、exact ESLint/Prettier/diff、typecheck、8 GiB no-unused、API response shape 0/0、authz、
+    query-shape 0/0、read-SLO 0 new drift、raw-org 116 / 0 new、独立codex1 API/privacy review APPROVE。
+    Seeded standaloneでは13 routes × 5 requests × 3 runsが全PASSし、13/13 content-length measured、error/timeout/
+    over-budget/latency warning 0、最悪p95/p99 59ms、AuditLog row delta 0。起動直後cold summary 1 requestは1021msだったが、
+    runbook 3-run warm evidenceは全target内。親にはPHI read audit writeを伴うpatient detail 3 routesと、既知single-day windowの
+    visit preparation take drift判断が残る。未承認DB writeを迂回しない。非視覚server/perf変更のためimagegenなし。
+    Rollbackは`93d4531fe`のrevertでDB/data rollback不要。
 
 - codex2: PERF-SMOKE-PATH-ID-REDACTION-001 (DONE, 2026-07-14; implementation `0f475dd79`, `PUSHED`; parent remains Partial).
   - current task / files inspected / root cause:
@@ -70,9 +103,9 @@
   - validation results / remaining work / next action / rollback:
     Focused 2 files / 35 tests、exact ESLint、Prettier、`git diff --check`、`pnpm typecheck`、8 GiB
     `pnpm typecheck:no-unused`をPASS。127.0.0.1:3012の`/api/health`へ5 requests / concurrency 1の実smokeも
-    p95/p99 18ms、66 bytes、0 error、target metでPASS。独立codex1 privacy reviewはcommit時点で応答待ちのため、
-    blocking findingが届けば追補修正する。親`PERF-DB-READ-SLO-001`には認証済みseeded route evidenceとregistry/take
-    機械照合が残る。GET routeのread-audit write有無を確認し、DB mutation approvalを迂回しない。
+    p95/p99 18ms、66 bytes、0 error、target metでPASS。独立codex1 privacy reviewもAPPROVE。
+    親`PERF-DB-READ-SLO-001`にはpatient detail 3 routesの承認済みseeded evidenceとregistry/take残判断がある。
+    GET routeのread-audit writeを未承認で実行せず、DB mutation approvalを迂回しない。
     非視覚performance tooling変更のためimagegen/browserなし。Rollbackは`0f475dd79`のrevertでDB/data rollback不要。
 
 - codex2: CDS-LAB-STALENESS-RENAL-MONITOR-001 (DONE, 2026-07-14; implementation `c8132e7bf`, `PUSHED`).
