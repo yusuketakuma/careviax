@@ -114,6 +114,13 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "FILE_PRESIGNED_DOWNLOAD_JSON_DISABLED": {
+          "httpStatus": 410,
+          "logLevel": "info",
+          "messageLabel": "api.error.file.presigned_download_json_disabled",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
         "INTERNAL_ERROR": {
           "httpStatus": 500,
           "logLevel": "error",

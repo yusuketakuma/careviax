@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
-import { error, validationError } from '@/lib/api/response';
+import { registeredError, validationError } from '@/lib/api/response';
 import { legacyFileApiDisabledResponse } from '@/lib/api/legacy-file-api-boundary';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -20,10 +20,9 @@ const authenticatedGET = withAuthContext(async (req, _ctx, { params }) => {
   }
 
   return withSensitiveNoStore(
-    error(
+    registeredError(
       'FILE_PRESIGNED_DOWNLOAD_JSON_DISABLED',
       '署名付きダウンロードURLのJSON発行は無効です。同一オリジンのダウンロードURLを使用してください',
-      410,
     ),
   );
 });

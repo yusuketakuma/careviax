@@ -124,6 +124,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'retry',
     messageLabel: 'api.error.external.pdf_render_failed',
   },
+  FILE_PRESIGNED_DOWNLOAD_JSON_DISABLED: {
+    httpStatus: 410,
+    logLevel: 'info',
+    retryable: false,
+    recoveryAction: 'return_to_previous',
+    messageLabel: 'api.error.file.presigned_download_json_disabled',
+  },
   INTERNAL_ERROR: {
     httpStatus: 500,
     logLevel: 'error',
