@@ -53,7 +53,7 @@
   共有surfaceとlong gateは事前通知で直列化する。`codex1`は`UI-THEME-CLINICAL-SIGNAL-001`のSSOT/Plans/ledgerと
   frontend runtime foundation（Phase 2A fixed shell、Phase 2B-a shared page frame、Phase 2B-b shared page section、
   Phase 2B-c最初のshared exact Delta Lens）、overview contacts projectionと患者画面E2Eを完了した。`codex2`は内部6 roleのprivacy projection、
-  field revision / MCS / contacts / conditions / care-team read hardeningを完了し、新規長時間gateを開始せずread-only候補探索中。`codex1`は
+  field revision / MCS / contacts / conditions / care-team / labs read hardeningを完了し、current handoff確定まで新規編集をHOLD。`codex1`は
   `Plans.md` / `docs/ui-ux-design-guidelines.md` / `ops/refactor/STATE.md`を予約し、`RUN_LOCK.md`に現在のwriterはいない。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
@@ -110,7 +110,17 @@
     colors、typography、frontend contract、Plans active、client PHI display/log、API response shapeをPASS。`pnpm build:e2e:local`はwebpack 6.2分、
     TypeScript 3.0分、311/311 static pages、全route manifestをPASS。更新standaloneで患者+訪問2/2、主要32 screen 32/32、exact history 1/1をPASSし、
     console/page errorと旧404は0。`pnpm typecheck` / `pnpm typecheck:no-unused`もPASS。DB schema/migration/write path、production data、dependency、追加queryは変更なし。
+    standalone終了時に既存`rls_context_missing`由来のsafe logger event `security_event.audit_log_org_unknown`を2件確認したが、今回未変更の
+    `SEC-EVENT-AUDIT-RLS-DROP-001` Partial契約（org不明eventは誤帰属insertせずfail-visible、永続化先はhuman-gated）と一致し、PHI本文は含まれない。
     残は全surfaceのClinical Signal Workspace rolloutとrole/state screenshot matrix。Rollbackは`709125953`のrevertでDB/data rollback不要。
+
+- codex2: AUTHZ-PATIENT-LABS-READ-AUDIT-001 (DONE, 2026-07-14; implementation `adb9d1bed`, not pushed).
+  - `src/app/api/patients/[id]/labs/route.ts`とtestのみ変更。既存org/assignment-scoped patient lookupと最大50/200件のbounded lab queryを維持し、
+    成功GET（0件を含む）後だけauthoritative `patient.id`でcanonical `patient` / `patient_labs` PHI read auditをexact-once記録した。
+    検査値、単位、異常flag、note等の本文はauditへ入れず、4xx/404/500/auth rejectionはzero-audit。POSTは既存write/validation/RLS transactionを保ったまま
+    sensitive no-storeとfixed sanitized 500へ収束した。Domain read query数/shape、response、正確な内部lab表示、DB schema/migrationは不変。
+  - focused Vitest 22/22、exact ESLint、Prettier、`pnpm typecheck`をPASS。親read-audit inventoryは他routeが残るためPartial。
+    Rollbackは`adb9d1bed`のrevertでDB/data rollback不要。
 
 - codex1: UI-SHARED-PAGE-SECTION-001 / UI-THEME-CLINICAL-SIGNAL-001 Phase 2B-b (DONE; parent remains Partial, 2026-07-14; implementation `5d454836b`, not pushed).
   - current task / files inspected / root cause:
