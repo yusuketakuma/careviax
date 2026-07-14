@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { error, notFound, validationError } from '@/lib/api/response';
+import { notFound, registeredError, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
@@ -64,10 +64,9 @@ export const GET = withAuthContext(
 
     const readFailureResponse = () =>
       withSensitiveNoStore(
-        error(
+        registeredError(
           'PHARMACY_DRUG_STOCK_EXPORT_FAILED',
           '採用薬CSVのエクスポートを準備できませんでした',
-          500,
         ),
       );
 
@@ -155,10 +154,9 @@ export const GET = withAuthContext(
       });
     } catch {
       return withSensitiveNoStore(
-        error(
+        registeredError(
           'PHARMACY_DRUG_STOCK_EXPORT_AUDIT_FAILED',
           '採用薬CSVのエクスポート監査を記録できませんでした',
-          500,
         ),
       );
     }

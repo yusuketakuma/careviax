@@ -79,6 +79,20 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "PHARMACY_DRUG_STOCK_EXPORT_AUDIT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.pharmacy_drug_stock.export_audit_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
+        "PHARMACY_DRUG_STOCK_EXPORT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.pharmacy_drug_stock.export_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "RATE_LIMIT_EXCEEDED": {
           "httpStatus": 429,
           "logLevel": "warn",

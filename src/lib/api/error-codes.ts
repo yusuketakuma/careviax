@@ -89,6 +89,20 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'retry',
     messageLabel: 'api.error.internal',
   },
+  PHARMACY_DRUG_STOCK_EXPORT_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.pharmacy_drug_stock.export_audit_failed',
+  },
+  PHARMACY_DRUG_STOCK_EXPORT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.pharmacy_drug_stock.export_failed',
+  },
   RATE_LIMIT_EXCEEDED: {
     httpStatus: 429,
     logLevel: 'warn',

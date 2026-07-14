@@ -455,11 +455,14 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
     expect(response.headers.get('content-type')).toContain('application/json');
-    const body = await response.text();
-    expect(body).toContain('PHARMACY_DRUG_STOCK_EXPORT_AUDIT_FAILED');
-    expect(body).not.toContain('アムロジピン');
-    expect(body).not.toContain('山田 太郎');
-    expect(body).not.toContain('token=secret');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'PHARMACY_DRUG_STOCK_EXPORT_AUDIT_FAILED',
+      message: '採用薬CSVのエクスポート監査を記録できませんでした',
+    });
+    expect(JSON.stringify(body)).not.toContain('アムロジピン');
+    expect(JSON.stringify(body)).not.toContain('山田 太郎');
+    expect(JSON.stringify(body)).not.toContain('token=secret');
   });
 
   it('returns a no-store fixed error when stock loading fails with hostile raw text', async () => {
@@ -473,12 +476,15 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
     expect(response.headers.get('content-type') ?? '').not.toContain('text/csv');
-    const body = await response.text();
-    expect(body).toContain('PHARMACY_DRUG_STOCK_EXPORT_FAILED');
-    expect(body).not.toContain('stock read failed');
-    expect(body).not.toContain('山田 太郎');
-    expect(body).not.toContain('アムロジピン');
-    expect(body).not.toContain('token=secret');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'PHARMACY_DRUG_STOCK_EXPORT_FAILED',
+      message: '採用薬CSVのエクスポートを準備できませんでした',
+    });
+    expect(JSON.stringify(body)).not.toContain('stock read failed');
+    expect(JSON.stringify(body)).not.toContain('山田 太郎');
+    expect(JSON.stringify(body)).not.toContain('アムロジピン');
+    expect(JSON.stringify(body)).not.toContain('token=secret');
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
