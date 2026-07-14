@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -717,31 +718,41 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
     ...(insuranceQuery.data?.data.upcoming ?? []),
     ...(insuranceQuery.data?.data.history ?? []),
   ];
+  const hasInsuranceLoadError = insuranceQuery.error instanceof Error;
+  const canManageInsurance = !insuranceQuery.isLoading && !hasInsuranceLoadError;
 
   return (
     <Card>
       <CardHeader className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-heading text-base leading-snug font-medium">保険詳細</h2>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setEditingId(null);
-              setDrafts({});
-              setIsCreateOpen((current) => !current);
-            }}
-          >
-            {isCreateOpen ? '追加フォームを閉じる' : '保険追加'}
-          </Button>
+          {canManageInsurance ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setEditingId(null);
+                setDrafts({});
+                setIsCreateOpen((current) => !current);
+              }}
+            >
+              {isCreateOpen ? '追加フォームを閉じる' : '保険追加'}
+            </Button>
+          ) : null}
         </div>
-        <div className="flex flex-wrap gap-2 text-xs">
-          <Badge variant="outline">現在有効 {insuranceQuery.data?.data.current.length ?? 0}</Badge>
-          <Badge variant="outline">今後有効 {insuranceQuery.data?.data.upcoming.length ?? 0}</Badge>
-          <Badge variant="outline">履歴 {insuranceQuery.data?.data.history.length ?? 0}</Badge>
-          <Badge variant="outline">総件数 {allInsurances.length}</Badge>
-        </div>
+        {canManageInsurance ? (
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge variant="outline">
+              現在有効 {insuranceQuery.data?.data.current.length ?? 0}
+            </Badge>
+            <Badge variant="outline">
+              今後有効 {insuranceQuery.data?.data.upcoming.length ?? 0}
+            </Badge>
+            <Badge variant="outline">履歴 {insuranceQuery.data?.data.history.length ?? 0}</Badge>
+            <Badge variant="outline">総件数 {allInsurances.length}</Badge>
+          </div>
+        ) : null}
       </CardHeader>
       <CardContent className="space-y-4">
         {insuranceQuery.isLoading ? (
@@ -749,10 +760,17 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
             <Skeleton className="h-32 rounded-lg" />
             <span className="sr-only">保険情報を読み込み中...</span>
           </div>
-        ) : insuranceQuery.error instanceof Error ? (
-          <p role="status" aria-live="polite" className="text-sm text-destructive">
-            保険情報の取得に失敗しました。再試行してください。
-          </p>
+        ) : hasInsuranceLoadError ? (
+          <ErrorState
+            variant="server"
+            title="保険情報を表示できません"
+            cause="患者保険情報の取得に失敗しました。"
+            nextAction="通信状態を確認して再試行してください。"
+            detail="最新状態を確認できるまで追加・更新・削除操作を停止しています。"
+            onRetry={() => void insuranceQuery.refetch()}
+            retryLabel="保険情報を再取得"
+            headingLevel={3}
+          />
         ) : (
           <>
             {isCreateOpen ? (

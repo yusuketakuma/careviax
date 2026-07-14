@@ -88,6 +88,32 @@ describe('PatientInsuranceCard', () => {
     });
   });
 
+  it('shows a persistent recovery state without false counts or write actions when loading fails', () => {
+    const refetch = vi.fn();
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('山田花子 / 090-0000-0000 / token=secret'),
+      refetch,
+    });
+    useMutationMock.mockReturnValue({ isPending: false, mutate: mutateMock });
+
+    render(<PatientInsuranceCard patientId="patient_1" orgId="org_1" />);
+
+    expect(screen.getByRole('heading', { name: '保険情報を表示できません' })).toBeTruthy();
+    expect(
+      screen.getByText('患者保険情報の取得に失敗しました。 通信状態を確認して再試行してください。'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/token=secret/)).toBeNull();
+    expect(screen.queryByRole('button', { name: '保険追加' })).toBeNull();
+    expect(screen.queryByText(/現在有効 0/)).toBeNull();
+    expect(screen.queryByText('該当する保険情報はありません。')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '保険情報を再取得' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
   it('surfaces and submits pending public subsidy and care change status fields', () => {
     useQueryClientMock.mockReturnValue({
       invalidateQueries: vi.fn(),
