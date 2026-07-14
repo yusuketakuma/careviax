@@ -170,6 +170,27 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     });
   });
 
+  it('allows pharmacist trainees to sync MCS timelines', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { orgId: 'org_1', userId: 'trainee_1', role: 'pharmacist_trainee' },
+    });
+
+    const response = await POST(
+      createRequest({
+        source_url: 'https://www.medical-care.net/patients/2463520',
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(syncPatientMcsTimelineMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'trainee_1' }),
+    );
+  });
+
   it('returns 404 when patient is not found or not assigned', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 
@@ -213,9 +234,9 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     expect(syncPatientMcsTimelineMock).not.toHaveBeenCalled();
   });
 
-  it('rejects users without sensitive patient access', async () => {
+  it('rejects external viewers without sensitive patient access', async () => {
     requireAuthContextMock.mockResolvedValue({
-      ctx: { orgId: 'org_1', userId: 'user_1', role: 'clerk' },
+      ctx: { orgId: 'org_1', userId: 'user_ext', role: 'external_viewer' },
     });
 
     const response = await POST(createRequest(), {

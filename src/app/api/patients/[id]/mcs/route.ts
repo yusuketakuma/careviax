@@ -5,6 +5,7 @@ import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { forbidden, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -105,13 +106,21 @@ async function authenticatedGET(
     patientId: id,
     limit,
   });
-
-  return success({
+  const response = success({
     data: {
       patient,
       ...data,
     },
   });
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: patient.id,
+    targetType: 'patient',
+    targetId: patient.id,
+    view: 'patient_mcs_overview',
+  });
+
+  return response;
 }
 
 export const GET: typeof authenticatedGET = async (req, routeContext) => {

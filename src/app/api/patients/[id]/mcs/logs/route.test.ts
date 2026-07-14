@@ -297,9 +297,24 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
     });
   });
 
-  it('rejects non-sensitive roles before loading the patient', async () => {
+  it('allows pharmacist trainees to create MCS check logs', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { orgId: 'org_1', userId: 'trainee_1', role: 'pharmacist_trainee' },
+    });
+
+    const response = await POST(createRequest({ summary: '研修薬剤師が確認' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
+    expect(communicationEventCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects external viewers before loading the patient', async () => {
     requireAuthContextMock.mockResolvedValue({
-      ctx: { orgId: 'org_1', userId: 'user_1', role: 'clerk' },
+      ctx: { orgId: 'org_1', userId: 'user_ext', role: 'external_viewer' },
     });
 
     const response = await POST(createRequest({ summary: '確認済み' }), {

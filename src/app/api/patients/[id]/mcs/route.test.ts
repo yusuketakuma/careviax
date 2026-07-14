@@ -7,6 +7,7 @@ const {
   patientFindFirstMock,
   getPatientMcsOverviewMock,
   createAuditLogEntryMock,
+  recordPhiReadAuditForRequestMock,
   withOrgContextMock,
   upsertOperationalTaskMock,
 } = vi.hoisted(() => ({
@@ -14,6 +15,7 @@ const {
   patientFindFirstMock: vi.fn(),
   getPatientMcsOverviewMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
 }));
@@ -36,6 +38,10 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/server/services/patient-mcs', () => ({
@@ -204,6 +210,31 @@ describe('/api/patients/[id]/mcs GET', () => {
         ],
       },
     });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'patient',
+        targetId: 'patient_1',
+        view: 'patient_mcs_overview',
+      },
+    );
+  });
+
+  it('allows pharmacist trainees to read the exact internal MCS overview', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { orgId: 'org_1', userId: 'trainee_1', role: 'pharmacist_trainee' },
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(getPatientMcsOverviewMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
   });
 
   it('passes through a validated limit parameter', async () => {
@@ -238,11 +269,12 @@ describe('/api/patients/[id]/mcs GET', () => {
     });
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
-  it('rejects non-sensitive roles', async () => {
+  it('keeps external viewers fail-closed', async () => {
     requireAuthContextMock.mockResolvedValue({
-      ctx: { orgId: 'org_1', userId: 'user_1', role: 'clerk' },
+      ctx: { orgId: 'org_1', userId: 'user_ext', role: 'external_viewer' },
     });
 
     const response = await GET(createRequest(), {
@@ -255,6 +287,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
     expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid limit values', async () => {
@@ -268,6 +301,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
     expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed limit values before loading the patient', async () => {
@@ -285,6 +319,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     });
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank limit values before loading the patient', async () => {
@@ -299,6 +334,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns no-store not-found responses for inaccessible patients', async () => {
@@ -314,6 +350,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     expect(response.status).toBe(404);
     expectSensitiveNoStore(response);
     expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when MCS overview reads fail', async () => {
@@ -334,6 +371,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(JSON.stringify(body)).not.toContain('青葉 花子');
     expect(JSON.stringify(body)).not.toContain('ワルファリン');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('saves the MCS participation profile as an operational task sidecar', async () => {

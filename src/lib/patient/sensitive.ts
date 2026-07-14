@@ -1,9 +1,8 @@
 import type { MemberRole } from '@prisma/client';
+import { getPatientPrivacyFlags } from '@/lib/patient/privacy';
 
-const SENSITIVE_DATA_ROLES = new Set<MemberRole>(['owner', 'admin', 'pharmacist']);
-
-export function canViewSensitivePatientData(role: MemberRole) {
-  return SENSITIVE_DATA_ROLES.has(role);
+export function canViewSensitivePatientData(role: MemberRole | string) {
+  return !getPatientPrivacyFlags(role).sensitiveFieldsMasked;
 }
 
 export function maskInsuranceNumber(value: string | null | undefined) {
