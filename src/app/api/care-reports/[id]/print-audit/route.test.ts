@@ -7,12 +7,14 @@ const {
   careReportFindFirstMock,
   recordCareReportPrintAuditMock,
   canAccessCareReportSourceMock,
+  successMock,
   prismaMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   recordCareReportPrintAuditMock: vi.fn(),
   canAccessCareReportSourceMock: vi.fn(),
+  successMock: vi.fn(),
   prismaMock: {
     careReport: {
       findFirst: vi.fn(),
@@ -23,6 +25,15 @@ const {
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
 }));
+
+vi.mock('@/lib/api/response', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api/response')>();
+  successMock.mockImplementation(actual.success);
+  return {
+    ...actual,
+    success: successMock,
+  };
+});
 
 vi.mock('@/lib/db/client', () => ({
   prisma: prismaMock,
@@ -40,6 +51,8 @@ import { POST } from './route';
 import { careReportPrintAuditResponseSchema } from '@/lib/reports/care-report-print-audit-contract';
 
 const REPORT_UPDATED_AT_ISO = '2026-06-18T01:02:03.000Z';
+const REQUEST_ID = 'request_care_report_print_audit_1';
+const CORRELATION_ID = 'correlation_care_report_print_audit_1';
 
 function createRequest(
   body: Record<string, unknown> = {
@@ -118,6 +131,16 @@ async function expectErrorBodyWithoutPrintContent(
   expect(bodyText).not.toContain('印刷本文');
 }
 
+function expectRequestTrace(response: Response) {
+  expect(response.headers.get('X-Request-Id')).toBe(REQUEST_ID);
+  expect(response.headers.get('X-Correlation-Id')).toBe(CORRELATION_ID);
+}
+
+function expectNoRequestTrace(response: Response) {
+  expect(response.headers.get('X-Request-Id')).toBeNull();
+  expect(response.headers.get('X-Correlation-Id')).toBeNull();
+}
+
 describe('/api/care-reports/[id]/print-audit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -130,6 +153,8 @@ describe('/api/care-reports/[id]/print-audit', () => {
         actorSiteId: 'site_1',
         ipAddress: '127.0.0.1',
         userAgent: 'Vitest',
+        requestId: REQUEST_ID,
+        correlationId: CORRELATION_ID,
       },
     });
     careReportFindFirstMock.mockResolvedValue({
@@ -153,6 +178,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     const body = await response.json();
     expect(careReportPrintAuditResponseSchema.safeParse(body).success).toBe(true);
     expect(body).not.toHaveProperty('audited');
@@ -189,8 +215,33 @@ describe('/api/care-reports/[id]/print-audit', () => {
         reportId: 'report_1',
         intent: 'print_requested',
         reportUpdatedAt: new Date('2026-06-18T01:02:03.000Z'),
+        requestId: REQUEST_ID,
+        correlationId: CORRELATION_ID,
       }),
     );
+  });
+
+  it('returns a traced sanitized 500 when response creation fails after the audit', async () => {
+    successMock.mockImplementationOnce(() => {
+      throw new Error('raw patient 山田花子 090-1234-5678 print response detail');
+    });
+
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expectRequestTrace(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(recordCareReportPrintAuditMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('print response detail');
   });
 
   it('records preview-rendered audits without conflating them with print requests', async () => {
@@ -346,6 +397,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
   });
@@ -402,6 +454,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
 
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
+    expectNoRequestTrace(response);
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
   });
@@ -417,6 +470,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expectNoRequestTrace(response);
     const body = await response.json();
     expect(body).toEqual({
       code: 'INTERNAL_ERROR',
@@ -450,6 +504,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
 
     expect(missingResponse.status).toBe(404);
     expectSensitiveNoStore(missingResponse);
+    expectRequestTrace(missingResponse);
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
 
     careReportFindFirstMock.mockResolvedValueOnce({
@@ -466,6 +521,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
 
     expect(draftResponse.status).toBe(409);
     expectSensitiveNoStore(draftResponse);
+    expectRequestTrace(draftResponse);
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
   });
 
@@ -480,6 +536,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     const body = await response.json();
     expect(body).toEqual({
       code: 'INTERNAL_ERROR',
@@ -502,6 +559,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
 
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
   });
 
@@ -582,6 +640,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expectRequestTrace(response);
     await expectErrorBodyWithoutPrintContent(response, {
       code: 'PRINT_AUDIT_FAILED',
       message: '報告書の印刷監査を記録できませんでした',
