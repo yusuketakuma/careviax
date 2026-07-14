@@ -15,6 +15,7 @@ import {
   DEFAULT_E2E_DATABASE_URL,
   parseLocalE2eDatabaseTarget,
 } from './prepare-e2e-db-core';
+import { INTENTIONAL_RLS_EXCLUSIONS } from '../../src/tools/rls-known-gaps';
 
 type CheckStatus = 'pass' | 'warn' | 'fail';
 
@@ -61,6 +62,7 @@ const REQUIRED_RLS_TABLES = [
 ] as const;
 
 const ORG_ID_RLS_EXEMPT_TABLES = [
+  ...INTENTIONAL_RLS_EXCLUSIONS.map((exclusion) => exclusion.table),
   // Org-scoped configuration/master/auth tables still use route/service guards
   // and need separate migration planning before app-role RLS enforcement.
   'BillingRule',

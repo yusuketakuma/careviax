@@ -11,6 +11,7 @@ import {
   KNOWN_MISSING_TABLES,
   KNOWN_SSOT_DRIFT_TABLES,
   KNOWN_TENANT_UNIQUE_WITHOUT_ORG_CONSTRAINTS,
+  INTENTIONAL_RLS_EXCLUSIONS,
 } from './rls-known-gaps';
 import { renderRlsGapLedger, LEDGER_PATH } from './rls-gap-ledger';
 
@@ -24,24 +25,26 @@ import { renderRlsGapLedger, LEDGER_PATH } from './rls-gap-ledger';
  * それ以外の欠落は即 fail する（新規テーブルに RLS が無ければ赤くなる ratchet）。
  */
 const rawScan = scanRlsContract();
-const INTENTIONAL_RLS_EXCLUSION_TABLES = new Set(['IdSequence']);
+const intentionalRlsExclusionModels = new Set<string>(
+  INTENTIONAL_RLS_EXCLUSIONS.map((exclusion) => exclusion.model),
+);
 
 function withoutIntentionalRlsExclusions(scan: typeof rawScan): typeof rawScan {
-  const coverage = scan.coverage.filter((c) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(c.table));
+  const coverage = scan.coverage.filter((c) => !intentionalRlsExclusionModels.has(c.table));
   return {
     ...scan,
-    tenantTables: scan.tenantTables.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
+    tenantTables: scan.tenantTables.filter((t) => !intentionalRlsExclusionModels.has(t)),
     coverage,
     nullableTenantColumns: scan.nullableTenantColumns.filter(
-      (t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t),
+      (t) => !intentionalRlsExclusionModels.has(t),
     ),
     tenantUniquesWithoutOrg: scan.tenantUniquesWithoutOrg.filter(
-      (issue) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(issue.table),
+      (issue) => !intentionalRlsExclusionModels.has(issue.table),
     ),
-    missing: scan.missing.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
-    partial: scan.partial.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
-    ssotDrift: scan.ssotDrift.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
-    covered: scan.covered.filter((t) => !INTENTIONAL_RLS_EXCLUSION_TABLES.has(t)),
+    missing: scan.missing.filter((t) => !intentionalRlsExclusionModels.has(t)),
+    partial: scan.partial.filter((t) => !intentionalRlsExclusionModels.has(t)),
+    ssotDrift: scan.ssotDrift.filter((t) => !intentionalRlsExclusionModels.has(t)),
+    covered: scan.covered.filter((t) => !intentionalRlsExclusionModels.has(t)),
   };
 }
 
@@ -169,6 +172,7 @@ describe('RLS contract — machine-derived tenant coverage', () => {
 
 describe('RLS contract — intentional internal exclusions', () => {
   it('keeps IdSequence as an explicitly documented non-RLS internal counter', () => {
+    expect(INTENTIONAL_RLS_EXCLUSIONS).toEqual([{ model: 'IdSequence', table: 'id_sequence' }]);
     expect(rawScan.allModels).toContain('IdSequence');
     expect(rawScan.tenantTables).toContain('IdSequence');
     expect(rawScan.missing).toContain('IdSequence');
