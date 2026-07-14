@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { getPerformanceSnapshot, resetPerformanceMetrics } from '@/lib/utils/performance';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const HOSTILE_EXISTING_REPORT_ID = 'report/existing?tab=x#frag';
@@ -200,6 +201,7 @@ function countWorkspaceDbQueries(tx: ReturnType<typeof mockTx>) {
 
 describe('/api/care-reports/today-workspace', () => {
   beforeEach(() => {
+    resetPerformanceMetrics();
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
@@ -212,9 +214,22 @@ describe('/api/care-reports/today-workspace', () => {
     expect(res!.status).toBe(200);
     expectSensitiveNoStore(res!);
     const responseBody = await res!.clone().text();
-    expect(res!.headers.get('content-length')).toBe(
-      String(new TextEncoder().encode(responseBody).length),
-    );
+    const responseBytes = new TextEncoder().encode(responseBody).length;
+    expect(res!.headers.get('content-length')).toBe(String(responseBytes));
+    expect(
+      getPerformanceSnapshot({ topRoutes: 100 }).routes.find(
+        (route) => route.method === 'GET' && route.route === '/api/care-reports/today-workspace',
+      ),
+    ).toMatchObject({
+      critical_route: true,
+      critical_route_family: 'reports-today-workspace',
+      request_count: 1,
+      payload_sample_count: 1,
+      last_payload_bytes: responseBytes,
+      payload_budget_bytes: 256_000,
+      payload_budget_status: 'within_budget',
+      payload_budget_met: true,
+    });
     const json = await res!.json();
     expect(json.data.draft_rows).toEqual([]);
     expect(json.data.created_reports).toEqual([]);

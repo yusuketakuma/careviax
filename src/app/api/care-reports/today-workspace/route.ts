@@ -12,6 +12,7 @@ import {
   japanMonthInstantRange,
   utcDateFromLocalKey,
 } from '@/lib/utils/date-boundary';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -1511,10 +1512,12 @@ export async function GET(
   req: NextRequest,
   routeContext: { params: Promise<Record<string, string>> },
 ) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+    } catch (err) {
+      unstable_rethrow(err);
+      return withSensitiveNoStore(internalError());
+    }
+  });
 }
