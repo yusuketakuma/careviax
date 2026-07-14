@@ -2,7 +2,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
-import { internalError, success } from '@/lib/api/response';
+import { internalError, successWithMeasuredJsonPayload } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { annotateDispenseTask, sortDispenseTasks } from '@/server/services/dispense-task-list';
@@ -131,7 +131,7 @@ async function authenticatedGET(req: NextRequest) {
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
 
-    return success({
+    return successWithMeasuredJsonPayload({
       data: sortDispenseTasks(tasks, 'created_at').map((task) => annotateDispenseTask(task, now)),
     });
   });

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { getPerformanceSnapshot, resetPerformanceMetrics } from '@/lib/utils/performance';
 
 const {
   authMock,
@@ -50,6 +51,7 @@ function createRequest() {
 describe('/api/dispense-queue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetPerformanceMetrics();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -129,7 +131,10 @@ describe('/api/dispense-queue', () => {
       maxWaitMs: 10_000,
       timeoutMs: 20_000,
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const responseBody = await response.text();
+    const responseBytes = new TextEncoder().encode(responseBody).length;
+    expect(response.headers.get('Content-Length')).toBe(String(responseBytes));
+    expect(JSON.parse(responseBody)).toMatchObject({
       data: [
         expect.objectContaining({
           id: 'task_1',
@@ -141,6 +146,14 @@ describe('/api/dispense-queue', () => {
           facility_label: 'facility_2',
         }),
       ],
+    });
+    expect(
+      getPerformanceSnapshot({ topRoutes: 100 }).routes.find(
+        (route) => route.method === 'GET' && route.route === '/api/dispense-queue',
+      ),
+    ).toMatchObject({
+      payload_sample_count: 1,
+      last_payload_bytes: responseBytes,
     });
     // 新ポリシー: pharmacist は組織内フルアクセス(担当割当スコープ撤廃)のため
     // WHERE は org-only になり、cycle の担当割当 OR 句は付与されない。

@@ -77,6 +77,15 @@ function createMalformedJsonPatchRequest() {
   });
 }
 
+async function readMeasuredJson(response: Response) {
+  const body = await response.text();
+  expect(response.headers.get('Content-Type')).toBe('application/json');
+  expect(response.headers.get('Content-Length')).toBe(
+    String(new TextEncoder().encode(body).length),
+  );
+  return JSON.parse(body);
+}
+
 describe('/api/notifications GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -163,7 +172,7 @@ describe('/api/notifications GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
-    const body = await response.json();
+    const body = await readMeasuredJson(response);
     expect(body).toEqual({
       data: [notificationItem],
       meta: {
@@ -193,7 +202,7 @@ describe('/api/notifications GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
-    await expect(response.json()).resolves.toEqual({ data: { unreadCount: 6 } });
+    await expect(readMeasuredJson(response)).resolves.toEqual({ data: { unreadCount: 6 } });
     expect(countMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',

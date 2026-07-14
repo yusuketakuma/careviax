@@ -4,7 +4,13 @@ import { NextRequest } from 'next/server';
 import { isAdmin, requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, forbidden, internalError } from '@/lib/api/response';
+import {
+  success,
+  successWithMeasuredJsonPayload,
+  validationError,
+  forbidden,
+  internalError,
+} from '@/lib/api/response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -50,7 +56,7 @@ async function authenticatedGET(req: NextRequest) {
         { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
       );
 
-      return success({ data: { unreadCount } });
+      return successWithMeasuredJsonPayload({ data: { unreadCount } });
     }
 
     const notifications = await withOrgContext(
@@ -66,7 +72,7 @@ async function authenticatedGET(req: NextRequest) {
     );
 
     const page = buildCursorPage(notifications, limit, (notification) => notification.id);
-    return success({
+    return successWithMeasuredJsonPayload({
       data: page.data,
       meta: {
         limit,
