@@ -24,17 +24,6 @@ vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    patient: {
-      findFirst: patientFindFirstMock,
-    },
-    patientInsurance: {
-      findMany: patientInsuranceFindManyMock,
-    },
-  },
-}));
-
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
@@ -80,6 +69,27 @@ const writablePatientLookup = {
   },
   select: { id: true, archived_at: true },
 };
+const insuranceRecordSelect = {
+  id: true,
+  insurance_type: true,
+  application_status: true,
+  application_submitted_at: true,
+  decision_at: true,
+  public_program_code: true,
+  previous_care_level: true,
+  provisional_care_level: true,
+  confirmed_care_level: true,
+  insurer_number: true,
+  symbol: true,
+  number: true,
+  branch_number: true,
+  copay_ratio: true,
+  valid_from: true,
+  valid_until: true,
+  is_active: true,
+  notes: true,
+  updated_at: true,
+};
 
 function expectPatientAssignmentLookup() {
   expect(patientFindFirstMock).toHaveBeenCalledWith(patientAssignmentLookup);
@@ -107,7 +117,11 @@ describe('/api/patients/[id]/insurance', () => {
     patientInsuranceOverlapFindFirstMock.mockResolvedValue(null);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        patient: {
+          findFirst: patientFindFirstMock,
+        },
         patientInsurance: {
+          findMany: patientInsuranceFindManyMock,
           findFirst: patientInsuranceOverlapFindFirstMock,
           create: patientInsuranceCreateMock,
         },
@@ -171,6 +185,7 @@ describe('/api/patients/[id]/insurance', () => {
     expect(patientInsuranceFindManyMock).toHaveBeenCalledWith({
       where: { patient_id: 'patient_authoritative', org_id: 'org_1' },
       orderBy: [{ is_active: 'desc' }, { valid_from: 'desc' }, { created_at: 'desc' }],
+      select: insuranceRecordSelect,
     });
     const body = await response.json();
     expect(body).toMatchObject({
@@ -187,14 +202,9 @@ describe('/api/patients/[id]/insurance', () => {
         ],
         upcoming: [{ id: 'insurance_upcoming' }],
         history: [{ id: 'insurance_inactive_history' }, { id: 'insurance_expired_history' }],
-        all: [
-          { id: 'insurance_current' },
-          { id: 'insurance_upcoming' },
-          { id: 'insurance_inactive_history' },
-          { id: 'insurance_expired_history' },
-        ],
       },
     });
+    expect(Object.keys(body.data).sort()).toEqual(['current', 'history', 'upcoming']);
     expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
     expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -214,7 +224,12 @@ describe('/api/patients/[id]/insurance', () => {
     expect(auditPayload).not.toContain('PHARMACY-A');
     expect(auditPayload).not.toContain('00001234');
     expect(auditPayload).not.toContain('継続資格を確認済み');
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'pharmacist_1',
+      }),
+    });
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
   });
 
@@ -226,7 +241,7 @@ describe('/api/patients/[id]/insurance', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toEqual({
-      data: { current: [], upcoming: [], history: [], all: [] },
+      data: { current: [], upcoming: [], history: [] },
     });
     expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
   });
@@ -305,7 +320,7 @@ describe('/api/patients/[id]/insurance', () => {
     expectPatientAssignmentLookup();
     expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
   });
 
@@ -332,7 +347,7 @@ describe('/api/patients/[id]/insurance', () => {
       message: 'アーカイブ中の患者は復元するまで更新できません',
     });
     expectWritablePatientLookup();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
   });
 
@@ -389,7 +404,7 @@ describe('/api/patients/[id]/insurance', () => {
     expect(response.status).toBe(404);
     expectWritablePatientLookup();
     expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
   });
 
@@ -499,6 +514,74 @@ describe('/api/patients/[id]/insurance', () => {
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
   });
 
+  it('POST requires an official confirmed classification for confirmed care insurance', async () => {
+    const response = await POST(
+      createRequest({
+        insurance_type: 'care',
+        application_status: 'confirmed',
+        insurer_number: '123456',
+        number: '0000000001',
+      }),
+      routeParams,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        confirmed_care_level: ['確定済みの介護保険には要介護状態区分が必要です'],
+      },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('POST requires both previous and provisional classifications during a care-level change', async () => {
+    const response = await POST(
+      createRequest({
+        insurance_type: 'care',
+        application_status: 'change_pending',
+        previous_care_level: 'care_2',
+      }),
+      routeParams,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        provisional_care_level: ['区分変更中の介護保険には暫定区分が必要です'],
+      },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('POST requires a public program code for public subsidy insurance', async () => {
+    const response = await POST(
+      createRequest({
+        insurance_type: 'public_subsidy',
+        application_status: 'applying',
+      }),
+      routeParams,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        public_program_code: ['公費保険には公費制度コードが必要です'],
+      },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
   it('POST rejects reversed application and decision dates before DB writes', async () => {
     const response = await POST(
       createRequest({
@@ -548,7 +631,12 @@ describe('/api/patients/[id]/insurance', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     expectWritablePatientLookup();
-    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'pharmacist_1',
+      }),
+    });
     expect(patientInsuranceOverlapFindFirstMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',

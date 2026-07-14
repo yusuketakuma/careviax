@@ -7,7 +7,8 @@ const {
   patientFindFirstMock,
   patientInsuranceFindFirstMock,
   patientInsuranceOverlapFindFirstMock,
-  patientInsuranceUpdateMock,
+  patientInsuranceScopedFindFirstMock,
+  patientInsuranceUpdateManyMock,
   patientInsuranceDeleteMock,
   patientInsuranceDeleteManyMock,
   withOrgContextMock,
@@ -16,7 +17,8 @@ const {
   patientFindFirstMock: vi.fn(),
   patientInsuranceFindFirstMock: vi.fn(),
   patientInsuranceOverlapFindFirstMock: vi.fn(),
-  patientInsuranceUpdateMock: vi.fn(),
+  patientInsuranceScopedFindFirstMock: vi.fn(),
+  patientInsuranceUpdateManyMock: vi.fn(),
   patientInsuranceDeleteMock: vi.fn(),
   patientInsuranceDeleteManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -26,25 +28,39 @@ vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    patient: {
-      findFirst: patientFindFirstMock,
-    },
-    patientInsurance: {
-      findFirst: patientInsuranceFindFirstMock,
-    },
-  },
-}));
-
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
 import { DELETE, PUT } from './route';
 
-function createPutRequest(body: unknown) {
-  return new NextRequest('http://localhost/api/patients/patient_1/insurance/insurance_1', {
+const defaultUpdatedAt = new Date('2026-05-01T00:00:00.000Z');
+const patientInsuranceUpdateMock = patientInsuranceUpdateManyMock;
+const defaultInsuranceRecord = {
+  id: 'insurance_1',
+  insurance_type: 'care',
+  application_status: 'confirmed',
+  public_program_code: null,
+  valid_from: new Date('2026-04-01'),
+  valid_until: new Date('2027-03-31'),
+  application_submitted_at: null,
+  decision_at: null,
+  previous_care_level: null,
+  provisional_care_level: null,
+  confirmed_care_level: 'care_2',
+  is_active: true,
+  updated_at: defaultUpdatedAt,
+};
+
+function createPutRequest(
+  body: unknown,
+  expectedUpdatedAt: string | null = defaultUpdatedAt.toISOString(),
+) {
+  const url = new URL('http://localhost/api/patients/patient_1/insurance/insurance_1');
+  if (expectedUpdatedAt !== null) {
+    url.searchParams.set('expected_updated_at', expectedUpdatedAt);
+  }
+  return new NextRequest(url, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -60,6 +76,10 @@ function createInvalidJsonRequest() {
 }
 
 function createDeleteRequest() {
+  return createGuardedDeleteRequest(defaultUpdatedAt.toISOString());
+}
+
+function createDeleteRequestWithoutExpectedUpdatedAt() {
   return new NextRequest('http://localhost/api/patients/patient_1/insurance/insurance_1', {
     method: 'DELETE',
   });
@@ -81,24 +101,30 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
         role: 'pharmacist',
       },
     });
-    patientInsuranceFindFirstMock.mockResolvedValue({
-      id: 'insurance_1',
-      insurance_type: 'care',
-      public_program_code: null,
-      valid_from: new Date('2026-04-01'),
-      valid_until: new Date('2027-03-31'),
-      is_active: true,
-    });
+    patientInsuranceFindFirstMock.mockResolvedValue(defaultInsuranceRecord);
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
     patientInsuranceOverlapFindFirstMock.mockResolvedValue(null);
-    patientInsuranceUpdateMock.mockResolvedValue({ id: 'insurance_1', is_active: false });
+    patientInsuranceScopedFindFirstMock.mockImplementation(async (args) => {
+      if (args?.select?.id === true && Object.keys(args.select).length === 1) {
+        return patientInsuranceOverlapFindFirstMock(args);
+      }
+      const result = await patientInsuranceFindFirstMock(args);
+      if (result && !('updated_at' in result)) {
+        return { ...result, updated_at: defaultUpdatedAt };
+      }
+      return result;
+    });
+    patientInsuranceUpdateManyMock.mockResolvedValue({ count: 1 });
     patientInsuranceDeleteMock.mockResolvedValue({ id: 'insurance_1' });
     patientInsuranceDeleteManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        patient: {
+          findFirst: patientFindFirstMock,
+        },
         patientInsurance: {
-          findFirst: patientInsuranceOverlapFindFirstMock,
-          update: patientInsuranceUpdateMock,
+          findFirst: patientInsuranceScopedFindFirstMock,
+          updateMany: patientInsuranceUpdateManyMock,
           delete: patientInsuranceDeleteMock,
           deleteMany: patientInsuranceDeleteManyMock,
         },
@@ -116,6 +142,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
         previous_care_level: 'care_1',
         provisional_care_level: null,
         confirmed_care_level: 'care_2',
+        public_program_code: null,
       }),
       {
         params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
@@ -126,7 +153,12 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     expect(patientInsuranceUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'insurance_1' },
+      where: {
+        id: 'insurance_1',
+        patient_id: 'patient_1',
+        org_id: 'org_1',
+        updated_at: defaultUpdatedAt,
+      },
       data: {
         is_active: false,
         application_status: 'confirmed',
@@ -135,7 +167,15 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
         previous_care_level: 'care_1',
         provisional_care_level: null,
         confirmed_care_level: 'care_2',
+        public_program_code: null,
       },
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
     });
   });
 
@@ -207,9 +247,160 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
       select: { id: true },
     });
     expect(patientInsuranceUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'insurance_1' },
-      data: { notes: '継続中' },
+      where: {
+        id: 'insurance_1',
+        patient_id: 'patient_1',
+        org_id: 'org_1',
+        updated_at: defaultUpdatedAt,
+      },
+      data: {
+        notes: '継続中',
+        public_program_code: null,
+        previous_care_level: null,
+        provisional_care_level: null,
+        confirmed_care_level: null,
+      },
     });
+  });
+
+  it('PUT validates a one-sided date change against the persisted validity boundary', async () => {
+    const response = await PUT(createPutRequest({ valid_from: '2027-04-01' }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        valid_until: ['有効期限は有効開始日以降の日付を指定してください'],
+      },
+    });
+    expect(patientInsuranceOverlapFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT clears care and public-only fields when changing a record to medical insurance', async () => {
+    const response = await PUT(createPutRequest({ insurance_type: 'medical' }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(patientInsuranceUpdateMock).toHaveBeenCalledWith({
+      where: {
+        id: 'insurance_1',
+        patient_id: 'patient_1',
+        org_id: 'org_1',
+        updated_at: defaultUpdatedAt,
+      },
+      data: {
+        insurance_type: 'medical',
+        public_program_code: null,
+        previous_care_level: null,
+        provisional_care_level: null,
+        confirmed_care_level: null,
+      },
+    });
+  });
+
+  it('PUT requires effective care classifications when changing application status', async () => {
+    const response = await PUT(
+      createPutRequest({
+        application_status: 'change_pending',
+        previous_care_level: 'care_2',
+        confirmed_care_level: null,
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        provisional_care_level: ['区分変更中の介護保険には暫定区分が必要です'],
+      },
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT allows an incomplete historical care row to remain inactive but rejects reactivation', async () => {
+    patientInsuranceFindFirstMock.mockResolvedValue({
+      id: 'insurance_1',
+      insurance_type: 'care',
+      application_status: 'confirmed',
+      public_program_code: null,
+      valid_from: new Date('2025-04-01'),
+      valid_until: new Date('2026-03-31'),
+      application_submitted_at: null,
+      decision_at: null,
+      previous_care_level: null,
+      provisional_care_level: null,
+      confirmed_care_level: null,
+      is_active: false,
+    });
+
+    const preserveResponse = await PUT(createPutRequest({ notes: '履歴を保持' }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!preserveResponse) throw new Error('response is required');
+    expect(preserveResponse.status).toBe(200);
+    expectSensitiveNoStore(preserveResponse);
+    expect(patientInsuranceUpdateMock).toHaveBeenLastCalledWith({
+      where: {
+        id: 'insurance_1',
+        patient_id: 'patient_1',
+        org_id: 'org_1',
+        updated_at: defaultUpdatedAt,
+      },
+      data: {
+        notes: '履歴を保持',
+        public_program_code: null,
+      },
+    });
+
+    patientInsuranceUpdateMock.mockClear();
+    patientInsuranceOverlapFindFirstMock.mockClear();
+
+    const reactivateResponse = await PUT(createPutRequest({ is_active: true }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!reactivateResponse) throw new Error('response is required');
+    expect(reactivateResponse.status).toBe(400);
+    expectSensitiveNoStore(reactivateResponse);
+    await expect(reactivateResponse.json()).resolves.toMatchObject({
+      details: {
+        confirmed_care_level: ['確定済みの介護保険には要介護状態区分が必要です'],
+      },
+    });
+    expect(patientInsuranceOverlapFindFirstMock).not.toHaveBeenCalled();
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT requires a public program code when changing to public subsidy insurance', async () => {
+    const response = await PUT(createPutRequest({ insurance_type: 'public_subsidy' }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        public_program_code: ['公費保険には公費制度コードが必要です'],
+      },
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });
 
   it('PUT returns 409 for an archived patient before loading or updating insurance records', async () => {
@@ -229,7 +420,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
       message: 'アーカイブ中の患者は復元するまで更新できません',
     });
     expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -241,9 +432,15 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    expect(patientInsuranceDeleteMock).toHaveBeenCalledWith({
-      where: { id: 'insurance_1' },
+    expect(patientInsuranceDeleteManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'insurance_1',
+        patient_id: 'patient_1',
+        org_id: 'org_1',
+        updated_at: defaultUpdatedAt,
+      },
     });
+    expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       data: {
         id: 'insurance_1',
@@ -266,7 +463,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     expect(response.status).toBe(409);
     expectSensitiveNoStore(response);
     expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
   });
 
@@ -337,7 +534,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
         public_program_code: ['公費制度コードは公費保険でのみ指定できます'],
       },
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -360,7 +557,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
         application_status: ['区分変更中は介護保険または公費保険で指定してください'],
       },
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -452,6 +649,24 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     });
   });
 
+  it('DELETE requires expected_updated_at before entering the RLS transaction', async () => {
+    const response = await DELETE(createDeleteRequestWithoutExpectedUpdatedAt(), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '保険情報の更新時刻が必要です',
+      details: {
+        expected_updated_at: ['更新前に取得したupdated_atを指定してください'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
+    expect(patientInsuranceDeleteManyMock).not.toHaveBeenCalled();
+  });
+
   it('DELETE returns 409 when expected_updated_at is stale before the write (CXR1-CONC02)', async () => {
     const currentUpdatedAt = new Date('2026-05-02T00:00:00.000Z');
     const staleUpdatedAt = new Date('2026-05-01T00:00:00.000Z');
@@ -476,7 +691,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
       },
     });
     // Stale request must not reach any delete.
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(patientInsuranceDeleteManyMock).not.toHaveBeenCalled();
     expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
   });
@@ -525,6 +740,94 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientInsuranceDeleteManyMock).not.toHaveBeenCalled();
     expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT requires expected_updated_at before entering the RLS transaction', async () => {
+    const response = await PUT(createPutRequest({ notes: '更新' }, null), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '保険情報の更新時刻が必要です',
+      details: {
+        expected_updated_at: ['更新前に取得したupdated_atを指定してください'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT rejects an invalid expected_updated_at before entering the RLS transaction', async () => {
+    const response = await PUT(createPutRequest({ notes: '更新' }, 'not-a-date'), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '保険情報の更新時刻が不正です',
+      details: { expected_updated_at: ['日時形式が不正です'] },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT returns 409 when expected_updated_at is already stale', async () => {
+    const currentUpdatedAt = new Date('2026-05-02T00:00:00.000Z');
+    patientInsuranceFindFirstMock.mockResolvedValue({
+      ...defaultInsuranceRecord,
+      updated_at: currentUpdatedAt,
+    });
+
+    const response = await PUT(createPutRequest({ notes: '古い画面から更新' }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        conflict_type: 'stale_patient_insurance',
+        expected_updated_at: defaultUpdatedAt.toISOString(),
+        current_updated_at: currentUpdatedAt.toISOString(),
+      },
+    });
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT returns 409 when the row changes between the version check and guarded update', async () => {
+    const correctedUpdatedAt = new Date('2026-05-03T00:00:00.000Z');
+    patientInsuranceFindFirstMock
+      .mockResolvedValueOnce(defaultInsuranceRecord)
+      .mockResolvedValueOnce({
+        ...defaultInsuranceRecord,
+        notes: '別担当者が修正',
+        updated_at: correctedUpdatedAt,
+      });
+    patientInsuranceUpdateManyMock.mockResolvedValue({ count: 0 });
+
+    const response = await PUT(createPutRequest({ notes: '同時更新' }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        conflict_type: 'stale_patient_insurance',
+        expected_updated_at: defaultUpdatedAt.toISOString(),
+        current_updated_at: correctedUpdatedAt.toISOString(),
+      },
+    });
+    expect(patientInsuranceUpdateManyMock).toHaveBeenCalledTimes(1);
   });
 
   it('PUT returns 403 when user lacks canVisit permission', async () => {
@@ -668,7 +971,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
   });
 
   it('DELETE returns a sanitized no-store 500 when deletion fails unexpectedly', async () => {
-    patientInsuranceDeleteMock.mockRejectedValueOnce(
+    patientInsuranceDeleteManyMock.mockRejectedValueOnce(
       new Error('患者A insurance 12345678 delete failure token-secret'),
     );
 

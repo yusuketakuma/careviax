@@ -1,39 +1,19 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
-import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { z } from 'zod';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
-import { dateKeySchema } from '@/lib/validations/date-key';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import { buildPatientInsuranceOverlapWhere } from '@/lib/patient/insurance-overlap';
-
-const dateStringSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
-const publicProgramCodeSchema = z
-  .string()
-  .trim()
-  .regex(/^\d{2}$/, '公費制度コードが不正です');
-
-const careLevelSchema = z
-  .enum([
-    'support_1',
-    'support_2',
-    'care_1',
-    'care_2',
-    'care_3',
-    'care_4',
-    'care_5',
-    'applying',
-    'not_applied',
-    'not_eligible',
-  ])
-  .optional()
-  .nullable();
+import {
+  incompatiblePatientInsuranceFieldClears,
+  patientInsuranceUpdateSchema,
+  validateEffectivePatientInsuranceUpdate,
+} from '@/lib/validations/patient-insurance';
 
 class PatientInsuranceOverlapError extends Error {
   constructor() {
@@ -41,77 +21,51 @@ class PatientInsuranceOverlapError extends Error {
   }
 }
 
-const updateInsuranceSchema = z
-  .object({
-    insurance_type: z.enum(['medical', 'care', 'public_subsidy']).optional(),
-    application_status: z
-      .enum(['confirmed', 'applying', 'change_pending', 'not_applicable'])
-      .optional(),
-    insurer_number: z.string().max(8).optional().nullable(),
-    public_program_code: publicProgramCodeSchema.optional().nullable(),
-    symbol: z.string().max(100).optional().nullable(),
-    number: z.string().max(20).optional().nullable(),
-    branch_number: z.string().max(2).optional().nullable(),
-    copay_ratio: z.number().int().min(0).max(100).optional().nullable(),
-    valid_from: dateStringSchema.optional().nullable(),
-    valid_until: dateStringSchema.optional().nullable(),
-    application_submitted_at: dateStringSchema.optional().nullable(),
-    decision_at: dateStringSchema.optional().nullable(),
-    previous_care_level: careLevelSchema,
-    provisional_care_level: careLevelSchema,
-    confirmed_care_level: careLevelSchema,
-    is_active: z.boolean().optional(),
-    notes: z.string().max(500).optional().nullable(),
-  })
-  .superRefine((value, ctx) => {
-    if (value.valid_from && value.valid_until && value.valid_from > value.valid_until) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['valid_until'],
-        message: '有効期限は有効開始日以降の日付を指定してください',
-      });
+const patientInsuranceResponseSelect = {
+  id: true,
+  insurance_type: true,
+  application_status: true,
+  application_submitted_at: true,
+  decision_at: true,
+  public_program_code: true,
+  previous_care_level: true,
+  provisional_care_level: true,
+  confirmed_care_level: true,
+  insurer_number: true,
+  symbol: true,
+  number: true,
+  branch_number: true,
+  copay_ratio: true,
+  valid_from: true,
+  valid_until: true,
+  is_active: true,
+  notes: true,
+  updated_at: true,
+} as const;
+
+function readExpectedUpdatedAt(req: NextRequest, required: boolean) {
+  const rawValue = new URL(req.url).searchParams.get('expected_updated_at');
+  if (rawValue === null) {
+    if (required) {
+      return {
+        response: validationError('保険情報の更新時刻が必要です', {
+          expected_updated_at: ['更新前に取得したupdated_atを指定してください'],
+        }),
+      };
     }
-    if (
-      value.application_submitted_at &&
-      value.decision_at &&
-      value.application_submitted_at > value.decision_at
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['decision_at'],
-        message: '決定日は申請日以降の日付を指定してください',
-      });
-    }
-    if (
-      value.insurance_type &&
-      value.insurance_type !== 'public_subsidy' &&
-      value.public_program_code
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['public_program_code'],
-        message: '公費制度コードは公費保険でのみ指定できます',
-      });
-    }
-    if (
-      value.insurance_type &&
-      value.insurance_type !== 'care' &&
-      (value.previous_care_level || value.provisional_care_level || value.confirmed_care_level)
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['previous_care_level'],
-        message: '介護度情報は介護保険でのみ指定できます',
-      });
-    }
-    if (value.insurance_type === 'medical' && value.application_status === 'change_pending') {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['application_status'],
-        message: '区分変更中は介護保険または公費保険で指定してください',
-      });
-    }
-  });
+    return { value: null };
+  }
+
+  const value = new Date(rawValue);
+  if (Number.isNaN(value.getTime())) {
+    return {
+      response: validationError('保険情報の更新時刻が不正です', {
+        expected_updated_at: ['日時形式が不正です'],
+      }),
+    };
+  }
+  return { value };
+}
 
 async function authenticatedPUT(
   req: NextRequest,
@@ -133,13 +87,14 @@ async function authenticatedPUT(
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
-  const parsed = updateInsuranceSchema.safeParse(payload);
+  const parsed = patientInsuranceUpdateSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const writable = await requireWritablePatient(prisma, ctx, id);
-  if ('response' in writable) return writable.response;
+  const expectedUpdatedAtResult = readExpectedUpdatedAt(req, true);
+  if ('response' in expectedUpdatedAtResult) return expectedUpdatedAtResult.response;
+  const expectedUpdatedAt = expectedUpdatedAtResult.value as Date;
 
   // Fold the patient-assignment access check into the resource query (single
   // round-trip). buildCareCaseAssignmentWhere returns null for owner/admin so
@@ -148,62 +103,67 @@ async function authenticatedPUT(
     userId: ctx.userId,
     role: ctx.role,
   });
-  const existing = await prisma.patientInsurance.findFirst({
-    where: {
-      id: insuranceId,
-      patient_id: id,
-      org_id: ctx.orgId,
-      ...(caseAssignmentWherePut ? { patient: { cases: { some: caseAssignmentWherePut } } } : {}),
-    },
-    select: {
-      id: true,
-      insurance_type: true,
-      public_program_code: true,
-      valid_from: true,
-      valid_until: true,
-      is_active: true,
-    },
-  });
-  if (!existing) return notFound('保険情報が見つかりません');
-
-  const effectiveInsuranceType = parsed.data.insurance_type ?? existing.insurance_type;
-  if (effectiveInsuranceType !== 'public_subsidy' && parsed.data.public_program_code) {
-    return validationError('入力値が不正です', {
-      public_program_code: ['公費制度コードは公費保険でのみ指定できます'],
-    });
-  }
-  if (
-    effectiveInsuranceType !== 'care' &&
-    (parsed.data.previous_care_level ||
-      parsed.data.provisional_care_level ||
-      parsed.data.confirmed_care_level)
-  ) {
-    return validationError('入力値が不正です', {
-      previous_care_level: ['介護度情報は介護保険でのみ指定できます'],
-    });
-  }
-  if (effectiveInsuranceType === 'medical' && parsed.data.application_status === 'change_pending') {
-    return validationError('入力値が不正です', {
-      application_status: ['区分変更中は介護保険または公費保険で指定してください'],
-    });
-  }
-
   const { valid_from, valid_until, application_submitted_at, decision_at, ...rest } = parsed.data;
 
-  let updated;
-  try {
-    updated = await withOrgContext(ctx.orgId, async (tx) => {
-      const nextIsActive = parsed.data.is_active ?? existing.is_active;
-      if (nextIsActive) {
+  const result = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const writable = await requireWritablePatient(tx, ctx, id);
+      if ('response' in writable) return { response: writable.response };
+
+      const existing = await tx.patientInsurance.findFirst({
+        where: {
+          id: insuranceId,
+          patient_id: id,
+          org_id: ctx.orgId,
+          ...(caseAssignmentWherePut
+            ? { patient: { cases: { some: caseAssignmentWherePut } } }
+            : {}),
+        },
+        select: {
+          id: true,
+          insurance_type: true,
+          application_status: true,
+          public_program_code: true,
+          valid_from: true,
+          valid_until: true,
+          application_submitted_at: true,
+          decision_at: true,
+          previous_care_level: true,
+          provisional_care_level: true,
+          confirmed_care_level: true,
+          is_active: true,
+          updated_at: true,
+        },
+      });
+      if (!existing) return { response: notFound('保険情報が見つかりません') };
+
+      if (existing.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
+        return { response: staleInsuranceConflict(expectedUpdatedAt, existing.updated_at) };
+      }
+
+      const effectiveValidation = validateEffectivePatientInsuranceUpdate(existing, parsed.data);
+      if (!effectiveValidation.success) {
+        return {
+          response: validationError(
+            '入力値が不正です',
+            effectiveValidation.error.flatten().fieldErrors,
+          ),
+        };
+      }
+      const effectiveInsurance = effectiveValidation.data;
+      const effectiveInsuranceType = effectiveInsurance.insurance_type;
+
+      if (effectiveInsurance.is_active !== false) {
         const overlappingInsurance = await tx.patientInsurance.findFirst({
           where: buildPatientInsuranceOverlapWhere({
             orgId: ctx.orgId,
             patientId: id,
             excludeInsuranceId: insuranceId,
             insuranceType: effectiveInsuranceType,
-            publicProgramCode: parsed.data.public_program_code ?? existing.public_program_code,
-            validFrom: valid_from !== undefined ? valid_from : existing.valid_from,
-            validUntil: valid_until !== undefined ? valid_until : existing.valid_until,
+            publicProgramCode: effectiveInsurance.public_program_code,
+            validFrom: effectiveInsurance.valid_from,
+            validUntil: effectiveInsurance.valid_until,
           }),
           select: { id: true },
         });
@@ -212,10 +172,16 @@ async function authenticatedPUT(
         }
       }
 
-      return tx.patientInsurance.update({
-        where: { id: insuranceId },
+      const updateResult = await tx.patientInsurance.updateMany({
+        where: {
+          id: insuranceId,
+          patient_id: id,
+          org_id: ctx.orgId,
+          updated_at: expectedUpdatedAt,
+        },
         data: {
           ...rest,
+          ...incompatiblePatientInsuranceFieldClears(effectiveInsuranceType),
           ...(valid_from !== undefined
             ? { valid_from: valid_from ? new Date(valid_from) : null }
             : {}),
@@ -234,17 +200,37 @@ async function authenticatedPUT(
             : {}),
         },
       });
-    });
-  } catch (cause) {
-    if (cause instanceof PatientInsuranceOverlapError) {
-      return validationError('同じ期間に有効な保険情報が既に存在します', {
-        valid_from: ['同一患者・同一保険種別の有効期間が重複しています'],
-      });
-    }
-    throw cause;
-  }
 
-  return success({ data: updated });
+      const current = await tx.patientInsurance.findFirst({
+        where: {
+          id: insuranceId,
+          patient_id: id,
+          org_id: ctx.orgId,
+          ...(caseAssignmentWherePut
+            ? { patient: { cases: { some: caseAssignmentWherePut } } }
+            : {}),
+        },
+        select: patientInsuranceResponseSelect,
+      });
+      if (!current) return { response: notFound('保険情報が見つかりません') };
+      if (updateResult.count === 0) {
+        return { response: staleInsuranceConflict(expectedUpdatedAt, current.updated_at) };
+      }
+      return { updated: current };
+    },
+    { requestContext: ctx },
+  ).catch((cause: unknown) => {
+    if (cause instanceof PatientInsuranceOverlapError) return { overlap: true as const };
+    throw cause;
+  });
+
+  if ('overlap' in result) {
+    return validationError('同じ期間に有効な保険情報が既に存在します', {
+      valid_from: ['同一患者・同一保険種別の有効期間が重複しています'],
+    });
+  }
+  if ('response' in result) return result.response;
+  return success({ data: result.updated });
 }
 
 export async function PUT(
@@ -284,80 +270,67 @@ async function authenticatedDELETE(
   const insuranceId = normalizeRequiredRouteParam(rawInsuranceId);
   if (!insuranceId) return validationError('保険情報IDが不正です');
 
-  // Optimistic concurrency guard (CXR1-CONC02): when the client supplies the
-  // updated_at it last observed, refuse to delete a row that another staff
-  // member has since corrected. The token is optional to stay backward
-  // compatible with legacy callers that delete by id only.
-  const expectedUpdatedAtRaw = new URL(req.url).searchParams.get('expected_updated_at');
-  let expectedUpdatedAt: Date | null = null;
-  if (expectedUpdatedAtRaw !== null) {
-    const parsed = new Date(expectedUpdatedAtRaw);
-    if (Number.isNaN(parsed.getTime())) {
-      return validationError('保険情報の更新時刻が不正です', {
-        expected_updated_at: ['日時形式が不正です'],
-      });
-    }
-    expectedUpdatedAt = parsed;
-  }
-
-  const writable = await requireWritablePatient(prisma, ctx, id);
-  if ('response' in writable) return writable.response;
+  const expectedUpdatedAtResult = readExpectedUpdatedAt(req, true);
+  if ('response' in expectedUpdatedAtResult) return expectedUpdatedAtResult.response;
+  const expectedUpdatedAt = expectedUpdatedAtResult.value as Date;
 
   const caseAssignmentWhereDelete = buildCareCaseAssignmentWhere({
     userId: ctx.userId,
     role: ctx.role,
   });
-  const existing = await prisma.patientInsurance.findFirst({
-    where: {
-      id: insuranceId,
-      patient_id: id,
-      org_id: ctx.orgId,
-      ...(caseAssignmentWhereDelete
-        ? { patient: { cases: { some: caseAssignmentWhereDelete } } }
-        : {}),
+
+  const result = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const writable = await requireWritablePatient(tx, ctx, id);
+      if ('response' in writable) return { response: writable.response };
+
+      const existing = await tx.patientInsurance.findFirst({
+        where: {
+          id: insuranceId,
+          patient_id: id,
+          org_id: ctx.orgId,
+          ...(caseAssignmentWhereDelete
+            ? { patient: { cases: { some: caseAssignmentWhereDelete } } }
+            : {}),
+        },
+        select: { id: true, updated_at: true },
+      });
+      if (!existing) return { response: notFound('保険情報が見つかりません') };
+
+      if (existing.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
+        return { response: staleInsuranceConflict(expectedUpdatedAt, existing.updated_at) };
+      }
+
+      const deleteResult = await tx.patientInsurance.deleteMany({
+        where: {
+          id: insuranceId,
+          patient_id: id,
+          org_id: ctx.orgId,
+          updated_at: expectedUpdatedAt,
+        },
+      });
+      if (deleteResult.count > 0) return { deleted: true };
+
+      const current = await tx.patientInsurance.findFirst({
+        where: {
+          id: insuranceId,
+          patient_id: id,
+          org_id: ctx.orgId,
+          ...(caseAssignmentWhereDelete
+            ? { patient: { cases: { some: caseAssignmentWhereDelete } } }
+            : {}),
+        },
+        select: { updated_at: true },
+      });
+      if (!current) return { response: notFound('保険情報が見つかりません') };
+      return { response: staleInsuranceConflict(expectedUpdatedAt, current.updated_at) };
     },
-    select: { id: true, updated_at: true },
-  });
-  if (!existing) return notFound('保険情報が見つかりません');
+    { requestContext: ctx },
+  );
 
-  // Fast-path stale detection before opening the write transaction.
-  if (
-    expectedUpdatedAt !== null &&
-    existing.updated_at.toISOString() !== expectedUpdatedAt.toISOString()
-  ) {
-    return staleInsuranceConflict(expectedUpdatedAt, existing.updated_at);
-  }
-
-  const deleted = await withOrgContext(ctx.orgId, async (tx) => {
-    if (expectedUpdatedAt === null) {
-      await tx.patientInsurance.delete({ where: { id: insuranceId } });
-      return true;
-    }
-    // Guarded delete closes the TOCTOU window between the existence check above
-    // and the write: the row is only removed if updated_at still matches, so a
-    // concurrent correction (which bumps updated_at) leaves the row intact.
-    const result = await tx.patientInsurance.deleteMany({
-      where: {
-        id: insuranceId,
-        patient_id: id,
-        org_id: ctx.orgId,
-        updated_at: expectedUpdatedAt,
-      },
-    });
-    return result.count > 0;
-  });
-
-  if (!deleted) {
-    const current = await prisma.patientInsurance.findFirst({
-      where: { id: insuranceId, patient_id: id, org_id: ctx.orgId },
-      select: { updated_at: true },
-    });
-    if (!current) return notFound('保険情報が見つかりません');
-    // expectedUpdatedAt is non-null here: the null path always deletes.
-    return staleInsuranceConflict(expectedUpdatedAt as Date, current.updated_at);
-  }
-
-  return success({ data: { id: insuranceId, deleted: true } });
+  if ('response' in result) return result.response;
+  return success({ data: { id: insuranceId, deleted: result.deleted } });
 }
 
 export async function DELETE(
