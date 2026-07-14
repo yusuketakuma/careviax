@@ -47,7 +47,13 @@ describe('patient insurance summary helpers', () => {
     expect(result.current.map((record) => record.id)).toEqual(['starts_today', 'ends_today']);
     expect(result.upcoming.map((record) => record.id)).toEqual(['upcoming']);
     expect(result.history.map((record) => record.id)).toEqual(['inactive', 'expired']);
-    expect(result.all).toBe(records);
+    expect(Object.keys(result)).toEqual(['current', 'upcoming', 'history']);
+
+    const classifiedIds = [...result.current, ...result.upcoming, ...result.history].map(
+      (record) => record.id,
+    );
+    expect(classifiedIds).toEqual(records.map((record) => record.id));
+    expect(new Set(classifiedIds).size).toBe(records.length);
   });
 
   it('builds card-safe public summaries without raw insurance identifiers', () => {

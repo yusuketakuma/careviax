@@ -555,10 +555,7 @@ export async function buildPatientFoundationData(
       detail: hasAnyInsurance
         ? `${insuranceItems.length}件 / ${insuranceAlertCount}件確認`
         : '有効な保険・公費が未登録です。',
-      action_href: buildPatientHref(
-        args.patientId,
-        '/edit?section=contact#medical_insurance_number',
-      ),
+      action_href: buildPatientHref(args.patientId, '#patient-insurance'),
       action_label: '保険を確認',
     },
     {

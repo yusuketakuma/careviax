@@ -120,7 +120,6 @@ export function classifyPatientInsurances<T extends PatientInsuranceClassifiable
       const validUntil = toDate(insurance.valid_until);
       return !insurance.is_active || (validUntil != null && validUntil < today);
     }),
-    all: insurances,
   };
 }
 

@@ -1565,7 +1565,7 @@ describe('getPatientOverview', () => {
         'care_team_reliability',
         `/patients/${encodedPatientId}/edit?section=team#intake.care_manager.name`,
       ],
-      ['insurance', `/patients/${encodedPatientId}/edit?section=contact#medical_insurance_number`],
+      ['insurance', `/patients/${encodedPatientId}#patient-insurance`],
       ['medication_risk', `/patients/${encodedPatientId}/safety-check`],
       ['visit_preparation', `/patients/${encodedPatientId}`],
       ['labs', `/patients/${encodedPatientId}/safety-check`],
