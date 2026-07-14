@@ -9,6 +9,7 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { PACKAGING_INSTRUCTION_TAG_OPTIONS } from '@/lib/dispensing/packaging';
 import {
   buildPatientBoardCardSortKey,
@@ -927,10 +928,12 @@ const authenticatedGET = withAuthContext(
 );
 
 export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+    } catch (err) {
+      unstable_rethrow(err);
+      return withSensitiveNoStore(internalError());
+    }
+  });
 };

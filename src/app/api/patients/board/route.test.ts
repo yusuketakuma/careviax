@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { getPerformanceSnapshot, resetPerformanceMetrics } from '@/lib/utils/performance';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
@@ -157,6 +158,7 @@ describe('/api/patients/board', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetPerformanceMetrics();
     patientFindManyMock.mockResolvedValue([]);
     patientCountMock.mockResolvedValue(0);
     dispenseTaskFindManyMock.mockResolvedValue([]);
@@ -965,7 +967,21 @@ describe('/api/patients/board', () => {
     expect(json.meta.total_count).toBe(81);
     expect(json.meta.has_more).toBe(true);
     expect(json.meta.next_cursor).toEqual(expect.any(String));
-    expect(Number(response.headers.get('content-length'))).toBeLessThanOrEqual(307_200);
+    const responseBytes = Number(response.headers.get('content-length'));
+    expect(responseBytes).toBeLessThanOrEqual(307_200);
+    expect(
+      getPerformanceSnapshot({ topRoutes: 100 }).routes.find(
+        (route) => route.method === 'GET' && route.route === '/api/patients/board',
+      ),
+    ).toMatchObject({
+      critical_route: true,
+      critical_route_family: 'patients-board',
+      payload_sample_count: 1,
+      last_payload_bytes: responseBytes,
+      payload_budget_bytes: 307_200,
+      payload_budget_status: 'within_budget',
+      payload_budget_met: true,
+    });
 
     const patientQueries = patientFindManyMock.mock.calls.map(([args]) => args);
     expect(patientQueries).toHaveLength(2);
