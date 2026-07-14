@@ -48,14 +48,35 @@
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
-  共有surfaceとlong gateは事前通知で直列化する。`codex1`の`API-CONTRACT-002E`は完了し、次sliceを選定中。
-  現在のownershipは`codex2`: `E2E-PREFLIGHT-RLS-EXEMPT-001`のRLS intentional-exclusion SSOTとmedical UI preflight。
+  共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `API-CONTRACT-002F-WRAPPED-EXPORT-TRACE`の
+  5 withAuthContext export routesとtests、`codex2`: `E2E-PREFLIGHT-RLS-EXEMPT-001`のevidence同期と最終regression/build。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex2: E2E-PREFLIGHT-RLS-EXEMPT-001 (DONE, 2026-07-14; implementation `ae70862dd` + ratchet follow-up `42c89cd0d`, `PUSHED`).
+  - current task / files inspected / root cause:
+    Medical UI preflight、RLS schema/migrations/SSOT/contract test、display-id allocator/direct-access ratchet、local e2e DBを照合。
+    `IdSequence`は採番専用内部counterとして設計・RLS契約とも意図的非RLSだが、preflightだけが`org_id`物理表を一律に検査し、
+    `id_sequence(rls=false,force=false,policies=0)`をweak RLSとしてfalse-failにしていた。Prisma model名とmapped PostgreSQL表名も異なる。
+  - files changed / bugs fixed / correctness / security / privacy / medical safety / performance:
+    `tools/scripts/rls-intentional-exclusions.ts`へexact `{model:'IdSequence',table:'id_sequence'}` mappingを置き、
+    `tools/scripts/medical-ui-e2e-preflight.ts`のSQL除外と`src/tools/rls-policy-contract.test.ts`のmodel除外を同じtooling SSOTへ接続した。
+    除外は1表だけで、他の全`org_id` relationsは従来どおりENABLE/FORCE/policy検査対象。Schema/migration/DB data/RLS policy、
+    allocator access、route/API/UIは変更せず、security/privacy/medical boundaryを弱めていない。
+  - validation results / remaining work / next action / rollback:
+    Focused RLS/display-id 2 files / 45 tests PASS（6 skipped）、exact ESLint/Prettier、aggregate typecheck + 8 GiB no-unused、
+    独立codex1 verifier APPROVED。Live production preflightは137 RLS tables / 22 audit triggers、app 3012、DB 5433を全PASSし、
+    `/api/health`は200。SELECT-only duplicate CareReport、visit route conflict、migration precondition checksも全PASS。
+    初回full VitestはSSOTを`src/`へ置いたことでallocator direct-access ratchetが1件failし、tooling-only moduleへ移して局所再検証後、
+    final full Vitest 1,557 files / 16,284 tests PASS（3 files / 13 tests skipped、0 failures）。最新source production buildはwebpack 4.0分、
+    TypeScript 83秒、311/311 pages、CSS optimizer warning 0、ENOSPCなしでPASS。`pnpm start:e2e:local`は200/readyだが、standalone構成で
+    `next start`非推奨warningを出す既存DX debtが残る。Targeted medical Playwrightはlocal DBへのPOST/PATCH/DELETEとread-audit writeを含み得るため、
+    current human gateなしでは実行していない。DB prepare/migrate/seed/mutationなし。非視覚tooling修正のためimagegenなし。
+    Rollbackは`42c89cd0d`→`ae70862dd`の順にrevertし、DB/data rollback不要。
 
 - codex1: API-CONTRACT-002E-EXPORT-TRACE-FOUNDATION (DONE; parent remains Partial, 2026-07-14; implementation `6c8ee5932`, `PUSHED`).
   - current task / files inspected / root cause:
