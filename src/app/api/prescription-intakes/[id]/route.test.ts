@@ -7,6 +7,7 @@ const {
   prescriptionIntakeFindFirstMock,
   requireWritablePatientMock,
   createAuditLogEntryMock,
+  recordPhiReadAuditForRequestMock,
   resolveOperationalTasksMock,
   upsertOperationalTaskMock,
 } = vi.hoisted(() => ({
@@ -15,6 +16,7 @@ const {
   prescriptionIntakeFindFirstMock: vi.fn(),
   requireWritablePatientMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
 }));
@@ -37,6 +39,10 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/server/services/operational-tasks', () => ({
@@ -102,6 +108,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
       message: '処方受付IDが不正です',
     });
     expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
@@ -133,6 +140,15 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
       org_id: 'org_1',
     });
     expect(findFirstArg.where.id).not.toBe(encodeURIComponent(hostileId));
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      {
+        patientId: undefined,
+        targetType: 'prescription_intake',
+        targetId: hostileId,
+        view: 'prescription_intake_detail',
+      },
+    );
   });
 
   it('keeps PHI-rich prescription detail responses no-store', async () => {
@@ -216,6 +232,15 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
     });
     expect(body).not.toHaveProperty('id');
     expect(body).not.toHaveProperty('cycle');
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'prescription_intake',
+        targetId: 'intake_phi_1',
+        view: 'prescription_intake_detail',
+      },
+    );
   });
 
   it('returns no-store 404 when the prescription intake is not found', async () => {
@@ -232,6 +257,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
       code: 'WORKFLOW_NOT_FOUND',
       message: '処方箋が見つかりません',
     });
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a fixed no-store 500 when prescription intake loading fails without exposing raw PHI', async () => {
@@ -254,6 +280,26 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
     expect(bodyText).not.toContain('山田');
     expect(bodyText).not.toContain('JAHIS');
     expect(bodyText).not.toContain('12345678');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not record a read audit when GET authentication is rejected', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'intake_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank prescription intake ids before parsing or loading the intake on PATCH', async () => {

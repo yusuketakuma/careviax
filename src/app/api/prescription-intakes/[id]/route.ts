@@ -5,6 +5,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { updatePrescriptionIntakeSchema } from '@/lib/validations/prescription';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -124,6 +125,13 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   });
 
   if (!intake) return notFound('処方箋が見つかりません');
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: intake.cycle?.patient_id,
+    targetType: 'prescription_intake',
+    targetId: id,
+    view: 'prescription_intake_detail',
+  });
 
   return success({ data: intake });
 }
