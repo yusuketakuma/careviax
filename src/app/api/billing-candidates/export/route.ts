@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
 import { withAuthContext } from '@/lib/auth/context';
-import { conflict, error, validationError } from '@/lib/api/response';
+import { conflict, error, registeredError, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -481,10 +481,9 @@ const authenticatedGET = withAuthContext(
         return null;
       } catch {
         return withSensitiveNoStore(
-          error(
+          registeredError(
             'BILLING_EXPORT_AUDIT_FAILED',
             '請求候補のエクスポート監査を記録できませんでした',
-            500,
           ),
         );
       }

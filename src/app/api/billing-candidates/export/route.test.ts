@@ -390,8 +390,47 @@ describe('/api/billing-candidates/export GET', () => {
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'BILLING_EXPORT_AUDIT_FAILED',
+      message: '請求候補のエクスポート監査を記録できませんでした',
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed without returning claims XML when the success audit cannot be recorded', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          format: 'claims-xml',
+          content: '<ClaimsExport />',
+          recordCount: 1,
+          generatedAt: '2026-03-31T00:00:00.000Z',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubEnv('RECECOM_CLAIMS_BASE_URL', 'https://rececom.example.test');
+    vi.stubGlobal('fetch', fetchMock);
+    recordDataExportAuditMock
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('success audit down'));
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&format=claims-xml',
+      ),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'BILLING_EXPORT_AUDIT_FAILED',
+      message: '請求候補のエクスポート監査を記録できませんでした',
+    });
+    expect(JSON.stringify(body)).not.toContain('<ClaimsExport />');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(recordDataExportAuditMock).toHaveBeenCalledTimes(2);
   });
 
   it.each([

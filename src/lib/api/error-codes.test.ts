@@ -37,6 +37,13 @@ describe('API error code registry', () => {
           "recoveryAction": "sign_in",
           "retryable": false,
         },
+        "BILLING_EXPORT_AUDIT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.billing.export_audit_failed",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
         "CARE_REPORT_PDF_EXPORT_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",
