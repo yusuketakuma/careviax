@@ -29,7 +29,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
+import { SegmentError, SegmentLoading, SegmentStaleBanner } from '@/components/ui/segment-state';
 import {
   Select,
   SelectContent,
@@ -65,6 +65,7 @@ import { buildFileDownloadHref } from '@/lib/files/navigation';
 import { computeUploadSha256Hex } from '@/lib/files/upload-checksum';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useStaleAfterRefetchError } from '@/lib/hooks/use-stale-after-refetch-error';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { getSafePatientMovementHref } from '@/lib/patient/movement-href';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -4975,6 +4976,9 @@ export function CardWorkspace({
   const {
     data: patient,
     isLoading,
+    isError: patientOverviewIsError,
+    isRefetchError: patientOverviewIsRefetchError,
+    dataUpdatedAt: patientOverviewDataUpdatedAt,
     error,
     refetch: refetchPatient,
   } = useQuery<PatientOverview>({
@@ -4993,6 +4997,12 @@ export function CardWorkspace({
     initialData: initialPatient ?? undefined,
     initialDataUpdatedAt: initialPatientUpdatedAt,
     staleTime: initialPatient ? SSR_PATIENT_OVERVIEW_STALE_TIME_MS : 0,
+  });
+  const patientOverviewState = useStaleAfterRefetchError({
+    data: patient,
+    isLoading,
+    isError: patientOverviewIsError,
+    isRefetchError: patientOverviewIsRefetchError,
   });
 
   const {
@@ -5517,6 +5527,9 @@ export function CardWorkspace({
   }
   // patient が存在する場合は、背景 refetch が失敗(error)していてもワークスペースを維持して表示する
   // (react-query v5 は cached/initialData がある状態で error をセットしても data を保持する)。
+  const patientOverviewLastUpdatedLabel = patientOverviewDataUpdatedAt
+    ? format(new Date(patientOverviewDataUpdatedAt), 'M/d(EEE) HH:mm', { locale: ja })
+    : null;
 
   const renderPatientTimelinePanel = () => {
     if (movementTimelineLoading) {
@@ -5658,6 +5671,19 @@ export function CardWorkspace({
         }}
         safetyCheckHref={buildPatientHref(patientId, '/safety-check')}
       />
+      {patientOverviewState.isStaleAfterRefetchError ? (
+        <SegmentStaleBanner
+          title="前回取得時点の患者情報を表示中"
+          description={`最新の患者情報を取得できませんでした。${
+            patientOverviewLastUpdatedLabel
+              ? `最終取得は${patientOverviewLastUpdatedLabel}です。`
+              : ''
+          }表示内容が古い可能性があるため、必要に応じて再取得してください。`}
+          onRetry={() => void refetchPatient()}
+          retryLabel="患者情報を再取得"
+          className="[&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-11"
+        />
+      ) : null}
       {headerSummaryError ? (
         <p
           role="status"

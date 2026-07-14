@@ -372,6 +372,8 @@ function mockPatientQuery(
     movementTimelineRefetch?: ReturnType<typeof vi.fn>;
     movementTimelineVariesByRequest?: boolean;
     patientOverviewLoading?: boolean;
+    patientOverviewUpdatedAt?: number;
+    patientOverviewRefetch?: ReturnType<typeof vi.fn>;
     executePatientShareCaseMutation?: boolean;
     executeRiskTaskSyncMutation?: boolean;
     executeRiskTaskWaiverMutation?: boolean;
@@ -975,14 +977,15 @@ function mockPatientQuery(
     }
 
     if (queryKey[0] === 'patient-overview') {
+      const hasPatientData = !options.patientOverviewLoading && !options.patientOverviewMissing;
       return {
-        data:
-          options.patientOverviewLoading || options.patientOverviewMissing
-            ? undefined
-            : patientData,
+        data: hasPatientData ? patientData : undefined,
         isLoading: Boolean(options.patientOverviewLoading),
+        isError: Boolean(options.patientOverviewError),
+        isRefetchError: Boolean(hasPatientData && options.patientOverviewError),
+        dataUpdatedAt: options.patientOverviewUpdatedAt ?? 0,
         error: options.patientOverviewError ?? null,
-        refetch: vi.fn(),
+        refetch: options.patientOverviewRefetch ?? vi.fn(),
       };
     }
 
@@ -1136,12 +1139,17 @@ describe('CardWorkspace', () => {
   });
 
   it('keeps the workspace visible when a background refetch fails but patient data is cached', () => {
+    const refetchPatient = vi.fn();
     mockPatientQuery(
       buildWorkspace(),
       null,
       {},
       {
-        patientOverviewError: new Error('refetch failed'),
+        patientOverviewError: new Error(
+          'refetch failed for patient 佐藤花子 / FAX 03-1111-1111 / token=secret',
+        ),
+        patientOverviewUpdatedAt: new Date(2026, 6, 14, 9, 30).getTime(),
+        patientOverviewRefetch: refetchPatient,
       },
     );
 
@@ -1151,6 +1159,17 @@ describe('CardWorkspace', () => {
     expect(screen.queryByText('患者情報を表示できません')).toBeNull();
     expect(screen.queryByText('患者が見つかりません')).toBeNull();
     expect(screen.getByRole('heading', { name: '処方カード作業台', level: 1 })).toBeTruthy();
+    expect(screen.getByText('前回取得時点の患者情報を表示中')).toBeTruthy();
+    expect(screen.getByText(/最終取得は7\/14\(火\) 09:30です/)).toBeTruthy();
+    expect(screen.queryByText(/佐藤花子|03-1111-1111|token=secret/)).toBeNull();
+
+    const retryButton = screen.getByRole('button', { name: '患者情報を再取得' });
+    expect(retryButton.className).toContain('min-h-[44px]');
+    expect(retryButton.closest('[role="status"]')?.className).toContain(
+      'sm:[&_[data-slot=button]]:min-h-11',
+    );
+    fireEvent.click(retryButton);
+    expect(refetchPatient).toHaveBeenCalledTimes(1);
   });
 
   it('renders the 06_card tabbed workspace: header, safety board, tab sections, prescription, activities, rail', async () => {
