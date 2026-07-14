@@ -3,6 +3,7 @@ import { withAuthContext, requireAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -65,10 +66,17 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   if (!patient) return sensitiveResponse(notFound('患者自己申告が見つかりません'));
 
   const report = await prisma.patientSelfReport.findFirst({
-    where: { id: reportRef.id, org_id: ctx.orgId },
+    where: { id: reportRef.id, org_id: ctx.orgId, patient_id: reportRef.patient_id },
     select: patientSelfReportResponseSelect,
   });
   if (!report) return sensitiveResponse(notFound('患者自己申告が見つかりません'));
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: report.patient_id,
+    targetType: 'patient_self_report',
+    targetId: report.id,
+    view: 'patient_self_report_detail',
+  });
 
   const privacy = getPatientPrivacyFlags(ctx.role);
   return sensitiveResponse(

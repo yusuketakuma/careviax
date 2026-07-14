@@ -12,6 +12,7 @@ const {
   patientTxFindFirstMock,
   patientSelfReportUpdateMock,
   auditLogCreateMock,
+  recordPhiReadAuditForRequestMock,
   withOrgContextMock,
   authRoleMock,
 } = vi.hoisted(() => ({
@@ -24,6 +25,7 @@ const {
   patientTxFindFirstMock: vi.fn(),
   patientSelfReportUpdateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   authRoleMock: vi.fn(),
 }));
@@ -49,6 +51,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 import { GET, PATCH } from './route';
@@ -396,6 +402,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientSelfReportUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when self report detail lookup fails unexpectedly', async () => {
@@ -412,6 +419,26 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     const bodyText = await response.text();
     expect(bodyText).toContain('INTERNAL_ERROR');
     expect(bodyText).not.toContain('raw self report detail secret');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not record a read audit when GET authentication is rejected', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    const response = await GET(createGetRequest('report_1'), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(patientSelfReportFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when self report update fails unexpectedly', async () => {
@@ -480,6 +507,25 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     });
     expect(patientSelfReportFindFirstMock).toHaveBeenCalledTimes(1);
     expect(patientSelfReportUpdateMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the final detail no longer belongs to the assigned patient', async () => {
+    patientSelfReportFindFirstMock
+      .mockResolvedValueOnce({ id: 'report_1', patient_id: 'patient_1' })
+      .mockResolvedValueOnce(null);
+
+    const response = await GET(createGetRequest('report_1'), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    expect(patientSelfReportFindFirstMock).toHaveBeenNthCalledWith(2, {
+      where: { id: 'report_1', org_id: 'org_1', patient_id: 'patient_1' },
+      select: expect.any(Object),
+    });
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns unmasked detail for pharmacist users', async () => {
@@ -502,6 +548,15 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
         sensitive_fields_masked: false,
       }),
     });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'patient_self_report',
+        targetId: 'report_1',
+        view: 'patient_self_report_detail',
+      },
+    );
   });
 
   it('masks sensitive self report detail fields for clerk users', async () => {
@@ -527,6 +582,15 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
         sensitive_fields_masked: true,
       }),
     });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'clerk' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'patient_self_report',
+        targetId: 'report_1',
+        view: 'patient_self_report_detail',
+      },
+    );
   });
 
   it('does not update an unassigned self report', async () => {
