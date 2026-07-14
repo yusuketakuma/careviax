@@ -31,6 +31,8 @@ describe('recordFileDownloadAudit', () => {
       responseMode: 'json',
       ipAddress: '203.0.113.10',
       userAgent: 'TestBrowser/1.0',
+      requestId: 'request_file_download_1',
+      correlationId: 'correlation_file_download_1',
     });
 
     expect(recordDataExportAuditMock).toHaveBeenCalledWith(db, {
@@ -51,6 +53,8 @@ describe('recordFileDownloadAudit', () => {
       },
       ipAddress: '203.0.113.10',
       userAgent: 'TestBrowser/1.0',
+      requestId: 'request_file_download_1',
+      correlationId: 'correlation_file_download_1',
     });
     expect(JSON.stringify(recordDataExportAuditMock.mock.calls)).not.toContain('downloadUrl');
     expect(JSON.stringify(recordDataExportAuditMock.mock.calls)).not.toContain('storageKey');

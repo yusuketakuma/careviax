@@ -221,6 +221,8 @@ export async function recordFileDownloadAudit(
     contractDocumentContext?: FileDownloadContractDocumentContext;
     ipAddress?: string;
     userAgent?: string;
+    requestId?: string;
+    correlationId?: string;
   },
 ) {
   await writeDataExportAudit(db, {
@@ -271,5 +273,7 @@ export async function recordFileDownloadAudit(
     },
     ipAddress: args.ipAddress,
     userAgent: args.userAgent,
+    requestId: args.requestId,
+    correlationId: args.correlationId,
   });
 }

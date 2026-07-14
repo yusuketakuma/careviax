@@ -35,6 +35,8 @@ vi.mock('@/lib/auth/context', () => ({
           actorSiteId?: string;
           ipAddress?: string;
           userAgent?: string;
+          requestId: string;
+          correlationId: string;
         },
         routeContext: { params: Promise<{ id: string }> },
       ) => Promise<Response>,
@@ -42,7 +44,10 @@ vi.mock('@/lib/auth/context', () => ({
     async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
       const authResult = await requireAuthContextMock(req);
       if ('response' in authResult) return authResult.response;
-      return handler(req, authResult.ctx, routeContext);
+      const response = await handler(req, authResult.ctx, routeContext);
+      response.headers.set('X-Request-Id', authResult.ctx.requestId);
+      response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+      return response;
     },
 }));
 
@@ -72,6 +77,8 @@ vi.mock('@/server/services/file-download-audit', () => ({
 import { GET } from './route';
 
 const originalDisableLegacyFileApi = process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV];
+const REQUEST_ID = 'request_file_download_1';
+const CORRELATION_ID = 'correlation_file_download_1';
 
 function createRequest() {
   return new NextRequest('http://localhost/api/files/file_1/download', {
@@ -102,6 +109,8 @@ describe('/api/files/[id]/download GET', () => {
         actorSiteId: 'site_1',
         ipAddress: '203.0.113.10',
         userAgent: 'TestBrowser/1.0',
+        requestId: REQUEST_ID,
+        correlationId: CORRELATION_ID,
       },
     });
     prepareFileDownloadMock.mockResolvedValue({
@@ -147,6 +156,8 @@ describe('/api/files/[id]/download GET', () => {
       throw new Error('Expected a response from file download GET');
     }
     expect(response.status).toBe(410);
+    expect(response.headers.get('X-Request-Id')).toBeNull();
+    expect(response.headers.get('X-Correlation-Id')).toBeNull();
     await expect(response.json()).resolves.toMatchObject({
       code: 'PHOS_LEGACY_FILE_API_DISABLED',
     });
@@ -175,6 +186,8 @@ describe('/api/files/[id]/download GET', () => {
     expect(response.headers.get('Accept-Ranges')).toBe('none');
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe(REQUEST_ID);
+    expect(response.headers.get('X-Correlation-Id')).toBe(CORRELATION_ID);
     expect(await response.text()).toBe('file body');
     expect(JSON.stringify([...response.headers.entries()])).not.toContain('https://example.com');
     expect(JSON.stringify([...response.headers.entries()])).not.toContain('X-Amz-Signature');
@@ -216,6 +229,8 @@ describe('/api/files/[id]/download GET', () => {
       },
       ipAddress: '203.0.113.10',
       userAgent: 'TestBrowser/1.0',
+      requestId: REQUEST_ID,
+      correlationId: CORRELATION_ID,
     });
     const auditPayload = JSON.stringify(recordFileDownloadAuditMock.mock.calls);
     expect(auditPayload).not.toContain('https://example.com/archive.zip');

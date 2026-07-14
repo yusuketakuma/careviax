@@ -59,6 +59,8 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
           : {}),
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
+        correlationId: ctx.correlationId,
       });
     } catch {
       return withSensitiveNoStore(
