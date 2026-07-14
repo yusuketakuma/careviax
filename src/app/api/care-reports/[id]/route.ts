@@ -40,6 +40,7 @@ import {
   resolveDashboardAssignmentScope,
 } from '@/server/services/dashboard-assignment-scope';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 
 const sensitiveResponse = withSensitiveNoStore;
@@ -241,7 +242,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
         pdf_url: permissions.can_send ? report.pdf_url : null,
       };
 
-      return sensitiveResponse(
+      const response = sensitiveResponse(
         success({
           data: {
             ...reportResponseData,
@@ -291,6 +292,15 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
           },
         }),
       );
+
+      recordPhiReadAuditForRequest(ctx, {
+        patientId: report.patient_id,
+        targetType: 'care_report',
+        targetId: report.id,
+        view: 'care_report_detail',
+      });
+
+      return response;
     },
     { requestContext: ctx },
   );

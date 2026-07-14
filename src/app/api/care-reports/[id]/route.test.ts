@@ -16,6 +16,8 @@ const {
   getChannelStatsByNameMock,
   getRecommendedChannelsMock,
   careCaseFindManyMock,
+  canAccessCareReportSourceMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
@@ -30,6 +32,8 @@ const {
   getChannelStatsByNameMock: vi.fn(),
   getRecommendedChannelsMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  canAccessCareReportSourceMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -55,6 +59,14 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
+}));
+
+vi.mock('@/server/services/care-report-access', () => ({
+  canAccessCareReportSource: canAccessCareReportSourceMock,
 }));
 
 vi.mock('@/lib/prescriptions/prescriber-institutions', () => ({
@@ -188,6 +200,7 @@ describe('care-reports/[id] route', () => {
     });
     documentDeliveryRuleFindFirstMock.mockResolvedValue(null);
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+    canAccessCareReportSourceMock.mockResolvedValue(true);
     careReportUpdateManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -324,6 +337,26 @@ describe('care-reports/[id] route', () => {
         }),
       }),
     );
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+      }),
+      {
+        patientId: 'patient_1',
+        targetType: 'care_report',
+        targetId: 'report_1',
+        view: 'care_report_detail',
+      },
+    );
+    const serializedAudit = JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls);
+    expect(serializedAudit).not.toContain('医師へ共有する本文');
+    expect(serializedAudit).not.toContain('山田 太郎');
+    expect(serializedAudit).not.toContain('みなとクリニック');
+    expect(serializedAudit).not.toContain('03-1111-2222');
+    expect(serializedAudit).not.toContain('田中 一郎');
   });
 
   it('returns minimal archived-patient state in the report patient summary', async () => {
@@ -378,6 +411,50 @@ describe('care-reports/[id] route', () => {
     expect(bodyText).not.toContain('raw report detail');
     expect(bodyText).not.toContain('山田 太郎');
     expect(bodyText).not.toContain('token secret');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit a report detail that does not exist', async () => {
+    careReportFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'missing_report' }),
+    });
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    expect(canAccessCareReportSourceMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit a report detail when source access is forbidden', async () => {
+    canAccessCareReportSourceMock.mockResolvedValueOnce(false);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit a report detail when enrichment fails', async () => {
+    findExternalProfessionalSuggestionsMock.mockRejectedValueOnce(
+      new Error('raw report recipient doctor@example.com'),
+    );
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(JSON.stringify(body)).not.toContain('doctor@example.com');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when report detail auth context fails', async () => {
@@ -402,6 +479,25 @@ describe('care-reports/[id] route', () => {
     expect(bodyText).not.toContain('山田 太郎');
     expect(bodyText).not.toContain('token secret');
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit a report detail rejected by authorization', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(
+        JSON.stringify({ code: 'FORBIDDEN', message: '報告書の閲覧権限がありません' }),
+        { status: 403 },
+      ),
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns report action permissions for the current role without widening view access', async () => {
@@ -487,6 +583,23 @@ describe('care-reports/[id] route', () => {
       content: false,
       pdf_url: true,
     });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_clerk',
+        role: 'clerk',
+      }),
+      {
+        patientId: 'patient_1',
+        targetType: 'care_report',
+        targetId: 'report_1',
+        view: 'care_report_detail',
+      },
+    );
+    const serializedAudit = JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls);
+    expect(serializedAudit).not.toContain('山田 医師');
+    expect(serializedAudit).not.toContain('doctor@example.com');
   });
 
   it('returns editable draft content for author-only roles without delivery support fields', async () => {
@@ -613,6 +726,7 @@ describe('care-reports/[id] route', () => {
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-draft status updates outside the send workflow', async () => {
