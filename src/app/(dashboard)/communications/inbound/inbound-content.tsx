@@ -121,6 +121,10 @@ type InboundSignalTaskResponse = {
 };
 
 type InboundSignalReviewAction = 'accept' | 'record_only' | 'reject';
+type InboundSignalReviewInput = {
+  signalId: string;
+  action: InboundSignalReviewAction;
+};
 
 type InboundSignalReviewResponse = {
   data: {
@@ -904,6 +908,9 @@ export function InboundCommunicationsContent() {
   const [detailRequestedEventId, setDetailRequestedEventId] = useState<string | null>(null);
   const [intakeForm, setIntakeForm] = useState<InboundIntakeFormState>(EMPTY_INTAKE_FORM);
   const [taskFailureCandidateKey, setTaskFailureCandidateKey] = useState<string | null>(null);
+  const [reviewFailureInput, setReviewFailureInput] = useState<InboundSignalReviewInput | null>(
+    null,
+  );
   const [stockApplyForms, setStockApplyForms] = useState<Record<string, StockApplyFormState>>({});
   const [sourceMappingForm, setSourceMappingForm] =
     useState<InboundSourceMappingFormState>(EMPTY_SOURCE_MAPPING_FORM);
@@ -1026,7 +1033,7 @@ export function InboundCommunicationsContent() {
   });
 
   const reviewMutation = useMutation({
-    mutationFn: async (input: { signalId: string; action: InboundSignalReviewAction }) => {
+    mutationFn: async (input: InboundSignalReviewInput) => {
       const body =
         input.action === 'reject'
           ? { action: input.action, reason: 'rejected_from_inbound_review_queue' }
@@ -1041,7 +1048,11 @@ export function InboundCommunicationsContent() {
         schema: buildInboundSignalReviewResponseSchema(input.signalId),
       });
     },
+    onMutate: () => {
+      setReviewFailureInput(null);
+    },
     onSuccess: async (response) => {
+      setReviewFailureInput(null);
       const closedCount = response.data.review_task_closure_count ?? 0;
       toast.success(
         closedCount > 0
@@ -1053,7 +1064,8 @@ export function InboundCommunicationsContent() {
         queryClient.invalidateQueries({ queryKey: ['communications-inbound-signals', orgId] }),
       ]);
     },
-    onError: (error) => {
+    onError: (error, input) => {
+      if (input) setReviewFailureInput(input);
       clientLog.warn('inbound_communication.signal_review_failed', error, {
         route: '/communications/inbound',
         entityType: 'inbound_signal',
@@ -2521,6 +2533,19 @@ export function InboundCommunicationsContent() {
                                     retryLabel="タスク作成を再試行"
                                     retryVariant="outline"
                                     retryDisabled={taskMutation.isPending}
+                                    headingLevel={4}
+                                  />
+                                ) : null}
+                                {reviewFailureInput?.signalId === item.signal_id ? (
+                                  <ErrorState
+                                    variant="server"
+                                    title="受信シグナルのレビュー状態を更新できませんでした"
+                                    cause="レビュー状態の更新に失敗しました。受信シグナルは保持されています。"
+                                    nextAction="通信状態を確認して、選択した操作を再試行してください。"
+                                    onRetry={() => reviewMutation.mutate(reviewFailureInput)}
+                                    retryLabel="レビュー操作を再試行"
+                                    retryVariant="outline"
+                                    retryDisabled={reviewMutation.isPending}
                                     headingLevel={4}
                                   />
                                 ) : null}

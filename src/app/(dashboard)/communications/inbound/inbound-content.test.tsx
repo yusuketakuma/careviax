@@ -1125,6 +1125,39 @@ describe('InboundCommunicationsContent', () => {
     });
   });
 
+  it('shows review failure on the affected signal and retries the same action', () => {
+    const poisonError = new Error('佐藤花子 様 / 090-1234-5678 / token=secret');
+    render(<InboundCommunicationsContent />);
+
+    const mutationOptions = useMutationMock.mock.calls[2]?.[0] as {
+      onError: (
+        error: Error,
+        input: { signalId: string; action: 'accept' | 'record_only' | 'reject' },
+      ) => void;
+    };
+    const attemptedInput = { signalId: 'signal_1', action: 'record_only' } as const;
+
+    act(() => {
+      mutationOptions.onError(poisonError, attemptedInput);
+    });
+
+    const updatedReviewPanel = within(screen.getByTestId('selected-inbound-review-panel'));
+    expect(
+      updatedReviewPanel.getAllByText('受信シグナルのレビュー状態を更新できませんでした'),
+    ).toHaveLength(1);
+    expect(
+      updatedReviewPanel.getByText(
+        'レビュー状態の更新に失敗しました。受信シグナルは保持されています。 通信状態を確認して、選択した操作を再試行してください。',
+      ),
+    ).toBeTruthy();
+    expect(updatedReviewPanel.queryByText(poisonError.message)).toBeNull();
+
+    fireEvent.click(updatedReviewPanel.getByRole('button', { name: 'レビュー操作を再試行' }));
+
+    expect(mutateMock).toHaveBeenCalledTimes(1);
+    expect(mutateMock).toHaveBeenCalledWith(attemptedInput);
+  });
+
   it('does not allow accepted signals to be reviewed or task-created again', () => {
     const signalData = buildSignalData();
     signalData.data.items[0].signal.review_status = 'accepted';
