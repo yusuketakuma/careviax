@@ -60,14 +60,19 @@ describe('/api/webhooks/yrese POST', () => {
   it('fails closed when the signing secret is not configured', async () => {
     delete process.env.YRESE_WEBHOOK_SECRET;
     const body = JSON.stringify({ event_type: 'dispensing.confirmed', tenant_id: 'org_1' });
+    const signature = sign(body);
 
-    const response = await POST(createRequest(body, { 'x-yrese-signature': sign(body) }));
+    const response = await POST(createRequest(body, { 'x-yrese-signature': signature }));
 
     expect(response.status).toBe(503);
     expect(response.headers.get('cache-control')).toContain('no-store');
-    await expect(response.json()).resolves.toMatchObject({
+    const responseBody = await response.json();
+    expect(responseBody).toEqual({
       code: 'YRESE_WEBHOOK_SECRET_UNAVAILABLE',
+      message: 'yrese webhook signing secret is not configured',
     });
+    expect(JSON.stringify(responseBody)).not.toContain(signature);
+    expect(JSON.stringify(responseBody)).not.toContain(SECRET);
     expect(importYreseClinicalWebhookMock).not.toHaveBeenCalled();
   });
 
@@ -76,9 +81,22 @@ describe('/api/webhooks/yrese POST', () => {
 
     const missing = await POST(createRequest(body));
     expect(missing.status).toBe(401);
+    expect(missing.headers.get('cache-control')).toContain('no-store');
+    await expect(missing.json()).resolves.toEqual({
+      code: 'YRESE_WEBHOOK_SIGNATURE_INVALID',
+      message: 'Webhook signature is invalid',
+    });
 
-    const invalid = await POST(createRequest(body, { 'x-yrese-signature': 'sha256=bad' }));
+    const invalidSignature = 'sha256=bad-secret-token';
+    const invalid = await POST(createRequest(body, { 'x-yrese-signature': invalidSignature }));
     expect(invalid.status).toBe(401);
+    expect(invalid.headers.get('cache-control')).toContain('no-store');
+    const invalidBody = await invalid.json();
+    expect(invalidBody).toEqual({
+      code: 'YRESE_WEBHOOK_SIGNATURE_INVALID',
+      message: 'Webhook signature is invalid',
+    });
+    expect(JSON.stringify(invalidBody)).not.toContain(invalidSignature);
 
     expect(importYreseClinicalWebhookMock).not.toHaveBeenCalled();
   });
@@ -157,6 +175,13 @@ describe('/api/webhooks/yrese POST', () => {
     const response = await POST(createRequest(body, { 'x-yrese-signature': sign(body) }));
 
     expect(response.status).toBe(413);
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    const responseBody = await response.json();
+    expect(responseBody).toEqual({
+      code: 'YRESE_WEBHOOK_PAYLOAD_TOO_LARGE',
+      message: 'Webhook payload is too large',
+    });
+    expect(JSON.stringify(responseBody)).not.toContain('x'.repeat(32));
     expect(importYreseClinicalWebhookMock).not.toHaveBeenCalled();
   });
 

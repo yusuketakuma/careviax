@@ -1,7 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { error, registeredError, success, validationError } from '@/lib/api/response';
+import { registeredError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObject } from '@/lib/db/json';
 import { logger } from '@/lib/utils/logger';
@@ -95,7 +95,9 @@ export async function POST(req: NextRequest) {
   try {
     bodyText = await req.text();
     if (Buffer.byteLength(bodyText, 'utf8') > MAX_WEBHOOK_BODY_BYTES) {
-      return noStore(error('YRESE_WEBHOOK_PAYLOAD_TOO_LARGE', 'Webhook payload is too large', 413));
+      return noStore(
+        registeredError('YRESE_WEBHOOK_PAYLOAD_TOO_LARGE', 'Webhook payload is too large'),
+      );
     }
 
     const signatureResult = verifyYreseWebhookSignature({
@@ -105,14 +107,15 @@ export async function POST(req: NextRequest) {
     if (!signatureResult.ok) {
       if (signatureResult.reason === 'secret_unconfigured') {
         return noStore(
-          error(
+          registeredError(
             'YRESE_WEBHOOK_SECRET_UNAVAILABLE',
             'yrese webhook signing secret is not configured',
-            503,
           ),
         );
       }
-      return noStore(error('YRESE_WEBHOOK_SIGNATURE_INVALID', 'Webhook signature is invalid', 401));
+      return noStore(
+        registeredError('YRESE_WEBHOOK_SIGNATURE_INVALID', 'Webhook signature is invalid'),
+      );
     }
 
     const bodyObject = parseBodyTextAsJsonObject(bodyText);

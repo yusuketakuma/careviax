@@ -282,6 +282,27 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "YRESE_WEBHOOK_PAYLOAD_TOO_LARGE": {
+          "httpStatus": 413,
+          "logLevel": "warn",
+          "messageLabel": "api.error.webhook.yrese_payload_too_large",
+          "recoveryAction": "correct_input",
+          "retryable": false,
+        },
+        "YRESE_WEBHOOK_SECRET_UNAVAILABLE": {
+          "httpStatus": 503,
+          "logLevel": "error",
+          "messageLabel": "api.error.webhook.yrese_secret_unavailable",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
+        "YRESE_WEBHOOK_SIGNATURE_INVALID": {
+          "httpStatus": 401,
+          "logLevel": "warn",
+          "messageLabel": "api.error.webhook.yrese_signature_invalid",
+          "recoveryAction": "correct_input",
+          "retryable": false,
+        },
       }
     `);
   });

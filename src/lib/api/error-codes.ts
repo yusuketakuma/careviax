@@ -1,5 +1,17 @@
 export type ApiErrorLogLevel = 'info' | 'warn' | 'error';
-export type ApiErrorHttpStatus = 400 | 401 | 403 | 404 | 409 | 410 | 429 | 500 | 501 | 502;
+export type ApiErrorHttpStatus =
+  | 400
+  | 401
+  | 403
+  | 404
+  | 409
+  | 410
+  | 413
+  | 429
+  | 500
+  | 501
+  | 502
+  | 503;
 
 export type ApiErrorRecoveryAction =
   | 'correct_input'
@@ -291,6 +303,27 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     retryable: true,
     recoveryAction: 'retry',
     messageLabel: 'api.error.webhook.yrese_import_failed',
+  },
+  YRESE_WEBHOOK_PAYLOAD_TOO_LARGE: {
+    httpStatus: 413,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'correct_input',
+    messageLabel: 'api.error.webhook.yrese_payload_too_large',
+  },
+  YRESE_WEBHOOK_SECRET_UNAVAILABLE: {
+    httpStatus: 503,
+    logLevel: 'error',
+    retryable: false,
+    recoveryAction: 'return_to_previous',
+    messageLabel: 'api.error.webhook.yrese_secret_unavailable',
+  },
+  YRESE_WEBHOOK_SIGNATURE_INVALID: {
+    httpStatus: 401,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'correct_input',
+    messageLabel: 'api.error.webhook.yrese_signature_invalid',
   },
 } as const satisfies Record<string, ApiErrorDefinition>);
 
