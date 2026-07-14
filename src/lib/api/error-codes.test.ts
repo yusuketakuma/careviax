@@ -37,6 +37,20 @@ describe('API error code registry', () => {
           "recoveryAction": "sign_in",
           "retryable": false,
         },
+        "COMMUNICATION_REQUEST_EXPORT_AUDIT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.communication_request.export_audit_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
+        "COMMUNICATION_REQUEST_EXPORT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.communication_request.export_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "EXTERNAL_FILE_UPLOAD_FAILED": {
           "httpStatus": 502,
           "logLevel": "error",

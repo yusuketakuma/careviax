@@ -47,6 +47,20 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'sign_in',
     messageLabel: 'api.error.auth.unauthenticated',
   },
+  COMMUNICATION_REQUEST_EXPORT_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.communication_request.export_audit_failed',
+  },
+  COMMUNICATION_REQUEST_EXPORT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.communication_request.export_failed',
+  },
   EXTERNAL_FILE_UPLOAD_FAILED: {
     httpStatus: 502,
     logLevel: 'error',

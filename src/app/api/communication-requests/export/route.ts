@@ -8,7 +8,7 @@ import {
   buildCommunicationRequestAssignmentWhere,
   canAccessCareReportCommunication,
 } from '@/server/services/communication-request-access';
-import { error, forbidden, internalError, validationError } from '@/lib/api/response';
+import { forbidden, internalError, registeredError, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
   communicationRequestStatusSchema,
@@ -402,14 +402,16 @@ const authenticatedGET = withAuthContext(
     } catch (cause) {
       if (!(cause instanceof CommunicationRequestExportAuditError)) {
         return withSensitiveNoStore(
-          error('COMMUNICATION_REQUEST_EXPORT_FAILED', '連携依頼のエクスポートに失敗しました', 500),
+          registeredError(
+            'COMMUNICATION_REQUEST_EXPORT_FAILED',
+            '連携依頼のエクスポートに失敗しました',
+          ),
         );
       }
       return withSensitiveNoStore(
-        error(
+        registeredError(
           'COMMUNICATION_REQUEST_EXPORT_AUDIT_FAILED',
           '連携依頼のエクスポート監査を記録できませんでした',
-          500,
         ),
       );
     }
@@ -422,10 +424,9 @@ const authenticatedGET = withAuthContext(
         );
       }
       return withSensitiveNoStore(
-        error(
+        registeredError(
           'COMMUNICATION_REQUEST_EXPORT_AUDIT_FAILED',
           '連携依頼のエクスポート監査を記録できませんでした',
-          500,
         ),
       );
     }
