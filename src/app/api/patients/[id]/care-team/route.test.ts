@@ -9,6 +9,7 @@ const {
   careCaseFindFirstMock,
   withOrgContextMock,
   createAuditLogEntryMock,
+  recordPhiReadAuditForRequestMock,
   deleteManyMock,
   createManyMock,
   findManyMock,
@@ -21,6 +22,7 @@ const {
   careCaseFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
   deleteManyMock: vi.fn(),
   createManyMock: vi.fn(),
   findManyMock: vi.fn(),
@@ -53,6 +55,10 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 import { GET, PUT } from './route';
@@ -101,6 +107,14 @@ describe('/api/patients/[id]/care-team', () => {
             external_professional_id: 'external_1',
             role: 'physician',
             name: '佐藤医師',
+            is_primary: true,
+            organization_name: '在宅医療クリニック',
+            department: '内科',
+            phone: '03-1111-2222',
+            email: 'doctor@example.com',
+            fax: '03-1111-3333',
+            address: '東京都千代田区1-1',
+            notes: '訪問前に薬局へ連絡',
           },
         ],
       },
@@ -156,8 +170,23 @@ describe('/api/patients/[id]/care-team', () => {
     expectSensitiveNoStore(response);
     const body = await response.json();
     expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
-    expect(body).toMatchObject({
-      data: [{ id: 'link_1', role: 'physician', name: '佐藤医師' }],
+    expect(body).toEqual({
+      data: [
+        {
+          id: 'link_1',
+          external_professional_id: 'external_1',
+          role: 'physician',
+          name: '佐藤医師',
+          is_primary: true,
+          organization_name: '在宅医療クリニック',
+          department: '内科',
+          phone: '03-1111-2222',
+          email: 'doctor@example.com',
+          fax: '03-1111-3333',
+          address: '東京都千代田区1-1',
+          notes: '訪問前に薬局へ連絡',
+        },
+      ],
       meta: {
         patient_id: 'patient_1',
         case_id: 'case_active',
@@ -167,6 +196,56 @@ describe('/api/patients/[id]/care-team', () => {
         ],
       },
     });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 'corg1234567890123456789012',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+      {
+        patientId: 'patient_1',
+        targetType: 'patient',
+        targetId: 'patient_1',
+        view: 'patient_care_team',
+      },
+    );
+  });
+
+  it('audits successful GET responses when the patient has no care-team cases', async () => {
+    careCaseFindManyMock.mockResolvedValueOnce([]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/patients/patient_1/care-team', undefined, {
+        'x-org-id': 'corg1234567890123456789012',
+      }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(await response.json()).toEqual({
+      data: [],
+      meta: {
+        patient_id: 'patient_1',
+        case_id: null,
+        cases: [],
+      },
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 'corg1234567890123456789012',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+      {
+        patientId: 'patient_1',
+        targetType: 'patient',
+        targetId: 'patient_1',
+        view: 'patient_care_team',
+      },
+    );
   });
 
   it('rejects blank patient ids before loading care-team cases', async () => {
@@ -185,6 +264,29 @@ describe('/api/patients/[id]/care-team', () => {
     });
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit GET authorization rejections', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(
+        JSON.stringify({ code: 'FORBIDDEN', message: '患者情報の閲覧権限がありません' }),
+        { status: 403 },
+      ),
+    });
+
+    const response = await GET(
+      createRequest('http://localhost/api/patients/patient_1/care-team', undefined, {
+        'x-org-id': 'corg1234567890123456789012',
+      }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when care-team reads fail', async () => {
@@ -206,6 +308,7 @@ describe('/api/patients/[id]/care-team', () => {
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(JSON.stringify(body)).not.toContain('患者A');
     expect(JSON.stringify(body)).not.toContain('03-1111-1111');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank patient ids before parsing care-team payloads or replacing links', async () => {
@@ -899,6 +1002,7 @@ describe('/api/patients/[id]/care-team', () => {
     expect(response.status).toBe(404);
     expectSensitiveNoStore(response);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('PUT returns 404 when the requested case_id does not belong to an assigned case', async () => {

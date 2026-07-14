@@ -9,6 +9,7 @@ import { conflict, internalError, notFound, success, validationError } from '@/l
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { updatePatientCareTeamSchema } from '@/lib/validations/patient';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import {
   applyPatientAssignmentWhere,
   buildCareCaseAssignmentWhere,
@@ -186,7 +187,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     ? requestedCaseId
     : pickDefaultCaseId(cases);
 
-  return success({
+  const response = success({
     data: cases.find((careCase) => careCase.id === caseId)?.care_team_links ?? [],
     meta: {
       patient_id: id,
@@ -197,6 +198,15 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
       })),
     },
   });
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: patient.id,
+    targetType: 'patient',
+    targetId: patient.id,
+    view: 'patient_care_team',
+  });
+
+  return response;
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
