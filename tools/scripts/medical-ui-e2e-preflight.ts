@@ -101,6 +101,7 @@ const REQUIRED_PACKAGE_SCRIPTS = [
   'db:e2e:check-care-report-duplicates',
   'db:e2e:check-visit-route-order-conflicts',
   'db:e2e:verify-migration-preconditions',
+  'start:e2e:local',
   'medical-ui:e2e:preflight',
   'medical-ui:e2e:targeted',
   'medical-ui:e2e:gate',
@@ -231,7 +232,9 @@ function checkPackageScripts(scripts: Record<string, string>): CheckResult[] {
     }
 
     const shouldPinE2eDatabase =
-      scriptName.startsWith('db:e2e:') || scriptName.startsWith('medical-ui:e2e:');
+      scriptName === 'start:e2e:local' ||
+      scriptName.startsWith('db:e2e:') ||
+      scriptName.startsWith('medical-ui:e2e:');
     if (shouldPinE2eDatabase && !script.includes('ph_os_e2e')) {
       return {
         name: `package-script:${scriptName}`,
@@ -251,6 +254,17 @@ function checkPackageScripts(scripts: Record<string, string>): CheckResult[] {
           detail: `script must run ${missingPrechecks.join(', ')}`,
         };
       }
+    }
+
+    if (
+      scriptName === 'start:e2e:local' &&
+      (!script.includes('start-next-standalone.ts') || script.includes('next start'))
+    ) {
+      return {
+        name: `package-script:${scriptName}`,
+        status: 'fail',
+        detail: 'script must launch the generated standalone server through the asset-copy helper',
+      };
     }
 
     if (scriptName === 'db:e2e:prepare' && !script.includes('db:e2e:migrate')) {
