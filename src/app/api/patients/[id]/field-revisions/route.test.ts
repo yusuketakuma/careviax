@@ -8,15 +8,32 @@ const {
   fieldRevisionCountMock,
   userFindManyMock,
   requireAuthContextMock,
+  withOrgContextMock,
   recordPhiReadAuditForRequestMock,
-} = vi.hoisted(() => ({
-  patientFindFirstMock: vi.fn(),
-  fieldRevisionFindManyMock: vi.fn(),
-  fieldRevisionCountMock: vi.fn(),
-  userFindManyMock: vi.fn(),
-  requireAuthContextMock: vi.fn(),
-  recordPhiReadAuditForRequestMock: vi.fn(),
-}));
+  transactionClient,
+} = vi.hoisted(() => {
+  const patientFindFirstMock = vi.fn();
+  const fieldRevisionFindManyMock = vi.fn();
+  const fieldRevisionCountMock = vi.fn();
+  const userFindManyMock = vi.fn();
+  return {
+    patientFindFirstMock,
+    fieldRevisionFindManyMock,
+    fieldRevisionCountMock,
+    userFindManyMock,
+    requireAuthContextMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    recordPhiReadAuditForRequestMock: vi.fn(),
+    transactionClient: {
+      patient: { findFirst: patientFindFirstMock },
+      patientFieldRevision: {
+        findMany: fieldRevisionFindManyMock,
+        count: fieldRevisionCountMock,
+      },
+      user: { findMany: userFindManyMock },
+    },
+  };
+});
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
@@ -26,15 +43,22 @@ vi.mock('@/lib/audit/phi-read-audit', () => ({
   recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    patient: { findFirst: patientFindFirstMock },
-    patientFieldRevision: { findMany: fieldRevisionFindManyMock, count: fieldRevisionCountMock },
-    user: { findMany: userFindManyMock },
-  },
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
 }));
 
 import { GET } from './route';
+
+const authContext = {
+  orgId: 'org_1',
+  userId: 'user_1',
+  role: 'pharmacist' as const,
+  actorSiteId: 'site_1',
+  ipAddress: '203.0.113.10',
+  userAgent: 'vitest',
+  requestId: 'req_patient_field_revisions_1',
+  correlationId: 'corr_patient_field_revisions_1',
+};
 
 function createRequest(search = '') {
   return new NextRequest(`http://localhost/api/patients/patient_1/field-revisions${search}`, {
@@ -69,8 +93,12 @@ describe('GET /api/patients/[id]/field-revisions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
-      ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
+      ctx: authContext,
     });
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (tx: typeof transactionClient) => Promise<unknown>) =>
+        work(transactionClient),
+    );
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     userFindManyMock.mockResolvedValue([{ id: 'user_u', name: '田中' }]);
     fieldRevisionFindManyMock.mockResolvedValue([baseRow]);
@@ -78,9 +106,18 @@ describe('GET /api/patients/[id]/field-revisions', () => {
   });
 
   it('変更履歴を整形し更新者名を解決して返す', async () => {
+    patientFindFirstMock.mockResolvedValueOnce({ id: 'patient_authoritative' });
+
     const response = await GET(createRequest(), params);
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '患者情報の閲覧権限がありません',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: authContext,
+    });
     const body = (await response.json()) as {
       data: Array<Record<string, unknown>>;
       meta: Record<string, unknown>;
@@ -98,14 +135,29 @@ describe('GET /api/patients/[id]/field-revisions', () => {
       truncated: false,
       count_basis: 'patient_field_revisions',
     });
+    expect(fieldRevisionCountMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        patient_id: 'patient_authoritative',
+      }),
+    });
+    expect(fieldRevisionFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_authoritative',
+        }),
+      }),
+    );
     expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
     expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
       {
-        patientId: 'patient_1',
+        patientId: 'patient_authoritative',
         targetType: 'patient',
-        targetId: 'patient_1',
+        targetId: 'patient_authoritative',
         view: 'patient_field_revision_list',
+        purpose: 'care',
       },
     );
   });
@@ -142,7 +194,7 @@ describe('GET /api/patients/[id]/field-revisions', () => {
 
   it('keeps sensitive revision values masked for external viewers', async () => {
     requireAuthContextMock.mockResolvedValueOnce({
-      ctx: { orgId: 'org_1', userId: 'user_ext', role: 'external_viewer' },
+      ctx: { ...authContext, userId: 'user_ext', role: 'external_viewer' },
     });
     fieldRevisionFindManyMock.mockResolvedValue([
       {
@@ -171,6 +223,12 @@ describe('GET /api/patients/[id]/field-revisions', () => {
       ],
     });
     expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls)).not.toContain(
+      '090-0000-0000',
+    );
+    expect(JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls)).not.toContain(
+      '080-1111-2222',
+    );
   });
 
   it('category and limit filters are reflected in the counted response metadata', async () => {
@@ -219,6 +277,7 @@ describe('GET /api/patients/[id]/field-revisions', () => {
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(fieldRevisionFindManyMock).not.toHaveBeenCalled();
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
@@ -229,6 +288,7 @@ describe('GET /api/patients/[id]/field-revisions', () => {
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(fieldRevisionFindManyMock).not.toHaveBeenCalled();
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
@@ -250,6 +310,25 @@ describe('GET /api/patients/[id]/field-revisions', () => {
     const response = await GET(createRequest(), params);
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(fieldRevisionFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when the patient scope query fails', async () => {
+    const rawError = '患者A patient revision scope query failure';
+    patientFindFirstMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(createRequest(), params);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(fieldRevisionFindManyMock).not.toHaveBeenCalled();
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
@@ -266,6 +345,22 @@ describe('GET /api/patients/[id]/field-revisions', () => {
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(JSON.stringify(body)).not.toContain('患者A');
     expect(JSON.stringify(body)).not.toContain('モルヒネ');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when org context setup fails', async () => {
+    const rawError = 'raw RLS context failure with patient revision data';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(createRequest(), params);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(fieldRevisionFindManyMock).not.toHaveBeenCalled();
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 });

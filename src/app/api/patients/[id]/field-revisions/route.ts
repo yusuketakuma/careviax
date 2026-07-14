@@ -2,14 +2,14 @@ import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
-import { internalError, success, validationError, notFound } from '@/lib/api/response';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { prisma } from '@/lib/db/client';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { PATIENT_FIELD_REVISION_CATEGORIES } from '@/lib/patient/field-revision-categories';
 import { getPatientPrivacyFlags } from '@/lib/patient/privacy';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { withOrgContext } from '@/lib/db/rls';
 import { listPatientFieldRevisionPage } from '@/server/services/patient-field-revision-list';
 import { z } from 'zod';
 
@@ -36,29 +36,39 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     return validationError('クエリパラメータが不正です', parsedQuery.error.flatten().fieldErrors);
   }
 
-  const patient = await prisma.patient.findFirst({
-    where: applyPatientAssignmentWhere(
-      { id, org_id: ctx.orgId },
-      { userId: ctx.userId, role: ctx.role },
-    ),
-    select: { id: true },
-  });
-  if (!patient) return notFound('患者が見つかりません');
+  const result = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const patient = await tx.patient.findFirst({
+        where: applyPatientAssignmentWhere(
+          { id, org_id: ctx.orgId },
+          { userId: ctx.userId, role: ctx.role },
+        ),
+        select: { id: true },
+      });
+      if (!patient) return null;
 
-  const revisions = await listPatientFieldRevisionPage(prisma, {
-    orgId: ctx.orgId,
-    patientId: id,
-    category: parsedQuery.data.category,
-    limit: parsedQuery.data.limit,
-    exposeSensitiveValues: !getPatientPrivacyFlags(ctx.role).sensitiveFieldsMasked,
-  });
-  const response = success({ data: revisions.data, meta: revisions.meta });
+      const revisions = await listPatientFieldRevisionPage(tx, {
+        orgId: ctx.orgId,
+        patientId: patient.id,
+        category: parsedQuery.data.category,
+        limit: parsedQuery.data.limit,
+        exposeSensitiveValues: !getPatientPrivacyFlags(ctx.role).sensitiveFieldsMasked,
+      });
+      return { patientId: patient.id, revisions };
+    },
+    { requestContext: ctx },
+  );
+  if (!result) return notFound('患者が見つかりません');
+
+  const response = success({ data: result.revisions.data, meta: result.revisions.meta });
 
   recordPhiReadAuditForRequest(ctx, {
-    patientId: id,
+    patientId: result.patientId,
     targetType: 'patient',
-    targetId: id,
+    targetId: result.patientId,
     view: 'patient_field_revision_list',
+    purpose: 'care',
   });
 
   return response;
