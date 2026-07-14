@@ -6,6 +6,7 @@ import { careLevelLabels } from '@/lib/patient/home-visit-intake';
 import {
   getPatientPrivacyFlags,
   maskAddressDetail,
+  maskContactValue,
   maskInsuranceNumber,
   maskPhoneNumber,
 } from '@/lib/patient/privacy';
@@ -397,6 +398,13 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
       address: privacy.addressFieldsMasked
         ? maskAddressDetail(residence.address)
         : residence.address,
+    })),
+    contacts: patient.contacts.map((contact) => ({
+      ...contact,
+      phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
+      fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
+      email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
+      address: privacy.addressFieldsMasked ? maskAddressDetail(contact.address) : contact.address,
     })),
     conditions: patient.conditions,
     cases: patient.cases,

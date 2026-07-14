@@ -50,6 +50,7 @@ const DEMO_IDS = {
   schedulePreference: 'ui_demo_schedule_preference_1',
   labObservation: 'ui_demo_lab_observation_1',
   contact: 'ui_demo_contact_1',
+  fieldRevision: 'ui_demo_field_revision_1',
   condition: 'ui_demo_condition_1',
   caseId: 'ui_demo_case_1',
   medicationCycle: 'ui_demo_medication_cycle_1',
@@ -276,6 +277,57 @@ async function ensureUiDemoData() {
         'サンプル家族',
         '家族連絡先',
         '東京都千代田区丸の内1-2-3',
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "PatientFieldRevision" (
+          "id","org_id","patient_id","category","field_key","field_label","old_value","new_value","value_label","source","confirmed_by","confirmed_at","valid_from","is_current","change_reason","importance","updated_by","created_at","updated_at"
+        ) VALUES ($1,$2,$3,'contacts','contacts','家族連絡先',$4::jsonb,$5::jsonb,'連絡先1件 → 連絡先1件','patient_detail_edit',$6,NOW(),CURRENT_DATE,true,$7,'caution',$6,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "category" = 'contacts',
+            "field_key" = 'contacts',
+            "field_label" = EXCLUDED."field_label",
+            "old_value" = EXCLUDED."old_value",
+            "new_value" = EXCLUDED."new_value",
+            "value_label" = EXCLUDED."value_label",
+            "source" = EXCLUDED."source",
+            "confirmed_by" = EXCLUDED."confirmed_by",
+            "confirmed_at" = NOW(),
+            "valid_from" = CURRENT_DATE,
+            "valid_to" = NULL,
+            "is_current" = true,
+            "change_reason" = EXCLUDED."change_reason",
+            "importance" = 'caution',
+            "updated_by" = EXCLUDED."updated_by",
+            "created_at" = NOW(),
+            "updated_at" = NOW()
+      `,
+      [
+        DEMO_IDS.fieldRevision,
+        base.org_id,
+        DEMO_IDS.patient,
+        jsonb([
+          {
+            name: contactName,
+            relation: '家族',
+            phone: '090-0000-0000',
+            is_primary: true,
+          },
+        ]),
+        jsonb([
+          {
+            name: contactName,
+            relation: '家族',
+            phone: '090-1111-2222',
+            is_primary: true,
+          },
+        ]),
+        base.user_id,
+        'ご家族から新しい電話番号を確認',
       ],
     );
 
@@ -1775,17 +1827,6 @@ async function openPatientDetailRoute(page: Page, patientId: string) {
   await expect(readyMarker).toBeVisible({ timeout: 60_000 });
 }
 
-async function fetchFirstPatientId(page: Page) {
-  const response = await page.request.get('/api/patients?per_page=5');
-  expect(response.ok()).toBeTruthy();
-  const payload = (await response.json()) as {
-    data?: Array<{ id: string }>;
-  };
-  const patientId = payload.data?.[0]?.id;
-  expect(patientId).toBeTruthy();
-  return patientId!;
-}
-
 test.beforeAll(async () => {
   await fs.mkdir(SCREENSHOT_DIR, { recursive: true });
   demoContext = await ensureUiDemoData();
@@ -1847,12 +1888,8 @@ test.describe('major authenticated screens', () => {
   });
 
   test('patient detail screen renders cleanly', async ({ context }) => {
-    const bootstrap = await context.newPage();
-    const patientId = await fetchFirstPatientId(bootstrap);
-    await bootstrap.close();
-
     const { page, errors } = await createInstrumentedPage(context);
-    await openPatientDetailRoute(page, patientId);
+    await openPatientDetailRoute(page, demoContext.patientId);
 
     await expect(page.locator('main')).toBeVisible();
     await expect(page.getByTestId('card-workspace')).toBeVisible();
@@ -1870,13 +1907,28 @@ test.describe('major authenticated screens', () => {
       timeout: 60_000,
     });
     await expect(page.getByTestId('card-workspace')).toBeVisible();
+    await page.getByRole('tab', { name: /正本・在宅運用/ }).click();
     await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
     await expect(page.getByTestId('patient-profile-summary')).toContainText(
       demoContext.conditionName,
     );
-    await expect(page.getByTestId('safety-board')).toBeVisible();
+    const patientHeader = page.getByRole('region', { name: '患者情報' });
+    await expect(patientHeader).toContainText('セフェム系');
+    await expect(patientHeader).toContainText('eGFR 38');
+    await page.getByRole('tab', { name: /薬剤・訪問/ }).click();
     await expect(page.getByTestId('card-prescription-section')).toBeVisible();
     await writeScreenshot(page, 'patient-detail-data');
+    await page.getByRole('tab', { name: /履歴・構造化/ }).click();
+    const revisionTimeline = page.getByTestId('patient-field-revision-timeline');
+    await expect(revisionTimeline).toBeVisible();
+    const revisionEntry = revisionTimeline
+      .getByTestId('patient-field-revision-entry')
+      .filter({ hasText: '家族連絡先' });
+    await expect(revisionEntry).toContainText('連絡先1件 → 連絡先1件');
+    await revisionEntry.getByText('変更前後の正確な値を表示').click();
+    await expect(revisionEntry).toContainText('090-0000-0000');
+    await expect(revisionEntry).toContainText('090-1111-2222');
+    await writeScreenshot(page, 'patient-detail-history');
     expect(errors).toEqual([]);
   });
 

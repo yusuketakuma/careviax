@@ -9,6 +9,7 @@ import {
 import type { PatientFoundationItem } from '@/server/services/patient-detail-foundation';
 import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { findActivePatientShareConsent } from '@/server/services/pharmacy-partnerships';
 import { enabledPatientShareScopeKeys } from '@/server/services/patient-share-scope';
 import {
@@ -55,6 +56,17 @@ function buildInboundCommunicationRiskHref(args: {
 
   const query = params.toString();
   return query ? `/communications/inbound?${query}` : '/communications/inbound';
+}
+
+function buildPrescriptionLineReconciliationHref(
+  lineId: string,
+  context: RiskFindingAdapterContext,
+) {
+  const query = new URLSearchParams({ line_id: lineId }).toString();
+  const patientHref =
+    context.patientHref ?? (context.patientId ? buildPatientHref(context.patientId) : null);
+
+  return patientHref ? `${patientHref}/prescriptions?${query}` : `/prescriptions?${query}`;
 }
 
 export type OperationalTaskRiskInput = {
@@ -667,7 +679,7 @@ export function adaptPrescriptionLineReconciliationToRiskFinding(
     case_id: context.caseId ?? null,
     related_entity_type: 'prescription_line',
     related_entity_id: line.id,
-    action_href: `/medications/reconciliation?line_id=${encodeURIComponent(line.id)}`,
+    action_href: buildPrescriptionLineReconciliationHref(line.id, context),
     action_label: '薬剤マスタを照合',
   });
 }

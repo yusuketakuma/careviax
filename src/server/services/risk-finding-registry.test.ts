@@ -337,7 +337,7 @@ describe('risk-finding-registry adapters', () => {
         drug_master_id: null,
         drug_resolution_status: 'code_not_found',
       },
-      { patientId: 'patient_1', caseId: 'case_1' },
+      { patientId: 'patient/1?x=1', caseId: 'case_1' },
     );
     const provisional = adaptPrescriptionLineReconciliationToRiskFinding(
       {
@@ -358,7 +358,7 @@ describe('risk-finding-registry adapters', () => {
       action_label: '薬剤マスタを照合',
     });
     expect(missingMaster.action_href).toBe(
-      `/medications/reconciliation?line_id=${encodeURIComponent('line/1?x=1')}`,
+      `/patients/${encodeURIComponent('patient/1?x=1')}/prescriptions?line_id=${encodeURIComponent('line/1?x=1')}`,
     );
     expect(provisional).toMatchObject({
       severity: 'warning',

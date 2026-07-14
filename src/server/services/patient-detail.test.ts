@@ -580,6 +580,23 @@ describe('getPatientHeaderSummary', () => {
 });
 
 describe('getPatientOverview', () => {
+  function buildOverviewContact() {
+    return {
+      id: 'contact_1',
+      relation: 'child',
+      name: '連絡先 一郎',
+      phone: '090-1111-2222',
+      email: 'family@example.jp',
+      fax: '03-3333-4444',
+      organization_name: '家族',
+      department: null,
+      address: '東京都千代田区2-2-2',
+      is_primary: true,
+      is_emergency_contact: true,
+      notes: '長男',
+    };
+  }
+
   function buildOverviewPatient() {
     return {
       id: 'patient_1',
@@ -650,7 +667,10 @@ describe('getPatientOverview', () => {
     ]);
     const db = buildDb({
       patient: {
-        findFirst: vi.fn().mockResolvedValue(buildOverviewPatient()),
+        findFirst: vi.fn().mockResolvedValue({
+          ...buildOverviewPatient(),
+          contacts: [buildOverviewContact()],
+        }),
       },
       patientInsurance: {
         findMany: patientInsuranceFindManyMock,
@@ -698,6 +718,17 @@ describe('getPatientOverview', () => {
       medical_insurance_number: '***-567',
       care_insurance_number: '***-654',
       residences: [expect.objectContaining({ address: '東京都千代田***' })],
+      contacts: [
+        expect.objectContaining({
+          id: 'contact_1',
+          name: '連絡先 一郎',
+          phone: '***-****-2222',
+          email: 'f***@example.jp',
+          fax: '***-****-4444',
+          address: '東京都千代田***',
+          notes: '長男',
+        }),
+      ],
       privacy: {
         sensitive_fields_masked: true,
         address_fields_masked: true,
@@ -776,6 +807,7 @@ describe('getPatientOverview', () => {
             parking_available: true,
             care_level: '要介護2',
           },
+          contacts: [buildOverviewContact()],
         }),
       },
       jahisSupplementalRecord: {
@@ -808,6 +840,7 @@ describe('getPatientOverview', () => {
       medical_insurance_number: 'MED1234567',
       care_insurance_number: 'CARE987654',
       residences: [expect.objectContaining({ address: '東京都千代田区1-1-1' })],
+      contacts: [buildOverviewContact()],
       privacy: {
         sensitive_fields_masked: false,
         address_fields_masked: false,
@@ -821,6 +854,43 @@ describe('getPatientOverview', () => {
         raw_line: 'JAHIS,21540000,54001234,A-1',
       }),
     ]);
+  });
+
+  it('fails closed for an unknown future role when projecting patient contacts', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          ...buildOverviewPatient(),
+          contacts: [buildOverviewContact()],
+        }),
+      },
+    });
+
+    const result = await getPatientOverview(
+      db as unknown as Parameters<typeof getPatientOverview>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'future_internal_role' as never,
+        userId: 'future_user_1',
+      },
+    );
+
+    expect(result).toMatchObject({
+      contacts: [
+        expect.objectContaining({
+          phone: '***-****-2222',
+          email: 'f***@example.jp',
+          fax: '***-****-4444',
+          address: '東京都千代田***',
+        }),
+      ],
+      privacy: {
+        sensitive_fields_masked: true,
+        address_fields_masked: true,
+        can_view_detail: false,
+      },
+    });
   });
 
   it('downgrades ready foundation items when current metadata is unconfirmed', async () => {
