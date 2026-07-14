@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import {
   CRITICAL_ROUTE_PAYLOAD_BUDGETS,
+  normalizeRoutePath,
   payloadBudgetStatus,
   resolveRoutePayloadBudget,
   type PayloadBudgetDefinition,
@@ -231,11 +232,18 @@ function materializeBudgetRoute(
 }
 
 function safeOutputPath(path: string, baseUrl: string): string {
+  let pathname: string;
   try {
-    return new URL(path, baseUrl).pathname || '/';
+    pathname = new URL(path, baseUrl).pathname || '/';
   } catch {
-    return path.split(/[?#]/, 1)[0] || '/';
+    pathname = path.split(/[?#]/, 1)[0] || '/';
   }
+
+  // Keep the real path for the request, but use the same normalized route
+  // identity as payload metrics in CLI/artifact output. This prevents patient
+  // or other entity identifiers embedded in dynamic path segments from being
+  // persisted in performance evidence.
+  return normalizeRoutePath(pathname);
 }
 
 function hasHeader(headers: Record<string, string>, name: string): boolean {

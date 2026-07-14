@@ -322,6 +322,73 @@ describe('perf-smoke parseArgs', () => {
     expect(serialized).not.toContain('#detail');
   });
 
+  it('requests a dynamic patient path but emits only the normalized route identity', async () => {
+    const patientId = 'patient_sensitive_123456';
+    const requestPath = `/api/patients/${patientId}/overview?section=safety`;
+    const args = parseArgs(['--requests', '1', '--concurrency', '1', '--path', requestPath], {});
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () =>
+        new Response(null, {
+          status: 200,
+          headers: { 'content-length': '1024' },
+        }),
+    );
+
+    const result = await runPerfSmoke(args, fetchImpl);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      `http://127.0.0.1:3000${requestPath}`,
+      expect.any(Object),
+    );
+    expect(result).toMatchObject({
+      paths: ['/api/patients/:id/overview'],
+      response_payload_route_family: 'patient-detail-initial',
+      response_payload_budget_status: 'within_budget',
+      target_met: true,
+    });
+    expect(JSON.stringify(result)).not.toContain(patientId);
+  });
+
+  it('normalizes dynamic identifiers in matrix entries and warnings', async () => {
+    const patientId = 'patient_sensitive_matrix_123456';
+    const requestPath = `/api/patients/${patientId}/medication-stock`;
+    const args = parseArgs(
+      ['--payload-budget-matrix', '--requests', '1', '--concurrency', '1', '--path', requestPath],
+      {},
+    );
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () =>
+        new Response(null, {
+          status: 500,
+          headers: { 'content-length': '1024' },
+        }),
+    );
+
+    const result = await runPerfSmokeMatrix(args, fetchImpl);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      `http://127.0.0.1:3000${requestPath}`,
+      expect.any(Object),
+    );
+    expect(result.paths).toEqual(['/api/patients/:id/medication-stock']);
+    expect(result.entries).toEqual([
+      expect.objectContaining({
+        path: '/api/patients/:id/medication-stock',
+        paths: ['/api/patients/:id/medication-stock'],
+        budget_route: '/api/patients/:id/medication-stock',
+      }),
+    ]);
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'REQUEST_ERROR',
+          path: '/api/patients/:id/medication-stock',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toContain(patientId);
+  });
+
   it('does not fail response payload budgets for unconfigured critical route families', async () => {
     const args = parseArgs(
       ['--requests', '1', '--concurrency', '1', '--path', '/api/billing/close-board?month=2026-07'],
