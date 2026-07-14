@@ -61,6 +61,47 @@
 
 ## 直近の作業
 
+- codex1 + codex3 + codex4: patient detail access-loss / break-glass rate limit /
+  visit capture SSR RLS / patient payload measurement integration boundary
+  (DONE / PUSHED, 2026-07-15; implementations `72def2515`, `baefb8dc5`, `6ef1ef1c8`,
+  `34c5f59f7`, `1ccd053c2`).
+  - workflow / current agent state:
+    相互reviewなし、exact-path ownership + self-validation + codex1 integration gateを継続した。`codex2`はselected model
+    capacityでgoalがblockedとなり、tmux paneへ`/goal resume`を送っても再開できなかったため、この境界へ未実装backendを
+    混ぜずcodex1/3/4のfrozen pathだけを統合した。backend laneを別agentへ重複再割当せず、capacity回復後の再開対象とする。
+    既存user/harness dirtyとpatient external-share/tool testsは保存した。
+  - frontend access-loss state (`72def2515`):
+    patient overview primary queryをshared `fetchPrimaryQueryJson` / `PrimaryQueryError` retention contractへ接続した。
+    network/5xxのretainable errorだけは前回取得snapshot、最終取得時刻、再取得導線を維持し、401/403、不正200 schema、
+    その他non-retainable errorではcached patient PHI、header、workspaceをrender前に除去して固定のunauthorized/forbidden/
+    server stateへfail-closed化する。raw Errorの患者名、電話、token様文字列は表示しない。card-workspace focused
+    `1 file / 102 tests`、exact lint/format/diffをPASS。既存state component/primary-query contractの接続でvisual reconstructionを
+    行わないためimagegenは省略した。
+  - platform break-glass rate limit (`baefb8dc5`):
+    platform guard + required fields validation後、Cognito step-up前にstable operator ID + fixed break-glass routeでstrict
+    `checkAuthRateLimit`を行う。budget exhaustedはsensitive no-store 429、Retry-After、fixed copy、zero MFA/session createへ固定し、
+    guard rejectとinvalid bodyはbudgetを消費せず、source IP rotationでも同じoperator budgetを使う。route `1 / 8`、
+    route+step-up+rate-limit `3 files / 65 tests`とAPI/auth/static gatesをPASS。`PLATFORM-OPS-CONSOLE-P1`はpersistent lockout、
+    hash-chain、session cascade等が残るためPartialへ更新した。
+  - visit capture SSR RLS (`34c5f59f7`):
+    active membership + `canVisit`後にexplicit org/user/role/site request contextを一度構築し、visitScheduleのpatient/context PHIを
+    `withOrgContext` transaction clientだけで読む。既存assignment prefilter + defense、success PHI audit、UI projectionを維持し、
+    denied role、null、assignment reject、query throwはzero-audit / no context render。page `1 / 5`、page+assignment+audit
+    `3 files / 38 tests`、raw-read-org/frontend/module/static gatesをPASSした。
+  - critical patient payload measurement (`6ef1ef1c8`, `1ccd053c2`):
+    patient overview 200をsingle-serialize measured successへ移し、outer GETを`withRoutePerformance`へ接続。patient movementの
+    shared handlerも既存measured bodyをouter performance recorderへ接続し、双方のnormalized critical family、250 KiB budget、
+    exact UTF-8 Content-Length、payload sample count 1をtest固定した。auth/authz、RLS runner、bounded cursor/filter、PHI audit、
+    no-store、400/404/500、DB queryは変更していない。overview focused `1 / 4` + grouped `3 / 33`、movement baseline
+    `1 / 12` + grouped `2 / 27`、conventions/shape/auth-wrapper/lint/format/diffをPASS。live scanはmeasured helper
+    13 `route.ts` + shared movement handler、plain `success()` route file 344。
+  - aggregate validation / commits / remaining:
+    上記5 code commits後のcurrent HEADでcodex1が`pnpm typecheck && pnpm typecheck:no-unused`を直列実行してPASS。
+    ユーザー方針によりbuild/Oracleは実行していない。5 code commitsをfeature branchへnon-force pushし、直後の
+    local/remote parityは`0 0`。single-ledger closeout push後にshared docsをreleaseする。patient detailは
+    partial/offline/conflict、platform consoleはpersistent lockout/hash-chain/session cascade、
+    authz coverageは残SSR/API inventory、route payload measurementは未採用routeが残るため各parentはPartialを維持する。
+
 - codex1 + codex2 + codex3 + codex4: frontend stale state / API error safety / external OTP lockout /
   SSR authorization / measured response / file-lifecycle integration boundary
   (DONE / PUSHED, 2026-07-14; implementations `f4881bd84`, `a301ee5a6`, `c9d1d9e85`,
