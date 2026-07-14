@@ -59,8 +59,8 @@
 ## 直近の作業
 
 - codex1 integration: pre-existing worktree convergence + MEDSAFE-PATIENT-CONTEXT-SHARE-001 closure
-  (INTEGRATION READY / PUSH PENDING, 2026-07-15; implementations `87f9335ab`, `ce9cae9ab`,
-  `a36b39efc`; harness `a9786e969`).
+  (DONE / CODE + LEDGER PUSHED, 2026-07-15; implementations `87f9335ab`, `ce9cae9ab`,
+  `a36b39efc`; harness `a9786e969`; integration ledger `47dfd2888`).
   - workflow / scope:
     最新ユーザー指示に従い新規実装前に全dirtyを再構成し、3つのbounded read-only subagent reviewとrootの
     live diff確認でexternal-share exact4、visit-record exact2、E2E exact3、harness exact2、Plans/STATE/RUN_LOCKを
@@ -83,11 +83,13 @@
   - result / remaining:
     `MEDSAFE-PATIENT-CONTEXT-SHARE-001`はcurrent-head build、desktop/mobile実画面、screenshot確認を満たしてDONE。
     外部共有のloading/error中にworkflow contextが非表示であることを直接assertする追加testはnon-blocking follow-up。
-    初回のみの患者API 500は再現時にconnection/query concurrencyを独立診断する。親Goalの他未完了Planは継続する。
+    初回のみの患者API 500は再現時にconnection/query concurrencyを独立診断する。integration ledgerまでsafe feature branchへ
+    non-force pushし、local/remote SHA `47dfd2888992a8efcdd80380f92a0240ca8b0fde`、parity `0 0`を確認した。
+    親Goalの他未完了Planは継続する。
 
 - codex2 backend + temporary integration owner: Round 21 API-CONTRACT-001 Route Catalog
   standard auth-wrapper migration
-  (INTEGRATION READY / PUSH PENDING, 2026-07-15; implementation `80f33084c`).
+  (DONE / CODE + LEDGER PUSHED, 2026-07-15; implementation `80f33084c`; integration ledger `47dfd2888`).
   - workflow / ownership:
     live `git status`、`Plans.md`、このSTATE、RUN_LOCK、agmsg team/inbox、Next.js 16.2.9のRoute Handler・
     error handling・NextResponse docsを確認した。`improve`はread-only候補監査だけに使い、編集前に終了した。
