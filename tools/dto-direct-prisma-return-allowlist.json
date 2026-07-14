@@ -90,10 +90,10 @@
     },
     {
       "path": "src/app/api/management-plans/[id]/route.ts",
-      "expectedCount": 2,
+      "expectedCount": 1,
       "owner": "API-DTO-001",
       "debtId": "DTO-DIRECT-012",
-      "reason": "Existing route returns Prisma management plan rows directly through success().",
+      "reason": "Existing PATCH path returns a Prisma management plan row directly through success().",
       "plannedAction": "Move response through a management plan presenter."
     },
     {
