@@ -189,6 +189,8 @@ describe('GET /api/patients/[id]/field-revisions', () => {
         count_basis: 'patient_field_revisions',
         filters_applied: { category: 'basic' },
         sort_basis: 'created_at_desc',
+        selection_basis: 'latest_created_at_desc_id_desc',
+        presentation_order: 'created_at_asc_id_asc',
         limit: 1,
       },
     });

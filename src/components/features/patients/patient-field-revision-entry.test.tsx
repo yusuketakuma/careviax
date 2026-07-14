@@ -119,12 +119,23 @@ describe('PatientFieldRevisionEntry', () => {
     expect(screen.queryByText('変更前後の正確な値を表示')).toBeNull();
   });
 
-  it('shares one bordered row-list surface across patient and visit consumers', () => {
-    render(<PatientFieldRevisionList items={[baseRevision, { ...baseRevision, id: 'rev_2' }]} />);
+  it('uses an ordered li timeline and marks the explicit current terminus when requested', () => {
+    render(
+      <PatientFieldRevisionList
+        items={[baseRevision, { ...baseRevision, id: 'rev_2' }]}
+        showCurrentTerminus
+      />,
+    );
 
     expect(screen.getAllByTestId('patient-field-revision-entry')).toHaveLength(2);
-    const list = screen.getAllByTestId('patient-field-revision-entry')[0]?.parentElement;
+    const list = screen.getByRole('list', { name: '患者項目の変更履歴' });
+    const terminus = screen.getByTestId('patient-field-revision-current-terminus');
+    expect(list.tagName).toBe('OL');
     expect(list?.className).toContain('divide-y');
     expect(list?.className).toContain('rounded-md');
+    expect(Array.from(list.children).every((child) => child.tagName === 'LI')).toBe(true);
+    expect(list.lastElementChild).toBe(terminus);
+    expect(terminus.getAttribute('aria-current')).toBe('time');
+    expect(terminus.textContent).toContain('現在');
   });
 });

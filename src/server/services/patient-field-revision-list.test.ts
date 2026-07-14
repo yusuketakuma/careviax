@@ -412,7 +412,7 @@ describe('listPatientFieldRevisionPage', () => {
     });
     expect(findMany).toHaveBeenCalledWith({
       where: { org_id: 'org_1', patient_id: 'p1', category: 'basic' },
-      orderBy: [{ created_at: 'desc' }],
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: 1,
     });
     expect(result.data).toHaveLength(1);
@@ -424,10 +424,85 @@ describe('listPatientFieldRevisionPage', () => {
       count_basis: 'patient_field_revisions',
       filters_applied: { category: 'basic' },
       sort_basis: 'created_at_desc',
+      selection_basis: 'latest_created_at_desc_id_desc',
+      presentation_order: 'created_at_asc_id_asc',
       limit: 1,
     });
     expect(JSON.stringify(result.meta)).not.toContain('田中');
     expect(JSON.stringify(result.meta)).not.toContain('care_4');
+  });
+
+  it('selects the latest bounded window and presents only that window from past to present', async () => {
+    const allRows = Array.from({ length: 51 }, (_, chronologicalIndex) => {
+      return {
+        ...baseRow,
+        id: `rev_${String(chronologicalIndex).padStart(2, '0')}`,
+        created_at: new Date(Date.UTC(2026, 5, 16, 1, 0, chronologicalIndex)),
+      };
+    });
+    const { db, findMany } = createDb(
+      [],
+      [
+        { id: 'user_u', name: '田中' },
+        { id: 'user_c', name: '佐藤' },
+      ],
+      51,
+    );
+    findMany.mockImplementation(async (query: { take?: number }) =>
+      [...allRows]
+        .sort(
+          (left, right) =>
+            right.created_at.getTime() - left.created_at.getTime() ||
+            right.id.localeCompare(left.id),
+        )
+        .slice(0, query.take),
+    );
+
+    const result = await listPatientFieldRevisionPage(db, {
+      orgId: 'org_1',
+      patientId: 'p1',
+      limit: 50,
+    });
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', patient_id: 'p1' },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: 50,
+    });
+    expect(result.data).toHaveLength(50);
+    expect(result.data[0]?.id).toBe('rev_01');
+    expect(result.data.at(-1)?.id).toBe('rev_50');
+    expect(result.data.some((row) => row.id === 'rev_00')).toBe(false);
+    expect(result.meta).toMatchObject({
+      total_count: 51,
+      visible_count: 50,
+      hidden_count: 1,
+      truncated: true,
+      selection_basis: 'latest_created_at_desc_id_desc',
+      presentation_order: 'created_at_asc_id_asc',
+    });
+  });
+
+  it('uses id as the stable tie-breaker when equal timestamps are presented chronologically', async () => {
+    const sameTime = new Date('2026-06-16T01:00:00.000Z');
+    const { db } = createDb(
+      [
+        { ...baseRow, id: 'rev_b', created_at: sameTime },
+        { ...baseRow, id: 'rev_a', created_at: sameTime },
+      ],
+      [
+        { id: 'user_u', name: '田中' },
+        { id: 'user_c', name: '佐藤' },
+      ],
+    );
+
+    const result = await listPatientFieldRevisionPage(db, {
+      orgId: 'org_1',
+      patientId: 'p1',
+      limit: 50,
+    });
+
+    expect(result.data.map((row) => row.id)).toEqual(['rev_a', 'rev_b']);
   });
 });
 

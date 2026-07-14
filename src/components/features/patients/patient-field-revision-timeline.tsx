@@ -84,10 +84,11 @@ export function PatientFieldRevisionTimeline({ patientId }: { patientId: string 
         <div className="space-y-2">
           {meta?.truncated ? (
             <p className="text-xs text-muted-foreground" aria-live="polite">
-              先頭{meta.visible_count}件を表示 / 他{meta.hidden_count}件
+              直近{meta.visible_count}件を過去から現在の順で表示 / それ以前
+              {meta.hidden_count}件
             </p>
           ) : null}
-          <PatientFieldRevisionList items={revisions} />
+          <PatientFieldRevisionList items={revisions} showCurrentTerminus />
         </div>
       )}
     </div>

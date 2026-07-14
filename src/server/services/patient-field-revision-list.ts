@@ -37,7 +37,10 @@ export interface PatientFieldRevisionListMeta {
   filters_applied: {
     category: string | null;
   };
+  /** Legacy alias for the database selection order. */
   sort_basis: 'created_at_desc';
+  selection_basis: 'latest_created_at_desc_id_desc';
+  presentation_order: 'created_at_asc_id_asc';
   limit: number;
 }
 
@@ -325,14 +328,20 @@ function buildRevisionListMeta(args: {
     count_basis: 'patient_field_revisions',
     filters_applied: { category: args.category ?? null },
     sort_basis: 'created_at_desc',
+    selection_basis: 'latest_created_at_desc_id_desc',
+    presentation_order: 'created_at_asc_id_asc',
     limit: args.limit,
   };
 }
 
+function presentRevisionWindowChronologically(rows: RevisionRow[]): RevisionRow[] {
+  return [...rows].reverse();
+}
+
 /**
- * 患者項目の変更履歴(PatientFieldRevision)を時系列(新しい順)で取得し、
+ * 患者項目の変更履歴(PatientFieldRevision)を新しい順で取得し、
  * 更新者/確認者の User ID を氏名へ解決した表示用リストを返す。
- * 変更履歴タイムラインUI と項目メタ表示の供給源(read 専用)。
+ * 項目メタ表示など、既存のnewest-first内部consumer向け(read 専用)。
  */
 export async function listPatientFieldRevisions(
   db: DbClient,
@@ -341,13 +350,16 @@ export async function listPatientFieldRevisions(
   const limit = args.limit ?? 50;
   const rows = await db.patientFieldRevision.findMany({
     where: buildPatientFieldRevisionWhere(args),
-    orderBy: [{ created_at: 'desc' }],
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     take: limit,
   });
 
   return shapeRevisionRows(db, args.orgId, rows, args.exposeSensitiveValues === true);
 }
 
+/**
+ * Timeline向けに最新bounded windowを選択し、そのwindowだけを過去から現在の順で返す。
+ */
 export async function listPatientFieldRevisionPage(
   db: DbClient,
   args: ListArgs,
@@ -358,11 +370,16 @@ export async function listPatientFieldRevisionPage(
     db.patientFieldRevision.count({ where }),
     db.patientFieldRevision.findMany({
       where,
-      orderBy: [{ created_at: 'desc' }],
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: limit,
     }),
   ]);
-  const data = await shapeRevisionRows(db, args.orgId, rows, args.exposeSensitiveValues === true);
+  const data = await shapeRevisionRows(
+    db,
+    args.orgId,
+    presentRevisionWindowChronologically(rows),
+    args.exposeSensitiveValues === true,
+  );
 
   return {
     data,

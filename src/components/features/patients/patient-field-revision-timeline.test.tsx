@@ -5,7 +5,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientFieldRevisionTimeline } from './patient-field-revision-timeline';
-import { patientFieldRevisionPresentationItemSchema } from './patient-field-revision-timeline-response-schema';
+import {
+  createPatientFieldRevisionTimelineResponseSchema,
+  patientFieldRevisionPresentationItemSchema,
+} from './patient-field-revision-timeline-response-schema';
 
 setupDomTestEnv();
 
@@ -34,7 +37,32 @@ function revisionMeta(category: string | null, visibleCount = 0, hiddenCount = 0
     count_basis: 'patient_field_revisions',
     filters_applied: { category },
     sort_basis: 'created_at_desc',
+    selection_basis: 'latest_created_at_desc_id_desc',
+    presentation_order: 'created_at_asc_id_asc',
     limit: 50,
+  };
+}
+
+function revisionItem(id: string, createdAt: string) {
+  return {
+    id,
+    category: 'basic' as const,
+    field_key: 'gender',
+    field_label: '性別',
+    value_label: 'male → female',
+    previous: 'male',
+    current: 'female',
+    source: 'patient_detail_edit',
+    source_visit_record_id: null,
+    change_reason: null,
+    importance: 'normal' as const,
+    confirmed_by_name: null,
+    confirmed_at: null,
+    valid_from: '2026-06-16T00:00:00.000Z',
+    valid_to: null,
+    is_current: true,
+    updated_by_name: '田中',
+    created_at: createdAt,
   };
 }
 
@@ -65,6 +93,23 @@ describe('PatientFieldRevisionTimeline', () => {
         created_at: '2026-06-16T01:00:00.000Z',
       }).success,
     ).toBe(true);
+  });
+
+  it('accepts chronological identity order and rejects reversed timestamps or equal-time identities', () => {
+    const schema = createPatientFieldRevisionTimelineResponseSchema(null);
+    const earlier = revisionItem('rev_a', '2026-06-16T01:00:00.000Z');
+    const later = revisionItem('rev_b', '2026-06-17T01:00:00.000Z');
+    const equalTimeB = revisionItem('rev_b', earlier.created_at);
+
+    expect(schema.safeParse({ data: [earlier, later], meta: revisionMeta(null, 2) }).success).toBe(
+      true,
+    );
+    expect(schema.safeParse({ data: [later, earlier], meta: revisionMeta(null, 2) }).success).toBe(
+      false,
+    );
+    expect(
+      schema.safeParse({ data: [equalTimeB, earlier], meta: revisionMeta(null, 2) }).success,
+    ).toBe(false);
   });
 
   it('renders a PH-OS skeleton while field revisions load', () => {
@@ -119,6 +164,8 @@ describe('PatientFieldRevisionTimeline', () => {
           count_basis: 'patient_field_revisions',
           filters_applied: { category: null },
           sort_basis: 'created_at_desc',
+          selection_basis: 'latest_created_at_desc_id_desc',
+          presentation_order: 'created_at_asc_id_asc',
           limit: 1,
         },
       },
@@ -128,8 +175,11 @@ describe('PatientFieldRevisionTimeline', () => {
 
     render(<PatientFieldRevisionTimeline patientId="patient_1" />);
 
-    expect(screen.getByText('先頭1件を表示 / 他3件')).toBeTruthy();
+    expect(screen.getByText('直近1件を過去から現在の順で表示 / それ以前3件')).toBeTruthy();
     expect(screen.getByText('性別')).toBeTruthy();
+    expect(
+      screen.getByTestId('patient-field-revision-current-terminus').getAttribute('aria-current'),
+    ).toBe('time');
   });
 
   it('routes field revision fetches through the shared patient API path helper', async () => {
@@ -290,7 +340,7 @@ describe('PatientFieldRevisionTimeline', () => {
     }
   });
 
-  it('rejects legacy envelopes, inconsistent metadata, oversized values, and duplicates', async () => {
+  it('rejects legacy envelopes, inconsistent metadata, unsafe order, oversized values, and duplicates', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     let capturedQuery: { queryFn: () => Promise<unknown> } | undefined;
     useQueryMock.mockImplementation((config: { queryFn: () => Promise<unknown> }) => {
@@ -333,6 +383,21 @@ describe('PatientFieldRevisionTimeline', () => {
       {
         data: [sensitiveRevision, { ...sensitiveRevision, id: 'rev_sensitive' }],
         meta: revisionMeta(null, 2),
+      },
+      {
+        data: [
+          { ...sensitiveRevision, id: 'rev_new', created_at: '2026-06-17T01:00:00.000Z' },
+          { ...sensitiveRevision, id: 'rev_old', created_at: '2026-06-16T01:00:00.000Z' },
+        ],
+        meta: revisionMeta(null, 2),
+      },
+      {
+        data: Array.from({ length: 51 }, (_, index) => ({
+          ...sensitiveRevision,
+          id: `rev_${String(index).padStart(2, '0')}`,
+          created_at: new Date(Date.UTC(2026, 5, 16, 1, 0, index)).toISOString(),
+        })),
+        meta: revisionMeta(null, 51),
       },
     ];
 

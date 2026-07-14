@@ -102,6 +102,8 @@ export function createPatientFieldRevisionTimelineResponseSchema(expectedCategor
             })
             .strict(),
           sort_basis: z.literal('created_at_desc'),
+          selection_basis: z.literal('latest_created_at_desc_id_desc'),
+          presentation_order: z.literal('created_at_asc_id_asc'),
           limit: z.literal(50),
         })
         .strict(),
@@ -138,12 +140,20 @@ export function createPatientFieldRevisionTimelineResponseSchema(expectedCategor
         }
         identities.add(item.id);
 
-        if (index > 0 && Date.parse(item.created_at) > Date.parse(data[index - 1]!.created_at)) {
-          context.addIssue({
-            code: 'custom',
-            path: ['data', index, 'created_at'],
-            message: 'Patient field revisions must be newest first',
-          });
+        if (index > 0) {
+          const previousItem = data[index - 1]!;
+          const previousTime = Date.parse(previousItem.created_at);
+          const currentTime = Date.parse(item.created_at);
+          if (
+            currentTime < previousTime ||
+            (currentTime === previousTime && item.id.localeCompare(previousItem.id) < 0)
+          ) {
+            context.addIssue({
+              code: 'custom',
+              path: ['data', index, currentTime === previousTime ? 'id' : 'created_at'],
+              message: 'Patient field revisions must be oldest first with a stable identity order',
+            });
+          }
         }
       }
     });

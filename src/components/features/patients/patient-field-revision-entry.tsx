@@ -237,15 +237,30 @@ export function PatientFieldRevisionEntry({
 export function PatientFieldRevisionList({
   items,
   showSource = true,
+  showCurrentTerminus = false,
 }: {
   items: PatientFieldRevisionTimelineItem[];
   showSource?: boolean;
+  showCurrentTerminus?: boolean;
 }) {
   return (
-    <ul className="divide-y divide-border/70 rounded-md border border-border/70 bg-background">
+    <ol
+      className="divide-y divide-border/70 rounded-md border border-border/70 bg-background"
+      aria-label="患者項目の変更履歴"
+    >
       {items.map((item) => (
         <PatientFieldRevisionEntry key={item.id} item={item} showSource={showSource} />
       ))}
-    </ul>
+      {showCurrentTerminus ? (
+        <li
+          className="flex items-center gap-2 px-3 py-2 text-xs leading-5 text-muted-foreground"
+          aria-current="time"
+          data-testid="patient-field-revision-current-terminus"
+        >
+          <span className="size-2 rounded-full bg-foreground" aria-hidden="true" />
+          <span className="font-medium text-foreground">現在</span>
+        </li>
+      ) : null}
+    </ol>
   );
 }
