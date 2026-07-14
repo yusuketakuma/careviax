@@ -49,7 +49,7 @@
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
   共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `UI-THEME-CLINICAL-SIGNAL-001`のSSOT/Plans/ledgerと
-  frontend runtime foundation（Phase 2A fixed shell、Phase 2B-a shared page frame）。`codex2`のbackend sliceは`ee2e4c395`まで完了し、
+  frontend runtime foundation（Phase 2A fixed shell、Phase 2B-a shared page frame）。`codex2`のbackend sliceは`8154719e7`まで完了し、
   current UI handoff中は新規claim/editをHOLD。`Plans.md` / `docs/ui-ux-design-guidelines.md` / `ops/refactor/STATE.md` / `RUN_LOCK.md`に現在のwriterはいない。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
@@ -57,6 +57,13 @@
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex2: AUTHZ-CASE-RISK-COCKPIT-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `8154719e7`, not pushed).
+  - Active patient command-center consumerの`src/app/api/cases/[id]/risk-cockpit/route.ts`とtestのみ変更。既存`withOrgContext` +
+    `getCaseRiskCockpit`のorg/assignment scopeを維持し、non-null cockpit enrichment成功後だけauthoritative patient/case IDをcanonical
+    `care_case` / `case_risk_cockpit` read auditへexact-once記録した。追加query、response、display filter、logger/error wrapperは不変で、
+    403/blank/404/throwはzero-audit。Focused helper+route 16/16、exact lint/format/diff、5 guards、typecheck/no-unused、codex1 reviewをPASS。
+    Rollbackは`8154719e7`のrevertでDB/data rollback不要。Current user UI handoffのためcodex2は本slice後STOPし、新規claimなし。
 
 - codex2: AUTHZ-DISPENSE-WORKBENCH-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `ee2e4c395`, not pushed).
   - Active UI consumerを`GET /api/dispense-tasks/[id]/workbench`まで追跡し、production route/testとbackend protected GET harnessのexact 3 pathsのみ変更。
