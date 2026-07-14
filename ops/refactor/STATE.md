@@ -49,15 +49,61 @@
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
 - Phase C（実装ループ）: `codex1` + `codex2` 対等の2台運用（2026-07-14〜）。両者が非重複exact pathsを所有して実装し、
   共有surfaceとlong gateは事前通知で直列化する。現在のownershipは`codex1`: `UI-THEME-CLINICAL-SIGNAL-001`のSSOT/Plans/ledgerと
-  frontend runtime foundation（`UI-SHELL-GEOMETRY-001`のscoped commit/ledger）、`codex2`: backend限定の
-  `AUTHZ-CONFERENCE-NOTE-READ-AUDIT-001`（`src/app/api/conference-notes/[id]/route.ts`とtest）。
-  `Plans.md` / `docs/ui-ux-design-guidelines.md` / `ops/refactor/STATE.md` / `RUN_LOCK.md`はcodex1が短時間保持中。
+  frontend runtime foundation（Phase 2A fixed shell、Phase 2B-a shared page frame）、`codex2`: backend限定の
+  `AUTHZ-DISPENSE-WORKBENCH-READ-AUDIT-001`（`src/app/api/dispense-tasks/[id]/workbench/route.ts`とtest）。
+  `ops/refactor/STATE.md`はcodex1が台帳同期のため短時間保持中。`Plans.md` / `docs/ui-ux-design-guidelines.md` / `RUN_LOCK.md`に現在のwriterはいない。
   `codex3/codex4`は停止のまま。
   現在の供給源は `Plans.md` の未完了項目。`TASK-001` は 2026-07-06 の `ffb445c0f` で完了済み。
   即時実装は W3-E1/E2 の低リスクUI、
   read-only recon は W3-B9/B3/B4/B6/ID 残、外部/human gate は staging/AWS/PMDA/backup/ISMS/UAT/legal。
 
 ## 直近の作業
+
+- codex1: UI-SHARED-PAGE-FRAME-001 / UI-THEME-CLINICAL-SIGNAL-001 Phase 2B-a (DONE; parent remains Partial, 2026-07-14; implementation `c3fc7a53e`, not pushed).
+  - current task / files inspected / root cause:
+    ユーザー指示「画面のUIは可能な限り共有化」「画面遷移時に負担が少ない」を、UI SSOT、shadcn `base-nova`/Base UI所有境界、
+    `PageScaffold`（154 production files / 164 call sites）、`WorkflowPageHeader` 18、`WorkflowPageIntro` 23、`AdminPageHeader` 36 call sites、
+    button variant、代表route、既存unit/E2Eと照合した。既定`PageScaffold`は各groupへdecorative radial gradient、意味のないshadow、
+    `rounded-xl/2xl`、content clip、12/16/20/24pxのbreakpoint別paddingを付け、3種headerは戻るrow、page marker、surface/action classesを重複。
+    処方workbenchだけ`className="pb-0"`でcanvas geometryをlocal overrideしていたため、共通部品を使っていてもroute間で視覚言語と所有先が分散していた。
+  - files changed / shared UI / accessibility / performance:
+    `PageScaffold`既定面を16px / large 24px canvas、`rounded-md`、hairline border、semantic `bg-card`、shadow/gradient/clipなしへ集約し、
+    下端まで続くworkbench例外をtyped `canvasInset="flush-bottom"`へ移した。新設`PageHeaderFrame`が16px rhythmと最上位1つだけの
+    `data-page-header`を所有し、nested headerは`embedded`、新設`PageContextBar`が戻る/現在地rowを44px以上の中立面へ固定する。
+    3種headerを両componentへ収束し、header actionはserver-safeなcanonical `buttonVariants`へ移行、support/shortcut/right railも
+    `rounded-md` + hairlineへ揃えた。新しいclient state、animation、dependency、network/DB queryはなく、gradient/shadow paintと不要なclipを削減。
+    認可、PHI disclosure、表示情報、操作順、API responseは不変で、正確な患者/薬剤/業務情報を減らしていない。
+  - validation / browser / failure handling:
+    focused Vitest 5 files 10/10、exact ESLint / Prettier / `git diff --check`、`colors:check`、`typography:check`、
+    `frontend-contract:check`、`plans:active:check`、`pnpm typecheck`、final `pnpm typecheck:no-unused`をPASS。`pnpm build:e2e:local`は
+    webpack 28.0分、TypeScript 100秒、311/311 static pages、全route manifestをPASSし、build中の空き容量は観測最小6.3 GiBで監視、temp整理後回復した。
+    更新standaloneをlocal E2E専用`RATE_LIMIT_FEATURE_DISABLED=1`で起動し、13 route × desktop/mobileの26/26を1.3分でPASS。
+    `AppHeader` 56px、canvas 16/24px、prescriptions bottom 0 typed exception、default cardのborder/radius/no-shadow/no-gradient/no-clip、
+    single page-header marker、horizontal overflow、console/page errorを実測した。`/external` desktopと`/communications/requests` mobile screenshotも目視PASS。
+    専用`browse` daemonは未setupで追加導入を止め、既存の認証済みPlaywrightへfallback。初回ad-hoc screenshot commandのCJS top-level await失敗は
+    async IIFEへ修正して再実行し、source/testを緩めていない。
+  - SSOT / imagegen / remaining / rollback:
+    `docs/ui-ux-design-guidelines.md`の3.6/7.1/7.6/7.9/historyと`Plans.md`へ実装済み所有境界を同期した。上位themeのPHI-free
+    `gpt-image-2`参照を継続使用し、今回は同じsurface grammarの共通component化なので追加生成を省略。残はPhase 1 token/font/dark/
+    forced-colors proof、Phase 2B-b `PageSection`/semantic component、Phase 3高頻度surface、Phase 4全route/role/state journey・performance。
+    Rollbackは`c3fc7a53e`のrevertで、DB/data rollback不要。
+
+- codex2: AUTHZ-SET-PLAN-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `89292e338`, not pushed).
+  - `src/app/api/set-plans/[id]/route.ts`とtestのみ変更。既存org/assignment-scoped single queryがselect済みの`cycle.patient_id`を使い、
+    stale-line projection成功後だけcanonical read auditを`set_plan` target/detail viewへexact-once記録した。Rich medication/packaging/JAHIS本文はauditへ含めない。
+    併せてGET IDをcanonical normalizeし、blankをassignment/DB前の400/no-store/zero-auditへ修正。404/throw/authもzero-audit、response/query/perf wrapper/PATCH不変。
+    初回missing importを修正後、helper+route 30/30、exact lint/format/diff、5 guards、typecheck/no-unused、codex1 reviewをPASS。Rollbackは`89292e338`のrevert。
+
+- codex2: AUTHZ-MANAGEMENT-PLAN-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `f70f294b9`, not pushed).
+  - `src/app/api/management-plans/[id]/route.ts`とtestのみ変更。既存org/assignment filterを維持し、single plan queryへrequired `case_.patient_id`だけをinclude、
+    response前に`case_`を除外してscalar contractを保った。成功後だけcanonical `management_plan` detail auditをexact-once記録し、contentは除外。
+    blank/404/query throw/authはzero-audit、PATCH不変。Focused 34/34、exact lint/format/diff、5 guards、typecheck/no-unused、codex1 reviewをPASS。
+    Rollbackは`f70f294b9`のrevert。
+
+- codex2: AUTHZ-CONFERENCE-NOTE-READ-AUDIT-001 (DONE; parent remains Partial, 2026-07-14; implementation `58e98cb53`, not pushed).
+  - `src/app/api/conference-notes/[id]/route.ts`とtestのみ変更。成功projection後だけlinked/null patient双方をcanonical `conference_note` detail auditへ
+    exact-once記録し、title/content/participants/action itemsをauditから除外した。blank/404/query/auth plumbing failureはzero-audit、query/select/response/no-store/PATCH不変。
+    Focused helper+route 34/34、exact lint/format/diff、5 guards、typecheck/no-unused、codex1 reviewをPASS。Rollbackは`58e98cb53`のrevert。
 
 - codex1: UI-SHELL-GEOMETRY-001 / UI-THEME-CLINICAL-SIGNAL-001 Phase 2A (DONE; parent remains Partial, 2026-07-14; implementation `65612698d`, not pushed).
   - current task / files inspected / root cause:
