@@ -13,6 +13,7 @@ const DEFAULT_MAX_ROUTES = 500;
 const DEFAULT_TOP_ROUTES = 8;
 const EXCLUDED_PATHS = new Set(['/api/admin/performance-metrics']);
 export const ROUTE_QUERY_COUNT_HEADER = 'x-phos-query-count';
+const activeRoutePerformanceRequests = new WeakSet<NextRequest>();
 
 type RoutePerformanceSample = {
   duration_ms: number;
@@ -358,7 +359,7 @@ export function getPerformanceSnapshot(options?: {
   };
 }
 
-export async function withRoutePerformance<T extends NextResponse | Response>(
+async function measureRoutePerformance<T extends NextResponse | Response>(
   req: NextRequest,
   handler: () => Promise<T>,
 ): Promise<T> {
@@ -398,6 +399,20 @@ export async function withRoutePerformance<T extends NextResponse | Response>(
       orgScopePresent: Boolean(req.headers?.get('x-org-id')),
     });
     throw error;
+  }
+}
+
+export async function withRoutePerformance<T extends NextResponse | Response>(
+  req: NextRequest,
+  handler: () => Promise<T>,
+): Promise<T> {
+  if (activeRoutePerformanceRequests.has(req)) return handler();
+  activeRoutePerformanceRequests.add(req);
+
+  try {
+    return await measureRoutePerformance(req, handler);
+  } finally {
+    activeRoutePerformanceRequests.delete(req);
   }
 }
 

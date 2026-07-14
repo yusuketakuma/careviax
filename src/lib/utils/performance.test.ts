@@ -134,6 +134,71 @@ describe('performance metrics', () => {
     });
   });
 
+  it('records nested wrappers for the same request once while keeping distinct requests separate', async () => {
+    const firstRequest = {
+      method: 'GET',
+      nextUrl: { pathname: '/api/communications/inbound' },
+    } as Parameters<typeof withRoutePerformance>[0];
+    const secondRequest = {
+      method: 'GET',
+      nextUrl: { pathname: '/api/communications/inbound' },
+    } as Parameters<typeof withRoutePerformance>[0];
+
+    const nestedResponse = await withRoutePerformance(firstRequest, async () =>
+      withRoutePerformance(
+        firstRequest,
+        async () =>
+          new Response('{"data":[]}', {
+            status: 200,
+            headers: {
+              'content-length': '11',
+              [ROUTE_QUERY_COUNT_HEADER]: '4',
+            },
+          }),
+      ),
+    );
+    await withRoutePerformance(
+      secondRequest,
+      async () => new Response('{"data":[]}', { status: 200, headers: { 'content-length': '11' } }),
+    );
+
+    expect(nestedResponse.headers.has(ROUTE_QUERY_COUNT_HEADER)).toBe(false);
+    await expect(nestedResponse.text()).resolves.toBe('{"data":[]}');
+    expect(getPerformanceSnapshot({ topRoutes: 5 }).routes[0]).toMatchObject({
+      route: '/api/communications/inbound',
+      request_count: 2,
+      payload_sample_count: 2,
+      query_count_sample_count: 1,
+      average_query_count: 4,
+      last_payload_bytes: 11,
+    });
+  });
+
+  it('releases the nested-request guard after an error', async () => {
+    const request = {
+      method: 'GET',
+      nextUrl: { pathname: '/api/patients/board' },
+    } as Parameters<typeof withRoutePerformance>[0];
+
+    await expect(
+      withRoutePerformance(request, async () => {
+        throw new Error('expected test failure');
+      }),
+    ).rejects.toThrow('expected test failure');
+    await withRoutePerformance(
+      request,
+      async () => new Response('{"data":[]}', { status: 200, headers: { 'content-length': '11' } }),
+    );
+
+    expect(getPerformanceSnapshot({ topRoutes: 5 }).routes[0]).toMatchObject({
+      route: '/api/patients/board',
+      request_count: 2,
+      error_count: 1,
+      payload_sample_count: 1,
+      last_payload_bytes: 11,
+    });
+  });
+
   it('records query count from an internal response header and strips it before returning', async () => {
     const request = {
       method: 'GET',
