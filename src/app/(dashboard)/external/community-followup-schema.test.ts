@@ -14,11 +14,28 @@ const ACTIVITY = {
   description: 'provider-only free text',
 };
 
+function listMeta(
+  overrides: Partial<{
+    generated_at: string;
+    limit: number;
+    has_more: boolean;
+    next_cursor: string | null;
+  }> = {},
+) {
+  return {
+    generated_at: '2026-07-16T00:00:00.000Z',
+    limit: 8,
+    has_more: false,
+    next_cursor: null,
+    ...overrides,
+  };
+}
+
 describe('communityFollowupsResponseSchema', () => {
   it('projects only fields displayed by the external dashboard', () => {
     const parsed = communityFollowupsResponseSchema.parse({
       data: [ACTIVITY],
-      meta: { limit: 8, has_more: false, next_cursor: null },
+      meta: listMeta(),
     });
 
     expect(parsed.data[0]).not.toHaveProperty('org_id');
@@ -32,35 +49,37 @@ describe('communityFollowupsResponseSchema', () => {
       'non-follow-up row',
       {
         data: [{ ...ACTIVITY, follow_up_required: false }],
-        meta: { limit: 8, has_more: false, next_cursor: null },
+        meta: listMeta(),
       },
     ],
     [
       'negative referrals',
       {
         data: [{ ...ACTIVITY, referrals_generated: -1 }],
-        meta: { limit: 8, has_more: false, next_cursor: null },
+        meta: listMeta(),
       },
     ],
     [
       'invalid date',
       {
         data: [{ ...ACTIVITY, activity_date: '2026-07-12' }],
-        meta: { limit: 8, has_more: false, next_cursor: null },
+        meta: listMeta(),
       },
     ],
     [
       'duplicate identity',
       {
         data: [ACTIVITY, ACTIVITY],
-        meta: { limit: 8, has_more: false, next_cursor: null },
+        meta: listMeta(),
       },
     ],
-    ['wrong limit', { data: [ACTIVITY], meta: { limit: 50, has_more: false, next_cursor: null } }],
     [
-      'cursor mismatch',
-      { data: [ACTIVITY], meta: { limit: 8, has_more: true, next_cursor: null } },
+      'missing generated_at',
+      { data: [ACTIVITY], meta: { limit: 8, has_more: false, next_cursor: null } },
     ],
+    ['invalid generated_at', { data: [ACTIVITY], meta: listMeta({ generated_at: 'invalid' }) }],
+    ['wrong limit', { data: [ACTIVITY], meta: listMeta({ limit: 50 }) }],
+    ['cursor mismatch', { data: [ACTIVITY], meta: listMeta({ has_more: true }) }],
   ])('rejects %s', (_label, payload) => {
     expect(communityFollowupsResponseSchema.safeParse(payload).success).toBe(false);
   });

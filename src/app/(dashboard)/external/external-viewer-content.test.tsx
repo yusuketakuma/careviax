@@ -95,7 +95,12 @@ describe('ExternalViewerContent', () => {
                   description: 'provider-only free text',
                 },
               ],
-              meta: { limit: 8, has_more: false, next_cursor: null },
+              meta: {
+                generated_at: '2026-07-16T00:00:00.000Z',
+                limit: 8,
+                has_more: false,
+                next_cursor: null,
+              },
             };
       return new Response(JSON.stringify(payload), {
         status: 200,
@@ -130,7 +135,12 @@ describe('ExternalViewerContent', () => {
           activity_date: '2026-07-12T01:00:00.000Z',
         },
       ],
-      meta: { limit: 8, has_more: false, next_cursor: null },
+      meta: {
+        generated_at: '2026-07-16T00:00:00.000Z',
+        limit: 8,
+        has_more: false,
+        next_cursor: null,
+      },
     });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/external-access', {

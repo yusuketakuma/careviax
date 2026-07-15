@@ -85,11 +85,13 @@ describe('/api/community-activities', () => {
     expect(body).toMatchObject({
       data: [{ id: 'activity_1' }],
       meta: {
+        generated_at: expect.any(String),
         limit: 50,
         has_more: false,
         next_cursor: null,
       },
     });
+    expect(new Date(body.meta.generated_at).toISOString()).toBe(body.meta.generated_at);
     expect(body).not.toHaveProperty('hasMore');
     expect(body).not.toHaveProperty('nextCursor');
   });

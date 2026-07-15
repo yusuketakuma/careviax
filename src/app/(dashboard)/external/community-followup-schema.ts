@@ -19,6 +19,7 @@ export const communityFollowupsResponseSchema = z
     data: z.array(communityFollowupSchema).max(8),
     meta: z
       .object({
+        generated_at: z.string().datetime({ offset: true }),
         limit: z.literal(8),
         has_more: z.boolean(),
         next_cursor: z.string().trim().min(1).nullable(),

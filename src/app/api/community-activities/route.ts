@@ -1,4 +1,5 @@
 import { withAuthContext } from '@/lib/auth/context';
+import { buildCursorListEnvelope } from '@/lib/api/list-envelope';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
@@ -83,14 +84,7 @@ export const GET = withAuthContext(
 
     const page = buildCursorPage(items, limit, (item) => item.id);
 
-    return success({
-      data: page.data,
-      meta: {
-        limit,
-        has_more: page.hasMore,
-        next_cursor: page.nextCursor ?? null,
-      },
-    });
+    return success(buildCursorListEnvelope(page, limit));
   },
   {
     permission: 'canReport',
