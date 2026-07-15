@@ -13,6 +13,16 @@ export type CursorListMeta = {
   next_cursor: string | null;
 };
 
+export type CountedListMeta = {
+  total_count: number;
+  visible_count: number;
+  hidden_count: number;
+  truncated: boolean;
+};
+
+type CountedListRouteMeta<TMeta extends Record<string, unknown>> = TMeta &
+  Partial<Record<keyof CountedListMeta | 'generated_at', never>>;
+
 export function buildListEnvelope<T, TMeta extends Record<string, unknown>>(
   data: readonly T[],
   meta: TMeta & { generated_at?: never },
@@ -53,12 +63,8 @@ export function buildCursorListEnvelope<T>(
   );
 }
 
-export type CountedListEnvelope<T> = {
+export type CountedListEnvelope<T> = CountedListMeta & {
   data: readonly T[];
-  total_count: number;
-  visible_count: number;
-  hidden_count: number;
-  truncated: boolean;
 };
 
 export function buildCountedListEnvelope<T>(
@@ -75,4 +81,29 @@ export function buildCountedListEnvelope<T>(
     hidden_count: hiddenCount,
     truncated: hiddenCount > 0,
   };
+}
+
+export function buildCountedListResponse<T, TMeta extends Record<string, unknown>>(
+  data: readonly T[],
+  totalCount: number,
+  meta: CountedListRouteMeta<TMeta>,
+  generatedAt: Date = new Date(),
+): ListEnvelope<T, CountedListMeta & TMeta> {
+  if (!Number.isSafeInteger(totalCount) || totalCount < 0) {
+    throw new Error('Counted list envelope invariant violated: total count must be non-negative');
+  }
+
+  const counted = buildCountedListEnvelope(data, totalCount);
+
+  return buildListEnvelope(
+    counted.data,
+    {
+      total_count: counted.total_count,
+      visible_count: counted.visible_count,
+      hidden_count: counted.hidden_count,
+      truncated: counted.truncated,
+      ...meta,
+    },
+    generatedAt,
+  );
 }

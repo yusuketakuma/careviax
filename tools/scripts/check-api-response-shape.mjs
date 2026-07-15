@@ -14,7 +14,11 @@ const SCAN_ROOTS = ['src/app/api'];
 const TARGET_EXTENSIONS = new Set(['.ts', '.tsx']);
 const SKIPPED_SUFFIXES = ['.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx'];
 const LIST_ENVELOPE_MODULE = '@/lib/api/list-envelope';
-const CANONICAL_LIST_ENVELOPE_BUILDERS = new Set(['buildListEnvelope', 'buildCursorListEnvelope']);
+const CANONICAL_LIST_ENVELOPE_BUILDERS = new Set([
+  'buildListEnvelope',
+  'buildCursorListEnvelope',
+  'buildCountedListResponse',
+]);
 
 const DIRECT_LEGACY_ERROR_JSON_PATTERN =
   /\bNextResponse\.json\s*\(\s*\{[^)]*\b(?:error|code|message|fieldErrors)\s*:/gs;
@@ -264,7 +268,7 @@ function collectCanonicalListEnvelopeBindings(content) {
     for (const rawSpecifier of match[1].split(',')) {
       const specifier = rawSpecifier.replace(/\/\*[\s\S]*?\*\//g, '').trim();
       const binding = specifier.match(
-        /^(buildListEnvelope|buildCursorListEnvelope)(?:\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*))?$/u,
+        /^(buildListEnvelope|buildCursorListEnvelope|buildCountedListResponse)(?:\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*))?$/u,
       );
       if (!binding || !CANONICAL_LIST_ENVELOPE_BUILDERS.has(binding[1])) continue;
       bindings.add(binding[2] ?? binding[1]);

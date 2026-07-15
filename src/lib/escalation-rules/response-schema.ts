@@ -39,6 +39,7 @@ const escalationRuleSchema = z
 
 const escalationRuleMetaSchema = z
   .object({
+    generated_at: z.string().datetime({ offset: true }),
     total_count: NON_NEGATIVE_COUNT,
     visible_count: NON_NEGATIVE_COUNT,
     hidden_count: NON_NEGATIVE_COUNT,

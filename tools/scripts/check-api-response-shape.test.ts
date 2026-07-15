@@ -79,8 +79,12 @@ describe('check-api-response-shape', () => {
   it('allows canonical list envelope builders imported from the shared module', () => {
     const root = createFixtureRepo({
       'src/app/api/example/route.ts': `
-        import { buildCursorListEnvelope } from '@/lib/api/list-envelope';
+        import {
+          buildCountedListResponse,
+          buildCursorListEnvelope,
+        } from '@/lib/api/list-envelope';
         return success(buildCursorListEnvelope(page, 100));
+        return success(buildCountedListResponse(rows, 3, { count_basis: 'rows' }));
       `,
     });
 

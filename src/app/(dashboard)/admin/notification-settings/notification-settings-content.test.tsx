@@ -89,6 +89,7 @@ const NOTIFICATION_RULE_META = {
 const EMPTY_ESCALATION_RULES_RESPONSE = {
   data: [],
   meta: {
+    generated_at: '2026-07-16T00:00:00.000Z',
     total_count: 0,
     visible_count: 0,
     hidden_count: 0,
@@ -110,6 +111,7 @@ const ESCALATION_RULE = {
 };
 
 const ESCALATION_RULE_META = {
+  generated_at: '2026-07-16T00:00:00.000Z',
   total_count: 1,
   visible_count: 1,
   hidden_count: 0,
@@ -160,6 +162,7 @@ describe('NotificationSettingsContent', () => {
                 },
               ],
               meta: {
+                generated_at: '2026-07-16T00:00:00.000Z',
                 total_count: 1,
                 visible_count: 1,
                 hidden_count: 0,
@@ -768,6 +771,7 @@ describe('NotificationSettingsContent', () => {
                 },
               ],
               meta: {
+                generated_at: '2026-07-16T00:00:00.000Z',
                 total_count: 3,
                 visible_count: 1,
                 hidden_count: 2,

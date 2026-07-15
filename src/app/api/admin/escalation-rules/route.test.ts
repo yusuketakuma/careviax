@@ -135,6 +135,7 @@ describe('/api/admin/escalation-rules', () => {
         },
       ],
       meta: {
+        generated_at: expect.any(String),
         total_count: 1,
         visible_count: 1,
         hidden_count: 0,
@@ -144,6 +145,7 @@ describe('/api/admin/escalation-rules', () => {
         limit: 5,
       },
     });
+    expect(new Date(body.meta.generated_at).toISOString()).toBe(body.meta.generated_at);
     expect(escalationRuleCountMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1' },
     });
@@ -180,6 +182,7 @@ describe('/api/admin/escalation-rules', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       meta: {
+        generated_at: expect.any(String),
         total_count: 3,
         visible_count: 1,
         hidden_count: 2,

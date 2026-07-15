@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCountedListEnvelope,
+  buildCountedListResponse,
   buildCursorListEnvelope,
   buildListEnvelope,
 } from './list-envelope';
@@ -48,6 +49,44 @@ describe('canonical list envelopes', () => {
       has_more: false,
       next_cursor: null,
     });
+  });
+
+  it('normalizes counted data into canonical generated metadata', () => {
+    const envelope = buildCountedListResponse(
+      [{ id: 'row_1' }],
+      3,
+      { count_basis: 'example_rows', limit: 100 },
+      GENERATED_AT,
+    );
+
+    expect(Object.keys(envelope)).toEqual(['data', 'meta']);
+    expect(Object.keys(envelope.meta)).toEqual([
+      'generated_at',
+      'total_count',
+      'visible_count',
+      'hidden_count',
+      'truncated',
+      'count_basis',
+      'limit',
+    ]);
+    expect(envelope).toEqual({
+      data: [{ id: 'row_1' }],
+      meta: {
+        generated_at: '2026-07-16T00:00:00.000Z',
+        total_count: 3,
+        visible_count: 1,
+        hidden_count: 2,
+        truncated: true,
+        count_basis: 'example_rows',
+        limit: 100,
+      },
+    });
+  });
+
+  it.each([-1, 1.5, Number.NaN])('rejects an invalid canonical total count (%s)', (totalCount) => {
+    expect(() =>
+      buildCountedListResponse([], totalCount, { count_basis: 'example_rows' }, GENERATED_AT),
+    ).toThrow('total count must be non-negative');
   });
 
   it('fails closed for invalid cursor relations and limits', () => {
