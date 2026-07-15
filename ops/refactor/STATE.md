@@ -63,6 +63,51 @@
 
 ## 直近の作業
 
+- user policy + codex1/codex2 live recon: PH-OS account / fixed-role model V1
+  (AUTHORITATIVE POLICY RECEIVED / HIGH-RISK MIGRATION PLAN IN PROGRESS, 2026-07-15).
+  - user decision:
+    public account types are fixed to platform `owner` / `supporter` and tenant `admin > pharmacist > clerk`.
+    platform owner has full PH-OS tenant/system/account/audit capability; supporter is read-only and only for explicitly assigned
+    tenants. Tenant admin includes pharmacist and non-pharmacist operations plus tenant settings/account/log access; pharmacist can
+    perform pharmacist and non-pharmacist operations but not tenant administration; clerk can perform non-pharmacist operations and
+    read pharmacist-work information, but cannot register/finalize/approve/execute/change/cancel pharmacist-only actions. Initial
+    permissions are role-fixed, not user/function/action-customizable. `role` and legal pharmacist qualification must remain separate;
+    admin may have initial pharmacist-work capability, but a legal qualification fact such as `is_licensed_pharmacist` must not be
+    inferred from the admin role.
+  - verified live delta / risk:
+    platform access is already separated as `PlatformOperatorRole` + audited, target-tenant-pinned, MFA/30-minute
+    `BreakGlassSession`, but it exposes `platform_owner/platform_admin/platform_support`; supporter has no persistent explicit tenant
+    assignment. Tenant `MemberRole` still has owner/admin/pharmacist/pharmacist_trainee/clerk/driver/external_viewer, `User.org_id` is
+    mandatory, and a tenant owner can provision another organization. Per-membership `can_dispense`, `can_audit_dispense`, `can_set`,
+    `can_audit_set` values and admin UI/API toggles conflict with fixed-role operation; additionally pharmacist defaults audit flags to
+    false while the role capability matrix says true. `PharmacistCredential` exists, but free-form `certification_type` is not a
+    canonical legal-license fact. Static inventory found old-role references in 94 trainee / 61 driver / 58 external-viewer files,
+    tenant-owner references in 91 files, and individual dispense/audit flags in 22 / 32 files.
+  - execution boundary / next:
+    do not delete enum values, rewrite memberships, apply a migration, or blanket-enable actions in this slice. `codex2` owns the
+    `Plans.md` consolidation under `AUTHZ-ACCOUNT-MODEL-V1-001` (or a deduplicated umbrella), refining existing
+    `TENANT-SUPPORT-001` / permission-doc work with additive schema, explicit legacy mapping, qualification gate, RLS/audit proof,
+    compatibility, rollback, and human migration approval. Full platform-owner capability must not become an unscoped/unaudited DB
+    bypass. The ordinary clerk-read slice below is compatible with the new policy; pharmacist-only writes/outputs remain closed.
+
+- codex2 implementation + codex1 independent review/integration: clerk ordinary patient reads S2
+  (DONE / CODE COMMITTED, 2026-07-15; implementation `2c6f975af`).
+  - implementation / authorization boundary:
+    ordinary GET access for patient list, board, detail, header summary, overview, readiness, structured care, medication stock,
+    medication timeline, and visits moved from `canVisit` to `canViewDashboard`. Patient detail SSR and global-search patient category
+    now use the same read capability. `/api/patients` POST and `/api/patients/:id` PATCH remain `canVisit`; proposal/prescription
+    search, report authoring, audit, send/share, PDF/export/print and other output boundaries were not broadened. Route catalog entries
+    were split by HTTP method and the direct-auth allowlist was synchronized. Org/RLS/assignment helpers, PHI-read audit, and
+    sensitive no-store behavior are unchanged; clerk is admitted through the existing role matrix while driver/external viewer remain
+    denied. This is auth-gate parity with no visual reconstruction, so image generation was intentionally omitted.
+  - review / validation / remaining:
+    codex2 focused `15 files / 249 tests` passed. codex1 independently reviewed the complete diff and reran the same `15 / 249`,
+    route-auth `147 routes / 211 calls / 0 new`, API authz/response shape, client schema `360 / 0`, frontend contract, exact
+    ESLint/Prettier/diff, serialized `pnpm typecheck`, and `pnpm typecheck:no-unused`; all passed. Build/E2E were not run under the
+    current no-frequent-build policy, and Oracle remained prohibited by this STATE. Remaining authorization work is governed by the
+    new fixed-role V1 plan above; audit/set-audit page and navigation reachability also need a separate capability-aware UI slice even
+    though their APIs already deny unauthorized writes.
+
 - codex1 implementation + codex2 independent review: clerk ordinary operations / pharmacist-only
   documentation and audit capability split S1
   (PARTIAL POLICY MIGRATION DONE / CODE COMMITTED, 2026-07-15; implementation `faa37451f`).
