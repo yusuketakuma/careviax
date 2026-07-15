@@ -238,8 +238,8 @@ The active loop is limited to `codex1` and `codex2`.
 - Verify runtime/config changes with the real Codex binary:
   `/Users/yusuke/.nvm/versions/node/v24.16.0/bin/codex --strict-config doctor --summary --ascii`.
 - Prefer the current top-level `web_search = "cached" | "live" | "disabled"` setting over deprecated web-search feature flags.
-- Project and user-global custom-agent files/registries are intentionally absent. Both
-  `.codex/config.toml` and `~/.codex/config.toml` keep `features.multi_agent = false`.
+- Project custom-agent files and registries are intentionally absent, and `.codex/config.toml` keeps
+  `features.multi_agent = false`. User-global agents may exist for other repositories but are not used here.
 
 ## Agent loop SSOT
 
