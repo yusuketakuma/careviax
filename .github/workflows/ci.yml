@@ -112,6 +112,9 @@ jobs:
       - name: EventBridge schedule definition check
         run: pnpm eventbridge-schedules:check
 
+      - name: Workflow dispatch input safety check
+        run: pnpm workflow-dispatch-input-safety:check
+
       - name: Type check
         run: pnpm typecheck
 

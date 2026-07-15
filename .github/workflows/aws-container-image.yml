@@ -26,7 +26,7 @@ on:
       next_public_cognito_client_id:
         description: Cognito app client ID frozen into the browser bundle
         required: true
-        default: placeholder-client-id
+        default: placeholderclientid
 
 permissions:
   contents: read
@@ -45,6 +45,106 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate workflow dispatch inputs
+        id: validate-inputs
+        shell: bash
+        env:
+          INPUT_AWS_REGION: ${{ inputs.aws_region }}
+          INPUT_ECR_REPOSITORY: ${{ inputs.ecr_repository }}
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+          INPUT_NEXT_PUBLIC_APP_URL: ${{ inputs.next_public_app_url }}
+          INPUT_NEXT_PUBLIC_COGNITO_USER_POOL_ID: ${{ inputs.next_public_cognito_user_pool_id }}
+          INPUT_NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ inputs.next_public_cognito_client_id }}
+        run: |
+          set -euo pipefail
+
+          fail_input() {
+            echo "::error title=Invalid workflow input::$1"
+            exit 1
+          }
+
+          reject_control_characters() {
+            local input_name="$1"
+            local input_value="$2"
+            if [[ "$input_value" =~ [[:cntrl:]] ]]; then
+              fail_input "$input_name contains a control character"
+            fi
+          }
+
+          reject_control_characters aws_region "$INPUT_AWS_REGION"
+          reject_control_characters ecr_repository "$INPUT_ECR_REPOSITORY"
+          reject_control_characters image_tag "$INPUT_IMAGE_TAG"
+          reject_control_characters next_public_app_url "$INPUT_NEXT_PUBLIC_APP_URL"
+          reject_control_characters next_public_cognito_user_pool_id "$INPUT_NEXT_PUBLIC_COGNITO_USER_POOL_ID"
+          reject_control_characters next_public_cognito_client_id "$INPUT_NEXT_PUBLIC_COGNITO_CLIENT_ID"
+
+          [[ "$INPUT_AWS_REGION" == "ap-northeast-1" ]] ||
+            fail_input "aws_region must be the approved Tokyo region"
+
+          (( ${#INPUT_ECR_REPOSITORY} >= 2 && ${#INPUT_ECR_REPOSITORY} <= 256 )) ||
+            fail_input "ecr_repository length is outside the ECR contract"
+          [[ "$INPUT_ECR_REPOSITORY" =~ ^[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*(\/[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*)*$ ]] ||
+            fail_input "ecr_repository does not match the ECR repository-name contract"
+
+          if [[ -n "$INPUT_IMAGE_TAG" ]]; then
+            (( ${#INPUT_IMAGE_TAG} <= 128 )) ||
+              fail_input "image_tag exceeds 128 characters"
+            [[ "$INPUT_IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]] ||
+              fail_input "image_tag contains an unsupported character"
+            validated_image_tag="$INPUT_IMAGE_TAG"
+          else
+            validated_image_tag="sha-${GITHUB_SHA::12}"
+          fi
+
+          (( ${#INPUT_NEXT_PUBLIC_APP_URL} <= 2048 )) ||
+            fail_input "next_public_app_url exceeds 2048 characters"
+          [[ "$INPUT_NEXT_PUBLIC_APP_URL" =~ ^https:\/\/[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?\/?$ ]] ||
+            fail_input "next_public_app_url must be an HTTPS origin"
+
+          app_authority="${INPUT_NEXT_PUBLIC_APP_URL#https://}"
+          app_authority="${app_authority%/}"
+          app_host="$app_authority"
+          if [[ "$app_authority" == *:* ]]; then
+            app_host="${app_authority%:*}"
+            app_port="${app_authority##*:}"
+            [[ "$app_port" =~ ^[0-9]{1,5}$ ]] ||
+              fail_input "next_public_app_url contains an invalid port"
+            app_port_number=$((10#$app_port))
+            (( app_port_number >= 1 && app_port_number <= 65535 )) ||
+              fail_input "next_public_app_url port is outside 1..65535"
+          fi
+
+          (( ${#app_host} <= 253 )) ||
+            fail_input "next_public_app_url hostname exceeds 253 characters"
+          [[ "$app_host" != *..* ]] ||
+            fail_input "next_public_app_url contains an empty hostname label"
+          IFS='.' read -r -a app_host_labels <<< "$app_host"
+          for app_host_label in "${app_host_labels[@]}"; do
+            (( ${#app_host_label} >= 1 && ${#app_host_label} <= 63 )) ||
+              fail_input "next_public_app_url hostname label length is invalid"
+            [[ "$app_host_label" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$ ]] ||
+              fail_input "next_public_app_url hostname label is invalid"
+          done
+
+          (( ${#INPUT_NEXT_PUBLIC_COGNITO_USER_POOL_ID} <= 55 )) ||
+            fail_input "next_public_cognito_user_pool_id exceeds 55 characters"
+          [[ "$INPUT_NEXT_PUBLIC_COGNITO_USER_POOL_ID" =~ ^ap-northeast-1_[A-Za-z0-9]+$ ]] ||
+            fail_input "next_public_cognito_user_pool_id does not match the approved region"
+
+          (( ${#INPUT_NEXT_PUBLIC_COGNITO_CLIENT_ID} <= 128 )) ||
+            fail_input "next_public_cognito_client_id exceeds 128 characters"
+          [[ "$INPUT_NEXT_PUBLIC_COGNITO_CLIENT_ID" =~ ^[A-Za-z0-9_+]+$ ]] ||
+            fail_input "next_public_cognito_client_id does not match the Cognito contract"
+
+          validated_image_suffix="${INPUT_ECR_REPOSITORY}:${validated_image_tag}"
+          {
+            printf 'aws_region=%s\n' "$INPUT_AWS_REGION"
+            printf 'image_suffix=%s\n' "$validated_image_suffix"
+            printf 'next_public_app_url=%s\n' "$INPUT_NEXT_PUBLIC_APP_URL"
+            printf 'next_public_cognito_user_pool_id=%s\n' "$INPUT_NEXT_PUBLIC_COGNITO_USER_POOL_ID"
+            printf 'next_public_cognito_client_id=%s\n' "$INPUT_NEXT_PUBLIC_COGNITO_CLIENT_ID"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: pnpm/action-setup@v4
         with:
@@ -69,26 +169,23 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ inputs.aws_region }}
+          aws-region: ${{ steps.validate-inputs.outputs.aws_region }}
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Prepare image tags
+      - name: Compose validated image reference
         id: image
         shell: bash
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_SUFFIX: ${{ steps.validate-inputs.outputs.image_suffix }}
         run: |
           set -euo pipefail
-          if [ -n "${{ inputs.image_tag }}" ]; then
-            tag="${{ inputs.image_tag }}"
-          else
-            tag="sha-${GITHUB_SHA::12}"
-          fi
-          image="${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr_repository }}:${tag}"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "image=$image" >> "$GITHUB_OUTPUT"
-          echo "IMAGE=$image"
+          image="${ECR_REGISTRY}/${IMAGE_SUFFIX}"
+          printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
+          echo "Validated container image reference prepared."
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -106,18 +203,18 @@ jobs:
           build-args: |
             APP_ENV=production
             NEXT_PUBLIC_APP_ENV=production
-            NEXT_PUBLIC_APP_URL=${{ inputs.next_public_app_url }}
-            NEXT_PUBLIC_COGNITO_USER_POOL_ID=${{ inputs.next_public_cognito_user_pool_id }}
-            NEXT_PUBLIC_COGNITO_CLIENT_ID=${{ inputs.next_public_cognito_client_id }}
+            NEXT_PUBLIC_APP_URL=${{ steps.validate-inputs.outputs.next_public_app_url }}
+            NEXT_PUBLIC_COGNITO_USER_POOL_ID=${{ steps.validate-inputs.outputs.next_public_cognito_user_pool_id }}
+            NEXT_PUBLIC_COGNITO_CLIENT_ID=${{ steps.validate-inputs.outputs.next_public_cognito_client_id }}
             NEXT_PUBLIC_SENTRY_DSN=
             DATABASE_URL=postgresql://build:build@localhost:5432/build
             DIRECT_URL=postgresql://build:build@localhost:5432/build
-            NEXTAUTH_URL=${{ inputs.next_public_app_url }}
+            NEXTAUTH_URL=${{ steps.validate-inputs.outputs.next_public_app_url }}
             NEXTAUTH_SECRET=build-time-placeholder-secret
             AUTH_SECRET=build-time-placeholder-secret
             ENCRYPTION_KEY=YnVpbGQtdGltZS1wbGFjZWhvbGRlci0zMmJ5dGVzLTEyMw==
             JWT_SIGNING_SECRET=build-time-placeholder-jwt-secret
-            AWS_REGION=${{ inputs.aws_region }}
+            AWS_REGION=${{ steps.validate-inputs.outputs.aws_region }}
 
       - name: Print runtime plan command
         run: |
