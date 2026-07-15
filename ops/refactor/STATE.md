@@ -10,10 +10,11 @@
 
 - ユーザーが`codex1` / `codex2`のpeer運用を明示的に再有効化した。両者は対等な実装担当として、live repo、test、
   このSTATEを履歴記述より優先し、`agmsg`でexact-path ownershipと依存関係を明示してnon-overlap sliceを進める。
-  `codex3` / `codex4` / Claudeは再有効化されていない。boundedなread-only調査・review・検証subagentは利用できる。
-- `codex2`は`Plans.md`の全体管理・重複排除・優先順位・acceptance整理を独占し、明示claimしたnon-overlap Plan sliceを
-  実装できる。`codex1`は`ops/refactor/STATE.md` / `RUN_LOCK.md`、統合review、横断validation、scoped commitを所有する。
-  pushは従来どおりcurrent-taskのユーザー明示がある場合だけ行う。
+  `codex3` / `codex4` / Claude / 追加subagentは使用しない。再投入はユーザーが後続指示で明示した場合だけ行う。
+- 両者の合意により、現在は`codex1`が`Plans.md`の全体管理・重複排除・優先順位・acceptance整理と
+  `ops/refactor/STATE.md` / `RUN_LOCK.md`、統合review、横断validation、scoped commitを担当する。`codex2`はagmsgで
+  claim/ACKしたexact implementation pathsだけを担当し、shared docsはread-only reviewする。担当は恒久的な上下関係ではなく、
+  handoff時にagmsgで更新する。pushは従来どおりcurrent-taskのユーザー明示がある場合だけ行う。
 - 書込み前にowner、exact paths、依存を通知し、同一pathを並列編集しない。shared docsまたはauth/RLS/PHI/DB/billing等の
   high-risk contract変更はproposal + peer ACKを先に取る。長いtypecheck/build/E2E、Next生成物、commitは`codex1`が直列化する。
 - peer findingはそのまま台帳化せず、主担当がlive evidence、既存Plan/STATEとの重複、reproduction、DoD、testsを再確認する。
@@ -55,13 +56,46 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `codex1` / `codex2` peer運用 + bounded subagents（2026-07-15〜）。`codex2`がPlans全体管理、
-  `codex1`がSTATE/RUN_LOCK・統合validation・scoped commitを担当し、両者がagmsg exact-path claimでnon-overlap実装する。
-  subagentは明示されたbounded scopeの調査・review・検証と、ownerが許可したnon-overlap実装だけを担当する。
+- Phase C（実装ループ）: `codex1` / `codex2` peer運用（2026-07-15〜）。現在は`codex1`がPlans/STATE全体管理・
+  統合validation・scoped commit、`codex2`がagmsgでACKしたexact implementation pathsを担当し、non-overlapで実装する。
+  追加agentは使わず、必要なread-only reviewもcodex1/codex2間で行う。
   現在の供給源は`Plans.md`の未完了項目とlive code差分。migration、auth/RLS policy変更、full-history event projectionは
   human/high-risk gateとして実装せず、証拠付きの残件へ戻す。
 
 ## 直近の作業
+
+- codex1 + codex2 deep account-type / clinical-audit authorization review
+  (DONE / PLANS COMMITTED / RUNTIME IMPLEMENTATION NOT STARTED, 2026-07-15; plan commit `70d4ef9b1`).
+  - final contract / peer agreement:
+    最新の「監査業務も薬剤師のみ」と直前のclerk full-read決定を、role名単独または資格単独のallowにしないことで合意した。
+    v1の薬剤師専用実行クラスは薬歴記載・報告書作成・監査実行。tenant admin/pharmacist（global ownerは明示target tenant文脈のみ）
+    というaction-capable account classification、actor本人のcanonical verified/current薬剤師資格、target tenant / assignment /
+    purpose / 職務分離をすべて満たす場合だけ実行可能とする。clerk/supporterは権限内情報をreadできるが実行不可で、資格情報が
+    clerkと共存する場合もroleを推定昇格せず不整合provisioningとしてfail-closedにする。read/govern/execute/assign/notify/outputは
+    別capabilityとする。
+  - verified live gaps / new plan points:
+    PHOS調剤監査/set監査のSTART/APPROVE/REJECT 6 actionに`required_role`がなく、executorは値がある場合しかroleを拒否しない。
+    classic audit routeはGETとmutation、task/notification/badgeを同じlegacy audit permissionへ接続し、現行自己監査例外もある。
+    account UIはlegacy ownerをadminへ変換してprofile保存でもrole/overrideを送るためsilent demotionが可能。mutation routeには
+    fresh step-up、self/last-admin、session epoch失効、完全なbefore/after auditがなく、tenant membership停止とglobal identity停止も
+    混在する。Cognito先行更新とDB transactionにdurable reconcileがなく、claim/offline/idempotency projectionはtenant/subject/
+    authz versionへ十分束縛されていない。Membershipのrole/site同居と順序未指定`findFirst`もaccount Phase 1 hard blockerとした。
+  - plan delta / boundaries:
+    `AUTHZ-CLINICAL-AUDIT-ACTOR-001`と`AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`を追加し、queue 60→62。
+    umbrella、audit UI、supporter、permission docs、multisite、persisted projectionは既存IDを強化して重複追加しなかった。
+    canonical qualification lifecycle、authz contract/epoch、deny-first downgrade/revoke、grant-after-sync elevation/reactivation、durable
+    outbox/reconciler、offline mismatch quarantine、atomic minimal authorization decision evidenceをacceptanceへ追加した。schema/DML、
+    Cognito/IaC、self-audit例外、qualification verification sourceはhuman/medical/legal/privacy/security gateまで実装しない。
+  - coordination / process evidence:
+    codex2が上記contractとPlans/STATEのcodex1 ownershipをACKし、JAHIS 4 pathsとのnon-overlapを確認した。codex2から旧ユーザー制約の
+    指摘を受け、残っていたread-only subagentを直ちに停止し、最終計画はcodex1自身が開いたlive codeとcodex2 peer evidenceだけで
+    構成した。一般AGENTSのhigh-risk consultation規則を先に見てOracleを1回起動したが、このSTATE上段のno-Oracle SSOT再確認直後、
+    結果取得前にexit 130でキャンセルした。status/read/reattach/restartは行わず、Oracle出力は計画に使用していない。
+  - validation:
+    `pnpm plans:active:check`、`pnpm exec prettier --check Plans.md ops/refactor/STATE.md`、
+    `git diff --check -- Plans.md ops/refactor/STATE.md`をPASS。Implementation-ready queue 62、duplicate 0、旧二段表現0を確認し、
+    codex2 final read-only reviewもAPPROVED。documentation-only sliceのためbuild/E2E/typecheckは未実行。`Plans.md`だけを明示stageし、
+    account/audit planを`70d4ef9b1`へscoped commitした。JAHIS 4 pathsとuser/harness dirtyは含めていない。
 
 - codex1 + codex2 planning integration / continuous-improvement scan
   (DONE / PLANS COMMITTED, 2026-07-15; plan commits `069ddfd6e`, `b00a32a71`).
