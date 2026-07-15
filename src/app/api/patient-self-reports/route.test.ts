@@ -255,6 +255,7 @@ describe('/api/patient-self-reports', () => {
           org_id: 'org_1',
           patient_id: 'patient_1',
         }),
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       }),
     );
   });

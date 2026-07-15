@@ -128,7 +128,7 @@ async function authenticatedGET(req: NextRequest) {
       },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       select: patientSelfReportResponseSelect,
     });
 

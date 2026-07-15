@@ -177,7 +177,7 @@ async function authenticatedGET(req: NextRequest) {
     const [records, totalCount] = await Promise.all([
       prisma.consentRecord.findMany({
         where,
-        orderBy: { obtained_date: 'desc' },
+        orderBy: [{ obtained_date: 'desc' }, { id: 'desc' }],
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         include: {

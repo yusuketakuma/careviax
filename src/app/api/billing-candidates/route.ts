@@ -186,7 +186,7 @@ const authenticatedGET = withAuthContext(
           },
           take: limit + 1,
           ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-          orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
+          orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
           select: {
             id: true,
             patient_id: true,

@@ -190,6 +190,7 @@ describe('/api/medication-issues', () => {
           patient_id: 'patient_1',
           status: 'open',
         },
+        orderBy: [{ identified_at: 'desc' }, { id: 'desc' }],
       }),
     );
   });

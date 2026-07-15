@@ -206,7 +206,7 @@ async function authenticatedGET(req: NextRequest) {
       where,
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { identified_at: 'desc' },
+      orderBy: [{ identified_at: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
         org_id: true,

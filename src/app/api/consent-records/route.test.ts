@@ -211,6 +211,7 @@ describe('/api/consent-records', () => {
           consent_type: 'external_sharing',
           is_active: true,
         }),
+        orderBy: [{ obtained_date: 'desc' }, { id: 'desc' }],
       }),
     );
     const body = await response.json();

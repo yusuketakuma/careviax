@@ -10,6 +10,14 @@ import path from 'node:path';
 const REPO_ROOT = process.cwd();
 const WATCHLIST_PATH = 'tools/query-shape-watchlist.json';
 const ALLOWLIST_PATH = 'tools/query-shape-allowlist.json';
+const DEFAULT_QUERY_SHAPE_RULES = new Set([
+  'broad_include',
+  'unbounded_find_many',
+  'missing_stable_order_by',
+  'aggregate_fanout',
+]);
+const QUERY_SHAPE_RULES = new Set([...DEFAULT_QUERY_SHAPE_RULES, 'cursor_pagination_contract']);
+// Watchlist `rules` are additive opt-ins. Default rules always remain enabled.
 
 const PRISMA_CALL_PATTERN =
   /(?:[A-Za-z_$][\w$]*|\))\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)\s*(?:\?\.|\.)\s*(findMany|count|groupBy)\s*\(/g;
@@ -44,6 +52,35 @@ function skipLineComment(content, index) {
 function skipBlockComment(content, index) {
   const end = content.indexOf('*/', index + 2);
   return end === -1 ? content.length : end + 2;
+}
+
+function maskIgnoredSource(content, { maskStrings = false } = {}) {
+  let output = '';
+  for (let i = 0; i < content.length; i += 1) {
+    const char = content[i];
+    const next = content[i + 1];
+    let end = i + 1;
+
+    if (char === '"' || char === "'" || char === '`') {
+      end = skipQuoted(content, i, char);
+      if (!maskStrings) {
+        output += content.slice(i, end);
+        i = end - 1;
+        continue;
+      }
+    } else if (char === '/' && next === '/') {
+      end = skipLineComment(content, i);
+    } else if (char === '/' && next === '*') {
+      end = skipBlockComment(content, i);
+    } else {
+      output += char;
+      continue;
+    }
+
+    output += content.slice(i, end).replace(/[^\n]/g, ' ');
+    i = end - 1;
+  }
+  return output;
 }
 
 function readFirstArgument(content, openParenIndex) {
@@ -110,6 +147,9 @@ function readPropertyValue(objectLiteral, propertyName) {
     if (depth !== 1) continue;
 
     const rest = objectLiteral.slice(i);
+    if (new RegExp(`^${propertyName}\\s*(?=[,}])`).test(rest)) {
+      return propertyName;
+    }
     const propertyMatch = rest.match(
       new RegExp(`^(?:${propertyName}|['"]${propertyName}['"])\\s*:`),
     );
@@ -168,9 +208,31 @@ function hasBoundedWhere(whereValue) {
 
 function hasStableOrderBy(orderByValue) {
   if (!orderByValue) return false;
-  const trimmed = orderByValue.trim();
+  const structuralOrderBy = maskIgnoredSource(orderByValue);
+  const trimmed = structuralOrderBy.trim();
   if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return true;
-  return /(?:^|[,{]\s*)id\s*:/.test(orderByValue);
+  return /(?:^|[,{]\s*)id\s*:/.test(structuralOrderBy);
+}
+
+function hasStableCursorPaginationContract(firstArgument, orderByValue) {
+  const structuralArgument = maskIgnoredSource(firstArgument, { maskStrings: true });
+  if (!/\bcursor\s*:\s*\{\s*id\s*:/.test(structuralArgument)) return false;
+  if (!/\bskip\s*:\s*1\b/.test(structuralArgument)) return false;
+  if (!orderByValue) return false;
+
+  const structuralOrderBy = maskIgnoredSource(orderByValue);
+  const fields = [];
+  const fieldPattern = /\{\s*(?:['"])?([A-Za-z_$][\w$]*)(?:['"])?\s*:\s*['"](asc|desc)['"]\s*\}/g;
+  let match;
+  while ((match = fieldPattern.exec(structuralOrderBy)) !== null) {
+    fields.push({ name: match[1], direction: match[2] });
+  }
+  if (fields.length === 0) return false;
+
+  const idOrder = fields[fields.length - 1];
+  if (idOrder.name !== 'id') return false;
+  const precedingOrder = fields.length > 1 ? fields[fields.length - 2] : idOrder;
+  return precedingOrder.direction === idOrder.direction;
 }
 
 function readJsonEntries(filePath, requiredFields) {
@@ -200,7 +262,24 @@ function readJsonEntries(filePath, requiredFields) {
 }
 
 function readWatchlist() {
-  return readJsonEntries(WATCHLIST_PATH, ['path', 'owner', 'reason']);
+  const entries = readJsonEntries(WATCHLIST_PATH, ['path', 'owner', 'reason']);
+  for (const [index, entry] of entries.entries()) {
+    if (!('rules' in entry)) continue;
+
+    const label = `${WATCHLIST_PATH}:entries[${index}].rules`;
+    if (!Array.isArray(entry.rules) || entry.rules.length === 0) {
+      throw new Error(`${label} must be a non-empty array`);
+    }
+    for (const rule of entry.rules) {
+      if (typeof rule !== 'string' || !QUERY_SHAPE_RULES.has(rule)) {
+        throw new Error(`${label} contains unsupported rule: ${String(rule)}`);
+      }
+    }
+    if (new Set(entry.rules).size !== entry.rules.length) {
+      throw new Error(`${label} must not contain duplicate rules`);
+    }
+  }
+  return entries;
 }
 
 function readAllowlist() {
@@ -214,7 +293,7 @@ function readAllowlist() {
   ]);
 }
 
-function findQueryShapeViolationsInFile(file) {
+function findQueryShapeViolationsInFile(file, selectedRules = DEFAULT_QUERY_SHAPE_RULES) {
   const content = readFileSync(path.join(REPO_ROOT, file), 'utf8');
   const violations = [];
   const aggregateCallsByDelegate = new Map();
@@ -272,6 +351,21 @@ function findQueryShapeViolationsInFile(file) {
           reason: 'orderBy for bounded findMany() must include id tie-breaker',
         });
       }
+
+      if (
+        selectedRules.has('cursor_pagination_contract') &&
+        takeValue &&
+        !hasStableCursorPaginationContract(firstArgument, orderByValue)
+      ) {
+        violations.push({
+          path: file,
+          line,
+          rule: 'cursor_pagination_contract',
+          symbol: method,
+          reason:
+            'cursor-paginated findMany() must use an id cursor, skip: 1, and a same-direction final id order',
+        });
+      }
     }
 
     if (method === 'count' || method === 'groupBy') {
@@ -310,7 +404,11 @@ function findQueryShapeViolationsInFile(file) {
 
 function findViolations() {
   const watchlist = readWatchlist();
-  return watchlist.flatMap((entry) => findQueryShapeViolationsInFile(entry.path));
+  return watchlist.flatMap((entry) => {
+    const selectedRules = new Set([...DEFAULT_QUERY_SHAPE_RULES, ...(entry.rules ?? [])]);
+    const violations = findQueryShapeViolationsInFile(entry.path, selectedRules);
+    return violations.filter((violation) => selectedRules.has(violation.rule));
+  });
 }
 
 function allowlistKey(item) {

@@ -169,6 +169,7 @@ describe('/api/cases', () => {
           },
         }),
         take: 2,
+        orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
       }),
     );
     const body = await response.json();

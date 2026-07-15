@@ -115,6 +115,24 @@ describe('check-query-shape', () => {
     expect(() => runCheck(root)).toThrow(/missing_stable_order_by/);
   });
 
+  it('does not accept a commented-out id tie-breaker', () => {
+    const root = createFixtureRepo({
+      'src/server/services/example.ts': `
+        await db.careReport.findMany({
+          where: { org_id: orgId },
+          select: { id: true },
+          orderBy: [
+            { created_at: 'desc' },
+            // { id: 'desc' },
+          ],
+          take: 20,
+        });
+      `,
+    });
+
+    expect(() => runCheck(root)).toThrow(/missing_stable_order_by/);
+  });
+
   it('rejects unstable transaction-client findMany calls', () => {
     const root = createFixtureRepo({
       'src/server/services/example.ts': `
@@ -128,6 +146,128 @@ describe('check-query-shape', () => {
     });
 
     expect(() => runCheck(root)).toThrow(/missing_stable_order_by/);
+  });
+
+  it('does not suppress default rules when opt-in rules are selected', () => {
+    const watchlist = {
+      entries: [
+        {
+          path: 'src/server/services/example.ts',
+          owner: 'API-LIST-STABLE-ORDER-001',
+          reason: 'Cursor lists must keep their complete paging contract.',
+          rules: ['cursor_pagination_contract'],
+        },
+      ],
+    };
+    const root = createFixtureRepo(
+      {
+        'src/server/services/example.ts': `
+          await db.patient.findMany({
+            where: { org_id: orgId },
+            include: { cases: true },
+            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+            orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+            take: 20,
+          });
+        `,
+      },
+      watchlist,
+    );
+
+    expect(() => runCheck(root)).toThrow(/broad_include/);
+  });
+
+  it('rejects unsupported rule-scoped watch entries', () => {
+    const root = createFixtureRepo(
+      { 'src/server/services/example.ts': 'export const example = true;' },
+      {
+        entries: [
+          {
+            path: 'src/server/services/example.ts',
+            owner: 'API-LIST-STABLE-ORDER-001',
+            reason: 'Invalid fixture rule.',
+            rules: ['unknown_rule'],
+          },
+        ],
+      },
+    );
+
+    expect(() => runCheck(root)).toThrow(/unsupported rule: unknown_rule/);
+  });
+
+  it('enforces the opt-in cursor pagination contract', () => {
+    const watchlist = {
+      entries: [
+        {
+          path: 'src/server/services/example.ts',
+          owner: 'API-LIST-STABLE-ORDER-001',
+          reason: 'Cursor lists must keep their complete paging contract.',
+          rules: ['cursor_pagination_contract'],
+        },
+      ],
+    };
+    const stableRoot = createFixtureRepo(
+      {
+        'src/server/services/example.ts': `
+          await db.patient.findMany({
+            where: { org_id: orgId },
+            take: limit + 1,
+            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+            orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+          });
+        `,
+      },
+      watchlist,
+    );
+
+    expect(runCheck(stableRoot)).toContain('Query shape check passed');
+
+    for (const unstableQuery of [
+      `
+        await db.patient.findMany({
+          where: { org_id: orgId },
+          take: limit + 1,
+          orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+        });
+      `,
+      `
+        await db.patient.findMany({
+          where: { org_id: orgId },
+          take: limit + 1,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          orderBy: [{ updated_at: 'desc' }, { id: 'asc' }],
+        });
+      `,
+      `
+        await db.patient.findMany({
+          where: { org_id: orgId },
+          take: limit + 1,
+          ...(cursor ? { cursor: { id: cursor } } : {}),
+          orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+        });
+      `,
+      `
+        await db.patient.findMany({
+          where: { org_id: orgId },
+          take: limit + 1,
+          // ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+        });
+      `,
+      `
+        await db.patient.findMany({
+          where: { org_id: orgId, note: 'cursor: { id: cursor }, skip: 1' },
+          take: limit + 1,
+          orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+        });
+      `,
+    ]) {
+      const unstableRoot = createFixtureRepo(
+        { 'src/server/services/example.ts': unstableQuery },
+        watchlist,
+      );
+      expect(() => runCheck(unstableRoot)).toThrow(/cursor_pagination_contract/);
+    }
   });
 
   it('rejects date-range-only findMany calls as unbounded', () => {
@@ -186,6 +326,17 @@ describe('check-query-shape', () => {
     });
 
     expect(() => runCheck(root)).toThrow(/aggregate_fanout/);
+  });
+
+  it('recognizes shorthand where properties on aggregate calls', () => {
+    const root = createFixtureRepo({
+      'src/server/services/example.ts': `
+        const where = { org_id: orgId };
+        await db.careReport.count({ where });
+      `,
+    });
+
+    expect(runCheck(root)).toContain('Query shape check passed');
   });
 
   it('rejects repeated same-delegate aggregate fan-out', () => {

@@ -1,3 +1,40 @@
 {
-  "entries": []
+  "entries": [
+    {
+      "path": "src/app/api/billing-candidates/route.ts",
+      "rule": "unbounded_find_many",
+      "expectedCount": 1,
+      "owner": "PERF-DB-001",
+      "debtId": "QUERY-SHAPE-DEBT-API-LIST-001-BILLING-VISITS",
+      "reason": "Billing generation currently enumerates all visit records in the requested month so partial batching would change candidate completeness.",
+      "plannedAction": "Design a completeness-preserving batched generation cursor before bounding the visit-record fan-in."
+    },
+    {
+      "path": "src/app/api/cases/route.ts",
+      "rule": "broad_include",
+      "expectedCount": 1,
+      "owner": "PERF-DB-001",
+      "debtId": "QUERY-SHAPE-DEBT-API-LIST-001-CASE-PROJECTION",
+      "reason": "The case list still uses a top-level include for its patient projection and primary residence.",
+      "plannedAction": "Replace the include with an explicit case scalar and nested patient select under the case-list contract."
+    },
+    {
+      "path": "src/app/api/consent-records/route.ts",
+      "rule": "broad_include",
+      "expectedCount": 1,
+      "owner": "PERF-DB-001",
+      "debtId": "QUERY-SHAPE-DEBT-API-LIST-001-CONSENT-PROJECTION",
+      "reason": "The consent-record list still uses a top-level include for template and document relations.",
+      "plannedAction": "Replace the include with the minimum explicit consent, template, and document select after response projection review."
+    },
+    {
+      "path": "src/app/api/patient-self-reports/route.ts",
+      "rule": "unbounded_find_many",
+      "expectedCount": 1,
+      "owner": "PERF-DB-001",
+      "debtId": "QUERY-SHAPE-DEBT-API-LIST-001-ACCESSIBLE-PATIENTS",
+      "reason": "The self-report list materializes the full assigned-patient id and name set before applying the report cursor.",
+      "plannedAction": "Move assignment filtering into a bounded report query while preserving patient-name projection and authorization semantics."
+    }
+  ]
 }

@@ -229,6 +229,7 @@ describe('/api/billing-candidates', () => {
           patient_id: 'patient_1',
           billing_domain: 'home_care',
         }),
+        orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
       }),
     );
     expect(workbenchSummaryMock).toHaveBeenCalledWith(

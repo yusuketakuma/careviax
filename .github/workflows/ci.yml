@@ -334,6 +334,11 @@ jobs:
       - name: Prepare E2E database
         run: pnpm --config.verify-deps-before-run=false db:e2e:prepare
 
+      - name: Verify stable cursor pagination ordering
+        env:
+          PAGINATION_ORDER_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: pnpm exec vitest run src/lib/db/stable-cursor-order.integration.test.ts --reporter=dot
+
       - name: Run production medical UI/UX gate
         run: pnpm --config.verify-deps-before-run=false medical-ui:e2e:gate:prod
 

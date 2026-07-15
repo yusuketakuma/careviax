@@ -104,6 +104,36 @@
       "path": "src/app/api/care-reports/today-workspace/route.ts",
       "owner": "QUERY-SHAPE-REPORT-WORKSPACE-WATCHLIST-003K",
       "reason": "Care-report today workspace is a critical PHI and operational read path whose visit, recipient, medication, and issue projections must stay bounded and stable."
+    },
+    {
+      "path": "src/app/api/billing-candidates/route.ts",
+      "owner": "API-LIST-STABLE-ORDER-001",
+      "reason": "Billing candidate cursor pages must retain a unique ordering suffix without changing the visible billing-month order.",
+      "rules": ["cursor_pagination_contract"]
+    },
+    {
+      "path": "src/app/api/cases/route.ts",
+      "owner": "API-LIST-STABLE-ORDER-001",
+      "reason": "Case cursor pages must retain a unique ordering suffix without changing the visible update-time order.",
+      "rules": ["cursor_pagination_contract"]
+    },
+    {
+      "path": "src/app/api/consent-records/route.ts",
+      "owner": "API-LIST-STABLE-ORDER-001",
+      "reason": "Consent-record cursor pages must retain a unique ordering suffix without changing the visible obtained-date order.",
+      "rules": ["cursor_pagination_contract"]
+    },
+    {
+      "path": "src/app/api/medication-issues/route.ts",
+      "owner": "API-LIST-STABLE-ORDER-001",
+      "reason": "Medication-issue cursor pages must retain a unique ordering suffix without changing the visible identified-time order.",
+      "rules": ["cursor_pagination_contract"]
+    },
+    {
+      "path": "src/app/api/patient-self-reports/route.ts",
+      "owner": "API-LIST-STABLE-ORDER-001",
+      "reason": "Patient self-report cursor pages must retain a unique ordering suffix without changing the visible creation-time order.",
+      "rules": ["cursor_pagination_contract"]
     }
   ]
 }

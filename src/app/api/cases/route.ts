@@ -167,7 +167,7 @@ const authenticatedGET = withAuthContext(
       },
       take: query.limit + 1,
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-      orderBy: { updated_at: 'desc' },
+      orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
       include: {
         patient: {
           select: {
