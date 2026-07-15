@@ -5,12 +5,14 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   authContextMock,
+  withAuthContextOptions,
   patientFindManyMock,
   patientCountMock,
   dispenseTaskFindManyMock,
   workflowExceptionFindManyMock,
 } = vi.hoisted(() => ({
   authContextMock: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
+  withAuthContextOptions: [] as Array<{ permission?: string; message?: string }>,
   patientFindManyMock: vi.fn(),
   patientCountMock: vi.fn(),
   dispenseTaskFindManyMock: vi.fn(),
@@ -18,7 +20,11 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: (handler: (...args: unknown[]) => unknown) => {
+  withAuthContext: (
+    handler: (...args: unknown[]) => unknown,
+    options?: { permission?: string; message?: string },
+  ) => {
+    withAuthContextOptions.push(options ?? {});
     return (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
       handler(req, authContextMock, routeContext);
   },
@@ -167,6 +173,13 @@ describe('/api/patients/board', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('keeps the patient board read behind canViewDashboard', () => {
+    expect(withAuthContextOptions).toContainEqual({
+      permission: 'canViewDashboard',
+      message: '患者情報の閲覧権限がありません',
+    });
   });
 
   it('JST 朝(UTC では前日)でも visit_schedules を当日 UTC 深夜以降で絞り込む', async () => {

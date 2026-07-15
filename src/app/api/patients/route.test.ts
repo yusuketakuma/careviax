@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   authPlumbingFailureRef,
   withAuthContextMock,
+  withAuthContextOptions,
   patientFindManyMock,
   patientCreateMock,
   patientShareCaseFindManyMock,
@@ -29,6 +30,7 @@ const {
 } = vi.hoisted(() => ({
   authPlumbingFailureRef: { current: null as Error | null },
   withAuthContextMock: vi.fn(),
+  withAuthContextOptions: [] as Array<{ permission?: string; message?: string }>,
   patientFindManyMock: vi.fn(),
   patientCreateMock: vi.fn(),
   patientShareCaseFindManyMock: vi.fn(),
@@ -60,8 +62,10 @@ vi.mock('@/lib/auth/context', () => ({
       ctx: { orgId: string; userId: string; role: string },
       routeContext: { params: Promise<Record<string, string>> },
     ) => Promise<Response>,
+    options?: { permission?: string; message?: string },
   ) => {
     withAuthContextMock.mockImplementation(handler);
+    withAuthContextOptions.push(options ?? {});
     return (
       req: NextRequest & {
         orgId?: string;
@@ -450,6 +454,21 @@ describe('/api/patients GET', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('separates patient reads from clinical patient writes at the auth boundary', () => {
+    expect(withAuthContextOptions).toEqual(
+      expect.arrayContaining([
+        {
+          permission: 'canViewDashboard',
+          message: '患者情報の閲覧権限がありません',
+        },
+        {
+          permission: 'canVisit',
+          message: '患者情報の作成権限がありません',
+        },
+      ]),
+    );
   });
 
   it('supports advanced patient filters and enriches risk, consent, and assignment fields', async () => {

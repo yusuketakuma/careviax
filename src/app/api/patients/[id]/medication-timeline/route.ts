@@ -89,7 +89,7 @@ const authenticatedGET = withAuthContext(
     return response;
   },
   {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '患者薬剤タイムラインの閲覧権限がありません',
   },
 );

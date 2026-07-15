@@ -101,9 +101,9 @@ describe('GET /api/patients/[id]/readiness', () => {
     getPatientReadinessDataMock.mockResolvedValue(readinessData);
   });
 
-  it('keeps the patient readiness read behind canVisit', () => {
+  it('keeps the patient readiness read behind canViewDashboard', () => {
     expect(withAuthContextOptions).toContainEqual({
-      permission: 'canVisit',
+      permission: 'canViewDashboard',
       message: '患者情報の閲覧権限がありません',
     });
   });

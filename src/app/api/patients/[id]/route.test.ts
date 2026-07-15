@@ -521,6 +521,40 @@ describe('/api/patients/[id]', () => {
     );
   });
 
+  it('separates patient detail reads from clinical patient writes at the auth boundary', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    await GET(createRequest(), { params: Promise.resolve({ id: 'patient_1' }) });
+
+    expect(requireAuthContextMock).toHaveBeenLastCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: '患者情報の閲覧権限がありません',
+    });
+
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    await PATCH(createRequest({ phone: '080-1111-2222' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    expect(requireAuthContextMock).toHaveBeenLastCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '患者情報の更新権限がありません',
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('loads patient detail through scoped RLS context without timeline-only fan-out', async () => {
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',

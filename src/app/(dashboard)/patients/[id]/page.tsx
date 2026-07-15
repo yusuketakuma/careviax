@@ -30,7 +30,7 @@ async function resolveInitialPatientOverview(patientId: string) {
     where: { user_id: localUser.id, org_id: localUser.org_id, is_active: true },
     select: { role: true },
   });
-  if (!membership || !hasPermission(membership.role, 'canVisit')) return null;
+  if (!membership || !hasPermission(membership.role, 'canViewDashboard')) return null;
 
   const requestContext = {
     orgId: localUser.org_id,

@@ -140,24 +140,27 @@ describe('PatientDetailPage', () => {
     ['admin', true],
     ['pharmacist', true],
     ['pharmacist_trainee', true],
-    ['clerk', false],
+    ['clerk', true],
     ['driver', false],
     ['external_viewer', false],
-  ] as const)('keeps SSR patient reads aligned with canVisit for %s', async (role, allowed) => {
-    membershipFindFirstMock.mockResolvedValueOnce({ role });
+  ] as const)(
+    'keeps SSR patient reads aligned with canViewDashboard for %s',
+    async (role, allowed) => {
+      membershipFindFirstMock.mockResolvedValueOnce({ role });
 
-    await renderPage();
+      await renderPage();
 
-    expect(withOrgContextMock).toHaveBeenCalledTimes(allowed ? 1 : 0);
-    expect(getPatientOverviewMock).toHaveBeenCalledTimes(allowed ? 1 : 0);
-    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(allowed ? 1 : 0);
-    expect(cardWorkspaceMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        patientId: 'patient_1',
-        initialPatient: allowed ? expect.objectContaining({ id: 'patient_1' }) : null,
-      }),
-    );
-  });
+      expect(withOrgContextMock).toHaveBeenCalledTimes(allowed ? 1 : 0);
+      expect(getPatientOverviewMock).toHaveBeenCalledTimes(allowed ? 1 : 0);
+      expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(allowed ? 1 : 0);
+      expect(cardWorkspaceMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          patientId: 'patient_1',
+          initialPatient: allowed ? expect.objectContaining({ id: 'patient_1' }) : null,
+        }),
+      );
+    },
+  );
 
   it('does not query patient PHI or audit when the session has no usable identity', async () => {
     authMock.mockResolvedValueOnce({ user: {} });

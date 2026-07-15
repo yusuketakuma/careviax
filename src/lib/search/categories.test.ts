@@ -42,7 +42,7 @@ describe('palette category registry (F-009 MVP)', () => {
   });
 
   it('maps each category to the destination permission (single SSOT for no-fetch gating)', () => {
-    expect(byId('patient').requiredPermission).toBe('canVisit');
+    expect(byId('patient').requiredPermission).toBe('canViewDashboard');
     expect(byId('proposal').requiredPermission).toBe('canVisit');
     expect(byId('prescription').requiredPermission).toBe('canVisit');
     expect(byId('report').requiredPermission).toBe('canReport');

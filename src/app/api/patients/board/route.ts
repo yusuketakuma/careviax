@@ -922,7 +922,7 @@ const authenticatedGET = withAuthContext(
     });
   },
   {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '患者情報の閲覧権限がありません',
   },
 );

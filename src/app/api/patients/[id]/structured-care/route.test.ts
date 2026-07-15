@@ -110,7 +110,7 @@ describe('/api/patients/[id]/structured-care GET', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
-      permission: 'canVisit',
+      permission: 'canViewDashboard',
       message: '患者情報の閲覧権限がありません',
     });
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {

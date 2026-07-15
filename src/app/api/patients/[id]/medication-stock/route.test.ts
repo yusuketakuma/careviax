@@ -138,7 +138,7 @@ describe('GET /api/patients/[id]/medication-stock', () => {
       partial_failures: [],
     });
     expect(withAuthContextOptions).toContainEqual({
-      permission: 'canVisit',
+      permission: 'canViewDashboard',
       message: '患者の残数管理情報の閲覧権限がありません',
     });
     expect(createScopedTxRunnerMock).toHaveBeenCalledWith('org_1', {

@@ -983,7 +983,7 @@
     {
       "path": "src/app/api/patients/[id]/route.ts",
       "expectedCount": 2,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard", "canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
@@ -994,7 +994,7 @@
     {
       "path": "src/app/api/patients/[id]/structured-care/route.ts",
       "expectedCount": 1,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",

@@ -2,27 +2,36 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { getPerformanceSnapshot, resetPerformanceMetrics } from '@/lib/utils/performance';
 
-const { getPatientOverviewMock, withOrgContextMock, auditCreateMock, authContextMock } = vi.hoisted(
-  () => ({
-    getPatientOverviewMock: vi.fn(),
-    withOrgContextMock: vi.fn(),
-    auditCreateMock: vi.fn(),
-    authContextMock: vi.fn(() => ({
-      orgId: 'org_1',
-      role: 'pharmacist',
-      userId: 'user_1',
-      actorSiteId: 'site_1',
-      ipAddress: '203.0.113.10',
-      userAgent: 'vitest',
-    })),
-  }),
-);
+const {
+  getPatientOverviewMock,
+  withAuthContextOptions,
+  withOrgContextMock,
+  auditCreateMock,
+  authContextMock,
+} = vi.hoisted(() => ({
+  getPatientOverviewMock: vi.fn(),
+  withAuthContextOptions: [] as Array<{ permission?: string; message?: string }>,
+  withOrgContextMock: vi.fn(),
+  auditCreateMock: vi.fn(),
+  authContextMock: vi.fn(() => ({
+    orgId: 'org_1',
+    role: 'pharmacist',
+    userId: 'user_1',
+    actorSiteId: 'site_1',
+    ipAddress: '203.0.113.10',
+    userAgent: 'vitest',
+  })),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext:
-    (handler: (...args: unknown[]) => Promise<Response>) =>
-    (req: Request, routeContext: { params: Promise<{ id: string }> }) =>
-      handler(req, authContextMock(), routeContext),
+  withAuthContext: (
+    handler: (...args: unknown[]) => Promise<Response>,
+    options?: { permission?: string; message?: string },
+  ) => {
+    withAuthContextOptions.push(options ?? {});
+    return (req: Request, routeContext: { params: Promise<{ id: string }> }) =>
+      handler(req, authContextMock(), routeContext);
+  },
 }));
 
 vi.mock('@/lib/db/client', () => ({ prisma: {} }));
@@ -52,6 +61,13 @@ describe('GET /api/patients/[id]/overview PHI read audit', () => {
       work({ auditLog: { create: auditCreateMock } }),
     );
     auditCreateMock.mockResolvedValue({ id: 'audit_1' });
+  });
+
+  it('keeps the patient overview read behind canViewDashboard', () => {
+    expect(withAuthContextOptions).toContainEqual({
+      permission: 'canViewDashboard',
+      message: '患者情報の閲覧権限がありません',
+    });
   });
 
   it('records a phi_read audit row for the viewed patient and returns 200', async () => {

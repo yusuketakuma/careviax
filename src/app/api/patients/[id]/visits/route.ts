@@ -35,7 +35,7 @@ const authenticatedGET = withAuthContext(
     return success({ data: visits });
   },
   {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '患者情報の閲覧権限がありません',
   },
 );

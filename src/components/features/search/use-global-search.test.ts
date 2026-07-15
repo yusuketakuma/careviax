@@ -72,7 +72,7 @@ async function runSearch(query: string, role: MemberRole | null, orgId: string) 
 }
 
 describe('resolveEnabledCategories (no-fetch permission gate)', () => {
-  it('admin with org sees all 6 active categories; without org only drug; clerk gets canReport+drug', () => {
+  it('admin with org sees all 6 active categories; without org only drug; clerk also gets patient reads', () => {
     expect(resolveEnabledCategories(MemberRole.admin, ORG).map((c) => c.id)).toEqual([
       'patient',
       'proposal',
@@ -83,8 +83,9 @@ describe('resolveEnabledCategories (no-fetch permission gate)', () => {
     ]);
     // org スコープのカテゴリは orgId 不在では fetch しない(drug は org 非依存)。
     expect(resolveEnabledCategories(MemberRole.admin, '').map((c) => c.id)).toEqual(['drug']);
-    // clerk(canVisit:false, canReport:true): patient/proposal/prescription(canVisit)を除外、report/contact/drug のみ。
+    // clerk(canViewDashboard:true, canVisit:false): patient read is enabled while clinical categories stay hidden.
     expect(resolveEnabledCategories(MemberRole.clerk, ORG).map((c) => c.id)).toEqual([
+      'patient',
       'drug',
       'report',
       'contact',
@@ -180,15 +181,16 @@ describe('useGlobalSearch', () => {
     expect(urlFor('/api/contact-profiles')).not.toContain('view=palette');
   });
 
-  it('clerk never requests canVisit URLs but does request canReport + drug URLs', async () => {
+  it('clerk requests patient reads but never requests clinical canVisit URLs', async () => {
     installFetch();
     await runSearch('やま', MemberRole.clerk, ORG);
-    expect(pathsOf()).toEqual(['/api/care-reports', '/api/contact-profiles', '/api/drug-masters']);
-    for (const visitUrl of [
+    expect(pathsOf()).toEqual([
+      '/api/care-reports',
+      '/api/contact-profiles',
+      '/api/drug-masters',
       '/api/patients',
-      '/api/visit-schedule-proposals',
-      '/api/prescription-intakes',
-    ]) {
+    ]);
+    for (const visitUrl of ['/api/visit-schedule-proposals', '/api/prescription-intakes']) {
       expect(
         requestedUrls.some((u) => u.startsWith(visitUrl)),
         visitUrl,

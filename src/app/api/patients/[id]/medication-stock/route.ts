@@ -75,7 +75,7 @@ const authenticatedGET = withAuthContext(
     }
   },
   {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '患者の残数管理情報の閲覧権限がありません',
   },
 );

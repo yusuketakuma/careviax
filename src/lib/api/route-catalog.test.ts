@@ -33,6 +33,48 @@ describe('routeCatalog', () => {
     );
   });
 
+  it('separates ordinary patient reads from clinical patient writes by HTTP method', () => {
+    expect(routeCatalog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: '/api/patients',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+        }),
+        expect.objectContaining({
+          path: '/api/patients',
+          methods: ['POST'],
+          permission: 'canVisit',
+        }),
+        expect.objectContaining({
+          path: '/api/patients/:id',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+        }),
+        expect.objectContaining({
+          path: '/api/patients/:id',
+          methods: ['PATCH'],
+          permission: 'canVisit',
+        }),
+        expect.objectContaining({
+          path: '/api/patients/board',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+        }),
+        expect.objectContaining({
+          path: '/api/patients/:id/overview',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+        }),
+        expect.objectContaining({
+          path: '/api/patients/:id/medication-stock',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+        }),
+      ]),
+    );
+  });
+
   it('labels direct visit schedule generation as removed in favor of proposals', () => {
     const entry = routeCatalog.find((item) => item.path === '/api/visit-schedules/generate');
 

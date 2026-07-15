@@ -5,6 +5,7 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 const {
   authContextMock,
   authRejectionMock,
+  withAuthContextOptions,
   patientFindFirstMock,
   listStandardMedicationTimelineMock,
   withOrgContextMock,
@@ -16,6 +17,7 @@ const {
     role: 'pharmacist',
   })),
   authRejectionMock: vi.fn<() => Response | null>(() => null),
+  withAuthContextOptions: [] as Array<{ permission?: string; message?: string }>,
   patientFindFirstMock: vi.fn(),
   listStandardMedicationTimelineMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -23,9 +25,12 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext:
-    (handler: (...args: unknown[]) => Promise<Response>) =>
-    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+  withAuthContext: (
+    handler: (...args: unknown[]) => Promise<Response>,
+    options?: { permission?: string; message?: string },
+  ) => {
+    withAuthContextOptions.push(options ?? {});
+    return async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
       const rejection = authRejectionMock();
       if (rejection) return rejection;
 
@@ -37,7 +42,8 @@ vi.mock('@/lib/auth/context', () => ({
           { status: 500 },
         );
       }
-    },
+    };
+  },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -80,6 +86,13 @@ describe('GET /api/patients/[id]/medication-timeline', () => {
         },
       }),
     );
+  });
+
+  it('keeps the medication timeline read behind canViewDashboard', () => {
+    expect(withAuthContextOptions).toContainEqual({
+      permission: 'canViewDashboard',
+      message: '患者薬剤タイムラインの閲覧権限がありません',
+    });
   });
 
   it('returns exact medication values and audits the authoritative patient once', async () => {

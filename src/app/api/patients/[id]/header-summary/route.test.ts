@@ -114,9 +114,9 @@ describe('GET /api/patients/[id]/header-summary', () => {
     getPatientHeaderSummaryMock.mockResolvedValue(headerSummary);
   });
 
-  it('keeps the patient header summary read behind canVisit', () => {
+  it('keeps the patient header summary read behind canViewDashboard', () => {
     expect(withAuthContextOptions).toContainEqual({
-      permission: 'canVisit',
+      permission: 'canViewDashboard',
       message: '患者情報の閲覧権限がありません',
     });
   });

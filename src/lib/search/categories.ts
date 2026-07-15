@@ -229,7 +229,7 @@ export const PALETTE_CATEGORIES: PaletteCategory[] = [
   {
     id: 'patient',
     label: SEARCH_CATEGORY_LABELS.patient,
-    requiredPermission: 'canVisit',
+    requiredPermission: 'canViewDashboard',
     orgScoped: true,
     // view=palette で F-012 の最小投影({id,name,name_kana})を outer envelope 越しに消費する。
     // これを付けないと full list 分岐に当たり phone/住所/保険等の over-wide payload が
