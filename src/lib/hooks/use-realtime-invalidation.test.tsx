@@ -4,11 +4,13 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { useQueryClientMock, useRealtimeEventsMock, invalidateQueriesMock } = vi.hoisted(() => ({
-  useQueryClientMock: vi.fn(),
-  useRealtimeEventsMock: vi.fn(),
-  invalidateQueriesMock: vi.fn(),
-}));
+const { useQueryClientMock, useRealtimeEventsMock, invalidateQueriesMock, refetchQueriesMock } =
+  vi.hoisted(() => ({
+    useQueryClientMock: vi.fn(),
+    useRealtimeEventsMock: vi.fn(),
+    invalidateQueriesMock: vi.fn(),
+    refetchQueriesMock: vi.fn(),
+  }));
 
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>();
@@ -24,7 +26,10 @@ import { useRealtimeInvalidation } from './use-realtime-invalidation';
 describe('useRealtimeInvalidation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useQueryClientMock.mockReturnValue({ invalidateQueries: invalidateQueriesMock });
+    useQueryClientMock.mockReturnValue({
+      invalidateQueries: invalidateQueriesMock,
+      refetchQueries: refetchQueriesMock,
+    });
     useRealtimeEventsMock.mockReturnValue({ connected: true });
   });
 
@@ -50,6 +55,7 @@ describe('useRealtimeInvalidation', () => {
 
     expect(result.current.connected).toBe(true);
     expect(result.current.receivesRealtimeUpdates).toBe(true);
+    expect(realtimeOptions.requiredChannels).toEqual(['org']);
     expect(invalidateQueriesMock).toHaveBeenCalledTimes(1);
     expect(invalidateQueriesMock).toHaveBeenCalledWith({
       queryKey: ['prescription-intakes', 'org_1'],
@@ -244,6 +250,7 @@ describe('useRealtimeInvalidation', () => {
       type: 'notification',
       id: 'notification_1',
     });
+    expect(realtimeOptions.requiredChannels).toEqual(['user']);
     expect(invalidateQueriesMock).not.toHaveBeenCalled();
   });
 
@@ -258,7 +265,84 @@ describe('useRealtimeInvalidation', () => {
     expect(useRealtimeEventsMock).toHaveBeenCalledWith(
       expect.objectContaining({
         presenceTargets: [{ entityType: 'patient', entityId: 'patient_1' }],
+        requiredChannels: ['presence'],
       }),
     );
+  });
+
+  it('requires org and presence readiness when both invalidation and presence are active', () => {
+    renderHook(() =>
+      useRealtimeInvalidation({
+        queryKey: ['presence', 'patient', 'patient_1', 'org_1'],
+        invalidateOn: ['presence_update'],
+        onRealtimeEvent: vi.fn(),
+        presenceTargets: [{ entityType: 'patient', entityId: 'patient_1' }],
+      }),
+    );
+
+    expect(useRealtimeEventsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ requiredChannels: ['org', 'presence'] }),
+    );
+  });
+
+  it('refetches an active query once when readiness recovers after being ready', () => {
+    let connected = false;
+    useRealtimeEventsMock.mockImplementation(() => ({ connected }));
+    const { rerender } = renderHook(
+      ({ revision }) => {
+        void revision;
+        return useRealtimeInvalidation({
+          queryKey: ['workflow', 'org_1'],
+          invalidateOn: ['workflow_refresh'],
+        });
+      },
+      { initialProps: { revision: 0 } },
+    );
+
+    act(() => {
+      connected = true;
+      rerender({ revision: 1 });
+    });
+    expect(refetchQueriesMock).not.toHaveBeenCalled();
+
+    act(() => {
+      connected = false;
+      rerender({ revision: 2 });
+    });
+    act(() => {
+      connected = true;
+      rerender({ revision: 3 });
+    });
+
+    expect(refetchQueriesMock).toHaveBeenCalledTimes(1);
+    expect(refetchQueriesMock).toHaveBeenCalledWith({
+      queryKey: ['workflow', 'org_1'],
+      type: 'active',
+    });
+  });
+
+  it('does not carry readiness history across query keys', () => {
+    let connected = true;
+    useRealtimeEventsMock.mockImplementation(() => ({ connected }));
+    const { rerender } = renderHook(
+      ({ orgId }) =>
+        useRealtimeInvalidation({
+          queryKey: ['workflow', orgId],
+          invalidateOn: ['workflow_refresh'],
+        }),
+      { initialProps: { orgId: 'org_1' } },
+    );
+
+    act(() => {
+      connected = false;
+      rerender({ orgId: 'org_1' });
+    });
+    rerender({ orgId: 'org_2' });
+    act(() => {
+      connected = true;
+      rerender({ orgId: 'org_2' });
+    });
+
+    expect(refetchQueriesMock).not.toHaveBeenCalled();
   });
 });

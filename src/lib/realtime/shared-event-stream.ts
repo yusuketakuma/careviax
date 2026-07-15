@@ -4,9 +4,21 @@ import { normalizeRealtimeEventPayload } from '@/lib/realtime/events';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { logger } from '@/lib/utils/logger';
+import {
+  REALTIME_READINESS_EVENT,
+  hasRequiredRealtimeReadiness,
+  parseRealtimeReadiness,
+  type RealtimeChannel,
+  type RealtimeReadiness,
+} from './readiness';
 
 type RealtimeListener = (event: unknown) => void;
 type StatusListener = (connected: boolean) => void;
+
+type StatusSubscription = {
+  requiredChannels: readonly RealtimeChannel[];
+  lastReady: boolean;
+};
 
 export type RealtimePresenceTarget = {
   entityType: string;
@@ -16,17 +28,19 @@ export type RealtimePresenceTarget = {
 type SharedRealtimeStream = {
   orgId: string;
   listeners: Set<RealtimeListener>;
-  statusListeners: Set<StatusListener>;
+  statusListeners: Map<StatusListener, StatusSubscription>;
   presenceTargets: Map<string, { target: RealtimePresenceTarget; count: number }>;
   abortController: AbortController | null;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   presenceTargetReconnectTimer: ReturnType<typeof setTimeout> | null;
   reconnectAttempt: number;
-  connected: boolean;
+  transportConnected: boolean;
+  readiness: RealtimeReadiness | null;
   stopped: boolean;
 };
 
 const PRESENCE_TARGET_RECONNECT_DEBOUNCE_MS = 150;
+const DEFAULT_REQUIRED_CHANNELS = ['user'] as const satisfies readonly RealtimeChannel[];
 const streams = new Map<string, SharedRealtimeStream>();
 
 function presenceTargetKey(target: RealtimePresenceTarget) {
@@ -89,16 +103,41 @@ function logRealtimeListenerError(
   );
 }
 
-function emitStatus(stream: SharedRealtimeStream, connected: boolean) {
-  if (stream.connected === connected) return;
-  stream.connected = connected;
-  for (const listener of stream.statusListeners) {
+function isSubscriptionReady(stream: SharedRealtimeStream, subscription: StatusSubscription) {
+  return (
+    stream.transportConnected &&
+    hasRequiredRealtimeReadiness(stream.readiness, subscription.requiredChannels)
+  );
+}
+
+function emitStatuses(stream: SharedRealtimeStream) {
+  for (const [listener, subscription] of stream.statusListeners) {
+    const ready = isSubscriptionReady(stream, subscription);
+    if (subscription.lastReady === ready) continue;
+    subscription.lastReady = ready;
     try {
-      listener(connected);
+      listener(ready);
     } catch (error) {
       logRealtimeListenerError(stream, 'notify_status_listener', error);
     }
   }
+}
+
+function setTransportConnected(stream: SharedRealtimeStream, connected: boolean) {
+  stream.transportConnected = connected;
+  if (!connected) stream.readiness = null;
+  emitStatuses(stream);
+}
+
+function setReadiness(stream: SharedRealtimeStream, readiness: RealtimeReadiness) {
+  stream.readiness = readiness;
+  emitStatuses(stream);
+}
+
+function markPresenceUnready(stream: SharedRealtimeStream) {
+  if (!stream.readiness || !stream.readiness.presence) return;
+  stream.readiness = { ...stream.readiness, presence: false };
+  emitStatuses(stream);
 }
 
 function scheduleReconnect(stream: SharedRealtimeStream, delayMs: number) {
@@ -109,10 +148,32 @@ function scheduleReconnect(stream: SharedRealtimeStream, delayMs: number) {
   }, delayMs);
 }
 
+function parseSseChunk(chunk: string) {
+  let event = 'message';
+  const data: string[] = [];
+  for (const line of chunk.split('\n')) {
+    if (line.startsWith('event:')) {
+      event = line.slice(6).trimStart();
+    } else if (line.startsWith('data:')) {
+      data.push(line.slice(5).trimStart());
+    }
+  }
+  return data.length > 0 ? { event, data: data.join('\n') } : null;
+}
+
 function dispatchSseChunk(stream: SharedRealtimeStream, chunk: string) {
-  if (!chunk.startsWith('data: ')) return;
-  const parsed = parseSsePayload(chunk.slice(6));
+  const sse = parseSseChunk(chunk);
+  if (!sse) return;
+  const parsed = parseSsePayload(sse.data);
   if (parsed == null) return;
+
+  if (sse.event === REALTIME_READINESS_EVENT) {
+    const readiness = parseRealtimeReadiness(parsed);
+    if (readiness) setReadiness(stream, readiness);
+    return;
+  }
+  if (sse.event !== 'message') return;
+
   const event = normalizeSharedSsePayload(parsed);
   if (event == null) return;
   for (const listener of stream.listeners) {
@@ -147,6 +208,7 @@ function parseSsePayload(raw: string): unknown | null {
 async function connectSharedStream(stream: SharedRealtimeStream) {
   if (stream.stopped || stream.listeners.size === 0) return;
 
+  setTransportConnected(stream, false);
   const controller = new AbortController();
   stream.abortController = controller;
 
@@ -160,7 +222,7 @@ async function connectSharedStream(stream: SharedRealtimeStream) {
       throw new Error('Failed to open realtime stream');
     }
 
-    emitStatus(stream, true);
+    setTransportConnected(stream, true);
     stream.reconnectAttempt = 0;
 
     const reader = response.body.getReader();
@@ -181,13 +243,13 @@ async function connectSharedStream(stream: SharedRealtimeStream) {
     }
 
     if (!stream.stopped && stream.listeners.size > 0) {
-      emitStatus(stream, false);
+      setTransportConnected(stream, false);
       stream.reconnectAttempt = 0;
       scheduleReconnect(stream, 1_000);
     }
   } catch {
     if (stream.stopped || stream.listeners.size === 0) return;
-    emitStatus(stream, false);
+    setTransportConnected(stream, false);
     const attempt = stream.reconnectAttempt;
     stream.reconnectAttempt = attempt + 1;
     scheduleReconnect(stream, Math.min(1000 * Math.pow(2, attempt), 30_000));
@@ -206,7 +268,7 @@ function stopSharedStream(stream: SharedRealtimeStream) {
     stream.abortController.abort();
     stream.abortController = null;
   }
-  emitStatus(stream, false);
+  setTransportConnected(stream, false);
   streams.delete(stream.orgId);
 }
 
@@ -217,13 +279,14 @@ function getOrCreateSharedStream(orgId: string) {
   const stream: SharedRealtimeStream = {
     orgId,
     listeners: new Set(),
-    statusListeners: new Set(),
+    statusListeners: new Map(),
     presenceTargets: new Map(),
     abortController: null,
     reconnectTimer: null,
     presenceTargetReconnectTimer: null,
     reconnectAttempt: 0,
-    connected: false,
+    transportConnected: false,
+    readiness: null,
     stopped: false,
   };
   streams.set(orgId, stream);
@@ -235,6 +298,7 @@ export function subscribeSharedRealtimeStream(args: {
   onEvent: RealtimeListener;
   onStatus?: StatusListener;
   presenceTargets?: RealtimePresenceTarget[];
+  requiredChannels?: readonly RealtimeChannel[];
 }) {
   const stream = getOrCreateSharedStream(args.orgId);
   stream.listeners.add(args.onEvent);
@@ -254,15 +318,22 @@ export function subscribeSharedRealtimeStream(args: {
   }
 
   if (args.onStatus) {
-    stream.statusListeners.add(args.onStatus);
+    const subscription: StatusSubscription = {
+      requiredChannels: [...new Set(args.requiredChannels ?? DEFAULT_REQUIRED_CHANNELS)],
+      lastReady: false,
+    };
+    stream.statusListeners.set(args.onStatus, subscription);
     try {
-      args.onStatus(stream.connected);
+      const ready = isSubscriptionReady(stream, subscription);
+      subscription.lastReady = ready;
+      args.onStatus(ready);
     } catch (error) {
       logRealtimeListenerError(stream, 'notify_status_listener', error);
     }
   }
 
   if (presenceTargetsChanged) {
+    markPresenceUnready(stream);
     schedulePresenceTargetReconnect(stream);
   }
 
@@ -286,6 +357,7 @@ export function subscribeSharedRealtimeStream(args: {
       stream.statusListeners.delete(args.onStatus);
     }
     if (removedPresenceTarget && stream.listeners.size > 0) {
+      markPresenceUnready(stream);
       schedulePresenceTargetReconnect(stream);
     }
     if (stream.listeners.size === 0) {

@@ -13,6 +13,7 @@ import {
   type CollaborationEntityType,
 } from '@/server/services/collaboration-access';
 import { scheduleSseTimer } from './sse-timer';
+import { REALTIME_READINESS_EVENT, type RealtimeReadiness } from '@/lib/realtime/readiness';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -232,6 +233,19 @@ async function streamNotifications(req: NextRequest, ctx: AuthContext) {
         }
       };
 
+      const sendReadiness = (readiness: RealtimeReadiness) => {
+        if (stopped) return;
+        try {
+          controller.enqueue(
+            encoder.encode(
+              `event: ${REALTIME_READINESS_EVENT}\ndata: ${JSON.stringify(readiness)}\n\n`,
+            ),
+          );
+        } catch {
+          teardown();
+        }
+      };
+
       // Keepalive heartbeat
       const heartbeat = () => {
         if (stopped) return;
@@ -246,6 +260,12 @@ async function streamNotifications(req: NextRequest, ctx: AuthContext) {
       keepaliveTimer = scheduleSseTimer(heartbeat, KEEPALIVE_INTERVAL_MS);
 
       let userChannelSubscribed = false;
+      let readiness: RealtimeReadiness = {
+        version: 1,
+        org: false,
+        user: false,
+        presence: presenceTargets.length === 0,
+      };
 
       // Try realtime adapter subscription
       try {
@@ -275,10 +295,17 @@ async function streamNotifications(req: NextRequest, ctx: AuthContext) {
           ),
         ]);
         userChannelSubscribed = subscriptionResults[1]?.status === 'fulfilled';
+        readiness = {
+          version: 1,
+          org: subscriptionResults[0]?.status === 'fulfilled',
+          user: userChannelSubscribed,
+          presence: subscriptionResults.slice(2).every((result) => result.status === 'fulfilled'),
+        };
       } catch {
         // Fall back to polling when the realtime adapter cannot be created.
       }
       if (stopped) return;
+      sendReadiness(readiness);
 
       // Keep a low-frequency DB safety poll even when the user channel is subscribed.
       // Some legacy jobs still create notifications directly and cannot publish realtime payloads.

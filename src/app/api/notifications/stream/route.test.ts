@@ -9,6 +9,7 @@ const {
   releaseSseConnectionMock,
   subscribeToChannelMock,
   unsubscribeFromChannelMock,
+  getRealtimeAdapterMock,
   canAccessCollaborationEntityMock,
   loggerWarnMock,
   loggerInfoMock,
@@ -19,6 +20,7 @@ const {
   releaseSseConnectionMock: vi.fn(),
   subscribeToChannelMock: vi.fn(),
   unsubscribeFromChannelMock: vi.fn(),
+  getRealtimeAdapterMock: vi.fn(),
   canAccessCollaborationEntityMock: vi.fn(),
   loggerWarnMock: vi.fn(),
   loggerInfoMock: vi.fn(),
@@ -61,10 +63,7 @@ vi.mock('@/lib/api/rate-limit', () => ({
 }));
 
 vi.mock('@/server/adapters/realtime', () => ({
-  getRealtimeAdapter: () => ({
-    subscribeToChannel: subscribeToChannelMock,
-    unsubscribeFromChannel: unsubscribeFromChannelMock,
-  }),
+  getRealtimeAdapter: getRealtimeAdapterMock,
 }));
 
 vi.mock('@/server/services/collaboration-access', async (importOriginal) => {
@@ -108,9 +107,29 @@ async function openStreamForTestWithUrl(url: string) {
   const response = (await invokeGET(streamRequest(controller.signal, url)))!;
   const reader = response.body?.getReader();
   if (!reader) throw new Error('reader is required');
-  await reader.read();
+  const keepalive = await reader.read();
+  expect(new TextDecoder().decode(keepalive.value)).toBe(': keepalive\n\n');
   await flushAsyncWork();
+  await expect(readSseEvent(reader, 'realtime_readiness')).resolves.toEqual({
+    version: 1,
+    org: true,
+    user: true,
+    presence: true,
+  });
   return { controller, reader };
+}
+
+async function readSseEvent(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  expectedEvent: string,
+) {
+  const chunk = await reader.read();
+  const text = new TextDecoder().decode(chunk.value);
+  const lines = text.trimEnd().split('\n');
+  expect(lines[0]).toBe(`event: ${expectedEvent}`);
+  const dataLine = lines.find((line) => line.startsWith('data: '));
+  if (!dataLine) throw new Error(`missing SSE data: ${text}`);
+  return JSON.parse(dataLine.slice(6));
 }
 
 async function readSseData(reader: ReadableStreamDefaultReader<Uint8Array>) {
@@ -134,6 +153,10 @@ describe('/api/notifications/stream', () => {
     notificationFindManyMock.mockResolvedValue([]);
     acquireSseConnectionMock.mockReturnValue({ allowed: true });
     subscribeToChannelMock.mockResolvedValue(undefined);
+    getRealtimeAdapterMock.mockReturnValue({
+      subscribeToChannel: subscribeToChannelMock,
+      unsubscribeFromChannel: unsubscribeFromChannelMock,
+    });
     canAccessCollaborationEntityMock.mockResolvedValue(true);
   });
 
@@ -159,6 +182,144 @@ describe('/api/notifications/stream', () => {
     expect(releaseSseConnectionMock).toHaveBeenCalledTimes(1);
     expect(unsubscribeFromChannelMock).toHaveBeenCalledWith('org:org_1', expect.any(Function));
     expect(unsubscribeFromChannelMock).toHaveBeenCalledWith('user:user_1', expect.any(Function));
+  });
+
+  it('reports channel readiness without identifiers or PHI', async () => {
+    const controller = new AbortController();
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('reader is required');
+    await reader.read();
+
+    const readiness = await readSseEvent(reader, 'realtime_readiness');
+    expect(readiness).toEqual({ version: 1, org: true, user: true, presence: true });
+    expect(Object.keys(readiness).sort()).toEqual(['org', 'presence', 'user', 'version']);
+
+    controller.abort();
+    await flushAsyncWork();
+  });
+
+  it('reports partial org and user subscription failures independently', async () => {
+    subscribeToChannelMock
+      .mockRejectedValueOnce(new Error('org unavailable'))
+      .mockResolvedValueOnce(undefined);
+
+    const controller = new AbortController();
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('reader is required');
+    await reader.read();
+
+    await expect(readSseEvent(reader, 'realtime_readiness')).resolves.toEqual({
+      version: 1,
+      org: false,
+      user: true,
+      presence: true,
+    });
+
+    controller.abort();
+    await flushAsyncWork();
+  });
+
+  it('keeps org ready when only the user subscription fails', async () => {
+    subscribeToChannelMock
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('user unavailable'));
+
+    const controller = new AbortController();
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('reader is required');
+    await reader.read();
+
+    await expect(readSseEvent(reader, 'realtime_readiness')).resolves.toEqual({
+      version: 1,
+      org: true,
+      user: false,
+      presence: true,
+    });
+
+    controller.abort();
+    await flushAsyncWork();
+  });
+
+  it('reports a failed presence subscription without degrading org or user readiness', async () => {
+    subscribeToChannelMock
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('presence unavailable'));
+    const presence = encodeURIComponent(JSON.stringify(['visit_record', 'vr_1']));
+
+    const controller = new AbortController();
+    const response = (await invokeGET(
+      streamRequest(
+        controller.signal,
+        `http://localhost/api/notifications/stream?presence=${presence}`,
+      ),
+    ))!;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('reader is required');
+    await reader.read();
+
+    await expect(readSseEvent(reader, 'realtime_readiness')).resolves.toEqual({
+      version: 1,
+      org: true,
+      user: true,
+      presence: false,
+    });
+
+    controller.abort();
+    await flushAsyncWork();
+  });
+
+  it('treats presence as ready when adapter creation fails without requested targets', async () => {
+    getRealtimeAdapterMock.mockImplementationOnce(() => {
+      throw new Error('adapter unavailable');
+    });
+
+    const controller = new AbortController();
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('reader is required');
+    await reader.read();
+
+    await expect(readSseEvent(reader, 'realtime_readiness')).resolves.toEqual({
+      version: 1,
+      org: false,
+      user: false,
+      presence: true,
+    });
+
+    controller.abort();
+    await flushAsyncWork();
+  });
+
+  it('reports requested presence unavailable when adapter creation fails', async () => {
+    getRealtimeAdapterMock.mockImplementationOnce(() => {
+      throw new Error('adapter unavailable');
+    });
+    const presence = encodeURIComponent(JSON.stringify(['visit_record', 'vr_1']));
+
+    const controller = new AbortController();
+    const response = (await invokeGET(
+      streamRequest(
+        controller.signal,
+        `http://localhost/api/notifications/stream?presence=${presence}`,
+      ),
+    ))!;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('reader is required');
+    await reader.read();
+
+    await expect(readSseEvent(reader, 'realtime_readiness')).resolves.toEqual({
+      version: 1,
+      org: false,
+      user: false,
+      presence: false,
+    });
+
+    controller.abort();
+    await flushAsyncWork();
   });
 
   it('returns the authentication response before resolving rooms or acquiring a stream slot', async () => {
@@ -537,6 +698,7 @@ describe('/api/notifications/stream', () => {
     const reader = response.body?.getReader();
     if (!reader) throw new Error('reader is required');
     await reader.read();
+    await readSseEvent(reader, 'realtime_readiness');
 
     vi.setSystemTime(new Date('2026-04-01T00:00:05.000Z'));
     await vi.advanceTimersByTimeAsync(5_000);
@@ -607,6 +769,7 @@ describe('/api/notifications/stream', () => {
     const reader = response.body?.getReader();
     if (!reader) throw new Error('reader is required');
     await reader.read();
+    await readSseEvent(reader, 'realtime_readiness');
 
     vi.setSystemTime(new Date('2026-04-01T00:00:05.000Z'));
     await vi.advanceTimersByTimeAsync(5_000);

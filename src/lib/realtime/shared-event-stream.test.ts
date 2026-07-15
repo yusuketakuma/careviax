@@ -17,6 +17,24 @@ function createOpenSseResponse(chunks: string[]) {
   );
 }
 
+function createClosingSseResponse(chunks: string[]) {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(encoder.encode(chunk));
+        }
+        controller.close();
+      },
+    }),
+  );
+}
+
+function readinessEvent(readiness: { org: boolean; user: boolean; presence: boolean }) {
+  return `event: realtime_readiness\ndata: ${JSON.stringify({ version: 1, ...readiness })}\n\n`;
+}
+
 function createHangingSseResponse() {
   return new Response(
     new ReadableStream({
@@ -58,6 +76,7 @@ describe('subscribeSharedRealtimeStream', () => {
       .fn()
       .mockResolvedValue(
         createOpenSseResponse([
+          readinessEvent({ org: true, user: true, presence: true }),
           'data: {"type":"notification_created","notification_id":"notification_1"}\n\n',
         ]),
       );
@@ -122,6 +141,7 @@ describe('subscribeSharedRealtimeStream', () => {
       .fn()
       .mockResolvedValue(
         createOpenSseResponse([
+          readinessEvent({ org: true, user: true, presence: true }),
           'data: {"type":"notification_created","notification_id":"notification_1"}\n\n',
         ]),
       );
@@ -182,6 +202,144 @@ describe('subscribeSharedRealtimeStream', () => {
 
     unsubscribeSecond();
     unsubscribeFirst();
+  });
+
+  it('does not report ready from an HTTP 2xx transport without a readiness control event', async () => {
+    const status = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(createHangingSseResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const unsubscribe = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: vi.fn(),
+      onStatus: status,
+      requiredChannels: ['org'],
+    });
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(status.mock.calls).toEqual([[false]]);
+
+    unsubscribe();
+  });
+
+  it('reports readiness independently for org and user subscribers', async () => {
+    const orgStatus = vi.fn();
+    const userStatus = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        createOpenSseResponse([readinessEvent({ org: true, user: false, presence: true })]),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const unsubscribeOrg = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: vi.fn(),
+      onStatus: orgStatus,
+      requiredChannels: ['org'],
+    });
+    const unsubscribeUser = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: vi.fn(),
+      onStatus: userStatus,
+      requiredChannels: ['user'],
+    });
+
+    await vi.waitFor(() => expect(orgStatus).toHaveBeenLastCalledWith(true));
+    expect(orgStatus.mock.calls).toEqual([[false], [true]]);
+    expect(userStatus.mock.calls).toEqual([[false]]);
+
+    unsubscribeUser();
+    unsubscribeOrg();
+  });
+
+  it('ignores malformed or PHI-bearing readiness controls without leaking them to listeners', async () => {
+    const listener = vi.fn();
+    const status = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        createOpenSseResponse([
+          'event: realtime_readiness\ndata: {"version":1,"org":true,"user":true,"presence":true,"patient_name":"Patient A"}\n\n',
+          readinessEvent({ org: true, user: true, presence: true }),
+          'data: {"type":"notification_created","notification_id":"notification_1"}\n\n',
+        ]),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const unsubscribe = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: listener,
+      onStatus: status,
+      requiredChannels: ['user'],
+    });
+
+    await vi.waitFor(() => {
+      expect(listener).toHaveBeenCalledWith({
+        type: 'notification_created',
+        notification_id: 'notification_1',
+      });
+      expect(status).toHaveBeenLastCalledWith(true);
+    });
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(status.mock.calls).toEqual([[false], [true]]);
+    expect(JSON.stringify(listener.mock.calls)).not.toContain('Patient A');
+
+    unsubscribe();
+  });
+
+  it('marks presence subscribers unready immediately when presence targets change', async () => {
+    vi.useFakeTimers();
+    const presenceStatus = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        createOpenSseResponse([readinessEvent({ org: true, user: true, presence: true })]),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const unsubscribeFirst = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: vi.fn(),
+      onStatus: presenceStatus,
+      requiredChannels: ['presence'],
+    });
+    await vi.waitFor(() => expect(presenceStatus).toHaveBeenLastCalledWith(true));
+
+    const unsubscribeSecond = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: vi.fn(),
+      presenceTargets: [{ entityType: 'patient', entityId: 'patient_1' }],
+    });
+
+    expect(presenceStatus).toHaveBeenLastCalledWith(false);
+    expect(presenceStatus.mock.calls).toEqual([[false], [true], [false]]);
+
+    unsubscribeSecond();
+    unsubscribeFirst();
+  });
+
+  it('marks subscribers unready when a ready stream closes before reconnect', async () => {
+    const status = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createClosingSseResponse([readinessEvent({ org: true, user: true, presence: true })]),
+      )
+      .mockResolvedValue(createHangingSseResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const unsubscribe = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: vi.fn(),
+      onStatus: status,
+      requiredChannels: ['org'],
+    });
+
+    await vi.waitFor(() => expect(status.mock.calls).toEqual([[false], [true], [false]]));
+
+    unsubscribe();
   });
 
   it('passes requested presence targets on the shared SSE URL', async () => {

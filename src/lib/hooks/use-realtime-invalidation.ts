@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { hashKey, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { useRealtimeEvents } from './use-realtime-events';
 import type { RealtimePresenceTarget } from '@/lib/realtime/shared-event-stream';
+import type { RealtimeChannel } from '@/lib/realtime/readiness';
 
 export type RealtimeInvalidationRule =
   | string
@@ -70,8 +71,6 @@ export function useRealtimeInvalidation({
     (Array.isArray(invalidateOn) && invalidateOn.length > 0) ||
     shouldInvalidate !== undefined;
   const invalidateAllEvents = invalidateOn === 'all';
-  const receivesRealtimeUpdates =
-    shouldInvalidateQuery || onRealtimeEvent !== undefined || presenceTargets.length > 0;
 
   const realtimeQueryKey = useMemo(
     () => queryKey,
@@ -91,6 +90,20 @@ export function useRealtimeInvalidation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [presenceTargetsHash],
   );
+  const requiredChannels = useMemo(() => {
+    const channels: RealtimeChannel[] = [];
+    if (shouldInvalidateQuery) channels.push('org');
+    if (realtimePresenceTargets.length > 0) channels.push('presence');
+    if (
+      onRealtimeEvent !== undefined &&
+      !shouldInvalidateQuery &&
+      realtimePresenceTargets.length === 0
+    ) {
+      channels.push('user');
+    }
+    return channels;
+  }, [onRealtimeEvent, realtimePresenceTargets, shouldInvalidateQuery]);
+  const receivesRealtimeUpdates = requiredChannels.length > 0;
 
   const scheduleInvalidate = useCallback(() => {
     const pendingQueryKeys =
@@ -162,7 +175,37 @@ export function useRealtimeInvalidation({
     onEvent,
     enabled: enabled && receivesRealtimeUpdates,
     presenceTargets: realtimePresenceTargets,
+    requiredChannels,
   });
+
+  const readinessHistoryRef = useRef({
+    queryKeyHash,
+    hasBeenReady: false,
+    wasConnected: false,
+  });
+  useEffect(() => {
+    let history = readinessHistoryRef.current;
+    if (history.queryKeyHash !== queryKeyHash) {
+      history = {
+        queryKeyHash,
+        hasBeenReady: false,
+        wasConnected: false,
+      };
+      readinessHistoryRef.current = history;
+    }
+
+    if (!enabled || !receivesRealtimeUpdates) {
+      history.hasBeenReady = false;
+      history.wasConnected = false;
+      return;
+    }
+
+    if (connected && history.hasBeenReady && !history.wasConnected) {
+      void queryClient.refetchQueries({ queryKey: realtimeQueryKey, type: 'active' });
+    }
+    if (connected) history.hasBeenReady = true;
+    history.wasConnected = connected;
+  }, [connected, enabled, queryClient, queryKeyHash, realtimeQueryKey, receivesRealtimeUpdates]);
 
   return { connected, receivesRealtimeUpdates };
 }
