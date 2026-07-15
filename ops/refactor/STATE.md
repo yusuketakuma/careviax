@@ -63,6 +63,34 @@
 
 ## 直近の作業
 
+- codex1/codex2: explicit print intent + strict drug-master date/provenance
+  (`PRIVACY-PRINT-EXPLICIT-INTENT-001` DONE `86fd09be7`, typecheck test follow-up `afb0d4b40`,
+  `MEDSAFE-DRUG-MASTER-DATE-STRICT-001` PARTIAL `37bbc6554`, 2026-07-15).
+  - privacy root cause / implementation:
+    訪問記録、服薬一覧、管理計画のready後timerによる自動`window.print()`を削除し、共通buttonの同期latchを
+    唯一のintent境界にした。報告書はexact GETで取得したresource/revision/generationをclick時とaudit完了後に再照合し、
+    `print_requested`を明示click後かつ`window.print()`直前に一度だけ記録する。監査失敗、二重click、target/settings変更、
+    stale responseではprintをfail-closedにした。非同期監査testのnullable resolverがTypeScript control-flowで`never`へ
+    狭まる統合失敗はtyped deferred helperへ置換し、product behaviorを変えずaggregate typecheckを回復した。
+  - medication-safety root cause / implementation:
+    JavaScript date rolloverとURL query/hash由来の偽provenanceを、UTC round-trip strict parserとpathname-only source dateへ
+    統一した。JAHIS fixed `YYYYMMDD` / `GYYMMDD`、SSK/MHLW/HOTのmatched-invalid quarantine、SSK JST 0..365日かつ
+    14日制限、PMDA official XSDの`xs:date | xs:gYearMonth`を分離し、月精度は`revised_at=null`のまま認識する。
+    mixed rowはvalid rowだけを`partial`で取込み、全candidate quarantineはproduct/package/price write前に失敗する。
+    admin UIは一部取込・隔離件数・月精度件数を固定copyで表示する。codex2がHOT strict provenanceを別exact2で実装し、
+    codex1がfetch/DB write前fail-closedとraw-free failed logを独立reviewしてACCEPTした。
+  - official basis / validation:
+    JAHIS技術文書24-104 Ver.2.6、JAHIS健康診断結果報告書規格の明治起点、PMDA医療用医薬品情報XML XSDを
+    2026-07-15に確認した。privacy focused 5 files / 50 tests、drug focused 8 files / 371 tests、exact ESLint、
+    Prettier、diff-check、serialized `pnpm typecheck` / `pnpm typecheck:no-unused`、client JSON schema 363/0、
+    frontend contract、client PHI log/display、API response shape 0がPASSした。build/E2Eはユーザーのbuild抑制指示に従い
+    未実行。fixed copy/data-safety変更でvisual reconstructionやgeometry redesignを伴わないためimage generationは省略した。
+  - remaining / next:
+    explicit print intentのcode/contract stop conditionは解消したためPlans行を削除した。薬剤日付はJAHIS訂正・解決監査
+    workflowとPMDA実official payload/runtime storage証跡を残してPlansを`Partial`とする。次はcodex2 plan review済みの
+    `SEC-HTTP-IO-BUDGET-001`共通strict seam exact6を実装し、legacy 245 callerのnull/400互換を維持しながら、strict callerだけ
+    registered 413/408へ接続する。Oracleは使わず、詰まりはagmsgでcodex2へ相談する。
+
 - codex1/codex2: consent expiry / exact print target / CDS false-safe convergence
   (`CONSENT-EXPIRY-JST-SSOT-001` DONE `b23500a6b`,
   `MEDSAFE-PRINT-HUB-EXPLICIT-PATIENT-001` IMPLEMENTED / LOCAL VALIDATED / BROWSER PROOF PENDING `30e7d3a28`,
