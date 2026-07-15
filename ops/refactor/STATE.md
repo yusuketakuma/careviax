@@ -63,6 +63,31 @@
 
 ## 直近の作業
 
+- codex1 implementation + codex2 independent review: clerk ordinary operations / pharmacist-only
+  documentation and audit capability split S1
+  (PARTIAL POLICY MIGRATION DONE / CODE COMMITTED, 2026-07-15; implementation `faa37451f`).
+  - user policy / root cause / implementation:
+    `canVisit`が訪問・薬歴記載だけでなく患者read、一般運用、task APIにも流用され、clerkの許可済み業務まで遮断していた。
+    clerkへ`canVisit`を付けるとclinical writeを過剰付与するため、`canManageOperationalTasks`を新設し、owner/admin/
+    pharmacist/pharmacist_trainee/clerkだけへ付与した。ONB task sync、task GET/POST/PATCH/bulk/health、follow-up task
+    affordance/createを新capabilityへ移し、`canVisit`は訪問・薬歴記載、`canAuthorReport`は臨床報告書作成、
+    `canAuditDispense` / `canAuditSet`は監査境界として維持した。permission matrixとcompliance policyのexact parity、
+    route catalog、direct-auth allowlistも同期した。
+  - authorization / medical safety / privacy invariants:
+    generic taskの既定資格はoperational capabilityへ分離したが、visit work requestは`canVisit`、audit work requestは
+    `canAuditDispense`を要求する。PATCHはactor+任意assignee、bulkはactorのactive membershipsを一度だけ取得し、
+    roleと`can_audit_dispense`をmembership-aware evaluatorで検証する。mixed/unknown/inactiveはfail-closed、clerkはgeneral taskのみ、
+    trainee/clerkはaudit不可、pharmacistのaudit flag falseも不可、admin bypassは既存契約どおり。actor denialはno-store。
+    report authoring、send/PDF/export/share、patient view gate、dispense/set/billing、DB/RLS/schema/migrationは変更していない。
+  - validation / peer review / remaining:
+    focused `14 files / 273 tests`、codex2独立audit surface `5 files / 120 tests`、exact ESLint/Prettier/diff、
+    permission doc parity、route-auth `147 routes / 211 calls / 0 new`、API authz/response、client schema `360/0`、DTO、
+    module boundaries、frontend contract、task registry、serialized `pnpm typecheck` / `pnpm typecheck:no-unused`をPASS。
+    codex2のmembership-level audit findingを修正後に再review APPROVE。現行SSOTに従いbuild/E2E/Oracleは未実行。
+    残は`AUTHZ-CLERK-PHARMACIST-BOUNDARY-001`として、133 canVisit route files（明示read文言86）のordinary readを
+    `canViewDashboard`へmethod/action単位で移し、PDF/export等の出力境界を別reviewすること。dispense/set/send/billing/sharingも
+    legal/clinical confirmationとclerical executionが混在するためblanket grantせず、別のnonclinical capability inventoryで分離する。
+
 - codex2 implementation + codex1 integration: `ONB-001-SYNC-SAFETY` deterministic Renewal Board sync
   (CORE ROOT-CAUSE SLICE DONE / CODE COMMITTED, 2026-07-15; implementation `806e81677`).
   - root cause / implementation / correctness:
@@ -72,7 +97,8 @@
     sentinelはslice外taskへ触れず、boardは`state/count_basis/patient_window{limit,visible_count,truncated}`、syncは
     `state/scope_complete/processed_patient_count/limit/truncated`を返す。全件数を推測せず、truncated時はpartialを明示する。
   - security / performance / invariants:
-    GETの`canViewDashboard`は維持し、mutation POSTだけを`canVisit`へ強化して拒否時org transaction/task writeを0にした。
+    GETの`canViewDashboard`は維持し、mutation POSTは当初`canVisit`へ強化した後、ユーザーポリシー補正を受けた
+    `faa37451f`で`canManageOperationalTasks`へ分離し、clerkの一般運用を許可しつつ訪問・薬歴記載を開かなかった。
     route-auth metadataも2 permissionへ同期し、direct-auth debtは147 routes / 211 calls / new 0を維持した。別queryを除去して
     deep patient scanを2回から1回へ削減した。task dedupe、notification、JST期限、RLS request context、no-store、response envelope、
     schema/DB/migration/UIは変更していない。
