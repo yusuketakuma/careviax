@@ -1,12 +1,12 @@
 # RUN LOCK
 
-- Run ID: `6e8b21b2-36eb-48a1-8497-fa9a4222ba32`
-- Status: RELEASED
-- Started At: 2026-07-15 06:04 JST
-- Last Heartbeat: 2026-07-15 08:30 JST
+- Run ID: `2c7a8e12-4680-46cc-9f28-def1e57bcfc5`
+- Status: ACTIVE
+- Started At: 2026-07-15 08:45 JST
+- Last Heartbeat: 2026-07-15 09:00 JST
 - Branch: `agent/continuous-improvement-20260712`
-- Current Task: pre-existing worktree convergence completed; next implementation slice is not yet claimed
-- Current Commit Group: Round21 `80f33084c`, external-share `87f9335ab`, visit-record logging `ce9cae9ab`, E2E identity `a36b39efc`, harness `a9786e969`, and integration ledger `47dfd2888` were pushed to the safe feature branch
-- Owner / Agent Identifier: `codex1` primary integrator; bounded read-only subagents completed non-overlap review
-- Resume Token or Session Reference: `6e8b21b2-36eb-48a1-8497-fa9a4222ba32`
-- Notes: All pre-existing dirty product/test/harness/ledger groups were committed with explicit paths and pushed non-force. Focused tests, static gates, serialized typechecks, clean E2E build (311 pages), standalone health, patient-share desktop/mobile, route-mocked browser checks, and screenshot review pass. Integration payload `47dfd2888992a8efcdd80380f92a0240ca8b0fde` and the subsequent lock-closure push each reached local/upstream parity `0 0`. No migration apply, deploy, production mutation, destructive operation, or force push.
+- Current Task: Round 22 API-CONTRACT-001 data-explorer model summary standard auth-wrapper migration
+- Current Commit Group: exact4 implementation `ca063b068` is committed; memory/Plans/STATE ledger is being prepared before the authorized non-force feature-branch push
+- Owner / Agent Identifier: `codex1` primary integrator; bounded read-only scouts mapped API-CONTRACT-001/002/003 candidates
+- Resume Token or Session Reference: `2c7a8e12-4680-46cc-9f28-def1e57bcfc5`
+- Notes: Implementation exact4 preserves `canAdmin`, denial message, org-scoped service call, response body, no-store, fixed PHI-safe 500, and central Next control-flow protection while adding request/correlation trace, auth ALS, and route-performance boundary. Focused tests, static gates, serialized typechecks, and two independent reviews pass. The gbrain decision page, `Plans.md`, `ops/refactor/STATE.md`, and this lock are the remaining ledger group. No migration apply, deploy, production mutation, destructive operation, or force push. Stage only explicit owned paths; no `git add -A`.

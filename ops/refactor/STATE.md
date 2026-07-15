@@ -58,6 +58,29 @@
 
 ## 直近の作業
 
+- codex1: Round 22 API-CONTRACT-001FZDATAEXPLORERMODELSAUTH / Data Explorer Models standard auth-wrapper
+  migration (CODE COMMITTED / LEDGER PENDING, 2026-07-15; implementation `ca063b068`).
+  - selection / scope:
+    clean parity `0 0`からPlans最優先のAPI contract laneを再開し、bounded subagent 3系統で`001` direct-auth、
+    `002` trace propagation、`003` error registryをread-only比較した。`002`残件はbilling/break-glass/PHI audit/outbox、
+    `003`次候補はe-prescriptionで影響半径が大きいため、26行のread-only admin GET exact4を最小sliceに選んだ。
+    Next.js 16.2.9同梱Route Handlers / Error Handling docsを全読し、現行handler contextとcontrol-flow契約を確認した。
+  - implementation / invariants:
+    `admin/data-explorer/models`のmanual `requireAuthContext` + route-local no-store / `unstable_rethrow` / fixed 500を、
+    同じ`canAdmin`、拒否文言、`ctx.orgId` service call、`{ data }` bodyのまま`withAuthContext`へ収束した。
+    success/auth denial/500のsensitive no-store、server-owned request/correlation trace、auth ALS、PHI-safe fixed 500 log、
+    route performance boundaryを共通実装へ移管した。旧route-local control-flow static entryも同時に除去し、central wrapper testを
+    正本とした。schema、service/query、RLS、row payload、audit、external callは変更していない。allowlistは149→148 routes、
+    direct callは213→212、new debt 0。
+  - validation / review / remaining:
+    root final focused route + central auth + control-flow + ratchet `4 files / 23 tests`、独立reviewerはserviceを含む
+    `3 files / 43 tests`と別系統`3 files / 19 tests`をPASS。exact ESLint/Prettier/diff、route-auth wrapper、API response shape
+    `0/0`、authz status、DTO direct return、boundaries、client PHI log、serialized `pnpm typecheck` / `pnpm typecheck:no-unused`をPASS。
+    独立security/privacy/API reviewerとverifierはseverityなしでAPPROVEした。直前統合境界でclean E2E build 311 pagesをPASS済み、
+    今回は非視覚・behavior-preserving GET wrapper移行のためbuild/E2E/imagegenは再実行していない。Oracleは現行STATE SSOTの禁止に従い
+    未使用。gbrain `projects/careviax/decisions/2026-07-15/api-contract-data-explorer-models-auth-wrapper`へ再利用判断を保存した。
+    親`API-CONTRACT-001`には148 routes / 212 callsとrequest correlation body/error registryが残る。
+
 - codex1 integration: pre-existing worktree convergence + MEDSAFE-PATIENT-CONTEXT-SHARE-001 closure
   (DONE / CODE + LEDGER PUSHED, 2026-07-15; implementations `87f9335ab`, `ce9cae9ab`,
   `a36b39efc`; harness `a9786e969`; integration ledger `47dfd2888`).
