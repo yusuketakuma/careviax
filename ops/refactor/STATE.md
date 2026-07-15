@@ -63,6 +63,26 @@
 
 ## 直近の作業
 
+- codex2 implementation + codex1 integration: `ONB-001-SYNC-SAFETY` deterministic Renewal Board sync
+  (CORE ROOT-CAUSE SLICE DONE / CODE COMMITTED, 2026-07-15; implementation `806e81677`).
+  - root cause / implementation / correctness:
+    board GETは`name_kana,name`順のbounded患者集合を使う一方、task syncのstale resolveは別のorderなしbounded queryを
+    再実行していたため、上限超過やmembership差でboard外の有効taskをcompletedへ誤解決できた。active patient scanを
+    `name_kana,name,id` + `take limit+1`へ一元化し、limit内の同じpatient rowsからboard、upsert、stale resolveを導出した。
+    sentinelはslice外taskへ触れず、boardは`state/count_basis/patient_window{limit,visible_count,truncated}`、syncは
+    `state/scope_complete/processed_patient_count/limit/truncated`を返す。全件数を推測せず、truncated時はpartialを明示する。
+  - security / performance / invariants:
+    GETの`canViewDashboard`は維持し、mutation POSTだけを`canVisit`へ強化して拒否時org transaction/task writeを0にした。
+    route-auth metadataも2 permissionへ同期し、direct-auth debtは147 routes / 211 calls / new 0を維持した。別queryを除去して
+    deep patient scanを2回から1回へ削減した。task dedupe、notification、JST期限、RLS request context、no-store、response envelope、
+    schema/DB/migration/UIは変更していない。
+  - validation / remaining:
+    codex2 focused `2 files / 29 tests`とexact/static gates、codex1独立domain `3 files / 50 tests`、manual diff、serialized
+    `pnpm typecheck` / `pnpm typecheck:no-unused`、exact ESLint/Prettier/diff、API authz/response、client schema、DTO direct return、
+    module boundaries、Plans activeをPASS。build/E2E/imagegenは非視覚API correctness sliceと現行build保留方針のため未実行。
+    Planはcore誤解決修正を完了証跡化しつつ、idempotent rerun、full role matrix、批准済みskip/audit契約をPartial残件にする。
+    UI接続は`ONB-001-UI`、generated task assignee eligibilityは既存human-gate Planへ統合する。
+
 - codex1: Round 23 API-CONTRACT-003 / `EPRESCRIPTION_NOT_ENABLED` typed registry migration
   (DONE / CODE COMMITTED, 2026-07-15; implementation `5520e8637`).
   - selection / implementation / invariants:
