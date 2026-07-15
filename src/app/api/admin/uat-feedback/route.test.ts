@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { decodeKeysetCursor } from '@/lib/api/keyset-cursor';
 
 const { feedbackFindManyMock, feedbackCreateMock, withOrgContextMock, createAuditLogEntryMock } =
   vi.hoisted(() => ({
@@ -81,8 +82,11 @@ vi.mock('@/lib/audit/audit-entry', () => ({
 
 import { GET, POST } from './route';
 
-function createAuthRequest(init?: ConstructorParameters<typeof NextRequest>[1]) {
-  return new NextRequest('http://localhost/api/admin/uat-feedback', init);
+function createAuthRequest(
+  init?: ConstructorParameters<typeof NextRequest>[1],
+  url = 'http://localhost/api/admin/uat-feedback',
+) {
+  return new NextRequest(url, init);
 }
 
 function createJsonAuthRequest(body: unknown) {
@@ -147,7 +151,7 @@ describe('/api/admin/uat-feedback', () => {
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(feedbackFindManyMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1' },
-      orderBy: [{ created_at: 'desc' }],
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: 101,
     });
     await expect(response.json()).resolves.toMatchObject({
@@ -159,7 +163,7 @@ describe('/api/admin/uat-feedback', () => {
           updated_at: '2026-03-28T12:00:00.000Z',
         },
       ],
-      meta: { limit: 100, has_more: false },
+      meta: { limit: 100, has_more: false, next_cursor: null },
     });
   });
 
@@ -181,7 +185,78 @@ describe('/api/admin/uat-feedback', () => {
     const payload = await response.json();
     expect(payload.data).toHaveLength(100);
     expect(payload.data.at(-1).id).toBe('feedback_100');
-    expect(payload.meta).toEqual({ limit: 100, has_more: true });
+    expect(payload.meta).toEqual({
+      limit: 100,
+      has_more: true,
+      next_cursor: expect.any(String),
+    });
+    expect(decodeKeysetCursor(['created_at'] as const, payload.meta.next_cursor)).toEqual({
+      id: 'feedback_100',
+      created_at: expect.any(Date),
+    });
+  });
+
+  it('uses the stable created-at and id cursor for the next page', async () => {
+    const cursor = Buffer.from(
+      JSON.stringify({ id: 'feedback_100', created_at: '2026-03-28T12:00:00.000Z' }),
+      'utf8',
+    ).toString('base64url');
+
+    const response = await GET(
+      createAuthRequest(undefined, `http://localhost/api/admin/uat-feedback?cursor=${cursor}`),
+      emptyRouteContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(feedbackFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        OR: [
+          { created_at: { lt: new Date('2026-03-28T12:00:00.000Z') } },
+          {
+            created_at: new Date('2026-03-28T12:00:00.000Z'),
+            id: { lt: 'feedback_100' },
+          },
+        ],
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: 101,
+    });
+  });
+
+  it.each(['', ' ', 'not-a-keyset-cursor', 'x'.repeat(2049)])(
+    'rejects an invalid cursor before querying feedback (%j)',
+    async (cursor) => {
+      const response = await GET(
+        createAuthRequest(
+          undefined,
+          `http://localhost/api/admin/uat-feedback?cursor=${encodeURIComponent(cursor)}`,
+        ),
+        emptyRouteContext,
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'カーソルが不正です',
+      });
+      expect(feedbackFindManyMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps equal timestamps deterministic by ordering on id', async () => {
+    feedbackFindManyMock.mockResolvedValue([
+      buildFeedbackRow({ id: 'feedback_b' }),
+      buildFeedbackRow({ id: 'feedback_a' }),
+    ]);
+
+    await GET(createAuthRequest(), emptyRouteContext);
+
+    expect(feedbackFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
   });
 
   it('returns a sensitive no-store internal error without leaking raw list failures', async () => {

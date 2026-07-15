@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
+import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
 import { buildCursorPage } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, success, validationError } from '@/lib/api/response';
@@ -12,6 +13,8 @@ import { z } from 'zod';
 
 const uatStatusSchema = z.enum(['open', 'triaged', 'in_progress', 'resolved', 'deferred']);
 const UAT_FEEDBACK_LIST_LIMIT = 100;
+const UAT_FEEDBACK_CURSOR_MAX_LENGTH = 2048;
+const UAT_FEEDBACK_CURSOR_KEYS = ['created_at'] as const;
 
 const createUatFeedbackSchema = z.object({
   priority: z.enum(['critical', 'high', 'medium', 'low']),
@@ -22,15 +25,34 @@ const createUatFeedbackSchema = z.object({
 });
 
 const authenticatedGET = withAuthContext(
-  async (_req, ctx) => {
+  async (req, ctx) => {
+    const rawCursor = req.nextUrl.searchParams.get('cursor');
+    if (rawCursor !== null && rawCursor.length > UAT_FEEDBACK_CURSOR_MAX_LENGTH) {
+      return validationError('カーソルが不正です');
+    }
+    const cursor = decodeKeysetCursor(UAT_FEEDBACK_CURSOR_KEYS, rawCursor ?? undefined);
+    if (rawCursor !== null && !cursor) {
+      return validationError('カーソルが不正です');
+    }
+
     const feedback = await prisma.uatFeedback.findMany({
       where: {
         org_id: ctx.orgId,
+        ...(cursor
+          ? {
+              OR: [
+                { created_at: { lt: cursor.created_at } },
+                { created_at: cursor.created_at, id: { lt: cursor.id } },
+              ],
+            }
+          : {}),
       },
-      orderBy: [{ created_at: 'desc' }],
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: UAT_FEEDBACK_LIST_LIMIT + 1,
     });
-    const page = buildCursorPage(feedback, UAT_FEEDBACK_LIST_LIMIT, (item) => item.id);
+    const page = buildCursorPage(feedback, UAT_FEEDBACK_LIST_LIMIT, (item) =>
+      encodeKeysetCursor(UAT_FEEDBACK_CURSOR_KEYS, item),
+    );
 
     return success({
       data: page.data.map((item) => ({
@@ -41,7 +63,11 @@ const authenticatedGET = withAuthContext(
         created_at: item.created_at.toISOString(),
         updated_at: item.updated_at.toISOString(),
       })),
-      meta: { limit: UAT_FEEDBACK_LIST_LIMIT, has_more: page.hasMore },
+      meta: {
+        limit: UAT_FEEDBACK_LIST_LIMIT,
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+      },
     });
   },
   {

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckSquare, Square, Send } from 'lucide-react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -37,6 +37,8 @@ const UAT_FEEDBACK_REQUIRED_MESSAGE = 'フィードバック内容を入力し�
 const UAT_FEEDBACK_HELP_MESSAGE = 'フィードバック内容を入力すると送信できます。';
 const UAT_FEEDBACK_HELP_ID = 'uat-feedback-help';
 const UAT_FEEDBACK_ERROR_ID = 'uat-feedback-error';
+const UAT_FEEDBACK_LIST_LIMIT = 100;
+const UAT_FEEDBACK_LIST_ERROR = 'UAT フィードバックの取得に失敗しました';
 const UAT_FEEDBACK_FORM_DEFAULTS = {
   priority: 'medium',
   feedback: '',
@@ -383,8 +385,71 @@ const pilotLaunchDossierResponseSchema = z.object({
   }),
 });
 
-const uatFeedbackListResponseSchema = z.object({ data: z.array(uatFeedbackItemSchema) });
+const uatFeedbackListResponseSchema = z
+  .object({
+    data: z.array(uatFeedbackItemSchema).max(UAT_FEEDBACK_LIST_LIMIT),
+    meta: z
+      .object({
+        limit: z.literal(UAT_FEEDBACK_LIST_LIMIT),
+        has_more: z.boolean(),
+        next_cursor: z.string().trim().min(1).nullable(),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine(({ meta }, context) => {
+    if (meta.has_more && !meta.next_cursor) {
+      context.addIssue({
+        code: 'custom',
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor is required when has_more is true',
+      });
+    }
+    if (!meta.has_more && meta.next_cursor) {
+      context.addIssue({
+        code: 'custom',
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor must be null when has_more is false',
+      });
+    }
+  });
 const uatFeedbackResponseSchema = z.object({ data: uatFeedbackItemSchema });
+type UatFeedbackListPage = z.infer<typeof uatFeedbackListResponseSchema>;
+
+function hasRepeatedUatFeedbackCursor(
+  pages: readonly UatFeedbackListPage[],
+  pageParams: readonly unknown[],
+) {
+  const lastPage = pages.at(-1);
+  if (!lastPage?.meta.has_more || !lastPage.meta.next_cursor) return false;
+
+  const consumedCursors = new Set(
+    pageParams.flatMap((pageParam) =>
+      typeof pageParam === 'string' && pageParam ? [pageParam] : [],
+    ),
+  );
+  const priorOfferedCursors = new Set(
+    pages.slice(0, -1).flatMap((page) => (page.meta.next_cursor ? [page.meta.next_cursor] : [])),
+  );
+  return (
+    consumedCursors.has(lastPage.meta.next_cursor) ||
+    priorOfferedCursors.has(lastPage.meta.next_cursor)
+  );
+}
+
+function getNextUatFeedbackCursor(
+  lastPage: UatFeedbackListPage,
+  allPages: UatFeedbackListPage[],
+  _lastPageParam: string | null,
+  allPageParams: Array<string | null>,
+) {
+  if (!lastPage.meta.has_more) return undefined;
+
+  const nextCursor = lastPage.meta.next_cursor;
+  if (!nextCursor) throw new Error(UAT_FEEDBACK_LIST_ERROR);
+  if (hasRepeatedUatFeedbackCursor(allPages, allPageParams)) return undefined;
+  return nextCursor;
+}
 
 function buildUatRequestHeaders(orgId: string, headers?: HeadersInit): Record<string, string> {
   if (!headers) return buildOrgHeaders(orgId);
@@ -429,17 +494,22 @@ export function UatContent() {
     defaultValue: UAT_FEEDBACK_FORM_DEFAULTS.feedback,
   });
   const [feedbackDrafts, setFeedbackDrafts] = useState<Record<string, UatFeedbackDraft>>({});
+  const feedbackContinuationInFlightRef = useRef(false);
 
-  const feedbackQuery = useQuery({
+  const feedbackQuery = useInfiniteQuery({
     queryKey: ['uat-feedback', orgId],
-    queryFn: () =>
-      fetchOrgJson<{ data: UatFeedbackItem[] }>(
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      fetchOrgJson<UatFeedbackListPage>(
         orgId,
-        '/api/admin/uat-feedback',
+        pageParam
+          ? `/api/admin/uat-feedback?cursor=${encodeURIComponent(pageParam)}`
+          : '/api/admin/uat-feedback',
         undefined,
-        'UAT フィードバックの取得に失敗しました',
+        UAT_FEEDBACK_LIST_ERROR,
         uatFeedbackListResponseSchema,
       ),
+    getNextPageParam: getNextUatFeedbackCursor,
     enabled: !!orgId,
   });
   const readinessQuery = useQuery({
@@ -502,6 +572,44 @@ export function UatContent() {
       ),
     enabled: !!orgId,
   });
+
+  const feedbackItems: UatFeedbackItem[] = [];
+  const feedbackIds = new Set<string>();
+  for (const page of feedbackQuery.data?.pages ?? []) {
+    for (const item of page.data) {
+      if (feedbackIds.has(item.id)) continue;
+      feedbackIds.add(item.id);
+      feedbackItems.push(item);
+    }
+  }
+  const feedbackInitialError = feedbackQuery.isError && feedbackItems.length === 0;
+  const feedbackCursorCycle = hasRepeatedUatFeedbackCursor(
+    feedbackQuery.data?.pages ?? [],
+    feedbackQuery.data?.pageParams ?? [],
+  );
+  const feedbackStatusText =
+    feedbackItems.length === 0
+      ? ''
+      : feedbackQuery.hasNextPage && !feedbackCursorCycle
+        ? `${feedbackItems.length}件読み込み済みです。未読込があります。`
+        : `保存済みフィードバックを${feedbackItems.length}件読み込みました。`;
+
+  const requestNextFeedbackPage = () => {
+    if (feedbackContinuationInFlightRef.current) return;
+
+    feedbackContinuationInFlightRef.current = true;
+    const releaseContinuation = () => {
+      feedbackContinuationInFlightRef.current = false;
+    };
+    try {
+      void Promise.resolve(feedbackQuery.fetchNextPage()).then(
+        releaseContinuation,
+        releaseContinuation,
+      );
+    } catch {
+      releaseContinuation();
+    }
+  };
 
   const submitMutation = useMutation({
     mutationFn: () => {
@@ -1181,9 +1289,17 @@ export function UatContent() {
 
       <div className="space-y-4">
         <h2 className="text-base font-semibold text-foreground">保存済みフィードバック</h2>
+        <p
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className={feedbackStatusText ? 'text-xs text-muted-foreground' : 'sr-only'}
+        >
+          {feedbackStatusText}
+        </p>
         {feedbackQuery.isLoading ? (
           <LoadingRows label="保存済みフィードバックを読み込み中" rows={3} />
-        ) : feedbackQuery.error ? (
+        ) : feedbackInitialError ? (
           <SegmentError
             title="保存済みフィードバックを取得できませんでした"
             cause="保存済みフィードバック一覧を表示できません。"
@@ -1191,11 +1307,11 @@ export function UatContent() {
             onRetry={() => void feedbackQuery.refetch()}
             retryLabel="再試行"
           />
-        ) : (feedbackQuery.data?.data.length ?? 0) === 0 ? (
+        ) : feedbackItems.length === 0 ? (
           <p className="text-sm text-muted-foreground">まだ保存済みフィードバックはありません。</p>
         ) : (
           <div className="space-y-3">
-            {(feedbackQuery.data?.data ?? []).map((item) => (
+            {feedbackItems.map((item) => (
               <Card key={item.id} size="sm">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between gap-2 text-sm">
@@ -1333,6 +1449,36 @@ export function UatContent() {
                 </CardContent>
               </Card>
             ))}
+            {feedbackCursorCycle ? (
+              <SegmentError
+                title="続きの読み込み位置が重複したため、追加読み込みを停止しました"
+                cause="読み込み済みのフィードバックは保持しています。"
+                nextAction="一覧を再読み込みしてください。"
+                onRetry={() => void feedbackQuery.refetch()}
+                retryLabel="一覧を再読み込み"
+              />
+            ) : feedbackQuery.isFetchNextPageError ? (
+              <SegmentError
+                title="続きのフィードバックを取得できませんでした"
+                cause="読み込み済みのフィードバックは保持しています。"
+                nextAction="通信状態を確認して、続きの取得を再試行してください。"
+                onRetry={requestNextFeedbackPage}
+                retryLabel="続きを再試行"
+              />
+            ) : null}
+            {feedbackQuery.hasNextPage &&
+            !feedbackQuery.isFetchNextPageError &&
+            !feedbackCursorCycle ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11 w-full sm:w-auto"
+                disabled={feedbackQuery.isFetchingNextPage}
+                onClick={requestNextFeedbackPage}
+              >
+                {feedbackQuery.isFetchingNextPage ? '追加読込中…' : 'さらに読み込む'}
+              </Button>
+            ) : null}
           </div>
         )}
       </div>

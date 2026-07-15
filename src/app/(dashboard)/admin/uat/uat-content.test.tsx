@@ -16,6 +16,9 @@ const {
   errorQueryMessagesMock,
   dataQueryPayloadsMock,
   refetchMock,
+  fetchNextPageMock,
+  fetchingNextPageQueryKeysMock,
+  nextPageErrorQueryKeysMock,
   queryOptionsMock,
 } = vi.hoisted(() => ({
   mutateAsyncMock: vi.fn(),
@@ -24,9 +27,13 @@ const {
   errorQueryMessagesMock: new Map<string, string>(),
   dataQueryPayloadsMock: new Map<string, unknown>(),
   refetchMock: vi.fn(),
+  fetchNextPageMock: vi.fn(),
+  fetchingNextPageQueryKeysMock: new Set<string>(),
+  nextPageErrorQueryKeysMock: new Set<string>(),
   queryOptionsMock: [] as Array<{
     queryKey?: readonly unknown[];
-    queryFn?: () => Promise<unknown>;
+    queryFn?: (...args: unknown[]) => Promise<unknown>;
+    getNextPageParam?: (...args: unknown[]) => unknown;
   }>,
 }));
 
@@ -70,6 +77,54 @@ vi.mock('@tanstack/react-query', () => ({
       isError: false,
       error: null,
       refetch: refetchMock,
+    };
+  },
+  useInfiniteQuery: (options: {
+    queryKey?: readonly unknown[];
+    queryFn?: (...args: unknown[]) => Promise<unknown>;
+    getNextPageParam?: (...args: unknown[]) => unknown;
+  }) => {
+    queryOptionsMock.push(options);
+    const queryName = String(options.queryKey?.[0] ?? '');
+    const payload = dataQueryPayloadsMock.get(queryName);
+    const data =
+      payload && typeof payload === 'object' && 'pages' in payload
+        ? payload
+        : payload
+          ? { pages: [payload], pageParams: [null] }
+          : undefined;
+    const pages =
+      data && typeof data === 'object' && 'pages' in data && Array.isArray(data.pages)
+        ? data.pages
+        : [];
+    const lastPage = pages.at(-1) as
+      | { meta?: { has_more?: boolean; next_cursor?: string | null } }
+      | undefined;
+
+    if (loadingQueryKeysMock.has(queryName)) {
+      return {
+        data: undefined,
+        isLoading: true,
+        isError: false,
+        error: null,
+        refetch: refetchMock,
+        fetchNextPage: fetchNextPageMock,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        isFetchNextPageError: false,
+      };
+    }
+    const isInitialError = errorQueryMessagesMock.has(queryName) && pages.length === 0;
+    return {
+      data,
+      isLoading: false,
+      isError: isInitialError,
+      error: isInitialError ? new Error(errorQueryMessagesMock.get(queryName)) : null,
+      refetch: refetchMock,
+      fetchNextPage: fetchNextPageMock,
+      hasNextPage: lastPage?.meta?.has_more ?? false,
+      isFetchingNextPage: fetchingNextPageQueryKeysMock.has(queryName),
+      isFetchNextPageError: nextPageErrorQueryKeysMock.has(queryName),
     };
   },
   useMutation: (options: {
@@ -129,7 +184,32 @@ function queryFnFor(queryKeyName: string) {
   return queryFn;
 }
 
-const feedbackItemFixture = {
+function getNextPageParamFor(queryKeyName: string) {
+  const getNextPageParam = queryOptionsMock.find(
+    (options) => options.queryKey?.[0] === queryKeyName,
+  )?.getNextPageParam;
+  if (typeof getNextPageParam !== 'function') {
+    throw new Error(`Missing getNextPageParam for ${queryKeyName}`);
+  }
+  return getNextPageParam;
+}
+
+type FeedbackItemFixture = {
+  id: string;
+  priority: string;
+  status: string;
+  owner_user_id: string | null;
+  feedback: string;
+  checklist_progress: string | null;
+  checked_items: string[];
+  source: string;
+  linked_work_item: string | null;
+  due_date: string | null;
+  resolved_at: string | null;
+  created_at: string;
+};
+
+const feedbackItemFixture: FeedbackItemFixture = {
   id: 'feedback_1',
   priority: 'medium',
   status: 'open',
@@ -144,9 +224,30 @@ const feedbackItemFixture = {
   created_at: '2026-07-07T00:00:00.000Z',
 };
 
+function feedbackPage(
+  data: FeedbackItemFixture[] = [feedbackItemFixture],
+  meta: { has_more: boolean; next_cursor: string | null } = {
+    has_more: false,
+    next_cursor: null,
+  },
+) {
+  return {
+    data,
+    meta: { limit: 100 as const, ...meta },
+  };
+}
+
 function successPayloadFor(input: RequestInfo | URL) {
   const url = String(input);
-  if (url === '/api/admin/uat-feedback') return { data: [feedbackItemFixture] };
+  if (url === '/api/admin/uat-feedback') {
+    return {
+      data: [feedbackItemFixture],
+      meta: { limit: 100, has_more: false, next_cursor: null },
+    };
+  }
+  if (url.startsWith('/api/admin/uat-feedback?cursor=')) {
+    return feedbackPage([], { has_more: false, next_cursor: null });
+  }
   if (url.startsWith('/api/admin/uat-feedback/feedback_')) return { data: feedbackItemFixture };
   if (url === '/api/admin/pilot-readiness') {
     return {
@@ -263,6 +364,8 @@ describe('UatContent', () => {
     loadingQueryKeysMock.clear();
     errorQueryMessagesMock.clear();
     dataQueryPayloadsMock.clear();
+    fetchingNextPageQueryKeysMock.clear();
+    nextPageErrorQueryKeysMock.clear();
     queryOptionsMock.length = 0;
     vi.stubGlobal(
       'fetch',
@@ -309,6 +412,7 @@ describe('UatContent', () => {
     });
     await waitFor(() => expect(textarea).toHaveProperty('value', ''));
     expect(submitButton).toHaveProperty('disabled', true);
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['uat-feedback', 'org_1'] });
 
     fireEvent.change(textarea, { target: { value: '二回目の送信' } });
     fireEvent.click(submitButton);
@@ -387,11 +491,154 @@ describe('UatContent', () => {
     expect(refetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('shows loaded partial feedback and requests the next cursor from a 44px control', () => {
+    dataQueryPayloadsMock.set(
+      'uat-feedback',
+      feedbackPage(undefined, {
+        has_more: true,
+        next_cursor: 'cursor_100',
+      }),
+    );
+
+    render(<UatContent />);
+
+    expect(screen.getByRole('status').textContent).toBe('1件読み込み済みです。未読込があります。');
+    const loadMore = screen.getByRole('button', { name: 'さらに読み込む' });
+    expect(loadMore.className).toContain('min-h-11');
+    fetchNextPageMock.mockReturnValueOnce(new Promise(() => {}));
+    fireEvent.click(loadMore);
+    fireEvent.click(loadMore);
+    expect(fetchNextPageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains loaded feedback and offers the same next-page retry after failure', () => {
+    dataQueryPayloadsMock.set(
+      'uat-feedback',
+      feedbackPage(undefined, {
+        has_more: true,
+        next_cursor: 'cursor_100',
+      }),
+    );
+    nextPageErrorQueryKeysMock.add('uat-feedback');
+
+    render(<UatContent />);
+
+    expect(screen.getByText('確認事項')).toBeTruthy();
+    expect(screen.getByText('続きのフィードバックを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('まだ保存済みフィードバックはありません。')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'さらに読み込む' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '続きを再試行' }));
+    expect(fetchNextPageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the continuation guard after a rejected request so retry remains available', async () => {
+    dataQueryPayloadsMock.set(
+      'uat-feedback',
+      feedbackPage(undefined, {
+        has_more: true,
+        next_cursor: 'cursor_100',
+      }),
+    );
+    fetchNextPageMock.mockRejectedValueOnce(new Error('unsafe provider detail'));
+
+    render(<UatContent />);
+
+    const loadMore = screen.getByRole('button', { name: 'さらに読み込む' });
+    fireEvent.click(loadMore);
+    await waitFor(() => expect(fetchNextPageMock).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    fireEvent.click(loadMore);
+    expect(fetchNextPageMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('deduplicates appended pages and preserves an in-progress triage draft', () => {
+    dataQueryPayloadsMock.set('uat-feedback', {
+      pages: [feedbackPage(undefined, { has_more: true, next_cursor: 'cursor_100' })],
+      pageParams: [null],
+    });
+    const view = render(<UatContent />);
+    const workItem = screen.getByLabelText('関連 work item');
+    fireEvent.change(workItem, { target: { value: 'CVX-200' } });
+
+    dataQueryPayloadsMock.set('uat-feedback', {
+      pages: [
+        feedbackPage(undefined, { has_more: true, next_cursor: 'cursor_100' }),
+        feedbackPage(
+          [
+            feedbackItemFixture,
+            { ...feedbackItemFixture, id: 'feedback_2', feedback: '追加ページ' },
+          ],
+          { has_more: false, next_cursor: null },
+        ),
+      ],
+      pageParams: [null, 'cursor_100'],
+    });
+    view.rerender(<UatContent />);
+
+    expect(screen.getAllByText('確認事項')).toHaveLength(1);
+    expect(screen.getByText('追加ページ')).toBeTruthy();
+    expect(screen.getAllByLabelText('関連 work item')[0]).toHaveProperty('value', 'CVX-200');
+  });
+
+  it('rejects malformed metadata and stops repeated cursors without crashing the list', async () => {
+    const view = render(<UatContent />);
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: [feedbackItemFixture],
+          meta: { limit: 100, has_more: true, next_cursor: null },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(queryFnFor('uat-feedback')({ pageParam: null })).rejects.toThrow(
+      'UAT フィードバックの取得に失敗しました',
+    );
+
+    const firstPage = feedbackPage(undefined, {
+      has_more: true,
+      next_cursor: 'cursor_100',
+    });
+    const repeatedPage = feedbackPage([{ ...feedbackItemFixture, id: 'feedback_101' }], {
+      has_more: true,
+      next_cursor: 'cursor_100',
+    });
+    dataQueryPayloadsMock.set('uat-feedback', {
+      pages: [firstPage, repeatedPage],
+      pageParams: [null, 'cursor_100'],
+    });
+    view.rerender(<UatContent />);
+
+    expect(
+      screen.getByText('続きの読み込み位置が重複したため、追加読み込みを停止しました'),
+    ).toBeTruthy();
+    expect(screen.getAllByText('確認事項')).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: 'さらに読み込む' })).toBeNull();
+    expect(
+      getNextPageParamFor('uat-feedback')(repeatedPage, [firstPage, repeatedPage], 'cursor_100', [
+        null,
+        'cursor_100',
+      ]),
+    ).toBeUndefined();
+  });
+
+  it('encodes the requested next-page cursor and keeps the terminal page complete', async () => {
+    render(<UatContent />);
+    await queryFnFor('uat-feedback')({ pageParam: 'cursor / 100' });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/admin/uat-feedback?cursor=cursor%20%2F%20100',
+      { headers: { 'x-org-id': 'org_1' } },
+    );
+  });
+
   it('uses safe retryable copy for collaborator loading failures inside triage rows', () => {
     const unsafeMessage =
       '/api/pharmacists org_123 patient_name=山田 太郎 provider_error=timeout token=secret';
-    dataQueryPayloadsMock.set('uat-feedback', {
-      data: [
+    dataQueryPayloadsMock.set(
+      'uat-feedback',
+      feedbackPage([
         {
           id: 'feedback_1',
           priority: 'high',
@@ -406,8 +653,8 @@ describe('UatContent', () => {
           resolved_at: null,
           created_at: '2026-07-07T00:00:00.000Z',
         },
-      ],
-    });
+      ]),
+    );
     errorQueryMessagesMock.set('uat-feedback-collaborators', unsafeMessage);
 
     render(<UatContent />);
@@ -425,7 +672,7 @@ describe('UatContent', () => {
   it('uses org-scoped headers for UAT read endpoints', async () => {
     render(<UatContent />);
 
-    await queryFnFor('uat-feedback')();
+    await queryFnFor('uat-feedback')({ pageParam: null });
     await queryFnFor('pilot-readiness')();
     await queryFnFor('uat-feedback-summary')();
     await queryFnFor('uat-feedback-collaborators')();
