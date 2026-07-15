@@ -15,149 +15,18 @@ report, billing, and task details. Do not blanket-redact dashboard or cockpit da
 just because it is PHI; organize it with density, expansion, preview, drawer, and
 detail affordances. Keep separate redaction/minimization boundaries for OS
 notifications, SSE payloads, audit diffs, server logs, external sharing, exports,
-public URLs, and Oracle/GPT prompts.
+public URLs, and Codex prompts.
 
 For any AWS-related implementation, consult the relevant AWS official documentation or API reference before editing code, IaC, runtime env, IAM/S3/RDS/ECS/DynamoDB/SES/Cognito/CloudWatch/Route 53/ACM/Secrets Manager/EventBridge configuration, or operational scripts. Record the official reference name, URL, and confirmation date in the implementation notes, PR description, `ops/refactor/STATE.md`, or the relevant docs. If AWS official guidance conflicts with repository planning docs, prefer the official guidance and update `Plans.md` with the delta before implementation.
 
-For high-risk implementation, repeated failure, or unclear technical decisions, consult
-Oracle/GPT-5.6 Pro as an advisory safety gate. Oracle is a senior second-opinion path,
-not a normal search/completion tool and not a product owner. Use the project
-`.oracle/config.json` defaults and keep machine-local browser paths, remote tokens,
-API keys, cookies, and secrets in `~/.oracle/config.json`, environment variables, or
-explicit CLI flags only.
+CareViaX must not invoke Oracle or any external reviewer agent. High-risk work remains
+within the independent `codex1` / `codex2` review boundary unless the user explicitly
+changes this topology.
 
-Oracle model selection is fixed to ChatGPT's independent GPT-5.6 Pro target via
-`--model gpt-5-pro`. Do not pass `--browser-thinking-time`: that flag controls the
-base Sol effort and would select Extra High rather than Pro. Do not silently fall back
-to base Sol, GPT-5.5 Pro, or another model. If strict GPT-5.6 Pro selection cannot be
-verified, stop the consult, preserve the failed session evidence, and report the blocker.
-
-Use `.agents/skills/oracle-consult/SKILL.md` for the full escalation policy. In short:
-
-- Do not use Oracle for formatting, typos, simple imports, obvious local type errors,
-  trivial docs/comments/tests, or missing product decisions that only the user can make.
-- Consult Oracle after two serious local repair attempts if the same test/type/lint/build
-  failure remains, the root cause is unclear, local reproduction is impossible, or the
-  patch is becoming speculative.
-- Consult Oracle before implementing or finalizing work involving authentication,
-  authorization, tenant isolation, PHI/PII/medical/pharmacy/patient data, DB schema or
-  migrations, production data import/export/backfill/deletion, billing/payment, audit
-  logs, secrets, encryption/signing/sessions/cookies, CORS/CSRF/RLS/middleware,
-  public API compatibility, queues/cron/retry/idempotency, transactions/concurrency,
-  caching/invalidation, broad refactors, or subsystem rewrites.
-- Consult Oracle before declaring completion for high-blast-radius or high-risk changes
-  when tests are weak, E2E/runtime verification is unavailable, or Codex is relying on
-  an unverified assumption.
-
-Oracle Consult Score:
-
-`Impact + Uncertainty + Irreversibility + Blast Radius + Verification Gap + Repetition Penalty`
-
-Each item is 0 to 3. 0-4 means do not consult; 5-7 means continue locally; 8-10 means
-consult after two failed attempts; 11-13 means consult unless the fix is clearly local;
-14+ means consult before proceeding. Regardless of score, immediately consult Oracle
-for auth, authorization, tenant isolation, PHI/PII, DB migration, production data,
-billing, audit logs, secrets, or destructive operations.
-
-Oracle upstream verification requirement:
-
-When modifying Oracle usage rules, Oracle command flags, Browser mode behavior,
-GPT-5.6 Pro model selection, MCP integration, session handling, or Codex/Oracle skill
-instructions, first inspect the upstream GitHub repository and relevant current docs:
-
-- `https://github.com/steipete/oracle`
-- `https://github.com/steipete/oracle/blob/main/skills/oracle/SKILL.md`
-- `https://github.com/steipete/oracle/blob/main/docs/browser-mode.md`
-- `https://github.com/steipete/oracle/blob/main/CHANGELOG.md`
-
-Use upstream behavior as the source of truth for Oracle-specific mechanics. If GitHub
-is unavailable, state that upstream verification could not be completed and avoid
-confident claims about current Oracle behavior. This upstream check is required only
-when changing Oracle itself or its operating instructions, not for every implementation
-consultation.
-
-Last verified against upstream GitHub on 2026-07-15:
-Oracle README, bundled `skills/oracle/SKILL.md`, `docs/browser-mode.md`, and
-`CHANGELOG.md` confirm that GPT-5.6 base Sol and Pro are distinct targets: use
-`--model gpt-5-pro` without a thinking-time flag for Pro, while base Sol uses
-`--model gpt-5.6-sol` plus an effort setting. They also confirm minimal file sets,
-`--dry-run` / `--files-report`, manual-login profile reuse, stored sessions,
-and reattach/restart behavior. The local CLI help was also checked with
-`oracle --help` and reported Oracle CLI v0.16.0.
-
-Local Oracle repair pin (2026-07-15): the npm 0.16.0 artifact predates the
-independent Pro-pill compatibility fix for GPT-5.6. This workstation's installed `oracle`
-binary is built from official upstream PR #320 head
-`ea8b1b57f140f2c641a2a8a9cc1dd10bd03bdb18`. Until a published upstream
-release containing that fix is verified, invoke `oracle` directly and do not
-use `npx -y @steipete/oracle`, because npx can refresh the unfixed registry
-artifact. If the installed binary or strict Pro selection cannot be verified,
-fail closed and repair it instead of falling back to another model.
-
-Before the first Oracle run in a session, run:
-
-```bash
-oracle --help
-```
-
-GitHub context requirement for every Oracle/GPT-5.6 Pro consult:
-
-- Before consulting Oracle, inspect the current GitHub repository context:
-  `git remote -v`, current branch, current commit, and related PR/issue context
-  when available through `gh` or GitHub web.
-- Include that context in the Oracle prompt. At minimum include repository URL,
-  branch, current commit, dirty/clean state, and relevant PR/issue URL or state.
-- The Oracle prompt must explicitly instruct GPT-5.6 Pro to access the provided
-  GitHub repository/PR/issue URLs when its browser or web access allows it, and
-  to state clearly if those GitHub URLs are inaccessible.
-- If GitHub or `gh` is unavailable, state that clearly in the prompt and final
-  notes. Do not claim GitHub-current context was reviewed when it was not.
-- Keep this distinct from the Oracle upstream verification requirement above:
-  every Oracle consult needs target-repo GitHub context; only Oracle operating
-  instruction changes need `steipete/oracle` upstream verification.
-
-Default Oracle command shape:
-
-```bash
-oracle \
-  --engine browser \
-  --model gpt-5-pro \
-  --browser-model-strategy select \
-  --browser-manual-login \
-  --browser-auto-reattach-delay 5s \
-  --browser-auto-reattach-interval 3s \
-  --browser-auto-reattach-timeout 60s \
-  --heartbeat 30 \
-  --slug "<short-readable-slug>" \
-  -p "<focused PH-OS consultation prompt>" \
-  --file "<minimal relevant files>"
-```
-
-Before sending a large file set, preview first with:
-
-```bash
-oracle --dry-run summary --files-report \
-  -p "<focused PH-OS consultation prompt>" \
-  --file "<minimal relevant files>"
-```
-
-Before consulting Oracle, prepare a high-signal prompt with the goal, current state,
-exact blocker or uncertainty, files inspected, files changed, commands run, exact errors
-or logs, options considered, constraints, GitHub repository/branch/commit/PR context,
-and the decision needed from GPT-5.6 Pro. Oracle prompts must explicitly ask GPT-5.6
-Pro to access and consider the provided GitHub URLs/context rather than only the
-attached local files, and to report if GitHub access was unavailable.
-
-Never send secrets, `.env` files, private keys, access tokens, raw patient data, raw
-medical records, production credentials, or unredacted PHI/PII to Oracle. Use the
-smallest file set that contains the truth, prefer redacted fixtures, and treat Oracle
-output as advisory until verified by code inspection, tests, typecheck, lint, and local
-execution. If Oracle detaches or times out, do not start duplicate consultations;
-inspect `oracle status --hours 72`,
-`oracle session <id> --render`, or
-`oracle restart <id>`.
-
-Runtime model, approval, sandbox, service tier, MCP, and reusable custom-agent registration belong in the user-level `~/.codex/config.toml`. This repository file defines PH-OS-specific working rules and should not be treated as the effective runtime configuration layer. CareViaX intentionally disables project-local custom agents; its two active seats are independent Codex CLI sessions coordinated through agmsg.
+Runtime model, approval, sandbox, service tier, and MCP settings belong in the user-level
+`~/.codex/config.toml`. Custom-agent registrations are intentionally absent. This repository
+file defines PH-OS-specific working rules; its two active seats are independent Codex CLI
+sessions coordinated through agmsg.
 
 ## Mission
 
@@ -171,7 +40,7 @@ Do not stop until the concrete task is actually complete or an explicit blocker 
 
 This repository is currently operated only by the independent `codex1` and
 `codex2` Codex CLI seats coordinated through agmsg. Do not use codex3/codex4,
-Claude, built-in custom agents, subagents, or external maker/checker workers
+Claude, Oracle, built-in custom agents, subagents, or external maker/checker workers
 unless the user explicitly changes this topology in a later instruction.
 
 When a current slice is waiting on review, LOCK release, commit/land, another
@@ -196,7 +65,7 @@ useful, safe work that moves the repository-level objective forward:
 
 2026-07-15 ユーザー指示により、現行運用は **codex1 / codex2 の二者運用**。
 両者が計画レビュー、non-overlap 実装、相互検証を agmsg で連携し、codex1 が単一台帳更新と
-integration を担当する。codex3/codex4、Claude、built-in custom agent、subagent、外部
+integration を担当する。codex3/codex4、Claude、Oracle、built-in custom agent、subagent、外部
 maker/checker は使わない。ユーザーが明示的に変更しない限り、旧 single-Codex / broader
 multi-agent / maker-checker 記述は歴史的記録として扱う。
 
@@ -224,7 +93,7 @@ The active loop is limited to `codex1` and `codex2`.
 
 - Both seats review plans before implementation, claim exact non-overlapping paths through agmsg, and independently verify the other seat's coherent slice.
 - `codex1` owns the single ledger update and integration commits; `codex2` does not edit shared ledgers unless codex1 explicitly delegates an exact path.
-- Do not use codex3/codex4, Claude, project custom agents, built-in subagents, or external maker/checker workers unless the user explicitly changes the topology.
+- Do not use codex3/codex4, Claude, Oracle, project custom agents, built-in subagents, or external maker/checker workers unless the user explicitly changes the topology.
 - Keep long Next.js gates serialized: do not run `pnpm build` concurrently with `pnpm typecheck` or `pnpm typecheck:no-unused`; `.next/types` can race.
 - For commits, stage only explicit owned files. Never use `git add -A` in this shared dirty worktree.
 
@@ -258,7 +127,7 @@ go only into `ops/refactor/STATE.md`.
 gbrain is the loop's **long-term memory layer** for reusable knowledge that raises the next cycle's decision accuracy — not a log archive. The schema (what/how to store) is the SSOT `.agent-loop/GBRAIN_SCHEMA.md`; fill-in templates are in `.agent-loop/templates/gbrain/`.
 
 - **Recall first** (Memory Bootstrap): `gbrain search "<terms>"` and `gbrain list --type <Type> --tag <tag>` (esp. `FailurePattern`, `DuplicateMap`, `RejectedApproach`, `GateResult`) before planning. `gbrain query`/`search` (semantic) work — embeddings generated via local `ollama:mxbai-embed-large` (1024d, no external egress; 2026-06-20). Recall is **subordinate to live repo/tests/types/lint/build**; on conflict, trust the repo and file a `StaleMemory`.
-- **As codex you mainly write**: `ImplementationDecision`, `FailurePattern`, `FixPattern`, `DuplicateMap`, `GateResult`, `TypeSafetyDecision`, `PerformanceFinding`, `SecurityFinding`, `RejectedApproach`; shared with claude: `LoopRun`, `ReviewFinding`, `CandidateLesson`, `BlockedContext`, `StaleMemory`.
+- **As codex you mainly write**: `ImplementationDecision`, `FailurePattern`, `FixPattern`, `DuplicateMap`, `GateResult`, `TypeSafetyDecision`, `PerformanceFinding`, `SecurityFinding`, `RejectedApproach`; the schema also supports `LoopRun`, `ReviewFinding`, `CandidateLesson`, `BlockedContext`, and `StaleMemory`.
 - **Before writing** (§15): redact secrets/PHI (env-var **name** only, never the value), attach evidence (file/commit/test), set `confidence`/`evidence_level`/`validity_scope`, tag, link typed edges (`gbrain link --link-type`), dedupe by key; then append the `memory_id` slug to `.agent-loop/STATE.md`.
 - **Never** persist raw conversation, full command output, secrets/tokens/`.env`, or PHI into gbrain. Never auto-promote a `CandidateLesson` to a permanent rule — promotion goes through `.agent-loop/PROMOTION_QUEUE.md` (2+ runs, both supervisors agree, gate-backed, explicit human approval).
 
