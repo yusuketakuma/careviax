@@ -99,6 +99,29 @@ function buildIssue(overrides: IssueOverrides): SafetyIssueRecord & {
   };
 }
 
+function medicationCyclesApiResponse(data: Array<{ id: string }> = [{ id: 'cycle_1' }]) {
+  return {
+    data,
+    meta: {
+      limit: 1,
+      has_more: false,
+      next_cursor: null,
+      total_count: data.length,
+    },
+  };
+}
+
+function cdsAlertsApiResponse(
+  alerts: Array<{
+    type: string;
+    severity: 'critical' | 'warning' | 'info';
+    message: string;
+    details?: Record<string, unknown>;
+  }> = [],
+) {
+  return { data: { alerts } };
+}
+
 describe('SafetyCheckContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -606,14 +629,8 @@ describe('SafetyCheckContent url/header convergence', () => {
 
     const fetchMock = vi.fn();
     // first call: medication-cycles GET returns a cycle id; second call: cds/check POST
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: [{ id: 'cycle_1' }] }),
-    } as Response);
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { alerts: [] } }),
-    } as Response);
+    fetchMock.mockResolvedValueOnce(jsonResponse(medicationCyclesApiResponse()));
+    fetchMock.mockResolvedValueOnce(jsonResponse(cdsAlertsApiResponse()));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
@@ -642,75 +659,150 @@ describe('SafetyCheckContent url/header convergence', () => {
     }
   });
 
-  it('cds helper throws (does not swallow to empty) when the medication-cycles GET returns a 5xx server error', async () => {
+  it('cds helper preserves every validated alert severity from the shared contract', async () => {
     const { queryConfigs } = renderSafetyCheck();
-    const fetchMock = vi.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      json: async () => ({}),
-    } as Response);
+    const alerts = [
+      { type: 'interaction', severity: 'critical' as const, message: '併用禁忌です' },
+      {
+        type: 'renal_dose',
+        severity: 'warning' as const,
+        message: '用量を確認してください',
+        details: { egfr: 42 },
+      },
+      { type: 'monitoring', severity: 'info' as const, message: '経過を確認してください' },
+    ];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(medicationCyclesApiResponse()))
+      .mockResolvedValueOnce(jsonResponse(cdsAlertsApiResponse(alerts)));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
-      // 5xx を [] に潰すと CDS 障害が「問題なし」に偽装される。throw して isError に乗せる。
-      await expect(queryConfigs.get('safety-check-cds')!.queryFn()).rejects.toThrow();
-      // cds/check POST までは到達しない(前提取得で失敗)。
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it('cds helper throws when the cds/check POST returns a 5xx server error', async () => {
-    const { queryConfigs } = renderSafetyCheck();
-    const fetchMock = vi.fn();
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: [{ id: 'cycle_1' }] }),
-    } as Response);
-    fetchMock.mockResolvedValueOnce({
-      ok: false,
-      status: 503,
-      json: async () => ({}),
-    } as Response);
-    vi.stubGlobal('fetch', fetchMock);
-
-    try {
-      await expect(queryConfigs.get('safety-check-cds')!.queryFn()).rejects.toThrow();
+      await expect(queryConfigs.get('safety-check-cds')!.queryFn()).resolves.toEqual(alerts);
       expect(fetchMock).toHaveBeenCalledTimes(2);
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it('cds helper returns [] (legitimate empty, no throw) when there are zero medication cycles', async () => {
+  it.each<[string, unknown]>([
+    [
+      'malformed cycle item',
+      {
+        ...medicationCyclesApiResponse(),
+        data: [{}],
+      },
+    ],
+    [
+      'multiple cycles despite limit one',
+      medicationCyclesApiResponse([{ id: 'cycle_1' }, { id: 'cycle_2' }]),
+    ],
+    [
+      'false empty page',
+      {
+        ...medicationCyclesApiResponse([]),
+        meta: { ...medicationCyclesApiResponse([]).meta, total_count: 1 },
+      },
+    ],
+    ['legacy root', { cycles: [{ id: 'cycle_1' }] }],
+  ])('cds helper degrades instead of accepting a %s response', async (_label, payload) => {
     const { queryConfigs } = renderSafetyCheck();
-    const fetchMock = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: [] }),
-    } as Response);
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(payload));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
-      await expect(queryConfigs.get('safety-check-cds')!.queryFn()).resolves.toEqual([]);
-      // サイクルが無ければ cds/check POST は発火しない。
+      await expect(queryConfigs.get('safety-check-cds')!.queryFn()).rejects.toThrow(
+        '相互作用チェックの前提となる服薬サイクルを取得できませんでした',
+      );
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it('cds helper returns [] (legitimate empty, no throw) when the medication-cycles GET is a 4xx permission denial', async () => {
+  it.each<[string, unknown]>([
+    ['malformed alert', { data: { alerts: [{}] } }],
+    [
+      'unknown severity',
+      { data: { alerts: [{ type: 'interaction', severity: 'notice', message: '確認' }] } },
+    ],
+    [
+      'blank message',
+      { data: { alerts: [{ type: 'interaction', severity: 'warning', message: '   ' }] } },
+    ],
+    ['legacy root', { alerts: [] }],
+  ])('cds helper degrades instead of accepting a %s CDS response', async (_label, payload) => {
     const { queryConfigs } = renderSafetyCheck();
-    const fetchMock = vi.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 403,
-      json: async () => ({}),
-    } as Response);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(medicationCyclesApiResponse()))
+      .mockResolvedValueOnce(jsonResponse(payload));
     vi.stubGlobal('fetch', fetchMock);
 
     try {
-      // 閲覧権限(canDispense)による空は正当な空。degraded を出さず補強なしで扱う。
+      await expect(queryConfigs.get('safety-check-cds')!.queryFn()).rejects.toThrow(
+        '相互作用チェックを実行できませんでした',
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([400, 401, 404, 500])(
+    'cds helper degrades when medication-cycles GET returns %i',
+    async (status) => {
+      const { queryConfigs } = renderSafetyCheck();
+      const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({}, status));
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        await expect(queryConfigs.get('safety-check-cds')!.queryFn()).rejects.toThrow();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it.each([400, 401, 403, 404, 500])(
+    'cds helper degrades when cds/check POST returns %i',
+    async (status) => {
+      const { queryConfigs } = renderSafetyCheck();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(medicationCyclesApiResponse()))
+        .mockResolvedValueOnce(jsonResponse({}, status));
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        await expect(queryConfigs.get('safety-check-cds')!.queryFn()).rejects.toThrow();
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it('cds helper returns [] only for a genuine zero-cycle response', async () => {
+    const { queryConfigs } = renderSafetyCheck();
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(medicationCyclesApiResponse([])));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      await expect(queryConfigs.get('safety-check-cds')!.queryFn()).resolves.toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('cds helper keeps the approved medication-cycle GET 403 as an empty supplement', async () => {
+    const { queryConfigs } = renderSafetyCheck();
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({}, 403));
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
       await expect(queryConfigs.get('safety-check-cds')!.queryFn()).resolves.toEqual([]);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {

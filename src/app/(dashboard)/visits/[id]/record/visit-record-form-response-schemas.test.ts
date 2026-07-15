@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { cdsAlertsResponseSchema } from '@/lib/cds/response-schemas';
 import {
   buildVisitRecordAttachmentPatchResponseSchema,
   buildVisitRecordCreateResponseSchema,
@@ -9,6 +10,7 @@ import {
 
 describe('visit record form response schemas', () => {
   it('projects CDS alerts and rejects mixed-root envelopes', () => {
+    expect(visitRecordCdsAlertsResponseSchema).toBe(cdsAlertsResponseSchema);
     expect(
       visitRecordCdsAlertsResponseSchema.parse({
         data: {

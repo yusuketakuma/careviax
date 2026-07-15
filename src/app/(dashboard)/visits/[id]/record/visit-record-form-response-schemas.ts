@@ -1,23 +1,14 @@
 import { z } from 'zod';
 
+export {
+  cdsAlertsResponseSchema as visitRecordCdsAlertsResponseSchema,
+  type CdsAlert,
+} from '@/lib/cds/response-schemas';
+
 const idSchema = z.string().trim().min(1).max(255);
 const textSchema = z.string().max(10_000);
 const nullableTextSchema = textSchema.nullable();
 const dateSchema = z.union([z.string().date(), z.string().datetime({ offset: true })]);
-
-const cdsAlertSchema = z
-  .object({
-    type: idSchema,
-    severity: z.enum(['critical', 'warning', 'info']),
-    message: z.string().trim().min(1).max(10_000),
-    details: z.record(z.string(), z.unknown()).optional(),
-  })
-  .strict();
-
-export const visitRecordCdsAlertsResponseSchema = z
-  .object({ data: z.object({ alerts: z.array(cdsAlertSchema) }).strict() })
-  .strict()
-  .transform(({ data }) => data);
 
 export function buildVisitRecordScheduleResponseSchema(expectedScheduleId: string) {
   return z

@@ -23,6 +23,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
 import { PatientHeader } from '@/components/features/patients/patient-header';
 import { readApiJson } from '@/lib/api/client-json';
+import {
+  cdsAlertsResponseSchema,
+  medicationCycleForCdsResponseSchema,
+} from '@/lib/cds/response-schemas';
 import { medicationIssuesCursorResponseSchema } from '@/types/api/medication-issues';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
@@ -113,21 +117,19 @@ const patientSummaryResponseSchema = rawPatientSummaryResponseSchema.transform((
 
 async function fetchPatientCdsAlerts(orgId: string, patientId: string): Promise<SafetyCdsAlert[]> {
   // CDS チェックはサイクル単位のため、患者の最新サイクルを引いてから実行する。
-  // 「正当な空」(サイクル無し・権限による空=閲覧は canDispense のため 4xx)は補強なしの [] で扱う。
-  // ただしサーバエラー(5xx)は握り潰さず throw し、cdsQuery.isError に乗せて degraded を明示する。
+  // Genuine zero-cycle data and the approved exact GET 403 are the only empty supplements.
+  // Every other HTTP or response-contract failure must surface as degraded CDS state.
   // 相互作用/アレルギーの false-negative は最重被害のため、失敗を「問題なし」に偽装しない(fail-close)。
   const cyclesRes = await fetch(
     `/api/medication-cycles?${new URLSearchParams({ patient_id: patientId, limit: '1' })}`,
     { headers: buildOrgHeaders(orgId) },
   );
-  if (!cyclesRes.ok) {
-    if (cyclesRes.status >= 500) {
-      throw new Error('相互作用チェックの前提となる服薬サイクルを取得できませんでした');
-    }
-    return [];
-  }
-  const cyclesJson = (await cyclesRes.json()) as { data?: Array<{ id: string }> };
-  const cycleId = cyclesJson.data?.[0]?.id;
+  if (cyclesRes.status === 403) return [];
+  const cycles = await readApiJson(cyclesRes, {
+    schema: medicationCycleForCdsResponseSchema,
+    fallbackMessage: '相互作用チェックの前提となる服薬サイクルを取得できませんでした',
+  });
+  const cycleId = cycles[0]?.id;
   if (!cycleId) return [];
 
   const checkRes = await fetch('/api/cds/check', {
@@ -135,17 +137,11 @@ async function fetchPatientCdsAlerts(orgId: string, patientId: string): Promise<
     headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({ cycleId, patientId }),
   });
-  if (!checkRes.ok) {
-    if (checkRes.status >= 500) {
-      throw new Error('相互作用チェックを実行できませんでした');
-    }
-    return [];
-  }
-  const checkJson = (await checkRes.json()) as { data?: { alerts?: SafetyCdsAlert[] } };
-  if (!Array.isArray(checkJson.data?.alerts)) {
-    throw new Error('相互作用チェックの応答が不正です');
-  }
-  return checkJson.data.alerts;
+  const check = await readApiJson(checkRes, {
+    schema: cdsAlertsResponseSchema,
+    fallbackMessage: '相互作用チェックを実行できませんでした',
+  });
+  return check.alerts;
 }
 
 // ---------------------------------------------------------------------------
