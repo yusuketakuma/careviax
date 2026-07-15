@@ -8,8 +8,9 @@
 
 ## 体制（2026-07-15 最新ユーザー指示）
 
-- 現行はcodex1/codex2の二者運用。両者がagmsgでexact-path ownershipを宣言し、計画レビュー、non-overlap実装、
-  相互検証を行う。codex1が単一台帳更新とintegrationを担当する。codex3/codex4、Claude、built-in custom agent、
+- 現行はcodex1/codex2の二者運用。両者がagmsgでexact-path ownershipを宣言し、異なる領域の計画レビューと実装を
+  並列化して相互検証する。codex1が単一台帳更新とintegrationを担当し、共有台帳と長時間Next.js gateは直列化する。
+  codex3/codex4、Claude、built-in custom agent、
   subagent、外部maker/checkerは使わない。
 - CareViaXのagmsg登録はcodex1/codex2だけに整理済み。project-local `.codex/agents/*.toml` 27件と
   custom-agent registryを削除し、`.codex/config.toml`の`features.multi_agent`を`false`へ固定した。
@@ -20,10 +21,9 @@
 - 既存user/harness dirtyと過去peerのsource差分を保存し、同一pathへ競合編集しない。commitする場合は明示owned pathだけを
   stageし、`git add -A`を使わない。push、deploy、migration適用、production mutation、destructive operationは
   current-taskの明示許可なしに行わない。
-- Oracleは高リスクな医療・FHIR完全置換のadvisory safety gateとして、ユーザーが明示的に再許可した。
-  現行targetはChatGPTの独立GPT-5.6 Proを表す`gpt-5-pro`で、base Sol用の`--browser-thinking-time`は渡さない。
-  Extra High、base Sol、GPT-5.5 Pro、その他modelへfallbackせず、strict Proを検証できなければ相談をblockedとして証跡を保存する。
-  出力は製品判断の正本にせず、live code、公式資料、local validationで再検証する。
+- 2026-07-15 20:14 JSTの最新ユーザー指示により、このsessionではOracleを使用しない。実装で詰まった場合は
+  agmsgで別のCodexへexact evidence、選択肢、検証結果を渡して相談し、edit ownershipを重ねずに連携して解決する。
+  下記のOracle実行・blocked記録は歴史的証跡であり、このsessionの新規相談経路ではない。
 - 2026-07-14 21:33 JSTのユーザー指示により、こまめなbuildは行わない。現スライスの
   `build:e2e:local`は途中停止し、build依存E2Eを含めて大きな統合境界まで保留する。通常sliceは
   targeted tests、static gates、lint/format、typecheckを主証跡とし、agentはbuildを独自起動しない。
@@ -62,6 +62,36 @@
   full-history event projectionはhuman/high-risk gateとして無承認実行せず、証拠付きの残件へ戻す。
 
 ## 直近の作業
+
+- codex1/codex2: API route method reachability ratchet foundation
+  (PARTIAL FOUNDATION VALIDATED / COMMITTED `995e67250`, 2026-07-15).
+  - root cause / scope:
+    2026-07-02のpath-level台帳は363 route files、現行Planの事前集計も402 files / 557 methodsだったが、live AST再計上は
+    402 files / 559 route-methodsだった。direct/const/local alias/re-exportを同じ規則で列挙するpackage/CI gateがなく、
+    routeまたはmethod追加、alias見落とし、consumer消滅を自動検出できなかった。既存route、auth/RLS、request/response、DB、
+    network、mutationは変更せず、`API-REACHABILITY-RATCHET-001A`のstatic inventory foundationだけを実装した。
+  - implementation:
+    TypeScript AST checkerが545 direct、2 local alias、12 re-exportの計559 methodsをdynamic/catch-all URL templateへ正規化し、
+    static routeをdynamic routeより優先して重複alias、handlerなしroute、新規/stale methodをfail-closedにする。
+    production consumerはexact module importで解決したtyped path builderから、bare global `fetch`、path-bound approved
+    `fetchImpl` / `fetchEvidenceSync`、またはunshadowed navigation hrefまで追跡する。test/spec、rate-limit、route catalog、
+    route自身、generic helper、property `.fetch`、shadowed fetch/window/locationをreachability evidenceに数えない。
+    methodはinline literal、unique const、object const、spread、shorthandを解決し、unknown options、unsupported method property、
+    `Request` objectをGETへ推測しない。inventoryは231 reachable UI/RSC、12 internal job/webhook/BFF/auth、5 external/public、
+    311 `owner_review_pending_orphan_retire_candidate`で、pending項目は`review_state=pending`、owner、reason、route-contract
+    evidence、2026-10-15 expiryを持つ。pendingは承認やroute削除権限を意味せず、owner review完了までretireしない。
+    `pnpm api-route-reachability:check`とCI step、script catalog、Plans Partial statusを同期した。
+  - independent review / validation:
+    codex2は初回reviewでimplicit approval、generic callee false-positive、unknown method→GETをP1として検出し、再reviewで
+    property fetch、destructured shadow、method shorthandを追加P1として検出した。全findingをnegative fixtureとfail-closed実装で
+    閉じ、latest-worktree recheckはFINAL ACCEPT、残るP0/P1なし。focused checker suiteは1 file / 10 tests PASS、live checkerは
+    402/559・231/12/5/311でPASS。exact ESLint/Prettier/diff、Plans、API response shape 0、client JSON schema 360/0、
+    frontend contract、module boundary、aggregate typecheck、8 GiB no-unused typecheck、full lintがPASSした。2026-07-14の
+    build抑制指示に従いbuild/E2Eは起動していない。nonvisual tooling sliceのためimage generationは不要。
+  - remaining / next:
+    親taskはPartial。311 pending candidateをowner reviewでreachable/internal/external/retireへ分類し、独立consumer evidenceなしの
+    routeを人間承認なく削除しない。実装は`995e67250`へcommitし、共有CI/Plans/STATE/RUN_LOCK ownershipを
+    `API-LIST-STABLE-ORDER-001`のprovisioned-DB gateとcloseoutへ解放した。
 
 - codex1/codex2: CareViaX two-seat topology + FHIR Native A0/A1/A2 foundation
   (A0/A1/A2 COMMITTED + INDEPENDENT ACCEPT / A3+A5 BLOCKED, 2026-07-15).
