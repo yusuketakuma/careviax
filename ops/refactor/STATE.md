@@ -63,6 +63,35 @@
 
 ## 直近の作業
 
+- codex1/codex2: consent expiry / exact print target / CDS false-safe convergence
+  (`CONSENT-EXPIRY-JST-SSOT-001` DONE `b23500a6b`,
+  `MEDSAFE-PRINT-HUB-EXPLICIT-PATIENT-001` IMPLEMENTED / LOCAL VALIDATED / BROWSER PROOF PENDING `30e7d3a28`,
+  `MEDSAFE-CDS-FALSE-SAFE-PARSE-001` DONE `d313398c6`, 2026-07-15).
+  - root cause / implementation:
+    consent画面のinstant/local 30日判定をcanonical `classifyExpiry` + `ExpiryBadge`へ統一し、revoked優先、JST当日、
+    0/30/31/90/91日、不正provider payloadのfail-closedを固定した。印刷ハブはpatientなしのorg-wide list/先頭選択を廃止し、
+    `patient_id`とtype別`set_plan_id` / `report_id` / `document_id`を各1件だけ受理する。exact set-plan/report/detail、exact cycle
+    prescription、patient-scoped exact documentへ限定し、欠落・重複・不一致はPHI fetch、preview、audit、printをゼロにした。
+    氏名+生年月日、文書種別、source/statusをpreview/confirmation/printへ再掲し、全印刷を`ConfirmDialog`へ通す。非同期report auditは
+    exact report versionに加えてsource revision keyとsynchronous generationを再照合し、確認後のtarget/settings/refetch変更では
+    `window.print()`を呼ばない。患者文書はpatient-only linkを除去し、exact documentごとのURLへ変更した。CDSは共有strict schemaと
+    `readApiJson`へ接続し、malformed/legacy/unknown severity/blank message、metadata false-empty、cycle GET 403以外の4xx/5xx、
+    全CDS POST失敗をdegraded + retryへ流す。true zero-cycleと批准済みcycle GET 403だけを空supplementとして維持した。
+  - independent review / validation:
+    各laneは実装前plan review、exact-path ownership、相互reviewをagmsgで実施した。codex2は印刷のduplicate confirm、監査待ち中の
+    target/settings race、plan/intake freshnessを検出し、generation + `useLayoutEffect` + post-audit double check後の最終再reviewで
+    APPROVE、残るP0/P1なし。codex1はCDS metadataの`data: []` / `total_count`不整合をP1として検出し、修正後FINAL ACCEPTした。
+    consentはAsia/TokyoとAmerica/New_York各2 files / 34 tests、印刷+患者文書は4 files / 78 tests、card workspace targeted
+    1/1、CDSは3 files / 67 testsがPASS。exact ESLint、Prettier、diff-check、serialized `pnpm typecheck`、
+    `pnpm typecheck:no-unused`、client JSON schema 363/0、frontend contract、client PHI log/display、API response shape 0がPASSした。
+    2026-07-14のbuild抑制指示に従いbuild/E2Eは起動していない。3件ともdata/status/safety boundaryの変更でvisual reconstructionや
+    geometry redesignではないためimage generationは省略した。
+  - remaining / next:
+    consentとCDSはactive Plans行を削除した。印刷のcode/contract stop conditionは解消済みだが、`browse` skillが未buildで
+    one-time setupに明示許可が必要なため、keyboard/mobile/200%/screen-readerの実ブラウザ証跡だけをPlans `Partial`に残す。
+    browser harnessの無断installは行わない。次は`PRIVACY-PRINT-EXPLICIT-INTENT-001`と
+    `MEDSAFE-DRUG-MASTER-DATE-STRICT-001`をnon-overlap候補としてplan reviewし、既存dirty route群へ重ねない。
+
 - codex1/codex2: stable ID-cursor total ordering
   (`API-LIST-STABLE-ORDER-001`, IMPLEMENTED / LOCAL VALIDATED / CI DB PROOF PENDING,
   commit `f3949adb7`, 2026-07-15).
