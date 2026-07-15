@@ -61,8 +61,8 @@
 
 ## 直近の作業
 
-- codex1/codex2: bounded HTTP ingress/proxy + authoritative prescription/care-report search
-  (`SEC-HTTP-IO-BUDGET-001` PARTIAL `42f7ce928` / `2e1de27c9` / `940762409` / `559e4ced3`,
+- codex1/codex2: bounded HTTP ingress/proxy/provider + authoritative prescription/care-report search
+  (`SEC-HTTP-IO-BUDGET-001` PARTIAL `42f7ce928` / `2e1de27c9` / `940762409` / `559e4ced3` / `0731fdfd9` / `e4de1dfd1`,
   `SEARCH-PALETTE-AUTHORITATIVE-QUERY-001` DONE `e8ed604de` / `7486e5e3f`, 2026-07-15).
   - HTTP foundation root cause / implementation:
     共通JSON helperの`req.json()` / `req.text()`全bufferとContent-Length依存を、Web `ReadableStream`のraw
@@ -78,11 +78,19 @@
     invalid UTF-8/abort/unreadableはfixed 400とし、failure logはcoded metadataとbounded byte countだけにした。
     QR draft POSTはstrict helperへ移し、16 x 8192文字の現行合法multibyte payload 393KiBを受理できる512KiB/5sに狭め、
     413/408を患者・店舗lookup、JAHIS parse、DB write前に返す。schemaの二重safeParseも除去した。
+    QR confirmも同じ512KiB/5s strict helperへ移し、missing/偽Content-Lengthのchunked oversize 413とstall 408を
+    patient/draft/transaction read前に返す。line/free-text/days/quantity/tag cardinalityは変更していない。
     PHOS proxy POSTは`arrayBuffer()`を廃止してraw requestを256KiB/10sで制限し、413/408/abort-unreadable 400を
     upstream fetch前に返す。upstreamはtotal 15s default / 60s hardをheadersからbody完了まで維持し、non-null bodyを
     1MiBかつ`min(total, 30s)`で完全bufferしてからだけ返す。oversize/unreadableはfixed 502、stallは504とし、partial
     passthroughを廃止した。split multibyteのexact bytes、status/statusText、header allowlist/no-storeを維持し、body-nullまたは
     204/205/304はrepresentation Content-Lengthをpayload扱いせずread前にnullへ短絡する。
+  - provider response:
+    共通`fetchJson`のtimeoutをheaders受信時に解除せず、body完了まで維持した。responseはchunk実測generic 1MiB、
+    `min(total timeout, 30s)`で完全read後だけfatal UTF-8 decode / JSON parseし、oversizeはupstream status付きfixed error、
+    timeout/abort/unreadableはstatusなしtransport errorへ分類する。raw body、stream error、abort reason、decoder/parser errorを
+    `causeDetail`へ残さない。FHIR Patient/createは512KiB、検索Bundleは2MiB、bulk claimsはshared hard 5MiBを明示し、
+    e-prescriptionのtimeout retriable / HTTP 200 oversize non-retriable契約を固定した。
   - authoritative search root cause / implementation:
     `/api/prescription-intakes?q=`は処方番号、処方医、医療機関、患者名/カナをserver-side部分一致しlimit=8で返すが、
     paletteが患者名/医療機関`startsWith`で再filterして処方番号・処方医・中間一致をfalse-emptyにしていた。
@@ -97,17 +105,19 @@
     NextRequest test型を相談した。共通readerの`duplex` TS2353、PHOS BodyInit型、configured 60sとreader hard 30sの差、
     204/205/304 null bodyとrepresentation Content-Length順序をP1として検出し、castやraw error伝播なしで閉じた。
     Aは3 files / 29 tests、strict callerを含む6 files / 61 tests、Bは2 files / 39 tests、prescription searchは
-    3 files / 47 tests、care-reportは1 file / 81 tests、PHOSは1 file / 22 tests、最終combinedは2 files / 103 testsがPASS。
+    3 files / 47 tests、care-reportは1 file / 81 tests、PHOSは1 file / 22 tests、providerは5 files / 44 tests、
+    QR confirmは1 file / 34 tests、最終transport combinedは8 files / 121 testsがPASS。
     exact ESLint、Prettier、diff-check、query-shape 4 allowlisted / 0 new、FHIR legacy inventory unchanged、serialized final
     `pnpm typecheck` / `pnpm typecheck:no-unused`、API response shape 0、client JSON schema 363/0、frontend contract、
-    client PHI log/display、module boundary、route auth wrapperがPASSした。build/E2Eはbuild抑制指示に従い未実行。
+    client PHI log/display、module boundary、route auth wrapper、FHIR foundationがPASSした。QR test header unionのTS2345は
+    `Record<string, string>` fixtureへ修正後に両type gateを直列再実行してPASS。build/E2Eはbuild抑制指示に従い未実行。
     layout/visual reconstructionを伴わないtransport/search correctnessなのでimage generationは省略した。
   - remaining / next:
     Search親taskはDone。既存CareReport composite index候補は`PERF-DB-006D-INDEX`のhuman gateに残し、このsliceでmigrationしない。
-    HTTP親taskはPartial。provider共通HTTP clientのheaders後timeout解除とFHIR response source別上限を同じreaderへ移す。
-    QR confirm raw bodyの512KiB/5s化は安全な後続だが、line/free-text/days/quantity上限は
-    `MEDSAFE-PRESCRIPTION-INPUT-BOUNDS-001` human gate未批准のため推測値を入れない。次もexact-path ownershipと相互reviewで
-    non-overlap実装し、詰まりはOracleではなくcodex1/codex2間で相談する。
+    HTTP親taskはPartial。live scanで残るrequest body bypassは`src/app/api/audit-logs/[id]/review/route.ts`のdirect
+    `req.json()` 1件だけで、codex2がexact route/testを実装中。これをbounded helperへ移してfocused/static/type gateを通した後に
+    親taskをDoneにする。line/free-text/days/quantity上限は独立した`MEDSAFE-PRESCRIPTION-INPUT-BOUNDS-001` Human gateであり、
+    未批准の推測値を入れない。詰まりはOracleではなくcodex1/codex2間で相談する。
 
 - codex1/codex2: explicit print intent + strict drug-master date/provenance
   (`PRIVACY-PRINT-EXPLICIT-INTENT-001` DONE `86fd09be7`, typecheck test follow-up `afb0d4b40`,
