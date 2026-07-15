@@ -34,12 +34,24 @@ export type RlsCoverageStatus =
 
 export interface TenantTableCoverage {
   readonly table: string;
+  readonly migration: RlsSourceFinalState;
+  readonly ssot: RlsSourceFinalState;
   readonly hasEnable: boolean;
   readonly hasForce: boolean;
   readonly hasPolicy: boolean;
   /** SSOT ファイル(rls-policies.sql)に ENABLE 行があるか。 */
   readonly inSsot: boolean;
   readonly status: RlsCoverageStatus;
+}
+
+export type RlsPolicyPredicate = 'app-enforced-org' | 'nullable-setting' | 'other';
+
+export interface RlsSourceFinalState {
+  readonly enabled: boolean;
+  readonly forced: boolean;
+  readonly hasPolicy: boolean;
+  readonly hasApprovedPredicate: boolean;
+  readonly policyPredicates: readonly RlsPolicyPredicate[];
 }
 
 export interface TenantUniqueWithoutOrg {
@@ -148,7 +160,7 @@ function parseAttributeFieldList(attributeLine: string): string[] {
 /** 各 migration ディレクトリの migration.sql を全連結。 */
 function readAllMigrations(migrationsDir = MIGRATIONS_DIR): string {
   const parts: string[] = [];
-  for (const entry of readdirSync(migrationsDir)) {
+  for (const entry of readdirSync(migrationsDir).sort()) {
     const sqlPath = join(migrationsDir, entry, 'migration.sql');
     try {
       if (statSync(sqlPath).isFile()) parts.push(readFileSync(sqlPath, 'utf8'));
@@ -159,25 +171,290 @@ function readAllMigrations(migrationsDir = MIGRATIONS_DIR): string {
   return parts.join('\n');
 }
 
-/** SQL から `ALTER TABLE "X" ... ROW LEVEL SECURITY` / `CREATE POLICY ... ON "X"` のテーブル集合を抽出。 */
-function extractTables(sql: string, pattern: RegExp): Set<string> {
-  const found = new Set<string>();
-  const re = new RegExp(pattern.source, 'g');
+type MutableRlsState = {
+  enabled: boolean;
+  forced: boolean;
+  policies: Map<string, RlsPolicyPredicate>;
+};
+
+type RlsEvent =
+  | {
+      index: number;
+      kind: 'enable' | 'disable' | 'force' | 'no-force' | 'drop-table';
+      table: string;
+    }
+  | {
+      index: number;
+      kind: 'create-policy' | 'alter-policy';
+      table: string;
+      policy: string;
+      predicate: RlsPolicyPredicate;
+    }
+  | { index: number; kind: 'drop-policy'; table: string; policy: string };
+
+function classifyPolicyPredicate(statement: string): RlsPolicyPredicate {
+  const code = statement.replace(/--[^\n\r]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const hasUsing = /\bUSING\s*\(/i.test(code);
+  const hasWithCheck = /\bWITH\s+CHECK\s*\(/i.test(code);
+  if (!hasUsing || !hasWithCheck) return 'other';
+
+  const enforcedCalls = code.match(/(?:public\.)?app_enforced_org_id\s*\(\s*\)/gi) ?? [];
+  if (enforcedCalls.length >= 2) return 'app-enforced-org';
+
+  const nullableSettings =
+    code.match(/current_setting\s*\(\s*'app\.current_org_id'\s*,\s*true\s*\)/gi) ?? [];
+  if (nullableSettings.length >= 2) return 'nullable-setting';
+
+  return 'other';
+}
+
+function collectMatches(
+  sql: string,
+  pattern: RegExp,
+  toEvent: (match: RegExpExecArray) => RlsEvent,
+) {
+  const events: RlsEvent[] = [];
+  const re = new RegExp(pattern.source, pattern.flags.includes('i') ? 'gi' : 'g');
   let match: RegExpExecArray | null;
-  while ((match = re.exec(sql)) !== null) found.add(match[1]);
-  return found;
+  while ((match = re.exec(sql)) !== null) events.push(toEvent(match));
+  return events;
+}
+
+function maskSqlNonCode(sql: string): string {
+  const chars = [...sql];
+  const mask = (index: number) => {
+    if (chars[index] !== '\n' && chars[index] !== '\r') chars[index] = ' ';
+  };
+
+  for (let index = 0; index < chars.length; ) {
+    if (chars[index] === '-' && chars[index + 1] === '-') {
+      while (index < chars.length && chars[index] !== '\n') mask(index++);
+      continue;
+    }
+    if (chars[index] === '/' && chars[index + 1] === '*') {
+      mask(index++);
+      mask(index++);
+      while (index < chars.length && !(chars[index] === '*' && chars[index + 1] === '/')) {
+        mask(index++);
+      }
+      if (index < chars.length) {
+        mask(index++);
+        mask(index++);
+      }
+      continue;
+    }
+    if (chars[index] === "'") {
+      mask(index++);
+      while (index < chars.length) {
+        if (chars[index] === "'" && chars[index + 1] === "'") {
+          mask(index++);
+          mask(index++);
+          continue;
+        }
+        const closing = chars[index] === "'";
+        mask(index++);
+        if (closing) break;
+      }
+      continue;
+    }
+    if (chars[index] === '$') {
+      const suffix = chars.slice(index).join('');
+      const tag = suffix.match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/)?.[0];
+      if (tag) {
+        for (let count = 0; count < tag.length; count += 1) mask(index++);
+        while (index < chars.length && chars.slice(index, index + tag.length).join('') !== tag) {
+          mask(index++);
+        }
+        for (let count = 0; count < tag.length && index < chars.length; count += 1) mask(index++);
+        continue;
+      }
+    }
+    index += 1;
+  }
+
+  return chars.join('');
+}
+
+function parseRlsEvents(sql: string): RlsEvent[] {
+  const literalSql = maskSqlNonCode(sql);
+  const events: RlsEvent[] = [
+    ...collectMatches(
+      literalSql,
+      /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:"public"\.)?"([^"]+)"\s+(ENABLE|DISABLE)\s+ROW\s+LEVEL\s+SECURITY/gi,
+      (match) => ({
+        index: match.index,
+        kind: match[2].toUpperCase() === 'ENABLE' ? 'enable' : 'disable',
+        table: match[1],
+      }),
+    ),
+    ...collectMatches(
+      literalSql,
+      /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:"public"\.)?"([^"]+)"\s+(FORCE|NO\s+FORCE)\s+ROW\s+LEVEL\s+SECURITY/gi,
+      (match) => ({
+        index: match.index,
+        kind: /NO\s+FORCE/i.test(match[2]) ? 'no-force' : 'force',
+        table: match[1],
+      }),
+    ),
+    ...collectMatches(
+      literalSql,
+      /CREATE\s+POLICY\s+"?([\w-]+)"?\s+ON\s+(?:"public"\.)?"([^"]+)"[\s\S]*?;/gi,
+      (match) => ({
+        index: match.index,
+        kind: 'create-policy',
+        policy: match[1],
+        table: match[2],
+        predicate: classifyPolicyPredicate(sql.slice(match.index, match.index + match[0].length)),
+      }),
+    ),
+    ...collectMatches(
+      literalSql,
+      /ALTER\s+POLICY\s+"?([\w-]+)"?\s+ON\s+(?:"public"\.)?"([^"]+)"[\s\S]*?;/gi,
+      (match) => ({
+        index: match.index,
+        kind: 'alter-policy',
+        policy: match[1],
+        table: match[2],
+        predicate: classifyPolicyPredicate(sql.slice(match.index, match.index + match[0].length)),
+      }),
+    ),
+    ...collectMatches(
+      literalSql,
+      /DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:"public"\.|public\.)?"([^"]+)"/gi,
+      (match) => ({
+        index: match.index,
+        kind: 'drop-table',
+        table: match[1],
+      }),
+    ),
+    ...collectMatches(
+      literalSql,
+      /DROP\s+POLICY\s+(?:IF\s+EXISTS\s+)?"?([\w-]+)"?\s+ON\s+(?:"public"\.)?"([^"]+)"/gi,
+      (match) => ({
+        index: match.index,
+        kind: 'drop-policy',
+        policy: match[1],
+        table: match[2],
+      }),
+    ),
+  ];
+
+  const dynamicFailClosedLoop =
+    /FOREACH\s+target_table\s+IN\s+ARRAY\s+ARRAY\s*\[([\s\S]*?)\][\s\S]*?CREATE\s+POLICY\s+tenant_isolation[\s\S]*?app_enforced_org_id\s*\(\s*\)[\s\S]*?END\s+LOOP/gi;
+  let loopMatch: RegExpExecArray | null;
+  while ((loopMatch = dynamicFailClosedLoop.exec(sql)) !== null) {
+    const loopBody = loopMatch[0];
+    const dynamicallyEnables = /ENABLE\s+ROW\s+LEVEL\s+SECURITY/i.test(loopBody);
+    const dynamicallyForces = /FORCE\s+ROW\s+LEVEL\s+SECURITY/i.test(loopBody);
+    const tableLiteral = /'([^']+)'/g;
+    let tableMatch: RegExpExecArray | null;
+    while ((tableMatch = tableLiteral.exec(loopMatch[1])) !== null) {
+      if (dynamicallyEnables) {
+        events.push({ index: loopMatch.index, kind: 'enable', table: tableMatch[1] });
+      }
+      if (dynamicallyForces) {
+        events.push({ index: loopMatch.index, kind: 'force', table: tableMatch[1] });
+      }
+      events.push({
+        index: loopMatch.index,
+        kind: 'create-policy',
+        policy: 'tenant_isolation',
+        table: tableMatch[1],
+        predicate: 'app-enforced-org',
+      });
+    }
+  }
+
+  return events.sort((a, b) => a.index - b.index);
+}
+
+function scanSqlFinalState(sql: string): Map<string, RlsSourceFinalState> {
+  const states = new Map<string, MutableRlsState>();
+  const stateFor = (table: string) => {
+    const existing = states.get(table);
+    if (existing) return existing;
+    const created: MutableRlsState = { enabled: false, forced: false, policies: new Map() };
+    states.set(table, created);
+    return created;
+  };
+
+  for (const event of parseRlsEvents(sql)) {
+    const state = stateFor(event.table);
+    switch (event.kind) {
+      case 'enable':
+        state.enabled = true;
+        break;
+      case 'disable':
+        state.enabled = false;
+        break;
+      case 'force':
+        state.forced = true;
+        break;
+      case 'no-force':
+        state.forced = false;
+        break;
+      case 'drop-table':
+        state.enabled = false;
+        state.forced = false;
+        state.policies.clear();
+        break;
+      case 'create-policy':
+      case 'alter-policy':
+        state.policies.set(event.policy, event.predicate);
+        break;
+      case 'drop-policy':
+        state.policies.delete(event.policy);
+        break;
+    }
+  }
+
+  return new Map(
+    [...states].map(([table, state]) => {
+      const policyPredicates = [...state.policies.values()].sort();
+      return [
+        table,
+        {
+          enabled: state.enabled,
+          forced: state.forced,
+          hasPolicy: state.policies.size > 0,
+          hasApprovedPredicate: policyPredicates.includes('app-enforced-org'),
+          policyPredicates,
+        },
+      ];
+    }),
+  );
 }
 
 function classify(cov: {
-  hasEnable: boolean;
-  hasForce: boolean;
-  hasPolicy: boolean;
-  inSsot: boolean;
+  migration: RlsSourceFinalState;
+  ssot: RlsSourceFinalState;
 }): RlsCoverageStatus {
-  if (!cov.hasEnable) return 'missing';
-  if (!cov.hasForce || !cov.hasPolicy) return 'partial';
-  if (!cov.inSsot) return 'ssot-drift';
+  const migrationComplete = isCompleteRlsState(cov.migration);
+  const ssotComplete = isCompleteRlsState(cov.ssot);
+  const hasAnyRlsSignal =
+    cov.migration.enabled ||
+    cov.migration.forced ||
+    cov.migration.hasPolicy ||
+    cov.ssot.enabled ||
+    cov.ssot.forced ||
+    cov.ssot.hasPolicy;
+
+  if (!hasAnyRlsSignal) return 'missing';
+  if (migrationComplete && !ssotComplete) return 'ssot-drift';
+  if (!migrationComplete) return 'partial';
   return 'covered';
+}
+
+const EMPTY_RLS_STATE: RlsSourceFinalState = {
+  enabled: false,
+  forced: false,
+  hasPolicy: false,
+  hasApprovedPredicate: false,
+  policyPredicates: [],
+};
+
+function isCompleteRlsState(state: RlsSourceFinalState) {
+  return state.enabled && state.forced && state.hasPolicy && state.hasApprovedPredicate;
 }
 
 export interface ScanPaths {
@@ -191,13 +468,8 @@ export function scanRlsContract(paths: ScanPaths = {}): RlsContractScan {
   const models = parseSchemaModels(paths.schemaDir);
   const migrationSql = readAllMigrations(paths.migrationsDir);
   const ssotSql = readFileSync(paths.ssotFile ?? RLS_SSOT_FILE, 'utf8');
-  const bothSql = `${migrationSql}\n${ssotSql}`;
-
-  // ポリシー名は `tenant_isolation`（bare）も `"jahis_..._org_isolation"`（quoted）も許容。
-  const enableBoth = extractTables(bothSql, /ALTER TABLE "(\w+)" ENABLE ROW LEVEL SECURITY/);
-  const forceBoth = extractTables(bothSql, /ALTER TABLE "(\w+)" FORCE ROW LEVEL SECURITY/);
-  const policyBoth = extractTables(bothSql, /CREATE POLICY "?\w+"? ON "(\w+)"/);
-  const enableSsot = extractTables(ssotSql, /ALTER TABLE "(\w+)" ENABLE ROW LEVEL SECURITY/);
+  const migrationStates = scanSqlFinalState(migrationSql);
+  const ssotStates = scanSqlFinalState(ssotSql);
 
   const tenantModels = models
     .filter((m) => m.hasTenantColumn)
@@ -205,17 +477,21 @@ export function scanRlsContract(paths: ScanPaths = {}): RlsContractScan {
     .sort();
 
   const coverage: TenantTableCoverage[] = tenantModels.map((table) => {
-    const hasEnable = enableBoth.has(table);
-    const hasForce = forceBoth.has(table);
-    const hasPolicy = policyBoth.has(table);
-    const inSsot = enableSsot.has(table);
+    const migration = migrationStates.get(table) ?? EMPTY_RLS_STATE;
+    const ssot = ssotStates.get(table) ?? EMPTY_RLS_STATE;
+    const hasEnable = migration.enabled && ssot.enabled;
+    const hasForce = migration.forced && ssot.forced;
+    const hasPolicy = migration.hasPolicy && ssot.hasPolicy;
+    const inSsot = ssot.enabled;
     return {
       table,
+      migration,
+      ssot,
       hasEnable,
       hasForce,
       hasPolicy,
       inSsot,
-      status: classify({ hasEnable, hasForce, hasPolicy, inSsot }),
+      status: classify({ migration, ssot }),
     };
   });
 

@@ -151,8 +151,18 @@ const proofUrl = process.env.RLS_PROOF_DATABASE_URL;
 const adminUrl = process.env.RLS_PROOF_ADMIN_DATABASE_URL ?? process.env.DATABASE_URL;
 const describeProof = proofUrl ? describe : describe.skip;
 
-/** The exact tenant_isolation policy shape used across prisma/rls-policies.sql. */
-const TENANT_ISOLATION_USING = "org_id = current_setting('app.current_org_id', true)";
+/** The fail-visible tenant_isolation predicate required by the final-state contract. */
+const TENANT_ISOLATION_USING = 'org_id = public.app_enforced_org_id()';
+
+const HARDENED_FINAL_STATE_TABLES = [
+  'JahisSupplementalRecord',
+  'PatientLabObservation',
+  'QrScanDraft',
+  'SetBatchChangeLog',
+  'UatFeedback',
+  'VisitScheduleProposal',
+  'WebhookRegistration',
+] as const;
 
 function quoteIdent(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
@@ -171,6 +181,14 @@ describeProof('FORCE RLS non-superuser proof (RLS_PROOF_DATABASE_URL)', () => {
     const schema = `rls_proof_${randomUUID().replaceAll('-', '_')}`;
 
     try {
+      // Ensure the non-superuser role is provisioned before opening its first
+      // connection. This keeps the proof self-contained on a fresh local DB.
+      const roleSql = readFileSync(
+        join(process.cwd(), 'tools/scripts/setup-rls-test-role.sql'),
+        'utf8',
+      );
+      await adminPool.query(roleSql);
+
       // ── Anti-vacuity guard: the role under test MUST be a genuine RLS subject.
       // If RLS_PROOF_DATABASE_URL were pointed at a superuser / BYPASSRLS role
       // the whole proof would pass vacuously — fail loudly instead.
@@ -185,14 +203,6 @@ describeProof('FORCE RLS non-superuser proof (RLS_PROOF_DATABASE_URL)', () => {
       );
       expect(roleAttrs.rows[0]?.rolsuper, 'proof role must NOT be a superuser').toBe(false);
       expect(roleAttrs.rows[0]?.rolbypassrls, 'proof role must NOT have BYPASSRLS').toBe(false);
-
-      // ── Ensure the non-superuser role is provisioned (self-heal so local runs
-      // work without a separate psql step). Idempotent.
-      const roleSql = readFileSync(
-        join(process.cwd(), 'tools/scripts/setup-rls-test-role.sql'),
-        'utf8',
-      );
-      await adminPool.query(roleSql);
 
       // ── Build a throwaway schema carrying the exact tenant_isolation policy
       // shape from prisma/rls-policies.sql (ENABLE + FORCE + USING/WITH CHECK on
@@ -219,6 +229,7 @@ describeProof('FORCE RLS non-superuser proof (RLS_PROOF_DATABASE_URL)', () => {
       await adminPool.query(
         `GRANT SELECT, INSERT, UPDATE, DELETE ON ${q}.rls_proof_patient TO ph_os_app`,
       );
+      await adminPool.query(`ALTER TABLE ${q}.rls_proof_patient OWNER TO ph_os_app`);
       await adminPool.query(
         `INSERT INTO ${q}.rls_proof_patient (org_id, id, name)
          VALUES ('org_a', 'pa', 'Alice'), ('org_b', 'pb', 'Bob')`,
@@ -227,6 +238,7 @@ describeProof('FORCE RLS non-superuser proof (RLS_PROOF_DATABASE_URL)', () => {
       const proofClient = await proofPool.connect();
       try {
         await proofClient.query(`SET search_path TO ${q}, public`);
+        await proofClient.query("SELECT set_config('app.rls_context_applied', 'true', false)");
         await proofClient.query("SELECT set_config('app.current_org_id', 'org_a', false)");
 
         // SELECT: only org_a is visible.
@@ -250,10 +262,12 @@ describeProof('FORCE RLS non-superuser proof (RLS_PROOF_DATABASE_URL)', () => {
           ),
         ).rejects.toThrow(/row-level security|violates/i);
 
-        // Fail-close: with no org context set, the role sees nothing.
+        // Fail-visible: missing context raises instead of becoming a silent empty result.
+        await proofClient.query("SELECT set_config('app.rls_context_applied', '', false)");
         await proofClient.query("SELECT set_config('app.current_org_id', '', false)");
-        const withoutContext = await proofClient.query('SELECT id FROM rls_proof_patient');
-        expect(withoutContext.rows).toEqual([]);
+        await expect(proofClient.query('SELECT id FROM rls_proof_patient')).rejects.toThrow(
+          /RLS context missing/i,
+        );
       } finally {
         proofClient.release();
       }
@@ -263,6 +277,62 @@ describeProof('FORCE RLS non-superuser proof (RLS_PROOF_DATABASE_URL)', () => {
         `SELECT name FROM ${q}.rls_proof_patient WHERE id = 'pb'`,
       );
       expect(untouched.rows[0]?.name).toBe('Bob');
+
+      const hardenedFinalStates = await adminPool.query<{
+        table_name: string;
+        enabled: boolean;
+        forced: boolean;
+        using_expression: string | null;
+        check_expression: string | null;
+      }>(
+        `SELECT c.relname AS table_name,
+                c.relrowsecurity AS enabled,
+                c.relforcerowsecurity AS forced,
+                pg_get_expr(p.polqual, p.polrelid) AS using_expression,
+                pg_get_expr(p.polwithcheck, p.polrelid) AS check_expression
+           FROM pg_class c
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+           LEFT JOIN pg_policy p ON p.polrelid = c.oid AND p.polname = 'tenant_isolation'
+          WHERE n.nspname = 'public'
+            AND c.relname = ANY($1::text[])
+          ORDER BY c.relname`,
+        [[...HARDENED_FINAL_STATE_TABLES]],
+      );
+      expect(hardenedFinalStates.rows.map((row) => row.table_name)).toEqual(
+        [...HARDENED_FINAL_STATE_TABLES].sort(),
+      );
+      for (const state of hardenedFinalStates.rows) {
+        expect(state.enabled, `${state.table_name} must keep RLS enabled`).toBe(true);
+        expect(state.forced, `${state.table_name} must keep FORCE RLS`).toBe(true);
+        expect(state.using_expression).toContain('app_enforced_org_id()');
+        expect(state.check_expression).toContain('app_enforced_org_id()');
+      }
+
+      const hardenedProofClient = await proofPool.connect();
+      try {
+        await hardenedProofClient.query("SELECT set_config('app.rls_context_applied', '', false)");
+        await hardenedProofClient.query("SELECT set_config('app.current_org_id', '', false)");
+        for (const table of HARDENED_FINAL_STATE_TABLES) {
+          await expect(
+            hardenedProofClient.query(`SELECT count(*) FROM ${quoteIdent(table)}`),
+          ).rejects.toThrow(/RLS context missing/i);
+        }
+
+        await hardenedProofClient.query(
+          "SELECT set_config('app.rls_context_applied', 'true', false)",
+        );
+        await hardenedProofClient.query(
+          "SELECT set_config('app.current_org_id', 'org_that_does_not_exist', false)",
+        );
+        for (const table of HARDENED_FINAL_STATE_TABLES) {
+          const hidden = await hardenedProofClient.query<{ n: string }>(
+            `SELECT count(*)::text AS n FROM ${quoteIdent(table)}`,
+          );
+          expect(Number(hidden.rows[0]?.n), `${table} must hide cross-org rows`).toBe(0);
+        }
+      } finally {
+        hardenedProofClient.release();
+      }
 
       // ── Opportunistic real-table proof: when a migrated public."Patient"
       // exists (local E2E DB after W1-7 migrations), prove the SAME denial on

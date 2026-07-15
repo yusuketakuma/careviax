@@ -19,6 +19,32 @@ GRANT USAGE ON SCHEMA public TO app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
 
+-- Fail visibly when tenant context was not applied. Policies below are hardened
+-- again in the final-state overlay so this SSOT remains safe when provisioned
+-- independently from historical migrations.
+CREATE OR REPLACE FUNCTION public.app_enforced_org_id()
+RETURNS TEXT
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  applied TEXT;
+  org_id TEXT;
+BEGIN
+  applied := current_setting('app.rls_context_applied', true);
+  IF applied IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION 'RLS context missing';
+  END IF;
+
+  org_id := current_setting('app.current_org_id', true);
+  IF org_id IS NULL OR org_id = '' THEN
+    RAISE EXCEPTION 'RLS org context missing';
+  END IF;
+
+  RETURN org_id;
+END;
+$$;
+
 -- =============================================================================
 -- Helper: Enable RLS + create tenant isolation policy for a table
 -- Policy uses current_setting('app.current_org_id', true) which is set per
@@ -1092,3 +1118,98 @@ CREATE POLICY tenant_isolation ON "ResidualMedicationAssessment"
   USING ("org_id" = public.app_enforced_org_id())
   WITH CHECK ("org_id" = public.app_enforced_org_id());
 ALTER TABLE "ResidualMedicationAssessment" FORCE ROW LEVEL SECURITY;
+
+-- Final-state hardening overlay. This is intentionally explicit so static
+-- contract verification can prove the independently provisioned SSOT has the
+-- same fail-visible predicate and table-owner protection as migrations.
+DO $$
+DECLARE
+  target_table TEXT;
+BEGIN
+  FOREACH target_table IN ARRAY ARRAY[
+    'AuditLog',
+    'BillingCandidate',
+    'BillingEvidence',
+    'CareCase',
+    'CareReport',
+    'CareTeamLink',
+    'CommunicationEvent',
+    'CommunicationRequest',
+    'CommunicationResponse',
+    'CommunityActivity',
+    'ConferenceNote',
+    'ConsentRecord',
+    'ContactParty',
+    'CycleTransitionLog',
+    'DeliveryRecord',
+    'DispenseAudit',
+    'DispenseResult',
+    'DispenseTask',
+    'DispensingDecision',
+    'DocumentDeliveryRule',
+    'EscalationRule',
+    'ExternalAccessGrant',
+    'FacilityStandardRegistration',
+    'FacilityVisitBatch',
+    'FirstVisitDocument',
+    'HandoffBoard',
+    'InquiryRecord',
+    'Intervention',
+    'JahisSupplementalRecord',
+    'ManagementPlan',
+    'MedicationCycle',
+    'MedicationIssue',
+    'MedicationProfile',
+    'Membership',
+    'Notification',
+    'Patient',
+    'PatientLabObservation',
+    'PatientMcsLink',
+    'PatientMcsMessage',
+    'PatientMcsSummary',
+    'PatientSchedulePreference',
+    'PatientSelfReport',
+    'PharmacistCredential',
+    'PharmacistShift',
+    'PharmacistShiftTemplate',
+    'PharmacyDrugStock',
+    'PharmacySite',
+    'PrescriptionIntake',
+    'PrescriptionLine',
+    'PushSubscription',
+    'QrScanDraft',
+    'Residence',
+    'ResidualMedication',
+    'ServiceArea',
+    'SetAudit',
+    'SetBatch',
+    'SetBatchChangeLog',
+    'SetPlan',
+    'SourceOfTruthMatrix',
+    'Task',
+    'TaskComment',
+    'Template',
+    'TracingReport',
+    'UatFeedback',
+    'VisitPreparation',
+    'VisitRecord',
+    'VisitSchedule',
+    'VisitScheduleProposal',
+    'WebhookRegistration',
+    'WorkflowException'
+  ]
+  LOOP
+    IF to_regclass(format('public.%I', target_table)) IS NULL THEN
+      RAISE EXCEPTION 'Required RLS table is missing: %', target_table;
+    END IF;
+
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', target_table);
+    EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', target_table);
+    EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', target_table);
+    EXECUTE format(
+      'CREATE POLICY tenant_isolation ON %I USING (org_id = public.app_enforced_org_id()) WITH CHECK (org_id = public.app_enforced_org_id())',
+      target_table
+    );
+  END LOOP;
+END;
+$$;
