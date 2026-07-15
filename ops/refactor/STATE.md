@@ -95,7 +95,7 @@
     limit+1が既知ならexact `has_more`、source exhaustedならexact empty、501 sentinelがあり確定不能ならPHI/query-free 500へ
     fail-closedする。explicit patientはorg+name exact precheck後にdirect limit+1、no-q/regular q/F88は維持した。
   - consultation / validation:
-    Oracleは使用せず、codex2と別Codexへagmsgで計画、stream cancellation、Response再利用、abort/timeout分類、
+    Oracleは使用せず、codex1/codex2間でagmsgを用いて計画、stream cancellation、Response再利用、abort/timeout分類、
     NextRequest test型を相談した。共通readerの`duplex` TS2353、PHOS BodyInit型、configured 60sとreader hard 30sの差、
     204/205/304 null bodyとrepresentation Content-Length順序をP1として検出し、castやraw error伝播なしで閉じた。
     Aは3 files / 29 tests、strict callerを含む6 files / 61 tests、Bは2 files / 39 tests、prescription searchは
@@ -109,7 +109,7 @@
     HTTP親taskはPartial。provider共通HTTP clientのheaders後timeout解除とFHIR response source別上限を同じreaderへ移す。
     QR confirm raw bodyの512KiB/5s化は安全な後続だが、line/free-text/days/quantity上限は
     `MEDSAFE-PRESCRIPTION-INPUT-BOUNDS-001` human gate未批准のため推測値を入れない。次もexact-path ownershipと相互reviewで
-    non-overlap実装し、詰まりはOracleではなく別Codexへ相談する。
+    non-overlap実装し、詰まりはOracleではなくcodex1/codex2間で相談する。
 
 - codex1/codex2: explicit print intent + strict drug-master date/provenance
   (`PRIVACY-PRINT-EXPLICIT-INTENT-001` DONE `86fd09be7`, typecheck test follow-up `afb0d4b40`,
