@@ -1,16 +1,18 @@
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { hasPermission, type PermissionKey } from '@/lib/auth/permissions';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
+import { isPrismaErrorCode } from '@/lib/db/prisma-errors';
 import { success, validationError, notFound, conflict, forbidden } from '@/lib/api/response';
-import { prisma } from '@/lib/db/client';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import {
   transitionCycleStatus,
   getPreHoldStatus,
   ALLOWED_TRANSITIONS,
+  VersionConflictError,
 } from '@/lib/db/cycle-transition';
 import { z } from 'zod';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -102,92 +104,128 @@ async function transitionMedicationCycle(
 
   const { to, version, note } = parsed.data;
 
-  const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
-  const cycle = await prisma.medicationCycle.findFirst({
-    where: {
-      id,
-      org_id: ctx.orgId,
-      ...(caseAssignmentWhere ? { case_: caseAssignmentWhere } : {}),
-    },
-    select: { id: true, overall_status: true, version: true, patient_id: true, case_id: true },
-  });
-  if (!cycle) return notFound('サイクルが見つかりません');
-
-  const fromStatus = cycle.overall_status;
-  const toStatus = to;
-  const requiredPermission = resolveRequiredTransitionPermission(fromStatus, toStatus);
-  if (!hasPermission(ctx.role, requiredPermission)) {
-    return forbidden(PERMISSION_DENIAL_MESSAGE[requiredPermission]);
-  }
-
-  // Optimistic lock check
-  if (cycle.version !== version) {
-    return conflict('他のユーザーによって更新されています。最新のデータを取得してください。');
-  }
-
-  // B6: For on_hold recovery, derive valid return targets from pre-hold status
-  let allowed: string[] = ALLOWED_TRANSITIONS[fromStatus as keyof typeof ALLOWED_TRANSITIONS] ?? [];
-  if (fromStatus === 'on_hold') {
-    const preHoldStatus = await getPreHoldStatus(prisma, id);
-    if (preHoldStatus) {
-      allowed = [preHoldStatus, 'cancelled'];
-    }
-  }
-
-  if (!allowed.includes(toStatus)) {
-    return validationError(
-      `ステータス "${fromStatus}" から "${toStatus}" への遷移は許可されていません`,
-      { allowed },
-    );
-  }
-
-  const updated = await withOrgContext(ctx.orgId, async (tx) => {
-    const result = await transitionCycleStatus(tx, id, ctx.orgId, toStatus, ctx.userId, {
-      note: note ?? undefined,
-    });
-
-    // Create notification for status transition (best-effort)
-    try {
-      const notificationData = {
-        org_id: ctx.orgId,
-        user_id: ctx.userId,
-        event_type: 'status_changed',
-        type: 'system' as const,
-        title: 'ステータス変更',
-        message:
-          note ?? `処方サイクルのステータスが ${fromStatus} から ${toStatus} に変更されました`,
-        link: `/workflow`,
-        metadata: { cycle_id: id, from: fromStatus, to: toStatus },
-        dedupe_key: `cycle-transition:${id}:${fromStatus}:${toStatus}:${version}`,
+  let transitionResult:
+    | Response
+    | {
+        updated: Awaited<ReturnType<typeof transitionCycleStatus>>;
       };
 
-      await tx.notification.upsert({
-        where: {
-          org_id_user_id_dedupe_key: {
+  try {
+    transitionResult = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const membership = await tx.membership.findFirst({
+          where: { user_id: ctx.userId, org_id: ctx.orgId, is_active: true },
+          select: { role: true },
+        });
+        if (!membership) {
+          return forbidden('有効な組織メンバーではありません');
+        }
+
+        const freshContext = { userId: ctx.userId, role: membership.role };
+        const caseAssignmentWhere = buildCareCaseAssignmentWhere(freshContext);
+        const cycle = await tx.medicationCycle.findFirst({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            ...(caseAssignmentWhere ? { case_: caseAssignmentWhere } : {}),
+          },
+          select: {
+            id: true,
+            overall_status: true,
+            version: true,
+            patient_id: true,
+            case_id: true,
+          },
+        });
+        if (!cycle) return notFound('サイクルが見つかりません');
+
+        const fromStatus = cycle.overall_status;
+        const toStatus = to;
+        const requiredPermission = resolveRequiredTransitionPermission(fromStatus, toStatus);
+        if (!hasPermission(membership.role, requiredPermission)) {
+          return forbidden(PERMISSION_DENIAL_MESSAGE[requiredPermission]);
+        }
+
+        if (cycle.version !== version) {
+          return conflict('他のユーザーによって更新されています。最新のデータを取得してください。');
+        }
+
+        // B6: For on_hold recovery, derive valid return targets from pre-hold status.
+        let allowed: string[] =
+          ALLOWED_TRANSITIONS[fromStatus as keyof typeof ALLOWED_TRANSITIONS] ?? [];
+        if (fromStatus === 'on_hold') {
+          const preHoldStatus = await getPreHoldStatus(tx, id);
+          if (preHoldStatus) {
+            allowed = [preHoldStatus, 'cancelled'];
+          }
+        }
+
+        if (!allowed.includes(toStatus)) {
+          return validationError(
+            `ステータス "${fromStatus}" から "${toStatus}" への遷移は許可されていません`,
+            { allowed },
+          );
+        }
+
+        const result = await transitionCycleStatus(tx, id, ctx.orgId, toStatus, ctx.userId, {
+          note: note ?? undefined,
+          expectedVersion: version,
+        });
+
+        // Create notification for status transition (best-effort)
+        try {
+          const notificationData = {
             org_id: ctx.orgId,
             user_id: ctx.userId,
-            dedupe_key: notificationData.dedupe_key,
-          },
-        },
-        create: notificationData,
-        update: {
-          event_type: 'status_changed',
-          type: 'system',
-          title: 'ステータス変更',
-          message:
-            note ?? `処方サイクルのステータスが ${fromStatus} から ${toStatus} に変更されました`,
-          link: `/workflow`,
-          metadata: { cycle_id: id, from: fromStatus, to: toStatus },
-          is_read: false,
-          read_at: null,
-        },
-      });
-    } catch {
-      // Notification creation is best-effort
-    }
+            event_type: 'status_changed',
+            type: 'system' as const,
+            title: 'ステータス変更',
+            message:
+              note ?? `処方サイクルのステータスが ${fromStatus} から ${toStatus} に変更されました`,
+            link: `/workflow`,
+            metadata: { cycle_id: id, from: fromStatus, to: toStatus },
+            dedupe_key: `cycle-transition:${id}:${fromStatus}:${toStatus}:${version}`,
+          };
 
-    return result;
-  });
+          await tx.notification.upsert({
+            where: {
+              org_id_user_id_dedupe_key: {
+                org_id: ctx.orgId,
+                user_id: ctx.userId,
+                dedupe_key: notificationData.dedupe_key,
+              },
+            },
+            create: notificationData,
+            update: {
+              event_type: 'status_changed',
+              type: 'system',
+              title: 'ステータス変更',
+              message:
+                note ??
+                `処方サイクルのステータスが ${fromStatus} から ${toStatus} に変更されました`,
+              link: `/workflow`,
+              metadata: { cycle_id: id, from: fromStatus, to: toStatus },
+              is_read: false,
+              read_at: null,
+            },
+          });
+        } catch {
+          // Notification creation is best-effort
+        }
+
+        return { updated: result };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  } catch (error) {
+    if (error instanceof VersionConflictError || isPrismaErrorCode(error, 'P2034')) {
+      return conflict('他のユーザーによって更新されています。最新のデータを取得してください。');
+    }
+    throw error;
+  }
+
+  if (transitionResult instanceof Response) return transitionResult;
 
   await notifyWorkflowMutation({
     orgId: ctx.orgId,
@@ -195,7 +233,7 @@ async function transitionMedicationCycle(
     payload: { source: 'medication_cycles_transition' },
   });
 
-  return success({ data: updated });
+  return success({ data: transitionResult.updated });
 }
 
 export const PATCH = withAuthContext(transitionMedicationCycle);

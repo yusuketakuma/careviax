@@ -3,16 +3,20 @@ import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  membershipFindFirstMock,
   medicationCycleFindFirstMock,
   medicationCycleUpdateManyMock,
+  cycleTransitionLogFindFirstMock,
   cycleTransitionLogCreateMock,
   notificationUpsertMock,
   withOrgContextMock,
   notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
   medicationCycleUpdateManyMock: vi.fn(),
+  cycleTransitionLogFindFirstMock: vi.fn(),
   cycleTransitionLogCreateMock: vi.fn(),
   notificationUpsertMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -79,15 +83,20 @@ describe('/api/medication-cycles/[id]/transition', () => {
       patient_id: 'patient_1',
       case_id: 'case_1',
     });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     medicationCycleUpdateManyMock.mockResolvedValue({ count: 1 });
     notifyWorkflowMutationMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        membership: {
+          findFirst: membershipFindFirstMock,
+        },
         medicationCycle: {
           findFirst: medicationCycleFindFirstMock,
           updateMany: medicationCycleUpdateManyMock,
         },
         cycleTransitionLog: {
+          findFirst: cycleTransitionLogFindFirstMock,
           create: cycleTransitionLogCreateMock,
         },
         notification: {
@@ -128,6 +137,112 @@ describe('/api/medication-cycles/[id]/transition', () => {
 
     expect(response.status).toBe(409);
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the active membership role from the serializable transaction instead of stale auth context', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'pharmacist_trainee' });
+    medicationCycleFindFirstMock.mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'audit_pending',
+      version: 2,
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        to: 'audited',
+        version: 2,
+      }),
+      {
+        params: Promise.resolve({ id: 'cycle_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(403);
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a transition when the actor membership is no longer active', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await PATCH(
+      createPatchRequest({
+        to: 'dispensing',
+        version: 2,
+      }),
+      {
+        params: Promise.resolve({ id: 'cycle_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(403);
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('does not apply a stale dispense-authorized transition after the cycle enters audit', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'pharmacist_trainee' });
+    medicationCycleFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        overall_status: 'dispensing',
+        version: 2,
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        overall_status: 'audit_pending',
+        version: 3,
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+      });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        to: 'cancelled',
+        version: 2,
+      }),
+      {
+        params: Promise.resolve({ id: 'cycle_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(409);
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a conflict without side effects for a serializable transaction collision', async () => {
+    withOrgContextMock.mockRejectedValueOnce({ code: 'P2034' });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        to: 'dispensing',
+        version: 2,
+      }),
+      {
+        params: Promise.resolve({ id: 'cycle_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(409);
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank cycle ids before parsing or loading the cycle', async () => {
@@ -307,6 +422,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
         role: 'pharmacist_trainee',
       },
     });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
     medicationCycleFindFirstMock.mockResolvedValue({
       id: 'cycle_1',
       overall_status: 'audit_pending',
@@ -326,7 +442,11 @@ describe('/api/medication-cycles/[id]/transition', () => {
     ))!;
 
     expect(response.status).toBe(403);
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({ isolationLevel: 'Serializable' }),
+    );
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
     expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
     expect(notificationUpsertMock).not.toHaveBeenCalled();
@@ -341,6 +461,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
         role: 'pharmacist_trainee',
       },
     });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
     medicationCycleFindFirstMock.mockResolvedValue({
       id: 'cycle_1',
       overall_status: 'setting',
@@ -360,7 +481,11 @@ describe('/api/medication-cycles/[id]/transition', () => {
     ))!;
 
     expect(response.status).toBe(403);
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({ isolationLevel: 'Serializable' }),
+    );
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
     expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
     expect(notificationUpsertMock).not.toHaveBeenCalled();
@@ -375,6 +500,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
         role: 'clerk',
       },
     });
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
     medicationCycleFindFirstMock.mockResolvedValue({
       id: 'cycle_1',
       overall_status: 'visit_completed',

@@ -67,6 +67,7 @@ export class VersionConflictError extends Error {
 interface TransitionOptions {
   exceptionStatus?: string | null;
   note?: string;
+  expectedVersion?: number;
 }
 
 type TransitionCycleRow = {
@@ -112,6 +113,10 @@ export async function transitionCycleStatus(
 
   if (!cycle) {
     throw new Error(`MedicationCycle not found: ${cycleId}`);
+  }
+
+  if (options?.expectedVersion !== undefined && cycle.version !== options.expectedVersion) {
+    throw new VersionConflictError();
   }
 
   // 2. Validate transition

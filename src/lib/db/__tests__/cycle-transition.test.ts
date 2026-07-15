@@ -97,6 +97,20 @@ describe('transitionCycleStatus', () => {
     ).rejects.toThrow(VersionConflictError);
   });
 
+  it('rejects a caller-provided stale expected version before update or transition log writes', async () => {
+    const fakeCycle = { id: CYCLE_ID, overall_status: 'audit_pending', version: 3 };
+    mockFindFirst.mockResolvedValueOnce(fakeCycle);
+
+    await expect(
+      transitionCycleStatus(tx, CYCLE_ID, ORG_ID, 'cancelled', USER_ID, {
+        expectedVersion: 2,
+      }),
+    ).rejects.toThrow(VersionConflictError);
+
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
   it('CycleTransitionLog is created with correct from/to/actor', async () => {
     const fakeCycle = { id: CYCLE_ID, overall_status: 'ready_to_dispense', version: 3 };
     mockFindFirst.mockResolvedValueOnce(fakeCycle);
