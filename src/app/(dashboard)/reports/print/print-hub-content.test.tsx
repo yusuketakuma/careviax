@@ -346,6 +346,14 @@ function requestIntent(init?: RequestInit) {
   return (JSON.parse(String(init?.body ?? '{}')) as { intent?: string }).intent;
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
 function installFirstVisitFetch(
   args: {
     documentId?: string;
@@ -710,10 +718,7 @@ describe('PrintHubContent explicit print target boundary', () => {
   it('suppresses duplicate confirmation while the exact report audit is in flight', async () => {
     setSearch('type=visit_report&patient_id=patient_1&report_id=report_1');
     let printRequestedCount = 0;
-    let resolvePrintAudit: ((response: Response) => void) | null = null;
-    const deferredPrintAudit = new Promise<Response>((resolve) => {
-      resolvePrintAudit = resolve;
-    });
+    const deferredPrintAudit = createDeferred<Response>();
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/patients/patient_1/header-summary') {
@@ -723,7 +728,7 @@ describe('PrintHubContent explicit print target boundary', () => {
       if (url === '/api/care-reports/report_1/print-audit') {
         if (requestIntent(init) === 'print_requested') {
           printRequestedCount += 1;
-          return deferredPrintAudit;
+          return deferredPrintAudit.promise;
         }
         return json(printAuditResponse());
       }
@@ -744,7 +749,7 @@ describe('PrintHubContent explicit print target boundary', () => {
 
     await waitFor(() => expect(printRequestedCount).toBe(1));
     expect(window.print).not.toHaveBeenCalled();
-    resolvePrintAudit?.(json(printAuditResponse()));
+    deferredPrintAudit.resolve(json(printAuditResponse()));
     await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));
     expect(printRequestedCount).toBe(1);
   });
@@ -752,10 +757,7 @@ describe('PrintHubContent explicit print target boundary', () => {
   it('invalidates an in-flight report print synchronously when the target switch is requested', async () => {
     setSearch('type=visit_report&patient_id=patient_1&report_id=report_1');
     let printRequestedCount = 0;
-    let resolvePrintAudit: ((response: Response) => void) | null = null;
-    const deferredPrintAudit = new Promise<Response>((resolve) => {
-      resolvePrintAudit = resolve;
-    });
+    const deferredPrintAudit = createDeferred<Response>();
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/patients/patient_1/header-summary') {
@@ -765,7 +767,7 @@ describe('PrintHubContent explicit print target boundary', () => {
       if (url === '/api/care-reports/report_1/print-audit') {
         if (requestIntent(init) === 'print_requested') {
           printRequestedCount += 1;
-          return deferredPrintAudit;
+          return deferredPrintAudit.promise;
         }
         return json(printAuditResponse());
       }
@@ -782,8 +784,8 @@ describe('PrintHubContent explicit print target boundary', () => {
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('print-target-document_receipt'));
-      resolvePrintAudit?.(json(printAuditResponse()));
-      await deferredPrintAudit;
+      deferredPrintAudit.resolve(json(printAuditResponse()));
+      await deferredPrintAudit.promise;
     });
 
     expect(
@@ -800,10 +802,7 @@ describe('PrintHubContent explicit print target boundary', () => {
   it('invalidates an in-flight report print synchronously when an output setting changes', async () => {
     setSearch('type=visit_report&patient_id=patient_1&report_id=report_1');
     let printRequestedCount = 0;
-    let resolvePrintAudit: ((response: Response) => void) | null = null;
-    const deferredPrintAudit = new Promise<Response>((resolve) => {
-      resolvePrintAudit = resolve;
-    });
+    const deferredPrintAudit = createDeferred<Response>();
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/patients/patient_1/header-summary') {
@@ -813,7 +812,7 @@ describe('PrintHubContent explicit print target boundary', () => {
       if (url === '/api/care-reports/report_1/print-audit') {
         if (requestIntent(init) === 'print_requested') {
           printRequestedCount += 1;
-          return deferredPrintAudit;
+          return deferredPrintAudit.promise;
         }
         return json(printAuditResponse());
       }
@@ -830,8 +829,8 @@ describe('PrintHubContent explicit print target boundary', () => {
 
     await act(async () => {
       fireEvent.click(screen.getByRole('checkbox', { name: 'QRコードを付ける' }));
-      resolvePrintAudit?.(json(printAuditResponse()));
-      await deferredPrintAudit;
+      deferredPrintAudit.resolve(json(printAuditResponse()));
+      await deferredPrintAudit.promise;
     });
 
     expect(
