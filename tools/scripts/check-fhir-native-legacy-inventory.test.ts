@@ -32,6 +32,7 @@ type FixtureOptions = {
   ownerReview?: OwnerReview;
   exportScopes?: Array<{ path: string; symbols: string[] }>;
   callSurfaces?: Array<Record<string, unknown>>;
+  codeSurfaces?: Array<Record<string, unknown>>;
 };
 
 type FixtureManifest = Record<string, unknown> & {
@@ -39,6 +40,7 @@ type FixtureManifest = Record<string, unknown> & {
   tracked_prisma_delegates: Array<Record<string, unknown>>;
   expected_prisma_accesses: string[];
   expected_raw_sql_accesses: string[];
+  raw_sql_exclusions: Array<Record<string, unknown>>;
 };
 
 afterEach(() => {
@@ -123,7 +125,8 @@ function createFixture(options: FixtureOptions = {}) {
     ],
     expected_prisma_accesses: [],
     expected_raw_sql_accesses: [],
-    code_surfaces: [],
+    raw_sql_exclusions: [],
+    code_surfaces: options.codeSurfaces ?? [],
     export_scopes: options.exportScopes ?? [],
     call_surfaces: options.callSurfaces ?? [],
     expected_inventory_sha256: '0'.repeat(64),
@@ -259,17 +262,42 @@ describe('check-fhir-native-legacy-inventory', () => {
       `const sql = Prisma.sql\`DELETE FROM "Patient" WHERE "id" = \${patientId}\`;\nawait db.$executeRaw(sql);\n`,
       `const sqlText = 'SELECT * FROM "Patient"';\nawait db.$queryRawUnsafe(sqlText);\n`,
       `const sqlText = 'SELECT * FROM "Patient"';\nawait db.$queryRawUnsafe(sqlText, \`\${patientId}\`);\n`,
+      `const tableName = '"Patient"';\nawait db.$queryRawUnsafe(\`SELECT * FROM \${tableName}\`);\n`,
+      `const tableName = '"Patient"';\nawait db.$queryRawUnsafe(\`SELECT * FROM \${Prisma.raw(tableName)}\`);\n`,
     ]) {
       const root = createFixture();
       writeRepoFile(root, SOURCE_PATH, source);
 
       expect(() => runCheck(root)).toThrow(
-        /unresolved raw SQL call lacks an explicit dynamic code surface/,
+        /unmatched raw SQL call lacks an explicit dynamic code surface or non-clinical exclusion/,
       );
       expect(() => runCheck(root, ['--require-zero'])).toThrow(
-        /unresolved raw SQL call lacks an explicit dynamic code surface/,
+        /unmatched raw SQL call lacks an explicit dynamic code surface or non-clinical exclusion/,
       );
     }
+  });
+
+  it('accepts dynamic raw SQL only when an exact code surface covers the path and API', () => {
+    const root = createFixture({
+      files: {
+        [SOURCE_PATH]: `const tableName = '"Patient"';\nawait db.$queryRawUnsafe(\`SELECT * FROM \${tableName}\`);\n`,
+      },
+      codeSurfaces: [
+        {
+          id: 'code:fixture:dynamic-raw-sql',
+          path: SOURCE_PATH,
+          symbol: 'PHI-free fixture dynamic SQL surface',
+          category: 'dynamic_raw_sql',
+          activity: 'schema_reader_writer',
+          direction: 'read_write',
+          disposition: 'replace_at_cutover',
+          anchor: { pattern: '\\$queryRawUnsafe', flags: 'gm', expected_count: 1 },
+        },
+      ],
+    });
+
+    expect(runCheck(root)).toContain('check passed');
+    expect(() => runCheck(root, ['--require-zero'])).toThrow(/code:code:fixture:dynamic-raw-sql:1/);
   });
 
   it('fails when exported DTO or contract symbols drift', () => {

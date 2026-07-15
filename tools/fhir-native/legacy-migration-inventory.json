@@ -2709,6 +2709,204 @@
     "src/server/services/patient-status-tracker.ts|AuditLog|AuditLog|queryRaw|read|1",
     "src/server/services/visit-record-source-validation.ts|VisitRecord|VisitRecord|queryRaw|read|1"
   ],
+  "raw_sql_exclusions": [
+    {
+      "id": "raw-exclusion:seed:org-context",
+      "path": "prisma/seed.ts",
+      "api": "executeRaw",
+      "template_sha256": "f40eb329847f7e7d9a7fae69e9ff75d9d97c8b5cd47e58130bb8c363a4fcf409",
+      "classification": "session_context",
+      "reason": "Transaction-local organization context does not read or write a legacy clinical table.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:seed:rls-context-applied",
+      "path": "prisma/seed.ts",
+      "api": "executeRaw",
+      "template_sha256": "3cfa15d0b82435544776aa569b9ccd05f649e54d4531b14731c06a8fc254b7ef",
+      "classification": "session_context",
+      "reason": "Transaction-local RLS context state does not read or write a legacy clinical table.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:conference-report:note-lock",
+      "path": "src/app/api/conference-notes/[id]/generate-report/route.ts",
+      "api": "queryRaw",
+      "template_sha256": "22b7a7e28cf43f51e99c1a1b779e373fc0b4debba671b899b59d94d6b29294a8",
+      "classification": "operational_table",
+      "reason": "ConferenceNote locking is outside the currently tracked FHIR replacement table set.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:conference-note:note-lock",
+      "path": "src/app/api/conference-notes/[id]/route.ts",
+      "api": "queryRaw",
+      "template_sha256": "22b7a7e28cf43f51e99c1a1b779e373fc0b4debba671b899b59d94d6b29294a8",
+      "classification": "operational_table",
+      "reason": "ConferenceNote locking is outside the currently tracked FHIR replacement table set.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:conference-task:note-lock",
+      "path": "src/app/api/conference-notes/[id]/tasks/route.ts",
+      "api": "queryRaw",
+      "template_sha256": "22b7a7e28cf43f51e99c1a1b779e373fc0b4debba671b899b59d94d6b29294a8",
+      "classification": "operational_table",
+      "reason": "ConferenceNote locking is outside the currently tracked FHIR replacement table set.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:handoff-read:operational-update",
+      "path": "src/app/api/handoff-board/items/[id]/read/route.ts",
+      "api": "executeRaw",
+      "template_sha256": "6a91753010f50a21ab611c0c54377befc9935dd5b4ed4f8a74fb3c17846551b1",
+      "classification": "operational_table",
+      "reason": "HandoffItem and HandoffBoard are outside the currently tracked FHIR replacement table set.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:health:database-probe",
+      "path": "src/app/api/health/route.ts",
+      "api": "queryRaw",
+      "template_sha256": "e004ebd5b5532a4b85984a62f8ad48a81aa3460c1ca07701f386135d72cdecf5",
+      "classification": "health_probe",
+      "reason": "The constant database readiness probe does not access an application table.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:stock-impact:operational-query",
+      "path": "src/app/api/pharmacy-drug-stocks/impact/route.ts",
+      "api": "queryRaw",
+      "template_sha256": "95ebdbc7c2329f370466d9a94df8086a7346a6aa56caf166fc89e4ba3e181f14",
+      "classification": "operational_table",
+      "reason": "Pharmacy stock impact tables are outside the currently tracked FHIR replacement table set.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:security-events:session-context",
+      "path": "src/lib/auth/security-events.ts",
+      "api": "executeRaw",
+      "template_sha256": "5854cdfd03ccb8d2658edc3087cf20d02de1bac3af73f392d56858b9d79b1a6f",
+      "classification": "session_context",
+      "reason": "Transaction-local security context does not read or write a legacy clinical table.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:advisory-lock:transaction-lock",
+      "path": "src/lib/db/advisory-lock.ts",
+      "api": "executeRaw",
+      "template_sha256": "92e3c7593bcc20087527e9e27f5cb5476176a1d9829f05628362677ca2d49eff",
+      "classification": "advisory_lock",
+      "reason": "The PostgreSQL transaction advisory lock does not access an application table.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:display-id:sequence-allocation",
+      "path": "src/lib/db/display-id.ts",
+      "api": "queryRaw",
+      "template_sha256": "1d99d5f1eb3cbea56cdb794ff0bfd3b79fc6478a2c2bb71358f630dcfe3f8a9e",
+      "classification": "operational_table",
+      "reason": "The id_sequence allocator is outside the currently tracked FHIR replacement table set.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:rls:session-context",
+      "path": "src/lib/db/rls.ts",
+      "api": "executeRaw",
+      "template_sha256": "5854cdfd03ccb8d2658edc3087cf20d02de1bac3af73f392d56858b9d79b1a6f",
+      "classification": "session_context",
+      "reason": "Transaction-local RLS context does not read or write a legacy clinical table.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:medication-stock-risk:operational-query",
+      "path": "src/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader.ts",
+      "api": "queryRaw",
+      "template_sha256": "ae9cccbf0c6a00905ec0a49971f0107b24df25bd95639537785b32804b8d9057",
+      "classification": "operational_table",
+      "reason": "Medication stock signal tables are outside the currently tracked FHIR replacement table set.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:workflow-dashboard:conference-note-query",
+      "path": "src/server/services/workflow-dashboard-queries.ts",
+      "api": "queryRaw",
+      "template_sha256": "fb9c02f57551a2c0d67d09f2bc1f1a31b1b2e92f5036fdcea23ac378f119f36b",
+      "classification": "operational_table",
+      "reason": "ConferenceNote workflow aggregation is outside the currently tracked FHIR replacement table set.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    }
+  ],
   "code_surfaces": [
     {
       "id": "code:e-prescription:exports",
@@ -3074,5 +3272,5 @@
       "disposition": "replace_at_cutover"
     }
   ],
-  "expected_inventory_sha256": "ec6c0f665dedfb85bc927ca00e6e5ff1ac6356ef2a0c0d3b5631c577b63e85f6"
+  "expected_inventory_sha256": "362395535161761c01a98505c5eb754b05a18b210fe4d255446a148f9afcc72f"
 }

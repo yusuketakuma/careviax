@@ -43,6 +43,12 @@ const PRISMA_OPERATIONS = [...READ_OPERATIONS, ...WRITE_OPERATIONS].sort(
   (left, right) => right.length - left.length || left.localeCompare(right),
 );
 const RAW_SQL_APIS = new Set(['executeRaw', 'executeRawUnsafe', 'queryRaw', 'queryRawUnsafe']);
+const RAW_SQL_EXCLUSION_CLASSIFICATIONS = new Set([
+  'advisory_lock',
+  'health_probe',
+  'operational_table',
+  'session_context',
+]);
 const PRISMA_ACCESS_FORMS = new Set(['alias', 'bracket', 'destructured', 'dot', 'optional']);
 const PRISMA_CLIENT_HINTS = new Set([
   'client',
@@ -259,6 +265,34 @@ function parseRawSqlAccessEntry(value, manifest) {
   };
 }
 
+function validateRawSqlExclusion(entry) {
+  assert(typeof entry.id === 'string' && entry.id.length > 0, 'raw SQL exclusion id is invalid');
+  assertSafeRelativePath(entry.path, `raw SQL exclusion ${entry.id} path`);
+  assert(RAW_SQL_APIS.has(entry.api), `raw SQL exclusion ${entry.id} API is invalid`, [entry.api]);
+  assert(
+    typeof entry.template_sha256 === 'string' && /^[a-f0-9]{64}$/.test(entry.template_sha256),
+    `raw SQL exclusion ${entry.id} template_sha256 is invalid`,
+  );
+  assert(
+    RAW_SQL_EXCLUSION_CLASSIFICATIONS.has(entry.classification),
+    `raw SQL exclusion ${entry.id} classification is invalid`,
+    [String(entry.classification)],
+  );
+  assert(
+    typeof entry.reason === 'string' && entry.reason.trim().length > 0,
+    `raw SQL exclusion ${entry.id} reason is missing`,
+  );
+  assert(
+    Number.isSafeInteger(entry.expected_count) && entry.expected_count > 0,
+    `raw SQL exclusion ${entry.id} expected_count must be positive`,
+  );
+  assert(
+    entry.disposition === 'owner_review_required',
+    `raw SQL exclusion ${entry.id} must require owner review`,
+  );
+  validateOwnerReview(entry, `raw SQL exclusion ${entry.id}`);
+}
+
 function validateManifest(manifest) {
   assert(manifest && typeof manifest === 'object', 'manifest root must be an object');
   assert(manifest.schema_version === 1, 'manifest schema_version must equal 1');
@@ -294,6 +328,7 @@ function validateManifest(manifest) {
     'tracked_prisma_delegates',
     'expected_prisma_accesses',
     'expected_raw_sql_accesses',
+    'raw_sql_exclusions',
     'code_surfaces',
     'export_scopes',
     'call_surfaces',
@@ -305,6 +340,7 @@ function validateManifest(manifest) {
   uniqueBy(manifest.tracked_prisma_delegates, (entry) => entry.delegate, 'Prisma delegate');
   uniqueBy(manifest.expected_prisma_accesses, (entry) => entry, 'Prisma access entry');
   uniqueBy(manifest.expected_raw_sql_accesses, (entry) => entry, 'raw SQL access entry');
+  uniqueBy(manifest.raw_sql_exclusions, (entry) => entry.id, 'raw SQL exclusion id');
   uniqueBy(manifest.code_surfaces, (entry) => entry.id, 'code surface id');
   uniqueBy(manifest.export_scopes, (entry) => entry.path, 'export scope path');
   uniqueBy(manifest.call_surfaces, (entry) => entry.id, 'call surface id');
@@ -365,6 +401,7 @@ function validateManifest(manifest) {
 
   for (const entry of manifest.expected_prisma_accesses) parsePrismaAccessEntry(entry, manifest);
   for (const entry of manifest.expected_raw_sql_accesses) parseRawSqlAccessEntry(entry, manifest);
+  for (const entry of manifest.raw_sql_exclusions) validateRawSqlExclusion(entry);
 
   for (const entry of manifest.code_surfaces) {
     assertSafeRelativePath(entry.path, `code surface ${entry.id} path`);
@@ -879,10 +916,11 @@ function discoverRawSqlAccesses(repoRoot, sourceFiles, schemaSurfaces) {
       if (!invocation.invoked) continue;
       const template = invocation.template;
       if (!template) {
-        unresolved.push({ path: relativePath, api, marker: `$${api}` });
+        unresolved.push({ path: relativePath, api, marker: `$${api}`, template_sha256: null });
         continue;
       }
       const direction = rawSqlDirection(template.text);
+      let matchedTrackedTable = false;
       for (const metadata of models) {
         const tablePattern = new RegExp(
           `(?:"${escapeRegExp(metadata.table_name)}"|\\b${escapeRegExp(metadata.table_name)}\\b)`,
@@ -890,6 +928,7 @@ function discoverRawSqlAccesses(repoRoot, sourceFiles, schemaSurfaces) {
         );
         const count = Array.from(template.text.matchAll(tablePattern)).length;
         if (count === 0) continue;
+        matchedTrackedTable = true;
         const key = `${relativePath}\u0000${metadata.name}\u0000${metadata.table_name}\u0000${api}\u0000${direction}`;
         const current = counts.get(key);
         counts.set(key, {
@@ -901,6 +940,14 @@ function discoverRawSqlAccesses(repoRoot, sourceFiles, schemaSurfaces) {
           disposition: metadata.disposition,
           owner_review: metadata.owner_review ?? null,
           count: (current?.count ?? 0) + count,
+        });
+      }
+      if (!matchedTrackedTable) {
+        unresolved.push({
+          path: relativePath,
+          api,
+          marker: `$${api}`,
+          template_sha256: sha256(template.text),
         });
       }
     }
@@ -918,8 +965,45 @@ function discoverRawSqlAccesses(repoRoot, sourceFiles, schemaSurfaces) {
   };
 }
 
-function assertUnresolvedRawSqlCoverage(unresolved, codeSurfaces) {
+function resolveUnmatchedRawSqlCoverage(unresolved, codeSurfaces, exclusions) {
+  const grouped = new Map();
   for (const call of unresolved) {
+    const key = `${call.path}\u0000${call.api}\u0000${call.template_sha256 ?? '<dynamic>'}`;
+    const current = grouped.get(key);
+    grouped.set(key, { ...call, count: (current?.count ?? 0) + 1 });
+  }
+
+  const normalizedExclusions = [];
+  const usedExclusionIds = new Set();
+  const uncovered = [];
+  for (const call of grouped.values()) {
+    const exclusion = exclusions.find(
+      (candidate) =>
+        candidate.path === call.path &&
+        candidate.api === call.api &&
+        candidate.template_sha256 === call.template_sha256,
+    );
+    if (exclusion) {
+      assert(exclusion.expected_count === call.count, 'raw SQL exclusion count drift detected', [
+        exclusion.id,
+        `expected=${exclusion.expected_count}`,
+        `actual=${call.count}`,
+      ]);
+      usedExclusionIds.add(exclusion.id);
+      normalizedExclusions.push({
+        id: exclusion.id,
+        path: exclusion.path,
+        api: exclusion.api,
+        template_sha256: exclusion.template_sha256,
+        classification: exclusion.classification,
+        reason: exclusion.reason,
+        disposition: exclusion.disposition,
+        owner_review: exclusion.owner_review,
+        count: call.count,
+      });
+      continue;
+    }
+
     const coveringSurface = codeSurfaces.find((surface) => {
       if (
         surface.path !== call.path ||
@@ -931,10 +1015,23 @@ function assertUnresolvedRawSqlCoverage(unresolved, codeSurfaces) {
       const flags = (surface.anchor.flags ?? 'gm').replaceAll('g', '');
       return new RegExp(surface.anchor.pattern, flags).test(call.marker);
     });
-    assert(coveringSurface, 'unresolved raw SQL call lacks an explicit dynamic code surface', [
-      `${call.path}:${call.api}`,
-    ]);
+    if (!coveringSurface) {
+      uncovered.push(
+        `${call.path}:${call.api}:${call.template_sha256 ?? '<dynamic>'}:count=${call.count}`,
+      );
+    }
   }
+
+  const staleExclusions = exclusions
+    .filter((entry) => !usedExclusionIds.has(entry.id))
+    .map((entry) => entry.id);
+  assert(staleExclusions.length === 0, 'raw SQL exclusions are stale', staleExclusions);
+  assert(
+    uncovered.length === 0,
+    'unmatched raw SQL call lacks an explicit dynamic code surface or non-clinical exclusion',
+    uncovered,
+  );
+  return normalizedExclusions.sort((left, right) => left.id.localeCompare(right.id));
 }
 
 function discoverExports(repoRoot, exportScopes) {
@@ -1017,13 +1114,18 @@ function buildInventory(repoRoot, manifest) {
   );
   const rawSqlDiscovery = discoverRawSqlAccesses(repoRoot, sourceFiles, schemaSurfaces);
   const codeSurfaces = inspectCodeSurfaces(repoRoot, manifest.code_surfaces);
-  assertUnresolvedRawSqlCoverage(rawSqlDiscovery.unresolved, manifest.code_surfaces);
+  const rawSqlExclusions = resolveUnmatchedRawSqlCoverage(
+    rawSqlDiscovery.unresolved,
+    manifest.code_surfaces,
+    manifest.raw_sql_exclusions,
+  );
   const exports = discoverExports(repoRoot, manifest.export_scopes);
   const calls = discoverCallSites(repoRoot, sourceFiles, manifest.call_surfaces);
   const inventory = {
     schema_surfaces: schemaSurfaces,
     prisma_accesses: prismaAccesses,
     raw_sql_accesses: rawSqlDiscovery.accesses,
+    raw_sql_exclusions: rawSqlExclusions,
     code_surfaces: codeSurfaces,
     exports,
     calls,
@@ -1145,6 +1247,11 @@ function collectZeroGateBlockers(manifest, inventory) {
       access.owner_review?.status !== 'approved'
     ) {
       blockers.push(`owner_review:raw_sql:${access.table}`);
+    }
+  }
+  for (const exclusion of inventory.raw_sql_exclusions) {
+    if (exclusion.owner_review?.status !== 'approved') {
+      blockers.push(`owner_review:raw_sql_exclusion:${exclusion.id}`);
     }
   }
   for (const surface of inventory.code_surfaces) {
