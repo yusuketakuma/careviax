@@ -128,6 +128,8 @@ const CARE_REPORT_KEYWORD_SCAN_READ_LIMIT = CARE_REPORT_KEYWORD_SCAN_LIMIT + 1;
 const CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT = 100;
 const DEFAULT_CARE_REPORT_PALETTE_LIMIT = 8;
 const MAX_CARE_REPORT_PALETTE_LIMIT = 50;
+const CARE_REPORT_PALETTE_QUERY_SCAN_LIMIT = 500;
+const CARE_REPORT_PALETTE_QUERY_SCAN_READ_LIMIT = CARE_REPORT_PALETTE_QUERY_SCAN_LIMIT + 1;
 const careReportPatientSearchOrderBy = [
   { name_kana: 'asc' },
   { name: 'asc' },
@@ -573,27 +575,8 @@ async function authenticatedGET(req: NextRequest) {
     return withOrgContext(
       ctx.orgId,
       async (db) => {
-        const paletteMatchingPatients =
-          query && view === 'palette'
-            ? await db.patient.findMany({
-                where: {
-                  org_id: ctx.orgId,
-                  OR: [
-                    { name: { contains: query, mode: 'insensitive' } },
-                    { name_kana: { contains: query, mode: 'insensitive' } },
-                  ],
-                },
-                select: {
-                  id: true,
-                  name: true,
-                },
-                orderBy: careReportPatientSearchOrderBy,
-                take: resolvedPaletteLimit + 1,
-              })
-            : [];
-
         const matchingPatientSearchArgs: Prisma.PatientFindManyArgs | null =
-          query && view !== 'palette'
+          query && (view !== 'palette' || patientId)
             ? {
                 where: {
                   org_id: ctx.orgId,
@@ -603,36 +586,47 @@ async function authenticatedGET(req: NextRequest) {
                     { name_kana: { contains: query, mode: 'insensitive' } },
                   ],
                 },
-                select: {
-                  id: true,
-                },
+                select:
+                  view === 'palette'
+                    ? {
+                        id: true,
+                        name: true,
+                      }
+                    : {
+                        id: true,
+                      },
                 take: patientId ? 1 : CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT + 1,
                 ...(patientId ? {} : { orderBy: careReportPatientSearchOrderBy }),
               }
             : null;
-        const matchingPatients = matchingPatientSearchArgs
+        const matchingPatients: Array<{ id: string; name?: string }> = matchingPatientSearchArgs
           ? await db.patient.findMany(matchingPatientSearchArgs)
           : [];
 
-        const matchedPatientIds =
-          view === 'palette'
-            ? paletteMatchingPatients.map((patient) => patient.id)
-            : matchingPatients
-                .slice(0, CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT)
-                .map((patient) => patient.id);
-        if (query && matchedPatientIds.length === 0 && !keyword) {
-          if (view === 'palette') {
-            return withSensitiveNoStore(
-              successWithMeasuredJsonPayload({
-                data: [],
-                meta: {
-                  has_more: false,
-                  next_cursor: null,
-                },
-              }),
-            );
-          }
-
+        const matchedPatientIds = matchingPatients
+          .slice(0, CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT)
+          .map((patient) => patient.id);
+        const explicitPalettePatientRow = matchingPatients[0];
+        const explicitPalettePatient =
+          query &&
+          view === 'palette' &&
+          patientId &&
+          explicitPalettePatientRow &&
+          typeof explicitPalettePatientRow.name === 'string'
+            ? { id: explicitPalettePatientRow.id, name: explicitPalettePatientRow.name }
+            : null;
+        if (query && view === 'palette' && patientId && !explicitPalettePatient) {
+          return withSensitiveNoStore(
+            successWithMeasuredJsonPayload({
+              data: [],
+              meta: {
+                has_more: false,
+                next_cursor: null,
+              },
+            }),
+          );
+        }
+        if (query && view !== 'palette' && matchedPatientIds.length === 0 && !keyword) {
           return withSensitiveNoStore(
             successWithMeasuredJsonPayload({
               data: [],
@@ -647,18 +641,15 @@ async function authenticatedGET(req: NextRequest) {
 
         const accessScope = await getCareReportAccessScope(db, ctx.orgId, ctx);
         const accessWhere = buildCareReportAccessWhere(accessScope);
-        // 明示的な patient_id(患者詳細コンテキスト)と q(氏名/カナ検索)の両方が指定された場合、
-        // 素朴なオブジェクトスプレッドでは後勝ちで patient_id が matchedPatientIds に
-        // 上書きされ、同名別患者の報告書が混入する(F88)。明示 patient_id を優先しつつ
-        // 検索結果集合との積(intersection)を取り、明示患者が検索にヒットしない場合は
-        // 空集合(patient_id in [])に閉じて他患者の報告書を返さない。
+        // Explicit patient context remains authoritative. Palette q searches without a patient
+        // are resolved from an independently bounded, access-filtered report scan below.
         const patientIdWhere: Prisma.CareReportWhereInput = patientId
-          ? query
+          ? query && view !== 'palette'
             ? matchedPatientIds.includes(patientId)
               ? { patient_id: patientId }
               : { patient_id: { in: [] } }
             : { patient_id: patientId }
-          : query
+          : query && view !== 'palette'
             ? { patient_id: { in: matchedPatientIds } }
             : {};
         const where: Prisma.CareReportWhereInput = {
@@ -702,6 +693,7 @@ async function authenticatedGET(req: NextRequest) {
         };
 
         if (view === 'palette') {
+          const scansByQuery = Boolean(query && !patientId);
           const reports = await db.careReport.findMany({
             where,
             orderBy: careReportListOrderBy,
@@ -712,15 +704,66 @@ async function authenticatedGET(req: NextRequest) {
               status: true,
               created_at: true,
             },
-            take: resolvedPaletteLimit + 1,
+            take: scansByQuery
+              ? CARE_REPORT_PALETTE_QUERY_SCAN_READ_LIMIT
+              : resolvedPaletteLimit + 1,
           });
-          const page = buildCursorPage(reports, resolvedPaletteLimit, (report) => report.id);
+          const paletteScanTruncated =
+            scansByQuery && reports.length > CARE_REPORT_PALETTE_QUERY_SCAN_LIMIT;
+          const reportsForMatching = scansByQuery
+            ? reports.slice(0, CARE_REPORT_PALETTE_QUERY_SCAN_LIMIT)
+            : reports;
+          let patientRows: Array<{ id: string; name: string }> = [];
+          let matchingReports = reportsForMatching;
+
+          if (query) {
+            if (explicitPalettePatient) {
+              patientRows = [explicitPalettePatient];
+            } else if (scansByQuery) {
+              const scannedPatientIds = Array.from(
+                new Set(reportsForMatching.map((report) => report.patient_id)),
+              );
+              patientRows =
+                scannedPatientIds.length === 0
+                  ? []
+                  : await db.patient.findMany({
+                      where: {
+                        org_id: ctx.orgId,
+                        id: { in: scannedPatientIds },
+                        OR: [
+                          { name: { contains: query, mode: 'insensitive' } },
+                          { name_kana: { contains: query, mode: 'insensitive' } },
+                        ],
+                      },
+                      select: {
+                        id: true,
+                        name: true,
+                      },
+                      orderBy: [{ id: 'asc' }],
+                      take: CARE_REPORT_PALETTE_QUERY_SCAN_LIMIT,
+                    });
+            }
+
+            const matchingPatientIds = new Set(patientRows.map((patient) => patient.id));
+            matchingReports = reportsForMatching.filter((report) =>
+              matchingPatientIds.has(report.patient_id),
+            );
+
+            if (paletteScanTruncated && matchingReports.length <= resolvedPaletteLimit) {
+              throw new Error('Care report palette bounded scan limit exceeded');
+            }
+          }
+
+          const page = buildCursorPage(
+            matchingReports,
+            resolvedPaletteLimit,
+            (report) => report.id,
+          );
           const dataRows = page.data;
-          const patientIds = Array.from(new Set(dataRows.map((report) => report.patient_id)));
-          const patientRows =
-            paletteMatchingPatients.length > 0 && !patientId
-              ? paletteMatchingPatients.filter((patient) => patientIds.includes(patient.id))
-              : patientIds.length === 0
+          if (!query) {
+            const patientIds = Array.from(new Set(dataRows.map((report) => report.patient_id)));
+            patientRows =
+              patientIds.length === 0
                 ? []
                 : await db.patient.findMany({
                     where: {
@@ -731,7 +774,10 @@ async function authenticatedGET(req: NextRequest) {
                       id: true,
                       name: true,
                     },
+                    orderBy: [{ id: 'asc' }],
+                    take: resolvedPaletteLimit,
                   });
+          }
           const patientNameById = new Map(patientRows.map((patient) => [patient.id, patient.name]));
 
           return withSensitiveNoStore(

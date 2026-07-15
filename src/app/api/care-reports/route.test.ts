@@ -607,9 +607,10 @@ describe('/api/care-reports GET', () => {
     });
     const listCall = careReportFindManyMock.mock.calls[0]?.[0];
     expect(listCall).toMatchObject({
-      take: 2,
+      take: 501,
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       where: expect.objectContaining({
-        patient_id: { in: ['patient_1'] },
+        org_id: 'org_1',
       }),
       select: {
         id: true,
@@ -619,6 +620,7 @@ describe('/api/care-reports GET', () => {
         created_at: true,
       },
     });
+    expect(listCall.where).not.toHaveProperty('patient_id');
     expect(listCall.where).not.toHaveProperty('case_');
     expect(listCall.select).not.toHaveProperty('content');
     expect(listCall.select).not.toHaveProperty('pdf_url');
@@ -627,6 +629,7 @@ describe('/api/care-reports GET', () => {
     expect(patientFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
+        id: { in: ['patient_1'] },
         OR: [
           { name: { contains: '山田', mode: 'insensitive' } },
           { name_kana: { contains: '山田', mode: 'insensitive' } },
@@ -636,8 +639,8 @@ describe('/api/care-reports GET', () => {
         id: true,
         name: true,
       },
-      orderBy: [{ name_kana: 'asc' }, { name: 'asc' }, { id: 'asc' }],
-      take: 2,
+      orderBy: [{ id: 'asc' }],
+      take: 500,
     });
     expect(deliveryRecordCountMock).not.toHaveBeenCalled();
     expect(deliveryRecordGroupByMock).not.toHaveBeenCalled();
@@ -652,6 +655,346 @@ describe('/api/care-reports GET', () => {
     expect(body.data[0]).not.toHaveProperty('delivery_records');
     expect(body.data[0]).not.toHaveProperty('latest_delivery_recipient_name');
     expect(body.data[0]).not.toHaveProperty('billing');
+  });
+
+  it('finds a report for a matching patient beyond the palette output candidate limit', async () => {
+    const matchingPatients = Array.from({ length: 10 }, (_, index) => ({
+      id: `patient_${index + 1}`,
+      name: `山田 ${index + 1}`,
+      name_kana: `ヤマダ ${index + 1}`,
+    }));
+    const targetReport = {
+      id: 'report_patient_10',
+      patient_id: 'patient_10',
+      report_type: 'physician_report',
+      status: 'draft',
+      created_at: new Date('2026-03-28T09:00:00.000Z'),
+    };
+
+    patientFindManyMock.mockImplementation((args: Prisma.PatientFindManyArgs) => {
+      const idFilter = args.where?.id;
+      const requestedIds =
+        idFilter && typeof idFilter === 'object' && Array.isArray(idFilter.in)
+          ? new Set(idFilter.in)
+          : null;
+      const rows = requestedIds
+        ? matchingPatients.filter((patient) => requestedIds.has(patient.id))
+        : matchingPatients;
+      return Promise.resolve(rows.slice(0, args.take ?? rows.length));
+    });
+    careReportFindManyMock.mockImplementation((args: Prisma.CareReportFindManyArgs) => {
+      const patientFilter = args.where?.patient_id;
+      const requestedIds =
+        patientFilter && typeof patientFilter === 'object' && Array.isArray(patientFilter.in)
+          ? patientFilter.in
+          : null;
+      return Promise.resolve(
+        requestedIds && !requestedIds.includes(targetReport.patient_id) ? [] : [targetReport],
+      );
+    });
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?view=palette&q=山田&limit=8'),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: 'report_patient_10',
+          patient_id: 'patient_10',
+          patient: { name: '山田 10' },
+        },
+      ],
+      meta: {
+        has_more: false,
+        next_cursor: null,
+      },
+    });
+    const reportQuery = careReportFindManyMock.mock.calls[0]?.[0];
+    expect(reportQuery.where).not.toHaveProperty('patient_id');
+    expect(reportQuery).toMatchObject({
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: 501,
+    });
+    expect(patientFindManyMock).toHaveBeenCalledTimes(1);
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          id: { in: ['patient_10'] },
+        }),
+        take: 500,
+      }),
+    );
+  });
+
+  it.each([
+    [8, false, null],
+    [9, true, 'report_02'],
+  ])(
+    'keeps equal-timestamp id order and exact has_more for %i matching palette reports',
+    async (reportCount, expectedHasMore, expectedCursor) => {
+      const createdAt = new Date('2026-03-28T09:00:00.000Z');
+      const reports = Array.from({ length: reportCount }, (_, index) => {
+        const descendingId = reportCount - index;
+        return {
+          id: `report_${String(descendingId).padStart(2, '0')}`,
+          patient_id: 'patient_1',
+          report_type: 'physician_report',
+          status: 'draft',
+          created_at: createdAt,
+        };
+      });
+      careReportFindManyMock.mockResolvedValueOnce(reports);
+      patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_1', name: '山田 太郎' }]);
+
+      const response = await getCareReports(
+        createAuthenticatedRequest('http://localhost/api/care-reports?view=palette&q=山田&limit=8'),
+      );
+
+      expect(response.status).toBe(200);
+      const payload = await response.json();
+      expect(payload.data).toHaveLength(8);
+      expect(payload.data.map((row: { id: string }) => row.id)).toEqual(
+        reports.slice(0, 8).map((report) => report.id),
+      );
+      expect(payload.meta).toEqual({
+        has_more: expectedHasMore,
+        next_cursor: expectedCursor,
+      });
+      expect(careReportFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+          take: 501,
+        }),
+      );
+    },
+  );
+
+  it('returns exact empty when the bounded palette report source is exhausted', async () => {
+    careReportFindManyMock.mockResolvedValueOnce([]);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?view=palette&q=山田&limit=8'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      data: [],
+      meta: {
+        has_more: false,
+        next_cursor: null,
+      },
+    });
+  });
+
+  it('returns exact empty before report reads when explicit palette patient does not match q', async () => {
+    patientFindManyMock.mockResolvedValueOnce([]);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest(
+        'http://localhost/api/care-reports?view=palette&patient_id=patient_1&q=別患者&limit=8',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: 'patient_1',
+        OR: [
+          { name: { contains: '別患者', mode: 'insensitive' } },
+          { name_kana: { contains: '別患者', mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      take: 1,
+    });
+    await expect(response.json()).resolves.toEqual({
+      data: [],
+      meta: {
+        has_more: false,
+        next_cursor: null,
+      },
+    });
+  });
+
+  it('uses direct limit+1 report lookup after an explicit palette patient matches q', async () => {
+    patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_1', name: '山田 太郎' }]);
+    careReportFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'report_1',
+        patient_id: 'patient_1',
+        report_type: 'physician_report',
+        status: 'draft',
+        created_at: new Date('2026-03-28T09:00:00.000Z'),
+      },
+    ]);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest(
+        'http://localhost/api/care-reports?view=palette&patient_id=patient_1&q=山田&limit=8',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(patientFindManyMock).toHaveBeenCalledTimes(1);
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+        }),
+        take: 9,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: 'report_1',
+          patient: { name: '山田 太郎' },
+        },
+      ],
+      meta: { has_more: false, next_cursor: null },
+    });
+  });
+
+  it('retains assignment scope in the authoritative palette report scan', async () => {
+    careCaseFindManyMock.mockResolvedValueOnce([
+      { id: 'case_assigned', patient_id: 'patient_assigned' },
+    ]);
+    careReportFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'report_assigned',
+        patient_id: 'patient_assigned',
+        report_type: 'physician_report',
+        status: 'draft',
+        created_at: new Date('2026-03-28T09:00:00.000Z'),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_assigned', name: '山田 担当' }]);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest(
+        'http://localhost/api/care-reports?view=palette&q=山田&limit=8',
+        undefined,
+        { orgId: 'org_1', userId: 'scoped_user', role: 'external_viewer' },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          AND: [
+            {
+              OR: [
+                { case_id: { in: ['case_assigned'] } },
+                { case_id: null, patient_id: { in: ['patient_assigned'] } },
+              ],
+            },
+          ],
+        }),
+        take: 501,
+      }),
+    );
+  });
+
+  it('fails closed when the bounded palette scan cannot prove completeness', async () => {
+    const query = '対象患者氏名';
+    const reports = Array.from({ length: 501 }, (_, index) => ({
+      id: `report_${String(501 - index).padStart(3, '0')}`,
+      patient_id: `patient_${index + 1}`,
+      report_type: 'physician_report',
+      status: 'draft',
+      created_at: new Date('2026-03-28T09:00:00.000Z'),
+    }));
+    careReportFindManyMock.mockResolvedValueOnce(reports);
+    patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_1', name: '対象患者氏名 一郎' }]);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest(
+        `http://localhost/api/care-reports?view=palette&q=${encodeURIComponent(query)}&limit=8`,
+      ),
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const responseBody = await response.json();
+    expect(responseBody).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const patientQuery = patientFindManyMock.mock.calls[0]?.[0];
+    expect(patientQuery.where.id.in).toHaveLength(500);
+    expect(patientQuery.where.id.in).not.toContain('patient_501');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'care_reports_get_unhandled_error',
+        route: '/api/care-reports',
+        method: 'GET',
+        status: 500,
+      }),
+      expect.objectContaining({
+        message: 'Care report palette bounded scan limit exceeded',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain(query);
+    expect(JSON.stringify(responseBody)).not.toContain(query);
+  });
+
+  it('keeps no-query palette reads on the direct limit+1 path', async () => {
+    careReportFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'report_1',
+        patient_id: 'patient_1',
+        report_type: 'physician_report',
+        status: 'draft',
+        created_at: new Date('2026-03-28T09:00:00.000Z'),
+      },
+      {
+        id: 'report_2',
+        patient_id: 'patient_2',
+        report_type: 'care_manager_report',
+        status: 'draft',
+        created_at: new Date('2026-03-27T09:00:00.000Z'),
+      },
+    ]);
+    patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_1', name: '山田 太郎' }]);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?view=palette&limit=1'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+      }),
+    );
+    expect(patientFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { in: ['patient_1'] },
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: [{ id: 'asc' }],
+      take: 1,
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'report_1' }],
+      meta: { has_more: true, next_cursor: 'report_1' },
+    });
   });
 
   it.each([
