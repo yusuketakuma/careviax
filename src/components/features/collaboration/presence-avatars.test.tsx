@@ -22,12 +22,16 @@ vi.mock('@/lib/hooks/use-presence-heartbeat', () => ({
   usePresenceHeartbeat: usePresenceHeartbeatMock,
 }));
 
-vi.mock('@tanstack/react-query', () => ({
-  useQuery: useQueryMock,
-  useQueryClient: () => ({
-    invalidateQueries: invalidateQueriesMock,
-  }),
-}));
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return {
+    ...actual,
+    useQuery: useQueryMock,
+    useQueryClient: () => ({
+      invalidateQueries: invalidateQueriesMock,
+    }),
+  };
+});
 
 import { PresenceAvatars } from './presence-avatars';
 

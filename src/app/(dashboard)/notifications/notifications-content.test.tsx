@@ -31,11 +31,15 @@ vi.mock('@/lib/api/org-headers', () => ({
   buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
 
-vi.mock('@tanstack/react-query', () => ({
-  useQuery: useQueryMock,
-  useMutation: useMutationMock,
-  useQueryClient: useQueryClientMock,
-}));
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return {
+    ...actual,
+    useQuery: useQueryMock,
+    useMutation: useMutationMock,
+    useQueryClient: useQueryClientMock,
+  };
+});
 
 vi.mock('next/navigation', () => ({
   useRouter: useRouterMock,

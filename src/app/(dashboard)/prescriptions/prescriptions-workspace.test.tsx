@@ -36,10 +36,14 @@ vi.mock('@/lib/utils/client-log', () => ({
   clientLog: { warn: clientLogWarnMock },
 }));
 
-vi.mock('@tanstack/react-query', () => ({
-  useInfiniteQuery: useInfiniteQueryMock,
-  useQueryClient: useQueryClientMock,
-}));
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return {
+    ...actual,
+    useInfiniteQuery: useInfiniteQueryMock,
+    useQueryClient: useQueryClientMock,
+  };
+});
 
 vi.mock('@/components/features/keyboard/use-keyboard-shortcuts', () => ({
   useKeyboardShortcuts: vi.fn(),

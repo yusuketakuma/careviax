@@ -341,7 +341,7 @@ describe('/api/staff-workload', () => {
         expect.objectContaining({
           id: 'user_b',
           role: 'clerk',
-          assignable_work_request_types: [],
+          assignable_work_request_types: ['staff_work_request_general'],
         }),
       ]),
     );

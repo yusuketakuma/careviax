@@ -92,14 +92,14 @@ describe('/api/meta/route-catalog GET', () => {
         expect.objectContaining({
           path: '/api/patients/board',
           methods: ['GET'],
-          permission: 'canVisit',
+          permission: 'canViewDashboard',
           description: '患者ボード一覧・対応状況集計取得',
           area: 'patients',
         }),
         expect.objectContaining({
           path: '/api/patients/:id/overview',
           methods: ['GET'],
-          permission: 'canVisit',
+          permission: 'canViewDashboard',
           description: '患者詳細ワークスペース概要取得',
           area: 'patients',
         }),
@@ -237,19 +237,19 @@ describe('/api/meta/route-catalog GET', () => {
         expect.objectContaining({
           path: '/api/tasks',
           methods: ['GET', 'POST'],
-          permission: 'canVisit',
+          permission: 'canManageOperationalTasks',
           area: 'dashboard',
         }),
         expect.objectContaining({
           path: '/api/tasks/:id',
           methods: ['PATCH'],
-          permission: 'canVisit',
+          permission: 'canManageOperationalTasks',
           area: 'dashboard',
         }),
         expect.objectContaining({
           path: '/api/tasks/bulk',
           methods: ['POST'],
-          permission: 'canVisit',
+          permission: 'canManageOperationalTasks',
           area: 'dashboard',
         }),
         expect.objectContaining({

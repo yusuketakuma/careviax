@@ -47,13 +47,17 @@ vi.mock('@/lib/stores/auth-store', () => ({
   useAuthStore: useAuthStoreMock,
 }));
 
-vi.mock('@tanstack/react-query', () => ({
-  useMutation: useMutationMock,
-  useQuery: useQueryMock,
-  useQueryClient: () => ({
-    invalidateQueries: invalidateQueriesMock,
-  }),
-}));
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return {
+    ...actual,
+    useMutation: useMutationMock,
+    useQuery: useQueryMock,
+    useQueryClient: () => ({
+      invalidateQueries: invalidateQueriesMock,
+    }),
+  };
+});
 
 vi.mock('@/components/features/comments/comment-thread', () => ({
   CommentThread: ({ entityType, entityId }: { entityType: string; entityId: string }) => (
