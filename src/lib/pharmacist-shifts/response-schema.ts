@@ -6,7 +6,7 @@ const nullableTime = isoDateTime.nullable();
 const personSchema = z.object({ id: nonEmptyText(200), name: nonEmptyText(500) }).strip();
 const siteSchema = personSchema;
 
-const pharmacistShiftSchema = z
+export const pharmacistShiftSchema = z
   .object({
     id: nonEmptyText(200),
     site_id: nonEmptyText(200),
@@ -48,51 +48,69 @@ const pharmacistShiftSchema = z
     }
   });
 
+function addCollectionIssues(
+  data: PharmacistShift[],
+  expectedMonth: string,
+  addIssue: (index: number, path: string, message: string) => void,
+) {
+  const ids = new Set<string>();
+  const userDates = new Set<string>();
+  let previousShift: PharmacistShift | null = null;
+  for (const [index, shift] of data.entries()) {
+    if (!shift.date.startsWith(expectedMonth)) {
+      addIssue(index, 'date', 'Shift belongs to another month');
+    }
+    if (ids.has(shift.id)) addIssue(index, 'id', 'Duplicate shift identity');
+    ids.add(shift.id);
+    const userDate = `${shift.user_id}:${shift.date.slice(0, 10)}`;
+    if (userDates.has(userDate)) addIssue(index, 'date', 'Duplicate user shift date');
+    userDates.add(userDate);
+    const orderIsInvalid =
+      previousShift !== null &&
+      (shift.date < previousShift.date ||
+        (shift.date === previousShift.date &&
+          ((previousShift.available_from === null && shift.available_from !== null) ||
+            (previousShift.available_from !== null &&
+              shift.available_from !== null &&
+              shift.available_from < previousShift.available_from) ||
+            (shift.available_from === previousShift.available_from &&
+              shift.id < previousShift.id))));
+    if (orderIsInvalid) addIssue(index, 'date', 'Shifts are not ordered by date and start time');
+    previousShift = shift;
+  }
+}
+
+export function buildPharmacistShiftCollectionSchema(expectedMonth: string) {
+  return z.array(pharmacistShiftSchema).superRefine((data, context) => {
+    addCollectionIssues(data, expectedMonth, (index, path, message) => {
+      context.addIssue({ code: 'custom', path: [index, path], message });
+    });
+  });
+}
+
 export function buildPharmacistShiftsResponseSchema(expectedMonth: string, expectedLimit = 400) {
   return z
     .object({
       data: z.array(pharmacistShiftSchema).max(expectedLimit),
-      meta: z.object({ limit: z.literal(expectedLimit), has_more: z.boolean() }).strict(),
+      meta: z
+        .object({
+          limit: z.literal(expectedLimit),
+          has_more: z.boolean(),
+          next_cursor: z.string().trim().min(1).max(2048).nullable(),
+        })
+        .strict(),
     })
     .strict()
-    .superRefine(({ data }, context) => {
-      const ids = new Set<string>();
-      const userDates = new Set<string>();
-      let previousOrderKey: string | null = null;
-      for (const [index, shift] of data.entries()) {
-        if (!shift.date.startsWith(expectedMonth)) {
-          context.addIssue({
-            code: 'custom',
-            path: ['data', index, 'date'],
-            message: 'Shift belongs to another month',
-          });
-        }
-        if (ids.has(shift.id)) {
-          context.addIssue({
-            code: 'custom',
-            path: ['data', index, 'id'],
-            message: 'Duplicate shift identity',
-          });
-        }
-        ids.add(shift.id);
-        const userDate = `${shift.user_id}:${shift.date.slice(0, 10)}`;
-        if (userDates.has(userDate)) {
-          context.addIssue({
-            code: 'custom',
-            path: ['data', index, 'date'],
-            message: 'Duplicate user shift date',
-          });
-        }
-        userDates.add(userDate);
-        const orderKey = `${shift.date}:${shift.available_from ?? ''}`;
-        if (previousOrderKey !== null && orderKey < previousOrderKey) {
-          context.addIssue({
-            code: 'custom',
-            path: ['data', index, 'date'],
-            message: 'Shifts are not ordered by date and start time',
-          });
-        }
-        previousOrderKey = orderKey;
+    .superRefine(({ data, meta }, context) => {
+      addCollectionIssues(data, expectedMonth, (index, path, message) => {
+        context.addIssue({ code: 'custom', path: ['data', index, path], message });
+      });
+      if (meta.has_more !== (meta.next_cursor !== null)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['meta', 'next_cursor'],
+          message: 'Shift cursor must match has_more',
+        });
       }
     });
 }

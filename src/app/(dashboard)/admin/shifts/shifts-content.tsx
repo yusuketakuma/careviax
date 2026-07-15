@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   addMonths,
@@ -57,9 +57,11 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { adminUsersResponseSchema } from '@/lib/pharmacists/admin-users-response-schema';
 import {
+  buildPharmacistShiftCollectionSchema,
   buildPharmacistShiftsResponseSchema,
   pharmacistShiftApplyResponseSchema,
   pharmacistShiftTemplatesResponseSchema,
+  type PharmacistShift,
 } from '@/lib/pharmacist-shifts/response-schema';
 import { pharmacySiteOptionsResponseSchema } from '@/lib/pharmacy-sites/response-schema';
 import {
@@ -97,6 +99,82 @@ type TemplateFormValues = {
   note: string;
 };
 
+type PharmacistShiftPage = {
+  data: PharmacistShift[];
+  meta: { limit: 400; has_more: boolean; next_cursor: string | null };
+};
+
+const SHIFT_LIST_ERROR = 'シフトの取得に失敗しました';
+const PREVIOUS_MONTH_SHIFT_ERROR = '前月シフトの取得に失敗しました';
+const SHIFT_ACTIONS_UNAVAILABLE_DESCRIPTION_ID = 'shift-actions-unavailable-description';
+
+class ScopedPreviousMonthError extends Error {
+  constructor(
+    readonly generation: number,
+    readonly epoch: number,
+  ) {
+    super(PREVIOUS_MONTH_SHIFT_ERROR);
+  }
+}
+
+function hasRepeatedShiftCursor(
+  pages: readonly PharmacistShiftPage[],
+  pageParams: readonly unknown[],
+) {
+  const lastPage = pages.at(-1);
+  if (!lastPage?.meta.has_more || !lastPage.meta.next_cursor) return false;
+  const consumed = new Set(
+    pageParams.flatMap((value) => (typeof value === 'string' && value ? [value] : [])),
+  );
+  const offered = new Set(
+    pages.slice(0, -1).flatMap((page) => (page.meta.next_cursor ? [page.meta.next_cursor] : [])),
+  );
+  return consumed.has(lastPage.meta.next_cursor) || offered.has(lastPage.meta.next_cursor);
+}
+
+function getNextShiftCursor(
+  lastPage: PharmacistShiftPage,
+  allPages: PharmacistShiftPage[],
+  _lastPageParam: string | null,
+  allPageParams: Array<string | null>,
+) {
+  if (!lastPage.meta.has_more) return undefined;
+  if (!lastPage.meta.next_cursor) throw new Error(SHIFT_LIST_ERROR);
+  if (hasRepeatedShiftCursor(allPages, allPageParams)) return undefined;
+  return lastPage.meta.next_cursor;
+}
+
+async function fetchCompletePharmacistShiftMonth(orgId: string, month: string) {
+  try {
+    const shifts: PharmacistShift[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | null = null;
+    for (let page = 0; page < 20; page += 1) {
+      const params = new URLSearchParams({ month: `${month}-01`, limit: '400' });
+      if (cursor) params.set('cursor', cursor);
+      const response = await fetch(`/api/pharmacist-shifts?${params}`, {
+        headers: buildOrgHeaders(orgId),
+      });
+      const payload = await readApiJson(response, {
+        fallbackMessage: PREVIOUS_MONTH_SHIFT_ERROR,
+        schema: buildPharmacistShiftsResponseSchema(month),
+      });
+      shifts.push(...payload.data);
+      if (!payload.meta.has_more || !payload.meta.next_cursor) {
+        const validated = buildPharmacistShiftCollectionSchema(month).safeParse(shifts);
+        if (!validated.success) throw new Error(PREVIOUS_MONTH_SHIFT_ERROR);
+        return validated.data;
+      }
+      cursor = payload.meta.next_cursor;
+      if (seenCursors.has(cursor)) throw new Error(PREVIOUS_MONTH_SHIFT_ERROR);
+      seenCursors.add(cursor);
+    }
+  } catch {
+    throw new Error(PREVIOUS_MONTH_SHIFT_ERROR);
+  }
+  throw new Error(PREVIOUS_MONTH_SHIFT_ERROR);
+}
+
 function createTemplateFormValues(userId = '', siteId = ''): TemplateFormValues {
   return {
     user_id: userId,
@@ -117,6 +195,8 @@ export function ShiftsContent() {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [editMode, setEditMode] = useState(false);
+  const [editGeneration, setEditGeneration] = useState<number | null>(null);
+  const [editEpoch, setEditEpoch] = useState<number | null>(null);
   const [draftShifts, setDraftShifts] = useState<ShiftCell[]>([]);
   const [selectedShiftKey, setSelectedShiftKey] = useState<string | null>(null);
   const [pharmacistDialogOpen, setPharmacistDialogOpen] = useState(false);
@@ -180,10 +260,38 @@ export function ShiftsContent() {
   });
   const [deleteTemplateTarget, setDeleteTemplateTarget] = useState<ShiftTemplate | null>(null);
   const [deleteHolidayTarget, setDeleteHolidayTarget] = useState<BusinessHoliday | null>(null);
+  const shiftContinuationRef = useRef<{ token: string } | null>(null);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const monthLabel = format(currentMonth, 'yyyy年M月', { locale: ja });
+  const currentMonthKey = format(currentMonth, 'yyyy-MM');
+  const currentShiftScope = `${orgId}:${currentMonthKey}`;
+  const [shiftScopeGeneration, setShiftScopeGeneration] = useState({
+    scope: currentShiftScope,
+    generation: 0,
+  });
+  const scopeChanged = shiftScopeGeneration.scope !== currentShiftScope;
+  const currentShiftGeneration = scopeChanged
+    ? shiftScopeGeneration.generation + 1
+    : shiftScopeGeneration.generation;
+  if (scopeChanged) {
+    setShiftScopeGeneration({
+      scope: currentShiftScope,
+      generation: currentShiftGeneration,
+    });
+    setEditMode(false);
+    setEditGeneration(null);
+    setEditEpoch(null);
+    setDraftShifts([]);
+    setSelectedShiftKey(null);
+  }
+  const latestShiftStateRef = useRef({
+    scope: currentShiftScope,
+    generation: currentShiftGeneration,
+    epoch: 0,
+    complete: false,
+  });
 
   const {
     data: sitesData,
@@ -222,23 +330,21 @@ export function ShiftsContent() {
     enabled: !!orgId,
   });
 
-  const {
-    data: shiftsData,
-    isLoading: shiftsLoading,
-    isError: shiftsError,
-    refetch: refetchShifts,
-  } = useQuery({
-    queryKey: ['pharmacist-shifts', orgId, format(currentMonth, 'yyyy-MM')],
-    queryFn: async () => {
-      const month = format(currentMonth, 'yyyy-MM-01');
-      const res = await fetch(`/api/pharmacist-shifts?month=${month}&limit=400`, {
+  const shiftsQuery = useInfiniteQuery({
+    queryKey: ['pharmacist-shifts', orgId, currentMonthKey],
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({ month: `${currentMonthKey}-01`, limit: '400' });
+      if (pageParam) params.set('cursor', pageParam);
+      const res = await fetch(`/api/pharmacist-shifts?${params}`, {
         headers: buildOrgHeaders(orgId),
       });
       return readApiJson(res, {
-        fallbackMessage: 'シフトの取得に失敗しました',
-        schema: buildPharmacistShiftsResponseSchema(format(currentMonth, 'yyyy-MM')),
+        fallbackMessage: SHIFT_LIST_ERROR,
+        schema: buildPharmacistShiftsResponseSchema(currentMonthKey),
       });
     },
+    getNextPageParam: getNextShiftCursor,
     enabled: !!orgId,
   });
 
@@ -300,19 +406,60 @@ export function ShiftsContent() {
   );
   const sites = useMemo(() => sitesData?.data ?? [], [sitesData]);
   const siteById = useMemo(() => new Map(sites.map((site) => [site.id, site])), [sites]);
-  const shifts = useMemo(() => shiftsData?.data ?? [], [shiftsData]);
+  const rawShifts = shiftsQuery.data?.pages.flatMap((page) => page.data) ?? [];
+  const shiftCollectionResult =
+    buildPharmacistShiftCollectionSchema(currentMonthKey).safeParse(rawShifts);
+  const seenShiftIds = new Set<string>();
+  const shifts = rawShifts.filter((shift) => {
+    if (seenShiftIds.has(shift.id)) return false;
+    seenShiftIds.add(shift.id);
+    return true;
+  });
+  const shiftCursorCycle = hasRepeatedShiftCursor(
+    shiftsQuery.data?.pages ?? [],
+    shiftsQuery.data?.pageParams ?? [],
+  );
+  const shiftInitialError = shiftsQuery.isError && shifts.length === 0;
+  const shiftsComplete =
+    !!shiftsQuery.data &&
+    !shiftsQuery.isError &&
+    !shiftsQuery.hasNextPage &&
+    !shiftsQuery.isFetchNextPageError &&
+    !shiftCursorCycle &&
+    shiftCollectionResult.success;
+  const currentShiftEpoch = shiftsQuery.dataUpdatedAt;
+  const editIsCurrent =
+    editGeneration === currentShiftGeneration && editEpoch === currentShiftEpoch;
+  if (editMode && (!editIsCurrent || !shiftsComplete)) {
+    setEditMode(false);
+    setEditGeneration(null);
+    setEditEpoch(null);
+    setDraftShifts([]);
+    setSelectedShiftKey(null);
+  }
+  useLayoutEffect(() => {
+    latestShiftStateRef.current = {
+      scope: currentShiftScope,
+      generation: currentShiftGeneration,
+      epoch: currentShiftEpoch,
+      complete: shiftsComplete,
+    };
+  }, [currentShiftEpoch, currentShiftGeneration, currentShiftScope, shiftsComplete]);
   const holidays = useMemo(() => holidaysData?.data ?? [], [holidaysData]);
   const templates = useMemo(() => templatesData?.data ?? [], [templatesData]);
-  const baselineShifts = useMemo(
-    () =>
-      buildShiftGrid({
-        pharmacists: shiftPharmacists,
-        sitesById: siteById,
-        month: currentMonth,
-        shifts,
-      }),
-    [currentMonth, shiftPharmacists, shifts, siteById],
-  );
+  const baselineShifts = useMemo(() => {
+    const grid = buildShiftGrid({
+      pharmacists: shiftPharmacists,
+      sitesById: siteById,
+      month: currentMonth,
+      shifts,
+    });
+    if (shiftsComplete) return grid;
+    const loadedKeys = new Set(
+      shifts.map((shift) => cellKey(shift.user_id, shift.date.slice(0, 10))),
+    );
+    return grid.filter((shift) => loadedKeys.has(shift.key));
+  }, [currentMonth, shiftPharmacists, shifts, shiftsComplete, siteById]);
   const baselineShiftByKey = useMemo(
     () => new Map(baselineShifts.map((shift) => [shift.key, shift])),
     [baselineShifts],
@@ -328,7 +475,9 @@ export function ShiftsContent() {
     return map;
   }, [holidays]);
 
-  const visibleShifts = editMode ? draftShifts : baselineShifts;
+  const effectiveEditMode = editMode && editIsCurrent && shiftsComplete;
+  const shiftActionsUnavailable = shiftPharmacists.length === 0 || !shiftsComplete;
+  const visibleShifts = effectiveEditMode ? draftShifts : baselineShifts;
   const visibleShiftByKey = useMemo(
     () => new Map(visibleShifts.map((shift) => [shift.key, shift])),
     [visibleShifts],
@@ -337,7 +486,6 @@ export function ShiftsContent() {
     ? (draftShifts.find((shift) => shift.key === selectedShiftKey) ?? null)
     : null;
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
-  const currentMonthKey = format(currentMonth, 'yyyy-MM');
   const templateApplyMonth =
     templateApplyMonthState.sourceMonth === currentMonthKey
       ? templateApplyMonthState.value
@@ -461,19 +609,54 @@ export function ShiftsContent() {
   }
 
   function startEdit() {
+    if (!shiftsComplete) {
+      toast.error('月間シフトの全件確認後に編集できます');
+      return;
+    }
     setDraftShifts(baselineShifts);
+    setEditGeneration(currentShiftGeneration);
+    setEditEpoch(currentShiftEpoch);
     setSelectedShiftKey(null);
     setEditMode(true);
   }
 
   function changeMonth(nextMonth: Date) {
     setEditMode(false);
+    setEditGeneration(null);
+    setEditEpoch(null);
+    setDraftShifts([]);
     setSelectedShiftKey(null);
     setCurrentMonth(nextMonth);
   }
 
+  function requestNextShiftPage() {
+    const cursor = shiftsQuery.data?.pages.at(-1)?.meta.next_cursor;
+    if (!cursor) return;
+    const token = `${currentShiftGeneration}:${currentShiftEpoch}:${orgId}:${currentMonthKey}:${cursor}`;
+    if (shiftContinuationRef.current?.token === token) return;
+    shiftContinuationRef.current = { token };
+    const release = () => {
+      if (shiftContinuationRef.current?.token === token) shiftContinuationRef.current = null;
+    };
+    try {
+      void Promise.resolve(shiftsQuery.fetchNextPage()).then(release, release);
+    } catch {
+      release();
+    }
+  }
+
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const latestShiftState = latestShiftStateRef.current;
+      if (
+        !shiftsComplete ||
+        !editIsCurrent ||
+        !latestShiftState.complete ||
+        latestShiftState.generation !== currentShiftGeneration ||
+        latestShiftState.epoch !== currentShiftEpoch
+      ) {
+        throw new Error('月間シフトの全件確認後に保存できます');
+      }
       const changed = draftShifts.filter((shift) => {
         const baseline = baselineShiftByKey.get(shift.key);
         if (!baseline) return true;
@@ -516,6 +699,8 @@ export function ShiftsContent() {
     },
     onSuccess: async (count) => {
       setEditMode(false);
+      setEditGeneration(null);
+      setEditEpoch(null);
       setSelectedShiftKey(null);
       if (count > 0) toast.success(`${count}件のシフトを保存しました`);
       await queryClient.invalidateQueries({ queryKey: ['pharmacist-shifts', orgId] });
@@ -718,19 +903,37 @@ export function ShiftsContent() {
 
   const copyPreviousMonthMutation = useMutation({
     mutationFn: async () => {
+      const latestShiftState = latestShiftStateRef.current;
+      if (
+        !shiftsComplete ||
+        !latestShiftState.complete ||
+        latestShiftState.generation !== currentShiftGeneration ||
+        latestShiftState.epoch !== currentShiftEpoch
+      ) {
+        throw new Error('月間シフトの全件確認後に前月をコピーできます');
+      }
       const sourceMonth = subMonths(currentMonth, 1);
-      const res = await fetch(
-        `/api/pharmacist-shifts?month=${format(sourceMonth, 'yyyy-MM-01')}&limit=400`,
-        {
-          headers: buildOrgHeaders(orgId),
-        },
-      );
-      return readApiJson(res, {
-        fallbackMessage: '前月シフトの取得に失敗しました',
-        schema: buildPharmacistShiftsResponseSchema(format(sourceMonth, 'yyyy-MM')),
-      });
+      const sourceMonthKey = format(sourceMonth, 'yyyy-MM');
+      try {
+        return {
+          data: await fetchCompletePharmacistShiftMonth(orgId, sourceMonthKey),
+          targetScope: currentShiftScope,
+          targetGeneration: currentShiftGeneration,
+          targetEpoch: currentShiftEpoch,
+        };
+      } catch {
+        throw new ScopedPreviousMonthError(currentShiftGeneration, currentShiftEpoch);
+      }
     },
     onSuccess: (payload) => {
+      if (
+        latestShiftStateRef.current.scope !== payload.targetScope ||
+        latestShiftStateRef.current.generation !== payload.targetGeneration ||
+        latestShiftStateRef.current.epoch !== payload.targetEpoch ||
+        !latestShiftStateRef.current.complete
+      ) {
+        return;
+      }
       const sourceShiftByUserAndDay = new Map(
         payload.data.map((shift) => [`${shift.user_id}:${parseISO(shift.date).getDate()}`, shift]),
       );
@@ -753,11 +956,20 @@ export function ShiftsContent() {
       });
 
       setDraftShifts(copied);
+      setEditGeneration(payload.targetGeneration);
+      setEditEpoch(payload.targetEpoch);
       setSelectedShiftKey(null);
       setEditMode(true);
       toast.success('前月の同日シフトを下書きへコピーしました');
     },
     onError: (error) => {
+      if (
+        error instanceof ScopedPreviousMonthError &&
+        (error.generation !== latestShiftStateRef.current.generation ||
+          error.epoch !== latestShiftStateRef.current.epoch)
+      ) {
+        return;
+      }
       toast.error(messageFromError(error, '前月コピーに失敗しました'));
     },
   });
@@ -888,18 +1100,25 @@ export function ShiftsContent() {
             </CardDescription>
           </div>
           <div className="flex flex-col gap-3 lg:items-end">
+            {shiftActionsUnavailable ? (
+              <p id={SHIFT_ACTIONS_UNAVAILABLE_DESCRIPTION_ID} className="sr-only">
+                {!shiftsComplete
+                  ? '月間シフトの全件確認が完了すると、前月コピーと編集を実行できます。'
+                  : 'シフト対象メンバーを登録すると、前月コピーと編集を実行できます。'}
+              </p>
+            ) : null}
             <div className="flex flex-wrap gap-2 lg:justify-end">
               <Button className={controlClass} variant="outline" onClick={openPharmacistDialog}>
                 <UserPlus className="mr-1.5 size-4" />
                 メンバー招待
               </Button>
-              {editMode ? (
+              {effectiveEditMode ? (
                 <>
                   <Button
                     className={controlClass}
                     variant="outline"
                     onClick={() => copyPreviousMonthMutation.mutate()}
-                    disabled={copyPreviousMonthMutation.isPending}
+                    disabled={!shiftsComplete || copyPreviousMonthMutation.isPending}
                   >
                     {copyPreviousMonthMutation.isPending ? '読込中...' : '前月をコピー'}
                   </Button>
@@ -908,6 +1127,9 @@ export function ShiftsContent() {
                     variant="outline"
                     onClick={() => {
                       setEditMode(false);
+                      setEditGeneration(null);
+                      setEditEpoch(null);
+                      setDraftShifts([]);
                       setSelectedShiftKey(null);
                     }}
                     disabled={saveMutation.isPending}
@@ -928,14 +1150,20 @@ export function ShiftsContent() {
                     className={controlClass}
                     variant="outline"
                     onClick={() => copyPreviousMonthMutation.mutate()}
-                    disabled={shiftPharmacists.length === 0 || copyPreviousMonthMutation.isPending}
+                    aria-describedby={
+                      shiftActionsUnavailable ? SHIFT_ACTIONS_UNAVAILABLE_DESCRIPTION_ID : undefined
+                    }
+                    disabled={shiftActionsUnavailable || copyPreviousMonthMutation.isPending}
                   >
                     {copyPreviousMonthMutation.isPending ? '読込中...' : '前月をコピー'}
                   </Button>
                   <Button
                     className={controlClass}
                     onClick={startEdit}
-                    disabled={shiftPharmacists.length === 0}
+                    aria-describedby={
+                      shiftActionsUnavailable ? SHIFT_ACTIONS_UNAVAILABLE_DESCRIPTION_ID : undefined
+                    }
+                    disabled={shiftActionsUnavailable}
                   >
                     シフト編集
                   </Button>
@@ -966,7 +1194,7 @@ export function ShiftsContent() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {pharmacistsError || shiftsError ? (
+          {pharmacistsError || shiftInitialError ? (
             // 取得失敗を空表示に潰さず、再試行導線つきの ErrorState を出す。
             <ErrorState
               variant="server"
@@ -975,11 +1203,11 @@ export function ShiftsContent() {
               description="データの読み込みに失敗しました。時間をおいて再読み込みしてください。"
               onRetry={() => {
                 void refetchPharmacists();
-                void refetchShifts();
+                void shiftsQuery.refetch();
               }}
               retryLabel="再読み込み"
             />
-          ) : pharmacistsLoading || shiftsLoading ? (
+          ) : pharmacistsLoading || shiftsQuery.isLoading ? (
             <div role="status" aria-label="シフトを読み込み中" aria-live="polite">
               <SkeletonRows rows={4} cols={5} status={false} />
             </div>
@@ -989,6 +1217,49 @@ export function ShiftsContent() {
             </div>
           ) : (
             <>
+              <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+                {shifts.length}件のシフトを読み込み済みです。
+                {!shiftsComplete
+                  ? '未読込または要確認のデータがあります。'
+                  : '月間データは確認済みです。'}
+              </p>
+              {shiftsQuery.isFetchNextPageError ? (
+                <ErrorState
+                  variant="server"
+                  size="inline"
+                  title="続きのシフトを取得できませんでした"
+                  description="読み込み済みのシフトは保持しています。通信状態を確認して再試行してください。"
+                  onRetry={requestNextShiftPage}
+                  retryLabel="続きを再試行"
+                />
+              ) : shiftsQuery.isError ? (
+                <ErrorState
+                  variant="server"
+                  size="inline"
+                  title="月間シフトを再確認できませんでした"
+                  description="読み込み済みのシフトは保持しています。再読み込みが完了するまで編集や保存はできません。"
+                  onRetry={() => void shiftsQuery.refetch()}
+                  retryLabel="再読み込み"
+                />
+              ) : !shiftCollectionResult.success ? (
+                <ErrorState
+                  variant="server"
+                  size="inline"
+                  title="シフトの整合性を確認できませんでした"
+                  description="読み込んだ月間データに重複または順序の不整合があります。再読み込みしてください。"
+                  onRetry={() => void shiftsQuery.refetch()}
+                  retryLabel="再読み込み"
+                />
+              ) : shiftCursorCycle ? (
+                <ErrorState
+                  variant="server"
+                  size="inline"
+                  title="続きの読み込み位置が重複しました"
+                  description="読み込み済みのシフトは保持しています。月間データを再読み込みしてください。"
+                  onRetry={() => void shiftsQuery.refetch()}
+                  retryLabel="再読み込み"
+                />
+              ) : null}
               <div className="overflow-x-auto">
                 <table className="min-w-full border-collapse text-xs">
                   <thead>
@@ -1037,7 +1308,16 @@ export function ShiftsContent() {
                         {days.map((day) => {
                           const date = format(day, 'yyyy-MM-dd');
                           const shift = visibleShiftByKey.get(cellKey(pharmacist.id, date));
-                          if (!shift) return null;
+                          if (!shift) {
+                            return (
+                              <td
+                                key={`${pharmacist.id}:${date}`}
+                                className="px-1 py-2 text-center"
+                              >
+                                <span className="text-xs text-muted-foreground">未確認</span>
+                              </td>
+                            );
+                          }
 
                           const matchingHolidays = (holidaysByDate.get(date) ?? []).filter(
                             (holiday) => holidayAppliesToSite(holiday, shift.site_id),
@@ -1066,13 +1346,13 @@ export function ShiftsContent() {
                             <td
                               key={shift.key}
                               className={[
-                                editMode ? 'p-0' : 'px-1.5 py-2',
+                                effectiveEditMode ? 'p-0' : 'px-1.5 py-2',
                                 'text-center',
-                                editMode ? 'cursor-pointer hover:bg-muted/50' : '',
+                                effectiveEditMode ? 'cursor-pointer hover:bg-muted/50' : '',
                                 isSelected ? 'ring-2 ring-inset ring-primary' : '',
                               ].join(' ')}
                             >
-                              {editMode ? (
+                              {effectiveEditMode ? (
                                 <button
                                   type="button"
                                   className="flex min-h-[44px] w-full items-center justify-center px-1.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -1094,7 +1374,23 @@ export function ShiftsContent() {
                 </table>
               </div>
 
-              {editMode && selectedShift && (
+              {shiftsQuery.hasNextPage &&
+              !shiftCursorCycle &&
+              !shiftsQuery.isError &&
+              !shiftsQuery.isFetchNextPageError &&
+              shiftCollectionResult.success ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11"
+                  onClick={requestNextShiftPage}
+                  disabled={shiftsQuery.isFetchingNextPage}
+                >
+                  {shiftsQuery.isFetchingNextPage ? '追加読込中…' : 'さらに読み込む'}
+                </Button>
+              ) : null}
+
+              {effectiveEditMode && selectedShift && (
                 <Card className="border-dashed">
                   <CardHeader>
                     <CardTitle className="text-base">
@@ -1228,10 +1524,10 @@ export function ShiftsContent() {
           <CardContent>
             <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">編集状態</p>
             <p className="mt-2 text-2xl font-semibold text-foreground">
-              {editMode ? '編集中' : '参照'}
+              {effectiveEditMode ? '編集中' : '参照'}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {editMode
+              {effectiveEditMode
                 ? 'セル選択で時間と店舗を更新できます'
                 : '編集を開始すると月間シフトを更新できます'}
             </p>

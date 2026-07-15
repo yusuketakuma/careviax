@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -13,11 +13,13 @@ setupDomTestEnv();
 type CapturedMutation = {
   mutationFn: (...args: unknown[]) => unknown;
   onSuccess?: (...args: unknown[]) => unknown;
+  onError?: (...args: unknown[]) => unknown;
 };
 
 type CapturedQuery = {
   queryKey: readonly unknown[];
-  queryFn?: () => Promise<unknown>;
+  queryFn?: (...args: unknown[]) => Promise<unknown>;
+  getNextPageParam?: (...args: unknown[]) => unknown;
 };
 
 const mutationMutateMock = vi.hoisted(() => vi.fn());
@@ -29,9 +31,21 @@ const fetchMock = vi.hoisted(() => vi.fn());
 const queryErrorKeys = vi.hoisted(() => new Set<string>());
 const queryLoadingKeys = vi.hoisted(() => new Set<string>());
 const refetchSpies = vi.hoisted(() => new Map<string, ReturnType<typeof vi.fn>>());
+const shiftPages = vi.hoisted(() => ({
+  data: {
+    pages: [{ data: [], meta: { limit: 400, has_more: false, next_cursor: null } }],
+    pageParams: [null] as Array<string | null>,
+  },
+}));
+const fetchNextShiftPageMock = vi.hoisted(() => vi.fn());
+const shiftNextPageError = vi.hoisted(() => ({ value: false }));
+const shiftFetchingNextPage = vi.hoisted(() => ({ value: false }));
+const shiftCachedError = vi.hoisted(() => ({ value: false }));
+const shiftDataUpdatedAt = vi.hoisted(() => ({ value: 1 }));
+const currentOrgId = vi.hoisted(() => ({ value: 'org_1' }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
-  useOrgId: () => 'org_1',
+  useOrgId: () => currentOrgId.value,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -138,6 +152,51 @@ vi.mock('@tanstack/react-query', () => ({
 
     return success({ data: [] });
   },
+  useInfiniteQuery: (options: CapturedQuery) => {
+    queryConfigs.push(options);
+    const key = String(options.queryKey[0]);
+    let refetch = refetchSpies.get(key);
+    if (!refetch) {
+      refetch = vi.fn();
+      refetchSpies.set(key, refetch);
+    }
+    if (queryLoadingKeys.has(key)) {
+      return {
+        data: undefined,
+        isLoading: true,
+        isError: false,
+        refetch,
+        fetchNextPage: fetchNextShiftPageMock,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        isFetchNextPageError: false,
+      };
+    }
+    if (queryErrorKeys.has(key) && shiftPages.data.pages.length === 0) {
+      return {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        refetch,
+        fetchNextPage: fetchNextShiftPageMock,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        isFetchNextPageError: false,
+      };
+    }
+    const lastPage = shiftPages.data.pages.at(-1);
+    return {
+      data: shiftPages.data,
+      dataUpdatedAt: shiftDataUpdatedAt.value,
+      isLoading: false,
+      isError: shiftCachedError.value || shiftNextPageError.value,
+      refetch,
+      fetchNextPage: fetchNextShiftPageMock,
+      hasNextPage: lastPage?.meta.has_more ?? false,
+      isFetchingNextPage: shiftFetchingNextPage.value,
+      isFetchNextPageError: shiftNextPageError.value,
+    };
+  },
   useQueryClient: () => ({
     invalidateQueries: vi.fn(),
   }),
@@ -192,6 +251,24 @@ async function findRejectingMutationForUrl(url: string, expectedMessage: string)
   throw new Error(`No rejecting mutation found for ${url}`);
 }
 
+function shiftItem(id: string, day: number, userId = 'user_1', monthOffset = 0) {
+  const now = new Date();
+  const targetMonth = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const month = `${targetMonth.getFullYear()}-${String(targetMonth.getMonth() + 1).padStart(2, '0')}`;
+  return {
+    id,
+    site_id: 'site_1',
+    user_id: userId,
+    date: `${month}-${String(day).padStart(2, '0')}T00:00:00.000Z`,
+    available: true,
+    available_from: '1970-01-01T09:00:00.000Z',
+    available_to: '1970-01-01T18:00:00.000Z',
+    note: null,
+    user: { id: userId, name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
+    site: { id: 'site_1', name: '本店' },
+  };
+}
+
 describe('ShiftsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -200,6 +277,16 @@ describe('ShiftsContent', () => {
     queryErrorKeys.clear();
     queryLoadingKeys.clear();
     refetchSpies.clear();
+    shiftPages.data = {
+      pages: [{ data: [], meta: { limit: 400, has_more: false, next_cursor: null } }],
+      pageParams: [null],
+    };
+    shiftNextPageError.value = false;
+    shiftFetchingNextPage.value = false;
+    shiftCachedError.value = false;
+    shiftDataUpdatedAt.value = 1;
+    currentOrgId.value = 'org_1';
+    fetchNextShiftPageMock.mockReset();
     fetchMock.mockImplementation(async () => jsonResponse({ data: { id: 'template_saved' } }));
     vi.stubGlobal('fetch', fetchMock);
   });
@@ -247,6 +334,191 @@ describe('ShiftsContent', () => {
     expect(screen.getByRole('status', { name: 'シフトを読み込み中' })).toBeTruthy();
     expect(screen.queryByText('シフトを読み込んでいます...')).toBeNull();
     expect(screen.queryByText('シフト対象メンバーが登録されていません')).toBeNull();
+  });
+
+  it('retains loaded rows, marks unknown cells, and blocks edit/copy while the month is partial', () => {
+    shiftPages.data = {
+      pages: [
+        {
+          data: [shiftItem('shift_1', 1)],
+          meta: { limit: 400, has_more: true, next_cursor: 'cursor_400' },
+        },
+      ],
+      pageParams: [null],
+    };
+    fetchNextShiftPageMock.mockReturnValueOnce(new Promise(() => {}));
+
+    render(<ShiftsContent />);
+
+    expect(screen.getByRole('status').textContent).toContain('未読込または要確認');
+    expect(screen.getAllByText('未確認').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'シフト編集' }).hasAttribute('disabled')).toBe(true);
+    const copyButton = screen.getByRole('button', { name: '前月をコピー' });
+    expect(copyButton.hasAttribute('disabled')).toBe(true);
+    expect(copyButton.getAttribute('aria-describedby')).toBe(
+      'shift-actions-unavailable-description',
+    );
+    expect(
+      screen.getByRole('button', { name: 'シフト編集' }).getAttribute('aria-describedby'),
+    ).toBe('shift-actions-unavailable-description');
+    expect(document.getElementById('shift-actions-unavailable-description')?.textContent).toContain(
+      '月間シフトの全件確認',
+    );
+    const loadMore = screen.getByRole('button', { name: 'さらに読み込む' });
+    expect(loadMore.className).toContain('min-h-11');
+    fireEvent.click(loadMore);
+    fireEvent.click(loadMore);
+    expect(fetchNextShiftPageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains loaded rows and retries the same continuation after a next-page failure', () => {
+    shiftPages.data = {
+      pages: [
+        {
+          data: [shiftItem('shift_1', 1)],
+          meta: { limit: 400, has_more: true, next_cursor: 'cursor_400' },
+        },
+      ],
+      pageParams: [null],
+    };
+    shiftNextPageError.value = true;
+
+    render(<ShiftsContent />);
+
+    expect(screen.getByText('続きのシフトを取得できませんでした')).toBeTruthy();
+    expect(screen.getAllByText('未確認').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'さらに読み込む' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '続きを再試行' }));
+    expect(fetchNextShiftPageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops a repeated continuation while retaining globally valid loaded rows', () => {
+    shiftPages.data = {
+      pages: [
+        {
+          data: [shiftItem('shift_1', 1)],
+          meta: { limit: 400, has_more: true, next_cursor: 'cursor_400' },
+        },
+        {
+          data: [shiftItem('shift_2', 2)],
+          meta: { limit: 400, has_more: true, next_cursor: 'cursor_400' },
+        },
+      ],
+      pageParams: [null, 'cursor_400'],
+    };
+
+    render(<ShiftsContent />);
+
+    expect(screen.getByText('続きの読み込み位置が重複しました')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'さらに読み込む' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'シフト編集' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('fails closed when an advancing cursor overlaps a prior page', () => {
+    shiftPages.data = {
+      pages: [
+        {
+          data: [shiftItem('shift_1', 1)],
+          meta: { limit: 400, has_more: true, next_cursor: 'cursor_400' },
+        },
+        {
+          data: [shiftItem('shift_1', 1)],
+          meta: { limit: 400, has_more: false, next_cursor: null },
+        },
+      ],
+      pageParams: [null, 'cursor_400'],
+    };
+
+    render(<ShiftsContent />);
+
+    expect(screen.getByText('シフトの整合性を確認できませんでした')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'シフト編集' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('keys continuation by monotonic scope generation across A-B-A', async () => {
+    shiftPages.data = {
+      pages: [
+        {
+          data: [shiftItem('shift_1', 1)],
+          meta: { limit: 400, has_more: true, next_cursor: 'cursor_400' },
+        },
+      ],
+      pageParams: [null],
+    };
+    let resolveOld: (() => void) | undefined;
+    const oldRequest = new Promise<void>((resolve) => {
+      resolveOld = resolve;
+    });
+    const requestB = new Promise<void>(() => {});
+    const freshRequestA = new Promise<void>(() => {});
+    fetchNextShiftPageMock
+      .mockReturnValueOnce(oldRequest)
+      .mockReturnValueOnce(requestB)
+      .mockReturnValueOnce(freshRequestA);
+    const view = render(<ShiftsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'さらに読み込む' }));
+    currentOrgId.value = 'org_2';
+    view.rerender(<ShiftsContent />);
+    fireEvent.click(screen.getByRole('button', { name: 'さらに読み込む' }));
+    expect(fetchNextShiftPageMock).toHaveBeenCalledTimes(2);
+
+    currentOrgId.value = 'org_1';
+    view.rerender(<ShiftsContent />);
+    fireEvent.click(screen.getByRole('button', { name: 'さらに読み込む' }));
+    expect(fetchNextShiftPageMock).toHaveBeenCalledTimes(3);
+
+    resolveOld?.();
+    await oldRequest;
+    await Promise.resolve();
+    fireEvent.click(screen.getByRole('button', { name: 'さらに読み込む' }));
+    expect(fetchNextShiftPageMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('releases a rejected continuation guard so the same cursor can retry', async () => {
+    shiftPages.data = {
+      pages: [
+        {
+          data: [shiftItem('shift_1', 1)],
+          meta: { limit: 400, has_more: true, next_cursor: 'cursor_400' },
+        },
+      ],
+      pageParams: [null],
+    };
+    fetchNextShiftPageMock.mockRejectedValueOnce(new Error('unsafe provider detail'));
+    render(<ShiftsContent />);
+
+    const loadMore = screen.getByRole('button', { name: 'さらに読み込む' });
+    fireEvent.click(loadMore);
+    await waitFor(() => expect(fetchNextShiftPageMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(loadMore);
+    expect(fetchNextShiftPageMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('encodes special cursor characters and stops a repeated cursor in getNextPageParam', async () => {
+    render(<ShiftsContent />);
+    const query = queryConfigs.find((config) => config.queryKey[0] === 'pharmacist-shifts');
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ data: [], meta: { limit: 400, has_more: false, next_cursor: null } }),
+    );
+
+    await query?.queryFn?.({ pageParam: 'a+b/=' });
+    expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain('cursor=a%2Bb%2F%3D');
+
+    const firstPage = {
+      data: [shiftItem('shift_1', 1)],
+      meta: { limit: 400, has_more: true, next_cursor: 'same_cursor' },
+    };
+    const secondPage = {
+      data: [shiftItem('shift_2', 2)],
+      meta: { limit: 400, has_more: true, next_cursor: 'same_cursor' },
+    };
+    expect(
+      query?.getNextPageParam?.(secondPage, [firstPage, secondPage], 'same_cursor', [
+        null,
+        'same_cursor',
+      ]),
+    ).toBeUndefined();
   });
 
   it('requires confirmation before deleting a shift template', () => {
@@ -420,7 +692,7 @@ describe('ShiftsContent', () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ message: '前月シフトの閲覧権限がありません' }, 403),
     );
-    await expect(mutationFnAt(7)()).rejects.toThrow('前月シフトの閲覧権限がありません');
+    await expect(mutationFnAt(7)()).rejects.toThrow('前月シフトの取得に失敗しました');
 
     fetchMock.mockResolvedValueOnce(new Response('not-json', { status: 500 }));
     await expect(mutationFnAt(8)()).rejects.toThrow('定型シフトの保存に失敗しました');
@@ -436,6 +708,275 @@ describe('ShiftsContent', () => {
       jsonResponse({ message: '定型シフトの反映権限がありません' }, 403),
     );
     await expect(mutationFnAt(10)()).rejects.toThrow('定型シフトの反映権限がありません');
+  });
+
+  it('copies a complete previous month across the 400/401 boundary', async () => {
+    render(<ShiftsContent />);
+    const firstPage = Array.from({ length: 400 }, (_, index) => {
+      const suffix = String(index).padStart(3, '0');
+      return shiftItem(`shift_${suffix}`, 1, `user_${suffix}`, -1);
+    });
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: firstPage,
+          meta: { limit: 400, has_more: true, next_cursor: 'cursor_400' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [shiftItem('shift_400', 1, 'user_400', -1)],
+          meta: { limit: 400, has_more: false, next_cursor: null },
+        }),
+      );
+
+    const result = await mutationFnAt(7)();
+    expect(result).toEqual(
+      expect.objectContaining({
+        data: expect.arrayContaining([expect.objectContaining({ id: 'shift_400' })]),
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('limit=400');
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('cursor=cursor_400');
+  });
+
+  it('fails closed when previous-month pagination exceeds the 20-page cap', async () => {
+    render(<ShiftsContent />);
+    let page = 0;
+    fetchMock.mockImplementation(async () => {
+      page += 1;
+      return jsonResponse({
+        data: [],
+        meta: { limit: 400, has_more: true, next_cursor: `cursor_${page}` },
+      });
+    });
+
+    await expect(mutationFnAt(7)()).rejects.toThrow('前月シフトの取得に失敗しました');
+    expect(fetchMock).toHaveBeenCalledTimes(20);
+  });
+
+  it('accepts terminal completion on page 20 without requesting page 21', async () => {
+    render(<ShiftsContent />);
+    let page = 0;
+    fetchMock.mockImplementation(async () => {
+      page += 1;
+      return jsonResponse({
+        data: [],
+        meta:
+          page === 20
+            ? { limit: 400, has_more: false, next_cursor: null }
+            : { limit: 400, has_more: true, next_cursor: `cursor_${page}` },
+      });
+    });
+
+    await expect(mutationFnAt(7)()).resolves.toEqual(
+      expect.objectContaining({ data: [], targetGeneration: 0 }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(20);
+  });
+
+  it('rejects a repeated previous-month cursor without an extra request', async () => {
+    render(<ShiftsContent />);
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        data: [],
+        meta: { limit: 400, has_more: true, next_cursor: 'same_cursor' },
+      }),
+    );
+
+    await expect(mutationFnAt(7)()).rejects.toThrow('前月シフトの取得に失敗しました');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects an overlapping previous-month row even when the cursor advances', async () => {
+    render(<ShiftsContent />);
+    const repeated = shiftItem('shift_previous', 1, 'user_previous', -1);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [repeated],
+          meta: { limit: 400, has_more: true, next_cursor: 'cursor_400' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ ...repeated }],
+          meta: { limit: 400, has_more: false, next_cursor: null },
+        }),
+      );
+
+    await expect(mutationFnAt(7)()).rejects.toThrow('前月シフトの取得に失敗しました');
+  });
+
+  it('gates copy and save handlers while the current month is incomplete', async () => {
+    shiftPages.data = {
+      pages: [
+        {
+          data: [shiftItem('shift_1', 1)],
+          meta: { limit: 400, has_more: true, next_cursor: 'cursor_400' },
+        },
+      ],
+      pageParams: [null],
+    };
+    render(<ShiftsContent />);
+
+    await expect(mutationFnAt(0)()).rejects.toThrow('月間シフトの全件確認後に保存できます');
+    await expect(mutationFnAt(7)()).rejects.toThrow('月間シフトの全件確認後に前月をコピーできます');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on a cached-page refetch error while retaining loaded rows', () => {
+    shiftPages.data = {
+      pages: [
+        {
+          data: [shiftItem('shift_1', 1)],
+          meta: { limit: 400, has_more: false, next_cursor: null },
+        },
+      ],
+      pageParams: [null],
+    };
+    shiftCachedError.value = true;
+
+    render(<ShiftsContent />);
+
+    expect(screen.getByText('月間シフトを再確認できませんでした')).toBeTruthy();
+    expect(screen.getAllByText('未確認').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'シフト編集' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('invalidates an edit draft on a same-scope deep-equal refresh epoch', async () => {
+    const view = render(<ShiftsContent />);
+    const oldSaveConfig = mutationConfigs[0];
+    fireEvent.click(screen.getByRole('button', { name: 'シフト編集' }));
+    const editableCells = await screen.findAllByRole('button', { name: /を編集/ });
+    fireEvent.click(editableCells[0]);
+    fireEvent.change(screen.getByLabelText('備考', { selector: 'textarea#shift-note' }), {
+      target: { value: 'old epoch draft' },
+    });
+
+    shiftDataUpdatedAt.value += 1;
+    view.rerender(<ShiftsContent />);
+
+    expect(screen.queryByDisplayValue('old epoch draft')).toBeNull();
+    await expect(oldSaveConfig?.mutationFn()).rejects.toThrow(
+      '月間シフトの全件確認後に保存できます',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'シフト編集' }));
+    expect(await screen.findAllByRole('button', { name: /を編集/ })).not.toHaveLength(0);
+  });
+
+  it('does not revive an edit after cached error recovery advances the epoch', async () => {
+    const view = render(<ShiftsContent />);
+    fireEvent.click(screen.getByRole('button', { name: 'シフト編集' }));
+    const editableCells = await screen.findAllByRole('button', { name: /を編集/ });
+    fireEvent.click(editableCells[0]);
+    fireEvent.change(screen.getByLabelText('備考', { selector: 'textarea#shift-note' }), {
+      target: { value: 'pre-error draft' },
+    });
+
+    shiftCachedError.value = true;
+    view.rerender(<ShiftsContent />);
+    shiftCachedError.value = false;
+    shiftDataUpdatedAt.value += 1;
+    view.rerender(<ShiftsContent />);
+
+    expect(screen.queryByDisplayValue('pre-error draft')).toBeNull();
+    expect(screen.getByRole('button', { name: 'シフト編集' })).toBeTruthy();
+  });
+
+  it('does not revive an old-organization draft after an A-B-A scope cycle', async () => {
+    const view = render(<ShiftsContent />);
+    fireEvent.click(screen.getByRole('button', { name: 'シフト編集' }));
+    const editableCells = await screen.findAllByRole('button', { name: /を編集/ });
+    fireEvent.click(editableCells[0]);
+    fireEvent.change(screen.getByLabelText('備考', { selector: 'textarea#shift-note' }), {
+      target: { value: 'org A only draft' },
+    });
+
+    currentOrgId.value = 'org_2';
+    view.rerender(<ShiftsContent />);
+    const freshARenderMutationStart = mutationConfigs.length;
+    currentOrgId.value = 'org_1';
+    view.rerender(<ShiftsContent />);
+
+    expect(screen.queryByDisplayValue('org A only draft')).toBeNull();
+    expect(screen.getByRole('button', { name: 'シフト編集' })).toBeTruthy();
+    await expect(mutationFnAt(freshARenderMutationStart)()).rejects.toThrow(
+      '月間シフトの全件確認後に保存できます',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'シフト編集' }));
+    expect(await screen.findAllByRole('button', { name: /を編集/ })).not.toHaveLength(0);
+  });
+
+  it('ignores an old previous-month response after an A-B-A scope cycle', async () => {
+    const view = render(<ShiftsContent />);
+    const copyConfig = mutationConfigs[7];
+    let resolveResponse: ((response: Response) => void) | undefined;
+    fetchMock.mockReturnValueOnce(
+      new Promise<Response>((resolve) => {
+        resolveResponse = resolve;
+      }),
+    );
+    const pending = copyConfig?.mutationFn();
+
+    currentOrgId.value = 'org_2';
+    view.rerender(<ShiftsContent />);
+    currentOrgId.value = 'org_1';
+    view.rerender(<ShiftsContent />);
+    resolveResponse?.(
+      jsonResponse({ data: [], meta: { limit: 400, has_more: false, next_cursor: null } }),
+    );
+    const result = await pending;
+    await copyConfig?.onSuccess?.(result);
+
+    expect(toast.success).not.toHaveBeenCalledWith('前月の同日シフトを下書きへコピーしました');
+    expect(screen.getByRole('button', { name: 'シフト編集' })).toBeTruthy();
+  });
+
+  it('ignores a pending previous-month response after a same-scope epoch bump', async () => {
+    const view = render(<ShiftsContent />);
+    const copyConfig = mutationConfigs[7];
+    let resolveResponse: ((response: Response) => void) | undefined;
+    fetchMock.mockReturnValueOnce(
+      new Promise<Response>((resolve) => {
+        resolveResponse = resolve;
+      }),
+    );
+    const pending = copyConfig?.mutationFn();
+
+    shiftDataUpdatedAt.value += 1;
+    view.rerender(<ShiftsContent />);
+    resolveResponse?.(
+      jsonResponse({ data: [], meta: { limit: 400, has_more: false, next_cursor: null } }),
+    );
+    const result = await pending;
+    await copyConfig?.onSuccess?.(result);
+
+    expect(toast.success).not.toHaveBeenCalledWith('前月の同日シフトを下書きへコピーしました');
+    expect(screen.getByRole('button', { name: 'シフト編集' })).toBeTruthy();
+  });
+
+  it('suppresses an old previous-month failure after an A-B-A scope cycle', async () => {
+    const view = render(<ShiftsContent />);
+    const copyConfig = mutationConfigs[7];
+    let rejectResponse: ((reason: Error) => void) | undefined;
+    fetchMock.mockReturnValueOnce(
+      new Promise<Response>((_resolve, reject) => {
+        rejectResponse = reject;
+      }),
+    );
+    const pending = copyConfig?.mutationFn();
+
+    currentOrgId.value = 'org_2';
+    view.rerender(<ShiftsContent />);
+    currentOrgId.value = 'org_1';
+    view.rerender(<ShiftsContent />);
+    rejectResponse?.(new Error('unsafe provider detail'));
+    const error = await pending?.catch((reason: unknown) => reason);
+    copyConfig?.onError?.(error);
+
+    expect(toast.error).not.toHaveBeenCalled();
   });
 
   it('rejects legacy successful shift administration acknowledgements', async () => {
@@ -594,7 +1135,10 @@ describe('ShiftsContent', () => {
       }
       if (url.startsWith('/api/pharmacist-shifts?')) {
         expect(url).toContain('limit=400');
-        return Response.json({ data: [], meta: { limit: 400, has_more: false } });
+        return Response.json({
+          data: [],
+          meta: { limit: 400, has_more: false, next_cursor: null },
+        });
       }
       if (url.startsWith('/api/business-holidays?')) {
         expect(url).toContain('date_from=');
@@ -627,9 +1171,9 @@ describe('ShiftsContent', () => {
         limit: 500,
       },
     });
-    await expect(queryByKey('pharmacist-shifts')?.queryFn?.()).resolves.toEqual({
+    await expect(queryByKey('pharmacist-shifts')?.queryFn?.({ pageParam: null })).resolves.toEqual({
       data: [],
-      meta: { limit: 400, has_more: false },
+      meta: { limit: 400, has_more: false, next_cursor: null },
     });
     await expect(queryByKey('business-holidays')?.queryFn?.()).resolves.toEqual({ data: [] });
     await expect(queryByKey('pharmacist-shift-templates')?.queryFn?.()).resolves.toEqual({

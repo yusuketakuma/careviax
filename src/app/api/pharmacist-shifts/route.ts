@@ -1,5 +1,6 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
+import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
@@ -20,6 +21,93 @@ import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 const ROUTE = '/api/pharmacist-shifts';
 const DEFAULT_PHARMACIST_SHIFT_LIMIT = 400;
 const MAX_PHARMACIST_SHIFT_LIMIT = 500;
+const PHARMACIST_SHIFT_CURSOR_MAX_LENGTH = 2048;
+const pharmacistShiftCursorSchema = z
+  .object({
+    id: z.string().trim().min(1).max(200),
+    date: z.string().datetime({ offset: true }),
+    available_from: z.string().datetime({ offset: true }).nullable(),
+  })
+  .strict();
+
+type PharmacistShiftCursor = {
+  id: string;
+  date: Date;
+  availableFrom: Date | null;
+};
+
+function decodePharmacistShiftCursor(rawCursor: string): PharmacistShiftCursor | null {
+  if (!rawCursor || rawCursor.length > PHARMACIST_SHIFT_CURSOR_MAX_LENGTH) return null;
+
+  try {
+    const parsed = pharmacistShiftCursorSchema.safeParse(
+      JSON.parse(Buffer.from(rawCursor, 'base64url').toString('utf8')),
+    );
+    if (!parsed.success) return null;
+    const date = new Date(parsed.data.date);
+    const availableFrom =
+      parsed.data.available_from === null ? null : new Date(parsed.data.available_from);
+    if (
+      date.toISOString() !== parsed.data.date ||
+      date.getUTCHours() !== 0 ||
+      date.getUTCMinutes() !== 0 ||
+      date.getUTCSeconds() !== 0 ||
+      date.getUTCMilliseconds() !== 0 ||
+      (availableFrom !== null &&
+        (availableFrom.toISOString() !== parsed.data.available_from ||
+          availableFrom.getUTCFullYear() !== 1970 ||
+          availableFrom.getUTCMonth() !== 0 ||
+          availableFrom.getUTCDate() !== 1))
+    ) {
+      return null;
+    }
+    return {
+      id: parsed.data.id,
+      date,
+      availableFrom,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function encodePharmacistShiftCursor(shift: {
+  id: string;
+  date: Date;
+  available_from: Date | null;
+}) {
+  return Buffer.from(
+    JSON.stringify({
+      id: shift.id,
+      date: shift.date.toISOString(),
+      available_from: shift.available_from?.toISOString() ?? null,
+    }),
+    'utf8',
+  ).toString('base64url');
+}
+
+function buildPharmacistShiftCursorFilter(cursor: PharmacistShiftCursor) {
+  const sameDateAfter =
+    cursor.availableFrom === null
+      ? [
+          {
+            date: cursor.date,
+            available_from: null,
+            id: { gt: cursor.id },
+          },
+        ]
+      : [
+          { date: cursor.date, available_from: { gt: cursor.availableFrom } },
+          { date: cursor.date, available_from: null },
+          {
+            date: cursor.date,
+            available_from: cursor.availableFrom,
+            id: { gt: cursor.id },
+          },
+        ];
+
+  return [{ date: { gt: cursor.date } }, ...sameDateAfter];
+}
 
 function startOfUtcMonth(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
@@ -45,6 +133,7 @@ async function authenticatedGET(req: NextRequest) {
     const userId = searchParams.get('user_id');
     const siteId = searchParams.get('site_id');
     const rawLimit = searchParams.get('limit');
+    const rawCursor = searchParams.get('cursor');
     const limit =
       rawLimit === null
         ? undefined
@@ -77,6 +166,17 @@ async function authenticatedGET(req: NextRequest) {
       : parsed.data.date_to
         ? utcDateFromLocalKey(parsed.data.date_to)
         : null;
+    const cursor = rawCursor === null ? null : decodePharmacistShiftCursor(rawCursor);
+    if (
+      rawCursor !== null &&
+      (rawLimit === null ||
+        !cursor ||
+        (!resolvedDateFrom && !resolvedDateTo) ||
+        (resolvedDateFrom !== null && cursor.date < resolvedDateFrom) ||
+        (resolvedDateTo !== null && cursor.date > resolvedDateTo))
+    ) {
+      return validationError('カーソルが不正です');
+    }
 
     const shifts = await withOrgContext(
       ctx.orgId,
@@ -94,8 +194,13 @@ async function authenticatedGET(req: NextRequest) {
               : {}),
             ...(parsed.data.user_id ? { user_id: parsed.data.user_id } : {}),
             ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
+            ...(cursor ? { AND: [{ OR: buildPharmacistShiftCursorFilter(cursor) }] } : {}),
           },
-          orderBy: [{ date: 'asc' }, { available_from: 'asc' }],
+          orderBy: [
+            { date: 'asc' },
+            { available_from: { sort: 'asc', nulls: 'last' } },
+            { id: 'asc' },
+          ],
           ...(limit === undefined ? {} : { take: limit + 1 }),
           include: {
             user: { select: { id: true, name: true, name_kana: true } },
@@ -108,11 +213,18 @@ async function authenticatedGET(req: NextRequest) {
     const page =
       limit === undefined
         ? { data: shifts, hasMore: false }
-        : buildCursorPage(shifts, limit, (shift) => shift.id);
+        : buildCursorPage(shifts, limit, encodePharmacistShiftCursor);
 
     return limit === undefined
       ? success({ data: page.data })
-      : success({ data: page.data, meta: { limit, has_more: page.hasMore } });
+      : success({
+          data: page.data,
+          meta: {
+            limit,
+            has_more: page.hasMore,
+            next_cursor: page.nextCursor ?? null,
+          },
+        });
   });
 }
 

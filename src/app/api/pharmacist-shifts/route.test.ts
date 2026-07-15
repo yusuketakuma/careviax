@@ -66,6 +66,21 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function encodeShiftCursor(input: { id: string; date: string; available_from: string | null }) {
+  return Buffer.from(JSON.stringify(input), 'utf8').toString('base64url');
+}
+
+function buildShiftRow(
+  index: number,
+  availableFrom: Date | null = new Date('1970-01-01T09:00:00Z'),
+) {
+  return {
+    id: `shift_${String(index).padStart(3, '0')}`,
+    date: new Date('2026-04-20T00:00:00.000Z'),
+    available_from: availableFrom,
+  };
+}
+
 describe('/api/pharmacist-shifts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -115,7 +130,7 @@ describe('/api/pharmacist-shifts', () => {
         user_id: 'user_2',
         site_id: 'site_1',
       },
-      orderBy: [{ date: 'asc' }, { available_from: 'asc' }],
+      orderBy: [{ date: 'asc' }, { available_from: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
       include: {
         user: { select: { id: true, name: true, name_kana: true } },
         site: { select: { id: true, name: true } },
@@ -153,7 +168,7 @@ describe('/api/pharmacist-shifts', () => {
 
   it('honors explicit limit queries with overflow metadata', async () => {
     pharmacistShiftFindManyMock.mockResolvedValueOnce(
-      Array.from({ length: 401 }, (_, index) => ({ id: `shift_${index}` })),
+      Array.from({ length: 401 }, (_, index) => buildShiftRow(index)),
     );
 
     const response = (await GET(
@@ -169,9 +184,22 @@ describe('/api/pharmacist-shifts', () => {
     );
     const body = await response.json();
     expect(body.data).toHaveLength(400);
-    expect(body.data.at(-1)).toEqual({ id: 'shift_399' });
+    expect(body.data.at(-1)).toEqual({
+      id: 'shift_399',
+      date: '2026-04-20T00:00:00.000Z',
+      available_from: '1970-01-01T09:00:00.000Z',
+    });
     expect(JSON.stringify(body)).not.toContain('shift_400');
-    expect(body.meta).toEqual({ limit: 400, has_more: true });
+    expect(body.meta).toEqual({
+      limit: 400,
+      has_more: true,
+      next_cursor: expect.any(String),
+    });
+    expect(JSON.parse(Buffer.from(body.meta.next_cursor, 'base64url').toString('utf8'))).toEqual({
+      id: 'shift_399',
+      date: '2026-04-20T00:00:00.000Z',
+      available_from: '1970-01-01T09:00:00.000Z',
+    });
   });
 
   it.each([
@@ -194,8 +222,180 @@ describe('/api/pharmacist-shifts', () => {
       meta: {
         limit: expectedLimit,
         has_more: false,
+        next_cursor: null,
       },
     });
+  });
+
+  it('continues after a non-null time through later times, null times, and later dates', async () => {
+    const cursor = encodeShiftCursor({
+      id: 'shift_100',
+      date: '2026-04-20T00:00:00.000Z',
+      available_from: '1970-01-01T09:00:00.000Z',
+    });
+
+    const response = (await GET(
+      createRequest(
+        `http://localhost/api/pharmacist-shifts?month=2026-04-01&limit=100&cursor=${cursor}`,
+      ),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            {
+              OR: [
+                { date: { gt: new Date('2026-04-20T00:00:00.000Z') } },
+                {
+                  date: new Date('2026-04-20T00:00:00.000Z'),
+                  available_from: { gt: new Date('1970-01-01T09:00:00.000Z') },
+                },
+                {
+                  date: new Date('2026-04-20T00:00:00.000Z'),
+                  available_from: null,
+                },
+                {
+                  date: new Date('2026-04-20T00:00:00.000Z'),
+                  available_from: new Date('1970-01-01T09:00:00.000Z'),
+                  id: { gt: 'shift_100' },
+                },
+              ],
+            },
+          ],
+        }),
+        orderBy: [
+          { date: 'asc' },
+          { available_from: { sort: 'asc', nulls: 'last' } },
+          { id: 'asc' },
+        ],
+        take: 101,
+      }),
+    );
+  });
+
+  it('continues a null-time cursor only through later null ids and later dates', async () => {
+    const cursor = encodeShiftCursor({
+      id: 'shift_100',
+      date: '2026-04-20T00:00:00.000Z',
+      available_from: null,
+    });
+
+    const response = (await GET(
+      createRequest(
+        `http://localhost/api/pharmacist-shifts?month=2026-04-01&limit=100&cursor=${cursor}`,
+      ),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            {
+              OR: [
+                { date: { gt: new Date('2026-04-20T00:00:00.000Z') } },
+                {
+                  date: new Date('2026-04-20T00:00:00.000Z'),
+                  available_from: null,
+                  id: { gt: 'shift_100' },
+                },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    '',
+    ' ',
+    'not-a-cursor',
+    'x'.repeat(2049),
+    encodeShiftCursor({
+      id: 'shift_100',
+      date: '2026-05-01T00:00:00.000Z',
+      available_from: null,
+    }),
+    encodeShiftCursor({
+      id: 'shift_100',
+      date: '2026-04-20T12:00:00.000Z',
+      available_from: null,
+    }),
+    encodeShiftCursor({
+      id: 'shift_100',
+      date: '2026-04-20T00:00:00.000Z',
+      available_from: '2026-04-20T09:00:00.000Z',
+    }),
+    encodeShiftCursor({
+      id: 'shift_100',
+      date: '2026-04-20T00:00:00.000Z',
+      available_from: '1970-01-01T18:00:00.000+09:00',
+    }),
+    encodeShiftCursor({
+      id: 'shift_100',
+      date: '2026-04-20T00:00:00+00:00',
+      available_from: null,
+    }),
+  ])('rejects invalid or cross-month cursor %j before querying shifts', async (cursor) => {
+    const response = (await GET(
+      createRequest(
+        `http://localhost/api/pharmacist-shifts?month=2026-04-01&limit=100&cursor=${encodeURIComponent(cursor)}`,
+      ),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'カーソルが不正です',
+    });
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a cursor without an explicit limit before querying shifts', async () => {
+    const cursor = encodeShiftCursor({
+      id: 'shift_100',
+      date: '2026-04-20T00:00:00.000Z',
+      available_from: null,
+    });
+    const response = (await GET(
+      createRequest(`http://localhost/api/pharmacist-shifts?month=2026-04-01&cursor=${cursor}`),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('binds a cursor to explicit date range filters before querying shifts', async () => {
+    const inRange = encodeShiftCursor({
+      id: 'shift_100',
+      date: '2026-04-20T00:00:00.000Z',
+      available_from: null,
+    });
+    const response = (await GET(
+      createRequest(
+        `http://localhost/api/pharmacist-shifts?date_from=2026-04-10&date_to=2026-04-25&limit=100&cursor=${inRange}`,
+      ),
+    ))!;
+    expect(response.status).toBe(200);
+    expect(pharmacistShiftFindManyMock).toHaveBeenCalledTimes(1);
+
+    pharmacistShiftFindManyMock.mockClear();
+    const outOfRange = encodeShiftCursor({
+      id: 'shift_100',
+      date: '2026-04-26T00:00:00.000Z',
+      available_from: null,
+    });
+    const rejected = (await GET(
+      createRequest(
+        `http://localhost/api/pharmacist-shifts?date_from=2026-04-10&date_to=2026-04-25&limit=100&cursor=${outOfRange}`,
+      ),
+    ))!;
+    expect(rejected.status).toBe(400);
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid month filters before querying shifts', async () => {
