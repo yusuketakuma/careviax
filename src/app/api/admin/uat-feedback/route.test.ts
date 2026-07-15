@@ -154,7 +154,8 @@ describe('/api/admin/uat-feedback', () => {
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: 101,
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(payload).toMatchObject({
       data: [
         {
           id: 'feedback_1',
@@ -163,8 +164,14 @@ describe('/api/admin/uat-feedback', () => {
           updated_at: '2026-03-28T12:00:00.000Z',
         },
       ],
-      meta: { limit: 100, has_more: false, next_cursor: null },
+      meta: {
+        generated_at: expect.any(String),
+        limit: 100,
+        has_more: false,
+        next_cursor: null,
+      },
     });
+    expect(new Date(payload.meta.generated_at).toISOString()).toBe(payload.meta.generated_at);
   });
 
   it('reports overflow without returning more than the fixed list limit', async () => {
@@ -186,6 +193,7 @@ describe('/api/admin/uat-feedback', () => {
     expect(payload.data).toHaveLength(100);
     expect(payload.data.at(-1).id).toBe('feedback_100');
     expect(payload.meta).toEqual({
+      generated_at: expect.any(String),
       limit: 100,
       has_more: true,
       next_cursor: expect.any(String),

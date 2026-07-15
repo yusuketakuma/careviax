@@ -1,5 +1,74 @@
 import { describe, expect, it } from 'vitest';
-import { buildCountedListEnvelope } from './list-envelope';
+import {
+  buildCountedListEnvelope,
+  buildCursorListEnvelope,
+  buildListEnvelope,
+} from './list-envelope';
+
+const GENERATED_AT = new Date('2026-07-16T00:00:00.000Z');
+
+describe('canonical list envelopes', () => {
+  it('injects generated_at before route-specific metadata', () => {
+    const envelope = buildListEnvelope(
+      [{ id: 'row_1' }],
+      { count_basis: 'visible_rows' },
+      GENERATED_AT,
+    );
+
+    expect(Object.keys(envelope)).toEqual(['data', 'meta']);
+    expect(Object.keys(envelope.meta)).toEqual(['generated_at', 'count_basis']);
+    expect(envelope).toEqual({
+      data: [{ id: 'row_1' }],
+      meta: {
+        generated_at: '2026-07-16T00:00:00.000Z',
+        count_basis: 'visible_rows',
+      },
+    });
+  });
+
+  it('normalizes a cursor page into canonical wire metadata', () => {
+    expect(
+      buildCursorListEnvelope(
+        { data: [{ id: 'row_1' }], hasMore: true, nextCursor: 'cursor_1' },
+        100,
+        GENERATED_AT,
+      ),
+    ).toEqual({
+      data: [{ id: 'row_1' }],
+      meta: {
+        generated_at: '2026-07-16T00:00:00.000Z',
+        limit: 100,
+        has_more: true,
+        next_cursor: 'cursor_1',
+      },
+    });
+    expect(buildCursorListEnvelope({ data: [], hasMore: false }, 100, GENERATED_AT).meta).toEqual({
+      generated_at: '2026-07-16T00:00:00.000Z',
+      limit: 100,
+      has_more: false,
+      next_cursor: null,
+    });
+  });
+
+  it('fails closed for invalid cursor relations and limits', () => {
+    expect(() => buildCursorListEnvelope({ data: [], hasMore: true }, 100, GENERATED_AT)).toThrow(
+      'next cursor must match has more',
+    );
+    expect(() =>
+      buildCursorListEnvelope(
+        { data: [], hasMore: false, nextCursor: 'cursor_1' },
+        100,
+        GENERATED_AT,
+      ),
+    ).toThrow('next cursor must match has more');
+    expect(() =>
+      buildCursorListEnvelope({ data: [], hasMore: false, nextCursor: '' }, 100, GENERATED_AT),
+    ).toThrow('next cursor must match has more');
+    expect(() => buildCursorListEnvelope({ data: [], hasMore: false }, 0, GENERATED_AT)).toThrow(
+      'limit must be a positive integer',
+    );
+  });
+});
 
 describe('buildCountedListEnvelope', () => {
   it('preserves the counted-list JSON key order and truncation metadata', () => {

@@ -390,6 +390,7 @@ const uatFeedbackListResponseSchema = z
     data: z.array(uatFeedbackItemSchema).max(UAT_FEEDBACK_LIST_LIMIT),
     meta: z
       .object({
+        generated_at: z.string().datetime({ offset: true }),
         limit: z.literal(UAT_FEEDBACK_LIST_LIMIT),
         has_more: z.boolean(),
         next_cursor: z.string().trim().min(1).nullable(),

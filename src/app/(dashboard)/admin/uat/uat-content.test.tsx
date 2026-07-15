@@ -224,6 +224,8 @@ const feedbackItemFixture: FeedbackItemFixture = {
   created_at: '2026-07-07T00:00:00.000Z',
 };
 
+const feedbackGeneratedAt = '2026-07-16T00:00:00.000Z';
+
 function feedbackPage(
   data: FeedbackItemFixture[] = [feedbackItemFixture],
   meta: { has_more: boolean; next_cursor: string | null } = {
@@ -233,17 +235,14 @@ function feedbackPage(
 ) {
   return {
     data,
-    meta: { limit: 100 as const, ...meta },
+    meta: { generated_at: feedbackGeneratedAt, limit: 100 as const, ...meta },
   };
 }
 
 function successPayloadFor(input: RequestInfo | URL) {
   const url = String(input);
   if (url === '/api/admin/uat-feedback') {
-    return {
-      data: [feedbackItemFixture],
-      meta: { limit: 100, has_more: false, next_cursor: null },
-    };
+    return feedbackPage();
   }
   if (url.startsWith('/api/admin/uat-feedback?cursor=')) {
     return feedbackPage([], { has_more: false, next_cursor: null });
@@ -586,7 +585,12 @@ describe('UatContent', () => {
       new Response(
         JSON.stringify({
           data: [feedbackItemFixture],
-          meta: { limit: 100, has_more: true, next_cursor: null },
+          meta: {
+            generated_at: feedbackGeneratedAt,
+            limit: 100,
+            has_more: true,
+            next_cursor: null,
+          },
         }),
         { status: 200 },
       ),
@@ -621,6 +625,31 @@ describe('UatContent', () => {
         'cursor_100',
       ]),
     ).toBeUndefined();
+  });
+
+  it.each([
+    { name: 'missing', generatedAt: undefined },
+    { name: 'malformed', generatedAt: 'not-a-timestamp' },
+  ])('rejects $name generated_at metadata', async ({ generatedAt }) => {
+    render(<UatContent />);
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: [feedbackItemFixture],
+          meta: {
+            ...(generatedAt === undefined ? {} : { generated_at: generatedAt }),
+            limit: 100,
+            has_more: false,
+            next_cursor: null,
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(queryFnFor('uat-feedback')({ pageParam: null })).rejects.toThrow(
+      'UAT フィードバックの取得に失敗しました',
+    );
   });
 
   it('encodes the requested next-page cursor and keeps the terminal page complete', async () => {

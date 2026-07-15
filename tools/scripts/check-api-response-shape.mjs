@@ -13,6 +13,8 @@ const ALLOWLIST_PATH = 'tools/api-response-shape-allowlist.json';
 const SCAN_ROOTS = ['src/app/api'];
 const TARGET_EXTENSIONS = new Set(['.ts', '.tsx']);
 const SKIPPED_SUFFIXES = ['.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx'];
+const LIST_ENVELOPE_MODULE = '@/lib/api/list-envelope';
+const CANONICAL_LIST_ENVELOPE_BUILDERS = new Set(['buildListEnvelope', 'buildCursorListEnvelope']);
 
 const DIRECT_LEGACY_ERROR_JSON_PATTERN =
   /\bNextResponse\.json\s*\(\s*\{[^)]*\b(?:error|code|message|fieldErrors)\s*:/gs;
@@ -234,7 +236,63 @@ function readTopLevelObjectKeys(objectLiteral) {
   return null;
 }
 
-function successEnvelopeViolationReason(argument, helperName) {
+function collectCanonicalListEnvelopeBindings(content) {
+  const bindings = new Set();
+  const importPattern = /\bimport\s*\{([\s\S]*?)\}\s*from\s*(['"])([^'"]+)\2\s*;?/g;
+  let match;
+  while ((match = importPattern.exec(content)) !== null) {
+    if (match[3] !== LIST_ENVELOPE_MODULE) continue;
+    for (const rawSpecifier of match[1].split(',')) {
+      const specifier = rawSpecifier.replace(/\/\*[\s\S]*?\*\//g, '').trim();
+      const binding = specifier.match(
+        /^(buildListEnvelope|buildCursorListEnvelope)(?:\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*))?$/u,
+      );
+      if (!binding || !CANONICAL_LIST_ENVELOPE_BUILDERS.has(binding[1])) continue;
+      bindings.add(binding[2] ?? binding[1]);
+    }
+  }
+  return bindings;
+}
+
+function isDirectCallToBinding(expression, bindings) {
+  const trimmed = expression.trim();
+  const callee = trimmed.match(/^([A-Za-z_$][A-Za-z0-9_$]*)/u);
+  if (!callee || !bindings.has(callee[1])) return false;
+
+  let openParenIndex = skipWhitespaceAndComments(trimmed, callee[0].length);
+  if (trimmed[openParenIndex] !== '(') return false;
+
+  let depth = 0;
+  for (let i = openParenIndex; i < trimmed.length; i += 1) {
+    const char = trimmed[i];
+    const next = trimmed[i + 1];
+    if (char === '"' || char === "'" || char === '`') {
+      i = skipQuoted(trimmed, i, char) - 1;
+      continue;
+    }
+    if (char === '/' && next === '/') {
+      i = skipLineComment(trimmed, i) - 1;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      i = skipBlockComment(trimmed, i) - 1;
+      continue;
+    }
+    if (char === '(') {
+      depth += 1;
+      continue;
+    }
+    if (char !== ')') continue;
+    depth -= 1;
+    if (depth === 0) return trimmed.slice(i + 1).trim().length === 0;
+  }
+  return false;
+}
+
+function successEnvelopeViolationReason(argument, helperName, canonicalListEnvelopeBindings) {
+  if (helperName === 'success' && isDirectCallToBinding(argument, canonicalListEnvelopeBindings)) {
+    return null;
+  }
   const keys = readTopLevelObjectKeys(argument);
   if (!keys) {
     return helperName === 'success'
@@ -253,13 +311,18 @@ function successEnvelopeViolationReason(argument, helperName) {
 
 function findSuccessShapeViolations(content, file) {
   const violations = [];
+  const canonicalListEnvelopeBindings = collectCanonicalListEnvelopeBindings(content);
   const pattern = /\b(success|successWithMeasuredJsonPayload)\s*\(/g;
   let match;
   while ((match = pattern.exec(content)) !== null) {
     const helperName = match[1];
     const openParenIndex = content.indexOf('(', match.index);
     const firstArgument = readFirstArgument(content, openParenIndex);
-    const reason = successEnvelopeViolationReason(firstArgument, helperName);
+    const reason = successEnvelopeViolationReason(
+      firstArgument,
+      helperName,
+      canonicalListEnvelopeBindings,
+    );
     if (!reason) continue;
     violations.push({
       path: file,

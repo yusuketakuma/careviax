@@ -76,6 +76,48 @@ describe('check-api-response-shape', () => {
     expect(runCheck(root)).toContain('API response shape check passed');
   });
 
+  it('allows canonical list envelope builders imported from the shared module', () => {
+    const root = createFixtureRepo({
+      'src/app/api/example/route.ts': `
+        import { buildCursorListEnvelope } from '@/lib/api/list-envelope';
+        return success(buildCursorListEnvelope(page, 100));
+      `,
+    });
+
+    expect(runCheck(root)).toContain('API response shape check passed');
+  });
+
+  it('allows aliased canonical list envelope builder imports', () => {
+    const root = createFixtureRepo({
+      'src/app/api/example/route.ts': `
+        import {
+          buildListEnvelope as canonicalListEnvelope,
+        } from '@/lib/api/list-envelope';
+        return success(canonicalListEnvelope(rows, { count_basis: 'visible_rows' }));
+      `,
+    });
+
+    expect(runCheck(root)).toContain('API response shape check passed');
+  });
+
+  it('rejects untrusted or composed calls that resemble canonical builders', () => {
+    const localRoot = createFixtureRepo({
+      'src/app/api/example/route.ts': `
+        const buildCursorListEnvelope = (page) => page;
+        return success(buildCursorListEnvelope(page));
+      `,
+    });
+    expect(() => runCheck(localRoot)).toThrow(/success\(\) response is not wrapped/);
+
+    const composedRoot = createFixtureRepo({
+      'src/app/api/example/route.ts': `
+        import { buildCursorListEnvelope } from '@/lib/api/list-envelope';
+        return success(buildCursorListEnvelope(page, 100) ?? legacyPayload);
+      `,
+    });
+    expect(() => runCheck(composedRoot)).toThrow(/success\(\) response is not wrapped/);
+  });
+
   it('rejects direct success payloads', () => {
     const root = createFixtureRepo({
       'src/app/api/example/route.ts': `

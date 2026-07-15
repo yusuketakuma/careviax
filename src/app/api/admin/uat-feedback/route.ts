@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
+import { buildCursorListEnvelope } from '@/lib/api/list-envelope';
 import { buildCursorPage } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, success, validationError } from '@/lib/api/response';
@@ -54,21 +55,22 @@ const authenticatedGET = withAuthContext(
       encodeKeysetCursor(UAT_FEEDBACK_CURSOR_KEYS, item),
     );
 
-    return success({
-      data: page.data.map((item) => ({
-        ...item,
-        checked_items: Array.isArray(item.checked_items) ? item.checked_items : [],
-        due_date: item.due_date?.toISOString() ?? null,
-        resolved_at: item.resolved_at?.toISOString() ?? null,
-        created_at: item.created_at.toISOString(),
-        updated_at: item.updated_at.toISOString(),
-      })),
-      meta: {
-        limit: UAT_FEEDBACK_LIST_LIMIT,
-        has_more: page.hasMore,
-        next_cursor: page.nextCursor ?? null,
-      },
-    });
+    return success(
+      buildCursorListEnvelope(
+        {
+          ...page,
+          data: page.data.map((item) => ({
+            ...item,
+            checked_items: Array.isArray(item.checked_items) ? item.checked_items : [],
+            due_date: item.due_date?.toISOString() ?? null,
+            resolved_at: item.resolved_at?.toISOString() ?? null,
+            created_at: item.created_at.toISOString(),
+            updated_at: item.updated_at.toISOString(),
+          })),
+        },
+        UAT_FEEDBACK_LIST_LIMIT,
+      ),
+    );
   },
   {
     permission: 'canAdmin',
