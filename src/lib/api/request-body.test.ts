@@ -9,12 +9,13 @@ import {
 type RequestInitWithDuplex = RequestInit & { duplex: 'half' };
 
 function bodyRequest(body: BodyInit, signal?: AbortSignal) {
-  return new Request('http://localhost/test', {
+  const init: RequestInitWithDuplex = {
     method: 'POST',
     body,
     signal,
     duplex: 'half',
-  } satisfies RequestInitWithDuplex);
+  };
+  return new Request('http://localhost/test', init);
 }
 
 afterEach(() => {

@@ -7,23 +7,25 @@ function streamRequest(
   body: ReadableStream<Uint8Array>,
   options: { headers?: HeadersInit; signal?: AbortSignal } = {},
 ) {
-  return new Request('http://localhost/test', {
+  const init: RequestInitWithDuplex = {
     method: 'POST',
     body,
     headers: options.headers,
     signal: options.signal,
     duplex: 'half',
-  } satisfies RequestInitWithDuplex);
+  };
+  return new Request('http://localhost/test', init);
 }
 
 function textRequest(body: string, options: { headers?: HeadersInit; signal?: AbortSignal } = {}) {
-  return new Request('http://localhost/test', {
+  const init: RequestInitWithDuplex = {
     method: 'POST',
     body,
     headers: options.headers,
     signal: options.signal,
     duplex: 'half',
-  } satisfies RequestInitWithDuplex);
+  };
+  return new Request('http://localhost/test', init);
 }
 
 afterEach(() => {
