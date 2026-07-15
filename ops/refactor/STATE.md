@@ -63,9 +63,9 @@
 
 ## 直近の作業
 
-- codex1/codex2: bounded HTTP ingress foundation + authoritative prescription search
-  (`SEC-HTTP-IO-BUDGET-001` PARTIAL `42f7ce928` / `2e1de27c9` / `940762409`,
-  `SEARCH-PALETTE-AUTHORITATIVE-QUERY-001` PARTIAL `e8ed604de`, 2026-07-15).
+- codex1/codex2: bounded HTTP ingress/proxy + authoritative prescription/care-report search
+  (`SEC-HTTP-IO-BUDGET-001` PARTIAL `42f7ce928` / `2e1de27c9` / `940762409` / `559e4ced3`,
+  `SEARCH-PALETTE-AUTHORITATIVE-QUERY-001` DONE `e8ed604de` / `7486e5e3f`, 2026-07-15).
   - HTTP foundation root cause / implementation:
     共通JSON helperの`req.json()` / `req.text()`全bufferとContent-Length依存を、Web `ReadableStream`のraw
     `Uint8Array` byte count、read deadline、request/provider abort、best-effort cancel/releaseへ置換した。default
@@ -80,24 +80,36 @@
     invalid UTF-8/abort/unreadableはfixed 400とし、failure logはcoded metadataとbounded byte countだけにした。
     QR draft POSTはstrict helperへ移し、16 x 8192文字の現行合法multibyte payload 393KiBを受理できる512KiB/5sに狭め、
     413/408を患者・店舗lookup、JAHIS parse、DB write前に返す。schemaの二重safeParseも除去した。
-  - prescription search root cause / implementation:
+    PHOS proxy POSTは`arrayBuffer()`を廃止してraw requestを256KiB/10sで制限し、413/408/abort-unreadable 400を
+    upstream fetch前に返す。upstreamはtotal 15s default / 60s hardをheadersからbody完了まで維持し、non-null bodyを
+    1MiBかつ`min(total, 30s)`で完全bufferしてからだけ返す。oversize/unreadableはfixed 502、stallは504とし、partial
+    passthroughを廃止した。split multibyteのexact bytes、status/statusText、header allowlist/no-storeを維持し、body-nullまたは
+    204/205/304はrepresentation Content-Lengthをpayload扱いせずread前にnullへ短絡する。
+  - authoritative search root cause / implementation:
     `/api/prescription-intakes?q=`は処方番号、処方医、医療機関、患者名/カナをserver-side部分一致しlimit=8で返すが、
     paletteが患者名/医療機関`startsWith`で再filterして処方番号・処方医・中間一致をfalse-emptyにしていた。
     stale `bestEffort` metadata/暫定labelとclient filter/capだけを削除し、server row/orderをauthoritativeにした。
     permission/org no-fetch、runtime schema、abort/stale/fail-closed、generic metadata plumbingは維持した。
+    care-report paletteもpatient候補の`limit+1`先切りを廃止し、org/access/status/type/dateを適用したminimal reportを
+    `created_at desc, id desc`で500+1件だけscanする。先頭500件のunique patientだけをname/name_kana照合してreport順を維持し、
+    limit+1が既知ならexact `has_more`、source exhaustedならexact empty、501 sentinelがあり確定不能ならPHI/query-free 500へ
+    fail-closedする。explicit patientはorg+name exact precheck後にdirect limit+1、no-q/regular q/F88は維持した。
   - consultation / validation:
     Oracleは使用せず、codex2と別Codexへagmsgで計画、stream cancellation、Response再利用、abort/timeout分類、
-    NextRequest test型を相談した。mid-edit test mismatchと`duplex` excess-property TS2353をP1として検出し、typed init
-    variableのtest-only follow-upで閉じた。Aは3 files / 29 tests、strict callerを含む6 files / 61 tests、Bは
-    2 files / 39 tests、searchは3 files / 47 testsがPASS。exact ESLint、Prettier、diff-check、serialized
+    NextRequest test型を相談した。共通readerの`duplex` TS2353、PHOS BodyInit型、configured 60sとreader hard 30sの差、
+    204/205/304 null bodyとrepresentation Content-Length順序をP1として検出し、castやraw error伝播なしで閉じた。
+    Aは3 files / 29 tests、strict callerを含む6 files / 61 tests、Bは2 files / 39 tests、prescription searchは
+    3 files / 47 tests、care-reportは1 file / 81 tests、PHOSは1 file / 22 tests、最終combinedは2 files / 103 testsがPASS。
+    exact ESLint、Prettier、diff-check、query-shape 4 allowlisted / 0 new、FHIR legacy inventory unchanged、serialized final
     `pnpm typecheck` / `pnpm typecheck:no-unused`、API response shape 0、client JSON schema 363/0、frontend contract、
-    client PHI log/displayがPASSした。build/E2Eはbuild抑制指示に従い未実行。layout/visual reconstructionを伴わない
-    transport/search correctnessと固定label削除なのでimage generationは省略した。
+    client PHI log/display、module boundary、route auth wrapperがPASSした。build/E2Eはbuild抑制指示に従い未実行。
+    layout/visual reconstructionを伴わないtransport/search correctnessなのでimage generationは省略した。
   - remaining / next:
-    HTTP親taskはPartial。PHOS proxyのrequest/response完全buffer、provider clientのheaders後timeout解除、FHIR response
-    budgetを同じreaderへ移す。QR confirmのline/string cardinalityは別medical input-amplification sliceとして扱う。
-    Search親taskもPartialで、care-reportがpatient候補を先にlimitして9人目以降のreportをfalse-emptyにするbackend半分が残る。
-    次もexact-path ownershipと相互reviewでnon-overlap実装し、詰まりはOracleではなく別Codexへ相談する。
+    Search親taskはDone。既存CareReport composite index候補は`PERF-DB-006D-INDEX`のhuman gateに残し、このsliceでmigrationしない。
+    HTTP親taskはPartial。provider共通HTTP clientのheaders後timeout解除とFHIR response source別上限を同じreaderへ移す。
+    QR confirm raw bodyの512KiB/5s化は安全な後続だが、line/free-text/days/quantity上限は
+    `MEDSAFE-PRESCRIPTION-INPUT-BOUNDS-001` human gate未批准のため推測値を入れない。次もexact-path ownershipと相互reviewで
+    non-overlap実装し、詰まりはOracleではなく別Codexへ相談する。
 
 - codex1/codex2: explicit print intent + strict drug-master date/provenance
   (`PRIVACY-PRINT-EXPLICIT-INTENT-001` DONE `86fd09be7`, typecheck test follow-up `afb0d4b40`,
