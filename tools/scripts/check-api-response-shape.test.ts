@@ -116,6 +116,28 @@ describe('check-api-response-shape', () => {
       `,
     });
     expect(() => runCheck(composedRoot)).toThrow(/success\(\) response is not wrapped/);
+
+    const commentedImportRoot = createFixtureRepo({
+      'src/app/api/example/route.ts': `
+        /*
+        import { buildCursorListEnvelope } from '@/lib/api/list-envelope';
+        */
+        const buildCursorListEnvelope = (page) => page;
+        return success(buildCursorListEnvelope(page));
+      `,
+    });
+    expect(() => runCheck(commentedImportRoot)).toThrow(/success\(\) response is not wrapped/);
+
+    const templateImportRoot = createFixtureRepo({
+      'src/app/api/example/route.ts': [
+        'const fakeImport = `',
+        "import { buildCursorListEnvelope } from '@/lib/api/list-envelope';",
+        '`;',
+        'const buildCursorListEnvelope = (page) => page;',
+        'return success(buildCursorListEnvelope(page));',
+      ].join('\n'),
+    });
+    expect(() => runCheck(templateImportRoot)).toThrow(/success\(\) response is not wrapped/);
   });
 
   it('rejects direct success payloads', () => {

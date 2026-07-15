@@ -107,6 +107,24 @@ function skipBlockComment(content, index) {
   return end === -1 ? content.length : end + 2;
 }
 
+function isCodePosition(content, targetIndex) {
+  for (let index = 0; index < targetIndex; index += 1) {
+    const char = content[index];
+    const next = content[index + 1];
+    let end = index + 1;
+    if (char === '"' || char === "'" || char === '`') {
+      end = skipQuoted(content, index, char);
+    } else if (char === '/' && next === '/') {
+      end = skipLineComment(content, index);
+    } else if (char === '/' && next === '*') {
+      end = skipBlockComment(content, index);
+    }
+    if (end > targetIndex) return false;
+    index = end - 1;
+  }
+  return true;
+}
+
 function readFirstArgument(content, openParenIndex) {
   let depth = 0;
   let start = openParenIndex + 1;
@@ -238,9 +256,10 @@ function readTopLevelObjectKeys(objectLiteral) {
 
 function collectCanonicalListEnvelopeBindings(content) {
   const bindings = new Set();
-  const importPattern = /\bimport\s*\{([\s\S]*?)\}\s*from\s*(['"])([^'"]+)\2\s*;?/g;
+  const importPattern = /^[ \t]*import\s*\{([\s\S]*?)\}\s*from\s*(['"])([^'"]+)\2\s*;?/gm;
   let match;
   while ((match = importPattern.exec(content)) !== null) {
+    if (!isCodePosition(content, match.index)) continue;
     if (match[3] !== LIST_ENVELOPE_MODULE) continue;
     for (const rawSpecifier of match[1].split(',')) {
       const specifier = rawSpecifier.replace(/\/\*[\s\S]*?\*\//g, '').trim();
