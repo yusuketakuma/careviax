@@ -4,6 +4,7 @@ export type ApiErrorHttpStatus =
   | 401
   | 403
   | 404
+  | 408
   | 409
   | 410
   | 413
@@ -282,6 +283,20 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     retryable: true,
     recoveryAction: 'retry',
     messageLabel: 'api.error.rate_limited',
+  },
+  REQUEST_BODY_TIMEOUT: {
+    httpStatus: 408,
+    logLevel: 'warn',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.request_body.timeout',
+  },
+  REQUEST_BODY_TOO_LARGE: {
+    httpStatus: 413,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'correct_input',
+    messageLabel: 'api.error.request_body.too_large',
   },
   TRACING_REPORT_PDF_EXPORT_AUDIT_FAILED: {
     httpStatus: 500,

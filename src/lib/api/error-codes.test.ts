@@ -261,6 +261,20 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "REQUEST_BODY_TIMEOUT": {
+          "httpStatus": 408,
+          "logLevel": "warn",
+          "messageLabel": "api.error.request_body.timeout",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
+        "REQUEST_BODY_TOO_LARGE": {
+          "httpStatus": 413,
+          "logLevel": "warn",
+          "messageLabel": "api.error.request_body.too_large",
+          "recoveryAction": "correct_input",
+          "retryable": false,
+        },
         "TRACING_REPORT_PDF_EXPORT_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",
@@ -372,6 +386,18 @@ describe('API error code registry', () => {
       logLevel: 'warn',
       retryable: false,
       recoveryAction: 'return_to_previous',
+    });
+    expect(getApiErrorDefinition('REQUEST_BODY_TOO_LARGE')).toMatchObject({
+      httpStatus: 413,
+      logLevel: 'warn',
+      retryable: false,
+      recoveryAction: 'correct_input',
+    });
+    expect(getApiErrorDefinition('REQUEST_BODY_TIMEOUT')).toMatchObject({
+      httpStatus: 408,
+      logLevel: 'warn',
+      retryable: true,
+      recoveryAction: 'retry',
     });
     expect(getApiErrorDefinition('extraction_failed')).toMatchObject({
       httpStatus: 500,
