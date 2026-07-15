@@ -77,10 +77,18 @@ describe('workflow dispatch input safety', () => {
     ['non-HTTPS app URL', { INPUT_NEXT_PUBLIC_APP_URL: 'http://example.invalid' }],
     ['credential-bearing app URL', { INPUT_NEXT_PUBLIC_APP_URL: 'https://user@example.invalid' }],
     ['empty hostname label', { INPUT_NEXT_PUBLIC_APP_URL: 'https://example..invalid' }],
+    ['trailing empty hostname label', { INPUT_NEXT_PUBLIC_APP_URL: 'https://example.invalid.' }],
     ['leading label hyphen', { INPUT_NEXT_PUBLIC_APP_URL: 'https://example.-invalid' }],
     ['trailing label hyphen', { INPUT_NEXT_PUBLIC_APP_URL: 'https://example-' }],
+    ['zero port', { INPUT_NEXT_PUBLIC_APP_URL: 'https://example.invalid:0' }],
     ['out-of-range port', { INPUT_NEXT_PUBLIC_APP_URL: 'https://example.invalid:99999' }],
     ['oversize hostname label', { INPUT_NEXT_PUBLIC_APP_URL: `https://${'a'.repeat(64)}.invalid` }],
+    [
+      'oversize hostname',
+      {
+        INPUT_NEXT_PUBLIC_APP_URL: `https://${Array.from({ length: 4 }, () => 'a'.repeat(63)).join('.')}`,
+      },
+    ],
     ['wrong-region user pool', { INPUT_NEXT_PUBLIC_COGNITO_USER_POOL_ID: 'us-east-1_pool' }],
     [
       'oversize user pool',

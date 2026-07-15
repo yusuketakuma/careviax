@@ -117,6 +117,8 @@ jobs:
 
           (( ${#app_host} <= 253 )) ||
             fail_input "next_public_app_url hostname exceeds 253 characters"
+          [[ "$app_host" != *. ]] ||
+            fail_input "next_public_app_url contains an empty hostname label"
           [[ "$app_host" != *..* ]] ||
             fail_input "next_public_app_url contains an empty hostname label"
           IFS='.' read -r -a app_host_labels <<< "$app_host"

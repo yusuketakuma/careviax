@@ -105,6 +105,7 @@ function validateInputBoundary(workflow, validationStep) {
     '${#INPUT_IMAGE_TAG} <= 128',
     '^https:\\/\\/',
     '${#app_host} <= 253',
+    '"$app_host" != *.',
     '${#app_host_label} >= 1',
     '${#app_host_label} <= 63',
     'app_port_number >= 1 && app_port_number <= 65535',
