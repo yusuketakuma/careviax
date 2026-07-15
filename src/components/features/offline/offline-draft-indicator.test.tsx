@@ -36,6 +36,12 @@ describe('OfflineDraftIndicator', () => {
     expect(link.textContent).not.toContain('同期済み');
     expect(link.getAttribute('href')).toBe('/offline-sync');
     expect(link.getAttribute('aria-label')).toContain('同期状況を開く');
+    expect(link.className).toContain(status === 'checking' ? 'hidden' : 'flex');
+    expect(link.className).toContain('min-h-[44px]');
+    expect(link.className).toContain('min-w-[44px]');
+    if (status !== 'checking') {
+      expect(screen.getByText(label).className).not.toContain('hidden');
+    }
   });
 
   it('labels an old timestamp as the previous successful sync', () => {
@@ -44,5 +50,6 @@ describe('OfflineDraftIndicator', () => {
     const link = screen.getByRole('link', { name: /同期状況を開く/ });
     expect(link.textContent).toBe('同期済み最終成功 09:42');
     expect(link.getAttribute('aria-label')).toContain('最終成功09:42');
+    expect(link.className).toContain('hidden');
   });
 });

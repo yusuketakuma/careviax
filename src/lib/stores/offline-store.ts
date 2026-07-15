@@ -10,6 +10,7 @@ interface OfflineState {
   hasHydratedSyncState: boolean;
   isSyncing: boolean;
   syncFailed: boolean;
+  syncStateRefreshFailed: boolean;
   pendingSyncCount: number;
   pendingQueue: SyncQueueItemSummary[];
   syncConflicts: SyncQueueItemSummary[];
@@ -19,11 +20,18 @@ interface OfflineState {
   lastSyncedAt: string | null;
   syncOnlineStatus: () => void;
   setSyncing: (isSyncing: boolean) => void;
-  setSyncFailed: (syncFailed: boolean) => void;
   completeSyncAttempt: (succeeded: boolean) => void;
   markSynced: (at?: Date) => void;
   refreshSyncCount: () => Promise<void>;
   refreshSyncState: () => Promise<void>;
+}
+
+let syncStateReadTail: Promise<void> = Promise.resolve();
+
+function enqueueSyncStateRead(read: () => Promise<void>) {
+  const run = syncStateReadTail.then(read);
+  syncStateReadTail = run.catch(() => undefined);
+  return run;
 }
 
 export const useOfflineStore = create<OfflineState>((set) => ({
@@ -31,6 +39,7 @@ export const useOfflineStore = create<OfflineState>((set) => ({
   hasHydratedSyncState: false,
   isSyncing: false,
   syncFailed: false,
+  syncStateRefreshFailed: false,
   pendingSyncCount: 0,
   pendingQueue: [],
   syncConflicts: [],
@@ -42,7 +51,6 @@ export const useOfflineStore = create<OfflineState>((set) => ({
     set({ isOffline: !window.navigator.onLine });
   },
   setSyncing: (isSyncing) => set({ isSyncing }),
-  setSyncFailed: (syncFailed) => set({ syncFailed }),
   completeSyncAttempt: (succeeded) => {
     set((state) => ({
       isSyncing: false,
@@ -63,6 +71,7 @@ export const useOfflineStore = create<OfflineState>((set) => ({
         state.pendingSyncCount > 0 ||
         state.syncConflicts.length > 0 ||
         state.syncFailed ||
+        state.syncStateRefreshFailed ||
         hasQueueFailure
       ) {
         return state;
@@ -70,28 +79,31 @@ export const useOfflineStore = create<OfflineState>((set) => ({
       return { lastSyncedAt: (at ?? new Date()).toISOString() };
     });
   },
-  refreshSyncCount: async () => {
-    const count = await getPendingSyncCount();
-    const now = new Date().toISOString();
-    set({
-      pendingSyncCount: count,
-      lastSyncRefreshAt: now,
-    });
-  },
-  refreshSyncState: async () => {
-    try {
-      const [count, items] = await Promise.all([getPendingSyncCount(), listSyncQueueItems()]);
+  refreshSyncCount: () =>
+    enqueueSyncStateRead(async () => {
+      const count = await getPendingSyncCount();
       const now = new Date().toISOString();
       set({
-        hasHydratedSyncState: true,
         pendingSyncCount: count,
-        pendingQueue: items,
-        syncConflicts: items.filter((item) => item.conflict_state === 'server_conflict'),
         lastSyncRefreshAt: now,
       });
-    } catch (error) {
-      set({ syncFailed: true });
-      throw error;
-    }
-  },
+    }),
+  refreshSyncState: () =>
+    enqueueSyncStateRead(async () => {
+      try {
+        const [count, items] = await Promise.all([getPendingSyncCount(), listSyncQueueItems()]);
+        const now = new Date().toISOString();
+        set({
+          hasHydratedSyncState: true,
+          syncStateRefreshFailed: false,
+          pendingSyncCount: count,
+          pendingQueue: items,
+          syncConflicts: items.filter((item) => item.conflict_state === 'server_conflict'),
+          lastSyncRefreshAt: now,
+        });
+      } catch (error) {
+        set({ syncStateRefreshFailed: true });
+        throw error;
+      }
+    }),
 }));

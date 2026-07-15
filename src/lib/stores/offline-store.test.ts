@@ -28,6 +28,7 @@ function resetOfflineStore() {
     hasHydratedSyncState: false,
     isSyncing: false,
     syncFailed: false,
+    syncStateRefreshFailed: false,
     pendingSyncCount: 0,
     pendingQueue: [],
     syncConflicts: [],
@@ -134,8 +135,10 @@ describe('offline store sync refresh', () => {
 
     await useOfflineStore.getState().refreshSyncState();
 
-    expect(syncEngineMocks.getPendingSyncCount).toHaveBeenCalledTimes(1);
-    expect(syncEngineMocks.listSyncQueueItems).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(syncEngineMocks.getPendingSyncCount).toHaveBeenCalledTimes(1);
+      expect(syncEngineMocks.listSyncQueueItems).toHaveBeenCalledTimes(1);
+    });
     expect(useOfflineStore.getState().pendingQueue).toEqual([conflictItem]);
     expect(useOfflineStore.getState().syncConflicts).toEqual([conflictItem]);
     expect(useOfflineStore.getState().hasHydratedSyncState).toBe(true);
@@ -172,9 +175,67 @@ describe('offline store sync refresh', () => {
 
     expect(useOfflineStore.getState()).toMatchObject({
       hasHydratedSyncState: false,
-      syncFailed: true,
+      syncFailed: false,
+      syncStateRefreshFailed: true,
       pendingSyncCount: 2,
       lastSyncedAt: '2026-06-18T08:00:00.000Z',
+    });
+  });
+
+  it('serializes detailed refreshes so a newer empty snapshot commits last', async () => {
+    let resolveOldSnapshot: ((items: SyncQueueItemSummary[]) => void) | undefined;
+    const oldItem: SyncQueueItemSummary = {
+      id: 9,
+      entityType: 'visit_record',
+      payload: {},
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      retryCount: 0,
+      conflict: null,
+    };
+    syncEngineMocks.getPendingSyncCount.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    syncEngineMocks.listSyncQueueItems
+      .mockImplementationOnce(
+        () =>
+          new Promise<SyncQueueItemSummary[]>((resolve) => {
+            resolveOldSnapshot = resolve;
+          }),
+      )
+      .mockResolvedValueOnce([]);
+
+    const olderRefresh = useOfflineStore.getState().refreshSyncState();
+    const newerRefresh = useOfflineStore.getState().refreshSyncState();
+
+    await vi.waitFor(() => {
+      expect(syncEngineMocks.getPendingSyncCount).toHaveBeenCalledTimes(1);
+      expect(syncEngineMocks.listSyncQueueItems).toHaveBeenCalledTimes(1);
+    });
+    resolveOldSnapshot?.([oldItem]);
+    await olderRefresh;
+    await newerRefresh;
+
+    expect(syncEngineMocks.getPendingSyncCount).toHaveBeenCalledTimes(2);
+    expect(syncEngineMocks.listSyncQueueItems).toHaveBeenCalledTimes(2);
+    expect(useOfflineStore.getState()).toMatchObject({
+      pendingSyncCount: 0,
+      pendingQueue: [],
+      syncConflicts: [],
+      syncStateRefreshFailed: false,
+    });
+  });
+
+  it('continues the serialized refresh tail after a failed read', async () => {
+    syncEngineMocks.listSyncQueueItems.mockRejectedValueOnce(new Error('temporary failure'));
+
+    const failedRefresh = useOfflineStore.getState().refreshSyncState();
+    const recoveryRefresh = useOfflineStore.getState().refreshSyncState();
+
+    await expect(failedRefresh).rejects.toThrow('temporary failure');
+    await expect(recoveryRefresh).resolves.toBeUndefined();
+    expect(useOfflineStore.getState()).toMatchObject({
+      hasHydratedSyncState: true,
+      pendingSyncCount: 0,
+      pendingQueue: [],
+      syncStateRefreshFailed: false,
     });
   });
 

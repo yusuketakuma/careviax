@@ -44,7 +44,6 @@ export function OfflineSyncBridge() {
   const refreshSyncState = useOfflineStore((state) => state.refreshSyncState);
   const markSynced = useOfflineStore((state) => state.markSynced);
   const setSyncing = useOfflineStore((state) => state.setSyncing);
-  const setSyncFailed = useOfflineStore((state) => state.setSyncFailed);
   const completeSyncAttempt = useOfflineStore((state) => state.completeSyncAttempt);
 
   useEffect(() => {
@@ -64,7 +63,6 @@ export function OfflineSyncBridge() {
         return true;
       } catch (error) {
         clientLog.warn('offline_sync.state_refresh_failed', error, { route: '/offline-sync' });
-        setSyncFailed(true);
         return false;
       }
     };
@@ -113,7 +111,7 @@ export function OfflineSyncBridge() {
       setSyncing(false);
       window.removeEventListener('online', handleOnline);
     };
-  }, [completeSyncAttempt, markSynced, orgId, refreshSyncState, setSyncFailed, setSyncing]);
+  }, [completeSyncAttempt, markSynced, orgId, refreshSyncState, setSyncing]);
 
   return null;
 }

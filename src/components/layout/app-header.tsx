@@ -94,6 +94,7 @@ function HeaderSyncStatus() {
   const syncFailed = useOfflineStore(
     (state) =>
       state.syncFailed ||
+      state.syncStateRefreshFailed ||
       state.pendingQueue.some(
         (item) => item.conflict_state !== 'server_conflict' && Boolean(item.lastError),
       ),

@@ -62,6 +62,7 @@ vi.mock('@/lib/stores/offline-store', () => ({
       hasHydratedSyncState: boolean;
       isSyncing: boolean;
       syncFailed: boolean;
+      syncStateRefreshFailed: boolean;
       pendingSyncCount: number;
       pendingQueue: Array<{ conflict_state?: string; lastError?: string }>;
       syncConflicts: unknown[];
@@ -72,6 +73,7 @@ vi.mock('@/lib/stores/offline-store', () => ({
       hasHydratedSyncState: mockHasHydratedSyncState,
       isSyncing: mockIsSyncing,
       syncFailed: mockSyncFailed,
+      syncStateRefreshFailed: false,
       pendingSyncCount: mockPendingSyncCount,
       pendingQueue: [],
       syncConflicts: Array.from({ length: mockConflictCount }),
@@ -180,7 +182,7 @@ describe('AppHeader', () => {
     const sync = screen.getByTestId('app-header-sync-status');
     expect(sync.textContent).toBe('同期済み最終成功 09:42');
     expect(sync.className).toContain('text-state-done');
-    expect(sync.className).toContain('max-[480px]:!hidden');
+    expect(sync.className).toContain('hidden');
     expect(sync.className).toContain('md:flex');
     expect(screen.getByRole('link', { name: /同期済み.*同期状況を開く/ })).toBe(sync);
     expect(sync.getAttribute('href')).toBe('/offline-sync');
@@ -261,7 +263,7 @@ describe('AppHeader', () => {
     expect(actions.className).toContain('gap-1');
 
     expect(screen.getByTestId('app-header-mode-trigger').textContent).toContain('在宅');
-    expect(screen.getByTestId('app-header-sync-status').className).toContain('max-[480px]:!hidden');
+    expect(screen.getByTestId('app-header-sync-status').className).toContain('hidden');
     expect(screen.getByTestId('app-header-sync-status').className).toContain('md:flex');
     expect(screen.getByRole('link', { name: '設定' }).className).toContain('hidden');
     expect(screen.getByTestId('app-header-current-page').className).toContain('truncate');
@@ -391,6 +393,9 @@ describe('AppHeader', () => {
     expect(sync.textContent).not.toContain('同期済み');
     expect(sync.textContent).not.toContain('最終成功');
     expect(screen.getAllByTestId('app-header-sync-status')).toHaveLength(1);
+    expect(sync.className).toContain('flex');
+    expect(sync.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+    expect(sync.className).toContain('min-w-[44px]');
   });
 
   it('shows conflicts and failures before pending or syncing states', () => {

@@ -87,11 +87,12 @@ export function OfflineDraftIndicator({
   >;
   const current = config[status];
   const Icon = current.icon;
+  const isMobileCritical = ['offline', 'conflict', 'failed', 'syncing', 'pending'].includes(status);
 
   return (
     <Link
       href="/offline-sync"
-      className={`hidden min-h-9 shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-[480px]:!hidden md:flex ${current.className}`}
+      className={`${isMobileCritical ? 'flex' : 'hidden'} min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:flex md:min-h-9 md:min-w-0 md:justify-start ${current.className}`}
       data-testid="app-header-sync-status"
       aria-live="polite"
       aria-label={current.ariaLabel}
@@ -104,7 +105,7 @@ export function OfflineDraftIndicator({
         </Badge>
       ) : null}
       {status === 'synced' && lastSyncedLabel ? (
-        <span className="text-muted-foreground">最終成功 {lastSyncedLabel}</span>
+        <span className="hidden text-muted-foreground md:inline">最終成功 {lastSyncedLabel}</span>
       ) : null}
     </Link>
   );

@@ -8,7 +8,6 @@ const useOrgIdMock = vi.hoisted(() => vi.fn());
 const refreshSyncStateMock = vi.hoisted(() => vi.fn());
 const markSyncedMock = vi.hoisted(() => vi.fn());
 const setSyncingMock = vi.hoisted(() => vi.fn());
-const setSyncFailedMock = vi.hoisted(() => vi.fn());
 const completeSyncAttemptMock = vi.hoisted(() => vi.fn());
 const processSyncQueueMock = vi.hoisted(() => vi.fn());
 const syncEvidenceDraftsMock = vi.hoisted(() => vi.fn());
@@ -22,7 +21,6 @@ vi.mock('@/lib/stores/offline-store', () => ({
       refreshSyncState: () => Promise<void>;
       markSynced: () => void;
       setSyncing: (value: boolean) => void;
-      setSyncFailed: (value: boolean) => void;
       completeSyncAttempt: (succeeded: boolean) => void;
     }) => unknown,
   ) =>
@@ -30,7 +28,6 @@ vi.mock('@/lib/stores/offline-store', () => ({
       refreshSyncState: refreshSyncStateMock,
       markSynced: markSyncedMock,
       setSyncing: setSyncingMock,
-      setSyncFailed: setSyncFailedMock,
       completeSyncAttempt: completeSyncAttemptMock,
     }),
 }));
@@ -144,7 +141,6 @@ describe('OfflineSyncBridge', () => {
         route: '/offline-sync',
       }),
     );
-    expect(setSyncFailedMock).toHaveBeenCalledWith(true);
     expect(completeSyncAttemptMock).toHaveBeenCalledWith(false);
     expect(markSyncedMock).not.toHaveBeenCalled();
   });
