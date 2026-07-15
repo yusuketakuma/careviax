@@ -15,9 +15,55 @@ const originalPhosApiBaseUrl = process.env.PHOS_API_BASE_URL;
 const originalPublicPhosApiBaseUrl = process.env.NEXT_PUBLIC_PHOS_API_BASE_URL;
 const originalPhosProxyUpstreamTimeoutMs = process.env.PHOS_PROXY_UPSTREAM_TIMEOUT_MS;
 type NextRequestInit = NonNullable<ConstructorParameters<typeof NextRequest>[1]>;
+type NextRequestInitWithDuplex = NextRequestInit & { duplex: 'half' };
 
 function request(url: string, init: NextRequestInit = {}) {
   return new NextRequest(url, init);
+}
+
+function streamingPostRequest(
+  url: string,
+  body: ReadableStream<Uint8Array>,
+  options: { headers?: HeadersInit; signal?: AbortSignal } = {},
+) {
+  const init: NextRequestInitWithDuplex = {
+    method: 'POST',
+    body,
+    headers: options.headers,
+    signal: options.signal,
+    duplex: 'half',
+  };
+  return new NextRequest(url, init);
+}
+
+function closedChunkStream(chunks: Uint8Array[], cancel?: () => void) {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+      controller.close();
+    },
+    cancel,
+  });
+}
+
+function stalledChunkStream(chunks: Uint8Array[] = [], cancel?: () => void) {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+    },
+    cancel,
+  });
+}
+
+function splitInsideFirstMultibyteCharacter(bytes: Uint8Array) {
+  const firstMultibyteByte = bytes.findIndex((byte) => byte >= 0x80);
+  if (firstMultibyteByte < 0) throw new Error('expected multibyte test data');
+  const splitAt = firstMultibyteByte + 1;
+  return [bytes.slice(0, splitAt), bytes.slice(splitAt)];
+}
+
+async function readBodyInitBytes(body: BodyInit | null | undefined) {
+  return new Uint8Array(await new Response(body).arrayBuffer());
 }
 
 describe('/api/phos proxy', () => {
@@ -84,6 +130,130 @@ describe('/api/phos proxy', () => {
     expect(headers.get('idempotency-key')).toBe('idem_1');
     expect(headers.get('x-correlation-id')).toBe('corr_1');
     expect(headers.get('cookie')).toBeNull();
+  });
+
+  it('preserves split multibyte request and response bytes while buffering allowed headers', async () => {
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    const requestBytes = new TextEncoder().encode('{"action_code":"確認"}');
+    const responseBytes = new TextEncoder().encode('{"message":"受付済み"}');
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      expect(await readBodyInitBytes(init?.body)).toEqual(requestBytes);
+      return new Response(closedChunkStream(splitInsideFirstMultibyteCharacter(responseBytes)), {
+        status: 201,
+        statusText: 'Created',
+        headers: {
+          'content-type': 'application/json',
+          etag: '"response-v1"',
+          'last-modified': 'Wed, 15 Jul 2026 00:00:00 GMT',
+          'x-request-id': 'upstream_req_multibyte',
+          'set-cookie': 'upstream-secret=hidden',
+        },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await POST(
+      streamingPostRequest(
+        'http://localhost/api/phos/cards/card_1/actions',
+        closedChunkStream(splitInsideFirstMultibyteCharacter(requestBytes)),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+      { params: Promise.resolve({ path: ['cards', 'card_1', 'actions'] }) },
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.statusText).toBe('Created');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(responseBytes);
+    expect(response.headers.get('cache-control')).toBe('no-store, max-age=0');
+    expect(response.headers.get('content-type')).toBe('application/json');
+    expect(response.headers.get('etag')).toBe('"response-v1"');
+    expect(response.headers.get('last-modified')).toBe('Wed, 15 Jul 2026 00:00:00 GMT');
+    expect(response.headers.get('x-request-id')).toBe('upstream_req_multibyte');
+    expect(response.headers.get('set-cookie')).toBeNull();
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['lying low', '1'],
+  ])(
+    'rejects chunked request bodies over 256 KiB with %s Content-Length',
+    async (_label, contentLength) => {
+      getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+      const cancel = vi.fn();
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const headers = new Headers({ 'content-type': 'application/octet-stream' });
+      if (contentLength !== undefined) headers.set('content-length', contentLength);
+
+      const response = await POST(
+        streamingPostRequest(
+          'http://localhost/api/phos/cards/card_1/actions',
+          stalledChunkStream([new Uint8Array(256 * 1024), new Uint8Array([1])], cancel),
+          { headers },
+        ),
+        { params: Promise.resolve({ path: ['cards', 'card_1', 'actions'] }) },
+      );
+
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toEqual({
+        code: 'PHOS_REQUEST_BODY_TOO_LARGE',
+        message: 'PH-OS API request body is too large',
+      });
+      expect(response.headers.get('cache-control')).toBe('no-store, max-age=0');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(cancel).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('cancels stalled request bodies at the 10 second ingress deadline', async () => {
+    vi.useFakeTimers();
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    const cancel = vi.fn();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const responsePromise = POST(
+      streamingPostRequest(
+        'http://localhost/api/phos/cards/card_1/actions',
+        stalledChunkStream([new TextEncoder().encode('{"action_code":')], cancel),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+      { params: Promise.resolve({ path: ['cards', 'card_1', 'actions'] }) },
+    );
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    const response = await responsePromise;
+    expect(response.status).toBe(408);
+    await expect(response.json()).resolves.toEqual({
+      code: 'PHOS_REQUEST_BODY_TIMEOUT',
+      message: 'PH-OS API request body timed out',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('maps a client-aborted request body to a fixed unreadable response', async () => {
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    const controller = new AbortController();
+    controller.abort(new Error('patient-name-must-not-leak'));
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await POST(
+      streamingPostRequest('http://localhost/api/phos/cards/card_1/actions', stalledChunkStream(), {
+        signal: controller.signal,
+      }),
+      { params: Promise.resolve({ path: ['cards', 'card_1', 'actions'] }) },
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'PHOS_REQUEST_BODY_UNREADABLE',
+      message: 'PH-OS API request body is unreadable',
+    });
+    expect(JSON.stringify(body)).not.toContain('patient-name-must-not-leak');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('rejects oversized query strings before reaching the upstream API', async () => {
@@ -228,5 +398,153 @@ describe('/api/phos proxy', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(observedSignal?.aborted).toBe(true);
     expect(observedSignal?.reason).toEqual(new Error('PHOS_PROXY_UPSTREAM_TIMEOUT'));
+  });
+
+  it('keeps the upstream timeout armed while a response body is stalled', async () => {
+    vi.useFakeTimers();
+    process.env.PHOS_PROXY_UPSTREAM_TIMEOUT_MS = '5';
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    const cancel = vi.fn();
+    let observedSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      observedSignal = init?.signal ?? undefined;
+      return new Response(stalledChunkStream([new TextEncoder().encode('{')], cancel), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const responsePromise = GET(request('http://localhost/api/phos/cards'), {
+      params: Promise.resolve({ path: ['cards'] }),
+    });
+    await vi.advanceTimersByTimeAsync(5);
+
+    const response = await responsePromise;
+    expect(response.status).toBe(504);
+    await expect(response.json()).resolves.toEqual({
+      code: 'PHOS_UPSTREAM_TIMEOUT',
+      message: 'PH-OS API upstream timed out',
+    });
+    expect(observedSignal?.aborted).toBe(true);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('applies the explicit 30 second response-body hard deadline under a 60 second total timeout', async () => {
+    vi.useFakeTimers();
+    process.env.PHOS_PROXY_UPSTREAM_TIMEOUT_MS = '60000';
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    const cancel = vi.fn();
+    let observedSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      observedSignal = init?.signal ?? undefined;
+      return new Response(stalledChunkStream([], cancel), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const responsePromise = GET(request('http://localhost/api/phos/cards'), {
+      params: Promise.resolve({ path: ['cards'] }),
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    const response = await responsePromise;
+    expect(response.status).toBe(504);
+    await expect(response.json()).resolves.toMatchObject({ code: 'PHOS_UPSTREAM_TIMEOUT' });
+    expect(observedSignal?.aborted).toBe(false);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('rejects an oversized streamed upstream response before returning partial bytes', async () => {
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    const cancel = vi.fn();
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Promise.resolve(
+        new Response(
+          stalledChunkStream([new Uint8Array(1024 * 1024), new Uint8Array([1])], cancel),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await GET(request('http://localhost/api/phos/cards'), {
+      params: Promise.resolve({ path: ['cards'] }),
+    });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      code: 'PHOS_UPSTREAM_RESPONSE_TOO_LARGE',
+      message: 'PH-OS API upstream response is too large',
+    });
+    expect(response.headers.get('cache-control')).toBe('no-store, max-age=0');
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('maps upstream response stream failures to a fixed unavailable error', async () => {
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    const unsafeError = new Error('upstream-patient-data-must-not-leak');
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.error(unsafeError);
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await GET(request('http://localhost/api/phos/cards'), {
+      params: Promise.resolve({ path: ['cards'] }),
+    });
+
+    expect(response.status).toBe(502);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'PHOS_UPSTREAM_UNAVAILABLE',
+      message: 'PH-OS API upstream is unavailable',
+    });
+    expect(JSON.stringify(body)).not.toContain(unsafeError.message);
+  });
+
+  it.each([200, 204, 205, 304])('preserves a null upstream body for HTTP %i', async (status) => {
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await GET(request('http://localhost/api/phos/cards'), {
+      params: Promise.resolve({ path: ['cards'] }),
+    });
+
+    expect(response.status).toBe(status);
+    expect(response.body).toBeNull();
+    await expect(response.text()).resolves.toBe('');
+  });
+
+  it('returns a null 304 body without treating representation Content-Length as payload bytes', async () => {
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(null, {
+          status: 304,
+          headers: {
+            'content-length': String(1024 * 1024 + 1),
+            etag: '"cached-v2"',
+          },
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await GET(request('http://localhost/api/phos/cards'), {
+      params: Promise.resolve({ path: ['cards'] }),
+    });
+
+    expect(response.status).toBe(304);
+    expect(response.body).toBeNull();
+    expect(response.headers.get('etag')).toBe('"cached-v2"');
+    await expect(response.text()).resolves.toBe('');
   });
 });

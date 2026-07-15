@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthAccessToken } from '@/lib/auth/config';
+import { HARD_HTTP_BODY_DEADLINE_MS, readBoundedBody } from '@/lib/http/bounded-body';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import type { ErrorResponse } from '@/phos/contracts/phos_contracts';
 import { PHOS_API_ROUTES, type PhosApiRoute } from '@/phos/infra/api-gateway-routes';
@@ -16,6 +17,9 @@ const FORWARDED_REQUEST_HEADERS = ['accept', 'content-type', 'idempotency-key', 
 const FORWARDED_RESPONSE_HEADERS = ['content-type', 'etag', 'last-modified', 'x-request-id'];
 const DEFAULT_PHOS_PROXY_UPSTREAM_TIMEOUT_MS = 15_000;
 const MAX_PHOS_PROXY_UPSTREAM_TIMEOUT_MS = 60_000;
+const MAX_PHOS_PROXY_REQUEST_BODY_BYTES = 256 * 1024;
+const PHOS_PROXY_REQUEST_BODY_DEADLINE_MS = 10_000;
+const MAX_PHOS_PROXY_UPSTREAM_RESPONSE_BYTES = 1024 * 1024;
 const MAX_PHOS_PROXY_QUERY_LENGTH = 8192;
 const MAX_PHOS_PROXY_QUERY_PARAM_COUNT = 32;
 const MAX_PHOS_PROXY_QUERY_KEY_LENGTH = 64;
@@ -79,6 +83,16 @@ function resolveUpstreamTimeoutMs() {
     fallbackMs: DEFAULT_PHOS_PROXY_UPSTREAM_TIMEOUT_MS,
     maxMs: MAX_PHOS_PROXY_UPSTREAM_TIMEOUT_MS,
   });
+}
+
+function isNullBodyStatus(status: number) {
+  return status === 204 || status === 205 || status === 304;
+}
+
+function copyBytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
 }
 
 function routeSegments(path: string): string[] {
@@ -214,20 +228,68 @@ async function proxyPhosRequest(request: NextRequest, context: PhosProxyRouteCon
     upstreamUrl.searchParams.append(key, value);
   });
 
-  const body = request.method === 'GET' ? undefined : await request.arrayBuffer();
-  const abort = createFetchTimeout(
-    resolveUpstreamTimeoutMs(),
-    new Error('PHOS_PROXY_UPSTREAM_TIMEOUT'),
-  );
-  let upstreamResponse: Response;
+  let body: ArrayBuffer | undefined;
+  if (request.method !== 'GET') {
+    const bodyResult = await readBoundedBody(request, {
+      maxBytes: MAX_PHOS_PROXY_REQUEST_BODY_BYTES,
+      deadlineMs: PHOS_PROXY_REQUEST_BODY_DEADLINE_MS,
+    });
+    if (!bodyResult.ok) {
+      if (bodyResult.reason === 'too_large') {
+        return jsonError(413, 'PHOS_REQUEST_BODY_TOO_LARGE', 'PH-OS API request body is too large');
+      }
+      if (bodyResult.reason === 'timeout') {
+        return jsonError(408, 'PHOS_REQUEST_BODY_TIMEOUT', 'PH-OS API request body timed out');
+      }
+      return jsonError(400, 'PHOS_REQUEST_BODY_UNREADABLE', 'PH-OS API request body is unreadable');
+    }
+    body = copyBytesToArrayBuffer(bodyResult.bytes);
+  }
+
+  const upstreamTimeoutMs = resolveUpstreamTimeoutMs();
+  const upstreamResponseBodyDeadlineMs = Math.min(upstreamTimeoutMs, HARD_HTTP_BODY_DEADLINE_MS);
+  const abort = createFetchTimeout(upstreamTimeoutMs, new Error('PHOS_PROXY_UPSTREAM_TIMEOUT'));
   try {
-    upstreamResponse = await fetch(upstreamUrl, {
+    const upstreamResponse = await fetch(upstreamUrl, {
       method: request.method,
       headers: buildUpstreamHeaders(request, accessToken),
       cache: 'no-store',
       redirect: 'error',
       signal: abort.signal,
       ...(body === undefined ? {} : { body }),
+    });
+
+    if (upstreamResponse.body === null || isNullBodyStatus(upstreamResponse.status)) {
+      return new Response(null, {
+        status: upstreamResponse.status,
+        statusText: upstreamResponse.statusText,
+        headers: buildResponseHeaders(upstreamResponse.headers),
+      });
+    }
+
+    const upstreamBodyResult = await readBoundedBody(upstreamResponse, {
+      maxBytes: MAX_PHOS_PROXY_UPSTREAM_RESPONSE_BYTES,
+      deadlineMs: upstreamResponseBodyDeadlineMs,
+      signal: abort.signal,
+    });
+    if (!upstreamBodyResult.ok) {
+      if (upstreamBodyResult.reason === 'too_large') {
+        return jsonError(
+          502,
+          'PHOS_UPSTREAM_RESPONSE_TOO_LARGE',
+          'PH-OS API upstream response is too large',
+        );
+      }
+      if (upstreamBodyResult.reason === 'timeout' || abort.signal.aborted) {
+        return jsonError(504, 'PHOS_UPSTREAM_TIMEOUT', 'PH-OS API upstream timed out');
+      }
+      return jsonError(502, 'PHOS_UPSTREAM_UNAVAILABLE', 'PH-OS API upstream is unavailable');
+    }
+
+    return new Response(copyBytesToArrayBuffer(upstreamBodyResult.bytes), {
+      status: upstreamResponse.status,
+      statusText: upstreamResponse.statusText,
+      headers: buildResponseHeaders(upstreamResponse.headers),
     });
   } catch {
     if (abort.signal.aborted) {
@@ -237,12 +299,6 @@ async function proxyPhosRequest(request: NextRequest, context: PhosProxyRouteCon
   } finally {
     abort.clear();
   }
-
-  return new Response(upstreamResponse.body, {
-    status: upstreamResponse.status,
-    statusText: upstreamResponse.statusText,
-    headers: buildResponseHeaders(upstreamResponse.headers),
-  });
 }
 
 export async function GET(request: NextRequest, context: PhosProxyRouteContext) {
