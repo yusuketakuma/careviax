@@ -59,7 +59,7 @@
 ## 直近の作業
 
 - codex1: Round 22 API-CONTRACT-001FZDATAEXPLORERMODELSAUTH / Data Explorer Models standard auth-wrapper
-  migration (CODE COMMITTED / LEDGER PENDING, 2026-07-15; implementation `ca063b068`).
+  migration (DONE / CODE + LEDGER PUSHED, 2026-07-15; implementation `ca063b068`; ledger `877218a6d`).
   - selection / scope:
     clean parity `0 0`からPlans最優先のAPI contract laneを再開し、bounded subagent 3系統で`001` direct-auth、
     `002` trace propagation、`003` error registryをread-only比較した。`002`残件はbilling/break-glass/PHI audit/outbox、
@@ -79,7 +79,9 @@
     独立security/privacy/API reviewerとverifierはseverityなしでAPPROVEした。直前統合境界でclean E2E build 311 pagesをPASS済み、
     今回は非視覚・behavior-preserving GET wrapper移行のためbuild/E2E/imagegenは再実行していない。Oracleは現行STATE SSOTの禁止に従い
     未使用。gbrain `projects/careviax/decisions/2026-07-15/api-contract-data-explorer-models-auth-wrapper`へ再利用判断を保存した。
-    親`API-CONTRACT-001`には148 routes / 212 callsとrequest correlation body/error registryが残る。
+    code + ledgerをsafe feature branchへnon-force pushし、local/remote SHA
+    `877218a6db85cbcc390b60abad3fef4bcd5d63eb`、parity `0 0`を確認した。親`API-CONTRACT-001`には
+    148 routes / 212 callsとrequest correlation body/error registryが残る。
 
 - codex1 integration: pre-existing worktree convergence + MEDSAFE-PATIENT-CONTEXT-SHARE-001 closure
   (DONE / CODE + LEDGER PUSHED, 2026-07-15; implementations `87f9335ab`, `ce9cae9ab`,
