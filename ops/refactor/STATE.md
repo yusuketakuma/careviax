@@ -6,18 +6,16 @@
 > validation、remaining/next action はこのファイルへ集約する。
 > 再開手順: このファイル → `git status --short --untracked-files=all` → `git log --oneline -15`。
 
-## 体制（2026-07-15 最新ユーザー指示）
+## 体制（2026-07-15 23:45 JST 最新ユーザー指示）
 
-- 現行はcodex1/codex2の二者運用。両者がagmsgでexact-path ownershipを宣言し、異なる領域の計画レビューと実装を
-  並列化して相互検証する。codex1が単一台帳更新とintegrationを担当し、共有台帳と長時間Next.js gateは直列化する。
-  codex3/codex4、Claude、built-in custom agent、
-  subagent、外部maker/checkerは使わない。
-- CareViaXのagmsg登録はcodex1/codex2だけに整理済み。project-local `.codex/agents/*.toml` 27件と
-  custom-agent registryを削除し、`.codex/config.toml`の`features.multi_agent`を`false`へ固定した。
-  user-global `~/.codex/agents`は他repositoryの共有設定なので変更せず、CareViaXでは使用しない。
-  設定削除commitは`ccbc5258a`。実Codex doctorはconfig loaded、16 ok / 2 warn / 0 failで、warnは既存の
-  rollout/state DB不整合とstale app-server socketだけだった。二者運用ルールとstrict Pro policyの同期は
-  `0c52c769b`。
+- 現行は independent Codex CLI seat である codex1/codex2 の二者運用。両者が agmsg で
+  exact-path ownership を宣言し、異なる領域の計画レビューと実装を並列化して相互検証する。codex1 が単一台帳更新と
+  integration を担当し、共有台帳と長時間 Next.js gate は二者間で直列化する。codex3/codex4、Claude、Oracle、
+  built-in custom agent、subagent、外部 maker/checker は使わない。
+- 一時的に再登録された codex3/codex4 の Codex CLI session を停止し、CareViaX の agmsg 登録を codex1/codex2 だけへ
+  戻した。project-local `.codex/agents/*.toml` と user-global `~/.codex/agents/*.toml` は存在せず、project/user の
+  `.codex/config.toml` はともに `features.multi_agent=false` を維持する。custom-agent 削除commitは`ccbc5258a`、
+  二者運用ルール同期は`0c52c769b`。
 - 既存user/harness dirtyと過去peerのsource差分を保存し、同一pathへ競合編集しない。commitする場合は明示owned pathだけを
   stageし、`git add -A`を使わない。push、deploy、migration適用、production mutation、destructive operationは
   current-taskの明示許可なしに行わない。
