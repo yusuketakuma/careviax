@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { NextRequest } from 'next/server';
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { importYreseClinicalWebhookMock, loggerErrorMock } = vi.hoisted(() => ({
   importYreseClinicalWebhookMock: vi.fn(),
@@ -18,6 +18,8 @@ vi.mock('@/lib/utils/logger', () => ({
 import { POST } from './route';
 
 const SECRET = 'yrese-webhook-test-secret';
+type NextRequestInit = NonNullable<ConstructorParameters<typeof NextRequest>[1]>;
+type NextRequestInitWithDuplex = NextRequestInit & { duplex: 'half' };
 
 function sign(body: string, secret = SECRET) {
   return `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
@@ -32,6 +34,36 @@ function createRequest(body: string, headers: Record<string, string> = {}) {
     },
     body,
   });
+}
+
+function createStreamRequest(
+  body: ReadableStream<Uint8Array>,
+  headers: Record<string, string> = {},
+  signal?: AbortSignal,
+) {
+  const init: NextRequestInitWithDuplex = {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...headers,
+    },
+    body,
+    signal,
+    duplex: 'half',
+  };
+  return new NextRequest('http://localhost/api/webhooks/yrese', init);
+}
+
+function chunkedBodyRequest(chunks: readonly Uint8Array[], headers: Record<string, string> = {}) {
+  return createStreamRequest(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(chunk);
+        controller.close();
+      },
+    }),
+    headers,
+  );
 }
 
 function signedRequest(payload: unknown, signature = sign(JSON.stringify(payload))) {
@@ -51,6 +83,10 @@ describe('/api/webhooks/yrese POST', () => {
       queueItemId: 'queue_1',
       importedResources: [{ resourceId: 'medreq_1' }],
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   afterAll(() => {
@@ -165,6 +201,34 @@ describe('/api/webhooks/yrese POST', () => {
     expect(responseText).not.toContain('LEAK_IDENTIFIER');
   });
 
+  it('preserves the exact signed UTF-8 body across split multibyte chunks', async () => {
+    const payload = {
+      event_type: 'dispensing.confirmed',
+      tenant_id: 'org_1',
+      pharmacy_id: '薬局_1',
+    };
+    const body = JSON.stringify(payload);
+    const encoded = new TextEncoder().encode(body);
+    const markerIndex = body.indexOf('薬');
+    const markerByteIndex = new TextEncoder().encode(body.slice(0, markerIndex)).byteLength;
+    const request = chunkedBodyRequest(
+      [encoded.slice(0, markerByteIndex + 1), encoded.slice(markerByteIndex + 1)],
+      {
+        'content-length': '1',
+        'x-yrese-signature': sign(body),
+      },
+    );
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(202);
+    expect(importYreseClinicalWebhookMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        webhook: expect.objectContaining({ payload }),
+      }),
+    );
+  });
+
   it('rejects oversized webhook payloads before import', async () => {
     const body = JSON.stringify({
       event_type: 'dispensing.confirmed',
@@ -182,6 +246,68 @@ describe('/api/webhooks/yrese POST', () => {
       message: 'Webhook payload is too large',
     });
     expect(JSON.stringify(responseBody)).not.toContain('x'.repeat(32));
+    expect(importYreseClinicalWebhookMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects chunked oversize despite a lying Content-Length before signature processing', async () => {
+    const chunk = new Uint8Array(600 * 1024);
+    const response = await POST(
+      chunkedBodyRequest([chunk, chunk], {
+        'content-length': '1',
+      }),
+    );
+
+    expect(response.status).toBe(413);
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    await expect(response.json()).resolves.toEqual({
+      code: 'YRESE_WEBHOOK_PAYLOAD_TOO_LARGE',
+      message: 'Webhook payload is too large',
+    });
+    expect(importYreseClinicalWebhookMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the registered 408 envelope when raw body reading stalls', async () => {
+    vi.useFakeTimers();
+    let cancelled = false;
+    const request = createStreamRequest(
+      new ReadableStream<Uint8Array>({
+        pull() {
+          return new Promise(() => undefined);
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+    );
+
+    const pending = POST(request);
+    await vi.advanceTimersByTimeAsync(10_000);
+    const response = await pending;
+
+    expect(response.status).toBe(408);
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    await expect(response.json()).resolves.toEqual({
+      code: 'REQUEST_BODY_TIMEOUT',
+      message: 'Webhook payload read timed out',
+      details: { timeout_ms: 10_000 },
+    });
+    await Promise.resolve();
+    expect(cancelled).toBe(true);
+    expect(importYreseClinicalWebhookMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid UTF-8 without exposing or importing raw bytes', async () => {
+    const response = await POST(
+      chunkedBodyRequest([new Uint8Array([0x7b, 0xff, 0x7d])], {
+        'x-yrese-signature': 'sha256=raw-secret',
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: 'Webhook payload must be valid UTF-8',
+    });
     expect(importYreseClinicalWebhookMock).not.toHaveBeenCalled();
   });
 

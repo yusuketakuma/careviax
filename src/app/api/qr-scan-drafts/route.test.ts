@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 
 type TestAuthContext = { orgId: string; userId: string; role: 'pharmacist' };
 type TestRouteContext = { params: Promise<Record<string, string>> };
+type NextRequestInit = NonNullable<ConstructorParameters<typeof NextRequest>[1]>;
+type NextRequestInitWithDuplex = NextRequestInit & { duplex: 'half' };
 
 const {
   withAuthContextMock,
@@ -128,6 +130,31 @@ function createMalformedJsonRequest() {
   });
 }
 
+function createStreamRequest(
+  body: ReadableStream<Uint8Array>,
+  headers: Record<string, string> = {},
+) {
+  const init: NextRequestInitWithDuplex = {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body,
+    duplex: 'half',
+  };
+  return new NextRequest('http://localhost/api/qr-scan-drafts', init);
+}
+
+function createChunkedRequest(chunks: readonly Uint8Array[], headers: Record<string, string> = {}) {
+  return createStreamRequest(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(chunk);
+        controller.close();
+      },
+    }),
+    headers,
+  );
+}
+
 function createGetRequest(url = 'http://localhost/api/qr-scan-drafts') {
   return new NextRequest(url, { method: 'GET' });
 }
@@ -136,6 +163,10 @@ function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('cache-control')).toBe('private, no-store, max-age=0');
   expect(response.headers.get('pragma')).toBe('no-cache');
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('/api/qr-scan-drafts GET', () => {
   beforeEach(() => {
@@ -476,6 +507,79 @@ describe('/api/qr-scan-drafts POST', () => {
     expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
     expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
     expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a chunked body over 512KiB despite a lying Content-Length before clinical work', async () => {
+    const chunk = new Uint8Array(300 * 1024);
+    const response = await POST(
+      createChunkedRequest([chunk, chunk], {
+        'content-length': '1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(413);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'REQUEST_BODY_TOO_LARGE',
+      message: 'リクエストボディが上限を超えています',
+      details: { max_bytes: 512 * 1024 },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(isJahisQRMock).not.toHaveBeenCalled();
+    expect(parseJahisQRSafeMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 408 before clinical work when QR body reading stalls', async () => {
+    vi.useFakeTimers();
+    let cancelled = false;
+    const request = createStreamRequest(
+      new ReadableStream<Uint8Array>({
+        pull() {
+          return new Promise(() => undefined);
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+    );
+
+    const pending = POST(request);
+    await vi.advanceTimersByTimeAsync(5_000);
+    const response = await pending;
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(408);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'REQUEST_BODY_TIMEOUT',
+      message: 'リクエストボディの受信がタイムアウトしました',
+      details: { timeout_ms: 5_000 },
+    });
+    await Promise.resolve();
+    expect(cancelled).toBe(true);
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(isJahisQRMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts the maximum valid multibyte QR array below the 512KiB transport budget', async () => {
+    const qrTexts = Array.from(
+      { length: 16 },
+      (_, index) => `${'薬'.repeat(8190)}${String(index).padStart(2, '0')}`,
+    );
+    const body = JSON.stringify({ qr_texts: qrTexts, site_id: 'site_1' });
+    expect(new TextEncoder().encode(body).byteLength).toBeLessThanOrEqual(512 * 1024);
+
+    const response = await POST(createRequest({ qr_texts: qrTexts, site_id: 'site_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(isJahisQRMock).toHaveBeenCalledTimes(16);
+    expect(qrScanDraftCreateMock).toHaveBeenCalledTimes(1);
   });
 
   it('persists enriched parsed_data from the QR mapper', async () => {

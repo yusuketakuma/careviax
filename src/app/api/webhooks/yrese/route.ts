@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { registeredError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObject } from '@/lib/db/json';
+import { readBoundedBody } from '@/lib/http/bounded-body';
 import { logger } from '@/lib/utils/logger';
 import { importYreseClinicalWebhook } from '@/server/services/standard-clinical-integration-import';
 import { verifyYreseWebhookSignature } from '@/server/services/yrese-webhook-signature';
@@ -12,6 +13,7 @@ export const runtime = 'nodejs';
 
 const ROUTE = '/api/webhooks/yrese';
 const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024;
+const WEBHOOK_BODY_DEADLINE_MS = 10_000;
 const MAX_RESOURCE_IMPORTS_PER_WEBHOOK = 20;
 const SIGNATURE_HEADERS = ['x-yrese-signature', 'x-ph-os-yrese-signature'] as const;
 
@@ -90,15 +92,46 @@ function noStore(response: NextResponse) {
   return withSensitiveNoStore(response);
 }
 
+const webhookBodyDecoder = new TextDecoder('utf-8', { fatal: true });
+
+function decodeWebhookBody(bytes: Uint8Array) {
+  try {
+    return webhookBodyDecoder.decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   let bodyText = '';
+  let bodyByteCount = 0;
   try {
-    bodyText = await req.text();
-    if (Buffer.byteLength(bodyText, 'utf8') > MAX_WEBHOOK_BODY_BYTES) {
-      return noStore(
-        registeredError('YRESE_WEBHOOK_PAYLOAD_TOO_LARGE', 'Webhook payload is too large'),
-      );
+    const bodyResult = await readBoundedBody(req, {
+      maxBytes: MAX_WEBHOOK_BODY_BYTES,
+      deadlineMs: WEBHOOK_BODY_DEADLINE_MS,
+    });
+    if (!bodyResult.ok) {
+      if (bodyResult.reason === 'too_large') {
+        return noStore(
+          registeredError('YRESE_WEBHOOK_PAYLOAD_TOO_LARGE', 'Webhook payload is too large'),
+        );
+      }
+      if (bodyResult.reason === 'timeout') {
+        return noStore(
+          registeredError('REQUEST_BODY_TIMEOUT', 'Webhook payload read timed out', {
+            timeout_ms: WEBHOOK_BODY_DEADLINE_MS,
+          }),
+        );
+      }
+      return noStore(validationError('Webhook payload could not be read'));
     }
+
+    bodyByteCount = bodyResult.bytes.byteLength;
+    const decodedBody = decodeWebhookBody(bodyResult.bytes);
+    if (decodedBody == null) {
+      return noStore(validationError('Webhook payload must be valid UTF-8'));
+    }
+    bodyText = decodedBody;
 
     const signatureResult = verifyYreseWebhookSignature({
       body: bodyText,
@@ -183,7 +216,7 @@ export async function POST(req: NextRequest) {
       route: ROUTE,
       operation: 'receive_yrese_webhook',
       code: 'YRESE_WEBHOOK_IMPORT_FAILED',
-      count: Buffer.byteLength(bodyText, 'utf8'),
+      count: bodyByteCount,
     });
     return noStore(registeredError('YRESE_WEBHOOK_IMPORT_FAILED', 'Webhook import failed'));
   }

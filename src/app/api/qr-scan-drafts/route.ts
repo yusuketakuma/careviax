@@ -5,7 +5,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { conflict, internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { parseJsonObjectRequestBodyOrError } from '@/lib/api/request-body';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
@@ -36,6 +36,8 @@ import {
 
 const MAX_QR_TEXT_COUNT = 16;
 const MAX_QR_TEXT_LENGTH = 8192;
+const MAX_QR_DRAFT_BODY_BYTES = 512 * 1024;
+const QR_DRAFT_BODY_DEADLINE_MS = 5_000;
 
 const optionalTrimmedStringSchema = z.string().trim().min(1).optional();
 
@@ -281,13 +283,19 @@ export async function GET(
 
 const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
-
-    const parsed = createQrDraftSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
+    const parsed = await parseJsonObjectRequestBodyOrError(
+      req,
+      createQrDraftSchema,
+      {
+        invalidBody: 'リクエストボディが不正です',
+        invalidInput: '入力値が不正です',
+      },
+      {
+        maxBytes: MAX_QR_DRAFT_BODY_BYTES,
+        deadlineMs: QR_DRAFT_BODY_DEADLINE_MS,
+      },
+    );
+    if (!parsed.ok) return parsed.response;
 
     const {
       qr_texts: parsedQrTexts,
