@@ -64,6 +64,32 @@
 
 ## 直近の作業
 
+- codex2 implementation + codex1 independent review/integration: JAHIS QR patient identity fail-close
+  (DONE / CODE COMMITTED, 2026-07-15; implementation `4e3a4f270`).
+  - root cause / implementation:
+    患者服薬画面はpatient summary取得失敗時も表示用placeholder氏名、空生年月日、unknown/other性別からQR生成へ進め、
+    patient/org切替や同一scopeの非同期競合後に古い患者のdialog/stateを表示し得た。patient identityを服薬dataから独立した
+    required queryへ分離し、API payloadのpatient id一致、氏名・生年月日・male/femaleのmachine-output検証が完了するまでactionを
+    disabled + 固定理由/再試行にした。QR state/request/dialogを`orgId + patientId`へ束縛し、scope変更、同一scope last-request-wins、
+    unmount後の成功/失敗をrequest tokenで無効化した。builderもplaceholder、欠落/不正日付、unknown gender、C0/DEL control文字を
+    serialize前にfail-closedにし、field commaだけを全角へ正規化した。
+  - interoperability / security / UI boundary:
+    技術文書24-104 Ver.2.6の現スライス該当範囲に合わせ、headerを`JAHISTC08`、性別を1/2だけ、全record終端をCRLF、
+    QR containerではEOFなしへ固定し、画面表記をVer.2.6へ同期した。印刷popupは`document.write`による患者名/payloadのHTML解釈を廃止し、
+    DOM生成 + `textContent`へ変更した。患者同定失敗、stale request、hostile fieldはいずれもQR/dialog/printの副作用0を回帰で固定し、
+    raw患者情報やQR本文をlog/auditへ追加していない。参照は
+    [JAHIS電子版お薬手帳データフォーマット仕様書 Ver.2.6](https://www.jahis.jp/standard/detail/id=1124)
+    （技術文書24-104、2026-07-15確認）。Next.js 16同梱の`use client`およびServer/Client Components guideと
+    `docs/ui-ux-design-guidelines.md`を確認した。既存情報構造内のfail-closed state/copy修正で視覚再構成を伴わないため、
+    `gpt-image-2` / imagegenは省略した。
+  - coordination / validation / remaining:
+    codex2がexact 4 pathsを実装し、codex1が全差分を独立reviewしてintegrationした。codex2のfresh `pnpm typecheck`、codex1の
+    focused Vitest `2 files / 79 tests`、exact ESLint、Prettier、diff-check、`pnpm typecheck:no-unused`、
+    `pnpm plans:active:check`はすべてPASS。codex2はPlans差分もread-onlyでAPPROVEし、ownership RELEASE後に4 pathsだけを
+    scoped commitした。現行no-frequent-build方針によりbuild/E2Eは未実行。schema/migration、AWS、production data、外部送信は
+    変更していない。patient identity taskはactive queueから完了除去し、JIS X 0201/0208 representability、canonical Shift-JIS bytes、
+    field byte上限・全record contract・独立decoder round-tripは`MEDSAFE-JAHIS-QR-CONFORMANCE-001`として残す。
+
 - codex1 + codex2 deep account-type / clinical-audit authorization review
   (DONE / PLANS COMMITTED / RUNTIME IMPLEMENTATION NOT STARTED, 2026-07-15; plan commit `70d4ef9b1`).
   - final contract / peer agreement:
