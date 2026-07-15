@@ -114,6 +114,7 @@
     "rls-policy-contract:check": "vitest run src/tools/rls-policy-contract.test.ts --reporter=dot --testTimeout=30000",
     "eventbridge-schedules:check": "node tools/scripts/check-eventbridge-schedule-drift.mjs",
     "workflow-dispatch-input-safety:check": "node tools/scripts/check-workflow-dispatch-input-safety.mjs",
+    "supply-chain-pins:check": "node tools/scripts/check-supply-chain-pins.mjs",
     "hooks:install": "git config core.hooksPath tools/git-hooks"
   },
   "dependencies": {
