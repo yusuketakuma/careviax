@@ -628,7 +628,11 @@ Wave 4 acceptance merge: `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`のsession/offl
 > `yrese_phos_network_resilience_bedrock_ai_spec_v0_6.md` を、workspaceから原ファイルを読めない期間にも欠落させないための
 > 一時的な詳細展開である。Phase 0のproduct/medical/privacy/security/AWS/architecture reviewと人間承認前に、AWS resource作成、
 > model invocation、PHI送信、Edge採用、migration、external send、deployを許可しない。恒久SSOTへ分割・批准後、この付録を削除する。
-> Network scopeは既存`FHIR-NATIVE-OFFLINE-EDGE-001`を参照し、別のoffline正本を重複実装しない。
+> Network scopeは既存`FHIR-NATIVE-OFFLINE-EDGE-001`と同一hard-replacement programとして接続する。これは既存runtime/contractの
+> 温存を意味せず、v0.6 target contractで全面上書きして別のoffline正本を作らないという意味である。
+> **後方互換性は不要**。批准後のv0.6/v0.6.1 contractを全面的な正とし、既存network/offline/AI機能はhard replacementする。
+> legacy API/DTO/status/flag、dual-read/write、compatibility shim、暗黙fallbackを恒久併存させない。rollbackは旧runtimeの温存ではなく、
+> 切替前snapshot、canonical data変換、re-deploy/re-apply手順で行う。
 
 ### 1. 目的・前提・不変条件
 
@@ -640,6 +644,9 @@ Wave 4 acceptance merge: `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`のsession/offl
   audit/RUM/model invocation logへ保存しない。認可済み業務画面の開示と、通知/SSE/log/export/AI境界を混同しない。
 - 自動禁止: 処方変更、疑義照会判断、相互作用/重複投薬の最終判断、billing/accounting/claim決定、official eRx/PMH/資格確認操作、
   external send、安全alert確定、患者auto-message、2xxを根拠とする承認/同期完了。
+- replacement invariant: v0.6/v0.6.1と矛盾する既存API/schema/state/UI/worker/config/test/docsは新contractへ上書きし、callerを全移行後に
+  同一sliceまたは明示したcutover sliceで削除する。互換性維持のため旧挙動を残す案は採用しない。保存済みdataだけはversioned converterで
+  canonical形へ一方向変換し、変換不能recordはquarantine/fail-closedとする。
 
 ### 2. Network mode state machine（6 mode）
 
@@ -652,6 +659,280 @@ Wave 4 acceptance merge: `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`のsession/offl
 - `CLOUD_DEGRADED`: cloud coreの一部依存が不健全。local保存可能範囲を明示し、cloud-finalを表示しない。
 - `LOCAL_ONLY`: Edge/local clientだけで批准済み最小業務を継続。全生成物はprovisional/pending state。
 - `RECOVERY_SYNC`: cloud復旧後のhistory pull、rebase、再検証、conflict review、transaction push、read-back確認中。未同期を成功扱いしない。
+
+### 2.1 PR-sized task subdivision registry
+
+以下は新規仕様群の**細分化台帳**であり、全行`Draft / Human gate`。Phase 0批准、依存taskのDONE、exact-path ownership、hard-cutover
+rollback、
+focused test packetが揃うまで`Implementation-ready queue`へ算入しない。1行を原則1 commit/PRとし、複数行をまとめる場合も同一contractかつ
+個別acceptanceを独立に証明する。既存`FHIR-NATIVE-OFFLINE-EDGE-001`はreplacement programのumbrella IDとしてだけ再利用し、既存
+schema/runtime/SSOTは下表のtarget contractで上書きする。実装sliceはadditive compatibilityではなくnew contractへの置換を行い、
+cutover childで旧caller/code/config/testを0にする。
+
+#### Network resilience / local-first subdivision
+
+| Task ID                  | Phase | Depends on                                                                         | One-slice deliverable                                              | Machine-checkable exit                                                                 |
+| ------------------------ | ----- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `NETRES-P0-MODES-001`    | 0     | current health inventory                                                           | 6 mode transition/capability matrix + hysteresis                   | every entry/exit/reason/evidence/allowed/forbidden cell reviewed; no client inference  |
+| `NETRES-P0-SCOPE-001`    | 0     | `NETRES-P0-MODES-001`                                                              | yrese/PH-OS minimum continuity scope + false-success registry      | every local action maps to provisional state, authz/Consent and forbidden claim        |
+| `NETRES-P0-SLO-001`      | 0     | workload inventory                                                                 | workload-specific candidate RTO/RPO + measurement owner            | value/source/measurement/approval/rollback present; unmeasured value remains candidate |
+| `NETRES-P0-EDGE-ADR-001` | 0     | threat/capacity inventory                                                          | Greengrass V2 vs repo-local runtime ADR                            | hardware/key/update/IPC/loss/cost matrix + explicit Human decision; no implicit choice |
+| `NETRES-P0-DATA-001`     | 0     | FHIR v0.5 ownership                                                                | authoritative/local/projection/resource-version boundary           | write/read/evict/rebuild/source authority diagram reviewed                             |
+| `NETRES-P0-SECOPS-001`   | 0     | Edge ADR + account model                                                           | device identity/key/expiry/revoke/disk/clock/crash security policy | lost/compromised/offline-expiry/low-disk/reboot tests and PHI-free telemetry contract  |
+| `NETRES-P0-OUTPUT-001`   | 0     | `NETRES-P0-MODES-001`, `NETRES-P0-SCOPE-001`                                       | provisional print/export/external-output policy                    | watermark/revalidation/no-external-success fixtures approved                           |
+| `NETRES-P1-STORE-001`    | 1     | `NETRES-P0-DATA-001`, `NETRES-P0-SECOPS-001`, `NETDOC-004`                         | encrypted Local FHIR Store contract                                | tamper/key/quota/authz-epoch/revoke/crash recovery tests; unsynced eviction zero       |
+| `NETRES-P1-PROJECT-001`  | 1     | `NETRES-P1-STORE-001`                                                              | rebuildable Local Search Projection                                | rebuild parity + projection corruption recovery; projection never accepted as truth    |
+| `NETRES-P1-BUNDLE-001`   | 1     | `NETRES-P0-SCOPE-001`, `NETRES-P1-STORE-001`, `NETDOC-005`                         | Offline Bundle manifest/download/TTL/revoke lifecycle              | exact Resource/metadata/hash/encryption/expiry/revoke/size fixtures                    |
+| `NETRES-P1-MASTER-001`   | 1     | license/source approvals, `NETDOC-006`                                             | Local Master Cache version/signature/staleness boundary            | valid/expired/hash/license/source/eviction tests; stale-as-latest zero                 |
+| `NETRES-P1-TERM-001`     | 1     | JP Core/IG package lock, `NETDOC-007`                                              | Local Terminology Cache and fail-closed resolver                   | CodeSystem/ValueSet/ConceptMap/package mismatch/expiry tests                           |
+| `NETRES-P1-EVENT-001`    | 1     | `NETRES-P1-STORE-001`, event registry                                              | append-only Local Event Store + monotonic sequence/hash            | duplicate/reorder/replay/crash/clock-drift/chain-integrity tests                       |
+| `NETRES-P1-OUTBOX-001`   | 1     | `NETRES-P1-EVENT-001`, `NETDOC-008`                                                | Outbox enqueue/claim/CAS lease/fencing/retry/dead-letter           | multi-worker/takeover/idempotency/body-hash/backoff/power-loss tests                   |
+| `NETRES-P1-INBOX-001`    | 1     | `NETRES-P1-EVENT-001`, cloud identity                                              | Inbox receipt/dedup/checkpoint/restart                             | duplicate/out-of-order/replay/partial-apply tests; accepted != committed               |
+| `NETRES-P1-MODE-001`     | 1     | `NETRES-P0-MODES-001`, health evidence                                             | authoritative detector/mode switcher with hysteresis               | flap/partial dependency/clock skew/restart/audit transition tests                      |
+| `NETRES-P2-JAHIS-001`    | 2     | JAHIS conformance, `NETRES-P1-OUTBOX-001`                                          | local prescription/e-med-book QR validation and queueing           | official fixtures/encoding/duplicate/offline/recovery tests; no official-success claim |
+| `NETRES-P2-VISIT-001`    | 2     | `NETRES-P1-BUNDLE-001`, `NETRES-P1-STORE-001`, `NETRES-P1-OUTBOX-001`              | offline visit drafts                                               | patient switch/authz expiry/Consent revoke/attachment quota/crash tests                |
+| `NETRES-P2-SYNC-A-001`   | 2     | `NETRES-P1-INBOX-001`, `NETRES-P1-OUTBOX-001`, `NETDOC-009`                        | recovery steps 1-6                                                 | checkpoint/restart/profile/terminology/master/auth/clock/history-rebase tests          |
+| `NETRES-P2-SYNC-B-001`   | 2     | `NETRES-P2-SYNC-A-001`, `NETRES-P2-CONFLICT-001`                                   | recovery steps 7-13 through read/vread                             | duplicate/conflict/transaction/OperationOutcome/Provenance/AuditEvent/read-back tests  |
+| `NETRES-P2-CONFLICT-001` | 2     | ownership/source authority, `NETDOC-010`                                           | exact conflict classifier + pharmacist review queue                | all six conflict codes, field/source/version ambiguity, no LWW/auto-merge              |
+| `NETRES-P3-UX-001`       | 3     | `NETRES-P0-OUTPUT-001`, `NETRES-P1-MODE-001`, `NETRES-P2-SYNC-B-001`, `NETDOC-011` | degraded/recovery UX                                               | exact copy/fields, mobile 44px, keyboard/SR, stale/partial/error/false-zero tests      |
+| `NETRES-P4-DRILL-001`    | 4     | all accepted runtime slices                                                        | failure injection/recovery drill + measured SLO report             | matrix §15, clean restart, local-to-cloud proof, rollback and owner sign-off           |
+
+#### Network atomic child matrices
+
+次のchild rowはすべて`Status=Draft / Owner=TBD after codex1+codex2 review / Human gate=required / Not authorized`。PriorityはP0/P1、
+candidate pathはclaim前のlive discoveryで確定し、存在しないpathを捏造しない。各rowはnormal/boundary/failure/authz test、PHI-free
+telemetry/audit、rollbackを独立に持ち、親rowのDONEは全childのevidenceが揃うまで禁止する。
+
+| Atomic Task ID | Parent                   | Single deliverable                                          | Independent verification                                                    |
+| -------------- | ------------------------ | ----------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `NR-P0-001`    | planning                 | source heading/field/state/event/test/doc/stop trace matrix | source-to-row coverage check, missing/duplicate zero                        |
+| `NR-P0-002`    | `NETRES-P0-MODES-001`    | six canonical mode definitions                              | exact enum/schema fixtures                                                  |
+| `NR-P0-003`    | `NETRES-P0-MODES-001`    | transition table                                            | every allowed/denied transition + restart tests                             |
+| `NR-P0-004`    | `NETRES-P0-MODES-001`    | health evidence schema/freshness                            | stale/partial/unknown evidence tests                                        |
+| `NR-P0-005`    | `NETRES-P0-SCOPE-001`    | product-by-mode capability matrix                           | every action has allow/deny/provisional reason                              |
+| `NR-P0-006`    | `NETRES-P0-SCOPE-001`    | `LOCAL_ONLY` success semantics                              | local accepted/cloud committed/external complete never collapse             |
+| `NR-P0-007`    | `NETRES-P0-SCOPE-001`    | provisional-state lifecycle                                 | all six states transition/expiry/recovery fixtures                          |
+| `NR-P0-008`    | `NETRES-P0-SLO-001`      | RTO/RPO measurement + approval packet                       | workload/source/owner/measurement/approval complete                         |
+| `NR-P0-009`    | `NETRES-P0-SECOPS-001`   | data classification/retention matrix                        | store/cache/log/output classes and deletion holds reviewed                  |
+| `NR-P0-010`    | `NETRES-P0-SECOPS-001`   | network/local threat model                                  | abuse/failure/mitigation/residual-risk review                               |
+| `NR-P0-011`    | `NETRES-P0-EDGE-ADR-001` | Edge runtime ADR                                            | Greengrass/local comparison + explicit decision/rollback                    |
+| `NR-P0-012`    | architecture             | cloud topology ADR                                          | candidate services/region/DR/deploy tradeoff + no apply                     |
+| `NR-P0-013`    | `NETRES-P0-SECOPS-001`   | device identity/key-loss model                              | lost/compromised/rotate/recover/revoke fixtures                             |
+| `NR-P0-014`    | operations               | ownership/escalation/RACI                                   | detector/sync/conflict/security/DR owners acknowledged                      |
+| `NR-P0-015`    | promotion                | release/promotion gate                                      | every Human approval/evidence/rollback link present                         |
+| `NR-P0-016`    | hard replacement         | legacy-to-v0.6 cutover/deletion/converter manifest          | every caller/data/config/test/doc maps to replace/delete/convert/quarantine |
+
+| Atomic Task ID | Parent                  | Single deliverable                          | Independent verification                                  |
+| -------------- | ----------------------- | ------------------------------------------- | --------------------------------------------------------- |
+| `NR-EDGE-001`  | `NETRES-P1-STORE-001`   | local FHIR record/version schema            | schema/profile/version/tenant/pharmacy fixtures           |
+| `NR-EDGE-002`  | `NETRES-P1-STORE-001`   | at-rest encryption + key rotation           | ciphertext/no-plaintext/rotate/old-key failure tests      |
+| `NR-EDGE-003`  | `NETRES-P1-STORE-001`   | quota/disk-pressure controller              | low/full disk + unsynced eviction zero                    |
+| `NR-EDGE-004`  | `NETRES-P1-STORE-001`   | resource/bundle tamper hash check           | corrupt/hash mismatch fail-closed tests                   |
+| `NR-EDGE-005`  | `NETRES-P1-STORE-001`   | tenant/pharmacy/device/user/session binding | cross-boundary/revoke/expiry tests                        |
+| `NR-EDGE-006`  | `NETRES-P1-PROJECT-001` | search projection builder                   | exact field/source/version projection fixtures            |
+| `NR-EDGE-007`  | `NETRES-P1-PROJECT-001` | projection rebuild/recovery                 | delete/corrupt/reorder rebuild parity tests               |
+| `NR-EDGE-008`  | `NETRES-P1-MASTER-001`  | master ingest/signature/version             | source/signature/hash/version fixtures                    |
+| `NR-EDGE-009`  | `NETRES-P1-MASTER-001`  | master stale/fail-closed policy             | expiry/gap/rollback/stale-as-latest zero                  |
+| `NR-EDGE-010`  | `NETRES-P1-TERM-001`    | terminology/package pin resolver            | old/new/missing/mismatch package tests                    |
+| `NR-EDGE-011`  | Edge ADR                | local adapter runtime boundary              | IPC authn/authz/timeout/crash/no-shell-injection tests    |
+| `NR-EDGE-012`  | `NETRES-P1-EVENT-001`   | append-only event store                     | monotonic/duplicate/reorder/replay/crash tests            |
+| `NR-EDGE-013`  | `NETRES-P1-EVENT-001`   | local AuditEvent/Provenance queue           | exact event/version/actor/purpose/no-PHI-log tests        |
+| `NR-EDGE-014`  | `NETRES-P2-VISIT-001`   | temporary attachment store                  | type/size/encrypt/TTL/revoke/corrupt/quota tests          |
+| `NR-EDGE-015`  | `NETRES-P0-OUTPUT-001`  | provisional print queue/watermark           | restart/order/cancel/revalidate/no-official-success tests |
+
+| Atomic Task ID  | Parent                 | Single deliverable                     | Independent verification                                 |
+| --------------- | ---------------------- | -------------------------------------- | -------------------------------------------------------- |
+| `NR-BUNDLE-001` | `NETRES-P1-BUNDLE-001` | builder + Resource allowlist           | exact Resource list/unknown reject/profile version tests |
+| `NR-BUNDLE-002` | `NETRES-P1-BUNDLE-001` | metadata/hash/encryption envelope      | exact metadata/tamper/plaintext-zero fixtures            |
+| `NR-BUNDLE-003` | `NETRES-P1-BUNDLE-001` | TTL/freshness evaluation               | boundary/clock-skew/expired warning/no-latest tests      |
+| `NR-BUNDLE-004` | `NETRES-P1-BUNDLE-001` | Consent/revoke/authz-epoch enforcement | revoke/role/assignment/purpose change deny tests         |
+| `NR-BUNDLE-005` | `NETRES-P1-BUNDLE-001` | facility batch/size bounds             | 0/1/max/max+1/pagination/partial tests                   |
+| `NR-BUNDLE-006` | `NETRES-P1-BUNDLE-001` | corruption/recovery handling           | partial write/restart/hash/key-loss recovery tests       |
+
+| Atomic Task ID | Parent                 | Single deliverable                                  | Independent verification                              |
+| -------------- | ---------------------- | --------------------------------------------------- | ----------------------------------------------------- |
+| `NR-SYNC-001`  | `NETRES-P1-OUTBOX-001` | exact OutboxEvent schema                            | required/enum/hash/ref/tenant validation tests        |
+| `NR-SYNC-002`  | `NETRES-P1-OUTBOX-001` | atomic local write + enqueue                        | crash-between-writes/rollback/exact-once intent tests |
+| `NR-SYNC-003`  | `NETRES-P1-OUTBOX-001` | idempotency/body-hash contract                      | duplicate same/different body/replay tests            |
+| `NR-SYNC-004`  | `NETRES-P1-OUTBOX-001` | sequence/logical-clock ordering                     | duplicate/out-of-order/clock-skew/restart tests       |
+| `NR-SYNC-005`  | `NETRES-P1-OUTBOX-001` | CAS claim/lease/fencing                             | two-worker/takeover/expired-owner/stale-commit tests  |
+| `NR-SYNC-006`  | `NETRES-P1-OUTBOX-001` | retry/backoff/jitter policy                         | retryable/permanent/budget/restart/storm tests        |
+| `NR-SYNC-007`  | `NETRES-P1-OUTBOX-001` | dead-letter transition/recovery                     | threshold/requeue/reason/audit/no-PHI-error tests     |
+| `NR-SYNC-008`  | `NETRES-P1-INBOX-001`  | inbox receipt/ack/dedup                             | duplicate/out-of-order/ack-loss/restart tests         |
+| `NR-SYNC-009`  | `NETRES-P1-OUTBOX-001` | attachment transfer state                           | chunk/hash/timeout/resume/cancel/orphan tests         |
+| `NR-SYNC-010`  | sync projection        | accepted/sent/ack/cloud/read-back status projection | exclusive state/false-success/unknown/partial tests   |
+
+| Atomic Task ID    | Parent                   | Single deliverable              | Independent verification                                  |
+| ----------------- | ------------------------ | ------------------------------- | --------------------------------------------------------- |
+| `NR-CONFLICT-001` | `NETRES-P2-CONFLICT-001` | conflict detector               | version/source/field/identity/master/terminology fixtures |
+| `NR-CONFLICT-002` | `NETRES-P2-CONFLICT-001` | exact six-code taxonomy         | every input maps once; unknown fail-closed                |
+| `NR-CONFLICT-003` | `NETRES-P2-CONFLICT-001` | field/source authority registry | owner/source/version precedence review fixtures           |
+| `NR-CONFLICT-004` | `NETRES-P2-CONFLICT-001` | pharmacist review queue         | qualification/OCC/expiry/supersede tests                  |
+| `NR-CONFLICT-005` | `NETRES-P2-CONFLICT-001` | resolution persistence + audit  | atomic decision/diff/reason/Provenance tests              |
+| `NR-CONFLICT-006` | `NETRES-P2-CONFLICT-001` | approved-resolution retry       | idempotency/stale approval/new conflict/read-back tests   |
+
+| Atomic Task ID | Parent               | Single deliverable                               | Independent verification                                 |
+| -------------- | -------------------- | ------------------------------------------------ | -------------------------------------------------------- |
+| `NR-MODE-001`  | `NETRES-P1-MODE-001` | cloud-core health detector                       | each dependency healthy/partial/down/stale tests         |
+| `NR-MODE-002`  | `NETRES-P1-MODE-001` | external-service health detector                 | eRx/PMH/eligibility/claim independent degradation tests  |
+| `NR-MODE-003`  | `NETRES-P1-MODE-001` | AI health detector                               | model/Guardrails/KB/budget independent degradation tests |
+| `NR-MODE-004`  | `NETRES-P1-MODE-001` | hysteresis/debounce policy                       | flap/boundary/clock/restart tests                        |
+| `NR-MODE-005`  | `NETRES-P1-MODE-001` | authoritative server mode store                  | OCC/TTL/restart/unknown-source tests                     |
+| `NR-MODE-006`  | `NETRES-P1-MODE-001` | server capability projection                     | every mode/action/provisional reason fixture             |
+| `NR-MODE-007`  | `NETRES-P1-MODE-001` | client mode subscription + authoritative refresh | reconnect/gap/stale/refetch/no-client-inference tests    |
+| `NR-MODE-008`  | `NETRES-P1-MODE-001` | transition AuditEvent                            | exact actor/reason/evidence/from/to/exact-once tests     |
+
+| Atomic Task ID | Product | Single deliverable                                     | Independent verification                                 |
+| -------------- | ------- | ------------------------------------------------------ | -------------------------------------------------------- |
+| `NR-YRESE-001` | yrese   | pre-synced patient lookup replacement                  | tenant/authz/stale/empty/partial/patient-match tests     |
+| `NR-YRESE-002` | yrese   | last Coverage snapshot replacement                     | freshness/source/version/no-online-claim tests           |
+| `NR-YRESE-003` | yrese   | local JAHIS prescription QR parser                     | conformance/encoding/duplicate/invalid/offline tests     |
+| `NR-YRESE-004` | yrese   | local medication-notebook QR parser                    | conformance/source/duplicate/invalid/offline tests       |
+| `NR-YRESE-005` | yrese   | provisional manual prescription flow                   | draft/state/review/no-official-submit tests              |
+| `NR-YRESE-006` | yrese   | cached-master provisional calculation                  | version/stale/rounding/revalidation/no-final-claim tests |
+| `NR-YRESE-007` | yrese   | provisional bags/drug-info/forms output                | watermark/version/patient identity/reprint tests         |
+| `NR-YRESE-008` | yrese   | JAHIS local conversion                                 | golden bytes/version/round-trip/unsupported field tests  |
+| `NR-YRESE-009` | yrese   | approved NSIPS pharmacy-local boundary                 | license/scope/authz/no-unapproved-external-access tests  |
+| `NR-YRESE-010` | yrese   | local MedicationRequest/Dispense/Statement persistence | FHIR/profile/version/provenance/outbox tests             |
+| `NR-PHOS-001`  | PH-OS   | schedule + Offline Bundle preload replacement          | authorized scope/size/TTL/stale/patient switch tests     |
+| `NR-PHOS-002`  | PH-OS   | offline visit start/end persistence                    | identity/double-click/crash/restart/OCC tests            |
+| `NR-PHOS-003`  | PH-OS   | adherence/residual record persistence                  | unit/negation/draft/review/outbox tests                  |
+| `NR-PHOS-004`  | PH-OS   | multidisciplinary draft + follow-up Task persistence   | recipient/purpose/draft/no-send/no-complete tests        |
+| `NR-PHOS-005`  | PH-OS   | temporary attachment capture                           | type/size/encrypt/TTL/cancel/retry/quota tests           |
+| `NR-PHOS-006`  | PH-OS   | approved local FHIR Resource creation                  | exact allowlist/profile/reference/version tests          |
+| `NR-PHOS-007`  | PH-OS   | local Provenance/AuditEvent queue                      | actor/purpose/source/version/exact-once/no-PHI-log tests |
+
+| Atomic Task ID | Parent             | Single deliverable                   | Independent verification                                  |
+| -------------- | ------------------ | ------------------------------------ | --------------------------------------------------------- |
+| `NR-UX-001`    | `NETRES-P3-UX-001` | cloud-degraded banner/exact copy     | authorized details + stale/error/mobile/a11y fixtures     |
+| `NR-UX-002`    | `NETRES-P3-UX-001` | AI-degraded banner/exact copy        | core workflow continuity + retry/manual fixtures          |
+| `NR-UX-003`    | `NETRES-P3-UX-001` | recovery-sync banner/exact copy      | pending/conflict/review counts + fixed recovery action    |
+| `NR-UX-004`    | `NETRES-P3-UX-001` | freshness/capability evidence fields | all seven fields/unknown/partial/refresh tests            |
+| `NR-UX-005`    | `NETRES-P3-UX-001` | pending/conflict/review dashboard    | bounded counts/detail links/false-zero tests              |
+| `NR-UX-006`    | `NETRES-P3-UX-001` | accessibility/mobile behavior        | 44px/keyboard/focus/SR/200%/320px/forced-colors tests     |
+| `NR-UX-007`    | `NETRES-P3-UX-001` | no-false-success executable contract | local/cloud/external/AI status mutual-exclusion ratchet   |
+| `NR-OBS-001`   | operations         | exact mode/sync/AI event registry    | event-name/schema/source-version parity tests             |
+| `NR-OBS-002`   | operations         | PHI-free metrics contract            | label cardinality/direct-ID/raw-error leakage tests       |
+| `NR-OBS-003`   | operations         | actionable alerts                    | threshold/window/dedupe/recovery/runbook-link tests       |
+| `NR-OBS-004`   | operations         | readiness/recovery dashboards        | stale/partial/no-data/error/tenant-scope tests            |
+| `NR-OBS-005`   | operations         | operator recovery runbook            | drill commands/decision points/rollback/escalation review |
+
+##### Recovery Sync exact child sequence
+
+`NETRES-P2-SYNC-A/B-001`は下記全childへ展開する。番号1-13はsource contractを固定し、14-18は必須補助工程である。
+
+| Atomic Task ID |    Step | Single deliverable                       | Independent verification                                    |
+| -------------- | ------: | ---------------------------------------- | ----------------------------------------------------------- |
+| `NR-REC-001`   |       1 | cloud health gate                        | healthy/degraded/timeout/circuit tests                      |
+| `NR-REC-002`   |       2 | auth refresh gate                        | expired/revoked/refresh-fail/zero-write tests               |
+| `NR-REC-003`   |       3 | clock drift gate                         | ahead/behind/boundary/unknown tests                         |
+| `NR-REC-004`   |       4 | terminology revalidation                 | package missing/mismatch/expired tests                      |
+| `NR-REC-005`   |       5 | master revalidation                      | version/hash/stale/missing tests                            |
+| `NR-REC-006`   |       6 | FHIR validation                          | profile/cardinality/reference/OperationOutcome fixtures     |
+| `NR-REC-007`   |       7 | duplicate detection                      | same key/hash/different body/replay tests                   |
+| `NR-REC-008`   |       8 | conflict classification + review handoff | all six codes/no auto-overwrite tests                       |
+| `NR-REC-009`   |       9 | idempotent transaction Bundle push       | partial/timeout/response-loss/retry tests                   |
+| `NR-REC-010`   |      10 | OperationOutcome interpretation          | success/warning/error/fatal/unknown tests                   |
+| `NR-REC-011`   |      11 | Provenance persistence                   | source/version/actor/transform/exact-once tests             |
+| `NR-REC-012`   |      12 | AuditEvent persistence                   | result/reason/tenant/purpose/no-PHI-error tests             |
+| `NR-REC-013`   |      13 | local status projection                  | pending/sent/committed/read-back/conflict exclusivity tests |
+| `NR-REC-014`   |   pre-6 | cloud history pull                       | cursor/version/duplicate/partial/restart tests              |
+| `NR-REC-015`   |   pre-6 | local rebase                             | old/new profile/order/conflict/no-LWW tests                 |
+| `NR-REC-016`   |     all | durable checkpoints/restart              | crash after every step resumes without duplicate effect     |
+| `NR-REC-017`   | post-10 | authoritative read/vread confirmation    | mismatched/missing/stale/timeout cannot mark synced         |
+| `NR-REC-018`   |     all | partial-failure recovery/rollback        | every side effect classified/retryable/manual/no-loss       |
+
+##### Network hard-replacement cutover
+
+| Atomic Task ID | Single deliverable                                              | Exit proof                                                  |
+| -------------- | --------------------------------------------------------------- | ----------------------------------------------------------- |
+| `NR-CUT-001`   | legacy network/offline API/state/worker/config/caller inventory | executable zero-reader/writer/caller baseline               |
+| `NR-CUT-002`   | one-way canonical data converter + quarantine report            | old/new/invalid/idempotent/dry-run/rollback fixtures        |
+| `NR-CUT-003`   | all callers switched to v0.6 contracts                          | contract/type/static caller-zero gates                      |
+| `NR-CUT-004`   | legacy API/DTO/status/flag/worker implementation deletion       | source/build/test inventory shows zero compatibility path   |
+| `NR-CUT-005`   | legacy tests/docs/config removal or v0.6 replacement            | no test asserts obsolete behavior; docs/config parity green |
+| `NR-CUT-006`   | hard-cutover rehearsal and snapshot rollback                    | clean upgrade/restart/recovery + snapshot restore evidence  |
+
+#### Bedrock AI platform subdivision
+
+| Task ID                  | Phase | Depends on                                                   | One-slice deliverable                                                 | Machine-checkable exit                                                                  |
+| ------------------------ | ----- | ------------------------------------------------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `AIBED-P0-INVENTORY-001` | 0     | route/data inventory                                         | use-case/source/save-target/risk-tier registry                        | every use case has owner/purpose/input/output/forbidden/manual baseline                 |
+| `AIBED-P0-THREAT-001`    | 0     | `AIBED-P0-INVENTORY-001`                                     | PHI/tenant/prompt-injection/provider/logging threat model             | trust boundaries, abuse cases, deny/rollback and residual-risk approval                 |
+| `AIBED-P0-AWS-GATE-001`  | 0     | BAA/region/service evidence                                  | account/BAA/region/model/network eligibility release gate             | approved destination list; global/cross-region default deny; release-time drift check   |
+| `AIBED-P1-CONTRACT-001`  | 1     | `AIBED-P0-INVENTORY-001`, `AIBED-P0-THREAT-001`              | typed AIRequest/AIResult contract                                     | schema/version/budget/offline/provider-deny fixtures; no raw provider error             |
+| `AIBED-P1-ACCESS-001`    | 1     | canonical authz/qualification                                | authn -> tenant/role/assignment/qualification -> materialization gate | deny/stale/revoke/cross-tenant tests prove PHI fetch 0 and provider call 0              |
+| `AIBED-P1-MINIMIZE-001`  | 1     | `AIBED-P1-ACCESS-001`, `AIDOC-006`                           | per-use-case PHI field allowlist and token/byte minimizer             | direct-ID/denied field/oversize/empty/necessity tests; minimized evidence recorded      |
+| `AIBED-P1-CONSENT-001`   | 1     | `AIBED-P1-ACCESS-001`, `AIBED-P1-MINIMIZE-001`               | Consent/purpose/pre-invocation decision                               | absent/expired/revoked/mismatch/stale metadata/provider-call-zero tests                 |
+| `AIBED-P1-ADAPTER-001`   | 1     | `AIBED-P0-AWS-GATE-001`, `AIBED-P1-CONTRACT-001`             | server-only Converse adapter with timeout/cancel/idempotency          | success/timeout/throttle/unavailable/abort/duplicate tests; client credential zero      |
+| `AIBED-P1-ALIAS-001`     | 1     | `AIBED-P0-AWS-GATE-001`, `AIBED-P1-ADAPTER-001`, `AIDOC-003` | approved model alias/region/fallback registry                         | unknown/missing/drift/unsafe fallback/cross-region tests; hardcoded model ID zero       |
+| `AIBED-P1-GUARD-001`     | 1     | `AIBED-P1-MINIMIZE-001`, `AIBED-P1-ADAPTER-001`, `AIDOC-007` | Guardrails integration                                                | block/error/drift/prompt-injection/sensitive-data tests; deterministic gates retained   |
+| `AIBED-P1-PROMPT-001`    | 1     | `AIBED-P1-CONTRACT-001`, `AIBED-P1-ALIAS-001`, `AIDOC-005`   | PromptTemplateRegistry                                                | template/schema/model compatibility, hash/version, rollback and no-PHI fixtures         |
+| `AIBED-P1-VALIDATE-001`  | 1     | `AIBED-P1-PROMPT-001`, FHIR validator, `AIDOC-011`           | seven-gate deterministic output validator                             | schema/FHIR/phrase/advice/PHI/grounding/hallucination failure matrix                    |
+| `AIBED-P1-REVIEW-001`    | 1     | `AIBED-P1-ACCESS-001`, `AIBED-P1-VALIDATE-001`, `AIDOC-010`  | HumanReviewQueue state machine                                        | approve/reject/expire/supersede/revoke/stale/duplicate concurrency tests                |
+| `AIBED-P1-PERSIST-001`   | 1     | `AIBED-P1-REVIEW-001`, `AIDOC-012`                           | approved-only draft persistence and version-specific Provenance       | pre-approval mutation 0, atomic audit/provenance, retry/idempotency/rollback tests      |
+| `AIBED-P1-AUDIT-001`     | 1     | platform gates, `AIDOC-012`                                  | PHI-free event/metric/cost/error registry                             | exact §14 events; raw prompt/response/provider error/direct identifier zero             |
+| `AIBED-P1-LOGGING-001`   | 1     | `AIBED-P0-AWS-GATE-001`, `AIBED-P1-AUDIT-001`, `AIDOC-009`   | invocation-logging drift ratchet                                      | content default-off; approved KMS/retention/access evidence; drift fail-closed          |
+| `AIBED-P2-RAG-001`       | 2     | `AIBED-P1-ACCESS-001`, `AIBED-P1-VALIDATE-001`, `AIDOC-008`  | approved-doc Knowledge Base                                           | corpus ACL/hash/expiry/poison/delete/reindex/no-evidence/no-patient-FHIR tests          |
+| `AIBED-P2-DEGRADED-001`  | 2     | `AIBED-P1-ADAPTER-001`, `AIBED-P1-ALIAS-001`, `AIDOC-001`    | degraded state contract                                               | AI outage leaves core workflow green; retry storm/false success/fallback tests          |
+| `AIBED-P4-EVAL-001`      | 4     | approved use cases + audit metrics                           | per-use-case evaluation set/threshold/drift/rollback report           | quality/safety/grounding/latency/cost thresholds approved; regression gate reproducible |
+
+#### Bedrock AI atomic child matrix
+
+全childは`Status=Draft / Owner=TBD / Human gate=required / Not authorized`。candidate pathはlive discovery後にclaimし、provider invocation、
+AWS apply、PHI送信を含めない。各rowは正常/境界/拒否/provider-failure、PHI-free audit/telemetry、hard-replacement rollbackを独立に証明する。
+
+| Atomic Task ID      | Parent                  | Single deliverable                                   | Independent verification                                               |
+| ------------------- | ----------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| `AI-P0-REPLACE-001` | hard replacement        | legacy-to-v0.6.1 cutover/deletion/converter manifest | every provider/prompt/model/status/caller/data/config/test/doc mapped  |
+| `AI-PLAT-001`       | `AIBED-P1-CONTRACT-001` | AIRequest schema                                     | required/type/version/offline/budget fixtures                          |
+| `AI-PLAT-002`       | `AIBED-P1-CONTRACT-001` | AIResult/result-state/error schema                   | generated/review/approved/rejected/failed/unknown fixtures             |
+| `AI-PLAT-003`       | `AIBED-P1-CONTRACT-001` | idempotency/deadline contract                        | duplicate/timeout/response-loss/retry tests                            |
+| `AI-PLAT-004`       | `AIBED-P1-ACCESS-001`   | authorization zero-fetch gate                        | role/assignment/qualification/revoke/cross-tenant PHI-fetch-zero tests |
+| `AI-PLAT-005`       | `AIBED-P1-ACCESS-001`   | authorized source resolver/version pin               | missing/stale/mismatch/partial/source-hash tests                       |
+| `AI-PLAT-006`       | `AIBED-P1-MINIMIZE-001` | use-case PHI allowlist registry                      | every input field allowed/denied with purpose evidence                 |
+| `AI-PLAT-007`       | `AIBED-P1-MINIMIZE-001` | direct-identifier pseudonymization                   | name/address/phone/insurer/patient-ID leakage-zero tests               |
+| `AI-PLAT-008`       | `AIBED-P1-MINIMIZE-001` | token/byte/resource-count budget                     | 0/boundary/overflow/nested-size fail-closed tests                      |
+| `AI-PLAT-009`       | `AIBED-P1-CONSENT-001`  | Consent/purpose decision                             | absent/expired/revoked/mismatch/provider-call-zero tests               |
+| `AI-PLAT-010`       | `AIBED-P1-ALIAS-001`    | model alias/region/fallback registry                 | unknown/drift/unsafe/global/cross-region deny tests                    |
+| `AI-PLAT-011`       | `AIBED-P1-ADAPTER-001`  | server-only Converse adapter                         | request/response/schema/no-client-secret fixtures                      |
+| `AI-PLAT-012`       | `AIBED-P2-DEGRADED-001` | timeout/retry/circuit breaker                        | abort/throttle/outage/jitter/budget/retry-storm tests                  |
+| `AI-PLAT-013`       | `AIBED-P1-GUARD-001`    | Guardrails input gate                                | block/error/drift/sensitive/prompt-injection tests                     |
+| `AI-PLAT-014`       | `AIBED-P1-GUARD-001`    | Guardrails output gate                               | blocked/partial/error/tool-parameter/probabilistic-limit tests         |
+| `AI-PLAT-015`       | `AIBED-P1-PROMPT-001`   | immutable prompt registry                            | hash/version/compatibility/promotion/rollback/no-PHI tests             |
+| `AI-PLAT-016`       | `AIBED-P1-VALIDATE-001` | strict output schema validation                      | missing/extra/type/size/unknown-version tests                          |
+| `AI-PLAT-017`       | `AIBED-P1-VALIDATE-001` | grounding/evidence/citation validation               | absent/stale/wrong-source/unsupported-claim tests                      |
+| `AI-PLAT-018`       | `AIBED-P1-VALIDATE-001` | dangerous assertion/medical-advice filter            | forbidden phrase/advice/ambiguity/insufficient-evidence tests          |
+| `AI-PLAT-019`       | `AIBED-P1-REVIEW-001`   | review state machine                                 | transition/expiry/supersede/reject/recovery tests                      |
+| `AI-PLAT-020`       | `AIBED-P1-REVIEW-001`   | reviewer qualification/OCC                           | revoke/stale/two-reviewer/concurrent-edit tests                        |
+| `AI-PLAT-021`       | `AIBED-P1-PERSIST-001`  | approved-only draft persistence                      | pre-review write-zero/atomic/idempotent/rollback tests                 |
+| `AI-PLAT-022`       | `AIBED-P1-PERSIST-001`  | version-specific Provenance                          | source/template/model/reviewer/version exact-once tests                |
+| `AI-PLAT-023`       | `AIBED-P1-AUDIT-001`    | PHI-free audit metadata registry                     | exact events/fields/no prompt/response/direct-ID tests                 |
+| `AI-PLAT-024`       | `AIBED-P1-LOGGING-001`  | invocation logging drift gate                        | content-off/KMS/retention/access/drift fixtures                        |
+| `AI-PLAT-025`       | platform operations     | rate/token/cost budget                               | per-use-case/user/tenant threshold/recovery tests                      |
+| `AI-PLAT-026`       | `AIBED-P2-DEGRADED-001` | AI_DEGRADED manual fallback                          | core-workflow continuity/copy/retry/no-false-success tests             |
+
+| Atomic Task ID | Parent             | Single deliverable                    | Independent verification                                        |
+| -------------- | ------------------ | ------------------------------------- | --------------------------------------------------------------- |
+| `AI-KB-001`    | `AIBED-P2-RAG-001` | approved corpus manifest/version/hash | unknown/unapproved/stale/duplicate document tests               |
+| `AI-KB-002`    | `AIBED-P2-RAG-001` | tenant/public corpus ACL              | cross-tenant/private/public deny tests                          |
+| `AI-KB-003`    | `AIBED-P2-RAG-001` | ingestion pipeline                    | parse/chunk/hash/idempotent/partial/restart tests               |
+| `AI-KB-004`    | `AIBED-P2-RAG-001` | poisoning/content-safety gate         | malicious/contradictory/unsigned/quarantine tests               |
+| `AI-KB-005`    | `AIBED-P2-RAG-001` | delete/reindex/expiry workflow        | tombstone/reindex/stale-cache/rollback tests                    |
+| `AI-KB-006`    | `AIBED-P2-RAG-001` | retrieval citation contract           | exact source/version/rank/min-grounding tests                   |
+| `AI-KB-007`    | `AIBED-P2-RAG-001` | no-evidence fail contract             | empty/low-score/unavailable/manual-baseline tests               |
+| `AI-KB-008`    | `AIBED-P2-RAG-001` | patient-FHIR exclusion ratchet        | direct/embedded/attachment/reference PHI persistence-zero tests |
+
+#### AI hard-replacement cutover
+
+| Atomic Task ID | Single deliverable                                               | Exit proof                                                         |
+| -------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `AI-CUT-001`   | legacy AI/provider/prompt/model/status/caller inventory          | executable zero-caller baseline                                    |
+| `AI-CUT-002`   | approved prompt/model/state data converter                       | old/new/invalid/idempotent/dry-run/quarantine fixtures             |
+| `AI-CUT-003`   | all callers switched to typed v0.6.1 platform/use-case contracts | type/contract/static caller-zero gates                             |
+| `AI-CUT-004`   | legacy direct-provider/model-ID/prompt/fallback deletion         | source/build/test scan shows zero compatibility path               |
+| `AI-CUT-005`   | legacy tests/docs/env/config removal or replacement              | no obsolete behavior assertions; config/docs parity green          |
+| `AI-CUT-006`   | hard-cutover rehearsal and snapshot rollback                     | provider-disabled clean restart/manual continuity/restore evidence |
 
 ### 3. Local operations、mandatory provisional state、禁止表示
 
@@ -671,15 +952,17 @@ auto-send、stale masterを最新、local-onlyをcloud-final、unsyncedをextern
 ### 4. Edge / Local Client architecture candidate
 
 - UI/local client -> encrypted Local FHIR Store + rebuildable projection -> append-only Local Event Log -> Outbox/Inbox -> Recovery Sync -> Cloud FHIR。
-- Pharmacy Edge Node exact component inventory: Local FHIR Store、Local Search Projection、Local Master Cache、Local Terminology Cache、
-  Local Adapter Runtime、Local Event Store、Outbox/Inbox、Print Queue、NSIPS Legacy Adapter、JAHIS Adapter、Sync Agent。
+- Pharmacy Edge Node target component inventory: Local FHIR Store、Local Search Projection、Local Master Cache、Local Terminology Cache、
+  Local Adapter Runtime、Local Event Store、Outbox/Inbox、Print Queue、approved NSIPS target adapter、JAHIS Adapter、Sync Agent。
+  NSIPS legacy converterは`NR-CUT-002`の一方向cutoverだけに限定し、`NR-CUT-004`でlegacy adapterをzeroにする。
 - PH-OS Local Client exact component inventory: Offline Visit Bundle、Local FHIR Resource Cache、Local Draft Store、Local Attachment Store、
   Local Event Queue、Local AuditEvent Queue。
 - Pharmacy Edge NodeはADR/Human gate。Greengrass V2とrepo-local runtimeをhardware/OS/TPM/key/device identity、tenant/pharmacy binding、
   least privilege、signed component/update/rollback、local IPC、capacity、physical loss、operability/costで比較し、ここでは選定しない。
 - AWS候補はECS Fargate/Lambda、Aurora PostgreSQL Multi-AZ、S3 versioning/Object Lock（必要時）、EventBridge/SQS/SNS/
   Step Functions/CloudWatch/CloudTrail/KMS/Secrets Manager/WAF/AWS Backup。Blue-Green/Canary/Smoke/health/rollback、
-  expand-migrate-contract、feature flagもcandidateでありdeploy承認ではない。
+  expand-migrate-contract、feature flagは承認済みcutover window内だけのcandidateでありdeploy承認ではない。dual-read/writeは禁止し、
+  `NR-CUT-004`後はold schema reader/writer/flagをzeroにする。
 
 ### 5. Local FHIR Store、projection、master/terminology cache
 
@@ -778,6 +1061,51 @@ PHI minimizerは必要でない氏名/住所/電話/保険者番号を除外し�
 各use caseを独立sliceにし、input/output schema、save target、permission/purpose、prompt/schema/model version、citation、review UI、
 AI_DEGRADED/manual baseline、latency/cost、PHI-free telemetry、route/component/contract/security testを持たせる。
 
+各parent use-case IDは下記10 childを必ず展開する。derived IDは`<PARENT-ID>-C01-CONTRACT`から
+`<PARENT-ID>-C10-SECURITY-TEST`とし、該当しないchildも削除せず`N/A`理由とreviewer承認を記録する。parent DONEは10 childすべてが
+`DONE`または批准済み`N/A`になるまで禁止する。後方互換用prompt/schema/handler/UIは作らず、`C06`で現行callerを上書きし、`C08`後に
+`AI-CUT-*`で旧経路を削除する。
+
+| Child suffix        | Atomic deliverable                               | Depends on                                    | Independent exit                                                  |
+| ------------------- | ------------------------------------------------ | --------------------------------------------- | ----------------------------------------------------------------- |
+| `C01-CONTRACT`      | use-case request/result/error/offline schema     | `AI-PLAT-001`, `AI-PLAT-002`, `AI-PLAT-003`   | schema normal/boundary/invalid/version fixtures                   |
+| `C02-INPUT-MIN`     | source resolver + PHI-minimized field allowlist  | `AI-PLAT-004` through `AI-PLAT-009`           | deny/stale/direct-ID/oversize/provider-call-zero tests            |
+| `C03-PROMPT`        | immutable use-case prompt template/version       | `AI-PLAT-010`, `AI-PLAT-015`                  | compatibility/hash/promotion/rollback/no-PHI fixtures             |
+| `C04-OUTPUT-SCHEMA` | exact candidate/draft output validator           | `AI-PLAT-016`, `AI-PLAT-017`, `AI-PLAT-018`   | schema/grounding/dangerous/insufficient-evidence tests            |
+| `C05-EVAL-DATASET`  | anonymized golden/adversarial evaluation set     | C01-C04                                       | quality/safety/ambiguity/false-positive/false-negative thresholds |
+| `C06-SERVER`        | authorized server orchestration endpoint/service | C01-C05 + `AI-PLAT-011` through `AI-PLAT-014` | authz/tenant/idempotency/timeout/provider failure/manual tests    |
+| `C07-REVIEW-UI`     | source-linked human review/approve/reject UI     | C04/C06 + `AI-PLAT-019`, `AI-PLAT-020`        | loading/error/stale/OCC/keyboard/mobile/SR/qualification tests    |
+| `C08-PERSISTENCE`   | approved-only draft/candidate persistence        | C06/C07 + `AI-PLAT-021`, `AI-PLAT-022`        | pre-review write zero/atomic audit/idempotency/rollback tests     |
+| `C09-DEGRADED`      | AI unavailable/degraded manual baseline          | C06 + `AI-PLAT-012`, `AI-PLAT-026`            | core workflow continuity/exact copy/retry/no-false-success tests  |
+| `C10-SECURITY-TEST` | end-to-end privacy/security/medical abuse pack   | C01-C09 + `AI-PLAT-023` through `AI-PLAT-025` | cross-tenant/purpose/PHI log/prompt injection/unsafe action zero  |
+
+全use caseは次のexecution registryで別taskとしてclaimする。Priorityは臨床・業務価値、Delivery phaseはplatform依存順であり混同しない。
+共通exitは`AIBED-P1-ACCESS-001`、`AIBED-P1-MINIMIZE-001`、`AIBED-P1-CONSENT-001`、`AIBED-P1-VALIDATE-001`、
+`AIBED-P1-REVIEW-001`、`AIBED-P1-AUDIT-001`、用途固有schema、manual baseline、provider-call-zero deny、
+pre-review mutation/send zero、focused testのPASS。下の詳細packetが各行のinput/output/save/forbidden/edge-case SSOTである。
+
+| Task ID                                | Priority | Delivery phase | Extra dependency                         | Isolated acceptance focus                                         |
+| -------------------------------------- | -------- | -------------- | ---------------------------------------- | ----------------------------------------------------------------- |
+| `AI-FHIR-VALIDATION-EXPLAIN-001`       | P1       | 2              | pinned FHIR validator/package            | OperationOutcome mapping/citation; Resource mutation zero         |
+| `AI-SSOT-RAG-001`                      | P1       | 2              | `AIBED-P2-RAG-001`                       | approved corpus/no-evidence/ACL/poison/delete/reindex             |
+| `AI-VISIT-PRE-SUMMARY-001`             | P2       | 3              | patient/visit source-version contract    | identity/change/open-task/partial/stale/source-link               |
+| `AI-MEDICATION-TIMELINE-SUMMARY-001`   | P2       | 3              | medication source-authority policy       | added/stopped/dose-change candidate; medication mutation zero     |
+| `AI-SUPPORT-INQUIRY-TRIAGE-001`        | P2       | 3              | support scope/error taxonomy             | category/urgency/reply/escalation drafts; auto action zero        |
+| `AI-RESIDUAL-ADHERENCE-STRUCTURE-001`  | P3       | 3              | human-confirmed photo result contract    | structured candidate; AI-only identification/count zero           |
+| `AI-FOLLOWUP-NOTE-DRAFT-001`           | P3       | 3              | Communication/Task permission            | note/completion/follow-up drafts; complete/send zero              |
+| `AI-MULTIDISCIPLINARY-SHARE-DRAFT-001` | P3       | 3              | recipient/purpose/disclosure policy      | recipient-scoped draft; unrestricted raw thread zero              |
+| `AI-MEDICATION-PROBLEM-CANDIDATE-001`  | P4       | 4              | medical/legal evaluation threshold       | DetectedIssue candidate; clinical final decision zero             |
+| `AI-FHIR-RESOURCE-CREATION-ASSIST-001` | P3       | 3              | target profile/version/cardinality       | five exact Resource draft types; auto create/update zero          |
+| `AI-BILLING-ACCOUNTING-EXPLAIN-001`    | P3       | 3              | approved accounting projection           | explanation draft; recalc/claim/final receipt zero                |
+| `AI-VISIT-NOTE-DRAFT-001`              | P2       | 3              | transcript privacy/STT Human gate        | Encounter/Observation/QuestionnaireResponse draft + source trace  |
+| `AI-POSTVISIT-REPORT-DRAFT-001`        | P2       | 3              | recipient report/disclosure contract     | recipient-specific cited draft; approve/send zero                 |
+| `AI-PATIENT-SUMMARY-001`               | P2       | 3              | patient context reset/source links       | current/history/unknown/withheld/partial + switch reset           |
+| `AI-PRESCRIPTION-DELTA-SUMMARY-001`    | P2       | 3              | medication version-window authority      | exact delta/ambiguity/stable order; intent inference zero         |
+| `AI-MULTIDISCIPLINARY-SUMMARY-001`     | P2       | 3              | actor/time/attachment visibility policy  | attribution/conflict/restricted attachment; Task/send zero        |
+| `AI-POSTVISIT-TASK-EXTRACT-001`        | P3       | 4              | approved post-visit source set           | Task candidate evidence; create/assign/complete zero              |
+| `AI-REPORT-QUALITY-CHECK-001`          | P3       | 4              | report schema/citation/disclosure policy | missing/contradiction/disclosure warnings; edit/approve/send zero |
+| `AI-INQUIRY-WORDING-DRAFT-001`         | P3       | 4              | medication issue + recipient policy      | wording draft; inquiry decision/answer inference/send zero        |
+
 - P1 `AI-FHIR-VALIDATION-EXPLAIN-001`: pinned validator/package fingerprint + PHI-minimized OperationOutcomeから平易な説明、修正候補位置、
   official citation/confidence。valid化・Resource変更は禁止。unknown code/multiple/package mismatch/no raw Resource/insufficient evidenceをtest。
 - P1 `AI-SSOT-RAG-001`: approved SSOT/manual/Runbook/FHIR IG/JAHIS safety policy RAG。no evidence時fail、ACL/poison/delete/reindex test。
@@ -851,36 +1179,73 @@ grounding不足、stale source、human review/OCC/qualification、alias missing/
 acceptance: local visit durable creation、local JAHIS QR queue、AI outage non-blocking、recovery FHIR validation/conflict detection、review前final record 0、
 raw invocation logの不要PHI 0、cross-tenant/purpose/consent denyでprovider invocation 0、unsynced external send 0。
 
+#### 15.1 Atomic failure / cutover verification packs
+
+各packは独立taskで`Draft / Owner=TBD / Human gate / Not authorized`。synthetic/匿名fixtureだけを使い、expected evidence、rollback、
+PHI-free logsを保存する。親runtime taskのfocused testを置き換えず、domain regressionとして追加する。
+
+| Task ID       | Scope                                        | Required proof                                                       |
+| ------------- | -------------------------------------------- | -------------------------------------------------------------------- |
+| `NETTEST-001` | Cloud Core/DNS/API partial outage            | correct mode/capability/poll/recovery; false success zero            |
+| `NETTEST-002` | Aurora unavailable/slow/partial commit       | durable local acceptance, no duplicate/loss, recovery classification |
+| `NETTEST-003` | S3/object unavailable/corrupt                | attachment state/cleanup/retry/hash/no dangling success              |
+| `NETTEST-004` | EventBridge/SQS delayed/duplicate/reordered  | idempotency/order/backlog/readiness evidence                         |
+| `NETTEST-005` | Edge-only/low disk/power loss/reboot         | encrypted durable core workflow + restart checkpoints                |
+| `NETTEST-006` | PH-OS offline/bundle expiry/revoke           | patient/authz/Consent/freshness/no unauthorized read/write           |
+| `NETTEST-007` | Recovery Sync all steps                      | `NR-REC-001..018` checkpoint/restart/read-back evidence              |
+| `NETTEST-008` | clock drift/duplicate/reordering/replay      | no LWW, stable classification, monotonic ordering                    |
+| `NETTEST-009` | six conflict classes                         | pharmacist review/OCC/persistence/retry/no auto-merge                |
+| `NETTEST-010` | corrupt bundle/key loss/device compromise    | quarantine/revoke/recovery/no plaintext/no silent loss               |
+| `NETTEST-011` | role/assignment/qualification/Consent change | immediate deny and zero external/provider side effect                |
+| `NETTEST-012` | multi-worker lease/takeover                  | fencing prevents stale owner commit and duplicate effect             |
+| `NETTEST-013` | old/new profile/master/terminology           | fail-closed/revalidate/rebase/no stale-as-current                    |
+| `NETTEST-014` | backup/restore/local-to-cloud proof          | exact version/hash/Provenance/AuditEvent/read-back parity            |
+| `NETTEST-015` | full hard replacement                        | `NR-CUT-001..006`, legacy caller/API/state/worker/config zero        |
+
+| Task ID      | Scope                                      | Required proof                                                     |
+| ------------ | ------------------------------------------ | ------------------------------------------------------------------ |
+| `AITEST-001` | Bedrock timeout/throttle/model unavailable | bounded retry/circuit/manual continuity/no false success           |
+| `AITEST-002` | Guardrails block/error/drift               | deterministic access/minimize/validate gates remain effective      |
+| `AITEST-003` | KB unavailable/poisoned/stale/no evidence  | fail-with-citation/no patient FHIR/no unsupported answer           |
+| `AITEST-004` | invalid schema/grounding/assertion         | output rejected before review/persistence                          |
+| `AITEST-005` | minimization/authz/Consent/purpose failure | PHI fetch/provider call/raw log zero                               |
+| `AITEST-006` | human review/OCC/qualification/revoke      | no stale approval, no pre-review mutation/send                     |
+| `AITEST-007` | alias missing/drift/fallback/idempotency   | no hardcoded/unsafe fallback, duplicate effect zero                |
+| `AITEST-008` | AI disabled/degraded/budget exceeded       | patient/visit/FHIR/print/outbox manual workflows continue          |
+| `AITEST-009` | invocation/audit/logging privacy           | prompt/response/direct-ID/provider-error persistence zero          |
+| `AITEST-010` | all 19 use-case C01-C10 packs              | per-use-case quality/safety/latency/cost/rollback thresholds       |
+| `AITEST-011` | full hard replacement                      | `AI-CUT-001..006`, legacy provider/prompt/model/status/caller zero |
+
 ### 16. SSOT document task registry（exact 23）
 
-全行のownerはcodex1/codex2 plan review後のnamed maintainer、GateはHuman、StatusはDraft。各docは既存FHIR/UI/security/AWS SSOTと差分照合し、
-批准済み内容だけ恒久SSOTへpromotionする。この一時付録からのpromotion後は該当行と重複本文を削除する。
+全行を独立doc taskとしてclaimする。ownerはcodex1/codex2 plan review後のnamed maintainer、GateはHuman、StatusはDraft。各docは既存FHIR/UI/
+security/AWS SSOTと差分照合し、批准済み内容だけ恒久SSOTへpromotionする。この一時付録からのpromotion後は該当行と重複本文を削除する。
 
-| Proposed file                       | Dependency            | Acceptance / review task                                       |
-| ----------------------------------- | --------------------- | -------------------------------------------------------------- |
-| `network_resilience_strategy.md`    | modes + RTO/RPO       | 6 mode、最小継続scope、DR責任者、測定証跡                      |
-| `local_first_architecture.md`       | FHIR v0.5             | authoritative/local/projection境界とdata flow                  |
-| `pharmacy_edge_node_runtime.md`     | ADR/security          | Greengrass vs local runtime、device/update/loss、人間選定      |
-| `offline_fhir_store_policy.md`      | local architecture    | exact fields、encryption/key/quota/rebuild/RLS相当境界         |
-| `offline_bundle_policy.md`          | Consent/purpose       | exact resources/metadata/TTL/revoke/tamper                     |
-| `local_master_cache_policy.md`      | master license        | version/hash/signature/stale/eviction                          |
-| `local_terminology_cache_policy.md` | JP Core/IG            | CodeSystem/ValueSet/ConceptMap/package fail-closed             |
-| `outbox_inbox_sync_policy.md`       | local event store     | exact schema/status/idempotency/lease/dead-letter              |
-| `recovery_sync_policy.md`           | outbox + cloud FHIR   | 13 steps、read-back、restart/rollback                          |
-| `conflict_resolution_policy.md`     | Resource ownership    | exact codes、field/source authority、人間review                |
-| `cloud_degraded_ux_policy.md`       | mode matrix           | exact copy/fields/capability/44px/accessibility                |
-| `ai_degraded_ux_policy.md`          | AI foundation         | status/copy/manual continuity/retry                            |
-| `bedrock_ai_architecture.md`        | threat model          | server-only flow、account/region/network/data boundary         |
-| `bedrock_model_alias_policy.md`     | model approval        | primary/fallback、availability、no hardcode/unsafe fallback    |
-| `ai_use_case_inventory.md`          | risk tier             | 全use case、purpose/input/output/save/prohibited/priority      |
-| `ai_prompt_template_registry.md`    | schema/model registry | immutable version、promotion/rollback、no PHI test values      |
-| `ai_phi_minimization_policy.md`     | use-case inventory    | field allowlist/budget/direct-ID removal/zero-invoke deny      |
-| `ai_guardrails_policy.md`           | minimizer + validator | probabilistic限界、input/output、drift/evaluation              |
-| `ai_knowledge_base_policy.md`       | docs corpus           | no patient FHIR、ACL/manifest/poison/delete/reindex/citation   |
-| `ai_invocation_logging_policy.md`   | AWS logging config    | content default-off、metadata、KMS/retention/access/drift      |
-| `ai_human_review_policy.md`         | authz/qualification   | state machine、OCC/edit/reason/expiry/supersede                |
-| `ai_output_validation_policy.md`    | schema/FHIR/grounding | seven gates、dangerous assertion、insufficient evidence        |
-| `ai_audit_provenance_policy.md`     | review + FHIR         | exact events、approved-only draft、version-specific Provenance |
+| Task ID      | Proposed file                       | Dependency            | Acceptance / review task                                       |
+| ------------ | ----------------------------------- | --------------------- | -------------------------------------------------------------- |
+| `NETDOC-001` | `network_resilience_strategy.md`    | modes + RTO/RPO       | 6 mode、最小継続scope、DR責任者、測定証跡                      |
+| `NETDOC-002` | `local_first_architecture.md`       | FHIR v0.5             | authoritative/local/projection境界とdata flow                  |
+| `NETDOC-003` | `pharmacy_edge_node_runtime.md`     | ADR/security          | Greengrass vs local runtime、device/update/loss、人間選定      |
+| `NETDOC-004` | `offline_fhir_store_policy.md`      | local architecture    | exact fields、encryption/key/quota/rebuild/RLS相当境界         |
+| `NETDOC-005` | `offline_bundle_policy.md`          | Consent/purpose       | exact resources/metadata/TTL/revoke/tamper                     |
+| `NETDOC-006` | `local_master_cache_policy.md`      | master license        | version/hash/signature/stale/eviction                          |
+| `NETDOC-007` | `local_terminology_cache_policy.md` | JP Core/IG            | CodeSystem/ValueSet/ConceptMap/package fail-closed             |
+| `NETDOC-008` | `outbox_inbox_sync_policy.md`       | local event store     | exact schema/status/idempotency/lease/dead-letter              |
+| `NETDOC-009` | `recovery_sync_policy.md`           | outbox + cloud FHIR   | 13 steps、read-back、restart/rollback                          |
+| `NETDOC-010` | `conflict_resolution_policy.md`     | Resource ownership    | exact codes、field/source authority、人間review                |
+| `NETDOC-011` | `cloud_degraded_ux_policy.md`       | mode matrix           | exact copy/fields/capability/44px/accessibility                |
+| `AIDOC-001`  | `ai_degraded_ux_policy.md`          | AI foundation         | status/copy/manual continuity/retry                            |
+| `AIDOC-002`  | `bedrock_ai_architecture.md`        | threat model          | server-only flow、account/region/network/data boundary         |
+| `AIDOC-003`  | `bedrock_model_alias_policy.md`     | model approval        | primary/fallback、availability、no hardcode/unsafe fallback    |
+| `AIDOC-004`  | `ai_use_case_inventory.md`          | risk tier             | 全use case、purpose/input/output/save/prohibited/priority      |
+| `AIDOC-005`  | `ai_prompt_template_registry.md`    | schema/model registry | immutable version、promotion/rollback、no PHI test values      |
+| `AIDOC-006`  | `ai_phi_minimization_policy.md`     | use-case inventory    | field allowlist/budget/direct-ID removal/zero-invoke deny      |
+| `AIDOC-007`  | `ai_guardrails_policy.md`           | minimizer + validator | probabilistic限界、input/output、drift/evaluation              |
+| `AIDOC-008`  | `ai_knowledge_base_policy.md`       | docs corpus           | no patient FHIR、ACL/manifest/poison/delete/reindex/citation   |
+| `AIDOC-009`  | `ai_invocation_logging_policy.md`   | AWS logging config    | content default-off、metadata、KMS/retention/access/drift      |
+| `AIDOC-010`  | `ai_human_review_policy.md`         | authz/qualification   | state machine、OCC/edit/reason/expiry/supersede                |
+| `AIDOC-011`  | `ai_output_validation_policy.md`    | schema/FHIR/grounding | seven gates、dangerous assertion、insufficient evidence        |
+| `AIDOC-012`  | `ai_audit_provenance_policy.md`     | review + FHIR         | exact events、approved-only draft、version-specific Provenance |
 
 ### 17. Blocking stop conditions（全項目）
 
@@ -889,17 +1254,21 @@ recovery sync policyなし、conflict policyなし、local FHIR暗号化なし�
 business path、AIが薬剤師なしでfinalize、PHI minimizationなし、Guardrails policyなし、無制限PHI invocation log、Consent/purpose_of_useなし、
 hardcoded model ID、AI-degraded UXなし。加えてcurrent orgで全pending replay、localをcloud-synced表示、offline official external success、
 unencrypted/unbounded cache、PHI log、process-local mutexだけ、LWW/autowrite、未批准Greengrass/Aurora Global/Blue-Green採用も停止条件。
+後方互換性維持のためlegacy API/DTO/state/worker/provider/prompt/model ID/flagを残す、dual-read/writeで旧正本を併存させる、旧fallbackへ
+silent downgradeする、caller-zero前に削除する、data converter/quarantine/rollback evidenceなしでhard cutoverする場合も停止する。
 
 ### 18. Phase 0-4（依存順を固定）
 
-- Phase 0: modes、minimum scope、RTO/RPO、Edge structure、Offline Bundle、Outbox/Inbox、AI use-case inventory、AI safety、23 SSOTを批准。
+- Phase 0: modes、minimum scope、RTO/RPO、Edge structure、Offline Bundle、Outbox/Inbox、AI use-case inventory、AI safety、23 SSOT、
+  `NR-P0-001..016`、`AI-P0-REPLACE-001`、legacy inventoryとhard-replacement/cutover contractを批准。
 - Phase 1: Local FHIR Store、Local Event Store、Offline Bundle、Outbox/Inbox、cloud detector、mode switcher、AI Request Builder、PHI Minimizer。
 - Phase 2: local JAHIS QR、offline PH-OS visit、recovery validation、conflict detection、AI FHIR error explain、AI SSOT/manual RAG。
 - Phase 3: visit pre-summary、med timeline、follow-up draft、multidisciplinary draft、full Guardrails、KB operations。
-- Phase 4: DR rehearsal、Edge failure test、大規模施設round Bundle、AI evaluation criteria、SLO publication、Runbook。
+- Phase 4: DR rehearsal、Edge failure test、大規模施設round Bundle、AI evaluation criteria、SLO publication、Runbook、`NR-CUT-001..006`、
+  `AI-CUT-001..006`、`NETTEST-015`、`AITEST-011`で全caller移行・旧実装削除・clean restart・snapshot rollbackを証明。
 
 Phase 0 human approval前にPhase 1以降をimplementation-readyへ昇格しない。各phaseはprevious acceptance、rollback、security/privacy/medical/
-AWS reviewを満たす。
+AWS reviewを満たす。Phase 1-3でcompatibility shim/dual runtimeを完成形にせず、Phase 4 cutover後はnew contractだけを残す。
 
 ### 19. Final principles（8 acceptance invariants）
 
@@ -943,8 +1312,10 @@ optional customization/fine-tuningへ一般化しない。Knowledge Base/Prompt 
 ### Temporary appendix completion / promotion rule
 
 このplanning taskは、sourceの全heading、field、state、event、test、23 doc、stop、phase、referenceが上記へtraceでき、既存
-`FHIR-NATIVE-OFFLINE-EDGE-001`との重複が明示的に除去された時点でDraft記録完了とする。実装完了ではない。Phase 0で各docを作成・
-レビュー・人間批准し、active queueへPR-sized IDを昇格した後にこのtemporary appendixを削除する。
+`FHIR-NATIVE-OFFLINE-EDGE-001`を同一replacement programへ統合し、targetの単一authoritative pathとlegacy caller/storage/adapter/flag
+zeroが明示された時点でDraft記録完了とする。実装完了ではない。Phase 0で各docを作成・
+レビュー・人間批准し、active queueへPR-sized IDを昇格した後にこのtemporary appendixを削除する。最終実装完了は新v0.6/v0.6.1契約の
+全機能が動作し、`NR-CUT-*`/`AI-CUT-*`でlegacy caller/code/config/test/docs zeroと一方向data変換/rollbackを証明した時だけ認める。
 
 ### 2026-07-09 Archived Plan Board — 履歴参照 `cc:REFERENCE`
 

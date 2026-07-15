@@ -61,18 +61,41 @@
 
 ## 直近の作業
 
+- codex1/codex2: Network Resilience v0.6 / Bedrock AI v0.6.1 atomic replacement plan
+  (`Plans.md` TEMPORARY DRAFT subdivided, 2026-07-16).
+  - planning result:
+    ユーザー指示により後方互換性を捨て、既存network/offline/AI機能へcompatibility layerを足すのではなく、v0.6/v0.6.1の
+    target contractで全機能を上書きするhard-replacement programへ変更した。legacy API/DTO/state/worker/storage/provider/prompt/model ID/
+    config/flag、dual-read/write、silent fallbackを最終形に残さない。保存済みdataは一方向converter + quarantineでcanonical形へ移し、
+    rollbackは旧runtime再有効化ではなくtarget-compatible snapshot/redeploy/reapplyで行う。
+  - subdivision / gates:
+    Phase 0 `NR-P0-001..016`、Edge/Bundle/Sync/Conflict、Mode、yrese、PH-OS、UX/observability、Recovery source 13 step + 5補助工程、
+    AI platform `AI-PLAT-001..026`、KB `AI-KB-001..008`、19 use case x C01-C10、Network/AI failure packs、exact 23 DOC taskへ分割した。
+    `NR-CUT-001..006` / `AI-P0-REPLACE-001` / `AI-CUT-001..006`でinventory、target freeze、一方向変換、caller switch、旧reader/writer/
+    adapter/flag削除、zero-residual ratchet、target-only rollback rehearsalを別task化した。既存`FHIR-NATIVE-OFFLINE-EDGE-001`は旧runtimeの
+    温存ではなく同一replacement programのumbrella IDとしてだけ使う。NSIPS legacy converterとexpand/migrate/flagは承認済みcutover
+    window限定で、最終DoDはsingle authoritative path + legacy caller/storage/adapter/flag zero。
+  - review / validation / remaining:
+    codex2がatomic粒度、依存、DoD、hard-replacement矛盾を独立reviewしFINAL PASS、P1/P2なし。Prettier、`pnpm plans:active:check`、
+    `git diff --check`、expected atomic-ID coverage missing zeroがPASS。これはDraft/Human gate/not implementation authorizationのままで、
+    AWS apply/model invocation/PHI送信/migration/deploy/destructive cutoverは実行していない。Phase 0批准後だけchildをactive queueへ昇格する。
+
 - codex1/codex2: workflow dispatch input injection boundary
-  (`CI-WORKFLOW-DISPATCH-INPUT-INJECTION-001` DONE `e6dba3894`, 2026-07-16).
+  (`CI-WORKFLOW-DISPATCH-INPUT-INJECTION-001` DONE `e6dba3894` / `310b5f3fe`, 2026-07-16).
   - root cause / implementation:
     manual container workflowが6個の`workflow_dispatch` inputをcredential/action/buildへ直接流し、repository/tagはshell本文にも展開していた。
     checkout直後かつ最初の`run` stepで全inputを検証し、regionは`ap-northeast-1`、ECR repositoryは公式pattern 2..256、tagは128以下、
-    app URLはbounded HTTPS origin、Cognito pool/clientはTokyo prefixと公式長/文字subsetへ限定した。全control/newlineをrejectし、固定errorだけを
-    出して値をlogしない。検証済み値だけを`GITHUB_OUTPUT`へ出し、OIDC/ECR/image/build argsはそのoutputだけを参照する。raw inputがvalidator外へ
+    app URLはbounded HTTPS origin、hostname total 253/label 63、先頭末尾alnum、port 1..65535、Cognito pool/clientはTokyo prefixと
+    公式長/文字subsetへ限定した。全control/newlineをrejectし、固定errorだけを出して値をlogしない。repository+tagのvalidated image suffixを
+    credential前に確定して`GITHUB_OUTPUT`へ出し、ECR login後はtrusted registry prefixだけを付ける。OIDC/ECR/image/build argsは検証済みoutputだけを
+    参照する。raw inputがvalidator外へ
     再流入する、またはsetup/install/artifact/OIDC/ECR/buildがvalidatorより前へ移動するdriftをCI static ratchetでfailする。
   - review / validation / safety:
     codex2がexact5を実装し、codex1がraw expression、step order、output injection、consumer mappingを独立reviewしてP0/P1なし。focused
-    `tools/scripts/check-workflow-dispatch-input-safety.test.ts` 1 file / 20 tests、static checker、Prettier、`git diff --check`がPASS。
-    ESLintは0 error（YAML/packageはconfig対象外warningのみ）、`pnpm typecheck`と`pnpm typecheck:no-unused`を直列実行してPASSした。
+    `tools/scripts/check-workflow-dispatch-input-safety.test.ts` 1 file / 28 tests、static checker、actionlint、Prettier、`git diff --check`がPASS。
+    ESLintは0 error、`pnpm typecheck`と`pnpm typecheck:no-unused`をfollow-up後に直列実行してPASSした。初回reviewでinvalid host label/portと
+    image composition timingをP2として検出し、zero/out-of-range port、64/total-oversize host、leading/trailing hyphen、trailing-dot empty labelを
+    fail-closed化して再reviewした。
     GitHub Secure use/workflow syntax/env context、AWS ECR Repository API、Cognito DescribeUserPool/DescribeUserPoolClientを2026-07-16確認。
     AWS API call、OIDC credential取得、workflow dispatch、image push、deploy、IAM/ECR mutationは実行していない。
   - official references:
@@ -124,7 +147,8 @@
     完了2行をunfinished-only `Plans.md`から削除した。ユーザー貼付のBedrock AI v0.6.1 + Network Resilience v0.6は、20節、6 mode、
     local FHIR/Bundle/Outbox、13-step recovery、AI use case、23 SSOT task、stop/phase、2026-07-16確認のAWS公式参照を含む
     TEMPORARY DRAFTとして追記した。これはHuman gate/not ratified/not implementation authorizationで、既存
-    `FHIR-NATIVE-OFFLINE-EDGE-001`を参照し重複実装しない。既存route-catalog/auth/API/harness dirtyは保存し、このgroupへ含めない。
+    `FHIR-NATIVE-OFFLINE-EDGE-001`と同一hard-replacement programへ統合し、旧runtimeを温存しない。既存route-catalog/auth/API/harness
+    dirtyは保存し、このgroupへ含めない。
     次は台帳commit/push/parityを閉じた後、Phase 0未批准AWS/AI/Edgeを実装せず、残るP0/P1から安全な非重複sliceを再選定する。
 
 - codex1/codex2: bounded HTTP ingress/proxy/provider + authoritative prescription/care-report search
