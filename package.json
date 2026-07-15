@@ -115,6 +115,7 @@
     "eventbridge-schedules:check": "node tools/scripts/check-eventbridge-schedule-drift.mjs",
     "workflow-dispatch-input-safety:check": "node tools/scripts/check-workflow-dispatch-input-safety.mjs",
     "supply-chain-pins:check": "node tools/scripts/check-supply-chain-pins.mjs",
+    "vulnerability-controls:check": "node tools/scripts/check-vulnerability-control-parity.mjs",
     "hooks:install": "git config core.hooksPath tools/git-hooks"
   },
   "dependencies": {
@@ -192,6 +193,7 @@
     "esbuild": "0.28.1",
     "eslint": "^9.39.4",
     "eslint-config-next": "16.2.9",
+    "eslint-plugin-security": "4.0.1",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",
     "prettier": "^3.8.4",

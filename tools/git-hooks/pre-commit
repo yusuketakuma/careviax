@@ -2,6 +2,7 @@
 # Lightweight opt-in pre-commit hook.
 #
 # Scope: staged files only (never the whole repo). Runs:
+#   - Gitleaks 8.30.1 against the staged snapshot
 #   - `pnpm exec eslint --max-warnings=0` on staged .ts/.tsx/.mjs files
 #   - `pnpm exec prettier --check` on staged files with a Prettier-covered extension
 #
@@ -56,6 +57,23 @@ done
 
 status=0
 
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "[pre-commit] gitleaks 8.30.1 is required. Run tools/scripts/install-gitleaks.sh and add the printed bin directory to PATH."
+  status=1
+elif ! gitleaks_version="$(gitleaks version 2>/dev/null)" || [ "$gitleaks_version" != "8.30.1" ]; then
+  echo "[pre-commit] gitleaks 8.30.1 is required; another version is installed."
+  status=1
+else
+  echo "[pre-commit] gitleaks staged secret scan"
+  gitleaks_log="$(mktemp)"
+  trap 'rm -f "$gitleaks_log"' EXIT
+  if ! gitleaks git --pre-commit --redact=100 --staged --verbose >"$gitleaks_log" 2>&1; then
+    echo "[pre-commit] secret scan failed or detected a staged secret. Review locally with redaction enabled."
+    status=1
+  fi
+  rm -f "$gitleaks_log"
+fi
+
 if [ "${#lint_files[@]}" -gt 0 ]; then
   echo "[pre-commit] eslint --max-warnings=0 (${#lint_files[@]} file(s))"
   if ! pnpm exec eslint --max-warnings=0 "${lint_files[@]}"; then
@@ -72,7 +90,7 @@ fi
 
 if [ "$status" -ne 0 ]; then
   echo ""
-  echo "[pre-commit] lint/format check failed. Fix the issues above, or bypass this commit with:"
+  echo "[pre-commit] security/lint/format check failed. Fix the issues above. Exceptional audited bypass:"
   echo "  SKIP_HOOKS=1 git commit ..."
 fi
 
