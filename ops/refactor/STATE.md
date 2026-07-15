@@ -8,21 +8,22 @@
 
 ## 体制（2026-07-15 最新ユーザー指示）
 
-- ユーザーが`codex1` / `codex2`のpeer運用を明示的に再有効化した。両者は対等な実装担当として、live repo、test、
-  このSTATEを履歴記述より優先し、`agmsg`でexact-path ownershipと依存関係を明示してnon-overlap sliceを進める。
-  `codex3` / `codex4` / Claude / 追加subagentは使用しない。再投入はユーザーが後続指示で明示した場合だけ行う。
-- 両者の合意により、現在は`codex1`が`Plans.md`の全体管理・重複排除・優先順位・acceptance整理と
-  `ops/refactor/STATE.md` / `RUN_LOCK.md`、統合review、横断validation、scoped commitを担当する。`codex2`はagmsgで
-  claim/ACKしたexact implementation pathsだけを担当し、shared docsはread-only reviewする。担当は恒久的な上下関係ではなく、
-  handoff時にagmsgで更新する。pushは従来どおりcurrent-taskのユーザー明示がある場合だけ行う。
-- 書込み前にowner、exact paths、依存を通知し、同一pathを並列編集しない。shared docsまたはauth/RLS/PHI/DB/billing等の
-  high-risk contract変更はproposal + peer ACKを先に取る。長いtypecheck/build/E2E、Next生成物、commitは`codex1`が直列化する。
-- peer findingはそのまま台帳化せず、主担当がlive evidence、既存Plan/STATEとの重複、reproduction、DoD、testsを再確認する。
-  意見が割れた場合は安全側で保留し、ユーザー判断または追加証拠へ戻す。
-- 既存user/harness dirtyとpeer-owned pathsを保存し、scoped commitは明示owned pathsだけをstageする。
-  deploy、migration適用、production mutation、destructive operationはcurrent-taskの明示許可なしに行わない。
-- **Oracleは全agentで使用しない。** 起動、相談、status/read、reattach/restart、別model fallbackを行わず、
-  高リスクまたは不確実な変更はローカルの複数review、focused/static/type gates、明示BLOCKEDで扱う。
+- 現行はcodex1/codex2の二者運用。両者がagmsgでexact-path ownershipを宣言し、計画レビュー、non-overlap実装、
+  相互検証を行う。codex1が単一台帳更新とintegrationを担当する。codex3/codex4、Claude、built-in custom agent、
+  subagent、外部maker/checkerは使わない。
+- CareViaXのagmsg登録はcodex1/codex2だけに整理済み。project-local `.codex/agents/*.toml` 27件と
+  custom-agent registryを削除し、`.codex/config.toml`の`features.multi_agent`を`false`へ固定した。
+  user-global `~/.codex/agents`は他repositoryの共有設定なので変更せず、CareViaXでは使用しない。
+  設定削除commitは`ccbc5258a`。実Codex doctorはconfig loaded、16 ok / 2 warn / 0 failで、warnは既存の
+  rollout/state DB不整合とstale app-server socketだけだった。二者運用ルールとstrict Pro policyの同期は
+  `0c52c769b`。
+- 既存user/harness dirtyと過去peerのsource差分を保存し、同一pathへ競合編集しない。commitする場合は明示owned pathだけを
+  stageし、`git add -A`を使わない。push、deploy、migration適用、production mutation、destructive operationは
+  current-taskの明示許可なしに行わない。
+- Oracleは高リスクな医療・FHIR完全置換のadvisory safety gateとして、ユーザーが明示的に再許可した。
+  現行targetはChatGPTの独立GPT-5.6 Proを表す`gpt-5-pro`で、base Sol用の`--browser-thinking-time`は渡さない。
+  Extra High、base Sol、GPT-5.5 Pro、その他modelへfallbackせず、strict Proを検証できなければ相談をblockedとして証跡を保存する。
+  出力は製品判断の正本にせず、live code、公式資料、local validationで再検証する。
 - 2026-07-14 21:33 JSTのユーザー指示により、こまめなbuildは行わない。現スライスの
   `build:e2e:local`は途中停止し、build依存E2Eを含めて大きな統合境界まで保留する。通常sliceは
   targeted tests、static gates、lint/format、typecheckを主証跡とし、agentはbuildを独自起動しない。
@@ -44,11 +45,11 @@
   ただし安全ゲートは緩和しない。migration 適用、deploy、secret rotation、production data mutation、
   destructive operation、push は current-task の明示許可が必要。
 
-## Codex 単独運用の自律待機方針（2026-07-04 ユーザー指示）
+## codex1 / codex2 運用の自律待機方針（2026-07-15 ユーザー指示）
 
 - review待ち、land待ち、狭い blocker、担当slice hold中でも、完全停止しない。
 - まず dirty tree を確認し、既存 user/peer dirty・危険領域を避ける。
-- 編集できない場合も Codex 本体で read-only recon、衝突表、候補scoring、focused validation、次に安全な作業の棚卸しを続ける。
+- 編集できない場合も codex1/codex2 の空いているlaneで read-only recon、衝突表、候補scoring、focused validation、次に安全な作業の棚卸しを続ける。
 - 編集可能な候補が見つかった場合は、小さく reviewable な差分だけ実装する。
 - 人間承認、billing/算定/PHI隣接/authorization、migration/deploy/destructive gate は迂回しない。
 
@@ -56,13 +57,256 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `codex1` / `codex2` peer運用（2026-07-15〜）。現在は`codex1`がPlans/STATE全体管理・
-  統合validation・scoped commit、`codex2`がagmsgでACKしたexact implementation pathsを担当し、non-overlapで実装する。
-  追加agentは使わず、必要なread-only reviewもcodex1/codex2間で行う。
-  現在の供給源は`Plans.md`の未完了項目とlive code差分。migration、auth/RLS policy変更、full-history event projectionは
-  human/high-risk gateとして実装せず、証拠付きの残件へ戻す。
+- Phase C（実装ループ）: codex1/codex2二者運用。現在の供給源は`Plans.md`の未完了項目とlive code差分であり、
+  exact-path laneを分離して計画、実装、相互検証を行い、codex1がSTATE更新とscoped integration commitを担当する。migration、auth/RLS policy変更、
+  full-history event projectionはhuman/high-risk gateとして無承認実行せず、証拠付きの残件へ戻す。
 
 ## 直近の作業
+
+- codex1/codex2: CareViaX two-seat topology + FHIR Native A0/A1/A2 foundation
+  (A0/A1/A2 COMMITTED / A2 UNDER INDEPENDENT REVIEW / A3 BLOCKED, 2026-07-15).
+  - topology:
+    agmsg identity/teamを`codex1`と`codex2`だけへ整理し、codex3/codex4/default codex登録を削除した。
+    project-local custom-agent 27設定とregistryを削除し、`features.multi_agent=false`へ固定した
+    （`ccbc5258a`）。user-global agent設定と未コミット成果物はscope外として保存した。
+  - A0/A1 root cause / fix:
+    初版foundation checkerがbase commitとpackage digestを桁数だけで受理し、任意の40/64桁hexへ置換してもPASSする
+    false-greenを再現した。repository/origin/branch/base commit/capture時刻、5 package coordinate/source URL/SHA-256、
+    source artifact/owned/excluded path集合、artifact hash、App/Pages Routerの`/fhir/r4` route scanをexact pinし、
+    well-formed wrong digest/source/base commit/incomplete coverageのnegative testを追加した。codex2が公式5 artifactを
+    GET-only再取得して全hash一致とchecker/testを独立ACCEPTし、A0/A1を`8a6e19107`へcommitした。
+  - A2 implementation / evidence:
+    SELECT-only static inventoryで45 schema surface、637 Prisma access group、17 raw SQL access group、17 code surface、
+    8 caller surfaceをdeterministic digestへ固定し、schema/column、reader/writer、raw SQL、DTO/export、route/job/caller、
+    owner-reviewのdriftをfail-closedにした（inventory `06ccebc0f`、completion ratchet `0a660cfc6`）。通常baselineはPASSし、`--require-zero`は残存638 blockerで
+    意図どおりFAILする。CI/package scriptを追加し、初回full typecheckがtest fixtureのunchecked array accessを検出したため、
+    `any`を除去してowner-review存在guardを追加した。foundation+A2 checks、22 tests、exact ESLint/Prettier/diff、
+    `pnpm typecheck`、`pnpm typecheck:no-unused`は最終PASS。A2はactive Plans queueから除外し、後続taskの完了は
+    dependency closureを満たさない限り拒否する。codex2 independent review待ち。
+  - blocked / next:
+    A3はexact2のpure server-only設計・negative matrixまで完成したが、strict `gpt-5-pro` profileが未loginでOracle gateが
+    timeoutし、256 KiB/2 MiB budgetとsource policyも未批准のため実装NO-GOを維持する。fallback/duplicate consultは行わない。
+    codex2はA5 conformance artifact closureをread-only計画レビュー中。codex1はA2 post-commit review findingを閉じ、
+    A5の安全ゲートを判定する。runtime/schema/migration/API/PHI persistenceは未変更。
+
+- codex: repository-wide improvement audit wave 4 + strict Oracle GPT-5.6 Pro attempt
+  (PLANS UPDATED / SOURCE IMPLEMENTATION NOT STARTED / GOAL CONTINUES, 2026-07-15).
+  - scope / method:
+    `improve` audit playbookに従い、clinical/business transaction concurrency、cache/realtime consistency、
+    CI/dependency/release gateを3本のbounded read-only監査へ分離し、Codex本体はexport/report/search boundaryを独立監査した。
+    各findingはroot Codexがlive route/service/schema/RLS/workflow/test、既存Plan、公式資料へ再照合し、subagentは編集していない。
+    rootの編集対象は`Plans.md` / `ops/refactor/STATE.md` / `ops/refactor/RUN_LOCK.md`だけで、source/schema/migration/
+    dependency、AWS、external system、production data、tmux pane/window/columnは変更していない。
+  - new / promoted implementation-ready tasks:
+    `SEARCH-PALETTE-AUTHORITATIVE-QUERY-001`、既存crosswalkから昇格した`EXP-SURFACE-REGISTRY-001`、
+    `BILLING-PARTNER-CONTRACT-APPROVAL-SOD-001`、`MEDSAFE-CARE-CASE-WRITE-OCC-001`、
+    `BILLING-PARTNER-INVOICE-TRANSITION-IDEMPOTENCY-001`、`MEDSAFE-INCIDENT-REVIEW-OCC-001`、
+    `RLS-NOTIFICATION-STREAM-POLL-001`、`STABILITY-REALTIME-READINESS-RECONCILIATION-001`、
+    `STABILITY-WORKFLOW-CACHE-COHERENCE-001`、`STABILITY-REALTIME-INVALIDATION-KEY-RACE-001`、
+    `CI-WORKFLOW-DISPATCH-INPUT-INJECTION-001`、`CI-CONTAINER-ARTIFACT-IMMUTABILITY-001`、
+    `CI-SUPPLY-CHAIN-PINNING-001`、`SEC-VULNERABILITY-CONTROL-PARITY-001`、
+    `CI-PREVIEW-URL-VERIFICATION-001`の15件をimplementation queueへ追加した。
+    server queryをclientが再filterするfalse-negative、report前patient candidate cap、固定10,000件を「全件」とする出口、
+    request文字列だけの二薬局承認、CareCase/incidentのstale write、invoice reissue retry、FORCE RLS下のSSE direct readと
+    10件watermark skip、channel readinessとauthoritative recovery欠落、process-local clinical cache、query-key debounce race、
+    credential後のdispatch input shell展開、mutable/tag-only container release、moving action/base、文書上だけのsecurity controls、
+    実在未確認Amplify URLを各DoD/stopへ固定した。
+  - strengthened existing tasks / dedupe:
+    `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`へopen SSEのsession/authz epoch、assignment、support purpose、consent revoke後
+    immediate closeを統合し、`CI-SECURITY-RATCHET-PARITY-001`へRLS/migration/medical E2Eの全required結果を検査する
+    release aggregatorを統合した。Dependabot ownershipは`CI-SUPPLY-CHAIN-PINNING-001`へ一本化し、
+    `SEC-VULNERABILITY-CONTROL-PARITY-001`は同じconfigを再作成しない。通知durabilityは`DB-EVENT-001`、frontend list countは
+    `FE-NOTIFICATION-AUTHORITATIVE-STATE-001`へ維持し、同じroot causeの新IDを作らなかった。
+  - official basis / AWS boundary:
+    GitHub Actions Secure use reference（script injectionのintermediate env、action full SHA、Dependabot）、Amazon ECR tag
+    immutability、GitHub artifact attestations、AWS Amplify GetJob APIのstatus/commitIdを2026-07-15に確認し、Planへ直接参照を
+    記録した。IAM/ECR/Amplify mutation、workflow dispatch、image push、deployはhuman gateのままで実行していない。
+  - board / validation:
+    Implementation queue 95→110、Frontend queue 12据え置き、FHIR child queue 27据え置き、各queue first-column ID重複0。
+    search/export baselineは9 files / 259 tests PASS、clinical/realtime/AWS validator baselineは12 files / 114 tests PASSし、
+    合計21 files / 373 tests PASS。`pnpm plans:active:check`、section-scoped 110/12/27 count、
+    `pnpm exec prettier --check Plans.md ops/refactor/STATE.md ops/refactor/RUN_LOCK.md`、
+    `git diff --check -- Plans.md ops/refactor/STATE.md ops/refactor/RUN_LOCK.md`を最終PASSさせた。
+    planning-only/nonvisual sliceのためimage generationを省略し、source変更がないためtypecheck/build/E2Eは実行していない。
+  - Oracle / remaining:
+    `oracle --dry-run summary --files-report`と実runはbrowser engine + strict `gpt-5-pro`を解決し、base Sol用thinking-timeは
+    指定しなかった。session `phos-wave4-plan-pro-review`は起動後、local Node/Undiciの`setTypeOfService EINVAL`でCLIが終了し、
+    browser slotをreleaseしたまま`running`表示を残して回答を生成していない。重複consult、restart、Extra High/base Sol/
+    GPT-5.5 Pro fallbackは行わず、Oracle出力を本計画へ利用していない。本waveは発見・計画整備だけで、15taskと既存2taskの
+    source実装、medical/legal/operations判断、AWS/DB/live runtime証跡は未着手。runtime上のsecurity/performance/correctness riskは
+    まだ低減しておらず、Goalは次のread-only監査または最優先実装sliceへ継続する。commit/pushは行っていない。
+
+- codex: repository-wide improvement audit wave 3 + Oracle strict Pro verification
+  (PLANS UPDATED / SOURCE IMPLEMENTATION NOT STARTED / GOAL CONTINUES, 2026-07-15).
+  - scope / method:
+    `improve` audit playbookに従い、DB/schema/RLS、external file/provider/billing boundary、auth/public/runtime boundaryを
+    3つのbounded read-only監査へ分離した。Codex本体はdashboard bounded projectionを独立監査し、全候補をlive code、schema、
+    migration、tests、既存Planへ再照合した。subagentは編集せず、`Plans.md` / `STATE.md` / `RUN_LOCK.md`の統合・validationは
+    root Codexだけが実施した。source/schema/migration/dependency、external system、tmux pane/window/columnは変更していない。
+  - new implementation-ready tasks:
+    `RLS-CONTRACT-FINAL-STATE-001`、`SEC-FILE-OBJECT-IMMUTABILITY-001`、
+    `STABILITY-DELIVERY-PROVIDER-READINESS-001`、`BILLING-CLAIMS-CONFORMANCE-FAIL-CLOSED-001`、
+    `SEC-CSRF-CANONICAL-ORIGIN-001`、`AUTH-CREDENTIAL-CHANGE-SESSION-REVOCATION-001`、
+    `OPS-RATE-CLIENT-IP-READINESS-001`、`DASHBOARD-BOUNDED-PROJECTION-TRUTH-001`の8件を追加した。
+    migration+SSOT履歴和集合によるRLS false-green、完了済みS3 keyの再PUT、未設定SMS/LINEの虚偽成功、非準拠CLAIMS-XML、
+    schemeを無視するCSRF判定、password変更/reset後のstale app session、推奨Lightsail設定のclient-IP 503、
+    top-N後scope filter/集計によるdashboard false-empty/false-countを各DoD/stopへ固定した。
+  - strengthened existing tasks / dedupe:
+    `JOB-TENANT-EXECUTION-001`へ薬歴PDF bulk exportのNOBYPASSRLS enqueue/worker/notification実DB証跡を追加し、通知durabilityは
+    `DB-EVENT-001`へ維持した。`SHARE-CONSENT-WRITE-001`へpublic self-reportのtransaction内grant lifecycle CAS、
+    `FILE-LIFE-001`へFileAsset単一SSOTとlegacy Setting dual-read/write削除を追加した。Cognito import reconcile、HTTP budget、
+    webhook DNS、browser storage PHI等の既存task重複は新IDを作らなかった。FHIR child Owner列は旧planning laneであり、
+    現行lease/実行主体はroot Codexだけであることを明記した。
+  - board / validation:
+    Implementation queue 87→95、Frontend queue 12据え置き、FHIR child queue 27据え置き。
+    `pnpm plans:active:check` PASS、section-scoped count 95/12/27、各section duplicate declaration 0、
+    `pnpm exec prettier --check Plans.md ops/refactor/RUN_LOCK.md` PASS、
+    `git diff --check -- Plans.md ops/refactor/RUN_LOCK.md` PASS。planning-only/nonvisual sliceのためimage generation、source test、
+    typecheck、buildは実行していない。最初のRuby集計helperは古いRubyに`Array#tally`がなく失敗したため、Node read-only集計へ
+    置換して上記結果を得た（repository failureではない）。
+  - Oracle / remaining:
+    project/user configとOracle skillは独立Pro target `gpt-5-pro`、browser engine、thinking-time未指定を確認した。
+    既存`phos-audit-plan-pro-review`はmodel欄が`gpt-5-pro`でstrict Pro選択を示したが、約1時間応答なしでzombie判定され、
+    Oracle回答は生成・利用していない。duplicate consultやbase Sol/Extra High fallbackは行わなかった。本waveは発見と計画整備のみで、
+    8新規taskと3既存taskのsource implementation、live AWS/proxy/DB/Cognito確認、実RLS/S3/browser証跡は未着手。
+
+- codex: repository-wide improvement audit wave 2
+  (PLANS UPDATED / SOURCE IMPLEMENTATION NOT STARTED / GOAL CONTINUES, 2026-07-15).
+  - scope / method:
+    API mutation、server/job/library、frontend/full-stack asymmetryを3つのbounded read-only監査へ分け、Codex本体が
+    live route/service/schema/test/UI SSOTを再読して既存Planと重複排除した。subagentは編集せず、統合・判断・validationは
+    Codex本体だけが実施した。tmux pane/window/columnは作成していない。
+  - new implementation-ready tasks:
+    `SEC-WEBHOOK-DNS-PINNING-001`、`MEDSAFE-CYCLE-TRANSITION-OCC-001`、
+    `MEDSAFE-MEDICATION-ISSUE-OCC-001`、`MEDSAFE-COOP-WORKFLOW-PATIENT-IDENTITY-001`、
+    `ANALYTICS-OPERATIONS-INSIGHTS-SEMANTICS-001`、`PERF-REFERENCE-MASTER-TENANT-FANOUT-001`の6件を追加した。
+    DNS preflight後の再解決SSRF、旧status権限での並行transition、stale issue内容のclinical promotion、
+    薬局間不可逆操作の患者2識別子欠落、比較不能KPI、tenant×全国master fan-outをそれぞれ独立したDoD/stop条件へ固定した。
+  - new frontend tasks:
+    `FE-NOTIFICATION-AUTHORITATIVE-STATE-001`と`FE-PHARMACY-COOP-CURSOR-001`の2件を追加し、
+    authoritative totalとloaded subset、empty/partial/error/stale、cursor、mutation対象scopeを明示した。
+  - strengthened existing tasks:
+    FHIR child C2 patient linkageへsame-patient replay、different-patient collision、expected binding/version、
+    fresh role/qualification、cache/queue/Provenance atomic CASを追加した。`STABILITY-JOB-PARTIAL-OUTCOME-001`へ
+    80/100/200件hidden capとfull-scan前stale reconciliation禁止、`DB-EVENT-001`へnotification/webhook/claims export、
+    pending persistence failure zero-send、adapter idempotency、unknown-success reconciliationを追加した。
+    `PERF-RTE-001A`はprocess-local Mapとcumulative再送を未完了へ戻し、`PERF-FORMULARY-BULK-APPLY-001`を
+    CSV/template/site-copy全経路へ拡張した。`FE-SCHEDULE-001`と`FRONTEND-STATE-MATRIX-001`はsilent empty/zeroを禁止した。
+  - board result:
+    Implementation queue 81→87、Frontend queue 10→12、FHIR child queue 27据え置き。既存taskへ統合できる
+    billing close export、notification、job coverage、metrics、formulary、schedule、navigation stateは新IDを重複作成しなかった。
+    bulk export job、saved views、trivial route wrapper等の既存durability/coverageが確認できた候補は追加しなかった。
+  - validation:
+    `pnpm plans:active:check` PASS、required new IDs present、Prettier check PASS、
+    `git diff --check -- Plans.md ops/refactor/STATE.md ops/refactor/RUN_LOCK.md` PASS（STATE追記後に再実行する）。
+    planning-only/nonvisual sliceのためimage generationを省略し、source test/typecheck/buildは実行していない。
+    Oracleは前waveのstrict `gpt-5-pro` login/Undici blocker以降再実行せず、Oracle回答は生成・利用していない。
+  - remaining:
+    本waveは発見・Plans整備だけで、source implementationは未着手。最優先はmedical OCC 2件、cooperation patient identity、
+    webhook DNS pinning、次にdurable outbox/job coverage/frontend authoritative state。Goalは未完了のまま次実装監査へ継続する。
+
+- codex: repository-wide improvement audit + Oracle GPT-5.6 Pro correction
+  (PLANS UPDATED / SOURCE IMPLEMENTATION NOT STARTED / ORACLE CONSULT BLOCKED BEFORE SUBMISSION, 2026-07-15).
+  - Oracle model correction / official verification:
+    user-level `~/.oracle/config.json`、project `.oracle/config.json`、`~/.codex/AGENTS.md`、`AGENTS.md`、
+    `.agents/skills/oracle-consult/SKILL.md`を、独立Pro targetの`gpt-5-pro`へ更新し、`thinkingTime: heavy`と
+    `--browser-thinking-time heavy`を除去した。`oracle --help`はOracle CLI v0.16.0と`gpt-5-pro`対応を示し、
+    dry-runはbrowser mode `(gpt-5-pro)`を確認した。根拠はOracle upstreamの
+    [skill](https://github.com/steipete/oracle/blob/main/skills/oracle/SKILL.md)、
+    [browser mode](https://github.com/steipete/oracle/blob/main/docs/browser-mode.md)、
+    [CHANGELOG](https://github.com/steipete/oracle/blob/main/CHANGELOG.md)、
+    [PR #320](https://github.com/steipete/oracle/pull/320)（2026-07-15確認）。
+    新しい監査consultは最初にprivate profileのChatGPT login期限切れ、cookie sync有効化後の再試行は
+    Node/Undici `setTypeOfService EINVAL`でprompt送信前に失敗した。証跡は
+    `~/.oracle/sessions/phos-audit-plan-review`と`~/.oracle/sessions/phos-audit-plan-pro-review`へ保持し、
+    Oracle回答は生成されておらず本計画はOracle出力へ依存していない。以前の
+    `phos-fhir-cutover-pro-review-2`は`gpt-5.6-sol`で実行された歴史的advisoryであり、現行のstrict Pro証跡とは扱わない。
+  - verified high-priority findings / deduplication:
+    live code、tests、schema、workflow、UI SSOTを再読し、既存FHIR taskへ重複統合した。
+    `FHIR-NATIVE-YRESE-SYNC-001`のC3/D3へS2S route/method registry、credential↔tenant/pharmacy binding、
+    tenant/org mismatch、timestamp/nonce/replay、browser CSRFとの明示分離を追加した。
+    `FHIR-NATIVE-OFFLINE-EDGE-001`のE6へdevice/user/session/authz epoch/org binding、legacy unbound row quarantine、
+    multi-tab durable CAS lease/fencingを追加した。`FHIR-NATIVE-LEGACY-MIGRATION-001`へ非原子的QR scrub後のorphan
+    supplemental照合、`DB-EVENT-001`へvisit handoffとPHI/security auditのcrash-safe first consumerを追加した。
+  - new implementation-ready tasks:
+    `SEC-HTTP-IO-BUDGET-001`、`OPS-SECRET-BOOTSTRAP-READINESS-001`、
+    `MEDSAFE-CAREPLAN-APPROVAL-GATE-001`、`MEDSAFE-PRINT-HUB-EXPLICIT-PATIENT-001`、
+    `MEDSAFE-DRUG-MASTER-DATE-STRICT-001`、`PERF-BILLING-CANDIDATE-GENERATION-001`、
+    `PERF-FORMULARY-BULK-APPLY-001`、`AUTHZ-AUDIT-REVIEW-SOD-001`、
+    `CI-SECURITY-RATCHET-PARITY-001`の9件を追加し、implementation queueを72→81へ更新した。
+    CI/AWS taskはproduction deployの長期access keyを既存container workflowと同じOIDC role assumptionへ寄せる。
+    AWS公式の[OIDC federation](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_oidc.html)と
+    [temporary credentials](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp.html)を
+    2026-07-15に確認し、IAM apply、secret削除、deployは別human gateのままとした。
+  - frontend / verification backlog:
+    `FE-TASKS-CURSOR-BOUNDED-001`と`FE-PARTNER-BILLING-CURSOR-001`を追加し、frontend queueを8→10へ更新した。
+    どちらもcursor metaを捨ててbounded subsetを完全一覧に見せるfalse-completenessを修復対象とする。
+    unresolvedへstrict external datetime、self-report reporter bounds、`date-slices:check`失敗を追加した。
+    UI実装や視覚再構成は行わず、`docs/ui-ux-design-guidelines.md`に沿う計画追加だけのためimagegenは省略した。
+  - files inspected / current validation:
+    `src/proxy.ts`、yrese webhook/signature、offline DB/sync engine、request-body/HTTP/proxy adapters、
+    management plan/permission matrix、print hub、drug master import、billing candidate/formulary bulk、audit review、
+    PHI/security audit、visit record handoff、QR cleanup、tasks/partner billing cursor UI、CI/AWS workflows、
+    `Plans.md`、UI SSOT、schema/testsを確認した。`pnpm plans:active:check`は81 implementation / 10 frontend / 27 FHIR childと
+    first-column ID重複0を含めPASSし、scoped `git diff --check`、対象6 repo fileのPrettier check、project/user Oracle JSON assertionもPASS。
+    `oracle --help`はv0.16.0と`gpt-5-pro`選択肢を示し、相談を送らないdry-runは`browser mode (gpt-5-pro)`を解決した。
+    先行監査ではboundaries、API authz/shape、client schema、DTO、task type、route auth、
+    PHI log/display、DB query/RLS guard/SLO、frontend contract、color/typography、EventBridge、E2E list、production audit、
+    lint、typecheck、typecheck:no-unused、focused security/medical 103 testsがPASSした。lintは
+    `src/lib/platform/break-glass.test.ts`の既存unused warning 2件だけを保持する。`pnpm date-slices:check`だけは
+    `src/lib/validations/patient-insurance.ts:217`の`toISOString().slice(0, 10)`でFAILし、上記verification taskへ固定した。
+  - remaining / commit boundary:
+    本sliceは計画・Oracle設定だけで、product source/schema/migration/dependency、IAM、production data、外部送信、deploy、
+    destructive operation、push、tmux pane/window/columnを変更・実行していない。既存dirtyのFHIR文書・認可source・harness stateと
+    `Plans.md` / `STATE.md`内の先行差分が混在するため、無関係hunkを含む自動commitは行わない。次の実装はP0の
+    S2S trust boundary、secret readiness、care-plan approval、explicit-patient printのうち、schema不要で最小のclosed sliceを
+    fresh diff確認後に選ぶ。全体完了条件は未達で、実装・focused tests・runtime/E2E証跡が残る。
+
+- codex: yrese・PH-OS FHIR / JP Core Native v0.5 complete-replacement plan
+  (DONE / PLANS+DOCS UPDATED / HISTORICAL ORACLE ADVISORY / RUNTIME IMPLEMENTATION NOT STARTED, 2026-07-15).
+  - fixed architecture / official basis:
+    FHIR Resourceを外部projectionではなくClinical Coreの正本とし、FHIR Clinical Data Plane、Technical Control Plane、
+    Legacy / Official Adapter Planeを分離した。production baselineはFHIR R4 4.0.1 + JP Core 1.2.0へpackage lockし、1.3.0-devを
+    本番基準にしない。yreseを処方・調剤、PH-OSを在宅訪問・服薬実態のAuthoritative FHIR Serverとし、相手所有Resourceは
+    read-only replica、同一Resourceのmulti-masterは禁止した。CareTeamはowner/profile/identifier/replica direction批准まで
+    UNRESOLVED、Binary/object ownerは参照元DocumentReference ownerに従う。確認した一次資料は
+    [JP Core history](https://jpfhir.jp/fhir/core/history.html)、[FHIR R4](https://hl7.org/fhir/R4/)、
+    [FHIR JSON](https://hl7.org/fhir/R4/json.html)、[JP Core Patient](https://jpfhir.jp/fhir/core/1.2.0/StructureDefinition-jp-patient.html)、
+    [FHIR REST](https://hl7.org/fhir/R4/http.html)、[CapabilityStatement](https://hl7.org/fhir/R4/capabilitystatement.html)、
+    JAHIS 26-101 / 24-104 / 24-105、日本薬剤師会NSIPS、厚生労働省の電子処方箋・電子カルテ情報共有サービス
+    （2026-07-15確認）。
+  - verified live gaps / replacement boundary:
+    Patient / PrescriptionIntake / VisitRecord / medication関連の独自Prisma modelと約80件の臨床route handlerが正本・主APIで、
+    `ClinicalFhirResourceCache`はsummary/hash中心、yreseはcustom webhook + first-resource queue coupling、
+    `/fhir/r4/metadata`とFHIR REST serverは未実装だった。現行手書きvalidatorはFHIR primitive配列の許可null placeholderを拒否し、
+    JP Core Patientの`identifier 1..* / name 0..* / gender 0..1 / birthDate 0..1`と逆の必須/任意判定を含む。さらにcaller指定
+    `valid` + `meta.profile`で最終validになり得て、外部issueを単一redacted markerへ潰す。現行preflightをconformance authorityに
+    流用せず、標準validator + pinned IG/Terminology + 正規化OperationOutcome/fingerprintへ完全置換する。
+  - no-backward-compatibility migration / recovery decision:
+    旧Clinical Model、独自clinical API/DTO、runtime alias、production dual-write/dual-read、legacy fallback、source別canary、
+    compatibility projectionは作らない。migration profileは親FHIR/JP Core制約を緩和せず、欠損を捏造しない。全tenant全件dry-run、
+    source SHA/dirty manifest、signed full recovery set、全ingress/outbound/export/Subscription fence、adapter ack/replay、
+    accepted-write journalを必須化した。write-unfreeze前だけ旧release + recovery setへ一体abortし、以後はFHIR-native
+    history/journal replayまたはforward-fixだけで回復する。unfreeze後にacknowledgeしたclinical writeはRPO=0とし、例外は定量化RPOと
+    患者安全影響の明示承認を必要とする。FHIR `Attachment.hash`のSHA-1とは別にobject保全manifest用SHA-256を保持する。
+  - historical Oracle safety review（現行strict Pro証跡ではない）:
+    当時installed `oracle`を直接使用し、ChatGPT UIの`Pro`表示を確認したうえで`gpt-5.6-sol`を実行した。
+    2026-07-15のupstream再確認で独立Pro targetは`gpt-5-pro`と判明したため、この結果は歴史的advisoryとしてのみ保持する。
+    当時のmodel evidenceは`requested/resolved=GPT-5.6 Sol`、`verified=yes`。session evidenceは
+    `~/.oracle/sessions/phos-fhir-cutover-pro-review-2`へ保存し、一時Chrome profile/attach metadata/processは削除した。
+    Oracle判定は「Phase 0 task化のみGO、Phase 0完了・FHIR schema/clinical API実装・本番操作はNO-GO」。指摘をsource baseline、
+    validator authority、Resource/Binary ownership、完全fence、recovery/RPO、historical invalid、attachment/audit/key、RACI gateへ反映した。
+  - files / validation / remaining:
+    `Plans.md`、FHIR architecture/README、`docs/decisions.md`、旧Phase 5 cutover doc、`STATE.md`、`RUN_LOCK.md`を更新した。
+    旧Phase 5の旧column/旧app rollbackはFHIR hard cutoverへ適用禁止と明記した。非視覚contractだけのためimagegenを省略し、
+    `pnpm plans:active:check`、7 documentのPrettier check、scoped `git diff --check`、v0.5 mandatory-gate assertionはPASS。
+    bespoke assertionの初回だけ`manifest 用 SHA-256`のPrettier空白を許さないliteral比較でfalse-negativeとなり、内容を確認して
+    whitespace-tolerant regexへ修正後にPASSした。並列aggregate Prettier checkもarchitecture docを一度だけ警告したが、直後の
+    `--write`は変更なし、単独checkと最終直列7-document checkはPASSした。最終contract assertionは10/10 PASS。
+    typecheck/build/E2Eはdocumentation-onlyかつno-frequent-build方針により未実行。source、schema/migration、dependency、AWS、
+    production data、外部送信、deploy、destructive operation、commit、push、tmux pane/window/columnは変更・実行していない。
+    計画・文書受入条件は満たすがruntime刷新は未着手で、次は`FHIR-NATIVE-P0-FOUNDATION-001`のsource/package lock、ownership、
+    Capability/validation契約を閉じる。これらが完了するまでFHIR schema/API実装へ進まない。
 
 - codex2 implementation + codex1 independent review/integration: JAHIS QR patient identity fail-close
   (DONE / CODE COMMITTED, 2026-07-15; implementation `4e3a4f270`).

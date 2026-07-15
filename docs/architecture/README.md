@@ -10,3 +10,7 @@ single runbook or implementation plan.
   direction, forbidden imports, registry role, and PR debt rule.
 - [`module-registry.md`](./module-registry.md): Metadata-only feature module
   registry and active pharmacy module composition root.
+- [`fhir-first-prescription-platform.md`](./fhir-first-prescription-platform.md):
+  FHIR Native v0.5 complete-replacement contract for the three planes,
+  authoritative resource ownership, read-only replicas, validation, security,
+  deterministic conversion, and human-gated hard cutover.

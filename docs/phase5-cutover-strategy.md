@@ -1,5 +1,12 @@
 # Phase 5 一括 Cutover 戦略 (PRE-01)
 
+> **適用範囲の警告（2026-07-15）**: 本書は旧Patient modelの構造化migration用の歴史的runbookであり、
+> yrese・PH-OS FHIR / JP Core Native v0.5のClinical Core完全置換には適用しない。FHIR Native hard cutoverは
+> [`Plans.md`](../Plans.md)と
+> [`docs/architecture/fhir-first-prescription-platform.md`](architecture/fhir-first-prescription-platform.md)を
+> SSOTとする。本書の旧column保持、旧app redeploy、rollback SQL、truncate手順をFHIR Native cutoverの
+> rollback、互換性、復旧経路として使用してはならない。
+
 ## 概要
 
 Phase 5 では患者モデルの複数フィールドを構造化・正規化する。Feature flag を使わず、schema migration → backfill → アプリ同時デプロイの単一カットオーバーで切替する。
