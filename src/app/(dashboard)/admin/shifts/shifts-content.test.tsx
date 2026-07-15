@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
+import type { PharmacistShift } from '@/lib/pharmacist-shifts/response-schema';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
 import { ShiftsContent } from './shifts-content';
@@ -22,6 +23,11 @@ type CapturedQuery = {
   getNextPageParam?: (...args: unknown[]) => unknown;
 };
 
+type ShiftPageFixture = {
+  data: PharmacistShift[];
+  meta: { limit: number; has_more: boolean; next_cursor: string | null };
+};
+
 const mutationMutateMock = vi.hoisted(() => vi.fn());
 const mutationConfigs = vi.hoisted(() => [] as CapturedMutation[]);
 const queryConfigs = vi.hoisted(() => [] as CapturedQuery[]);
@@ -33,7 +39,9 @@ const queryLoadingKeys = vi.hoisted(() => new Set<string>());
 const refetchSpies = vi.hoisted(() => new Map<string, ReturnType<typeof vi.fn>>());
 const shiftPages = vi.hoisted(() => ({
   data: {
-    pages: [{ data: [], meta: { limit: 400, has_more: false, next_cursor: null } }],
+    pages: [
+      { data: [], meta: { limit: 400, has_more: false, next_cursor: null } },
+    ] as ShiftPageFixture[],
     pageParams: [null] as Array<string | null>,
   },
 }));
@@ -973,7 +981,7 @@ describe('ShiftsContent', () => {
     currentOrgId.value = 'org_1';
     view.rerender(<ShiftsContent />);
     rejectResponse?.(new Error('unsafe provider detail'));
-    const error = await pending?.catch((reason: unknown) => reason);
+    const error = await Promise.resolve(pending).catch((reason: unknown) => reason);
     copyConfig?.onError?.(error);
 
     expect(toast.error).not.toHaveBeenCalled();

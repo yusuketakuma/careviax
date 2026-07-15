@@ -101,7 +101,7 @@ type TemplateFormValues = {
 
 type PharmacistShiftPage = {
   data: PharmacistShift[];
-  meta: { limit: 400; has_more: boolean; next_cursor: string | null };
+  meta: { limit: number; has_more: boolean; next_cursor: string | null };
 };
 
 const SHIFT_LIST_ERROR = 'シフトの取得に失敗しました';
