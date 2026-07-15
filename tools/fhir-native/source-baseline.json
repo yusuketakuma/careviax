@@ -1,0 +1,68 @@
+{
+  "manifestVersion": 1,
+  "capturedAt": "2026-07-15T18:04:00+09:00",
+  "repositoryUrl": "https://github.com/yusuketakuma/careviax.git",
+  "branch": "agent/continuous-improvement-20260712",
+  "baseCommit": "8d1205539c75d3acb9d242365f781c960074d21b",
+  "worktree": {
+    "dirty": true,
+    "ownedNonArtifactPaths": [
+      ".github/workflows/ci.yml",
+      "Plans.md",
+      "ops/refactor/RUN_LOCK.md",
+      "ops/refactor/STATE.md",
+      "package.json"
+    ],
+    "excludedDirtyPaths": [
+      ".agents/skills/oracle-consult/SKILL.md",
+      ".harness-mem/state/continuity.json",
+      ".harness-mem/state/whisper-budget.json",
+      ".oracle/config.json",
+      "AGENTS.md",
+      "docs/architecture/README.md",
+      "docs/decisions.md",
+      "docs/phase5-cutover-strategy.md",
+      "src/app/api/dispense-audits/route.test.ts",
+      "src/app/api/dispense-audits/route.ts",
+      "src/app/api/dispense-workbench/patients/route.test.ts",
+      "src/app/api/dispense-workbench/patients/route.ts",
+      "src/app/api/set-audits/route.test.ts",
+      "src/app/api/set-audits/route.ts",
+      "src/app/api/set-plans/[id]/calendar/route.test.ts",
+      "src/app/api/set-plans/[id]/calendar/route.ts",
+      "src/lib/api/route-catalog.test.ts",
+      "src/lib/api/route-catalog.ts",
+      "tools/route-auth-wrapper-allowlist.json"
+    ]
+  },
+  "build": {
+    "kind": "documentation-static-ratchet",
+    "runtimeBuildStatus": "not-built",
+    "schemaStatus": "unchanged",
+    "capabilityStatus": "not-implemented",
+    "externalSendStatus": "disabled"
+  },
+  "artifacts": [
+    {
+      "path": "docs/architecture/fhir-first-prescription-platform.md",
+      "sha256": "98b406c2dbca28843b86400503ee5a87f5e1d3a6a32325e330616c5a6c3b820e"
+    },
+    {
+      "path": "tools/fhir-native/foundation-registry.json",
+      "sha256": "22392b43653542084972df6d1f4da9ea8fdad3cdff0a94d0df8d9095d07e96a2"
+    },
+    {
+      "path": "tools/fhir-native/package-lock.json",
+      "sha256": "0665fc6892f87504c1710fa52e396623c4f1f0a3e5fccbb2681ffabb578bf0bc"
+    },
+    {
+      "path": "tools/scripts/check-fhir-native-foundation.mjs",
+      "sha256": "450d9ad31431b433dcdf72d501f526559466c7630305a1ac7a840829c283a9aa"
+    },
+    {
+      "path": "tools/scripts/check-fhir-native-foundation.test.ts",
+      "sha256": "4e993c0d943eab6cafe09411c440ab36a3d90c943f010445e46a9d905fa6dd84"
+    }
+  ],
+  "artifactSetSha256": "2cb968c05c3f9e2b80f9def7142f381b28538bdf4719d7f25543c75bb93a7fa9"
+}

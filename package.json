@@ -97,6 +97,7 @@
     "date-slices:check": "node tools/scripts/check-date-slices.mjs",
     "frontend-contract:check": "node tools/scripts/check-frontend-contract.mjs",
     "plans:active:check": "node tools/scripts/check-plans-active-board.mjs",
+    "fhir-native:foundation:check": "node tools/scripts/check-fhir-native-foundation.mjs",
     "colors:check": "node tools/scripts/check-raw-state-colors.mjs",
     "typography:check": "node tools/scripts/check-typography-minimum.mjs",
     "boundaries:check": "node tools/scripts/check-module-boundaries.mjs",
