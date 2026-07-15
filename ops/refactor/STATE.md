@@ -22,6 +22,9 @@
 - 2026-07-15 20:14 JSTの最新ユーザー指示により、このsessionではOracleを使用しない。実装で詰まった場合は
   agmsgで別のCodexへexact evidence、選択肢、検証結果を渡して相談し、edit ownershipを重ねずに連携して解決する。
   下記のOracle実行・blocked記録は歴史的証跡であり、このsessionの新規相談経路ではない。
+- 2026-07-16 01:30 JSTのユーザー指示により、agmsg deliveryは公式`delivery.sh`の`turn` modeを使う。
+  project `.codex/hooks.json`はSessionStart/SessionEndを持たず、Stopの公式`check-inbox.sh` 1件だけを登録する。
+  CareViaXのCodex登録はcodex1/codex2だけとし、monitor bridgeは使わない。
 - 2026-07-14 21:33 JSTのユーザー指示により、こまめなbuildは行わない。現スライスの
   `build:e2e:local`は途中停止し、build依存E2Eを含めて大きな統合境界まで保留する。通常sliceは
   targeted tests、static gates、lint/format、typecheckを主証跡とし、agentはbuildを独自起動しない。
@@ -60,6 +63,21 @@
   full-history event projectionはhuman/high-risk gateとして無承認実行せず、証拠付きの残件へ戻す。
 
 ## 直近の作業
+
+- codex1/codex2: official agmsg turn delivery hook
+  (`AGMSG-TURN-DELIVERY-001` DONE `aa48e244e`, 2026-07-16).
+  - implementation / evidence:
+    公式`delivery.sh set turn` が生成したproject `.codex/hooks.json`を単独commitした。hookはStop時に
+    公式`check-inbox.sh codex /Users/yusuke/workspace/careviax`を呼び、Windows commandも同じscript/type/projectを
+    指す。旧SessionStart/SessionEnd monitor hookは残さない。
+  - review / validation / safety:
+    codex2のread-only reviewにcodex1がcurrent state検証を重ねた。`delivery.sh status codex "$(pwd)"`は
+    `mode: turn` / SessionStart 0 / SessionEnd 0 / Stop 1、`jq -e`はStopのexact schemaとPOSIX/Windowsの
+    `check-inbox.sh` commandをPASS、`identities.sh "$(pwd)" codex`はcodex1/codex2だけを返した。`team.sh phos`の
+    Yusukeはhuman `agmsg-app`でCodex seatには数えない。project custom-agent fileは0件、monitor bridgeは両seatとも
+    not running。他dirtyは保存し、push/deploy/migration/external operationは実行していない。
+  - remaining / next:
+    codex2のread-only next-slice mapを回収し、`Plans.md`とlive codeから次のnon-overlap sliceを相互review後にclaimする。
 
 - codex1/codex2: authoritative SSE channel readiness + reconnect reconciliation
   (`STABILITY-REALTIME-READINESS-RECONCILIATION-001` DONE `6aad7974c`, 2026-07-16).
