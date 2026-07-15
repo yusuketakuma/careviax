@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   ChevronDown,
-  CloudOff,
   MessageSquareText,
   PanelLeftOpen,
   PanelRightOpen,
@@ -14,7 +13,10 @@ import {
   Settings,
 } from 'lucide-react';
 import { NotificationBell } from '@/components/features/notifications/notification-bell';
-import { OfflineDraftIndicator } from '@/components/features/offline/offline-draft-indicator';
+import {
+  OfflineDraftIndicator,
+  type OfflineSyncStatus,
+} from '@/components/features/offline/offline-draft-indicator';
 import { Button } from '@/components/ui/button';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import {
@@ -66,54 +68,60 @@ function useHydrated() {
   );
 }
 
-/** 「同期済み HH:MM」(done=緑) / オフライン時は「オフライン」(blocked=赤・通信なし)。 */
+export function projectHeaderSyncStatus(input: {
+  online: boolean;
+  hasHydratedSyncState: boolean;
+  isSyncing: boolean;
+  syncFailed: boolean;
+  pendingSyncCount: number;
+  conflictCount: number;
+  lastSyncedAt: string | null;
+}): OfflineSyncStatus {
+  if (!input.online) return 'offline';
+  if (!input.hasHydratedSyncState) return 'checking';
+  if (input.conflictCount > 0) return 'conflict';
+  if (input.syncFailed) return 'failed';
+  if (input.isSyncing) return 'syncing';
+  if (input.pendingSyncCount > 0) return 'pending';
+  return input.lastSyncedAt ? 'synced' : 'checking';
+}
+
+/** 現在の同期状態を優先順位に沿って一つだけ表示する。 */
 function HeaderSyncStatus() {
   const online = useNetworkOnline();
+  const hasHydratedSyncState = useOfflineStore((state) => state.hasHydratedSyncState);
+  const isSyncing = useOfflineStore((state) => state.isSyncing);
+  const syncFailed = useOfflineStore(
+    (state) =>
+      state.syncFailed ||
+      state.pendingQueue.some(
+        (item) => item.conflict_state !== 'server_conflict' && Boolean(item.lastError),
+      ),
+  );
+  const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
+  const conflictCount = useOfflineStore((state) => state.syncConflicts.length);
   const lastSyncedAt = useOfflineStore((state) => state.lastSyncedAt);
   const hydrated = useHydrated();
 
   if (!hydrated) return null;
-
-  if (!online) {
-    return (
-      <Link
-        href="/offline-sync"
-        className="hidden shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-state-blocked hover:bg-state-blocked/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-[480px]:!hidden md:flex"
-        data-testid="app-header-sync-status"
-        aria-label="オフライン — 同期状況を開く"
-      >
-        <CloudOff className="size-3.5" aria-hidden="true" />
-        オフライン
-      </Link>
-    );
-  }
-
   const syncTime = formatSyncTime(lastSyncedAt);
+  const status = projectHeaderSyncStatus({
+    online,
+    hasHydratedSyncState,
+    isSyncing,
+    syncFailed,
+    pendingSyncCount,
+    conflictCount,
+    lastSyncedAt,
+  });
 
   return (
-    <Link
-      href="/offline-sync"
-      className="hidden shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium text-state-done hover:bg-state-done/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-[480px]:!hidden md:inline"
-      data-testid="app-header-sync-status"
-      aria-label="同期状況を開く"
-    >
-      同期済み{syncTime ? ` ${syncTime}` : ''}
-    </Link>
+    <OfflineDraftIndicator
+      status={status}
+      pendingCount={pendingSyncCount}
+      lastSyncedLabel={syncTime}
+    />
   );
-}
-
-/**
- * 同期待ちドラフトが 1 件以上あるときだけ件数バッジ付きの導線を出す。
- * 件数は持たない HeaderSyncStatus(同期済み/オフラインの状態表示)と役割が
- * 重複しないよう、pendingSyncCount > 0 のときのみマウントする。
- */
-function HeaderOfflineDrafts() {
-  const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
-  const hydrated = useHydrated();
-
-  if (!hydrated || !pendingSyncCount) return null;
-
-  return <OfflineDraftIndicator pendingCount={pendingSyncCount} />;
 }
 
 export function AppHeader() {
@@ -270,7 +278,6 @@ export function AppHeader() {
           >
             <Search className="size-4" aria-hidden="true" />
           </Button>
-          <HeaderOfflineDrafts />
           <HeaderSyncStatus />
           <Button
             asChild

@@ -43,6 +43,9 @@ export function OfflineSyncBridge() {
   const orgId = useOrgId();
   const refreshSyncState = useOfflineStore((state) => state.refreshSyncState);
   const markSynced = useOfflineStore((state) => state.markSynced);
+  const setSyncing = useOfflineStore((state) => state.setSyncing);
+  const setSyncFailed = useOfflineStore((state) => state.setSyncFailed);
+  const completeSyncAttempt = useOfflineStore((state) => state.completeSyncAttempt);
 
   useEffect(() => {
     if (!orgId || typeof window === 'undefined') return;
@@ -55,14 +58,20 @@ export function OfflineSyncBridge() {
     //   IndexedDB キューへ並行 POST(二重送信)する恐れがあるため、上書きは避けること。
     const config = { orgId, endpoints: {} };
 
-    const refreshState = () => {
-      void refreshSyncState().catch((error) => {
+    const refreshState = async () => {
+      try {
+        await refreshSyncState();
+        return true;
+      } catch (error) {
         clientLog.warn('offline_sync.state_refresh_failed', error, { route: '/offline-sync' });
-      });
+        setSyncFailed(true);
+        return false;
+      }
     };
 
     // 訪問記録キューと証跡ドラフトを両方ドレインし、両者が確定したら実状態を再取得する。
-    const drain = () => {
+    const drain = async () => {
+      setSyncing(true);
       const queueDone = processSyncQueue(config).catch((error) => {
         clientLog.warn('offline_sync.queue_drain_failed', error, { route: '/offline-sync' });
         return null;
@@ -71,31 +80,40 @@ export function OfflineSyncBridge() {
         clientLog.warn('offline_sync.evidence_drain_failed', error, { route: '/offline-sync' });
         return null;
       });
-      void Promise.all([queueDone, evidenceDone]).then(([queueResult, evidenceResult]) => {
-        if (cancelled) return;
-        if (
-          isBrowserOnline() &&
-          isAllClearDrainResult(queueResult) &&
-          isAllClearDrainResult(evidenceResult)
-        ) {
-          markSynced();
-        }
-        refreshState();
-      });
+      const [queueResult, evidenceResult] = await Promise.all([queueDone, evidenceDone]);
+      if (cancelled) return;
+
+      const refreshed = await refreshState();
+      if (cancelled) return;
+
+      const allClear =
+        isBrowserOnline() &&
+        isAllClearDrainResult(queueResult) &&
+        isAllClearDrainResult(evidenceResult) &&
+        refreshed;
+      completeSyncAttempt(allClear);
+      if (allClear) markSynced();
     };
 
     // 起動時: まず実状態を即反映（保留件数を素早く見せる）→ 保留分をドレイン。
-    refreshState();
-    drain();
+    const bootstrap = refreshState();
+    void bootstrap.then(() => {
+      if (!cancelled) void drain();
+    });
 
-    const handleOnline = () => drain();
+    const handleOnline = () => {
+      void bootstrap.then(() => {
+        if (!cancelled) void drain();
+      });
+    };
     window.addEventListener('online', handleOnline);
 
     return () => {
       cancelled = true;
+      setSyncing(false);
       window.removeEventListener('online', handleOnline);
     };
-  }, [markSynced, orgId, refreshSyncState]);
+  }, [completeSyncAttempt, markSynced, orgId, refreshSyncState, setSyncFailed, setSyncing]);
 
   return null;
 }

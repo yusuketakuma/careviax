@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { jsonResponse } from '@/test/fetch-test-utils';
-import { AppHeader, formatSyncTime } from './app-header';
+import { AppHeader, formatSyncTime, projectHeaderSyncStatus } from './app-header';
 
 setupDomTestEnv();
 
@@ -15,6 +15,11 @@ const mockSetWorkspaceRailOpen = vi.fn();
 const toastErrorMock = vi.hoisted(() => vi.fn());
 let mockOnline = true;
 let mockLastSyncedAt: string | null = '2026-06-11T09:42:00';
+let mockHasHydratedSyncState = true;
+let mockIsSyncing = false;
+let mockSyncFailed = false;
+let mockPendingSyncCount = 0;
+let mockConflictCount = 0;
 let mockPathname = '/dashboard';
 
 vi.mock('next/link', () => ({
@@ -52,8 +57,26 @@ vi.mock('@/lib/stores/auth-store', () => ({
 }));
 
 vi.mock('@/lib/stores/offline-store', () => ({
-  useOfflineStore: (selector: (state: { lastSyncedAt: string | null }) => unknown) =>
-    selector({ lastSyncedAt: mockLastSyncedAt }),
+  useOfflineStore: (
+    selector: (state: {
+      hasHydratedSyncState: boolean;
+      isSyncing: boolean;
+      syncFailed: boolean;
+      pendingSyncCount: number;
+      pendingQueue: Array<{ conflict_state?: string; lastError?: string }>;
+      syncConflicts: unknown[];
+      lastSyncedAt: string | null;
+    }) => unknown,
+  ) =>
+    selector({
+      hasHydratedSyncState: mockHasHydratedSyncState,
+      isSyncing: mockIsSyncing,
+      syncFailed: mockSyncFailed,
+      pendingSyncCount: mockPendingSyncCount,
+      pendingQueue: [],
+      syncConflicts: Array.from({ length: mockConflictCount }),
+      lastSyncedAt: mockLastSyncedAt,
+    }),
 }));
 
 vi.mock('@/lib/stores/command-palette-store', () => ({
@@ -115,6 +138,11 @@ describe('AppHeader', () => {
   beforeEach(() => {
     mockOnline = true;
     mockLastSyncedAt = '2026-06-11T09:42:00';
+    mockHasHydratedSyncState = true;
+    mockIsSyncing = false;
+    mockSyncFailed = false;
+    mockPendingSyncCount = 0;
+    mockConflictCount = 0;
     mockPathname = '/dashboard';
     mockRouterPush.mockClear();
     mockOpenPalette.mockClear();
@@ -150,10 +178,12 @@ describe('AppHeader', () => {
     expect(search.textContent).toContain('/');
 
     const sync = screen.getByTestId('app-header-sync-status');
-    expect(sync.textContent).toBe('同期済み 09:42');
+    expect(sync.textContent).toBe('同期済み最終成功 09:42');
     expect(sync.className).toContain('text-state-done');
     expect(sync.className).toContain('max-[480px]:!hidden');
-    expect(sync.className).toContain('md:inline');
+    expect(sync.className).toContain('md:flex');
+    expect(screen.getByRole('link', { name: /同期済み.*同期状況を開く/ })).toBe(sync);
+    expect(sync.getAttribute('href')).toBe('/offline-sync');
 
     const communication = screen.getByTestId('app-header-communication');
     expect(communication.getAttribute('href')).toBe(
@@ -232,7 +262,7 @@ describe('AppHeader', () => {
 
     expect(screen.getByTestId('app-header-mode-trigger').textContent).toContain('在宅');
     expect(screen.getByTestId('app-header-sync-status').className).toContain('max-[480px]:!hidden');
-    expect(screen.getByTestId('app-header-sync-status').className).toContain('md:inline');
+    expect(screen.getByTestId('app-header-sync-status').className).toContain('md:flex');
     expect(screen.getByRole('link', { name: '設定' }).className).toContain('hidden');
     expect(screen.getByTestId('app-header-current-page').className).toContain('truncate');
   });
@@ -344,11 +374,65 @@ describe('AppHeader', () => {
     expect(sync.className).toContain('text-state-blocked');
   });
 
-  it('renders 同期済み without a time when no sync timestamp exists yet', () => {
+  it('does not render 同期済み when no successful sync timestamp exists yet', () => {
     mockLastSyncedAt = null;
     render(<AppHeader />);
 
-    expect(screen.getByTestId('app-header-sync-status').textContent).toBe('同期済み');
+    expect(screen.getByTestId('app-header-sync-status').textContent).toBe('同期状況を確認中');
+  });
+
+  it('shows one pending status and suppresses stale success evidence', () => {
+    mockPendingSyncCount = 3;
+    render(<AppHeader />);
+
+    const sync = screen.getByTestId('app-header-sync-status');
+    expect(sync.textContent).toContain('同期待ち');
+    expect(sync.textContent).toContain('3');
+    expect(sync.textContent).not.toContain('同期済み');
+    expect(sync.textContent).not.toContain('最終成功');
+    expect(screen.getAllByTestId('app-header-sync-status')).toHaveLength(1);
+  });
+
+  it('shows conflicts and failures before pending or syncing states', () => {
+    expect(
+      projectHeaderSyncStatus({
+        online: true,
+        hasHydratedSyncState: true,
+        isSyncing: true,
+        syncFailed: true,
+        pendingSyncCount: 2,
+        conflictCount: 1,
+        lastSyncedAt: mockLastSyncedAt,
+      }),
+    ).toBe('conflict');
+
+    mockConflictCount = 1;
+    mockSyncFailed = true;
+    mockIsSyncing = true;
+    mockPendingSyncCount = 2;
+    render(<AppHeader />);
+    expect(screen.getByTestId('app-header-sync-status').textContent).toContain('競合あり');
+  });
+
+  it('shows a failed status before pending work and links to recovery', () => {
+    mockSyncFailed = true;
+    mockPendingSyncCount = 2;
+    render(<AppHeader />);
+
+    const sync = screen.getByTestId('app-header-sync-status');
+    expect(sync.textContent).toContain('同期失敗');
+    expect(sync.getAttribute('href')).toBe('/offline-sync');
+    expect(sync.getAttribute('aria-label')).toContain('同期に失敗しました');
+  });
+
+  it('shows syncing only after hydration and without a simultaneous success label', () => {
+    mockIsSyncing = true;
+    mockPendingSyncCount = 1;
+    render(<AppHeader />);
+
+    const sync = screen.getByTestId('app-header-sync-status');
+    expect(sync.textContent).toContain('同期中');
+    expect(sync.textContent).not.toContain('同期済み');
   });
 
   it('does not render the legacy top workflow shortcut nav', () => {

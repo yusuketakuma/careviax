@@ -25,6 +25,9 @@ function setNavigatorOnline(value: boolean) {
 function resetOfflineStore() {
   useOfflineStore.setState({
     isOffline: false,
+    hasHydratedSyncState: false,
+    isSyncing: false,
+    syncFailed: false,
     pendingSyncCount: 0,
     pendingQueue: [],
     syncConflicts: [],
@@ -88,6 +91,7 @@ describe('offline store sync refresh', () => {
 
   it('updates the synced timestamp only through markSynced', () => {
     useOfflineStore.setState({
+      hasHydratedSyncState: true,
       lastSyncRefreshAt: '2026-06-18T08:00:00.000Z',
       lastSyncedAt: '2026-06-18T08:00:00.000Z',
     });
@@ -134,5 +138,64 @@ describe('offline store sync refresh', () => {
     expect(syncEngineMocks.listSyncQueueItems).toHaveBeenCalledTimes(1);
     expect(useOfflineStore.getState().pendingQueue).toEqual([conflictItem]);
     expect(useOfflineStore.getState().syncConflicts).toEqual([conflictItem]);
+    expect(useOfflineStore.getState().hasHydratedSyncState).toBe(true);
+  });
+
+  it('does not claim a successful sync before detailed state is hydrated', () => {
+    useOfflineStore.getState().markSynced(new Date('2026-06-18T09:30:00.000Z'));
+
+    expect(useOfflineStore.getState().lastSyncedAt).toBeNull();
+  });
+
+  it('does not overwrite the previous success while pending or failed work remains', () => {
+    useOfflineStore.setState({
+      hasHydratedSyncState: true,
+      pendingSyncCount: 1,
+      lastSyncedAt: '2026-06-18T08:00:00.000Z',
+    });
+
+    useOfflineStore.getState().markSynced(new Date('2026-06-18T09:30:00.000Z'));
+
+    expect(useOfflineStore.getState().lastSyncedAt).toBe('2026-06-18T08:00:00.000Z');
+  });
+
+  it('marks refresh failures without replacing the last known queue state', async () => {
+    useOfflineStore.setState({
+      pendingSyncCount: 2,
+      lastSyncedAt: '2026-06-18T08:00:00.000Z',
+    });
+    syncEngineMocks.listSyncQueueItems.mockRejectedValue(new Error('IndexedDB unavailable'));
+
+    await expect(useOfflineStore.getState().refreshSyncState()).rejects.toThrow(
+      'IndexedDB unavailable',
+    );
+
+    expect(useOfflineStore.getState()).toMatchObject({
+      hasHydratedSyncState: false,
+      syncFailed: true,
+      pendingSyncCount: 2,
+      lastSyncedAt: '2026-06-18T08:00:00.000Z',
+    });
+  });
+
+  it('keeps a queue item failure after an otherwise clear drain attempt', () => {
+    useOfflineStore.setState({
+      isSyncing: true,
+      pendingQueue: [
+        {
+          id: 8,
+          entityType: 'visit_record',
+          payload: {},
+          createdAt: new Date('2026-04-01T00:00:00.000Z'),
+          retryCount: 1,
+          lastError: 'HTTP 500',
+          conflict: null,
+        },
+      ],
+    });
+
+    useOfflineStore.getState().completeSyncAttempt(true);
+
+    expect(useOfflineStore.getState()).toMatchObject({ isSyncing: false, syncFailed: true });
   });
 });

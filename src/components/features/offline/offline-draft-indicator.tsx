@@ -1,81 +1,111 @@
 'use client';
 
 import Link from 'next/link';
-import { CloudOff, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CloudOff, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 
-/**
- * Offline draft indicator component.
- *
- * Phase 2 placeholder: shows the number of pending sync items stored locally
- * via Dexie (IndexedDB). Full sync implementation will be added in the Phase 2
- * offline feature milestone.
- */
+export type OfflineSyncStatus =
+  | 'checking'
+  | 'offline'
+  | 'conflict'
+  | 'failed'
+  | 'syncing'
+  | 'pending'
+  | 'synced';
+
 interface OfflineDraftIndicatorProps {
-  /** Number of drafts pending sync */
+  status: OfflineSyncStatus;
   pendingCount?: number;
-  /** Whether a sync operation is in progress */
-  isSyncing?: boolean;
-  /** Called when the user manually triggers a sync */
-  onSync?: () => void;
+  lastSyncedLabel?: string | null;
 }
 
 export function OfflineDraftIndicator({
+  status,
   pendingCount = 0,
-  isSyncing = false,
-  onSync,
+  lastSyncedLabel,
 }: OfflineDraftIndicatorProps) {
-  if (pendingCount === 0 && !isSyncing) {
-    return (
-      <Link
-        href="/offline-sync"
-        className="flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-state-done hover:bg-state-done/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        role="status"
-        aria-live="polite"
-        aria-label="同期済み — 同期状況を開く"
-      >
-        <CheckCircle2 className="size-3.5" aria-hidden="true" />
-        同期済み
-      </Link>
-    );
-  }
+  const count = Math.max(0, pendingCount);
+  const config = {
+    checking: {
+      label: '同期状況を確認中',
+      ariaLabel: '同期状況を確認中 — 同期状況を開く',
+      className: 'text-muted-foreground hover:bg-muted',
+      icon: RefreshCw,
+      iconClassName: 'motion-safe:animate-spin',
+    },
+    offline: {
+      label: 'オフライン',
+      ariaLabel: `オフライン${count > 0 ? `、同期待ち${count}件` : ''} — 同期状況を開く`,
+      className: 'text-state-blocked hover:bg-state-blocked/10',
+      icon: CloudOff,
+      iconClassName: '',
+    },
+    conflict: {
+      label: '競合あり',
+      ariaLabel: `同期データに競合があります${count > 0 ? `、確認対象${count}件` : ''} — 同期状況を開く`,
+      className: 'text-state-confirm hover:bg-state-confirm/10',
+      icon: AlertTriangle,
+      iconClassName: '',
+    },
+    failed: {
+      label: '同期失敗',
+      ariaLabel: `同期に失敗しました${count > 0 ? `、確認対象${count}件` : ''} — 同期状況を開く`,
+      className: 'text-state-blocked hover:bg-state-blocked/10',
+      icon: AlertTriangle,
+      iconClassName: '',
+    },
+    syncing: {
+      label: '同期中',
+      ariaLabel: `同期中${count > 0 ? `、残り${count}件` : ''} — 同期状況を開く`,
+      className: 'text-state-confirm hover:bg-state-confirm/10',
+      icon: RefreshCw,
+      iconClassName: 'motion-safe:animate-spin',
+    },
+    pending: {
+      label: '同期待ち',
+      ariaLabel: `同期待ち${count}件 — 同期状況を開く`,
+      className: 'text-state-confirm hover:bg-state-confirm/10',
+      icon: CloudOff,
+      iconClassName: '',
+    },
+    synced: {
+      label: '同期済み',
+      ariaLabel: `同期済み${lastSyncedLabel ? `、最終成功${lastSyncedLabel}` : ''} — 同期状況を開く`,
+      className: 'text-state-done hover:bg-state-done/10',
+      icon: CheckCircle2,
+      iconClassName: '',
+    },
+  } satisfies Record<
+    OfflineSyncStatus,
+    {
+      label: string;
+      ariaLabel: string;
+      className: string;
+      icon: typeof CheckCircle2;
+      iconClassName: string;
+    }
+  >;
+  const current = config[status];
+  const Icon = current.icon;
 
   return (
-    <div className="flex items-center gap-2" role="status" aria-live="polite">
-      <Link
-        href="/offline-sync"
-        className="flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-state-confirm hover:bg-state-confirm/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label="同期待ち — 同期状況を開く"
-      >
-        <CloudOff className="size-3.5" aria-hidden="true" />
-        <span>同期待ち</span>
-        {pendingCount > 0 && (
-          <Badge
-            className="h-5 min-w-5 bg-state-confirm px-1 text-xs hover:bg-state-confirm"
-            aria-label={`${pendingCount}件の同期待ちがあります`}
-          >
-            {pendingCount}
-          </Badge>
-        )}
-      </Link>
-
-      {onSync && (
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-6 px-2 text-xs text-state-confirm hover:bg-state-confirm/10"
-          onClick={onSync}
-          disabled={isSyncing}
-          aria-label="今すぐ同期"
-        >
-          <RefreshCw
-            className={`mr-1 size-3 ${isSyncing ? 'animate-spin' : ''}`}
-            aria-hidden="true"
-          />
-          {isSyncing ? '同期中...' : '同期'}
-        </Button>
-      )}
-    </div>
+    <Link
+      href="/offline-sync"
+      className={`hidden min-h-9 shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-[480px]:!hidden md:flex ${current.className}`}
+      data-testid="app-header-sync-status"
+      aria-live="polite"
+      aria-label={current.ariaLabel}
+    >
+      <Icon className={`size-3.5 ${current.iconClassName}`} aria-hidden="true" />
+      <span>{current.label}</span>
+      {count > 0 && status !== 'synced' && status !== 'checking' ? (
+        <Badge className="h-5 min-w-5 px-1 text-xs" aria-hidden="true">
+          {count}
+        </Badge>
+      ) : null}
+      {status === 'synced' && lastSyncedLabel ? (
+        <span className="text-muted-foreground">最終成功 {lastSyncedLabel}</span>
+      ) : null}
+    </Link>
   );
 }

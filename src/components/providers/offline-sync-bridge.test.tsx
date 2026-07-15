@@ -7,6 +7,9 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const refreshSyncStateMock = vi.hoisted(() => vi.fn());
 const markSyncedMock = vi.hoisted(() => vi.fn());
+const setSyncingMock = vi.hoisted(() => vi.fn());
+const setSyncFailedMock = vi.hoisted(() => vi.fn());
+const completeSyncAttemptMock = vi.hoisted(() => vi.fn());
 const processSyncQueueMock = vi.hoisted(() => vi.fn());
 const syncEvidenceDraftsMock = vi.hoisted(() => vi.fn());
 const clientLogWarnMock = vi.hoisted(() => vi.fn());
@@ -15,8 +18,21 @@ vi.mock('@/lib/hooks/use-org-id', () => ({ useOrgId: useOrgIdMock }));
 
 vi.mock('@/lib/stores/offline-store', () => ({
   useOfflineStore: (
-    selector: (state: { refreshSyncState: () => Promise<void>; markSynced: () => void }) => unknown,
-  ) => selector({ refreshSyncState: refreshSyncStateMock, markSynced: markSyncedMock }),
+    selector: (state: {
+      refreshSyncState: () => Promise<void>;
+      markSynced: () => void;
+      setSyncing: (value: boolean) => void;
+      setSyncFailed: (value: boolean) => void;
+      completeSyncAttempt: (succeeded: boolean) => void;
+    }) => unknown,
+  ) =>
+    selector({
+      refreshSyncState: refreshSyncStateMock,
+      markSynced: markSyncedMock,
+      setSyncing: setSyncingMock,
+      setSyncFailed: setSyncFailedMock,
+      completeSyncAttempt: completeSyncAttemptMock,
+    }),
 }));
 
 vi.mock('@/lib/stores/sync-engine', () => ({ processSyncQueue: processSyncQueueMock }));
@@ -50,12 +66,37 @@ describe('OfflineSyncBridge', () => {
 
     // CE13: 実状態を即 hydrate。CE12/N21: 起動時に両キューをドレイン。
     expect(refreshSyncStateMock).toHaveBeenCalled();
-    expect(processSyncQueueMock).toHaveBeenCalledWith({ orgId: 'org_1', endpoints: {} });
+    await waitFor(() =>
+      expect(processSyncQueueMock).toHaveBeenCalledWith({ orgId: 'org_1', endpoints: {} }),
+    );
     expect(syncEvidenceDraftsMock).toHaveBeenCalledWith({ orgId: 'org_1' });
 
     // ドレイン確定後にもう一度 state を更新する（header 件数を最新化）。
     await waitFor(() => expect(refreshSyncStateMock.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(setSyncingMock).toHaveBeenNthCalledWith(1, true);
+    expect(completeSyncAttemptMock).toHaveBeenLastCalledWith(true);
     expect(markSyncedMock).toHaveBeenCalled();
+  });
+
+  it('finishes the bootstrap refresh before starting a drain', async () => {
+    let resolveBootstrap: (() => void) | undefined;
+    refreshSyncStateMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveBootstrap = resolve;
+        }),
+    );
+
+    render(<OfflineSyncBridge />);
+
+    expect(refreshSyncStateMock).toHaveBeenCalledTimes(1);
+    expect(processSyncQueueMock).not.toHaveBeenCalled();
+    window.dispatchEvent(new Event('online'));
+    expect(processSyncQueueMock).not.toHaveBeenCalled();
+    resolveBootstrap?.();
+
+    await waitFor(() => expect(processSyncQueueMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(refreshSyncStateMock).toHaveBeenCalledTimes(3));
   });
 
   it('does not mark synced when either drain path reports failures', async () => {
@@ -66,6 +107,7 @@ describe('OfflineSyncBridge', () => {
     await waitFor(() => expect(processSyncQueueMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(refreshSyncStateMock.mock.calls.length).toBeGreaterThanOrEqual(2));
     expect(markSyncedMock).not.toHaveBeenCalled();
+    expect(completeSyncAttemptMock).toHaveBeenLastCalledWith(false);
   });
 
   it('does not mark synced while the browser is offline', async () => {
@@ -91,9 +133,9 @@ describe('OfflineSyncBridge', () => {
     expect(markSyncedMock).not.toHaveBeenCalled();
   });
 
-  it('records refresh failures with a coded PHI-safe event while preserving successful draining', async () => {
+  it('records refresh failures and does not claim a successful sync', async () => {
     const error = new Error('患者A token=secret の同期状態を更新できません');
-    refreshSyncStateMock.mockRejectedValueOnce(error);
+    refreshSyncStateMock.mockRejectedValue(error);
 
     render(<OfflineSyncBridge />);
 
@@ -102,7 +144,9 @@ describe('OfflineSyncBridge', () => {
         route: '/offline-sync',
       }),
     );
-    expect(markSyncedMock).toHaveBeenCalled();
+    expect(setSyncFailedMock).toHaveBeenCalledWith(true);
+    expect(completeSyncAttemptMock).toHaveBeenCalledWith(false);
+    expect(markSyncedMock).not.toHaveBeenCalled();
   });
 
   it('records queue drain failures without marking the queue as synced', async () => {
