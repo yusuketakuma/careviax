@@ -1,10 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { addDays, format } from 'date-fns';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 type TestAuthContext = { orgId: string; userId: string; role: 'pharmacist' };
 type DraftRouteContext = { params: Promise<{ id: string }> };
+type NextRequestInit = NonNullable<ConstructorParameters<typeof NextRequest>[1]>;
+type NextRequestInitWithDuplex = NextRequestInit & { duplex: 'half' };
 const VALID_PRESCRIBED_DATE = format(new Date(), 'yyyy-MM-dd');
 
 const {
@@ -120,6 +122,31 @@ function createMalformedJsonRequest() {
   });
 }
 
+function createStreamRequest(
+  body: ReadableStream<Uint8Array>,
+  headers: Record<string, string> = {},
+) {
+  const init: NextRequestInitWithDuplex = {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body,
+    duplex: 'half',
+  };
+  return new NextRequest('http://localhost/api/qr-scan-drafts/draft_1/confirm', init);
+}
+
+function createChunkedRequest(chunks: readonly Uint8Array[], headers: Record<string, string> = {}) {
+  return createStreamRequest(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(chunk);
+        controller.close();
+      },
+    }),
+    headers,
+  );
+}
+
 function createQrDraftTransaction(parsedData: unknown) {
   return {
     qrScanDraft: {
@@ -146,6 +173,10 @@ function createQrDraftTransaction(parsedData: unknown) {
     },
   };
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
   beforeEach(() => {
@@ -334,6 +365,75 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
     });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createPrescriptionIntakeInTxMock).not.toHaveBeenCalled();
+    expect(jahisSupplementalRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['lying low', '1'],
+  ])(
+    'rejects a chunked body over 512 KiB with %s Content-Length before clinical work',
+    async (_label, contentLength) => {
+      const chunk = new Uint8Array(300 * 1024);
+      const headers: Record<string, string> = {};
+      if (contentLength !== undefined) headers['content-length'] = contentLength;
+
+      const response = await POST(createChunkedRequest([chunk, chunk], headers), {
+        params: Promise.resolve({ id: 'draft_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(413);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toEqual({
+        code: 'REQUEST_BODY_TOO_LARGE',
+        message: 'リクエストボディが上限を超えています',
+        details: { max_bytes: 512 * 1024 },
+      });
+      expect(canAccessPrescriptionPatientMock).not.toHaveBeenCalled();
+      expect(patientFindFirstMock).not.toHaveBeenCalled();
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(createPrescriptionIntakeInTxMock).not.toHaveBeenCalled();
+      expect(jahisSupplementalRecordUpdateManyMock).not.toHaveBeenCalled();
+      expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('returns 408 before clinical work when the confirmation body stalls', async () => {
+    vi.useFakeTimers();
+    let cancelled = false;
+    const request = createStreamRequest(
+      new ReadableStream<Uint8Array>({
+        pull() {
+          return new Promise(() => undefined);
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+    );
+
+    const pending = POST(request, { params: Promise.resolve({ id: 'draft_1' }) });
+    await vi.advanceTimersByTimeAsync(5_000);
+    const response = await pending;
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(408);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'REQUEST_BODY_TIMEOUT',
+      message: 'リクエストボディの受信がタイムアウトしました',
+      details: { timeout_ms: 5_000 },
+    });
+    await Promise.resolve();
+    expect(cancelled).toBe(true);
+    expect(canAccessPrescriptionPatientMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(createPrescriptionIntakeInTxMock).not.toHaveBeenCalled();

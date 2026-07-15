@@ -3,7 +3,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject } from '@/lib/db/json';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { parseJsonObjectRequestBodyOrError } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import {
   createPrescriptionIntakeInTx,
@@ -53,6 +53,8 @@ import { prisma } from '@/lib/db/client';
 import { Prisma } from '@prisma/client';
 
 const requiredTrimmedStringSchema = z.string().trim().min(1);
+const MAX_QR_CONFIRM_BODY_BYTES = 512 * 1024;
+const QR_CONFIRM_BODY_DEADLINE_MS = 5_000;
 
 const optionalTrimmedStringSchema = z.preprocess(
   (value) => (typeof value === 'string' && value.trim().length === 0 ? undefined : value),
@@ -214,13 +216,19 @@ export const POST = withAuthContext(
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('QRスキャン下書きIDが不正です');
 
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
-
-    const parsed = confirmQrDraftSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
+    const parsed = await parseJsonObjectRequestBodyOrError(
+      req,
+      confirmQrDraftSchema,
+      {
+        invalidBody: 'リクエストボディが不正です',
+        invalidInput: '入力値が不正です',
+      },
+      {
+        maxBytes: MAX_QR_CONFIRM_BODY_BYTES,
+        deadlineMs: QR_CONFIRM_BODY_DEADLINE_MS,
+      },
+    );
+    if (!parsed.ok) return withSensitiveNoStore(parsed.response);
 
     const {
       patient_id,
