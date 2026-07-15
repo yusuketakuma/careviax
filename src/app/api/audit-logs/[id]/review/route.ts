@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { parseJsonObjectRequestBodyOrError } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -16,6 +17,7 @@ const reviewBodySchema = z.object({
   reason_code: z.enum(AUDIT_LOG_REVIEW_REASON_CODES).optional(),
   reason_note: z.string().trim().max(500).optional(),
 });
+const jsonObjectBodySchema = z.record(z.string(), z.unknown());
 
 const authenticatedPATCH = withAuthContext(
   async (req, ctx, routeContext) => {
@@ -25,7 +27,15 @@ const authenticatedPATCH = withAuthContext(
       return validationError('監査ログIDが不正です');
     }
 
-    const parsed = reviewBodySchema.safeParse(await req.json().catch(() => null));
+    const body = await parseJsonObjectRequestBodyOrError(req, jsonObjectBodySchema, {
+      invalidBody: 'レビュー状態が不正です',
+      invalidInput: 'レビュー状態が不正です',
+    });
+    if (!body.ok && body.response.status !== 400) return body.response;
+
+    // Preserve the existing validation details contract. Before bounded reads,
+    // malformed JSON was parsed as null and returned Zod's full flatten() shape.
+    const parsed = reviewBodySchema.safeParse(body.ok ? body.data : null);
     if (!parsed.success) {
       return validationError('レビュー状態が不正です', parsed.error.flatten());
     }

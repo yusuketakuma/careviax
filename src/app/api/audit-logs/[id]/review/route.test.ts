@@ -1,7 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { expectNoStore } from '@/test/api-response-assertions';
+
+type NextRequestInit = NonNullable<ConstructorParameters<typeof NextRequest>[1]>;
+type NextRequestInitWithDuplex = NextRequestInit & { duplex: 'half' };
 
 const {
   auditLogFindFirstMock,
@@ -63,6 +66,19 @@ function createMalformedJsonRequest() {
   });
 }
 
+function createStreamRequest(
+  body: ReadableStream<Uint8Array>,
+  headers: Record<string, string> = {},
+) {
+  const init: NextRequestInitWithDuplex = {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', ...headers },
+    body,
+    duplex: 'half',
+  };
+  return new NextRequest('http://localhost/api/audit-logs/audit_1/review', init);
+}
+
 function patch(req: NextRequest, id = 'audit_1') {
   return PATCH(req, { params: Promise.resolve({ id }) });
 }
@@ -89,6 +105,10 @@ describe('/api/audit-logs/[id]/review PATCH', () => {
         },
       }),
     );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('marks an audit log as reviewed and stores only redacted reason-note metadata', async () => {
@@ -260,6 +280,16 @@ describe('/api/audit-logs/[id]/review PATCH', () => {
 
     expect(response.status).toBe(400);
     expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: 'レビュー状態が不正です',
+      details: {
+        formErrors: [],
+        fieldErrors: {
+          review_state: ['Invalid option: expected one of "pending"|"reviewed"'],
+        },
+      },
+    });
     expect(auditLogFindFirstMock).not.toHaveBeenCalled();
     expect(transactionMock).not.toHaveBeenCalled();
   });
@@ -274,6 +304,18 @@ describe('/api/audit-logs/[id]/review PATCH', () => {
 
     expect(response.status).toBe(400);
     expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: 'レビュー状態が不正です',
+      details: {
+        formErrors: [],
+        fieldErrors: {
+          reason_code: [
+            'Invalid option: expected one of "admin_reviewed"|"expected_access"|"policy_exception"|"resolved_elsewhere"|"false_positive"',
+          ],
+        },
+      },
+    });
     expect(auditLogFindFirstMock).not.toHaveBeenCalled();
     expect(transactionMock).not.toHaveBeenCalled();
   });
@@ -283,8 +325,90 @@ describe('/api/audit-logs/[id]/review PATCH', () => {
 
     expect(response.status).toBe(400);
     expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'VALIDATION_ERROR',
+      message: 'レビュー状態が不正です',
+      details: {
+        formErrors: ['Invalid input: expected object, received null'],
+        fieldErrors: {},
+      },
+    });
     expect(auditLogFindFirstMock).not.toHaveBeenCalled();
     expect(transactionMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['lying low', '1'],
+  ])(
+    'returns 413 for a streamed body over 1 MiB with %s Content-Length before audit work',
+    async (_label, contentLength) => {
+      let cancelled = false;
+      const headers: Record<string, string> = {};
+      if (contentLength !== undefined) headers['content-length'] = contentLength;
+      const chunk = new Uint8Array(600 * 1024);
+      const request = createStreamRequest(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(chunk);
+            controller.enqueue(chunk);
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        headers,
+      );
+
+      const response = (await patch(request)) as Response;
+
+      expect(response.status).toBe(413);
+      expectNoStore(response);
+      await expect(response.json()).resolves.toEqual({
+        code: 'REQUEST_BODY_TOO_LARGE',
+        message: 'リクエストボディが上限を超えています',
+        details: { max_bytes: 1024 * 1024 },
+      });
+      await Promise.resolve();
+      expect(cancelled).toBe(true);
+      expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+      expect(transactionMock).not.toHaveBeenCalled();
+      expect(auditLogReviewUpsertMock).not.toHaveBeenCalled();
+      expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('returns 408 for a stalled body after 10 seconds before audit work', async () => {
+    vi.useFakeTimers();
+    let cancelled = false;
+    const request = createStreamRequest(
+      new ReadableStream<Uint8Array>({
+        pull() {
+          return new Promise(() => undefined);
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+    );
+
+    const pending = patch(request);
+    await vi.advanceTimersByTimeAsync(10_000);
+    const response = (await pending) as Response;
+
+    expect(response.status).toBe(408);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'REQUEST_BODY_TIMEOUT',
+      message: 'リクエストボディの受信がタイムアウトしました',
+      details: { timeout_ms: 10_000 },
+    });
+    await Promise.resolve();
+    expect(cancelled).toBe(true);
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(auditLogReviewUpsertMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 when the audit log is outside the organization scope', async () => {
