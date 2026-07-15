@@ -258,6 +258,7 @@ describe('check-fhir-native-legacy-inventory', () => {
     for (const source of [
       `const sql = Prisma.sql\`DELETE FROM "Patient" WHERE "id" = \${patientId}\`;\nawait db.$executeRaw(sql);\n`,
       `const sqlText = 'SELECT * FROM "Patient"';\nawait db.$queryRawUnsafe(sqlText);\n`,
+      `const sqlText = 'SELECT * FROM "Patient"';\nawait db.$queryRawUnsafe(sqlText, \`\${patientId}\`);\n`,
     ]) {
       const root = createFixture();
       writeRepoFile(root, SOURCE_PATH, source);

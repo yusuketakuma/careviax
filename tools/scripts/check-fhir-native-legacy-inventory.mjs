@@ -840,14 +840,14 @@ function inspectRawSqlInvocation(content, markerEnd) {
     return { invoked: true, template: readTemplateLiteral(content, cursor) };
   }
   if (content[cursor] !== '(') return { invoked: false, template: null };
-
-  const statementEnd = content.indexOf(';', cursor);
-  const searchEnd = statementEnd === -1 ? content.length : statementEnd;
-  const templateStart = content.indexOf('`', cursor + 1);
-  if (templateStart === -1 || templateStart >= searchEnd) {
-    return { invoked: true, template: null };
+  cursor += 1;
+  while (/\s/.test(content[cursor] ?? '')) cursor += 1;
+  if (content.startsWith('Prisma.sql', cursor)) {
+    cursor += 'Prisma.sql'.length;
+    while (/\s/.test(content[cursor] ?? '')) cursor += 1;
   }
-  return { invoked: true, template: readTemplateLiteral(content, templateStart) };
+  if (content[cursor] !== '`') return { invoked: true, template: null };
+  return { invoked: true, template: readTemplateLiteral(content, cursor) };
 }
 
 function rawSqlDirection(template) {
