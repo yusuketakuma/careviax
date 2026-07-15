@@ -161,7 +161,7 @@ async function authenticatedPOST(req: NextRequest, { params }: ResolveFollowupRo
 
   const { response, followup } = parsed.data;
   const expectedUpdatedAt = new Date(parsed.data.expected_updated_at);
-  if (followup && !hasPermission(ctx.role, 'canVisit')) {
+  if (followup && !hasPermission(ctx.role, 'canManageOperationalTasks')) {
     return forbidden('運用タスクの作成権限がありません');
   }
 

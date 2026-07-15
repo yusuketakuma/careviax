@@ -140,7 +140,7 @@ describe('/api/tasks/health-board', () => {
     expect(requireAuthContextMock).toHaveBeenCalledWith(
       expect.any(NextRequest),
       expect.objectContaining({
-        permission: 'canVisit',
+        permission: 'canManageOperationalTasks',
       }),
     );
     expect(resolveDashboardAssignmentScopeMock).toHaveBeenCalledWith(

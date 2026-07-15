@@ -100,6 +100,20 @@ describe('permissions', () => {
     expect(hasPermission('driver', 'canViewDashboard')).toBe(false);
   });
 
+  it('separates clerk operational tasks from clinical authoring and audit work', () => {
+    expect(hasPermission('clerk', 'canManageOperationalTasks')).toBe(true);
+    expect(hasPermission('clerk', 'canVisit')).toBe(false);
+    expect(hasPermission('clerk', 'canAuthorReport')).toBe(false);
+    expect(hasPermission('clerk', 'canAuditDispense')).toBe(false);
+    expect(hasPermission('clerk', 'canAuditSet')).toBe(false);
+    expect(hasPermission('pharmacist_trainee', 'canManageOperationalTasks')).toBe(true);
+    expect(hasPermission('pharmacist_trainee', 'canAuditDispense')).toBe(false);
+    expect(hasPermission('pharmacist', 'canManageOperationalTasks')).toBe(true);
+    expect(hasPermission('pharmacist', 'canAuditDispense')).toBe(true);
+    expect(hasPermission('driver', 'canManageOperationalTasks')).toBe(false);
+    expect(hasPermission('external_viewer', 'canManageOperationalTasks')).toBe(false);
+  });
+
   it('limits patient-sharing lifecycle decisions to full pharmacists and admins', () => {
     expect(hasPermission('owner', 'canManagePatientSharing')).toBe(true);
     expect(hasPermission('admin', 'canManagePatientSharing')).toBe(true);

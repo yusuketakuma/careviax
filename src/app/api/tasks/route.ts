@@ -264,7 +264,7 @@ function parseTaskListFilters(searchParams: URLSearchParams) {
 
 async function authenticatedGET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
+    permission: 'canManageOperationalTasks',
     message: '運用タスクの閲覧権限がありません',
   });
   if ('response' in authResult) return authResult.response;
@@ -355,7 +355,7 @@ export async function GET(req: NextRequest) {
 
 async function authenticatedPOST(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
+    permission: 'canManageOperationalTasks',
     message: '運用タスクの作成権限がありません',
   });
   if ('response' in authResult) return authResult.response;

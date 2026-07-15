@@ -30,7 +30,7 @@ import { requireWritableTaskPatient } from '@/server/services/task-write-guard';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
+    permission: 'canManageOperationalTasks',
     message: '運用タスクの更新権限がありません',
   });
   if ('response' in authResult) return authResult.response;
@@ -84,9 +84,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   }
 
-  const writable = await requireWritableTaskPatient(prisma, ctx, existing);
-  if (writable && 'response' in writable) return writable.response;
-
   if (
     assignmentScope.assignedToUserId &&
     parsed.data.assigned_to !== undefined &&
@@ -95,24 +92,39 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return withSensitiveNoStore(forbidden('担当者の変更権限がありません'));
   }
 
+  const relevantUserIds = parsed.data.assigned_to
+    ? Array.from(new Set([ctx.userId, parsed.data.assigned_to]))
+    : [ctx.userId];
+  const relevantMemberships = await prisma.membership.findMany({
+    where: {
+      org_id: ctx.orgId,
+      user_id: { in: relevantUserIds },
+      is_active: true,
+      user: { is_active: true, account_status: 'active' },
+    },
+    select: { user_id: true, role: true, can_audit_dispense: true },
+  });
+  const actorMemberships = relevantMemberships.filter(
+    (membership) => membership.user_id === ctx.userId,
+  );
+  const actorEligibility = evaluateTaskAssigneeMembershipsEligibility(
+    existing.task_type,
+    actorMemberships.map((membership) => ({
+      role: membership.role,
+      canAuditDispense: membership.can_audit_dispense,
+    })),
+  );
+  if (!actorEligibility.eligible) {
+    return withSensitiveNoStore(forbidden('このタスク種別を更新する権限がありません'));
+  }
+
+  const writable = await requireWritableTaskPatient(prisma, ctx, existing);
+  if (writable && 'response' in writable) return writable.response;
+
   if (isAssignmentChanged) {
-    const assignmentUserIds = parsed.data.assigned_to
-      ? Array.from(new Set([ctx.userId, parsed.data.assigned_to]))
-      : [ctx.userId];
-    const assignmentMemberships = await prisma.membership.findMany({
-      where: {
-        org_id: ctx.orgId,
-        user_id: { in: assignmentUserIds },
-        is_active: true,
-        user: { is_active: true, account_status: 'active' },
-      },
-      select: { user_id: true, role: true, can_audit_dispense: true },
-    });
     const actor = {
       userId: ctx.userId,
-      memberships: assignmentMemberships
-        .filter((membership) => membership.user_id === ctx.userId)
-        .map((membership) => ({ role: membership.role })),
+      memberships: actorMemberships.map((membership) => ({ role: membership.role })),
     };
     const canChangeAssignment = parsed.data.assigned_to
       ? canActorCreateTaskForAssignee(actor, parsed.data.assigned_to)
@@ -126,7 +138,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       );
     }
     if (parsed.data.assigned_to) {
-      const assigneeMemberships = assignmentMemberships.filter(
+      const assigneeMemberships = relevantMemberships.filter(
         (membership) => membership.user_id === parsed.data.assigned_to,
       );
       if (assigneeMemberships.length === 0) {

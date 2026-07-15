@@ -763,7 +763,7 @@
     {
       "path": "src/app/api/onboarding/renewal-board/route.ts",
       "expectedCount": 2,
-      "permissions": ["canViewDashboard", "canVisit"],
+      "permissions": ["canManageOperationalTasks", "canViewDashboard"],
       "sensitiveNoStore": true,
       "routePerformance": true,
       "owner": "platform-routing",
@@ -1313,7 +1313,7 @@
     {
       "path": "src/app/api/tasks/[id]/route.ts",
       "expectedCount": 1,
-      "permissions": ["canVisit"],
+      "permissions": ["canManageOperationalTasks"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
@@ -1324,7 +1324,7 @@
     {
       "path": "src/app/api/tasks/health-board/route.ts",
       "expectedCount": 1,
-      "permissions": ["canVisit"],
+      "permissions": ["canManageOperationalTasks"],
       "sensitiveNoStore": true,
       "routePerformance": true,
       "owner": "platform-routing",
@@ -1335,7 +1335,7 @@
     {
       "path": "src/app/api/tasks/route.ts",
       "expectedCount": 2,
-      "permissions": ["canVisit"],
+      "permissions": ["canManageOperationalTasks"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",

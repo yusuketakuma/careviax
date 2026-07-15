@@ -8,6 +8,9 @@ import type { MemberRole } from '@prisma/client';
  */
 type CorePermission = {
   canVisit: boolean;
+  // canManageOperationalTasks: clinical documentation ではない運用タスクの
+  // 閲覧・作成・更新。clerk の一般業務を canVisit から分離する。
+  canManageOperationalTasks: boolean;
   canReport: boolean;
   // canAuthorReport: 臨床報告書の「作成・編集・生成」など薬剤師の専門的記載を伴う書き込み。
   // canReport（閲覧 + 連携/事務系の書き込み）から分離し、事務(clerk)は参照は可能だが
@@ -47,6 +50,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canSet: true,
     canAuditSet: true,
     canVisit: true,
+    canManageOperationalTasks: true,
     canReport: true,
     canAuthorReport: true,
     canSendCareReport: true,
@@ -61,6 +65,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canSet: true,
     canAuditSet: true,
     canVisit: true,
+    canManageOperationalTasks: true,
     canReport: true,
     canAuthorReport: true,
     canSendCareReport: true,
@@ -75,6 +80,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canSet: true,
     canAuditSet: true,
     canVisit: true,
+    canManageOperationalTasks: true,
     canReport: true,
     canAuthorReport: true,
     canSendCareReport: true,
@@ -89,6 +95,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canSet: true,
     canAuditSet: false,
     canVisit: true,
+    canManageOperationalTasks: true,
     canReport: true,
     canAuthorReport: true,
     canSendCareReport: false,
@@ -103,6 +110,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canSet: false,
     canAuditSet: false,
     canVisit: false,
+    canManageOperationalTasks: true,
     // clerk(事務)は参照と連携/事務系の書き込み(canReport)は可能だが、
     // 臨床報告書の作成・編集・生成(canAuthorReport)は薬剤師業務のため不可。
     canReport: true,
@@ -119,6 +127,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canSet: false,
     canAuditSet: false,
     canVisit: false,
+    canManageOperationalTasks: false,
     canReport: false,
     canAuthorReport: false,
     canSendCareReport: false,
@@ -133,6 +142,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canSet: false,
     canAuditSet: false,
     canVisit: false,
+    canManageOperationalTasks: false,
     canReport: false,
     canAuthorReport: false,
     canSendCareReport: false,

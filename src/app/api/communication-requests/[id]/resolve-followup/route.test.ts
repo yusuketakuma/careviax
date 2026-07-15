@@ -267,7 +267,7 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
-  it('requires visit task permission when creating a follow-up task', async () => {
+  it('lets a clerk create a general operational follow-up task', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
         orgId: 'org_1',
@@ -285,11 +285,18 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(communicationRequestFindFirstMock).toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(taskUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          task_type: 'communication_request_followup',
+          description: '夕食後薬の飲み忘れを確認',
+        }),
+      }),
+    );
   });
 
   it('rejects care report follow-up resolution when the caller cannot send reports', async () => {

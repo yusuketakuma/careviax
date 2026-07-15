@@ -51,6 +51,7 @@ const PERMISSION_DENIAL_MESSAGE: Record<PermissionKey, string> = {
   canSet: 'セット工程の状態遷移権限がありません',
   canAuditSet: 'セット鑑査工程の状態遷移権限がありません',
   canVisit: '訪問工程の状態遷移権限がありません',
+  canManageOperationalTasks: '運用タスクの操作権限がありません',
   canReport: '報告工程の状態遷移権限がありません',
   canAuthorReport: '報告書作成権限がありません',
   canSendCareReport: '報告書送付権限がありません',

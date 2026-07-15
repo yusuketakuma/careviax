@@ -41,12 +41,13 @@ type TaskAssigneeRule = {
 };
 
 const DEFAULT_TASK_ASSIGNEE_RULE = {
-  // /api/tasks GET and PATCH both require canVisit. Assigning a task to a role without this
-  // capability creates a task that the assignee cannot read or update.
-  requiredPermission: 'canVisit',
+  requiredPermission: 'canManageOperationalTasks',
 } as const satisfies TaskAssigneeRule;
 
 const TASK_ASSIGNEE_RULE_BY_CANONICAL_TYPE: Readonly<Record<string, TaskAssigneeRule>> = {
+  'core.staff_work_request_visit': {
+    requiredPermission: 'canVisit',
+  },
   'pharmacy.staff_work_request_audit': {
     requiredPermission: 'canAuditDispense',
   },
@@ -145,7 +146,9 @@ function resolveStableActorRole(actor: TaskAssignmentActor): MemberRole | null {
 
 export function canActorManageTaskAssignments(actor: TaskAssignmentActor): boolean {
   const role = resolveStableActorRole(actor);
-  return Boolean(role && hasPermission(role, 'canVisit') && canViewAllDashboardWork({ role }));
+  return Boolean(
+    role && hasPermission(role, 'canManageOperationalTasks') && canViewAllDashboardWork({ role }),
+  );
 }
 
 export function canActorCreateTaskForAssignee(
@@ -153,7 +156,7 @@ export function canActorCreateTaskForAssignee(
   assigneeUserId: string,
 ): boolean {
   const role = resolveStableActorRole(actor);
-  if (!role || !hasPermission(role, 'canVisit')) return false;
+  if (!role || !hasPermission(role, 'canManageOperationalTasks')) return false;
   return canViewAllDashboardWork({ role }) || actor.userId === assigneeUserId;
 }
 

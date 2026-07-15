@@ -7,6 +7,7 @@ const {
   careCaseFindManyMock,
   careCaseFindFirstMock,
   patientFindFirstMock,
+  membershipFindManyMock,
   taskFindManyMock,
   taskUpdateManyMock,
   withOrgContextMock,
@@ -15,6 +16,7 @@ const {
   careCaseFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
+  membershipFindManyMock: vi.fn(),
   taskFindManyMock: vi.fn(),
   taskUpdateManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -39,6 +41,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     patient: {
       findFirst: patientFindFirstMock,
+    },
+    membership: {
+      findMany: membershipFindManyMock,
     },
     task: {
       findMany: taskFindManyMock,
@@ -84,6 +89,8 @@ describe('/api/tasks/bulk', () => {
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     careCaseFindFirstMock.mockResolvedValue({ patient_id: 'patient_1' });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
+    membershipFindManyMock.mockReset();
+    membershipFindManyMock.mockResolvedValue([{ role: 'pharmacist', can_audit_dispense: true }]);
     taskFindManyMock.mockResolvedValue([
       {
         id: 'task_1',
@@ -100,6 +107,7 @@ describe('/api/tasks/bulk', () => {
         related_entity_id: 'case_1',
       },
     ]);
+    taskUpdateManyMock.mockReset();
     taskUpdateManyMock.mockResolvedValue({ count: 2 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -134,7 +142,7 @@ describe('/api/tasks/bulk', () => {
     expect(requireAuthContextMock).toHaveBeenCalledWith(
       expect.any(NextRequest),
       expect.objectContaining({
-        permission: 'canVisit',
+        permission: 'canManageOperationalTasks',
         message: '運用タスクの更新権限がありません',
       }),
     );
@@ -196,6 +204,111 @@ describe('/api/tasks/bulk', () => {
       },
     });
   });
+
+  it('lets a clerk complete general work but rejects visit and audit work', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { orgId: 'org_1', userId: 'clerk_1', role: 'clerk' },
+    });
+    taskFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'task_general',
+        task_type: 'staff_work_request_general',
+        status: 'pending',
+        related_entity_type: null,
+        related_entity_id: null,
+      },
+      {
+        id: 'task_visit',
+        task_type: 'staff_work_request_visit',
+        status: 'pending',
+        related_entity_type: null,
+        related_entity_id: null,
+      },
+      {
+        id: 'task_audit',
+        task_type: 'staff_work_request_audit',
+        status: 'pending',
+        related_entity_type: null,
+        related_entity_id: null,
+      },
+    ]);
+    taskUpdateManyMock.mockResolvedValueOnce({ count: 1 });
+    membershipFindManyMock.mockResolvedValueOnce([{ role: 'clerk', can_audit_dispense: false }]);
+
+    const response = await POST(
+      createPostRequest({ ids: ['task_general', 'task_visit', 'task_audit'] }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      data: {
+        total: 3,
+        completed: 1,
+        failed: 2,
+        failures: [
+          {
+            id: 'task_visit',
+            code: 'task_permission_denied',
+            message: 'このタスク種別を更新する権限がありません',
+          },
+          {
+            id: 'task_audit',
+            code: 'task_permission_denied',
+            message: 'このタスク種別を更新する権限がありません',
+          },
+        ],
+      },
+    });
+    expect(taskUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: { in: ['task_general'] } }) }),
+    );
+  });
+
+  it.each([
+    ['pharmacist', false, 0],
+    ['pharmacist', true, 1],
+    ['admin', false, 1],
+  ] as const)(
+    'enforces actor audit membership for %s (flag=%s)',
+    async (role, canAuditDispense, expectedCompleted) => {
+      requireAuthContextMock.mockResolvedValueOnce({
+        ctx: { orgId: 'org_1', userId: 'actor_1', role },
+      });
+      membershipFindManyMock.mockResolvedValueOnce([
+        { role, can_audit_dispense: canAuditDispense },
+      ]);
+      taskFindManyMock.mockResolvedValueOnce([
+        {
+          id: 'task_audit',
+          task_type: 'staff_work_request_audit',
+          status: 'pending',
+          related_entity_type: null,
+          related_entity_id: null,
+        },
+      ]);
+      taskUpdateManyMock.mockResolvedValueOnce({ count: expectedCompleted });
+
+      const response = await POST(createPostRequest({ ids: ['task_audit'] }));
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.completed).toBe(expectedCompleted);
+      if (expectedCompleted === 0) {
+        expect(body.data.failures).toEqual([
+          {
+            id: 'task_audit',
+            code: 'task_permission_denied',
+            message: 'このタスク種別を更新する権限がありません',
+          },
+        ]);
+        expect(taskUpdateManyMock).not.toHaveBeenCalled();
+      } else {
+        expect(body.data.failures).toEqual([]);
+        expect(taskUpdateManyMock).toHaveBeenCalledOnce();
+      }
+    },
+  );
 
   it('returns a stale-state conflict when fewer eligible tasks are updated than selected', async () => {
     taskUpdateManyMock.mockResolvedValueOnce({ count: 1 });

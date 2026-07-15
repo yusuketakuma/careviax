@@ -137,7 +137,7 @@ describe('/api/onboarding/renewal-board', () => {
     });
     expect(requireAuthContextMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ permission: 'canVisit' }),
+      expect.objectContaining({ permission: 'canManageOperationalTasks' }),
     );
     expect(syncOnboardingRenewalTasksMock).toHaveBeenCalledWith(
       { tx: true },
@@ -160,7 +160,7 @@ describe('/api/onboarding/renewal-board', () => {
     expect(response.status).toBe(403);
     expect(requireAuthContextMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ permission: 'canVisit' }),
+      expect.objectContaining({ permission: 'canManageOperationalTasks' }),
     );
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(syncOnboardingRenewalTasksMock).not.toHaveBeenCalled();

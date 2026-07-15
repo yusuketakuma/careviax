@@ -556,7 +556,7 @@ describe('care-reports/[id] route', () => {
           can_edit: false,
           can_send: false,
           can_create_external_share: false,
-          can_create_followup_task: false,
+          can_create_followup_task: true,
           can_view_patient: false,
           can_view_related_requests: false,
         },
@@ -577,7 +577,7 @@ describe('care-reports/[id] route', () => {
     expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
     expect(findExternalProfessionalSuggestionsMock).not.toHaveBeenCalled();
     expect(getChannelStatsByNameMock).not.toHaveBeenCalled();
-    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).toHaveBeenCalledTimes(1);
     const select = careReportFindFirstMock.mock.calls[0]?.[0]?.select;
     expect(select).toMatchObject({
       content: false,

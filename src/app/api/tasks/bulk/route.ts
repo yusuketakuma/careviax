@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { requiresDedicatedTaskCompletion } from '@/lib/tasks/inline-completion';
+import { evaluateTaskAssigneeMembershipsEligibility } from '@/lib/tasks/task-assignee-eligibility';
 import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
@@ -71,6 +72,18 @@ async function bulkCompleteTasks(req: NextRequest, ctx: AuthContext) {
   });
 
   const tasksById = new Map(tasks.map((task: BulkTask) => [task.id, task]));
+  const actorMemberships =
+    tasks.length === 0
+      ? []
+      : await prisma.membership.findMany({
+          where: {
+            org_id: ctx.orgId,
+            user_id: ctx.userId,
+            is_active: true,
+            user: { is_active: true, account_status: 'active' },
+          },
+          select: { role: true, can_audit_dispense: true },
+        });
   const failures: BulkCompleteTaskFailure[] = [];
   const eligibleIds: string[] = [];
 
@@ -90,6 +103,23 @@ async function bulkCompleteTasks(req: NextRequest, ctx: AuthContext) {
         id,
         code: 'invalid_status',
         message: 'タスクはすでに完了または取り消されています。再読み込みしてください',
+      });
+      continue;
+    }
+
+    if (
+      !evaluateTaskAssigneeMembershipsEligibility(
+        task.task_type,
+        actorMemberships.map((membership) => ({
+          role: membership.role,
+          canAuditDispense: membership.can_audit_dispense,
+        })),
+      ).eligible
+    ) {
+      failures.push({
+        id,
+        code: 'task_permission_denied',
+        message: 'このタスク種別を更新する権限がありません',
       });
       continue;
     }
@@ -154,6 +184,6 @@ async function bulkCompleteTasks(req: NextRequest, ctx: AuthContext) {
 }
 
 export const POST = withAuthContext(bulkCompleteTasks, {
-  permission: 'canVisit',
+  permission: 'canManageOperationalTasks',
   message: '運用タスクの更新権限がありません',
 });

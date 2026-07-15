@@ -14,7 +14,7 @@ export function buildCareReportActionPermissions(
     can_edit: hasPermission(role, 'canAuthorReport'),
     can_send: canOutput,
     can_create_external_share: canOutput,
-    can_create_followup_task: hasPermission(role, 'canVisit'),
+    can_create_followup_task: hasPermission(role, 'canManageOperationalTasks'),
     can_view_patient: hasPermission(role, 'canVisit'),
     can_view_related_requests: canOutput,
   };

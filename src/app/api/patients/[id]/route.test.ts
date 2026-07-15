@@ -1082,6 +1082,32 @@ describe('/api/patients/[id]', () => {
     });
   });
 
+  it('separates clerk follow-up operations from clinical and external-share actions', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'corg1234567890123456789012',
+        userId: 'user_clerk',
+        role: 'clerk',
+      },
+    });
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        patient_share_permissions: {
+          can_create_external_share: false,
+          can_create_reply_request: true,
+          can_create_followup_task: true,
+        },
+      },
+    });
+  });
+
   it.each(['owner', 'admin'] as const)(
     'allows %s to create a follow-up task for an unassigned readable patient',
     async (role) => {

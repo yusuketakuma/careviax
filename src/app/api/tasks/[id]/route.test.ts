@@ -81,8 +81,9 @@ describe('/api/tasks/[id]', () => {
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     careCaseFindFirstMock.mockResolvedValue({ patient_id: 'patient_1' });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
+    membershipFindManyMock.mockReset();
     membershipFindManyMock.mockResolvedValue([
-      { user_id: 'user_2', role: 'pharmacist', can_audit_dispense: true },
+      { user_id: 'user_1', role: 'pharmacist', can_audit_dispense: true },
     ]);
     taskFindFirstMock.mockResolvedValue({
       id: 'task_1',
@@ -334,7 +335,11 @@ describe('/api/tasks/[id]', () => {
     for (const [assignee, expected] of [
       [
         'pharmacist_2',
-        { status: 403, code: 'AUTH_FORBIDDEN', message: '担当者の変更権限がありません' },
+        {
+          status: 403,
+          code: 'AUTH_FORBIDDEN',
+          message: 'このタスク種別を更新する権限がありません',
+        },
       ],
       [
         'pharmacist_2',
@@ -417,6 +422,10 @@ describe('/api/tasks/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ permission: 'canManageOperationalTasks' }),
+    );
     expect(taskUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'task_1',
@@ -441,6 +450,79 @@ describe('/api/tasks/[id]', () => {
     });
     expect(taskFindUniqueMock).toHaveBeenCalledWith({ where: { id: 'task_1' } });
   });
+
+  it.each(['staff_work_request_visit', 'staff_work_request_audit'])(
+    'does not let a clerk update pharmacist-only task type %s',
+    async (taskType) => {
+      requireAuthContextMock.mockResolvedValueOnce({
+        ctx: { orgId: 'org_1', userId: 'clerk_1', role: 'clerk' },
+      });
+      taskFindFirstMock.mockResolvedValueOnce({
+        id: 'task_restricted_1',
+        task_type: taskType,
+        assigned_to: 'clerk_1',
+        completed_at: null,
+        related_entity_type: null,
+        related_entity_id: null,
+      });
+      membershipFindManyMock.mockResolvedValueOnce([
+        { user_id: 'clerk_1', role: 'clerk', can_audit_dispense: false },
+      ]);
+
+      const response = (await PATCH(
+        createPatchRequest('task_restricted_1', { status: 'completed' }),
+        { params: Promise.resolve({ id: 'task_restricted_1' }) },
+      ))!;
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'AUTH_FORBIDDEN',
+        message: 'このタスク種別を更新する権限がありません',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [false, 403],
+    [true, 200],
+  ] as const)(
+    'enforces the actor membership audit flag (can_audit_dispense=%s)',
+    async (canAuditDispense, expectedStatus) => {
+      taskFindFirstMock.mockResolvedValueOnce({
+        id: 'task_audit_1',
+        task_type: 'staff_work_request_audit',
+        assigned_to: 'user_1',
+        completed_at: null,
+        related_entity_type: null,
+        related_entity_id: null,
+      });
+      membershipFindManyMock.mockResolvedValueOnce([
+        {
+          user_id: 'user_1',
+          role: 'pharmacist',
+          can_audit_dispense: canAuditDispense,
+        },
+      ]);
+
+      const response = (await PATCH(createPatchRequest('task_audit_1', { status: 'completed' }), {
+        params: Promise.resolve({ id: 'task_audit_1' }),
+      }))!;
+
+      expect(response.status).toBe(expectedStatus);
+      if (canAuditDispense) {
+        expect(taskUpdateManyMock).toHaveBeenCalledOnce();
+      } else {
+        await expect(response.json()).resolves.toMatchObject({
+          code: 'AUTH_FORBIDDEN',
+          message: 'このタスク種別を更新する権限がありません',
+        });
+        expect(withOrgContextMock).not.toHaveBeenCalled();
+        expect(taskUpdateManyMock).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it('returns conflict when a stale status update loses the open-task claim', async () => {
     taskFindFirstMock.mockResolvedValue({
@@ -568,6 +650,7 @@ describe('/api/tasks/[id]', () => {
   it('rejects archived patients resolved from related cases before updating operational tasks', async () => {
     taskFindFirstMock.mockResolvedValue({
       id: 'task_1',
+      task_type: 'general',
       assigned_to: 'user_1',
       completed_at: null,
       related_entity_type: 'case',

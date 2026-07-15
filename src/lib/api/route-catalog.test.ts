@@ -119,6 +119,15 @@ describe('routeCatalog', () => {
     );
   });
 
+  it('documents operational task routes with the non-clinical task capability', () => {
+    for (const path of ['/api/tasks', '/api/tasks/:id', '/api/tasks/bulk']) {
+      expect(routeCatalog.find((entry) => entry.path === path)).toMatchObject({
+        permission: 'canManageOperationalTasks',
+        area: 'dashboard',
+      });
+    }
+  });
+
   it('keeps high-risk catalog entries aligned with concrete route templates', () => {
     const templatePaths = new Set(API_ROUTE_TEMPLATES);
     const catalogPaths = new Set(routeCatalog.map((entry) => entry.path));

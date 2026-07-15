@@ -920,7 +920,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   const basePatientSharePermissions = {
     can_create_external_share: hasPermission(ctx.role, 'canManagePatientSharing'),
     can_create_reply_request: hasPermission(ctx.role, 'canReport'),
-    can_create_followup_task: hasPermission(ctx.role, 'canVisit'),
+    can_create_followup_task: hasPermission(ctx.role, 'canManageOperationalTasks'),
   };
 
   const { id: rawId } = await params;

@@ -14,7 +14,7 @@ const ROLE_MATRIX = {
   admin: { visit: true, audit: true, general: true },
   pharmacist: { visit: true, audit: true, general: true },
   pharmacist_trainee: { visit: true, audit: false, general: true },
-  clerk: { visit: false, audit: false, general: false },
+  clerk: { visit: false, audit: false, general: true },
   driver: { visit: false, audit: false, general: false },
   external_viewer: { visit: false, audit: false, general: false },
 } as const satisfies Record<MemberRole, { visit: boolean; audit: boolean; general: boolean }>;
@@ -56,24 +56,28 @@ describe('task assignee eligibility', () => {
     }
   });
 
-  it('requires canVisit for registered task types without a stricter task-specific rule', () => {
+  it('uses operational-task permission by default while keeping visit work clinical', () => {
     expect(
       evaluateTaskAssigneeRoleEligibility('patient_self_report_followup', 'pharmacist'),
     ).toEqual({
       eligible: true,
       canonicalTaskType: 'core.patient_self_report_followup',
-      requiredPermission: 'canVisit',
+      requiredPermission: 'canManageOperationalTasks',
     });
     expect(
       evaluateTaskAssigneeRoleEligibility('patient_self_report_followup', 'clerk'),
-    ).toMatchObject({ eligible: false, requiredPermission: 'canVisit' });
+    ).toMatchObject({ eligible: true, requiredPermission: 'canManageOperationalTasks' });
+    expect(evaluateTaskAssigneeRoleEligibility('staff_work_request_visit', 'clerk')).toMatchObject({
+      eligible: false,
+      requiredPermission: 'canVisit',
+    });
   });
 
   it('fails closed for an unregistered task type', () => {
     expect(evaluateTaskAssigneeRoleEligibility('unknown_task_type', 'owner')).toEqual({
       eligible: false,
       canonicalTaskType: null,
-      requiredPermission: 'canVisit',
+      requiredPermission: 'canManageOperationalTasks',
     });
   });
 
@@ -127,7 +131,7 @@ describe('task assignee eligibility', () => {
     ['pharmacist', 'pharmacist_1', 'staff_2', false],
     ['pharmacist_trainee', 'trainee_1', 'trainee_1', true],
     ['pharmacist_trainee', 'trainee_1', 'staff_2', false],
-    ['clerk', 'clerk_1', 'clerk_1', false],
+    ['clerk', 'clerk_1', 'clerk_1', true],
     ['driver', 'driver_1', 'driver_1', false],
   ] as const)(
     'enforces create delegation scope for %s',
@@ -192,6 +196,6 @@ describe('task assignee eligibility', () => {
         { userId: 'owner_1', memberships: [{ role: 'owner' }] },
         { userId: 'clerk_1', memberships: [{ role: 'clerk', canAuditDispense: false }] },
       ),
-    ).toEqual([]);
+    ).toEqual(['staff_work_request_general']);
   });
 });

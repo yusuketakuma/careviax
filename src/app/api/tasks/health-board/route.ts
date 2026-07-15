@@ -133,7 +133,7 @@ function andTaskWhere(...wheres: Prisma.TaskWhereInput[]): Prisma.TaskWhereInput
 
 async function authenticatedGET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
+    permission: 'canManageOperationalTasks',
     message: 'タスクヘルスボードの閲覧権限がありません',
   });
   if ('response' in authResult) return authResult.response;

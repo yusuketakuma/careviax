@@ -21,6 +21,25 @@ describe('bulk task completion contract', () => {
     ).toBe(true);
   });
 
+  it('accepts task-type permission denials as partial failures', () => {
+    expect(
+      bulkCompleteTasksResponseSchema.safeParse({
+        data: {
+          total: 1,
+          completed: 0,
+          failed: 1,
+          failures: [
+            {
+              id: 'task_1',
+              code: 'task_permission_denied',
+              message: 'このタスク種別を更新する権限がありません',
+            },
+          ],
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it('rejects malformed successful response envelopes', () => {
     for (const payload of [
       { data: 'bad-shape' },

@@ -136,6 +136,10 @@ describe('/api/tasks', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ permission: 'canManageOperationalTasks' }),
+    );
     expect(taskFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         select: expect.objectContaining({ id: true, task_type: true, title: true }),
@@ -694,6 +698,10 @@ describe('/api/tasks', () => {
 
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ permission: 'canManageOperationalTasks' }),
+    );
     expect(membershipFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',

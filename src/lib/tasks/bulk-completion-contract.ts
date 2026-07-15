@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const BULK_COMPLETE_TASK_FAILURE_CODES = [
   'not_found',
+  'task_permission_denied',
   'dedicated_completion_required',
   'invalid_status',
   'patient_not_writable',
