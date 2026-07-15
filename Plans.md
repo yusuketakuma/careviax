@@ -208,7 +208,7 @@ Patient matchingはstable yrese patient identifier、official prescription ident
 | Partial / residual track  |     7 | 下のPartial表。既存土台は再作成せず、残スコープだけimplementation queueへ切る。                                  |
 | FHIR child queue          |    24 | 下の`FHIR Native child execution registry`。完了済みA0/A1/A2を除くclaim可能なFHIR実装単位。                      |
 | Implementation queue      |    99 | `Implementation-ready queue`。FHIR親10行はroll-up、その他は次PRに切れる実装task。Human gateを含む。              |
-| Frontend queue            |    11 | `Frontend implementation queue`。7画面UI改善とbounded list UXを実在BFF/API/state matrixに基づくsliceとして扱う。 |
+| Frontend queue            |    10 | `Frontend implementation queue`。7画面UI改善とbounded list UXを実在BFF/API/state matrixに基づくsliceとして扱う。 |
 | Unresolved / verification |     - | Blocked / Discovered / Verify required。解除条件または未検証証跡だけを記載する。                                 |
 | Program backlog           |     - | `Program backlog`表。着手時に小IDでqueueへ昇格する。                                                             |
 | Archive / reference       |     - | `docs/plans-archive.md`。履歴参照専用で、active backlogとして数えない。                                          |
