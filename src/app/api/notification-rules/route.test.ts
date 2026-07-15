@@ -82,6 +82,7 @@ describe('/api/notification-rules', () => {
     expect(body).toMatchObject({
       data: [{ id: 'rule_1' }],
       meta: {
+        generated_at: expect.any(String),
         total_count: 1,
         visible_count: 1,
         hidden_count: 0,
@@ -91,6 +92,7 @@ describe('/api/notification-rules', () => {
         limit: 100,
       },
     });
+    expect(new Date(body.meta.generated_at).toISOString()).toBe(body.meta.generated_at);
     expect(body).not.toHaveProperty('total_count');
     expect(body).not.toHaveProperty('visible_count');
     expect(body).not.toHaveProperty('hidden_count');
@@ -131,6 +133,7 @@ describe('/api/notification-rules', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'rule_1' }],
       meta: {
+        generated_at: expect.any(String),
         total_count: 3,
         visible_count: 1,
         hidden_count: 2,
