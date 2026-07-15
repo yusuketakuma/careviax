@@ -20,16 +20,17 @@ public URLs, and Oracle/GPT prompts.
 For any AWS-related implementation, consult the relevant AWS official documentation or API reference before editing code, IaC, runtime env, IAM/S3/RDS/ECS/DynamoDB/SES/Cognito/CloudWatch/Route 53/ACM/Secrets Manager/EventBridge configuration, or operational scripts. Record the official reference name, URL, and confirmation date in the implementation notes, PR description, `ops/refactor/STATE.md`, or the relevant docs. If AWS official guidance conflicts with repository planning docs, prefer the official guidance and update `Plans.md` with the delta before implementation.
 
 For high-risk implementation, repeated failure, or unclear technical decisions, consult
-Oracle/GPT-5.6 Sol as an advisory safety gate. Oracle is a senior second-opinion path,
+Oracle/GPT-5.6 Pro as an advisory safety gate. Oracle is a senior second-opinion path,
 not a normal search/completion tool and not a product owner. Use the project
 `.oracle/config.json` defaults and keep machine-local browser paths, remote tokens,
 API keys, cookies, and secrets in `~/.oracle/config.json`, environment variables, or
 explicit CLI flags only.
 
-Oracle model selection is fixed to `gpt-5.6-sol` with browser thinking time `heavy`
-(ChatGPT Extra High). Do not silently fall back to GPT-5.5 Pro or another model. If
-strict GPT-5.6 Sol selection cannot be verified, stop the consult, preserve the failed
-session evidence, and report the blocker.
+Oracle model selection is fixed to ChatGPT's independent GPT-5.6 Pro target via
+`--model gpt-5-pro`. Do not pass `--browser-thinking-time`: that flag controls the
+base Sol effort and would select Extra High rather than Pro. Do not silently fall back
+to base Sol, GPT-5.5 Pro, or another model. If strict GPT-5.6 Pro selection cannot be
+verified, stop the consult, preserve the failed session evidence, and report the blocker.
 
 Use `.agents/skills/oracle-consult/SKILL.md` for the full escalation policy. In short:
 
@@ -61,7 +62,7 @@ billing, audit logs, secrets, or destructive operations.
 Oracle upstream verification requirement:
 
 When modifying Oracle usage rules, Oracle command flags, Browser mode behavior,
-GPT-5.6 Sol model selection, MCP integration, session handling, or Codex/Oracle skill
+GPT-5.6 Pro model selection, MCP integration, session handling, or Codex/Oracle skill
 instructions, first inspect the upstream GitHub repository and relevant current docs:
 
 - `https://github.com/steipete/oracle`
@@ -75,21 +76,22 @@ confident claims about current Oracle behavior. This upstream check is required 
 when changing Oracle itself or its operating instructions, not for every implementation
 consultation.
 
-Last verified against upstream GitHub on 2026-07-14:
+Last verified against upstream GitHub on 2026-07-15:
 Oracle README, bundled `skills/oracle/SKILL.md`, `docs/browser-mode.md`, and
-`CHANGELOG.md` confirm first-class Browser/API `gpt-5.6-sol` selection, strict Sol
-selection evidence, `heavy` as Extra High for base Sol, minimal file sets,
+`CHANGELOG.md` confirm that GPT-5.6 base Sol and Pro are distinct targets: use
+`--model gpt-5-pro` without a thinking-time flag for Pro, while base Sol uses
+`--model gpt-5.6-sol` plus an effort setting. They also confirm minimal file sets,
 `--dry-run` / `--files-report`, manual-login profile reuse, stored sessions,
 and reattach/restart behavior. The local CLI help was also checked with
 `oracle --help` and reported Oracle CLI v0.16.0.
 
-Local Oracle repair pin (2026-07-14): the npm 0.16.0 artifact predates the
-independent Pro-pill fix for base Sol. This workstation's installed `oracle`
+Local Oracle repair pin (2026-07-15): the npm 0.16.0 artifact predates the
+independent Pro-pill compatibility fix for GPT-5.6. This workstation's installed `oracle`
 binary is built from official upstream PR #320 head
 `ea8b1b57f140f2c641a2a8a9cc1dd10bd03bdb18`. Until a published upstream
 release containing that fix is verified, invoke `oracle` directly and do not
 use `npx -y @steipete/oracle`, because npx can refresh the unfixed registry
-artifact. If the installed binary or strict Sol selection cannot be verified,
+artifact. If the installed binary or strict Pro selection cannot be verified,
 fail closed and repair it instead of falling back to another model.
 
 Before the first Oracle run in a session, run:
@@ -98,14 +100,14 @@ Before the first Oracle run in a session, run:
 oracle --help
 ```
 
-GitHub context requirement for every Oracle/GPT-5.6 Sol consult:
+GitHub context requirement for every Oracle/GPT-5.6 Pro consult:
 
 - Before consulting Oracle, inspect the current GitHub repository context:
   `git remote -v`, current branch, current commit, and related PR/issue context
   when available through `gh` or GitHub web.
 - Include that context in the Oracle prompt. At minimum include repository URL,
   branch, current commit, dirty/clean state, and relevant PR/issue URL or state.
-- The Oracle prompt must explicitly instruct GPT-5.6 Sol to access the provided
+- The Oracle prompt must explicitly instruct GPT-5.6 Pro to access the provided
   GitHub repository/PR/issue URLs when its browser or web access allows it, and
   to state clearly if those GitHub URLs are inaccessible.
 - If GitHub or `gh` is unavailable, state that clearly in the prompt and final
@@ -119,13 +121,12 @@ Default Oracle command shape:
 ```bash
 oracle \
   --engine browser \
-  --model gpt-5.6-sol \
+  --model gpt-5-pro \
   --browser-model-strategy select \
   --browser-manual-login \
   --browser-auto-reattach-delay 5s \
   --browser-auto-reattach-interval 3s \
   --browser-auto-reattach-timeout 60s \
-  --browser-thinking-time heavy \
   --heartbeat 30 \
   --slug "<short-readable-slug>" \
   -p "<focused PH-OS consultation prompt>" \
@@ -143,8 +144,8 @@ oracle --dry-run summary --files-report \
 Before consulting Oracle, prepare a high-signal prompt with the goal, current state,
 exact blocker or uncertainty, files inspected, files changed, commands run, exact errors
 or logs, options considered, constraints, GitHub repository/branch/commit/PR context,
-and the decision needed from GPT-5.6 Sol. Oracle prompts must explicitly ask GPT-5.6
-Sol to access and consider the provided GitHub URLs/context rather than only the
+and the decision needed from GPT-5.6 Pro. Oracle prompts must explicitly ask GPT-5.6
+Pro to access and consider the provided GitHub URLs/context rather than only the
 attached local files, and to report if GitHub access was unavailable.
 
 Never send secrets, `.env` files, private keys, access tokens, raw patient data, raw
@@ -156,7 +157,7 @@ inspect `oracle status --hours 72`,
 `oracle session <id> --render`, or
 `oracle restart <id>`.
 
-Runtime model, approval, sandbox, service tier, MCP, and custom-agent registration belong in the user-level `~/.codex/config.toml`. This repository file defines PH-OS-specific working rules and should not be treated as the effective runtime configuration layer.
+Runtime model, approval, sandbox, service tier, MCP, and reusable custom-agent registration belong in the user-level `~/.codex/config.toml`. This repository file defines PH-OS-specific working rules and should not be treated as the effective runtime configuration layer. CareViaX intentionally disables project-local custom agents; its two active seats are independent Codex CLI sessions coordinated through agmsg.
 
 ## Mission
 
@@ -166,12 +167,12 @@ Work in YOLO mode.
 Use Ralph-loop execution.
 Do not stop until the concrete task is actually complete or an explicit blocker is proven.
 
-## Autonomous Idle Search — single Codex operation
+## Autonomous Idle Search — codex1 / codex2 operation
 
-This repository is currently operated by this Codex session alone. Do not use
-agmsg, codex2/codex3/codex4, Claude, subagents, or external maker/checker
-workers unless the user explicitly re-enables that workflow in a later
-instruction.
+This repository is currently operated only by the independent `codex1` and
+`codex2` Codex CLI seats coordinated through agmsg. Do not use codex3/codex4,
+Claude, built-in custom agents, subagents, or external maker/checker workers
+unless the user explicitly changes this topology in a later instruction.
 
 When a current slice is waiting on review, LOCK release, commit/land, another
 agent, or a narrow blocker, do not become passively idle. Continue looking for
@@ -193,12 +194,13 @@ useful, safe work that moves the repository-level objective forward:
 **現行の運用体制は `ops/refactor/STATE.md` が唯一の正（SSOT）。** このファイルや他の文書に
 残る体制記述（旧 Claude main / Codex-only / rev8 等）は歴史的記録であり、矛盾時は STATE.md に従う。
 
-2026-07-04 ユーザー指示により、現行運用は **Codex 単独運用**。
-`codex` が計画、実装、検証、単一台帳更新、必要な scoped commit まで一貫して担当する。
-agmsg、codex2/codex3/codex4、Claude、subagent、PATCH_REPORT 待ちは使わない。
-ユーザーが明示的に再有効化しない限り、旧 multi-agent/maker-checker 記述は歴史的記録として扱う。
+2026-07-15 ユーザー指示により、現行運用は **codex1 / codex2 の二者運用**。
+両者が計画レビュー、non-overlap 実装、相互検証を agmsg で連携し、codex1 が単一台帳更新と
+integration を担当する。codex3/codex4、Claude、built-in custom agent、subagent、外部
+maker/checker は使わない。ユーザーが明示的に変更しない限り、旧 single-Codex / broader
+multi-agent / maker-checker 記述は歴史的記録として扱う。
 
-単独運用でも shared worktree 前提は維持する。編集前に `git status --short --untracked-files=all`
+shared worktree 前提を維持する。編集前に `git status --short --untracked-files=all`
 と対象 diff を確認し、既存の user/peer dirty 変更を保存する。コミット時は明示した owned path だけを
 stage し、`git add -A` は使わない。
 
@@ -216,12 +218,13 @@ For each iteration:
 7. Update only `ops/refactor/STATE.md` when recording progress, validation, remaining work, or next action.
 8. Before any commit, inspect `git status --short --untracked-files=all`, stage only explicit owned paths, and continue. Do not push unless the user explicitly asks.
 
-## Single-agent coordination
+## Two-agent coordination
 
-The active loop is single Codex execution.
+The active loop is limited to `codex1` and `codex2`.
 
-- `codex` owns planning, implementation, verification, the single ledger update, and scoped commits.
-- Do not use agmsg, subagents, codex2/codex3/codex4, or Claude unless the user explicitly re-enables them.
+- Both seats review plans before implementation, claim exact non-overlapping paths through agmsg, and independently verify the other seat's coherent slice.
+- `codex1` owns the single ledger update and integration commits; `codex2` does not edit shared ledgers unless codex1 explicitly delegates an exact path.
+- Do not use codex3/codex4, Claude, project custom agents, built-in subagents, or external maker/checker workers unless the user explicitly changes the topology.
 - Keep long Next.js gates serialized: do not run `pnpm build` concurrently with `pnpm typecheck` or `pnpm typecheck:no-unused`; `.next/types` can race.
 - For commits, stage only explicit owned files. Never use `git add -A` in this shared dirty worktree.
 
@@ -235,14 +238,14 @@ The active loop is single Codex execution.
 - Verify runtime/config changes with the real Codex binary:
   `/Users/yusuke/.nvm/versions/node/v24.16.0/bin/codex --strict-config doctor --summary --ascii`.
 - Prefer the current top-level `web_search = "cached" | "live" | "disabled"` setting over deprecated web-search feature flags.
-- Project custom agents may exist in `.codex/agents/*.toml` and user-global agents may exist in
-  `~/.codex/agents/*.toml`, but they are dormant in current single-Codex operation.
+- Project custom-agent files and registries are intentionally absent, and `.codex/config.toml` keeps
+  `features.multi_agent = false`. User-global agents may exist for other repositories but are not used here.
 
 ## Agent loop SSOT
 
 The current operational SSOT and only active progress ledger is `ops/refactor/STATE.md`, with
-`.agent-loop/README.md` as the operator guide. Historical Claude x Codex x agmsg rules remain background only.
-The active loop is single-Codex execution plus validation/gbrain. Before editing, inspect the dirty tree;
+`.agent-loop/README.md` as the operator guide. Historical Claude x Codex and broader-agent rules remain background only.
+The active loop is codex1/codex2 execution plus validation/gbrain. Before editing, inspect the dirty tree;
 before committing, stage only owned files; and follow the objective gates in `.agent-loop/GATE_CONFIG.md`.
 
 Do not append new progress entries to `.codex/ralph-state.md`, `CODEX_GOAL_PROGRESS.md`,

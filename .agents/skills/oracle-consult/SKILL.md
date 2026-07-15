@@ -1,6 +1,6 @@
 ---
 name: oracle-consult
-description: Use Oracle GPT-5.6 Sol as a senior second-opinion review path when Codex is blocked after repeated serious attempts, making high-risk technical implementation decisions, touching authentication, authorization, tenant isolation, PHI/PII, medical/pharmacy/patient data, DB schema or migrations, production data, billing, audit logs, secrets, security boundaries, public API contracts, queues/retries/idempotency/concurrency, broad refactors, or needing final review for a high-blast-radius change. Do not use for trivial formatting, typos, imports, obvious local type errors, or product decisions only the user can make.
+description: Use Oracle GPT-5.6 Pro as a senior second-opinion review path when Codex is blocked after repeated serious attempts, making high-risk technical implementation decisions, touching authentication, authorization, tenant isolation, PHI/PII, medical/pharmacy/patient data, DB schema or migrations, production data, billing, audit logs, secrets, security boundaries, public API contracts, queues/retries/idempotency/concurrency, broad refactors, or needing final review for a high-blast-radius change. Do not use for trivial formatting, typos, imports, obvious local type errors, or product decisions only the user can make.
 ---
 
 # Oracle Consult
@@ -10,10 +10,11 @@ normal search engine, autocomplete tool, or product owner. Treat the result as
 advice; verify it with code inspection, tests, typecheck, lint, and local
 execution before applying or reporting completion.
 
-Always target `gpt-5.6-sol` with browser thinking time `heavy` (ChatGPT Extra
-High). Do not silently fall back to GPT-5.5 Pro or another model. If Oracle
-cannot verify strict GPT-5.6 Sol selection, preserve the failed session evidence
-and report the consult as blocked.
+Always target ChatGPT's independent GPT-5.6 Pro target via `--model gpt-5-pro`.
+Do not pass `--browser-thinking-time`: that flag controls base Sol effort and
+would target Extra High rather than Pro. Do not silently fall back to base Sol,
+GPT-5.5 Pro, or another model. If Oracle cannot verify strict GPT-5.6 Pro
+selection, preserve the failed session evidence and report the consult as blocked.
 
 ## Escalation Rules
 
@@ -94,7 +95,7 @@ destructive operations.
 ## Upstream Verification
 
 When modifying Oracle usage rules, Oracle flags, Browser mode behavior,
-GPT-5.6 Sol model selection, MCP integration, session handling, or Codex/Oracle
+GPT-5.6 Pro model selection, MCP integration, session handling, or Codex/Oracle
 skill instructions, first inspect the current upstream GitHub repository:
 
 - `https://github.com/steipete/oracle`
@@ -106,32 +107,32 @@ If GitHub is unavailable, state that upstream verification could not be
 completed and avoid confident claims about current Oracle behavior. This rule is
 only for Oracle operating instructions, not every implementation consult.
 
-Last verified against upstream GitHub on 2026-07-14:
+Last verified against upstream GitHub on 2026-07-15:
 
 - Oracle README
 - bundled `skills/oracle/SKILL.md`
 - `docs/browser-mode.md`
 - `CHANGELOG.md`
 
-The verified upstream behavior confirms first-class Browser/API
-`gpt-5.6-sol` selection, strict Sol selection evidence, `heavy` as Extra High
-for base Sol, minimal file sets, `--dry-run` / `--files-report`, manual-login
-profile reuse, stored sessions, and reattach/restart behavior. The local CLI
-help was also checked with `oracle --help` and reported Oracle
-CLI v0.16.0.
+The verified upstream behavior confirms that GPT-5.6 base Sol and Pro are
+distinct targets: use `--model gpt-5-pro` without a thinking-time flag for Pro,
+while base Sol uses `--model gpt-5.6-sol` plus an effort setting. It also
+confirms minimal file sets, `--dry-run` / `--files-report`, manual-login profile
+reuse, stored sessions, and reattach/restart behavior. The local CLI help was
+checked with `oracle --help` and reported Oracle CLI v0.16.0.
 
-Local repair pin (2026-07-14): the npm 0.16.0 artifact predates the independent
-Pro-pill fix for base Sol. This workstation's installed `oracle` binary is built
+Local repair pin (2026-07-15): the npm 0.16.0 artifact predates the independent
+Pro-pill compatibility fix for GPT-5.6. This workstation's installed `oracle` binary is built
 from official upstream PR #320 head
 `ea8b1b57f140f2c641a2a8a9cc1dd10bd03bdb18`. Until a published upstream
 release containing that fix is verified, use `oracle` directly and never
 `npx -y @steipete/oracle`, because npx can refresh the unfixed registry
-artifact. If the binary or strict Sol evidence cannot be verified, fail closed
+artifact. If the binary or strict Pro evidence cannot be verified, fail closed
 instead of falling back to another model.
 
 ## GitHub Context Requirement
 
-Every Oracle/GPT-5.6 Sol consult must include current target-repository GitHub
+Every Oracle/GPT-5.6 Pro consult must include current target-repository GitHub
 context.
 
 Before consulting Oracle:
@@ -146,11 +147,11 @@ PR/issue URL or state in the prompt. If GitHub or `gh` is unavailable, say so in
 the prompt and final notes. Do not claim GitHub-current context was reviewed
 when it was not.
 
-The prompt must tell GPT-5.6 Sol to access the provided GitHub
+The prompt must tell GPT-5.6 Pro to access the provided GitHub
 repository/PR/issue URLs when its browser or web access allows it, then consider
-that GitHub context alongside the attached local files. If GPT-5.6 Sol cannot
+that GitHub context alongside the attached local files. If GPT-5.6 Pro cannot
 access the provided GitHub URLs, the prompt must ask it to say so explicitly.
-GitHub access is mandatory for Oracle/GPT-5.6 Sol consults as repository
+GitHub access is mandatory for Oracle/GPT-5.6 Pro consults as repository
 context, but never use it to send secrets, raw PHI, private logs, or production
 data.
 
@@ -193,9 +194,9 @@ Prepare a high-signal prompt. Do not ask vague questions. Include:
 8. Options considered
 9. Constraints and non-goals
 10. GitHub context: repository URL, branch, commit, dirty/clean state, PR/issue state if relevant
-11. The decision needed from GPT-5.6 Sol
+11. The decision needed from GPT-5.6 Pro
 
-Explicitly ask GPT-5.6 Sol to access the provided GitHub URLs when possible and
+Explicitly ask GPT-5.6 Pro to access the provided GitHub URLs when possible and
 to report whether GitHub access succeeded.
 
 ## Standard Command
@@ -208,8 +209,7 @@ oracle \
   --browser-auto-reattach-delay 5s \
   --browser-auto-reattach-interval 3s \
   --browser-auto-reattach-timeout 60s \
-  --model gpt-5.6-sol \
-  --browser-thinking-time heavy \
+  --model gpt-5-pro \
   --heartbeat 30 \
   --slug "<short-readable-slug>" \
   -p "<consultation prompt>" \
@@ -221,7 +221,7 @@ oracle \
 Use a focused prompt:
 
 ```text
-You are GPT-5.6 Sol acting as a strict senior engineering reviewer.
+You are GPT-5.6 Pro acting as a strict senior engineering reviewer.
 
 Project:
 <stack, repo conventions, build/test commands, important directories>
@@ -248,7 +248,7 @@ Files attached:
 <list>
 
 GitHub context:
-<repository URL, branch, current commit, dirty/clean state, PR/issue URL or state if relevant, and any upstream/current GitHub context GPT-5.6 Sol must access and consider>
+<repository URL, branch, current commit, dirty/clean state, PR/issue URL or state if relevant, and any upstream/current GitHub context GPT-5.6 Pro must access and consider>
 
 GitHub access instruction:
 Please access the provided GitHub repository/PR/issue URLs when your browser or web access allows it. If you cannot access GitHub, state that explicitly before giving the recommendation.

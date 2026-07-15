@@ -1,11 +1,11 @@
 {
   "engine": "browser",
-  "model": "gpt-5.6-sol",
+  "model": "gpt-5-pro",
   "filesReport": true,
   "heartbeatSeconds": 30,
   "browser": {
     "manualLogin": true,
-    "thinkingTime": "heavy",
+    "manualLoginCookieSync": true,
     "modelStrategy": "select",
     "autoReattachDelayMs": 5000,
     "autoReattachIntervalMs": 3000,
