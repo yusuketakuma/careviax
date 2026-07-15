@@ -218,6 +218,12 @@ export type DashboardCockpitTeamResponse = DashboardCockpitScopeMetadata & {
 export type DashboardCockpitCommentsResponse = DashboardCockpitScopeMetadata & {
   /** Dashboard scope で閲覧可能な直近コメント。本文は短い抜粋だけ返す。 */
   comments: CockpitCommentItem[];
+  /** database_total は全対象の正確な件数、bounded_assignment_scan は担当範囲照合済みprefixの件数。 */
+  comments_count_basis: 'database_total' | 'bounded_assignment_scan';
+  /** false の場合、件数は走査済みprefixにおける下限であり、真正の空を意味しない。 */
+  comments_scope_complete: boolean;
+  /** 件数判定のために評価した TaskComment の件数。 */
+  comments_scanned_count: number;
   comments_total_count: number;
   comments_visible_count: number;
   comments_hidden_count: number;

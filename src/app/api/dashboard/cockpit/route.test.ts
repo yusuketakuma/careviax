@@ -16,6 +16,7 @@ const {
   careReportFindManyMock,
   careReportCountMock,
   taskCommentFindManyMock,
+  taskCommentCountMock,
   userFindManyMock,
   queryRawMock,
   medicationStockQueryRawMock,
@@ -55,6 +56,7 @@ const {
   careReportFindManyMock: vi.fn(),
   careReportCountMock: vi.fn(),
   taskCommentFindManyMock: vi.fn(),
+  taskCommentCountMock: vi.fn(),
   userFindManyMock: vi.fn(),
   queryRawMock: vi.fn(),
   medicationStockQueryRawMock: vi.fn(),
@@ -97,7 +99,7 @@ vi.mock('@/lib/db/client', () => ({
     setPlan: { findMany: setPlanFindManyMock },
     visitRecord: { findMany: visitRecordFindManyMock },
     careReport: { findMany: careReportFindManyMock, count: careReportCountMock },
-    taskComment: { findMany: taskCommentFindManyMock },
+    taskComment: { findMany: taskCommentFindManyMock, count: taskCommentCountMock },
     user: { findMany: userFindManyMock },
     $queryRaw: queryRawMock,
     visitSchedule: { findMany: visitScheduleFindManyMock, count: visitScheduleCountMock },
@@ -297,6 +299,7 @@ describe('/api/dashboard/cockpit', () => {
     careReportFindManyMock.mockResolvedValue([]);
     careReportCountMock.mockResolvedValue(0);
     taskCommentFindManyMock.mockResolvedValue([]);
+    taskCommentCountMock.mockResolvedValue(0);
     userFindManyMock.mockResolvedValue([]);
     inboundCommunicationEventFindManyMock.mockResolvedValue([]);
     inboundCommunicationEventCountMock.mockResolvedValue(0);
@@ -443,12 +446,21 @@ describe('/api/dashboard/cockpit', () => {
   });
 
   it('keeps the visible audit queue capped while reporting the exact total count', async () => {
-    queryRawMock.mockResolvedValueOnce(
-      Array.from({ length: 8 }, (_, index) => ({
-        task_id: `task_${index}`,
+    const authoritativeAuditSummary = [
+      {
         total_count: BigInt(37),
-      })),
-    );
+        narcotic_count: BigInt(31),
+        earliest_due_at: new Date(2026, 5, 12, 10, 0),
+      },
+    ];
+    queryRawMock
+      .mockResolvedValueOnce(
+        Array.from({ length: 8 }, (_, index) => ({
+          task_id: `task_${index}`,
+          total_count: BigInt(37),
+        })),
+      )
+      .mockResolvedValueOnce(authoritativeAuditSummary);
     dispenseTaskFindManyMock.mockResolvedValue(
       Array.from({ length: 8 }, (_, index) =>
         buildAuditTask({
@@ -469,11 +481,18 @@ describe('/api/dashboard/cockpit', () => {
     expect(json.data.audit_queue_total_count).toBe(37);
     expect(json.data.audit_queue_visible_count).toBe(5);
     expect(json.data.audit_queue_hidden_count).toBe(32);
+    expect(json.data.narcotic_audit_count).toBe(31);
     expect(json.data.audit_queue).toHaveLength(5);
 
     const auditQuery = dispenseTaskFindManyMock.mock.calls.at(-1)?.[0];
     expect(auditQuery?.take).toBe(30);
-    expect(queryRawMock).toHaveBeenCalledTimes(1);
+    queryRawMock.mockResolvedValueOnce(authoritativeAuditSummary);
+    const summaryResponse = (await GETSummary(createRequest('', '/api/dashboard/cockpit/summary'), {
+      params: Promise.resolve({}),
+    }))!;
+    const summaryJson = await summaryResponse.json();
+    expect(summaryJson.data.narcotic_audit_count).toBe(json.data.narcotic_audit_count);
+    expect(queryRawMock).toHaveBeenCalledTimes(3);
   });
 
   it('serves a cached cockpit response without rerunning aggregate queries', async () => {
@@ -2297,6 +2316,7 @@ describe('/api/dashboard/cockpit', () => {
   });
 
   it('returns a PHI-minimized comments segment without cockpit cache writes', async () => {
+    taskCommentCountMock.mockResolvedValue(2);
     taskCommentFindManyMock.mockResolvedValue([
       {
         id: 'comment_1',
@@ -2346,6 +2366,9 @@ describe('/api/dashboard/cockpit', () => {
     expect(json.data.comments_total_count).toBe(2);
     expect(json.data.comments_visible_count).toBe(2);
     expect(json.data.comments_hidden_count).toBe(0);
+    expect(json.data.comments_count_basis).toBe('database_total');
+    expect(json.data.comments_scope_complete).toBe(true);
+    expect(json.data.comments_scanned_count).toBe(2);
     expect(json.data.comments).toEqual([
       expect.objectContaining({
         id: 'comment_1',
@@ -2369,6 +2392,22 @@ describe('/api/dashboard/cockpit', () => {
     expect(json.data.comments[0].content_excerpt.length).toBeLessThanOrEqual(96);
     expect(JSON.stringify(json)).not.toContain('"content"');
     expect(JSON.stringify(json)).not.toContain('unknown entity');
+    expect(taskCommentFindManyMock).toHaveBeenCalledTimes(1);
+    expect(taskCommentFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        take: 5,
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          entity_type: { in: expect.arrayContaining(['medication_cycle', 'care_report']) },
+        }),
+      }),
+    );
+    expect(taskCommentCountMock).toHaveBeenCalledTimes(1);
+    expect(medicationCycleFindManyMock).toHaveBeenCalledWith({
+      where: { id: { in: ['cycle_1'] }, org_id: 'org_1' },
+      select: { id: true, patient_id: true },
+    });
     expect(serverCacheGetMock).not.toHaveBeenCalled();
     expect(serverCacheSetMock).not.toHaveBeenCalled();
     expect(userFindManyMock).toHaveBeenCalledWith(
@@ -2445,6 +2484,27 @@ describe('/api/dashboard/cockpit', () => {
     ]);
     expect(JSON.stringify(json)).not.toContain('担当外患者');
     expect(JSON.stringify(json)).not.toContain('担当外ケース');
+    expect(json.data).toMatchObject({
+      comments_count_basis: 'bounded_assignment_scan',
+      comments_scope_complete: true,
+      comments_scanned_count: 4,
+    });
+    expect(taskCommentCountMock).not.toHaveBeenCalled();
+    expect(taskCommentFindManyMock.mock.calls[0]?.[0]?.select).toEqual({
+      id: true,
+      entity_type: true,
+      entity_id: true,
+      created_at: true,
+    });
+    expect(taskCommentFindManyMock.mock.calls[1]?.[0]?.where).toEqual(
+      expect.objectContaining({
+        org_id: 'org_1',
+        OR: expect.arrayContaining([
+          expect.objectContaining({ id: 'comment_patient_allowed' }),
+          expect.objectContaining({ id: 'comment_cycle_allowed' }),
+        ]),
+      }),
+    );
     expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -2454,6 +2514,126 @@ describe('/api/dashboard/cockpit', () => {
         }),
       }),
     );
+  });
+
+  it('continues a bounded metadata scan past 80 denied comments to find an assigned comment', async () => {
+    authContextMock.role = 'pharmacist';
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+    const createdAt = new Date('2026-06-12T00:35:00.000Z');
+    const denied = Array.from({ length: 80 }, (_, index) => ({
+      id: `comment_denied_${String(index).padStart(3, '0')}`,
+      entity_type: 'patient',
+      entity_id: 'patient_other',
+      created_at: createdAt,
+    }));
+    const allowedReference = {
+      id: 'comment_allowed_081',
+      entity_type: 'patient',
+      entity_id: 'patient_1',
+      created_at: createdAt,
+    };
+    taskCommentFindManyMock
+      .mockResolvedValueOnce([...denied, allowedReference])
+      .mockResolvedValueOnce([allowedReference])
+      .mockResolvedValueOnce([
+        {
+          ...allowedReference,
+          content: '担当患者の確認事項',
+          author_id: 'user_2',
+          mentions: ['user_1'],
+        },
+      ]);
+    userFindManyMock.mockResolvedValue([{ id: 'user_2', name: '鈴木 さくら' }]);
+
+    const response = (await GETComments(createRequest('', '/api/dashboard/cockpit/comments'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.data).toMatchObject({
+      comments_count_basis: 'bounded_assignment_scan',
+      comments_scope_complete: true,
+      comments_scanned_count: 81,
+      comments_total_count: 1,
+      comments_visible_count: 1,
+      comments_hidden_count: 0,
+    });
+    expect(json.data.comments).toEqual([
+      expect.objectContaining({ id: 'comment_allowed_081', content_excerpt: '担当患者の確認事項' }),
+    ]);
+    expect(taskCommentFindManyMock.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        cursor: { id: 'comment_denied_079' },
+        skip: 1,
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
+    expect(taskCommentFindManyMock.mock.calls[0]?.[0]?.select).not.toHaveProperty('content');
+    expect(taskCommentFindManyMock.mock.calls[0]?.[0]?.select).not.toHaveProperty('author_id');
+    expect(taskCommentFindManyMock.mock.calls[0]?.[0]?.select).not.toHaveProperty('mentions');
+    expect(JSON.stringify(json)).not.toContain('patient_other');
+    expect(taskCommentFindManyMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('marks a restricted 160-row prefix incomplete without exposing a false empty', async () => {
+    authContextMock.role = 'pharmacist';
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+    const createdAt = new Date('2026-06-12T00:35:00.000Z');
+    const firstPage = Array.from({ length: 81 }, (_, index) => ({
+      id: `comment_first_${String(index).padStart(3, '0')}`,
+      entity_type: index === 0 ? 'toString' : 'patient',
+      entity_id: 'patient_other',
+      created_at: createdAt,
+    }));
+    const secondPage = Array.from({ length: 81 }, (_, index) => ({
+      id: `comment_second_${String(index).padStart(3, '0')}`,
+      entity_type: 'patient',
+      entity_id: 'patient_other',
+      created_at: createdAt,
+    }));
+    taskCommentFindManyMock.mockResolvedValueOnce(firstPage).mockResolvedValueOnce(secondPage);
+
+    const response = (await GETComments(createRequest('', '/api/dashboard/cockpit/comments'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.data).toMatchObject({
+      comments: [],
+      comments_count_basis: 'bounded_assignment_scan',
+      comments_scope_complete: false,
+      comments_scanned_count: 160,
+      comments_total_count: 0,
+      comments_visible_count: 0,
+      comments_hidden_count: 0,
+    });
+    expect(taskCommentFindManyMock).toHaveBeenCalledTimes(2);
+    expect(userFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns exact zero for an empty restricted assignment without TaskComment reads', async () => {
+    authContextMock.role = 'pharmacist';
+    careCaseFindManyMock.mockResolvedValue([]);
+
+    const response = (await GETComments(createRequest('', '/api/dashboard/cockpit/comments'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        comments: [],
+        comments_count_basis: 'bounded_assignment_scan',
+        comments_scope_complete: true,
+        comments_scanned_count: 0,
+        comments_total_count: 0,
+      },
+    });
+    expect(taskCommentFindManyMock).not.toHaveBeenCalled();
+    expect(taskCommentCountMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
   });
 
   it('returns an empty comments segment without author lookups', async () => {
@@ -2471,6 +2651,9 @@ describe('/api/dashboard/cockpit', () => {
         comments_total_count: 0,
         comments_visible_count: 0,
         comments_hidden_count: 0,
+        comments_count_basis: 'database_total',
+        comments_scope_complete: true,
+        comments_scanned_count: 0,
       },
     });
     expect(userFindManyMock).not.toHaveBeenCalled();
@@ -2696,7 +2879,7 @@ describe('/api/dashboard/cockpit', () => {
 
     const auditWhere = dispenseTaskFindManyMock.mock.calls.at(-1)?.[0]?.where;
     expect(auditWhere?.cycle).toEqual({ case_id: { in: ['case_1'] } });
-    expect(queryRawMock).toHaveBeenCalledTimes(1);
+    expect(queryRawMock).toHaveBeenCalledTimes(2);
     expect(serverCacheSetMock).toHaveBeenCalledWith(
       expect.stringContaining('cockpit:org_1:pharmacist:user_1:2026-06-12:mine'),
       expect.objectContaining({

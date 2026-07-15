@@ -74,6 +74,7 @@ const AUDIT_QUEUE_FETCH_LIMIT = 30;
 const AUDIT_QUEUE_RESPONSE_LIMIT = 5;
 const BLOCKED_REASONS_LIMIT = 3;
 const COMMENT_FEED_FETCH_LIMIT = 80;
+const COMMENT_FEED_SCAN_PAGE_LIMIT = 2;
 const COMMENT_FEED_RESPONSE_LIMIT = 5;
 const COMMENT_EXCERPT_LENGTH = 96;
 const INBOUND_FEED_FETCH_LIMIT = 40;
@@ -170,6 +171,11 @@ type DashboardCommentCandidate = {
   mentions: string[];
   created_at: Date;
 };
+
+type DashboardCommentReference = Pick<
+  DashboardCommentCandidate,
+  'id' | 'entity_type' | 'entity_id' | 'created_at'
+>;
 
 type DashboardCallbackUrgentLog = {
   id: string;
@@ -1674,7 +1680,7 @@ const DASHBOARD_COMMENT_ENTITY_LABELS: Record<CockpitCommentItem['entity_type'],
 };
 
 function isDashboardCommentEntityType(value: string): value is CockpitCommentItem['entity_type'] {
-  return value in DASHBOARD_COMMENT_ENTITY_LABELS;
+  return Object.prototype.hasOwnProperty.call(DASHBOARD_COMMENT_ENTITY_LABELS, value);
 }
 
 function hasRestrictedDashboardScope(assignmentScope: DashboardAssignmentScope) {
@@ -3360,49 +3366,182 @@ async function readDashboardComments(args: {
   ctx: AuthContext;
   scopeContext: DashboardCockpitScopeContext;
 }): Promise<DashboardCockpitCommentsResponse> {
-  const rawComments = await prisma.taskComment.findMany({
-    where: { org_id: args.ctx.orgId },
-    orderBy: { created_at: 'desc' },
-    take: COMMENT_FEED_FETCH_LIMIT,
-    select: {
-      id: true,
-      entity_type: true,
-      entity_id: true,
-      content: true,
-      author_id: true,
-      mentions: true,
-      created_at: true,
-    },
-  });
-  const candidates: DashboardCommentCandidate[] = rawComments
-    .filter((comment): comment is DashboardCommentCandidate =>
-      isDashboardCommentEntityType(comment.entity_type),
-    )
-    .map((comment) => ({
-      id: comment.id,
-      entity_type: comment.entity_type,
-      entity_id: comment.entity_id,
-      content: comment.content,
-      author_id: comment.author_id,
-      mentions: comment.mentions,
-      created_at: comment.created_at,
-    }));
+  const supportedEntityTypes = Object.keys(
+    DASHBOARD_COMMENT_ENTITY_LABELS,
+  ) as CockpitCommentItem['entity_type'][];
+  const restricted = hasRestrictedDashboardScope(args.scopeContext.assignmentScope);
+  const hasNoRestrictedAssignments =
+    restricted &&
+    (args.scopeContext.assignmentScope.caseIds?.length ?? 0) === 0 &&
+    (args.scopeContext.assignmentScope.patientIds?.length ?? 0) === 0;
 
-  const entityIds = createEntityIdBucket();
-  for (const comment of candidates) {
-    entityIds[comment.entity_type].add(comment.entity_id);
+  if (hasNoRestrictedAssignments) {
+    return {
+      ...args.scopeContext.metadata,
+      comments: [],
+      comments_total_count: 0,
+      comments_visible_count: 0,
+      comments_hidden_count: 0,
+      comments_count_basis: 'bounded_assignment_scan',
+      comments_scope_complete: true,
+      comments_scanned_count: 0,
+    };
   }
 
-  const { allowed, cyclePatientIds } = await readAllowedCommentEntities({
-    orgId: args.ctx.orgId,
-    assignmentScope: args.scopeContext.assignmentScope,
-    entityIds,
-  });
+  let totalCount = 0;
+  let scopeComplete = true;
+  let scannedCount = 0;
+  let countBasis: DashboardCockpitCommentsResponse['comments_count_basis'] = 'database_total';
+  const visibleReferences: DashboardCommentReference[] = [];
+  let visible: DashboardCommentCandidate[] = [];
+  const cyclePatientIds = new Map<string, string>();
 
-  const visibleCandidates = candidates.filter((comment) =>
-    allowed[comment.entity_type].has(comment.entity_id),
-  );
-  const visible = visibleCandidates.slice(0, COMMENT_FEED_RESPONSE_LIMIT);
+  if (!restricted) {
+    const where = {
+      org_id: args.ctx.orgId,
+      entity_type: { in: supportedEntityTypes },
+    };
+    const [rows, exactTotalCount] = await Promise.all([
+      prisma.taskComment.findMany({
+        where,
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        take: COMMENT_FEED_RESPONSE_LIMIT,
+        select: {
+          id: true,
+          entity_type: true,
+          entity_id: true,
+          content: true,
+          author_id: true,
+          mentions: true,
+          created_at: true,
+        },
+      }),
+      prisma.taskComment.count({ where }),
+    ]);
+    totalCount = exactTotalCount;
+    scannedCount = exactTotalCount;
+    visible = rows
+      .filter((comment): comment is DashboardCommentCandidate =>
+        isDashboardCommentEntityType(comment.entity_type),
+      )
+      .map((comment) => ({
+        id: comment.id,
+        entity_type: comment.entity_type,
+        entity_id: comment.entity_id,
+        content: comment.content,
+        author_id: comment.author_id,
+        mentions: comment.mentions,
+        created_at: comment.created_at,
+      }));
+    const visibleCycleIds = visible
+      .filter((comment) => comment.entity_type === 'medication_cycle')
+      .map((comment) => comment.entity_id);
+    if (visibleCycleIds.length > 0) {
+      const cycles = await prisma.medicationCycle.findMany({
+        where: { id: { in: visibleCycleIds }, org_id: args.ctx.orgId },
+        select: { id: true, patient_id: true },
+      });
+      for (const cycle of cycles) {
+        cyclePatientIds.set(cycle.id, cycle.patient_id);
+      }
+    }
+  } else {
+    countBasis = 'bounded_assignment_scan';
+    scopeComplete = false;
+    let cursorId: string | undefined;
+
+    for (let pageIndex = 0; pageIndex < COMMENT_FEED_SCAN_PAGE_LIMIT; pageIndex += 1) {
+      const page = await prisma.taskComment.findMany({
+        where: { org_id: args.ctx.orgId },
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        take: COMMENT_FEED_FETCH_LIMIT + 1,
+        ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+        select: {
+          id: true,
+          entity_type: true,
+          entity_id: true,
+          created_at: true,
+        },
+      });
+      const scannedPage = page.slice(0, COMMENT_FEED_FETCH_LIMIT);
+      scannedCount += scannedPage.length;
+
+      const candidates: DashboardCommentReference[] = scannedPage
+        .filter((comment): comment is DashboardCommentReference =>
+          isDashboardCommentEntityType(comment.entity_type),
+        )
+        .map((comment) => ({
+          id: comment.id,
+          entity_type: comment.entity_type,
+          entity_id: comment.entity_id,
+          created_at: comment.created_at,
+        }));
+      const entityIds = createEntityIdBucket();
+      for (const comment of candidates) {
+        entityIds[comment.entity_type].add(comment.entity_id);
+      }
+      const pageAuthorization = await readAllowedCommentEntities({
+        orgId: args.ctx.orgId,
+        assignmentScope: args.scopeContext.assignmentScope,
+        entityIds,
+      });
+      for (const [cycleId, patientId] of pageAuthorization.cyclePatientIds) {
+        cyclePatientIds.set(cycleId, patientId);
+      }
+      for (const comment of candidates) {
+        if (!pageAuthorization.allowed[comment.entity_type].has(comment.entity_id)) continue;
+        totalCount += 1;
+        if (visibleReferences.length < COMMENT_FEED_RESPONSE_LIMIT) {
+          visibleReferences.push(comment);
+        }
+      }
+
+      if (page.length <= COMMENT_FEED_FETCH_LIMIT) {
+        scopeComplete = true;
+        break;
+      }
+      cursorId = scannedPage.at(-1)?.id;
+      if (!cursorId) break;
+    }
+  }
+
+  if (restricted && visibleReferences.length > 0) {
+    const rows = await prisma.taskComment.findMany({
+      where: {
+        org_id: args.ctx.orgId,
+        OR: visibleReferences.map((comment) => ({
+          id: comment.id,
+          entity_type: comment.entity_type,
+          entity_id: comment.entity_id,
+          created_at: comment.created_at,
+        })),
+      },
+      select: {
+        id: true,
+        entity_type: true,
+        entity_id: true,
+        content: true,
+        author_id: true,
+        mentions: true,
+        created_at: true,
+      },
+    });
+    const rowMap = new Map(rows.map((row) => [row.id, row]));
+    visible = visibleReferences.map((reference) => {
+      const row = rowMap.get(reference.id);
+      if (
+        !row ||
+        row.entity_type !== reference.entity_type ||
+        row.entity_id !== reference.entity_id ||
+        row.created_at.getTime() !== reference.created_at.getTime() ||
+        !isDashboardCommentEntityType(row.entity_type)
+      ) {
+        throw new Error('Dashboard comment projection changed during authorization');
+      }
+      return row as DashboardCommentCandidate;
+    });
+  }
+
   const authorIds = Array.from(new Set(visible.map((comment) => comment.author_id)));
   const authors =
     authorIds.length === 0
@@ -3428,9 +3567,12 @@ async function readDashboardComments(args: {
       created_at: comment.created_at.toISOString(),
       href: buildDashboardCommentHref(comment, cyclePatientIds),
     })),
-    comments_total_count: visibleCandidates.length,
+    comments_total_count: totalCount,
     comments_visible_count: visible.length,
-    comments_hidden_count: Math.max(visibleCandidates.length - visible.length, 0),
+    comments_hidden_count: Math.max(totalCount - visible.length, 0),
+    comments_count_basis: countBasis,
+    comments_scope_complete: scopeComplete,
+    comments_scanned_count: scannedCount,
   };
 }
 
@@ -3632,6 +3774,7 @@ async function buildCockpitFull(
   const [
     cycleStatusCounts,
     auditQueue,
+    auditSummary,
     todaySchedules,
     openExceptions,
     carryoverCount,
@@ -3640,6 +3783,7 @@ async function buildCockpitFull(
   ] = await Promise.all([
     readCycleStatusCounts({ orgId: ctx.orgId, assignmentScope: scopeContext.assignmentScope }),
     readAuditQueue({ orgId: ctx.orgId, assignmentScope: scopeContext.assignmentScope }),
+    readAuditQueueSummary({ orgId: ctx.orgId, assignmentScope: scopeContext.assignmentScope }),
     readTodayVisits({
       orgId: ctx.orgId,
       assignmentScope: scopeContext.assignmentScope,
@@ -3712,7 +3856,7 @@ async function buildCockpitFull(
     audit_queue_total_count: auditQueue.totalCount,
     audit_queue_visible_count: visibleQueue.length,
     audit_queue_hidden_count: Math.max(auditQueue.totalCount - visibleQueue.length, 0),
-    narcotic_audit_count: auditQueue.all.filter((item) => item.has_narcotic).length,
+    narcotic_audit_count: auditSummary.narcoticCount,
     audit_queue: visibleQueue,
     today_visits: mapTodayVisits(todaySchedules),
     blocked_reasons: buildBlockedReasons(

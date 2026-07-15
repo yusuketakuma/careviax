@@ -1086,12 +1086,14 @@ function commentBadge(comment: CockpitCommentItem) {
 function TeamConversationPanel({
   comments,
   hiddenCount,
+  scopeComplete,
   isLoading,
   isError,
   onRetry,
 }: {
   comments: CockpitCommentItem[];
   hiddenCount: number;
+  scopeComplete: boolean;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
@@ -1165,7 +1167,9 @@ function TeamConversationPanel({
       </div>
       {comments.length === 0 ? (
         <p className="rounded-md border border-border/70 bg-muted/30 px-3 py-4 text-sm leading-6 text-muted-foreground">
-          直近のコメントはありません。
+          {scopeComplete
+            ? '直近のコメントはありません。'
+            : 'この表示範囲ではコメントを確認できませんでした。ハンドオフですべて確認できます。'}
         </p>
       ) : (
         <ul className="space-y-2" role="list">
@@ -1208,12 +1212,16 @@ function TeamConversationPanel({
           })}
         </ul>
       )}
-      {hiddenCount > 0 ? (
+      {hiddenCount > 0 || !scopeComplete ? (
         <Link
           href={DASHBOARD_COMMENTS_DRILLDOWN_HREF}
           className="inline-flex text-xs font-medium leading-5 text-primary hover:underline"
         >
-          他{hiddenCount}件をハンドオフで見る
+          {scopeComplete
+            ? `他${hiddenCount}件をハンドオフで見る`
+            : hiddenCount > 0
+              ? `他${hiddenCount}件以上をハンドオフで見る`
+              : 'さらにコメントをハンドオフで見る'}
         </Link>
       ) : null}
     </section>
@@ -1740,6 +1748,7 @@ export function DashboardCockpit({ focusRole = 'common' }: { focusRole?: Dashboa
                     <TeamConversationPanel
                       comments={comments?.comments ?? []}
                       hiddenCount={viewModel.commentsHiddenCount}
+                      scopeComplete={viewModel.commentsScopeComplete}
                       isLoading={commentsInitialLoading}
                       isError={commentsInitialError}
                       onRetry={() => void commentsQuery.refetch()}

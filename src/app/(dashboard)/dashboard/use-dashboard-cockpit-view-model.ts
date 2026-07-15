@@ -83,6 +83,8 @@ export type DashboardCockpitViewModel = {
   urgentSourceLinks: DashboardUrgentSourceLink[];
   urgentTotalCount: number;
   commentsHiddenCount: number;
+  commentsCountBasis: DashboardCockpitCommentsResponse['comments_count_basis'] | null;
+  commentsScopeComplete: boolean;
   inboundHiddenCount: number;
   inboundNeedsReviewCount: number;
 };
@@ -163,6 +165,8 @@ export function useDashboardCockpitViewModel({
     urgentSourceLinks,
     urgentTotalCount: details?.urgent_total_count ?? 0,
     commentsHiddenCount: comments?.comments_hidden_count ?? 0,
+    commentsCountBasis: comments?.comments_count_basis ?? null,
+    commentsScopeComplete: comments?.comments_scope_complete ?? false,
     inboundHiddenCount: inbound?.inbound_hidden_count ?? 0,
     inboundNeedsReviewCount: inbound?.inbound_needs_review_count ?? 0,
   };

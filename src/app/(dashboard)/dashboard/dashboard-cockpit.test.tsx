@@ -377,6 +377,9 @@ function buildCommentsFixture(data = buildFixture()): DashboardCockpitCommentsRe
         href: '/reports/report_1',
       },
     ],
+    comments_count_basis: 'database_total',
+    comments_scope_complete: true,
+    comments_scanned_count: 4,
     comments_total_count: 4,
     comments_visible_count: 2,
     comments_hidden_count: 2,
@@ -976,6 +979,89 @@ describe('DashboardCockpit', () => {
       '/handoff?filter=comments&context=dashboard_home',
     );
     expect(within(comments).getAllByRole('link', { name: '開く' })).toHaveLength(2);
+  });
+
+  it('does not present an incomplete empty comment prefix as a true empty state', () => {
+    const comments = buildCommentsFixture();
+    mockDashboardQueries({
+      comments: {
+        data: {
+          ...comments,
+          comments: [],
+          comments_count_basis: 'bounded_assignment_scan',
+          comments_scope_complete: false,
+          comments_scanned_count: 160,
+          comments_total_count: 0,
+          comments_visible_count: 0,
+          comments_hidden_count: 0,
+        },
+      },
+    });
+
+    render(<DashboardCockpit />);
+
+    const panel = screen.getByTestId('dashboard-comments-panel');
+    expect(
+      within(panel).getByText(
+        'この表示範囲ではコメントを確認できませんでした。ハンドオフですべて確認できます。',
+      ),
+    ).toBeTruthy();
+    expect(within(panel).queryByText('直近のコメントはありません。')).toBeNull();
+    expect(
+      within(panel)
+        .getByRole('link', { name: 'さらにコメントをハンドオフで見る' })
+        .getAttribute('href'),
+    ).toBe('/handoff?filter=comments&context=dashboard_home');
+  });
+
+  it('fails safe when comment completeness metadata is missing', () => {
+    const comments = buildCommentsFixture();
+    const mixedVersionComments: Partial<DashboardCockpitCommentsResponse> = {
+      ...comments,
+      comments: [],
+      comments_total_count: 0,
+      comments_visible_count: 0,
+      comments_hidden_count: 0,
+    };
+    delete mixedVersionComments.comments_scope_complete;
+    mockDashboardQueries({
+      comments: {
+        data: mixedVersionComments as DashboardCockpitCommentsResponse,
+      },
+    });
+
+    render(<DashboardCockpit />);
+
+    const panel = screen.getByTestId('dashboard-comments-panel');
+    expect(within(panel).queryByText('直近のコメントはありません。')).toBeNull();
+    expect(
+      within(panel).getByRole('link', { name: 'さらにコメントをハンドオフで見る' }),
+    ).toBeTruthy();
+  });
+
+  it('labels an incomplete hidden comment count as a lower bound', () => {
+    const comments = buildCommentsFixture();
+    mockDashboardQueries({
+      comments: {
+        data: {
+          ...comments,
+          comments_count_basis: 'bounded_assignment_scan',
+          comments_scope_complete: false,
+          comments_scanned_count: 160,
+          comments_total_count: 7,
+          comments_visible_count: 2,
+          comments_hidden_count: 5,
+        },
+      },
+    });
+
+    render(<DashboardCockpit />);
+
+    const panel = screen.getByTestId('dashboard-comments-panel');
+    expect(
+      within(panel).getByRole('link', { name: '他5件以上をハンドオフで見る' }).getAttribute('href'),
+    ).toBe('/handoff?filter=comments&context=dashboard_home');
+    expect(within(panel).queryByRole('link', { name: '他5件をハンドオフで見る' })).toBeNull();
   });
 
   it('marks cockpit evidence as stale when the generated snapshot is older than the realtime freshness window', () => {
