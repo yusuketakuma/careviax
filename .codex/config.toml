@@ -4,8 +4,8 @@
 # can select the intended model, reasoning, service tier, and search behavior.
 # Keep PH-OS-specific behavior in AGENTS.md.
 #
-# CareViaX uses one Codex CLI seat (codex1). agmsg remains enabled for automatic
-# inbox delivery and the human control plane. Custom agents remain disabled.
+# CareViaX uses two independent Codex CLI seats (codex1 and codex2) coordinated
+# through agmsg. Project-local Codex custom agents are intentionally disabled.
 ################################################################################
 project_doc_max_bytes = 131072
 project_doc_fallback_filenames = [
