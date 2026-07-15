@@ -58,6 +58,25 @@
 
 ## 直近の作業
 
+- codex2: Round 23 API-CONTRACT-001FZDATAEXPLORERTABLEAUTH / Data Explorer table GET
+  standard auth-wrapper migration (DONE / VALIDATED / codex1 INTEGRATION WAIT, 2026-07-15).
+  - implementation / invariants:
+    `admin/data-explorer/[table]`のmanual `requireAuthContext` + route-local no-store / `unstable_rethrow` /
+    fixed 500を、同じ`canAdmin`、拒否文言、query validation、unknown-table mapping、`ctx.orgId` service call、
+    response body/statusのまま`withAuthContext`へ収束した。success/auth denial/500のsensitive no-store、
+    server-owned request/correlation headers、request auth ALS、PHI-safe fixed 500、route performance boundaryを
+    共通実装へ移管した。DB/schema、service/query、RLS、row payload、audit、external call、UIは変更していない。
+    旧route-local control-flow static entryとallowlist debtを除去し、allowlistは148→147 routes、direct callは
+    212→211、new debt 0。`Plans.md`の親`API-CONTRACT-001`実測値と直近Task IDも同期した。
+  - validation / review / remaining:
+    focused route + central auth + control-flow `3 files / 25 tests`、Data Explorer domain `7 files / 73 tests`、
+    exact ESLint/Prettier/diff、route-auth wrapper `147 routes / 211 calls / 0 new`、API response shape `0/0`、
+    authz status、DTO direct return、client JSON schema `360 backed / 0 allowlisted`、boundaries、Plans active、
+    serialized `pnpm typecheck` / `pnpm typecheck:no-unused`をPASS。codex1独立reviewもfocused `3 files / 22 tests`、
+    static gates、manual diffをPASSしseverityなしでAPPROVEした。現行STATEの通常slice方針と非視覚・
+    behavior-preserving GET wrapper移行に従いbuild/E2E/imagegenは未実行。Oracleは現行STATE禁止に従い未使用。
+    親`API-CONTRACT-001`には147 routes / 211 callsとshared correlation body/error registryが残る。
+
 - codex1: Round 22 API-CONTRACT-001FZDATAEXPLORERMODELSAUTH / Data Explorer Models standard auth-wrapper
   migration (DONE / CODE + LEDGER PUSHED, 2026-07-15; implementation `ca063b068`; ledger `877218a6d`).
   - selection / scope:

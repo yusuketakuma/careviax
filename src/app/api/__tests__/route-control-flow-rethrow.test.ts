@@ -8,7 +8,6 @@ const protectedRoutes = [
   ['patients/[id]/overview/route.ts', 1],
   ['dispense-tasks/[id]/route.ts', 1],
   ['admin/capacity/route.ts', 1],
-  ['admin/data-explorer/[table]/route.ts', 1],
   ['management-plans/[id]/route.ts', 1],
   ['qr-scan-drafts/route.ts', 2],
   ['qr-scan-drafts/[id]/route.ts', 2],

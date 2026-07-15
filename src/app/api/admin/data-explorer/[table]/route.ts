@@ -1,9 +1,7 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireAuthContext, type AuthRouteContext } from '@/lib/auth/context';
-import { internalError, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
+import { success, validationError } from '@/lib/api/response';
 import { optionalBlankableBoundedIntegerSearchParam } from '@/lib/api/validation';
 import { DATA_EXPLORER_MAX_OFFSET, listDataExplorerRows } from '@/server/services/data-explorer';
 
@@ -32,14 +30,9 @@ function findInvalidDataExplorerQueryParams(searchParams: URLSearchParams) {
 
 async function dataExplorerGET(
   req: NextRequest,
+  ctx: AuthContext,
   routeContext: AuthRouteContext<{ table: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: 'データ探索画面の利用権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-
   const { table } = await routeContext.params;
   const invalidQueryParams = findInvalidDataExplorerQueryParams(req.nextUrl.searchParams);
   if (invalidQueryParams) {
@@ -57,7 +50,7 @@ async function dataExplorerGET(
   }
 
   try {
-    const data = await listDataExplorerRows(authResult.ctx.orgId, table, parsed.data);
+    const data = await listDataExplorerRows(ctx.orgId, table, parsed.data);
     return success({ data });
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('Unknown table:')) {
@@ -67,11 +60,7 @@ async function dataExplorerGET(
   }
 }
 
-export async function GET(req: NextRequest, routeContext: AuthRouteContext<{ table: string }>) {
-  try {
-    return withSensitiveNoStore(await dataExplorerGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(dataExplorerGET, {
+  permission: 'canAdmin',
+  message: 'データ探索画面の利用権限がありません',
+});
