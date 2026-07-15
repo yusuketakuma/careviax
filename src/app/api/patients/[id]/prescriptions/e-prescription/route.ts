@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
-import { success, notFound, validationError, error, internalError } from '@/lib/api/response';
+import {
+  success,
+  notFound,
+  validationError,
+  error,
+  internalError,
+  registeredError,
+} from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
@@ -75,7 +82,7 @@ function buildEPrescriptionResponseData(input: {
 
 function ePrescriptionAdapterErrorResponse(cause: EPrescriptionAdapterError) {
   if (cause.code === 'NOT_IMPLEMENTED') {
-    return error('EPRESCRIPTION_NOT_ENABLED', '電子処方箋連携はまだ有効化されていません', 501);
+    return registeredError('EPRESCRIPTION_NOT_ENABLED', '電子処方箋連携はまだ有効化されていません');
   }
   if (cause.code === 'INVALID_CONFIGURATION') {
     return error(

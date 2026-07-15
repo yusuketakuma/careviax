@@ -86,6 +86,13 @@ describe('API error code registry', () => {
           "recoveryAction": "return_to_previous",
           "retryable": false,
         },
+        "EPRESCRIPTION_NOT_ENABLED": {
+          "httpStatus": 501,
+          "logLevel": "info",
+          "messageLabel": "api.error.e_prescription.not_enabled",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
         "EXTERNAL_ACCESS_VIEW_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",

@@ -108,6 +108,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'return_to_previous',
     messageLabel: 'api.error.endpoint.removed',
   },
+  EPRESCRIPTION_NOT_ENABLED: {
+    httpStatus: 501,
+    logLevel: 'info',
+    retryable: false,
+    recoveryAction: 'return_to_previous',
+    messageLabel: 'api.error.e_prescription.not_enabled',
+  },
   EXTERNAL_ACCESS_VIEW_AUDIT_FAILED: {
     httpStatus: 500,
     logLevel: 'error',

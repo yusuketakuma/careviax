@@ -163,11 +163,6 @@ const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
   },
   {
     filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    code: 'EPRESCRIPTION_NOT_ENABLED',
-    httpStatus: 501,
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
     code: 'EPRESCRIPTION_UPSTREAM_FAILURE',
     httpStatus: null,
   },
