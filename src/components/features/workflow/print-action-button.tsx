@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -12,7 +12,10 @@ type PrintActionButtonProps = {
 
 export function PrintActionButton({ label = '印刷', className, onPrint }: PrintActionButtonProps) {
   const [isPrinting, setIsPrinting] = useState(false);
+  const printInFlightRef = useRef(false);
   const handlePrint = async () => {
+    if (printInFlightRef.current) return;
+    printInFlightRef.current = true;
     setIsPrinting(true);
     try {
       if (onPrint) {
@@ -21,6 +24,7 @@ export function PrintActionButton({ label = '印刷', className, onPrint }: Prin
         window.print();
       }
     } finally {
+      printInFlightRef.current = false;
       setIsPrinting(false);
     }
   };

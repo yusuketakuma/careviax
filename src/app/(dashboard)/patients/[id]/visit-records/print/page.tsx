@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -156,14 +155,6 @@ export default function PatientVisitRecordsPrintPage() {
   const patient = patientQuery.data;
   const records = recordsQuery.data?.data ?? [];
   const isLoadingPrintData = orgQuery.isLoading || patientQuery.isLoading || recordsQuery.isLoading;
-  const hasPrintData = Boolean(org && patient);
-  const ready = hasPrintData && !isLoadingPrintData;
-
-  useEffect(() => {
-    if (!ready) return;
-    const timer = window.setTimeout(() => window.print(), 150);
-    return () => window.clearTimeout(timer);
-  }, [ready]);
 
   if (isBootstrappingOrg || isLoadingPrintData) {
     return <VisitRecordsPrintLoadingState />;

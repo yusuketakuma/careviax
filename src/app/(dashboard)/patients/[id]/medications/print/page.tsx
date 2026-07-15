@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -128,14 +127,6 @@ export default function MedicationPrintPage() {
   const profiles = medicationQuery.data?.data ?? [];
   const isLoadingPrintData =
     orgQuery.isLoading || patientQuery.isLoading || medicationQuery.isLoading;
-  const hasPrintData = Boolean(org && patient);
-  const ready = hasPrintData && !isLoadingPrintData;
-
-  useEffect(() => {
-    if (!ready) return;
-    const timer = window.setTimeout(() => window.print(), 150);
-    return () => window.clearTimeout(timer);
-  }, [ready]);
 
   if (isBootstrappingOrg || isLoadingPrintData) {
     return <MedicationPrintLoadingState />;

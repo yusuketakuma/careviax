@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -41,8 +41,27 @@ vi.mock('next/link', () => ({
 
 // Render the toolbar's backHref as a verifiable anchor so the nav teeth can be asserted.
 vi.mock('@/components/features/workflow/print-page-toolbar', () => ({
-  PrintPageToolbar: ({ backHref, backLabel }: { backHref: string; backLabel: string }) => (
-    <a href={backHref}>{backLabel}</a>
+  PrintPageToolbar: ({
+    backHref,
+    backLabel,
+    onPrint,
+  }: {
+    backHref: string;
+    backLabel: string;
+    onPrint?: () => void | Promise<void>;
+  }) => (
+    <header>
+      <a href={backHref}>{backLabel}</a>
+      <button
+        type="button"
+        onClick={() => {
+          if (onPrint) void onPrint();
+          else window.print();
+        }}
+      >
+        印刷
+      </button>
+    </header>
   ),
 }));
 
@@ -79,6 +98,25 @@ function mockReady(patientId = 'patient_1') {
 }
 
 describe('PatientVisitRecordsPrintPage', () => {
+  it('prints only after an explicit toolbar action when the page is ready', () => {
+    vi.useFakeTimers();
+    const printMock = vi.fn();
+    vi.stubGlobal('print', printMock);
+    mockReady();
+
+    try {
+      render(<PatientVisitRecordsPrintPage />);
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(printMock).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: '印刷' }));
+      expect(printMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('shows a visit-record print skeleton instead of a generic spinner while loading', () => {
     useParamsMock.mockReturnValue({ id: 'patient_1' });
     useOrgIdMock.mockReturnValue('org_1');

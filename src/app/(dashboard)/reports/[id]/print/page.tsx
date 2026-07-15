@@ -2,15 +2,17 @@
 
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { buildCareReportDetailResponseSchema } from '@/app/(dashboard)/reports/[id]/report-detail-response-schema';
+import type { CareReport } from '@/app/(dashboard)/reports/[id]/page';
 import { getReportPrintShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiJson } from '@/lib/api/client-json';
-import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { buildCareReportPrintAuditApiPath } from '@/lib/reports/api-paths';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildCareReportApiPath, buildCareReportPrintAuditApiPath } from '@/lib/reports/api-paths';
 import { buildReportHref } from '@/lib/reports/navigation';
 import type {
   PhysicianReportContent,
@@ -19,6 +21,8 @@ import type {
 } from '@/types/care-report-content';
 import {
   careReportPrintAuditResponseSchema,
+  isPrintableCareReportContent,
+  isPrintableCareReportType,
   type CareReportPrintAuditPrintableReport,
   type CareReportPrintAuditResponse,
 } from '@/lib/reports/care-report-print-audit-contract';
@@ -453,12 +457,12 @@ function AudienceReportPrint({ content }: { content: AudienceReportContent }) {
 
 // ─── Print page ───────────────────────────────────────────────────────────────
 
-function PrintAuditLoadingState() {
+function PrintReportLoadingState() {
   return (
     <div
       className="min-h-dvh bg-background p-6"
       role="status"
-      aria-label="報告書の印刷監査を記録中"
+      aria-label="報告書の印刷データを読み込み中"
       aria-live="polite"
     >
       <div className="mx-auto max-w-4xl space-y-5">
@@ -488,7 +492,7 @@ function PrintAuditLoadingState() {
             </section>
           ))}
         </div>
-        <span className="sr-only">報告書の印刷監査を記録中</span>
+        <span className="sr-only">報告書の印刷データを読み込み中</span>
       </div>
     </div>
   );
@@ -498,24 +502,40 @@ export default function ReportPrintPage() {
   const params = useParams<{ id: string }>();
   const reportId = params.id;
   const orgId = useOrgId();
-  const [auditRunId] = useState(() => `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const [manualPrintError, setManualPrintError] = useState<string | null>(null);
+  const currentReportRevisionRef = useRef('');
+  const reportGenerationRef = useRef(0);
+  const printRequestInFlightRef = useRef(false);
+  const isMountedRef = useRef(false);
 
-  const printAuditQuery = useQuery<
-    CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>
-  >({
-    queryKey: ['care-report-print-audit', orgId, reportId, auditRunId],
+  const reportQuery = useQuery<CareReportPrintAuditPrintableReport>({
+    queryKey: ['care-report-print-preview', orgId, reportId],
     queryFn: async () => {
-      const res = await fetch(buildCareReportPrintAuditApiPath(reportId), {
-        method: 'POST',
-        headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({ intent: 'preview_rendered' }),
+      const res = await fetch(buildCareReportApiPath(reportId), {
+        headers: buildOrgHeaders(orgId),
+        cache: 'no-store',
       });
       if (res.status === 403) throw new Error('PRINT_FORBIDDEN');
-      return readApiJson<CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>>(res, {
-        fallbackMessage: '報告書の印刷監査を記録できませんでした',
-        schema: careReportPrintAuditResponseSchema,
+      const payload = await readApiJson<{ data: CareReport }>(res, {
+        fallbackMessage: '報告書の印刷データを取得できませんでした',
+        schema: buildCareReportDetailResponseSchema(reportId),
       });
+      const report = payload.data;
+      if (report.permissions?.can_send !== true) throw new Error('PRINT_FORBIDDEN');
+      if (
+        report.status !== 'confirmed' ||
+        !report.content ||
+        !isPrintableCareReportType(report.report_type) ||
+        !isPrintableCareReportContent(report.report_type, report.content)
+      ) {
+        throw new Error('PRINT_NOT_READY');
+      }
+      return {
+        id: report.id,
+        report_type: report.report_type,
+        updated_at: report.updated_at,
+        content: report.content,
+      };
     },
     enabled: !!orgId && !!reportId,
     retry: false,
@@ -523,73 +543,95 @@ export default function ReportPrintPage() {
     refetchOnMount: 'always',
     staleTime: 0,
   });
-  const data = printAuditQuery.data?.data.report;
-  const canRenderPrintBody =
-    printAuditQuery.data?.data.audited === true && data?.id === reportId && !!data.updated_at;
+  const data = reportQuery.data;
+  const canRenderPrintBody = data?.id === reportId && !!data.updated_at;
   const isPrintForbidden =
-    printAuditQuery.isError &&
-    printAuditQuery.error instanceof Error &&
-    printAuditQuery.error.message === 'PRINT_FORBIDDEN';
+    reportQuery.isError &&
+    reportQuery.error instanceof Error &&
+    reportQuery.error.message === 'PRINT_FORBIDDEN';
+  const reportRevisionKey = data
+    ? [reportId, data.id, data.report_type, data.updated_at].join('\u0000')
+    : [reportId, 'unavailable'].join('\u0000');
 
-  const recordPrintRequestedAudit = useCallback(async () => {
-    const expectedReportUpdatedAt = data?.updated_at;
-    if (!expectedReportUpdatedAt) {
-      setManualPrintError('印刷監査を記録できないため、再印刷できません。');
-      return false;
+  useLayoutEffect(() => {
+    if (currentReportRevisionRef.current === reportRevisionKey) return;
+    currentReportRevisionRef.current = reportRevisionKey;
+    reportGenerationRef.current += 1;
+    setManualPrintError(null);
+  }, [reportRevisionKey]);
+
+  useLayoutEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      currentReportRevisionRef.current = 'unmounted';
+      reportGenerationRef.current += 1;
+    };
+  }, []);
+
+  const handleManualPrint = useCallback(async () => {
+    if (printRequestInFlightRef.current) return;
+    if (!data || !canRenderPrintBody) {
+      if (isMountedRef.current) {
+        setManualPrintError('印刷監査を記録できないため、再印刷できません。');
+      }
+      return;
     }
-    const res = await fetch(buildCareReportPrintAuditApiPath(reportId), {
-      method: 'POST',
-      headers: buildOrgJsonHeaders(orgId),
-      body: JSON.stringify({
-        intent: 'print_requested',
-        expected_report_updated_at: expectedReportUpdatedAt,
-      }),
-    });
-    if (res.status === 403) {
-      setManualPrintError('印刷権限がないため、再印刷できません。');
-      return false;
-    }
+
+    printRequestInFlightRef.current = true;
+    const expectedReportId = data.id;
+    const expectedReportUpdatedAt = data.updated_at;
+    const expectedRevisionKey = reportRevisionKey;
+    const expectedGeneration = reportGenerationRef.current;
+    const isRequestCurrent = () =>
+      isMountedRef.current &&
+      currentReportRevisionRef.current === expectedRevisionKey &&
+      reportGenerationRef.current === expectedGeneration;
+    const setCurrentError = (message: string) => {
+      if (isRequestCurrent()) setManualPrintError(message);
+    };
+
+    setManualPrintError(null);
     try {
+      const res = await fetch(buildCareReportPrintAuditApiPath(expectedReportId), {
+        method: 'POST',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify({
+          intent: 'print_requested',
+          expected_report_updated_at: expectedReportUpdatedAt,
+        }),
+      });
+      if (res.status === 403) {
+        setCurrentError('印刷権限がないため、再印刷できません。');
+        return;
+      }
       const audit = await readApiJson<CareReportPrintAuditResponse>(res, {
         fallbackMessage: '印刷監査を記録できないため、再印刷できません。',
         schema: careReportPrintAuditResponseSchema,
       });
-      if (audit.data.audited !== true || !audit.data.report || audit.data.report.id !== reportId) {
-        setManualPrintError('印刷監査を記録できないため、再印刷できません。');
-        return false;
+      if (
+        audit.data.audited !== true ||
+        !audit.data.report ||
+        audit.data.report.id !== expectedReportId
+      ) {
+        setCurrentError('印刷監査を記録できないため、再印刷できません。');
+        return;
       }
       if (audit.data.report.updated_at !== expectedReportUpdatedAt) {
-        setManualPrintError('印刷前に報告書が更新されました。再読み込みしてください。');
-        return false;
+        setCurrentError('印刷前に報告書が更新されました。再読み込みしてください。');
+        return;
       }
+      if (!isRequestCurrent()) return;
+      window.print();
     } catch {
-      setManualPrintError('印刷監査を記録できないため、再印刷できません。');
-      return false;
+      setCurrentError('印刷監査を記録できないため、再印刷できません。');
+    } finally {
+      printRequestInFlightRef.current = false;
     }
-    return true;
-  }, [data?.updated_at, orgId, reportId]);
+  }, [canRenderPrintBody, data, orgId, reportRevisionKey]);
 
-  // Auto-print after authorized data loads
-  useEffect(() => {
-    if (!data || !canRenderPrintBody) return;
-    const timer = setTimeout(() => {
-      void (async () => {
-        setManualPrintError(null);
-        const audited = await recordPrintRequestedAudit();
-        if (audited) window.print();
-      })();
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [canRenderPrintBody, data, recordPrintRequestedAudit]);
-
-  const handleManualPrint = async () => {
-    setManualPrintError(null);
-    const audited = await recordPrintRequestedAudit();
-    if (audited) window.print();
-  };
-
-  if (printAuditQuery.isLoading) {
-    return <PrintAuditLoadingState />;
+  if (reportQuery.isLoading) {
+    return <PrintReportLoadingState />;
   }
 
   if (isPrintForbidden) {
@@ -608,7 +650,7 @@ export default function ReportPrintPage() {
     );
   }
 
-  if (printAuditQuery.isError || !data || !canRenderPrintBody) {
+  if (reportQuery.isError || !data || !canRenderPrintBody) {
     return (
       <div className="flex min-h-dvh items-center justify-center p-6">
         <div
@@ -616,10 +658,10 @@ export default function ReportPrintPage() {
           className="max-w-md space-y-2 rounded-md border border-border/70 bg-card p-4"
         >
           <h1 className="text-base font-semibold text-foreground">
-            印刷監査を記録できませんでした
+            印刷データを取得できませんでした
           </h1>
           <p className="text-sm text-muted-foreground">
-            監査記録を保存できないため、報告書の印刷ビューは表示できません。
+            報告書の内容を安全に確認できないため、印刷ビューは表示できません。
           </p>
         </div>
       </div>

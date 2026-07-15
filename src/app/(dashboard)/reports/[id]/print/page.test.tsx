@@ -3,7 +3,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { stubJsonFetch } from '@/test/fetch-test-utils';
@@ -107,55 +107,96 @@ const familyShareContent = {
 
 const REPORT_UPDATED_AT_ISO = '2026-05-12T00:00:00.000Z';
 
-function mockReportQueries(
-  auditState: 'success' | 'loading' | 'error' | 'forbidden' = 'success',
-  reportOverride: Partial<{
-    id: string;
-    report_type: string;
-    updated_at: string;
-    pharmacy_name: string;
-    content: unknown;
-  }> = {},
-) {
-  useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
-    const queryScope = options.queryKey?.[0];
-    if (queryScope === 'care-report-print-audit') {
-      return {
-        data:
-          auditState === 'success'
-            ? {
-                data: {
-                  audited: true,
-                  report: {
-                    id: 'report_1',
-                    report_type: 'physician_report',
-                    updated_at: REPORT_UPDATED_AT_ISO,
-                    pharmacy_name: '青葉薬局',
-                    content: physicianContent,
-                    ...reportOverride,
-                  },
-                },
-              }
-            : undefined,
-        isLoading: auditState === 'loading',
-        isError: auditState === 'error' || auditState === 'forbidden',
-        isSuccess: auditState === 'success',
-        error: auditState === 'forbidden' ? new Error('PRINT_FORBIDDEN') : new Error('failed'),
-      };
-    }
+type PreviewReport = {
+  id: string;
+  report_type: string;
+  updated_at: string;
+  content: unknown;
+};
 
-    throw new Error(`unexpected query scope: ${String(queryScope)}`);
-  });
+type QueryOptions = {
+  enabled?: boolean;
+  queryFn?: () => Promise<unknown>;
+  queryKey?: unknown[];
+};
+
+function previewReport(overrides: Partial<PreviewReport> = {}): PreviewReport {
+  return {
+    id: 'report_1',
+    report_type: 'physician_report',
+    updated_at: REPORT_UPDATED_AT_ISO,
+    content: physicianContent,
+    ...overrides,
+  };
 }
 
-function findPrintAuditQueryOptions() {
+function reportDetailResponse(reportId: string, overrides: Record<string, unknown> = {}) {
+  return {
+    data: {
+      id: reportId,
+      patient_id: 'patient_1',
+      case_id: null,
+      visit_record_id: null,
+      report_type: 'physician_report',
+      status: 'confirmed',
+      content: physicianContent,
+      template_id: null,
+      pdf_url: null,
+      created_by: 'user_1',
+      created_at: '2026-05-11T00:00:00.000Z',
+      updated_at: REPORT_UPDATED_AT_ISO,
+      delivery_records: [],
+      patient_summary: null,
+      visit_summary: null,
+      intake_baseline_context: null,
+      permissions: {
+        can_edit: false,
+        can_send: true,
+        can_create_external_share: false,
+        can_create_followup_task: false,
+        can_view_patient: false,
+        can_view_related_requests: false,
+      },
+      delivery_rule_suggestion: null,
+      external_professional_suggestions: [],
+      prescriber_institution_suggestion: null,
+      ...overrides,
+    },
+  };
+}
+
+function printAuditResponse(report = previewReport(), audited = true) {
+  return { data: { audited, report } };
+}
+
+function mockReportQuery(
+  state: 'success' | 'loading' | 'error' | 'forbidden' = 'success',
+  initialReport = previewReport(),
+) {
+  let currentReport = initialReport;
+  useQueryMock.mockImplementation((options: QueryOptions) => {
+    if (options.queryKey?.[0] !== 'care-report-print-preview') {
+      throw new Error(`unexpected query scope: ${String(options.queryKey?.[0])}`);
+    }
+    return {
+      data: state === 'success' ? currentReport : undefined,
+      isLoading: state === 'loading',
+      isError: state === 'error' || state === 'forbidden',
+      error: state === 'forbidden' ? new Error('PRINT_FORBIDDEN') : new Error('failed'),
+    };
+  });
+  return {
+    setReport(nextReport: PreviewReport) {
+      currentReport = nextReport;
+    },
+  };
+}
+
+function findReportQueryOptions() {
   const call = useQueryMock.mock.calls.find(
-    ([options]) =>
-      (options as { queryKey?: unknown[] }).queryKey?.[0] === 'care-report-print-audit',
+    ([options]) => (options as QueryOptions).queryKey?.[0] === 'care-report-print-preview',
   );
-  return call?.[0] as
-    | { enabled?: boolean; queryFn?: () => Promise<unknown>; queryKey?: unknown[] }
-    | undefined;
+  return call?.[0] as QueryOptions | undefined;
 }
 
 function expectNoRawUrlControlChars(url: string, rawId: string) {
@@ -163,6 +204,24 @@ function expectNoRawUrlControlChars(url: string, rawId: string) {
   expect(url).not.toContain('?');
   expect(url).not.toContain('#');
   expect(url).not.toContain('%25');
+}
+
+function deferredResponse() {
+  let resolveResponse: ((response: Response) => void) | undefined;
+  const response = new Promise<Response>((resolve) => {
+    resolveResponse = resolve;
+  });
+  return {
+    response,
+    resolve(body: unknown, status = 200) {
+      resolveResponse?.(
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    },
+  };
 }
 
 describe('ReportPrintPage', () => {
@@ -178,145 +237,29 @@ describe('ReportPrintPage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('auto-prints after recording a print-requested audit for an authorized report', async () => {
-    mockReportQueries();
-    const fetchMock = stubJsonFetch({
-      data: {
-        audited: true,
-        report: {
-          id: 'report_1',
-          report_type: 'physician_report',
-          updated_at: REPORT_UPDATED_AT_ISO,
-          content: physicianContent,
-        },
-      },
-    });
+  it('never audits or prints on ready, timer advance, reload, or remount', () => {
+    mockReportQuery();
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
 
-    render(<ReportPrintPage />);
-
+    const firstRender = render(<ReportPrintPage />);
     expect(screen.getByTestId('print-layout')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(printMock).not.toHaveBeenCalled();
 
-    await act(async () => {
-      vi.advanceTimersByTime(1000);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
-      method: 'POST',
-      headers: buildOrgJsonHeaders('org_1'),
-      body: JSON.stringify({
-        intent: 'print_requested',
-        expected_report_updated_at: REPORT_UPDATED_AT_ISO,
-      }),
-    });
-    expect(printMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('blocks direct print URLs when the role cannot send reports', () => {
-    mockReportQueries('forbidden');
-
+    firstRender.unmount();
     render(<ReportPrintPage />);
-
-    expect(screen.getByRole('heading', { name: '印刷権限がありません' })).toBeTruthy();
-    expect(screen.queryByTestId('print-layout')).toBeNull();
-
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(printMock).not.toHaveBeenCalled();
-    expect(findPrintAuditQueryOptions()?.enabled).toBe(true);
   });
 
-  it('posts the print audit request for authorized print URLs', async () => {
-    mockReportQueries();
-    const fetchMock = stubJsonFetch({
-      data: {
-        audited: true,
-        report: {
-          id: 'report_1',
-          report_type: 'physician_report',
-          updated_at: REPORT_UPDATED_AT_ISO,
-          content: physicianContent,
-        },
-      },
-    });
+  it('records one print_requested audit immediately before an explicit print', async () => {
+    mockReportQuery();
+    const fetchMock = stubJsonFetch(printAuditResponse());
 
     render(<ReportPrintPage />);
-
-    const printAuditQueryOptions = findPrintAuditQueryOptions();
-    expect(printAuditQueryOptions?.enabled).toBe(true);
-    expect(printAuditQueryOptions?.queryKey).toEqual([
-      'care-report-print-audit',
-      'org_1',
-      'report_1',
-      expect.any(String),
-    ]);
-    await expect(printAuditQueryOptions?.queryFn?.()).resolves.toMatchObject({
-      data: { audited: true, report: { id: 'report_1' } },
-    });
-    expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
-      method: 'POST',
-      headers: buildOrgJsonHeaders('org_1'),
-      body: JSON.stringify({ intent: 'preview_rendered' }),
-    });
-  });
-
-  it('encodes hostile report ids only in the preview print-audit URL', async () => {
-    const hostileReportId = 'report/1?x=y#z';
-    const expectedUrl = `/api/care-reports/${encodeURIComponent(hostileReportId)}/print-audit`;
-    useParamsMock.mockReturnValue({ id: hostileReportId });
-    mockReportQueries('success', { id: hostileReportId });
-    const fetchMock = stubJsonFetch({
-      data: {
-        audited: true,
-        report: {
-          id: hostileReportId,
-          report_type: 'physician_report',
-          updated_at: REPORT_UPDATED_AT_ISO,
-          content: physicianContent,
-        },
-      },
-    });
-
-    render(<ReportPrintPage />);
-
-    const printAuditQueryOptions = findPrintAuditQueryOptions();
-    expect(printAuditQueryOptions?.queryKey).toEqual([
-      'care-report-print-audit',
-      'org_1',
-      hostileReportId,
-      expect.any(String),
-    ]);
-    await expect(printAuditQueryOptions?.queryFn?.()).resolves.toMatchObject({
-      data: { audited: true, report: { id: hostileReportId } },
-    });
-    expect(fetchMock).toHaveBeenCalledWith(expectedUrl, {
-      method: 'POST',
-      headers: buildOrgJsonHeaders('org_1'),
-      body: JSON.stringify({ intent: 'preview_rendered' }),
-    });
-    expectNoRawUrlControlChars(expectedUrl, hostileReportId);
-  });
-
-  it('records a fresh print audit before manual print actions', async () => {
-    mockReportQueries();
-    const fetchMock = stubJsonFetch({
-      data: {
-        audited: true,
-        report: {
-          id: 'report_1',
-          report_type: 'physician_report',
-          updated_at: REPORT_UPDATED_AT_ISO,
-          content: physicianContent,
-        },
-      },
-    });
-
-    render(<ReportPrintPage />);
-
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
       await Promise.resolve();
@@ -332,33 +275,263 @@ describe('ReportPrintPage', () => {
         expected_report_updated_at: REPORT_UPDATED_AT_ISO,
       }),
     });
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain('preview_rendered');
     expect(printMock).toHaveBeenCalledTimes(1);
   });
 
-  it('encodes hostile report ids for manual print audits and the detail back link', async () => {
+  it('latches rapid duplicate print actions while the audit is pending', async () => {
+    mockReportQuery();
+    const deferred = deferredResponse();
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(deferred.response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ReportPrintPage />);
+    const button = screen.getByRole('button', { name: '手動印刷' });
+    fireEvent.click(button);
+    fireEvent.click(button, { detail: 0 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(printMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      deferred.resolve(printAuditResponse());
+      await deferred.response;
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(printMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks print when the audit request fails', async () => {
+    mockReportQuery();
+    stubJsonFetch({ code: 'PRINT_AUDIT_FAILED' }, 500);
+
+    render(<ReportPrintPage />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      '印刷監査を記録できないため、再印刷できません。',
+    );
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks print when the audit response is false or malformed', async () => {
+    mockReportQuery();
+    const fetchMock = stubJsonFetch(printAuditResponse(previewReport(), false));
+
+    render(<ReportPrintPage />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(printMock).not.toHaveBeenCalled();
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: { audited: true } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks print when the audited report version differs from the displayed version', async () => {
+    mockReportQuery();
+    stubJsonFetch(printAuditResponse(previewReport({ updated_at: '2026-05-12T00:05:00.000Z' })));
+
+    render(<ReportPrintPage />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      '印刷前に報告書が更新されました。再読み込みしてください。',
+    );
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('invalidates a pending audit when the displayed source revision changes', async () => {
+    const query = mockReportQuery();
+    const deferred = deferredResponse();
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockReturnValue(deferred.response));
+    const view = render(<ReportPrintPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
+    query.setReport(
+      previewReport({
+        updated_at: '2026-05-12T00:10:00.000Z',
+        content: { ...physicianContent, assessment: '更新後の報告書' },
+      }),
+    );
+    view.rerender(<ReportPrintPage />);
+
+    await act(async () => {
+      deferred.resolve(printAuditResponse());
+      await deferred.response;
+      await Promise.resolve();
+    });
+    expect(screen.getByText('更新後の報告書')).toBeTruthy();
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('invalidates a pending audit when the print page unmounts', async () => {
+    mockReportQuery();
+    const deferred = deferredResponse();
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockReturnValue(deferred.response));
+    const view = render(<ReportPrintPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
+    view.unmount();
+    await act(async () => {
+      deferred.resolve(printAuditResponse());
+      await deferred.response;
+      await Promise.resolve();
+    });
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('loads an exact confirmed report with GET and never posts preview_rendered', async () => {
+    const hostileReportId = 'report/1?x=y#z';
+    const expectedUrl = `/api/care-reports/${encodeURIComponent(hostileReportId)}`;
+    useParamsMock.mockReturnValue({ id: hostileReportId });
+    mockReportQuery('loading');
+    const fetchMock = stubJsonFetch(reportDetailResponse(hostileReportId));
+
+    render(<ReportPrintPage />);
+    const queryOptions = findReportQueryOptions();
+    expect(queryOptions?.queryKey).toEqual(['care-report-print-preview', 'org_1', hostileReportId]);
+    await expect(queryOptions?.queryFn?.()).resolves.toMatchObject({ id: hostileReportId });
+    expect(fetchMock).toHaveBeenCalledWith(expectedUrl, {
+      headers: buildOrgHeaders('org_1'),
+      cache: 'no-store',
+    });
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain('preview_rendered');
+    expectNoRawUrlControlChars(expectedUrl, hostileReportId);
+  });
+
+  it('fails the source query closed when can_send is false', async () => {
+    mockReportQuery('loading');
+    stubJsonFetch(
+      reportDetailResponse('report_1', {
+        permissions: {
+          can_edit: true,
+          can_send: false,
+          can_create_external_share: false,
+          can_create_followup_task: false,
+          can_view_patient: false,
+          can_view_related_requests: false,
+        },
+      }),
+    );
+
+    render(<ReportPrintPage />);
+    await expect(findReportQueryOptions()?.queryFn?.()).rejects.toThrow('PRINT_FORBIDDEN');
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('fails the source query closed for an unconfirmed report', async () => {
+    mockReportQuery('loading');
+    stubJsonFetch(reportDetailResponse('report_1', { status: 'draft' }));
+
+    render(<ReportPrintPage />);
+    await expect(findReportQueryOptions()?.queryFn?.()).rejects.toThrow('PRINT_NOT_READY');
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a mismatched report id through the exact detail response schema', async () => {
+    mockReportQuery('loading');
+    stubJsonFetch(reportDetailResponse('report_other'));
+
+    render(<ReportPrintPage />);
+    await expect(findReportQueryOptions()?.queryFn?.()).rejects.toThrow(
+      '報告書の印刷データを取得できませんでした',
+    );
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['.', '..'])('rejects exact dot report ids before source fetch: %s', async (reportId) => {
+    useParamsMock.mockReturnValue({ id: reportId });
+    mockReportQuery('loading');
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ReportPrintPage />);
+    await expect(findReportQueryOptions()?.queryFn?.()).rejects.toThrow(RangeError);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks the print surface when the current role cannot send reports', () => {
+    mockReportQuery('forbidden');
+    render(<ReportPrintPage />);
+
+    expect(screen.getByRole('heading', { name: '印刷権限がありません' })).toBeTruthy();
+    expect(screen.queryByTestId('print-layout')).toBeNull();
+    expect(screen.queryByRole('button', { name: '手動印刷' })).toBeNull();
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('shows a data-loading skeleton without exposing report content or print controls', () => {
+    mockReportQuery('loading');
+    render(<ReportPrintPage />);
+
+    expect(screen.getByRole('status', { name: '報告書の印刷データを読み込み中' })).toBeTruthy();
+    expect(screen.queryByText('佐藤 花子 様')).toBeNull();
+    expect(screen.queryByText('服薬管理は安定しています')).toBeNull();
+    expect(screen.queryByRole('button', { name: '手動印刷' })).toBeNull();
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('does not render report content when the exact source query fails', () => {
+    mockReportQuery('error');
+    render(<ReportPrintPage />);
+
+    expect(screen.getByRole('heading', { name: '印刷データを取得できませんでした' })).toBeTruthy();
+    expect(screen.queryByTestId('print-layout')).toBeNull();
+    expect(screen.queryByText('佐藤 花子 様')).toBeNull();
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('renders the authorized family-share body without emitting an audit', () => {
+    mockReportQuery(
+      'success',
+      previewReport({ report_type: 'family_share', content: familyShareContent }),
+    );
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ReportPrintPage />);
+    expect(screen.getByRole('heading', { name: 'ご家族向け服薬情報共有' })).toBeTruthy();
+    expect(screen.getByText('佐藤 花子 様')).toBeTruthy();
+    expect(screen.getByText('今日の要点')).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('encodes the report id for explicit audit and detail navigation', async () => {
     const hostileReportId = 'report/1?x=y#z';
     const expectedAuditUrl = `/api/care-reports/${encodeURIComponent(hostileReportId)}/print-audit`;
     const expectedBackHref = buildReportHref(hostileReportId);
     useParamsMock.mockReturnValue({ id: hostileReportId });
-    mockReportQueries('success', { id: hostileReportId });
-    const fetchMock = stubJsonFetch({
-      data: {
-        audited: true,
-        report: {
-          id: hostileReportId,
-          report_type: 'physician_report',
-          updated_at: REPORT_UPDATED_AT_ISO,
-          content: physicianContent,
-        },
-      },
-    });
+    mockReportQuery('success', previewReport({ id: hostileReportId }));
+    const fetchMock = stubJsonFetch(printAuditResponse(previewReport({ id: hostileReportId })));
 
     render(<ReportPrintPage />);
-
-    const backLink = screen.getByRole('link', { name: '報告書詳細へ戻る' });
-    expect(backLink.getAttribute('href')).toBe(expectedBackHref);
-    expectNoRawUrlControlChars(expectedBackHref, hostileReportId);
-
+    expect(screen.getByRole('link', { name: '報告書詳細へ戻る' }).getAttribute('href')).toBe(
+      expectedBackHref,
+    );
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
       await Promise.resolve();
@@ -374,259 +547,7 @@ describe('ReportPrintPage', () => {
       }),
     });
     expectNoRawUrlControlChars(expectedAuditUrl, hostileReportId);
+    expectNoRawUrlControlChars(expectedBackHref, hostileReportId);
     expect(printMock).toHaveBeenCalledTimes(1);
   });
-
-  it('blocks manual print when a fresh print audit cannot be recorded', async () => {
-    mockReportQueries();
-    stubJsonFetch({ code: 'PRINT_AUDIT_FAILED' }, 500);
-
-    render(<ReportPrintPage />);
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(screen.getByRole('alert').textContent).toContain(
-      '印刷監査を記録できないため、再印刷できません。',
-    );
-    expect(printMock).not.toHaveBeenCalled();
-  });
-
-  it('blocks manual print when a fresh print audit response is not audited', async () => {
-    mockReportQueries();
-    stubJsonFetch({
-      data: {
-        audited: false,
-        report: {
-          id: 'report_1',
-          report_type: 'physician_report',
-          content: physicianContent,
-        },
-      },
-    });
-
-    render(<ReportPrintPage />);
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(screen.getByRole('alert').textContent).toContain(
-      '印刷監査を記録できないため、再印刷できません。',
-    );
-    expect(printMock).not.toHaveBeenCalled();
-  });
-
-  it('blocks manual print when a fresh print audit success response is malformed', async () => {
-    mockReportQueries();
-    stubJsonFetch({ data: { audited: true } });
-
-    render(<ReportPrintPage />);
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(screen.getByRole('alert').textContent).toContain(
-      '印刷監査を記録できないため、再印刷できません。',
-    );
-    expect(printMock).not.toHaveBeenCalled();
-  });
-
-  it('blocks manual print when the fresh print audit response is for another report', async () => {
-    mockReportQueries();
-    stubJsonFetch({
-      data: {
-        audited: true,
-        report: {
-          id: 'report_other',
-          report_type: 'physician_report',
-          content: physicianContent,
-        },
-      },
-    });
-
-    render(<ReportPrintPage />);
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(screen.getByRole('alert').textContent).toContain(
-      '印刷監査を記録できないため、再印刷できません。',
-    );
-    expect(printMock).not.toHaveBeenCalled();
-  });
-
-  it('blocks manual print when the report changed after preview audit', async () => {
-    mockReportQueries();
-    const fetchMock = stubJsonFetch({
-      data: {
-        audited: true,
-        report: {
-          id: 'report_1',
-          report_type: 'physician_report',
-          updated_at: '2026-05-12T00:05:00.000Z',
-          content: physicianContent,
-        },
-      },
-    });
-
-    render(<ReportPrintPage />);
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
-      method: 'POST',
-      headers: buildOrgJsonHeaders('org_1'),
-      body: JSON.stringify({
-        intent: 'print_requested',
-        expected_report_updated_at: REPORT_UPDATED_AT_ISO,
-      }),
-    });
-    expect(screen.getByRole('alert').textContent).toContain(
-      '印刷前に報告書が更新されました。再読み込みしてください。',
-    );
-    expect(printMock).not.toHaveBeenCalled();
-  });
-
-  it('uses a fresh print audit query key for each direct print page mount', () => {
-    mockReportQueries();
-    const firstRender = render(<ReportPrintPage />);
-    const firstKey = findPrintAuditQueryOptions()?.queryKey;
-    expect(firstKey).toEqual(['care-report-print-audit', 'org_1', 'report_1', expect.any(String)]);
-
-    firstRender.unmount();
-    vi.clearAllMocks();
-    mockReportQueries();
-    render(<ReportPrintPage />);
-
-    const secondKey = findPrintAuditQueryOptions()?.queryKey;
-    expect(secondKey).toEqual(['care-report-print-audit', 'org_1', 'report_1', expect.any(String)]);
-    expect(secondKey?.[3]).not.toBe(firstKey?.[3]);
-  });
-
-  it('does not render or print while the print audit is still being recorded', () => {
-    mockReportQueries('loading');
-
-    render(<ReportPrintPage />);
-
-    expect(screen.getByRole('status', { name: '報告書の印刷監査を記録中' })).toBeTruthy();
-    expect(screen.queryByRole('status', { name: '印刷監査を記録中...' })).toBeNull();
-    expect(screen.queryByText('印刷監査を記録中...')).toBeNull();
-    expect(screen.queryByTestId('print-layout')).toBeNull();
-    expect(screen.queryByText('佐藤 花子 様')).toBeNull();
-    expect(screen.queryByText('服薬管理は安定しています')).toBeNull();
-    expect(screen.queryByRole('button', { name: '手動印刷' })).toBeNull();
-
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-
-    expect(printMock).not.toHaveBeenCalled();
-  });
-
-  it('renders family share print bodies through the audited print response', () => {
-    mockReportQueries('success', {
-      report_type: 'family_share',
-      content: familyShareContent,
-    });
-
-    render(<ReportPrintPage />);
-
-    expect(screen.getByTestId('print-layout')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'ご家族向け服薬情報共有' })).toBeTruthy();
-    expect(screen.getByText('佐藤 花子 様')).toBeTruthy();
-    expect(screen.getByText('今日の要点')).toBeTruthy();
-    expect(screen.getByText('服薬状況')).toBeTruthy();
-    expect(screen.getByText('継続確認')).toBeTruthy();
-  });
-
-  it('does not render or print when the print audit fails', () => {
-    mockReportQueries('error');
-
-    render(<ReportPrintPage />);
-
-    expect(screen.getByRole('heading', { name: '印刷監査を記録できませんでした' })).toBeTruthy();
-    expect(screen.queryByTestId('print-layout')).toBeNull();
-
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-
-    expect(printMock).not.toHaveBeenCalled();
-  });
-
-  it('does not render or print when the preview audit response is for another report', () => {
-    mockReportQueries('success', {
-      id: 'report_other',
-      content: { ...physicianContent, assessment: '別報告書として返された監査本文' },
-    });
-
-    render(<ReportPrintPage />);
-
-    expect(screen.getByRole('heading', { name: '印刷監査を記録できませんでした' })).toBeTruthy();
-    expect(screen.queryByTestId('print-layout')).toBeNull();
-    expect(screen.queryByText('別報告書として返された監査本文')).toBeNull();
-
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-
-    expect(printMock).not.toHaveBeenCalled();
-  });
-
-  it.each(['.', '..'])(
-    'rejects preview print-audit query before fetch for exact dot report id %s',
-    async (reportId) => {
-      useParamsMock.mockReturnValue({ id: reportId });
-      mockReportQueries('loading');
-      const fetchMock = vi.fn<typeof fetch>();
-      vi.stubGlobal('fetch', fetchMock);
-
-      render(<ReportPrintPage />);
-
-      const printAuditQueryOptions = findPrintAuditQueryOptions();
-      expect(printAuditQueryOptions?.queryKey).toEqual([
-        'care-report-print-audit',
-        'org_1',
-        reportId,
-        expect.any(String),
-      ]);
-      await expect(printAuditQueryOptions?.queryFn?.()).rejects.toThrow(RangeError);
-      expect(fetchMock).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each(['.', '..'])(
-    'fails closed before rendering manual print controls for exact dot report id %s',
-    (reportId) => {
-      useParamsMock.mockReturnValue({ id: reportId });
-      mockReportQueries('success', { id: reportId });
-      const fetchMock = vi.fn<typeof fetch>();
-      vi.stubGlobal('fetch', fetchMock);
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      try {
-        expect(() => render(<ReportPrintPage />)).toThrow(RangeError);
-      } finally {
-        consoleErrorSpy.mockRestore();
-      }
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(printMock).not.toHaveBeenCalled();
-    },
-  );
 });

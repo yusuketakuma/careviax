@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -137,17 +136,6 @@ export default function ManagementPlanPrintPage() {
   );
   const isLoading =
     patientQuery.isLoading || planQuery.isLoading || (Boolean(planCaseId) && caseQuery.isLoading);
-  const ready =
-    Boolean(patient && plan && careCase && !hasAssociationMismatch) &&
-    !patientQuery.isLoading &&
-    !planQuery.isLoading &&
-    !caseQuery.isLoading;
-
-  useEffect(() => {
-    if (!ready) return;
-    const timer = window.setTimeout(() => window.print(), 150);
-    return () => window.clearTimeout(timer);
-  }, [ready]);
 
   if (isBootstrappingOrg || isLoading) {
     return <ManagementPlanPrintLoadingState />;
