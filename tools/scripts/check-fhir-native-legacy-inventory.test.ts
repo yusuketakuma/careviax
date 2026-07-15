@@ -37,6 +37,7 @@ type FixtureOptions = {
 type FixtureManifest = Record<string, unknown> & {
   schema_surfaces: Array<Record<string, unknown> & { owner_review?: Record<string, unknown> }>;
   tracked_prisma_delegates: Array<Record<string, unknown>>;
+  expected_prisma_accesses: string[];
   expected_raw_sql_accesses: string[];
 };
 
@@ -179,6 +180,45 @@ describe('check-fhir-native-legacy-inventory', () => {
     expect(() => runCheck(root)).toThrow(/unclassified Prisma operation/);
   });
 
+  it('inventories aliased, destructured, and optional Prisma access and rejects dynamic lookup', () => {
+    const root = createFixture({
+      files: {
+        [SOURCE_PATH]: `
+          const patientAlias = db.patient;
+          const { patient: destructuredPatient } = db;
+          await patientAlias.findMany({});
+          await destructuredPatient.update({ where: { id: 'patient_1' }, data: {} });
+          await db.patient?.findFirst({ where: { id: 'patient_1' } });
+        `,
+      },
+    });
+    const manifest = readManifest(root);
+    expect(manifest.expected_prisma_accesses).toEqual([
+      `${SOURCE_PATH}|patient|findFirst|optional|1`,
+      `${SOURCE_PATH}|patient|findMany|alias|1`,
+      `${SOURCE_PATH}|patient|update|destructured|1`,
+    ]);
+
+    writeRepoFile(
+      root,
+      SOURCE_PATH,
+      `const delegateName = 'patient'; await db[delegateName].findMany({});\n`,
+    );
+    expect(() => runCheck(root)).toThrow(
+      /dynamic Prisma delegate access is not statically classified/,
+    );
+    expect(() => runCheck(root, ['--require-zero'])).toThrow(
+      /dynamic Prisma delegate access is not statically classified/,
+    );
+  });
+
+  it('rejects unclassified operations invoked through a Prisma delegate alias', () => {
+    const root = createFixture();
+    writeRepoFile(root, SOURCE_PATH, 'const patients = db.patient; await patients.archive({});\n');
+
+    expect(() => runCheck(root)).toThrow(/unclassified Prisma operation/);
+  });
+
   it('detects duplicate schema and delegate classifications', () => {
     const root = createFixture();
     const manifest = readManifest(root);
@@ -212,6 +252,23 @@ describe('check-fhir-native-legacy-inventory', () => {
       `,
     );
     expect(() => runCheck(root)).toThrow(/raw SQL inventory drift detected/);
+  });
+
+  it('fails closed for unresolved raw SQL calls without an explicit dynamic code surface', () => {
+    for (const source of [
+      `const sql = Prisma.sql\`DELETE FROM "Patient" WHERE "id" = \${patientId}\`;\nawait db.$executeRaw(sql);\n`,
+      `const sqlText = 'SELECT * FROM "Patient"';\nawait db.$queryRawUnsafe(sqlText);\n`,
+    ]) {
+      const root = createFixture();
+      writeRepoFile(root, SOURCE_PATH, source);
+
+      expect(() => runCheck(root)).toThrow(
+        /unresolved raw SQL call lacks an explicit dynamic code surface/,
+      );
+      expect(() => runCheck(root, ['--require-zero'])).toThrow(
+        /unresolved raw SQL call lacks an explicit dynamic code surface/,
+      );
+    }
   });
 
   it('fails when exported DTO or contract symbols drift', () => {

@@ -2456,6 +2456,7 @@
     "src/server/services/case-risk-cockpit.ts|visitSchedule|findMany|dot|1",
     "src/server/services/case-risk-task-sync.ts|task|findMany|dot|1",
     "src/server/services/case-risk-task-sync.ts|task|updateMany|dot|1",
+    "src/server/services/communication-queue.ts|careReport|findMany|optional|1",
     "src/server/services/communication-queue.ts|patient|findFirst|dot|1",
     "src/server/services/communication-queue.ts|patient|findMany|dot|1",
     "src/server/services/communication-queue.ts|task|findMany|dot|1",
@@ -2464,6 +2465,13 @@
     "src/server/services/conference-data-sync.ts|careCase|update|dot|1",
     "src/server/services/conference-data-sync.ts|visitSchedule|findFirst|dot|1",
     "src/server/services/conference-sync.ts|careCase|findFirst|dot|1",
+    "src/server/services/conference-sync.ts|careReport|create|alias|1",
+    "src/server/services/conference-sync.ts|careReport|createMany|alias|1",
+    "src/server/services/conference-sync.ts|careReport|findFirst|alias|1",
+    "src/server/services/conference-sync.ts|careReport|findMany|alias|2",
+    "src/server/services/conference-sync.ts|task|createMany|alias|1",
+    "src/server/services/conference-sync.ts|task|findMany|alias|1",
+    "src/server/services/conference-sync.ts|task|upsert|alias|1",
     "src/server/services/dashboard-assignment-scope.ts|careCase|findMany|dot|1",
     "src/server/services/dashboard-cockpit.ts|careCase|findMany|dot|1",
     "src/server/services/dashboard-cockpit.ts|careReport|count|dot|1",
@@ -2485,6 +2493,7 @@
     "src/server/services/external-access.ts|visitSchedule|findMany|dot|1",
     "src/server/services/file-storage.ts|careCase|findFirst|dot|2",
     "src/server/services/file-storage.ts|careReport|findFirst|dot|1",
+    "src/server/services/file-storage.ts|careReport|updateMany|alias|1",
     "src/server/services/file-storage.ts|patient|findFirst|dot|2",
     "src/server/services/file-storage.ts|visitRecord|findFirst|dot|1",
     "src/server/services/file-storage.ts|visitSchedule|findFirst|dot|1",
@@ -2635,6 +2644,8 @@
     "src/server/services/standard-medication-timeline.ts|medicationTimelineItem|findMany|dot|1",
     "src/server/services/task-write-guard.ts|careCase|findFirst|dot|1",
     "src/server/services/today-ops-rail.ts|visitSchedule|findMany|dot|1",
+    "src/server/services/visit-brief.ts|auditLog|count|alias|2",
+    "src/server/services/visit-brief.ts|auditLog|create|alias|1",
     "src/server/services/visit-brief.ts|careCase|findFirst|dot|1",
     "src/server/services/visit-brief.ts|careCase|findMany|dot|1",
     "src/server/services/visit-brief.ts|medicationCycle|findMany|dot|1",
@@ -3063,5 +3074,5 @@
       "disposition": "replace_at_cutover"
     }
   ],
-  "expected_inventory_sha256": "a2516fcd6406fa8b8829b99ba32117964bddb7be8a4e92988b80aef289d4ef83"
+  "expected_inventory_sha256": "ec6c0f665dedfb85bc927ca00e6e5ff1ac6356ef2a0c0d3b5631c577b63e85f6"
 }

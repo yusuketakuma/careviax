@@ -5,6 +5,8 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from '
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import ts from 'typescript';
+
 const DEFAULT_MANIFEST_PATH = 'tools/fhir-native/legacy-migration-inventory.json';
 const SOURCE_EXTENSIONS = new Set(['.cjs', '.js', '.jsx', '.mjs', '.ts', '.tsx']);
 const SKIPPED_DIRECTORIES = new Set([
@@ -41,6 +43,16 @@ const PRISMA_OPERATIONS = [...READ_OPERATIONS, ...WRITE_OPERATIONS].sort(
   (left, right) => right.length - left.length || left.localeCompare(right),
 );
 const RAW_SQL_APIS = new Set(['executeRaw', 'executeRawUnsafe', 'queryRaw', 'queryRawUnsafe']);
+const PRISMA_ACCESS_FORMS = new Set(['alias', 'bracket', 'destructured', 'dot', 'optional']);
+const PRISMA_CLIENT_HINTS = new Set([
+  'client',
+  'db',
+  'executor',
+  'prisma',
+  'reader',
+  'transaction',
+  'tx',
+]);
 const DISPOSITIONS = new Set(['remove_at_cutover', 'replace_at_cutover', 'owner_review_required']);
 const ACTIVITIES = new Set([
   'coupling',
@@ -206,9 +218,7 @@ function parsePrismaAccessEntry(value, manifest) {
     'Prisma access operation is not classified',
     [operation],
   );
-  assert(accessForm === 'dot' || accessForm === 'bracket', 'Prisma access form is invalid', [
-    accessForm,
-  ]);
+  assert(PRISMA_ACCESS_FORMS.has(accessForm), 'Prisma access form is invalid', [accessForm]);
   return {
     path: entryPath,
     delegate,
@@ -525,6 +535,198 @@ function directionForOperation(operation) {
   throw new InventoryCheckError('unclassified Prisma operation', [operation]);
 }
 
+function recordPrismaAccess(counts, relativePath, metadata, operation, accessForm) {
+  const direction = directionForOperation(operation);
+  const key = `${relativePath}\u0000${metadata.delegate}\u0000${operation}\u0000${accessForm}`;
+  const current = counts.get(key);
+  counts.set(key, {
+    path: relativePath,
+    delegate: metadata.delegate,
+    model: metadata.model,
+    operation,
+    direction,
+    access_form: accessForm,
+    disposition: metadata.disposition,
+    owner_review: metadata.owner_review ?? null,
+    count: (current?.count ?? 0) + 1,
+  });
+}
+
+function unwrapTsExpression(node) {
+  let current = node;
+  while (
+    ts.isAsExpression(current) ||
+    ts.isNonNullExpression(current) ||
+    ts.isParenthesizedExpression(current) ||
+    ts.isSatisfiesExpression(current) ||
+    ts.isTypeAssertionExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function propertyNameText(node) {
+  if (!node) return null;
+  if (ts.isIdentifier(node) || ts.isPrivateIdentifier(node)) return node.text;
+  if (ts.isStringLiteralLike(node)) return node.text;
+  return null;
+}
+
+function elementAccessName(node) {
+  return node && ts.isStringLiteralLike(node) ? node.text : null;
+}
+
+function isLikelyPrismaClientExpression(node) {
+  const expression = unwrapTsExpression(node);
+  if (ts.isIdentifier(expression)) return PRISMA_CLIENT_HINTS.has(expression.text);
+  if (ts.isPropertyAccessExpression(expression)) {
+    return (
+      (ts.isIdentifier(expression.expression) &&
+        expression.expression.text === 'args' &&
+        ['db', 'prisma', 'tx'].includes(expression.name.text)) ||
+      isLikelyPrismaClientExpression(expression.expression)
+    );
+  }
+  return false;
+}
+
+function trackedDelegateAccess(node, byDelegate) {
+  const expression = unwrapTsExpression(node);
+  if (ts.isPropertyAccessExpression(expression)) {
+    const delegate = expression.name.text;
+    if (!byDelegate.has(delegate)) return null;
+    return {
+      delegate,
+      client: expression.expression,
+      accessForm: expression.questionDotToken ? 'optional' : 'dot',
+    };
+  }
+  if (ts.isElementAccessExpression(expression)) {
+    const delegate = elementAccessName(expression.argumentExpression);
+    if (!delegate || !byDelegate.has(delegate)) return null;
+    return {
+      delegate,
+      client: expression.expression,
+      accessForm: expression.questionDotToken ? 'optional' : 'bracket',
+    };
+  }
+  return null;
+}
+
+function collectPrismaAliases(sourceFile, byDelegate) {
+  const aliases = new Map();
+
+  function visit(node) {
+    if (ts.isVariableDeclaration(node) && node.initializer) {
+      const initializer = unwrapTsExpression(node.initializer);
+      if (ts.isIdentifier(node.name)) {
+        const direct = trackedDelegateAccess(initializer, byDelegate);
+        if (direct && isLikelyPrismaClientExpression(direct.client)) {
+          aliases.set(node.name.text, { delegate: direct.delegate, accessForm: 'alias' });
+        } else if (ts.isIdentifier(initializer) && aliases.has(initializer.text)) {
+          aliases.set(node.name.text, aliases.get(initializer.text));
+        }
+      } else if (
+        ts.isObjectBindingPattern(node.name) &&
+        isLikelyPrismaClientExpression(initializer)
+      ) {
+        for (const element of node.name.elements) {
+          if (element.dotDotDotToken || !ts.isIdentifier(element.name)) continue;
+          const delegate = propertyNameText(element.propertyName ?? element.name);
+          if (!delegate || !byDelegate.has(delegate)) continue;
+          aliases.set(element.name.text, { delegate, accessForm: 'destructured' });
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return aliases;
+}
+
+function discoverIndirectPrismaAccesses(content, relativePath, byDelegate, counts) {
+  const scriptKind =
+    relativePath.endsWith('.tsx') || relativePath.endsWith('.jsx')
+      ? ts.ScriptKind.TSX
+      : relativePath.endsWith('.js') ||
+          relativePath.endsWith('.mjs') ||
+          relativePath.endsWith('.cjs')
+        ? ts.ScriptKind.JS
+        : ts.ScriptKind.TS;
+  const sourceFile = ts.createSourceFile(
+    relativePath,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKind,
+  );
+  const aliases = collectPrismaAliases(sourceFile, byDelegate);
+
+  function visit(node) {
+    if (ts.isCallExpression(node)) {
+      const called = unwrapTsExpression(node.expression);
+      if (ts.isPropertyAccessExpression(called) || ts.isElementAccessExpression(called)) {
+        const operation = ts.isPropertyAccessExpression(called)
+          ? called.name.text
+          : elementAccessName(called.argumentExpression);
+        const receiver = unwrapTsExpression(called.expression);
+        const directCandidate = trackedDelegateAccess(receiver, byDelegate);
+        const direct =
+          directCandidate && isLikelyPrismaClientExpression(directCandidate.client)
+            ? directCandidate
+            : null;
+        const alias = ts.isIdentifier(receiver) ? aliases.get(receiver.text) : null;
+
+        if (
+          ts.isElementAccessExpression(receiver) &&
+          elementAccessName(receiver.argumentExpression) === null &&
+          isLikelyPrismaClientExpression(receiver.expression)
+        ) {
+          throw new InventoryCheckError(
+            'dynamic Prisma delegate access is not statically classified',
+            [`${relativePath}:${receiver.getText(sourceFile)}`],
+          );
+        }
+
+        if (direct || alias) {
+          if (!operation || (!READ_OPERATIONS.has(operation) && !WRITE_OPERATIONS.has(operation))) {
+            throw new InventoryCheckError('unclassified Prisma operation', [
+              `${relativePath}:${direct?.delegate ?? alias.delegate}.${operation ?? '<dynamic>'}`,
+            ]);
+          }
+
+          if (alias) {
+            recordPrismaAccess(
+              counts,
+              relativePath,
+              byDelegate.get(alias.delegate),
+              operation,
+              alias.accessForm,
+            );
+          } else if (
+            direct.accessForm === 'optional' ||
+            called.questionDotToken ||
+            node.questionDotToken
+          ) {
+            recordPrismaAccess(
+              counts,
+              relativePath,
+              byDelegate.get(direct.delegate),
+              operation,
+              'optional',
+            );
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+}
+
 function assertNoUnclassifiedPrismaOperations(content, relativePath, delegate) {
   const clientHint =
     '(?:\\b(?:prisma|db|tx|reader|client|executor|transaction)|\\bargs\\s*\\.\\s*(?:prisma|db|tx))';
@@ -584,23 +786,11 @@ function discoverPrismaAccesses(repoRoot, sourceFiles, delegates) {
       for (const { accessForm, regex } of patterns) {
         for (const match of content.matchAll(regex)) {
           const operation = match[1];
-          const direction = directionForOperation(operation);
-          const key = `${relativePath}\u0000${delegate}\u0000${operation}\u0000${accessForm}`;
-          const current = counts.get(key);
-          counts.set(key, {
-            path: relativePath,
-            delegate,
-            model: metadata.model,
-            operation,
-            direction,
-            access_form: accessForm,
-            disposition: metadata.disposition,
-            owner_review: metadata.owner_review ?? null,
-            count: (current?.count ?? 0) + 1,
-          });
+          recordPrismaAccess(counts, relativePath, metadata, operation, accessForm);
         }
       }
     }
+    discoverIndirectPrismaAccesses(content, relativePath, byDelegate, counts);
   }
 
   return [...counts.values()].sort((left, right) =>
@@ -640,20 +830,24 @@ function readTemplateLiteral(content, start) {
   return null;
 }
 
-function findRawSqlTemplate(content, markerEnd) {
+function inspectRawSqlInvocation(content, markerEnd) {
   let cursor = markerEnd;
   while (/\s/.test(content[cursor] ?? '')) cursor += 1;
   cursor = skipTypeArguments(content, cursor);
   while (/\s/.test(content[cursor] ?? '')) cursor += 1;
 
-  if (content[cursor] === '`') return readTemplateLiteral(content, cursor);
-  if (content[cursor] !== '(') return null;
+  if (content[cursor] === '`') {
+    return { invoked: true, template: readTemplateLiteral(content, cursor) };
+  }
+  if (content[cursor] !== '(') return { invoked: false, template: null };
 
   const statementEnd = content.indexOf(';', cursor);
   const searchEnd = statementEnd === -1 ? content.length : statementEnd;
   const templateStart = content.indexOf('`', cursor + 1);
-  if (templateStart === -1 || templateStart >= searchEnd) return null;
-  return readTemplateLiteral(content, templateStart);
+  if (templateStart === -1 || templateStart >= searchEnd) {
+    return { invoked: true, template: null };
+  }
+  return { invoked: true, template: readTemplateLiteral(content, templateStart) };
 }
 
 function rawSqlDirection(template) {
@@ -671,14 +865,23 @@ function discoverRawSqlAccesses(repoRoot, sourceFiles, schemaSurfaces) {
     (surface) => surface.kind === 'model' && typeof surface.table_name === 'string',
   );
   const counts = new Map();
+  const unresolved = [];
 
   for (const relativePath of sourceFiles) {
     const content = readUtf8(repoRoot, relativePath, 'production source file');
     const markerPattern = /\$(queryRaw|executeRaw)(Unsafe)?\b/g;
     for (const marker of content.matchAll(markerPattern)) {
+      const markerIndex = marker.index ?? 0;
+      const prefix = content.slice(Math.max(0, markerIndex - 3), markerIndex);
+      if (!prefix.endsWith('.') && !/\[['"]$/u.test(prefix)) continue;
       const api = `${marker[1]}${marker[2] ?? ''}`;
-      const template = findRawSqlTemplate(content, (marker.index ?? 0) + marker[0].length);
-      if (!template) continue;
+      const invocation = inspectRawSqlInvocation(content, markerIndex + marker[0].length);
+      if (!invocation.invoked) continue;
+      const template = invocation.template;
+      if (!template) {
+        unresolved.push({ path: relativePath, api, marker: `$${api}` });
+        continue;
+      }
       const direction = rawSqlDirection(template.text);
       for (const metadata of models) {
         const tablePattern = new RegExp(
@@ -703,13 +906,35 @@ function discoverRawSqlAccesses(repoRoot, sourceFiles, schemaSurfaces) {
     }
   }
 
-  return [...counts.values()].sort((left, right) =>
-    [left.path, left.model, left.table, left.api, left.direction]
-      .join('\u0000')
-      .localeCompare(
-        [right.path, right.model, right.table, right.api, right.direction].join('\u0000'),
-      ),
-  );
+  return {
+    accesses: [...counts.values()].sort((left, right) =>
+      [left.path, left.model, left.table, left.api, left.direction]
+        .join('\u0000')
+        .localeCompare(
+          [right.path, right.model, right.table, right.api, right.direction].join('\u0000'),
+        ),
+    ),
+    unresolved,
+  };
+}
+
+function assertUnresolvedRawSqlCoverage(unresolved, codeSurfaces) {
+  for (const call of unresolved) {
+    const coveringSurface = codeSurfaces.find((surface) => {
+      if (
+        surface.path !== call.path ||
+        surface.category !== 'dynamic_raw_sql' ||
+        surface.activity !== 'schema_reader_writer'
+      ) {
+        return false;
+      }
+      const flags = (surface.anchor.flags ?? 'gm').replaceAll('g', '');
+      return new RegExp(surface.anchor.pattern, flags).test(call.marker);
+    });
+    assert(coveringSurface, 'unresolved raw SQL call lacks an explicit dynamic code surface', [
+      `${call.path}:${call.api}`,
+    ]);
+  }
 }
 
 function discoverExports(repoRoot, exportScopes) {
@@ -790,14 +1015,15 @@ function buildInventory(repoRoot, manifest) {
     sourceFiles,
     manifest.tracked_prisma_delegates,
   );
-  const rawSqlAccesses = discoverRawSqlAccesses(repoRoot, sourceFiles, schemaSurfaces);
+  const rawSqlDiscovery = discoverRawSqlAccesses(repoRoot, sourceFiles, schemaSurfaces);
   const codeSurfaces = inspectCodeSurfaces(repoRoot, manifest.code_surfaces);
+  assertUnresolvedRawSqlCoverage(rawSqlDiscovery.unresolved, manifest.code_surfaces);
   const exports = discoverExports(repoRoot, manifest.export_scopes);
   const calls = discoverCallSites(repoRoot, sourceFiles, manifest.call_surfaces);
   const inventory = {
     schema_surfaces: schemaSurfaces,
     prisma_accesses: prismaAccesses,
-    raw_sql_accesses: rawSqlAccesses,
+    raw_sql_accesses: rawSqlDiscovery.accesses,
     code_surfaces: codeSurfaces,
     exports,
     calls,
