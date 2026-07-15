@@ -897,6 +897,13 @@ function rawSqlDirection(template) {
     : 'read';
 }
 
+function hasDynamicRawSqlStructure(template) {
+  return (
+    /\b(?:FROM|INTO|JOIN|TABLE|UPDATE)\s+\$\{/iu.test(template) ||
+    /\$\{\s*Prisma\.raw\s*\(/u.test(template)
+  );
+}
+
 function discoverRawSqlAccesses(repoRoot, sourceFiles, schemaSurfaces) {
   const models = schemaSurfaces.filter(
     (surface) => surface.kind === 'model' && typeof surface.table_name === 'string',
@@ -920,6 +927,7 @@ function discoverRawSqlAccesses(repoRoot, sourceFiles, schemaSurfaces) {
         continue;
       }
       const direction = rawSqlDirection(template.text);
+      const hasDynamicStructure = hasDynamicRawSqlStructure(template.text);
       let matchedTrackedTable = false;
       for (const metadata of models) {
         const tablePattern = new RegExp(
@@ -942,7 +950,7 @@ function discoverRawSqlAccesses(repoRoot, sourceFiles, schemaSurfaces) {
           count: (current?.count ?? 0) + count,
         });
       }
-      if (!matchedTrackedTable) {
+      if (!matchedTrackedTable || hasDynamicStructure) {
         unresolved.push({
           path: relativePath,
           api,

@@ -264,6 +264,8 @@ describe('check-fhir-native-legacy-inventory', () => {
       `const sqlText = 'SELECT * FROM "Patient"';\nawait db.$queryRawUnsafe(sqlText, \`\${patientId}\`);\n`,
       `const tableName = '"Patient"';\nawait db.$queryRawUnsafe(\`SELECT * FROM \${tableName}\`);\n`,
       `const tableName = '"Patient"';\nawait db.$queryRawUnsafe(\`SELECT * FROM \${Prisma.raw(tableName)}\`);\n`,
+      `const tableName = '"MedicationCycle"';\nawait db.$queryRawUnsafe(\`SELECT patient.* FROM "Patient" AS patient JOIN \${tableName} AS cycle ON cycle.patient_id = patient.id\`);\n`,
+      `const tableName = '"MedicationCycle"';\nawait db.$queryRawUnsafe(\`SELECT patient.* FROM "Patient" AS patient JOIN \${Prisma.raw(tableName)} AS cycle ON cycle.patient_id = patient.id\`);\n`,
     ]) {
       const root = createFixture();
       writeRepoFile(root, SOURCE_PATH, source);
