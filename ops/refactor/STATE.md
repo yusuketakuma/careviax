@@ -8,11 +8,16 @@
 
 ## 体制（2026-07-15 最新ユーザー指示）
 
-- 現行は`codex1`が計画、実装統合、検証、単一台帳、commit/pushを一貫して所有する。ユーザーが
-  subagent利用を明示的に再有効化したため、boundedな調査・review・検証と、`codex1`がexact non-overlap pathsを
-  明示した実装にsubagentを利用できる。`codex2` / `codex3` / `codex4` / `agmsg`の旧peer運用は自動復帰させない。
-- subagentを使う場合もshared worktreeを前提に、同一pathを並列編集しない。Plans/STATE/RUN_LOCK、commit/push、
-  Next生成物、長いtype/build/E2E gateは`codex1`が直列化し、最終判断と統合責任を保持する。
+- ユーザーが`codex1` / `codex2`のpeer運用を明示的に再有効化した。両者は対等な実装担当として、live repo、test、
+  このSTATEを履歴記述より優先し、`agmsg`でexact-path ownershipと依存関係を明示してnon-overlap sliceを進める。
+  `codex3` / `codex4` / Claudeは再有効化されていない。boundedなread-only調査・review・検証subagentは利用できる。
+- `codex2`は`Plans.md`の全体管理・重複排除・優先順位・acceptance整理を独占し、明示claimしたnon-overlap Plan sliceを
+  実装できる。`codex1`は`ops/refactor/STATE.md` / `RUN_LOCK.md`、統合review、横断validation、scoped commitを所有する。
+  pushは従来どおりcurrent-taskのユーザー明示がある場合だけ行う。
+- 書込み前にowner、exact paths、依存を通知し、同一pathを並列編集しない。shared docsまたはauth/RLS/PHI/DB/billing等の
+  high-risk contract変更はproposal + peer ACKを先に取る。長いtypecheck/build/E2E、Next生成物、commitは`codex1`が直列化する。
+- peer findingはそのまま台帳化せず、主担当がlive evidence、既存Plan/STATEとの重複、reproduction、DoD、testsを再確認する。
+  意見が割れた場合は安全側で保留し、ユーザー判断または追加証拠へ戻す。
 - 既存user/harness dirtyとpeer-owned pathsを保存し、scoped commitは明示owned pathsだけをstageする。
   deploy、migration適用、production mutation、destructive operationはcurrent-taskの明示許可なしに行わない。
 - **Oracleは全agentで使用しない。** 起動、相談、status/read、reattach/restart、別model fallbackを行わず、
@@ -50,16 +55,30 @@
 
 - Goal Mode Phase A（監査スキャン）: **完了**（2026-07-03、commit 78022195）
 - Phase B（REFACTOR_PLAN v2 = BACKLOG のスコア順実装計画）: 実行中
-- Phase C（実装ループ）: `codex1`統合運用 + bounded subagents（2026-07-15〜）。`codex1`が優先順位、
-  exact-path ownership、実装統合、validation、Plans/STATE/RUN_LOCK、scoped commit/pushを直列化する。
-  subagentは明示されたnon-overlap scopeの調査・review・検証・実装だけを担当する。
+- Phase C（実装ループ）: `codex1` / `codex2` peer運用 + bounded subagents（2026-07-15〜）。`codex2`がPlans全体管理、
+  `codex1`がSTATE/RUN_LOCK・統合validation・scoped commitを担当し、両者がagmsg exact-path claimでnon-overlap実装する。
+  subagentは明示されたbounded scopeの調査・review・検証と、ownerが許可したnon-overlap実装だけを担当する。
   現在の供給源は`Plans.md`の未完了項目とlive code差分。migration、auth/RLS policy変更、full-history event projectionは
   human/high-risk gateとして実装せず、証拠付きの残件へ戻す。
 
 ## 直近の作業
 
+- codex1: Round 23 API-CONTRACT-003 / `EPRESCRIPTION_NOT_ENABLED` typed registry migration
+  (DONE / CODE COMMITTED, 2026-07-15; implementation `5520e8637`).
+  - selection / implementation / invariants:
+    e-prescription adapterの固定`NOT_IMPLEMENTED`分岐だけが、registry登録済みcodeとのraw literal overlap 1件として残っていた。
+    `EPRESCRIPTION_NOT_ENABLED`を501 / info / non-retryable / return-to-previousとしてregistryへ登録し、routeを
+    `registeredError`へ移した。wire code、固定日本語message、501、no-store、auth/assignment/RLS、adapter call、DB write 0を維持した。
+    configuration 503、upstream 502、case/data validation等の別semantic familyは変更していない。
+  - validation / remaining:
+    Next.js 16.2.9同梱Route Handlers / Error Handling guideを全読。route + registry + static `3 files / 31 tests`、
+    exact ESLint/Prettier/diff、API response shape `0/0`、authz status、route-auth `147 routes / 211 calls / 0 new`、
+    client schema `360 backed / 0 allowlisted`、frontend contract、module boundaries、Plans active、combined treeのserialized
+    typecheck / no-unusedをPASS。build/E2E/imagegenは固定error metadataのみの非視覚sliceかつ現行build保留方針のため未実行。
+    親`API-CONTRACT-003`にはraw literal/dynamic/nonliteral/detailsと未確定status familyの段階移行が残る。
+
 - codex2: Round 23 API-CONTRACT-001FZDATAEXPLORERTABLEAUTH / Data Explorer table GET
-  standard auth-wrapper migration (DONE / VALIDATED / codex1 INTEGRATION WAIT, 2026-07-15).
+  standard auth-wrapper migration (DONE / CODE + LEDGER COMMITTED, 2026-07-15; implementation `a93e4cfd3`).
   - implementation / invariants:
     `admin/data-explorer/[table]`のmanual `requireAuthContext` + route-local no-store / `unstable_rethrow` /
     fixed 500を、同じ`canAdmin`、拒否文言、query validation、unknown-table mapping、`ctx.orgId` service call、
