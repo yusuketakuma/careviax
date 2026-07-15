@@ -97,16 +97,6 @@ const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
     httpStatus: 409,
   },
   {
-    filePath: 'src/app/api/billing-candidates/export/route.ts',
-    code: 'CLAIMS_EXPORT_FAILED',
-    httpStatus: null,
-  },
-  {
-    filePath: 'src/app/api/billing-candidates/export/route.ts',
-    code: 'CLAIMS_EXPORT_SITE_UNRESOLVED',
-    httpStatus: 422,
-  },
-  {
     filePath: 'src/app/api/dispense-audits/route.ts',
     code: 'VALIDATION_ERROR',
     httpStatus: 422,
@@ -300,14 +290,6 @@ const allowedRawNonliteralMessageUsages: RawNonliteralMessageUsage[] = [
     statusExpression: '502',
   },
   {
-    filePath: 'src/app/api/billing-candidates/export/route.ts',
-    helper: 'error',
-    codeExpression: "'CLAIMS_EXPORT_SITE_UNRESOLVED'",
-    messageExpression:
-      "siteResolution.reason === 'missing_site_id' ? 'CLAIMS-XML の薬局拠点を解決できません' : 'CLAIMS-XML は単一薬局拠点の候補だけをエクスポートできます'",
-    statusExpression: '422',
-  },
-  {
     filePath: 'src/app/api/files/[id]/download/route.ts',
     helper: 'error',
     codeExpression: 'cause.code',
@@ -398,19 +380,6 @@ const allowedRawErrorDetailsUsages: RawErrorDetailsUsage[] = [
     codeExpression: "'BILLING_CLOSE_STALE_CANDIDATES'",
     detailsExpression:
       '{ billing_month: parsedBillingMonth.start.toISOString(), billing_domain: billingDomain, conflictCount: 1, }',
-  },
-  {
-    filePath: 'src/app/api/billing-candidates/export/route.ts',
-    helper: 'error',
-    codeExpression: "'CLAIMS_EXPORT_FAILED'",
-    detailsExpression: '{ code: cause.code }',
-  },
-  {
-    filePath: 'src/app/api/billing-candidates/export/route.ts',
-    helper: 'error',
-    codeExpression: "'CLAIMS_EXPORT_SITE_UNRESOLVED'",
-    detailsExpression:
-      '{ reason: siteResolution.reason, missing_count: siteResolution.missingCount, site_count: siteResolution.siteCount, }',
   },
   {
     filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',

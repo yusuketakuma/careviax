@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
@@ -6,19 +6,11 @@ const {
   withOrgContextMock,
   closeBillingCandidatesForMonthMock,
   notifyWebhookEventForOrgMock,
-  isClaimsExportConsumerConfiguredMock,
-  resolveClaimsExportConfigMock,
-  createClaimsExportAdapterMock,
-  exportClaimsMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   closeBillingCandidatesForMonthMock: vi.fn(),
   notifyWebhookEventForOrgMock: vi.fn(),
-  isClaimsExportConsumerConfiguredMock: vi.fn(),
-  resolveClaimsExportConfigMock: vi.fn(),
-  createClaimsExportAdapterMock: vi.fn(),
-  exportClaimsMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -42,12 +34,6 @@ vi.mock('@/server/services/billing-evidence', () => ({
 
 vi.mock('@/server/services/outbound-webhook', () => ({
   notifyWebhookEventForOrg: notifyWebhookEventForOrgMock,
-}));
-
-vi.mock('@/server/adapters/claims-export', () => ({
-  isClaimsExportConsumerConfigured: isClaimsExportConsumerConfiguredMock,
-  resolveClaimsExportConfig: resolveClaimsExportConfigMock,
-  createClaimsExportAdapter: createClaimsExportAdapterMock,
 }));
 
 import { POST } from './route';
@@ -89,18 +75,10 @@ describe('/api/billing-candidates/close POST', () => {
       },
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback({}));
-    isClaimsExportConsumerConfiguredMock.mockReturnValue(false);
-    resolveClaimsExportConfigMock.mockReturnValue({ provider: 'stub' });
-    exportClaimsMock.mockResolvedValue({
-      format: 'claims-xml',
-      content: '<ClaimsExport />',
-      recordCount: 0,
-      generatedAt: '2026-03-31T00:00:00.000Z',
-    });
-    createClaimsExportAdapterMock.mockReturnValue({
-      exportClaims: exportClaimsMock,
-      getCapabilities: vi.fn(),
-    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('returns the authentication response before billing, webhook, or claims-export work', async () => {
@@ -120,9 +98,6 @@ describe('/api/billing-candidates/close POST', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(closeBillingCandidatesForMonthMock).not.toHaveBeenCalled();
     expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
-    expect(isClaimsExportConsumerConfiguredMock).not.toHaveBeenCalled();
-    expect(createClaimsExportAdapterMock).not.toHaveBeenCalled();
-    expect(exportClaimsMock).not.toHaveBeenCalled();
   });
 
   it('closes the month when no review blockers remain', async () => {
@@ -250,51 +225,20 @@ describe('/api/billing-candidates/close POST', () => {
     expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
-  it('transmits only candidates exported by this close attempt when claims export is configured', async () => {
-    const billingCandidateFindManyMock = vi.fn().mockResolvedValue([
-      {
-        patient_id: 'patient_new',
-        billing_domain: 'home_care',
-        billing_code: 'MED_HOME_VISIT_SINGLE',
-        billing_name: '在宅患者訪問薬剤管理指導料',
-        points: 650,
-        status: 'exported',
-        source_snapshot: { payer_basis: 'medical', site_id: 'site_1' },
-      },
-    ]);
-    const auditLogCreateMock = vi.fn().mockResolvedValue({});
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        billingCandidate: {
-          findMany: billingCandidateFindManyMock,
-        },
-        auditLog: {
-          create: auditLogCreateMock,
-        },
-      }),
-    );
-    isClaimsExportConsumerConfiguredMock.mockReturnValue(true);
-    resolveClaimsExportConfigMock.mockReturnValue({
-      provider: 'rececom',
-      baseUrl: 'https://rececom.example.test',
-    });
-    exportClaimsMock.mockImplementation(async (payload: { records: unknown[] }) => ({
-      format: 'claims-xml',
-      content: '<ClaimsExport />',
-      recordCount: payload.records.length,
-      generatedAt: '2026-03-31T00:00:00.000Z',
-    }));
+  it('closes without implicit claims transmission or claims metadata', async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
     closeBillingCandidatesForMonthMock.mockResolvedValue({
       blocked: false,
       exported_count: 1,
-      exported_candidate_ids: ['candidate_new'],
+      exported_candidate_ids: ['candidate_1'],
       summary: {
-        total: 2,
+        total: 1,
         pending_review: 0,
         confirmed: 0,
         excluded: 0,
-        exported: 2,
-        reviewed: 2,
+        exported: 1,
+        reviewed: 1,
         ready_to_close: 0,
         blocked_from_close: 0,
         blocker_reasons: [],
@@ -305,342 +249,11 @@ describe('/api/billing-candidates/close POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(billingCandidateFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          org_id: 'org_1',
-          billing_month: new Date('2026-03-01T00:00:00.000Z'),
-          billing_domain: 'home_care',
-          status: 'exported',
-          id: { in: ['candidate_new'] },
-        }),
-      }),
-    );
-    expect(exportClaimsMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        siteId: 'site_1',
-        records: [
-          expect.objectContaining({
-            patientId: 'patient_new',
-            billingCode: 'MED_HOME_VISIT_SINGLE',
-          }),
-        ],
-      }),
-    );
-    expect(auditLogCreateMock).toHaveBeenCalledTimes(2);
-    expect(auditLogCreateMock).toHaveBeenNthCalledWith(1, {
-      data: expect.objectContaining({
-        action: 'billing.claims_export_attempted',
-        changes: expect.objectContaining({
-          site_id: 'site_1',
-          record_count: 1,
-          audit_phase: 'attempt',
-        }),
-      }),
-    });
-    expect(auditLogCreateMock).toHaveBeenNthCalledWith(2, {
-      data: expect.objectContaining({
-        action: 'billing.claims_export_transmitted',
-        changes: expect.objectContaining({
-          site_id: 'site_1',
-          record_count: 1,
-          audit_phase: 'success',
-        }),
-      }),
-    });
     const body = await response.json();
-    expect(body).toMatchObject({
-      data: {
-        exported_count: 1,
-        claims_export: {
-          transmitted: true,
-          recordCount: 1,
-        },
-      },
-    });
-    expect(body).not.toHaveProperty('exported_candidate_ids');
-    expect(body.data).not.toHaveProperty('exported_candidate_ids');
-  });
-
-  it('keeps close successful but records claims export attempt when configured transmission fails', async () => {
-    const billingCandidateFindManyMock = vi.fn().mockResolvedValue([
-      {
-        patient_id: 'patient_new',
-        billing_domain: 'home_care',
-        billing_code: 'MED_HOME_VISIT_SINGLE',
-        billing_name: '在宅患者訪問薬剤管理指導料',
-        points: 650,
-        status: 'exported',
-        source_snapshot: { payer_basis: 'medical', site_id: 'site_1' },
-      },
-    ]);
-    const auditLogCreateMock = vi.fn().mockResolvedValue({});
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        billingCandidate: {
-          findMany: billingCandidateFindManyMock,
-        },
-        auditLog: {
-          create: auditLogCreateMock,
-        },
-      }),
-    );
-    isClaimsExportConsumerConfiguredMock.mockReturnValue(true);
-    exportClaimsMock.mockRejectedValueOnce(new Error('adapter down'));
-    closeBillingCandidatesForMonthMock.mockResolvedValue({
-      blocked: false,
-      exported_count: 1,
-      exported_candidate_ids: ['candidate_new'],
-      summary: {
-        total: 1,
-        pending_review: 0,
-        confirmed: 0,
-        excluded: 0,
-        exported: 1,
-        reviewed: 1,
-        ready_to_close: 0,
-        blocked_from_close: 0,
-        blocker_reasons: [],
-      },
-    });
-
-    const response = await invokePOST(createRequest({ billing_month: '2026-03-01' }));
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
-    expect(auditLogCreateMock).toHaveBeenCalledTimes(1);
-    expect(auditLogCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        action: 'billing.claims_export_attempted',
-        changes: expect.objectContaining({
-          site_id: 'site_1',
-          record_count: 1,
-          audit_phase: 'attempt',
-        }),
-      }),
-    });
-    await expect(response.json()).resolves.toMatchObject({
-      data: {
-        claims_export: {
-          transmitted: false,
-          reason: 'failed',
-        },
-      },
-    });
-  });
-
-  it('does not invoke configured claims export when attempt audit cannot be recorded', async () => {
-    const billingCandidateFindManyMock = vi.fn().mockResolvedValue([
-      {
-        patient_id: 'patient_new',
-        billing_domain: 'home_care',
-        billing_code: 'MED_HOME_VISIT_SINGLE',
-        billing_name: '在宅患者訪問薬剤管理指導料',
-        points: 650,
-        status: 'exported',
-        source_snapshot: { payer_basis: 'medical', site_id: 'site_1' },
-      },
-    ]);
-    const auditLogCreateMock = vi.fn().mockRejectedValueOnce(new Error('audit down'));
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        billingCandidate: {
-          findMany: billingCandidateFindManyMock,
-        },
-        auditLog: {
-          create: auditLogCreateMock,
-        },
-      }),
-    );
-    isClaimsExportConsumerConfiguredMock.mockReturnValue(true);
-    closeBillingCandidatesForMonthMock.mockResolvedValue({
-      blocked: false,
-      exported_count: 1,
-      exported_candidate_ids: ['candidate_new'],
-      summary: {
-        total: 1,
-        pending_review: 0,
-        confirmed: 0,
-        excluded: 0,
-        exported: 1,
-        reviewed: 1,
-        ready_to_close: 0,
-        blocked_from_close: 0,
-        blocker_reasons: [],
-      },
-    });
-
-    const response = await invokePOST(createRequest({ billing_month: '2026-03-01' }));
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
-    expect(createClaimsExportAdapterMock).not.toHaveBeenCalled();
-    expect(exportClaimsMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
-      data: {
-        claims_export: {
-          transmitted: false,
-          reason: 'failed',
-        },
-      },
-    });
-  });
-
-  it('skips configured claims export when exported candidates lack a resolved site', async () => {
-    const billingCandidateFindManyMock = vi.fn().mockResolvedValue([
-      {
-        patient_id: 'patient_new',
-        billing_domain: 'home_care',
-        billing_code: 'MED_HOME_VISIT_SINGLE',
-        billing_name: '在宅患者訪問薬剤管理指導料',
-        points: 650,
-        status: 'exported',
-        source_snapshot: { payer_basis: 'medical' },
-      },
-    ]);
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        billingCandidate: {
-          findMany: billingCandidateFindManyMock,
-        },
-        auditLog: {
-          create: vi.fn(),
-        },
-      }),
-    );
-    isClaimsExportConsumerConfiguredMock.mockReturnValue(true);
-    closeBillingCandidatesForMonthMock.mockResolvedValue({
-      blocked: false,
-      exported_count: 1,
-      exported_candidate_ids: ['candidate_new'],
-      summary: {
-        total: 1,
-        pending_review: 0,
-        confirmed: 0,
-        excluded: 0,
-        exported: 1,
-        reviewed: 1,
-        ready_to_close: 0,
-        blocked_from_close: 0,
-        blocker_reasons: [],
-      },
-    });
-
-    const response = await invokePOST(createRequest({ billing_month: '2026-03-01' }));
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
-    expect(createClaimsExportAdapterMock).not.toHaveBeenCalled();
-    expect(exportClaimsMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
-      data: {
-        claims_export: {
-          transmitted: false,
-          reason: 'missing_site_id',
-        },
-      },
-    });
-  });
-
-  it('skips configured claims export when exported candidates span multiple sites', async () => {
-    const billingCandidateFindManyMock = vi.fn().mockResolvedValue([
-      {
-        patient_id: 'patient_new',
-        billing_domain: 'home_care',
-        billing_code: 'MED_HOME_VISIT_SINGLE',
-        billing_name: '在宅患者訪問薬剤管理指導料',
-        points: 650,
-        status: 'exported',
-        source_snapshot: { payer_basis: 'medical', site_id: 'site_1' },
-      },
-      {
-        patient_id: 'patient_other',
-        billing_domain: 'home_care',
-        billing_code: 'MED_HOME_VISIT_SINGLE',
-        billing_name: '在宅患者訪問薬剤管理指導料',
-        points: 650,
-        status: 'exported',
-        source_snapshot: { payer_basis: 'medical', site_id: 'site_2' },
-      },
-    ]);
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        billingCandidate: {
-          findMany: billingCandidateFindManyMock,
-        },
-        auditLog: {
-          create: vi.fn(),
-        },
-      }),
-    );
-    isClaimsExportConsumerConfiguredMock.mockReturnValue(true);
-    closeBillingCandidatesForMonthMock.mockResolvedValue({
-      blocked: false,
-      exported_count: 2,
-      exported_candidate_ids: ['candidate_new', 'candidate_other'],
-      summary: {
-        total: 2,
-        pending_review: 0,
-        confirmed: 0,
-        excluded: 0,
-        exported: 2,
-        reviewed: 2,
-        ready_to_close: 0,
-        blocked_from_close: 0,
-        blocker_reasons: [],
-      },
-    });
-
-    const response = await invokePOST(createRequest({ billing_month: '2026-03-01' }));
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
-    expect(createClaimsExportAdapterMock).not.toHaveBeenCalled();
-    expect(exportClaimsMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
-      data: {
-        claims_export: {
-          transmitted: false,
-          reason: 'multiple_site_ids',
-        },
-      },
-    });
-  });
-
-  it('skips configured claims export when this close attempt exported no candidates', async () => {
-    isClaimsExportConsumerConfiguredMock.mockReturnValue(true);
-    closeBillingCandidatesForMonthMock.mockResolvedValue({
-      blocked: false,
-      exported_count: 0,
-      exported_candidate_ids: [],
-      summary: {
-        total: 1,
-        pending_review: 0,
-        confirmed: 0,
-        excluded: 1,
-        exported: 0,
-        reviewed: 1,
-        ready_to_close: 0,
-        blocked_from_close: 0,
-        blocker_reasons: [],
-      },
-    });
-
-    const response = await invokePOST(createRequest({ billing_month: '2026-03-01' }));
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
-    expect(createClaimsExportAdapterMock).not.toHaveBeenCalled();
-    expect(exportClaimsMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
-      data: {
-        exported_count: 0,
-        claims_export: {
-          transmitted: false,
-          reason: 'no_records',
-        },
-      },
-    });
+    expect(body.data.exported_count).toBe(1);
+    expect(body.data).not.toHaveProperty('claims_export');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
   });
 
   it('returns stale conflict without webhook when a candidate changes during close', async () => {

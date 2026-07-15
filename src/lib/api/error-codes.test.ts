@@ -58,6 +58,13 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "CLAIMS_EXPORT_NOT_IMPLEMENTED": {
+          "httpStatus": 501,
+          "logLevel": "info",
+          "messageLabel": "api.error.billing.claims_export_not_implemented",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
         "COMMUNICATION_REQUEST_EXPORT_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",

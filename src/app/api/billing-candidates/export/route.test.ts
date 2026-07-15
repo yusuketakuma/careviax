@@ -100,7 +100,7 @@ describe('/api/billing-candidates/export GET', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     recordDataExportAuditMock.mockResolvedValue(undefined);
     txMock.billingCandidate.findMany.mockResolvedValue([
       {
@@ -140,7 +140,6 @@ describe('/api/billing-candidates/export GET', () => {
     ]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
   });
-
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
@@ -202,255 +201,59 @@ describe('/api/billing-candidates/export GET', () => {
     );
   });
 
-  it('exports claims XML with no-store headers and claims-specific audit format', async () => {
-    const response = await GET(
-      createRequest(
-        'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&format=claims-xml',
-      ),
-      emptyRouteContext,
-    );
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
-    expectSensitiveNoStore(response);
-    expect(response.headers.get('content-type')).toContain('application/xml');
-    expect(response.headers.get('content-disposition')).toContain('billing_home_care_2026-03.xml');
-    await expect(response.text()).resolves.toContain('siteId="site_1"');
-    expect(recordDataExportAuditMock).toHaveBeenCalledTimes(2);
-    expect(recordDataExportAuditMock).toHaveBeenNthCalledWith(
-      1,
-      txMock,
-      expect.objectContaining({
-        targetType: 'billing_candidate',
-        format: 'claims-xml',
-        metadata: expect.objectContaining({
-          export_format: 'claims-xml',
-          export_surface_id: 'billing_candidates_claims_xml',
-          audit_phase: 'attempt',
-        }),
-      }),
-    );
-    expect(recordDataExportAuditMock).toHaveBeenNthCalledWith(
-      2,
-      txMock,
-      expect.objectContaining({
-        targetType: 'billing_candidate',
-        format: 'claims-xml',
-        metadata: expect.objectContaining({
-          export_format: 'claims-xml',
-          export_surface_id: 'billing_candidates_claims_xml',
-          audit_phase: 'success',
-          claims_record_count: 1,
-          site_id: 'site_1',
-        }),
-      }),
-    );
-  });
-
-  it('rejects claims XML export before audit when candidate site cannot be resolved', async () => {
-    txMock.billingCandidate.findMany.mockResolvedValueOnce([
-      {
-        id: 'candidate_missing_site',
-        patient_id: 'patient_1',
-        cycle_id: 'cycle_1',
-        billing_month: new Date('2026-03-01T00:00:00.000Z'),
-        billing_code: 'MED_HOME_VISIT_SINGLE',
-        billing_name: '在宅患者訪問薬剤管理指導料',
-        points: 650,
-        status: 'confirmed',
-        source_snapshot: { payer_basis: 'medical' },
-      },
-    ]);
-
-    const response = await GET(
-      createRequest(
-        'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&format=claims-xml',
-      ),
-      emptyRouteContext,
-    );
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(422);
-    expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'CLAIMS_EXPORT_SITE_UNRESOLVED',
-      details: {
-        reason: 'missing_site_id',
-        missing_count: 1,
-      },
-    });
-    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects claims XML export when candidates span multiple pharmacy sites', async () => {
-    txMock.billingCandidate.findMany.mockResolvedValueOnce([
-      {
-        id: 'candidate_site_1',
-        patient_id: 'patient_1',
-        cycle_id: 'cycle_1',
-        billing_month: new Date('2026-03-01T00:00:00.000Z'),
-        billing_code: 'MED_HOME_VISIT_SINGLE',
-        billing_name: '在宅患者訪問薬剤管理指導料',
-        points: 650,
-        status: 'confirmed',
-        source_snapshot: { payer_basis: 'medical', site_id: 'site_1' },
-      },
-      {
-        id: 'candidate_site_2',
-        patient_id: 'patient_1',
-        cycle_id: 'cycle_1',
-        billing_month: new Date('2026-03-01T00:00:00.000Z'),
-        billing_code: 'MED_HOME_VISIT_SINGLE',
-        billing_name: '在宅患者訪問薬剤管理指導料',
-        points: 650,
-        status: 'confirmed',
-        source_snapshot: { payer_basis: 'medical', site_id: 'site_2' },
-      },
-    ]);
-
-    const response = await GET(
-      createRequest(
-        'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&format=claims-xml',
-      ),
-      emptyRouteContext,
-    );
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(422);
-    expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'CLAIMS_EXPORT_SITE_UNRESOLVED',
-      details: {
-        reason: 'multiple_site_ids',
-        site_count: 2,
-      },
-    });
-    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
-  });
-
-  it('records a durable claims XML audit before the external adapter and returns adapter failures', async () => {
-    vi.stubEnv('RECECOM_CLAIMS_BASE_URL', 'https://rececom.example.test');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<typeof fetch>().mockResolvedValue(
-        new Response(JSON.stringify({ error: 'upstream down' }), {
-          status: 500,
-          headers: { 'content-type': 'application/json' },
-        }),
-      ),
-    );
-
-    const response = await GET(
-      createRequest(
-        'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&format=claims-xml',
-      ),
-      emptyRouteContext,
-    );
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(502);
-    expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'CLAIMS_EXPORT_FAILED',
-      details: { code: 'UPSTREAM_FAILURE' },
-    });
-    expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
-    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
-      txMock,
-      expect.objectContaining({
-        format: 'claims-xml',
-        metadata: expect.objectContaining({
-          export_format: 'claims-xml',
-          audit_phase: 'attempt',
-        }),
-      }),
-    );
-  });
-
-  it('fails closed before invoking the claims XML adapter when export audit cannot be recorded', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response('<ClaimsExport />', {
-        status: 200,
-        headers: { 'content-type': 'application/xml' },
-      }),
-    );
-    vi.stubEnv('RECECOM_CLAIMS_BASE_URL', 'https://rececom.example.test');
-    vi.stubGlobal('fetch', fetchMock);
-    recordDataExportAuditMock.mockRejectedValueOnce(new Error('audit down'));
-
-    const response = await GET(
-      createRequest(
-        'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&format=claims-xml',
-      ),
-      emptyRouteContext,
-    );
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(500);
-    expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'BILLING_EXPORT_AUDIT_FAILED',
-      message: '請求候補のエクスポート監査を記録できませんでした',
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('fails closed without returning claims XML when the success audit cannot be recorded', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          format: 'claims-xml',
-          content: '<ClaimsExport />',
-          recordCount: 1,
-          generatedAt: '2026-03-31T00:00:00.000Z',
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      ),
-    );
-    vi.stubEnv('RECECOM_CLAIMS_BASE_URL', 'https://rececom.example.test');
-    vi.stubGlobal('fetch', fetchMock);
-    recordDataExportAuditMock
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error('success audit down'));
-
-    const response = await GET(
-      createRequest(
-        'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&format=claims-xml',
-      ),
-      emptyRouteContext,
-    );
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(500);
-    expectSensitiveNoStore(response);
-    const body = await response.json();
-    expect(body).toMatchObject({
-      code: 'BILLING_EXPORT_AUDIT_FAILED',
-      message: '請求候補のエクスポート監査を記録できませんでした',
-    });
-    expect(JSON.stringify(body)).not.toContain('<ClaimsExport />');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(recordDataExportAuditMock).toHaveBeenCalledTimes(2);
-  });
-
   it.each([
-    ['csv export', ''],
-    ['claims xml export', '&format=claims-xml'],
-  ])('rejects %s when there are no confirmed or exported candidates', async (_caseName, suffix) => {
+    ['without provider configuration', '', false],
+    ['with provider configuration', '', true],
+    ['in preview mode', '&preview=1', true],
+  ])(
+    'fails closed for claims XML %s before DB, audit, or download',
+    async (_caseName, suffix, configureProvider) => {
+      const fetchMock = vi.fn<typeof fetch>();
+      if (configureProvider) {
+        vi.stubEnv('RECECOM_CLAIMS_BASE_URL', 'https://rececom.example.test');
+      }
+      vi.stubGlobal('fetch', fetchMock);
+
+      const response = await GET(
+        createRequest(
+          `http://localhost/api/billing-candidates/export?billing_month=2026-03-01&format=claims-xml${suffix}`,
+        ),
+        emptyRouteContext,
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(501);
+      expectSensitiveNoStore(response);
+      expect(response.headers.get('content-type')).toContain('application/json');
+      expect(response.headers.get('content-disposition')).toBeNull();
+      await expect(response.json()).resolves.toEqual({
+        code: 'CLAIMS_EXPORT_NOT_IMPLEMENTED',
+        message:
+          'CLAIMS-XML はPH-OSから出力できません。批准済みのyrese請求連携を利用してください。',
+        details: {
+          responsibility: 'yrese_claim_accounting_domain',
+          redirect_url: null,
+        },
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(txMock.billingCandidate.findMany).not.toHaveBeenCalled();
+      expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects CSV export when there are no confirmed or exported candidates', async () => {
     txMock.billingCandidate.findMany.mockResolvedValueOnce([]);
 
     const response = await GET(
-      createRequest(
-        `http://localhost/api/billing-candidates/export?billing_month=2026-03-01${suffix}`,
-      ),
+      createRequest('http://localhost/api/billing-candidates/export?billing_month=2026-03-01'),
       emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
     expectSensitiveNoStore(response);
-    const body = await response.json();
-    expect(body).toMatchObject({
+    await expect(response.json()).resolves.toMatchObject({
       message: '確定済みまたは締め済みの請求候補がないためエクスポートできません',
       details: {
         billing_month: '2026-03-01',
@@ -459,20 +262,6 @@ describe('/api/billing-candidates/export GET', () => {
         statuses: ['confirmed', 'exported'],
       },
     });
-    expect(JSON.stringify(body)).not.toContain('patient_1');
-    expect(txMock.billingCandidate.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          org_id: 'org_1',
-          billing_month: new Date('2026-03-01T00:00:00.000Z'),
-          billing_domain: 'home_care',
-          status: { in: ['confirmed', 'exported'] },
-        }),
-      }),
-    );
-    expect(txMock.patient.findMany).not.toHaveBeenCalled();
-    expect(txMock.residence.findMany).not.toHaveBeenCalled();
-    expect(txMock.prescriptionIntake.findMany).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 

@@ -11,12 +11,6 @@ export const APPROVED_SERVER_EXPORT_SURFACES = {
     maskingProfile: 'billing_candidates_claims_csv',
     description: '監査ログを残し、請求候補の検索条件全件を請求出力用プロファイルで出力します。',
   },
-  billing_candidates_claims_xml: {
-    endpointPrefix: '/api/billing-candidates/export',
-    auditEvent: 'billing_candidates_export',
-    maskingProfile: 'billing_candidates_claims_xml',
-    description: '監査ログを残し、請求候補の検索条件全件を CLAIMS XML 用プロファイルで出力します。',
-  },
   communication_requests_external_csv: {
     endpointPrefix: '/api/communication-requests/export',
     auditEvent: 'communication_requests_export',

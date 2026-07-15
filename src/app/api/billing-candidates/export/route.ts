@@ -1,18 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
 import { withAuthContext } from '@/lib/auth/context';
-import { conflict, error, registeredError, validationError } from '@/lib/api/response';
+import { conflict, registeredError, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { recordDataExportAudit } from '@/server/services/export-audit';
-import {
-  ClaimsExportAdapterError,
-  createClaimsExportAdapter,
-  resolveClaimsExportConfig,
-  type ClaimsExportRecord,
-} from '@/server/adapters/claims-export';
-import { resolveClaimsExportSiteId } from '@/server/services/claims-export-site';
 import { BILLING_DOMAIN_ERROR_MESSAGE, parseOptionalBillingDomain } from '../billing-domain';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
 import { quotedCsvCell as csvCell } from '@/lib/csv/safe-csv';
@@ -23,8 +16,9 @@ type ExportQueryName = 'billing_month' | 'patient_id' | 'billing_domain' | 'form
 
 const EXPORT_SURFACE_BY_FORMAT = {
   csv: 'billing_candidates_csv',
-  'claims-xml': 'billing_candidates_claims_xml',
-} as const satisfies Record<ExportFormat, ApprovedServerExportSurfaceId>;
+} as const satisfies Record<'csv', ApprovedServerExportSurfaceId>;
+
+type InsuranceType = 'medical' | 'care' | 'self';
 
 type ExportPreviewRecord = {
   billing_domain: string;
@@ -181,14 +175,8 @@ function filenamePrefixFor(billingDomain: string) {
   return billingDomain === 'pca_rental' ? 'billing_pca_rental' : 'billing_home_care';
 }
 
-/**
- * 請求候補の billing_domain / payer_basis から CLAIMS-XML の保険区分を導出する。
- * pca_rental は自費（self）、home_care は payer_basis に応じて care / medical に振り分ける。
- */
-function resolveInsuranceType(
-  billingDomain: string,
-  sourceSnapshot: unknown,
-): ClaimsExportRecord['insuranceType'] {
+/** Preview-only payer classification. It does not assert claims conformance. */
+function resolveInsuranceType(billingDomain: string, sourceSnapshot: unknown): InsuranceType {
   if (billingDomain === 'pca_rental') return 'self';
   return readJsonObjectString(sourceSnapshot, 'payer_basis') === 'care' ? 'care' : 'medical';
 }
@@ -219,7 +207,7 @@ function readAmountYen(source: unknown, calculationBreakdown: unknown) {
 
 function buildExportPreview(records: ExportPreviewRecord[]) {
   const statusCounts: Record<string, number> = {};
-  const insuranceTypeCounts: Record<ClaimsExportRecord['insuranceType'], number> = {
+  const insuranceTypeCounts: Record<InsuranceType, number> = {
     medical: 0,
     care: 0,
     self: 0,
@@ -269,6 +257,19 @@ const authenticatedGET = withAuthContext(
     const filters = parseExportFilters(searchParams);
     if (!filters.ok) return filters.response;
     const { billingDomain, exportFormat, parsedBillingMonth, patientId, preview } = filters;
+
+    if (exportFormat === 'claims-xml') {
+      return withSensitiveNoStore(
+        registeredError(
+          'CLAIMS_EXPORT_NOT_IMPLEMENTED',
+          'CLAIMS-XML はPH-OSから出力できません。批准済みのyrese請求連携を利用してください。',
+          {
+            responsibility: 'yrese_claim_accounting_domain',
+            redirect_url: null,
+          },
+        ),
+      );
+    }
 
     if (preview) {
       const previewData = await withOrgContext(ctx.orgId, async (tx) => {
@@ -488,87 +489,6 @@ const authenticatedGET = withAuthContext(
         );
       }
     };
-
-    const monthOf = (value: Date | string) =>
-      value instanceof Date ? value.toISOString().slice(0, 7) : String(value).slice(0, 7);
-
-    if (exportFormat === 'claims-xml') {
-      const siteResolution = resolveClaimsExportSiteId(candidates);
-      if (!siteResolution.ok) {
-        return withSensitiveNoStore(
-          error(
-            'CLAIMS_EXPORT_SITE_UNRESOLVED',
-            siteResolution.reason === 'missing_site_id'
-              ? 'CLAIMS-XML の薬局拠点を解決できません'
-              : 'CLAIMS-XML は単一薬局拠点の候補だけをエクスポートできます',
-            422,
-            {
-              reason: siteResolution.reason,
-              missing_count: siteResolution.missingCount,
-              site_count: siteResolution.siteCount,
-            },
-          ),
-        );
-      }
-      const records: ClaimsExportRecord[] = candidates.map((c) => ({
-        patientId: c.patient_id ?? '',
-        patientName: c.patient_name,
-        billingMonth: monthOf(c.billing_month),
-        insuranceType: resolveInsuranceType(c.billing_domain, c.source_snapshot),
-        billingCode: c.billing_code ?? '',
-        billingName: c.billing_name ?? '',
-        points: typeof c.points === 'number' ? c.points : 0,
-        status: c.status,
-      }));
-
-      const auditFailureResponse = await recordExportAudit({ audit_phase: 'attempt' });
-      if (auditFailureResponse) return auditFailureResponse;
-
-      const adapter = createClaimsExportAdapter(resolveClaimsExportConfig());
-      let result;
-      try {
-        result = await adapter.exportClaims({
-          orgId: ctx.orgId,
-          siteId: siteResolution.siteId,
-          billingMonth: parsedBillingMonth ? parsedBillingMonth.canonical.slice(0, 7) : '',
-          records,
-        });
-      } catch (cause) {
-        if (cause instanceof ClaimsExportAdapterError) {
-          return withSensitiveNoStore(
-            error(
-              'CLAIMS_EXPORT_FAILED',
-              'CLAIMS-XML の生成に失敗しました',
-              cause.retriable ? 502 : 422,
-              { code: cause.code },
-            ),
-          );
-        }
-        throw cause;
-      }
-
-      const successAuditFailureResponse = await recordExportAudit({
-        audit_phase: 'success',
-        claims_record_count: result.recordCount,
-        site_id: siteResolution.siteId,
-      });
-      if (successAuditFailureResponse) return successAuditFailureResponse;
-
-      const xmlFilename = parsedBillingMonth
-        ? `${filenamePrefixFor(billingDomain)}_${parsedBillingMonth.canonical.slice(0, 7)}.xml`
-        : `${filenamePrefixFor(billingDomain)}_candidates.xml`;
-      const encodedXmlFilename = encodeURIComponent(xmlFilename);
-
-      return withSensitiveNoStore(
-        new NextResponse(result.content, {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/xml; charset=utf-8',
-            'Content-Disposition': `attachment; filename="${encodedXmlFilename}"; filename*=UTF-8''${encodedXmlFilename}`,
-          },
-        }),
-      );
-    }
 
     const header = [
       'id',

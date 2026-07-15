@@ -74,6 +74,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'return_to_previous',
     messageLabel: 'api.error.billing.export_audit_failed',
   },
+  CLAIMS_EXPORT_NOT_IMPLEMENTED: {
+    httpStatus: 501,
+    logLevel: 'info',
+    retryable: false,
+    recoveryAction: 'return_to_previous',
+    messageLabel: 'api.error.billing.claims_export_not_implemented',
+  },
   CARE_REPORT_PDF_EXPORT_AUDIT_FAILED: {
     httpStatus: 500,
     logLevel: 'error',
