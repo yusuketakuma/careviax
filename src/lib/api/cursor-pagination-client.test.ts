@@ -1,9 +1,42 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { CURSOR_PAGINATION_PAGE_LIMIT, fetchAllCursorPages } from './cursor-pagination-client';
+import {
+  CURSOR_PAGINATION_PAGE_LIMIT,
+  fetchAllCursorPages,
+  fetchCursorPage,
+} from './cursor-pagination-client';
 import { jsonResponse } from '@/test/fetch-test-utils';
 
 describe('cursor-pagination-client', () => {
+  it('fetches exactly one bounded cursor page for incremental consumers', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: [{ id: 'row_101' }],
+        meta: { limit: 100, has_more: true, next_cursor: 'cursor_200' },
+      }),
+    );
+
+    const payload = await fetchCursorPage<{ id: string }>({
+      path: '/api/example',
+      params: new URLSearchParams('status=pending&cursor=stale'),
+      cursor: 'cursor_100',
+      errorMessage: 'failed',
+      fetchImpl,
+      limit: 101,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/example?status=pending&cursor=cursor_100&limit=100',
+      undefined,
+    );
+    expect(payload).toEqual({
+      data: [{ id: 'row_101' }],
+      hasMore: true,
+      nextCursor: 'cursor_200',
+    });
+  });
+
   it('follows meta.next_cursor and aggregates current cursor pages', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()

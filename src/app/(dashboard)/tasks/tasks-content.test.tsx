@@ -343,6 +343,25 @@ function getBulkCompleteMutationOptions() {
   return options as BulkCompleteMutationOptions;
 }
 
+function taskFixture(id: string, title: string) {
+  return {
+    id,
+    task_type: 'visit_preparation',
+    title,
+    description: null,
+    status: 'pending',
+    priority: 'normal',
+    assigned_to: 'user_1',
+    assigned_to_name: '山田 薬剤師',
+    due_date: null,
+    sla_due_at: null,
+    related_entity_type: 'visit_schedule',
+    related_entity_id: `schedule_${id}`,
+    completed_at: null,
+    created_at: '2026-04-10T08:00:00.000Z',
+  };
+}
+
 describe('TasksContent', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -488,7 +507,7 @@ describe('TasksContent', () => {
     expect(screen.getByText('依頼: 監査依頼')).toBeTruthy();
     const immediateSection = screen.getByRole('heading', { name: '今すぐ処理' }).closest('section');
     expect(immediateSection).toBeTruthy();
-    expect(within(immediateSection as HTMLElement).getByText('表示件数 2件')).toBeTruthy();
+    expect(within(immediateSection as HTMLElement).getByText('読込済み 2件')).toBeTruthy();
     expect(
       within(immediateSection as HTMLElement)
         .getByRole('link', { name: '一覧へ移動' })
@@ -501,6 +520,406 @@ describe('TasksContent', () => {
       within(immediateSection as HTMLElement).getByRole('link', { name: 'ワークフロー' }),
     ).toBeTruthy();
     expect(screen.getByTestId('tasks-table').textContent).toContain('訪問準備');
+  });
+
+  it('loads the 101st task only on request and announces the bounded partial state', async () => {
+    const baseUseQueryImplementation = useQueryMock.getMockImplementation();
+    const firstPage = Array.from({ length: 100 }, (_, index) =>
+      taskFixture(`task_${index + 1}`, `タスク${index + 1}`),
+    );
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks') {
+        return {
+          data: { data: firstPage, hasMore: true, nextCursor: 'cursor_100' },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      return baseUseQueryImplementation?.(options);
+    });
+    let resolveNextPage!: (response: Response) => void;
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveNextPage = resolve;
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<TasksContent />);
+
+    const partialDescription = document.getElementById('tasks-cursor-partial-description');
+    expect(partialDescription?.textContent).toContain(
+      '読込済み 100件を表示しています。未読込のタスクがあります。',
+    );
+    expect(partialDescription?.textContent).toContain('1回に100件ずつ');
+    expect(screen.getByTestId('tasks-cursor-live-status').textContent).toContain(
+      'タスクを100件読み込み済みです。未読込のタスクがあります。',
+    );
+    const loadMoreButton = screen.getByRole('button', { name: 'さらに読み込む' });
+    expect(loadMoreButton.getAttribute('aria-describedby')).toBe(
+      'tasks-cursor-partial-description',
+    );
+    act(() => {
+      loadMoreButton.click();
+      loadMoreButton.click();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveNextPage(
+        new Response(
+          JSON.stringify({
+            data: [taskFixture('task_101', 'タスク101')],
+            meta: { limit: 100, has_more: false, next_cursor: null },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('読込済み 101件')).toHaveLength(2);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/tasks?status=pending&limit=100&cursor=cursor_100',
+      {
+        headers: { 'x-org-id': 'org_1' },
+      },
+    );
+    expect(screen.queryByRole('button', { name: 'さらに読み込む' })).toBeNull();
+    expect(screen.getByTestId('tasks-cursor-live-status').textContent).toContain(
+      'タスクを101件読み込みました。',
+    );
+  });
+
+  it('loads the 2,001st task through page 21 without the former hidden 20-page cap', async () => {
+    const baseUseQueryImplementation = useQueryMock.getMockImplementation();
+    const firstPage = Array.from({ length: 100 }, (_, index) =>
+      taskFixture(`task_${index + 1}`, `タスク${index + 1}`),
+    );
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks') {
+        return {
+          data: { data: firstPage, hasMore: true, nextCursor: 'cursor_1' },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+          dataUpdatedAt: 100,
+        };
+      }
+      return baseUseQueryImplementation?.(options);
+    });
+    const fetchMock = vi.fn().mockImplementation(() => {
+      const pageNumber = fetchMock.mock.calls.length;
+      const isLastPage = pageNumber === 20;
+      const startId = pageNumber * 100 + 1;
+      const pageSize = isLastPage ? 1 : 100;
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            data: Array.from({ length: pageSize }, (_, index) => {
+              const taskNumber = startId + index;
+              return taskFixture(`task_${taskNumber}`, `タスク${taskNumber}`);
+            }),
+            meta: {
+              limit: 100,
+              has_more: !isLastPage,
+              next_cursor: isLastPage ? null : `cursor_${pageNumber + 1}`,
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<TasksContent />);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    for (let pageNumber = 1; pageNumber <= 20; pageNumber += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'さらに読み込む' }));
+      const expectedLoaded = pageNumber === 20 ? 2001 : (pageNumber + 1) * 100;
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(pageNumber);
+        expect(screen.getAllByText(`読込済み ${expectedLoaded}件`)).toHaveLength(2);
+      });
+    }
+
+    expect(screen.getByText('タスク2001')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'さらに読み込む' })).toBeNull();
+    expect(screen.getByTestId('tasks-cursor-live-status').textContent).toContain(
+      'タスクを2001件読み込みました。',
+    );
+  }, 30_000);
+
+  it('retains loaded tasks and retries the same cursor after an intermediate failure', async () => {
+    const baseUseQueryImplementation = useQueryMock.getMockImplementation();
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks') {
+        return {
+          data: {
+            data: [taskFixture('task_1', '保持されるタスク')],
+            hasMore: true,
+            nextCursor: 'cursor_1',
+          },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      return baseUseQueryImplementation?.(options);
+    });
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('offline'))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [taskFixture('task_2', '再試行で取得したタスク')],
+            meta: { limit: 100, has_more: false, next_cursor: null },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<TasksContent />);
+    fireEvent.click(screen.getByRole('button', { name: 'さらに読み込む' }));
+
+    expect(
+      await screen.findByText(
+        '追加のタスクを読み込めませんでした。読込済みの行は保持されています。',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByTestId('tasks-table').textContent).toContain('保持されるタスク');
+    fireEvent.click(screen.getByRole('button', { name: '同じ位置から再試行' }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText('読込済み 2件')).toHaveLength(2);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe(fetchMock.mock.calls[1][0]);
+  });
+
+  it('rejects a repeated next cursor instead of loading forever', async () => {
+    const baseUseQueryImplementation = useQueryMock.getMockImplementation();
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks') {
+        return {
+          data: {
+            data: [taskFixture('task_1', '循環前のタスク')],
+            hasMore: true,
+            nextCursor: 'cursor_loop',
+          },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      return baseUseQueryImplementation?.(options);
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: [taskFixture('task_2', '循環ページ')],
+            meta: { limit: 100, has_more: true, next_cursor: 'cursor_loop' },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+
+    render(<TasksContent />);
+    fireEvent.click(screen.getByRole('button', { name: 'さらに読み込む' }));
+
+    expect(
+      await screen.findByText('続きの読込位置が循環したため、追加読込を停止しました。'),
+    ).toBeTruthy();
+    expect(screen.getByTestId('tasks-table').textContent).not.toContain('循環ページ');
+    expect(screen.queryByRole('button', { name: '同じ位置から再試行' })).toBeNull();
+  });
+
+  it('clears loaded-row selection as soon as the server filter scope changes', () => {
+    render(<TasksContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'テスト用に2件選択' }));
+    expect(screen.getByText('選択中 2件')).toBeTruthy();
+    fireEvent.change(screen.getByRole('combobox', { name: '状態' }), {
+      target: { value: 'completed' },
+    });
+
+    expect(screen.getByText('選択中 0件')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /読込済みから選択した2件を完了/ })).toBeNull();
+
+    fireEvent.change(screen.getByRole('combobox', { name: '状態' }), {
+      target: { value: 'pending' },
+    });
+    expect(screen.getByText('選択中 0件')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /読込済みから選択した2件を完了/ })).toBeNull();
+  });
+
+  it('intersects selection and bulk IDs with rows retained by an authoritative base refresh', () => {
+    const baseUseQueryImplementation = useQueryMock.getMockImplementation();
+    const mutateMock = vi.fn();
+    useMutationMock.mockReturnValue({ mutate: mutateMock, isPending: false });
+    let currentTasks = [taskFixture('task_1', '残るタスク'), taskFixture('task_2', '消えるタスク')];
+    let dataUpdatedAt = 100;
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks') {
+        return {
+          data: { data: currentTasks, hasMore: false },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+          dataUpdatedAt,
+        };
+      }
+      return baseUseQueryImplementation?.(options);
+    });
+
+    const rendered = render(<TasksContent />);
+    fireEvent.click(screen.getByRole('button', { name: 'テスト用に2件選択' }));
+    expect(screen.getByText('選択中 2件')).toBeTruthy();
+
+    currentTasks = [taskFixture('task_1', '残るタスク')];
+    dataUpdatedAt = 200;
+    rendered.rerender(<TasksContent />);
+
+    expect(screen.getByText('選択中 1件')).toBeTruthy();
+    expect(screen.getByText('完了可能 1件')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '読込済みから選択した1件を完了' }));
+    expect(mutateMock).toHaveBeenCalledWith(['task_1']);
+
+    currentTasks = [];
+    dataUpdatedAt = 300;
+    rendered.rerender(<TasksContent />);
+    expect(screen.getByText('選択中 0件')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /読込済みから選択した/ })).toBeNull();
+  });
+
+  it('remounts task client state when the authorization fingerprint changes', () => {
+    const rendered = render(<TasksContent />);
+    fireEvent.click(screen.getByRole('button', { name: 'テスト用に2件選択' }));
+    expect(screen.getByText('選択中 2件')).toBeTruthy();
+
+    useOrgIdMock.mockReturnValue('org_2');
+    rendered.rerender(<TasksContent />);
+
+    expect(screen.getByText('選択中 0件')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /読込済みから選択した/ })).toBeNull();
+    expect(taskListQueryKeys()).toContainEqual([
+      'tasks',
+      'org_2',
+      'user_1',
+      'owner',
+      'status=pending',
+    ]);
+  });
+
+  it('ignores an in-flight old cursor response after a filter A-B-A transition', async () => {
+    const baseUseQueryImplementation = useQueryMock.getMockImplementation();
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks') {
+        const params = String(options.queryKey[4] ?? '');
+        return {
+          data: params.includes('status=completed')
+            ? { data: [taskFixture('task_b', '完了フィルター')], hasMore: false }
+            : {
+                data: [taskFixture('task_a', '未完了フィルター')],
+                hasMore: true,
+                nextCursor: 'cursor_a',
+              },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+          dataUpdatedAt: 100,
+        };
+      }
+      return baseUseQueryImplementation?.(options);
+    });
+    let resolveOldPage!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveOldPage = resolve;
+          }),
+      ),
+    );
+
+    render(<TasksContent />);
+    fireEvent.click(screen.getByRole('button', { name: 'さらに読み込む' }));
+
+    fireEvent.change(screen.getByRole('combobox', { name: '状態' }), {
+      target: { value: 'completed' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: '状態' }), {
+      target: { value: 'pending' },
+    });
+    await act(async () => {
+      resolveOldPage(
+        new Response(
+          JSON.stringify({
+            data: [taskFixture('task_tail', 'Aの追加ページ')],
+            meta: { limit: 100, has_more: false, next_cursor: null },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    });
+
+    expect(screen.getAllByText('読込済み 1件')).toHaveLength(2);
+    expect(screen.getByTestId('tasks-table').textContent).not.toContain('Aの追加ページ');
+    expect(screen.getByRole('button', { name: 'さらに読み込む' })).toBeTruthy();
+  });
+
+  it('drops a stale cursor tail after a deep-equal successful first-page refetch', async () => {
+    const baseUseQueryImplementation = useQueryMock.getMockImplementation();
+    let dataUpdatedAt = 100;
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'tasks') {
+        return {
+          data: {
+            data: [taskFixture('task_1', '正本の先頭ページ')],
+            hasMore: true,
+            nextCursor: 'cursor_1',
+          },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+          dataUpdatedAt,
+        };
+      }
+      return baseUseQueryImplementation?.(options);
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: [taskFixture('task_2', '古い追加ページ')],
+            meta: { limit: 100, has_more: false, next_cursor: null },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+
+    const rendered = render(<TasksContent />);
+    fireEvent.click(screen.getByRole('button', { name: 'さらに読み込む' }));
+    await waitFor(() => expect(screen.getAllByText('読込済み 2件')).toHaveLength(2));
+
+    dataUpdatedAt = 200;
+    rendered.rerender(<TasksContent />);
+
+    expect(screen.getAllByText('読込済み 1件')).toHaveLength(2);
+    expect(screen.getByTestId('tasks-table').textContent).not.toContain('古い追加ページ');
+    expect(screen.getByRole('button', { name: 'さらに読み込む' })).toBeTruthy();
   });
 
   it('shows the operational task health board without exposing task descriptions or metadata', () => {
@@ -1702,7 +2121,7 @@ describe('TasksContent', () => {
     fireEvent.click(screen.getByRole('button', { name: 'テスト用に2件選択' }));
     expect(screen.getByText('選択中 2件')).toBeTruthy();
     const bulkCompleteButton = screen.getByRole('button', {
-      name: '表示中から選択した2件を完了',
+      name: '読込済みから選択した2件を完了',
     });
     expect(
       screen.getByText('一括完了の対象は現在表示中の読込済み行から選択したタスクです。'),

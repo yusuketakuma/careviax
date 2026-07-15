@@ -32,7 +32,7 @@ import {
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
-import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
+import { fetchCursorPage } from '@/lib/api/cursor-pagination-client';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import {
   canRetainCachedDataAfterPrimaryQueryError,
@@ -78,6 +78,7 @@ import {
 } from './task-health-board-panel';
 
 const TASK_BULK_COMPLETE_SCOPE_DESCRIPTION_ID = 'tasks-bulk-complete-scope-description';
+const TASK_CURSOR_PARTIAL_DESCRIPTION_ID = 'tasks-cursor-partial-description';
 
 // --- Types ---
 
@@ -116,6 +117,21 @@ const taskSchema: z.ZodType<Task> = z.object({
   completed_at: z.string().nullable(),
   created_at: z.string(),
 });
+
+type TaskCursorPage = {
+  data: Task[];
+  hasMore: boolean;
+  nextCursor?: string;
+};
+
+type TaskCursorTailState = {
+  scopeKey: string;
+  firstPageAnchor: string;
+  pages: Array<{ cursor: string; page: TaskCursorPage }>;
+  isLoading: boolean;
+  error: string | null;
+  canRetry: boolean;
+};
 
 const staffWorkloadSchema = z
   .object({
@@ -381,7 +397,20 @@ function TasksWorkspace({
   const [statusFilter, setStatusFilter] = useState(initialStatus ?? 'pending');
   const [taskTypeFilter, setTaskTypeFilter] = useState(initialTaskType ?? '');
   const [priorityFilter, setPriorityFilter] = useState(initialPriority ?? '');
-  const [selectedTasks, setSelectedTasks] = useState<Task[]>([]);
+  const [taskSelectionState, setTaskSelectionState] = useState<{
+    scopeKey: string;
+    tasks: Task[];
+  }>({ scopeKey: '', tasks: [] });
+  const [taskCursorTailState, setTaskCursorTailState] = useState<TaskCursorTailState>({
+    scopeKey: '',
+    firstPageAnchor: '',
+    pages: [],
+    isLoading: false,
+    error: null,
+    canRetry: false,
+  });
+  const taskCursorGenerationRef = useRef(0);
+  const taskCursorRequestRef = useRef<string | null>(null);
   const [requestAssignee, setRequestAssignee] = useState('');
   const [requestType, setRequestType] = useState<WorkRequestType>(
     initialWorkRequestType ?? 'staff_work_request_visit',
@@ -420,6 +449,7 @@ function TasksWorkspace({
   ]);
   const taskTypeFilterLabel =
     TASK_TYPE_OPTIONS.find((option) => option.value === taskTypeFilter)?.label ?? taskTypeFilter;
+  const taskQueryScopeKey = JSON.stringify([orgId, currentUserId, currentUserRole, queryParams]);
   const healthBoardApiPath = buildTasksHealthBoardApiPath({
     scope: healthBoardScope,
     limit: 500,
@@ -427,10 +457,16 @@ function TasksWorkspace({
     risk_domain: healthBoardRiskDomain || null,
   });
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    dataUpdatedAt = 0,
+  } = useQuery({
     queryKey: ['tasks', orgId, currentUserId, currentUserRole, queryParams],
     queryFn: async () => {
-      return fetchAllCursorPages<Task>({
+      return fetchCursorPage<Task>({
         path: '/api/tasks',
         params: new URLSearchParams(queryParams),
         init: { headers: buildOrgHeaders(orgId) },
@@ -441,7 +477,137 @@ function TasksWorkspace({
     enabled: Boolean(orgId && currentUserId && currentUserRole),
   });
 
-  const tasks = data?.data ?? [];
+  const firstTaskPageAnchor = data
+    ? dataUpdatedAt > 0
+      ? String(dataUpdatedAt)
+      : JSON.stringify(data)
+    : '';
+  const activeTaskCursorTail =
+    taskCursorTailState.scopeKey === taskQueryScopeKey &&
+    taskCursorTailState.firstPageAnchor === firstTaskPageAnchor
+      ? taskCursorTailState
+      : {
+          scopeKey: taskQueryScopeKey,
+          firstPageAnchor: firstTaskPageAnchor,
+          pages: [],
+          isLoading: false,
+          error: null,
+          canRetry: false,
+        };
+  const taskPages = data ? [data, ...activeTaskCursorTail.pages.map(({ page }) => page)] : [];
+  const tasks = Array.from(
+    new Map(taskPages.flatMap((page) => page.data).map((task) => [task.id, task])).values(),
+  );
+  const selectedTaskIds = new Set(
+    taskSelectionState.scopeKey === taskQueryScopeKey
+      ? taskSelectionState.tasks.map((task) => task.id)
+      : [],
+  );
+  const selectedTasks = tasks.filter((task) => selectedTaskIds.has(task.id));
+  const lastTaskPage = taskPages.at(-1);
+  const hasMoreTasks = Boolean(lastTaskPage?.hasMore && lastTaskPage.nextCursor);
+
+  async function loadMoreTasks() {
+    const nextCursor = lastTaskPage?.nextCursor;
+    if (!hasMoreTasks || !nextCursor || activeTaskCursorTail.isLoading) return;
+    const requestedCursors = new Set(activeTaskCursorTail.pages.map(({ cursor }) => cursor));
+    if (requestedCursors.has(nextCursor)) {
+      setTaskCursorTailState({
+        ...activeTaskCursorTail,
+        error: '続きの読込位置が循環したため、追加読込を停止しました。',
+        canRetry: false,
+      });
+      return;
+    }
+    const requestGeneration = taskCursorGenerationRef.current;
+    const requestKey = JSON.stringify([
+      taskQueryScopeKey,
+      firstTaskPageAnchor,
+      requestGeneration,
+      nextCursor,
+    ]);
+    if (taskCursorRequestRef.current === requestKey) return;
+    taskCursorRequestRef.current = requestKey;
+
+    setTaskCursorTailState({
+      ...activeTaskCursorTail,
+      isLoading: true,
+      error: null,
+      canRetry: false,
+    });
+
+    try {
+      const page = await fetchCursorPage<Task>({
+        path: '/api/tasks',
+        params: new URLSearchParams(queryParams),
+        init: { headers: buildOrgHeaders(orgId) },
+        cursor: nextCursor,
+        errorMessage: 'タスクの追加読込に失敗しました',
+        itemSchema: taskSchema,
+      });
+      const seenCursors = new Set([...requestedCursors, nextCursor]);
+      if (page.nextCursor && seenCursors.has(page.nextCursor)) {
+        setTaskCursorTailState((current) =>
+          taskCursorGenerationRef.current === requestGeneration &&
+          current.scopeKey === taskQueryScopeKey &&
+          current.firstPageAnchor === firstTaskPageAnchor
+            ? {
+                ...current,
+                isLoading: false,
+                error: '続きの読込位置が循環したため、追加読込を停止しました。',
+                canRetry: false,
+              }
+            : current,
+        );
+        return;
+      }
+      setTaskCursorTailState((current) =>
+        taskCursorGenerationRef.current === requestGeneration &&
+        current.scopeKey === taskQueryScopeKey &&
+        current.firstPageAnchor === firstTaskPageAnchor
+          ? {
+              scopeKey: taskQueryScopeKey,
+              firstPageAnchor: firstTaskPageAnchor,
+              pages: [...current.pages, { cursor: nextCursor, page }],
+              isLoading: false,
+              error: null,
+              canRetry: false,
+            }
+          : current,
+      );
+    } catch {
+      setTaskCursorTailState((current) =>
+        taskCursorGenerationRef.current === requestGeneration &&
+        current.scopeKey === taskQueryScopeKey &&
+        current.firstPageAnchor === firstTaskPageAnchor
+          ? {
+              ...current,
+              isLoading: false,
+              error: '追加のタスクを読み込めませんでした。読込済みの行は保持されています。',
+              canRetry: true,
+            }
+          : current,
+      );
+    } finally {
+      if (taskCursorRequestRef.current === requestKey) {
+        taskCursorRequestRef.current = null;
+      }
+    }
+  }
+
+  function resetTaskClientState() {
+    taskCursorGenerationRef.current += 1;
+    taskCursorRequestRef.current = null;
+    setTaskSelectionState({ scopeKey: taskQueryScopeKey, tasks: [] });
+    setTaskCursorTailState({
+      scopeKey: taskQueryScopeKey,
+      firstPageAnchor: firstTaskPageAnchor,
+      pages: [],
+      isLoading: false,
+      error: null,
+      canRetry: false,
+    });
+  }
 
   const {
     data: healthBoardData,
@@ -602,6 +768,7 @@ function TasksWorkspace({
       setRequestTitle('');
       setRequestDescription('');
       setRequestDueDate('');
+      resetTaskClientState();
       void queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
       void queryClient.invalidateQueries({ queryKey: ['tasks-health-board', orgId] });
       void queryClient.invalidateQueries({ queryKey: ['staff-workload', orgId] });
@@ -614,6 +781,7 @@ function TasksWorkspace({
         setAssignmentEligibilityRecoveryBaseline(staffWorkloadDataUpdatedAt);
       } else if (submissionError?.outcomeUnknown) {
         setRequestSubmissionFailure('outcome_unknown');
+        resetTaskClientState();
         void queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
         void queryClient.invalidateQueries({ queryKey: ['tasks-health-board', orgId] });
       } else {
@@ -667,7 +835,7 @@ function TasksWorkspace({
           toast.warning(`${completed}件完了、${failed}件失敗しました`);
         }
       }
-      setSelectedTasks([]);
+      resetTaskClientState();
       void queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
       void queryClient.invalidateQueries({ queryKey: ['tasks-health-board', orgId] });
     },
@@ -832,7 +1000,7 @@ function TasksWorkspace({
       >
         <FilterSummaryBar
           items={[
-            { label: '表示件数', value: `${tasks.length}件` },
+            { label: '読込済み', value: `${tasks.length}件` },
             { label: '期限超過', value: `${overdueTasks}件` },
             { label: '緊急・高優先度', value: `${urgentOrHighPriorityTasks}件` },
             {
@@ -1217,6 +1385,7 @@ function TasksWorkspace({
               value={statusFilter}
               onValueChange={(v) => {
                 const nextValue = v ?? '';
+                resetTaskClientState();
                 setStatusFilter(nextValue);
                 replaceTaskUrl({ status: nextValue || null });
               }}
@@ -1239,6 +1408,7 @@ function TasksWorkspace({
               value={taskTypeFilter}
               onValueChange={(v) => {
                 const nextValue = v ?? '';
+                resetTaskClientState();
                 setTaskTypeFilter(nextValue);
                 replaceTaskUrl({ task_type: nextValue || null });
               }}
@@ -1261,6 +1431,7 @@ function TasksWorkspace({
               value={priorityFilter}
               onValueChange={(v) => {
                 const nextValue = v ?? '';
+                resetTaskClientState();
                 setPriorityFilter(nextValue);
                 replaceTaskUrl({ priority: nextValue || null });
               }}
@@ -1283,6 +1454,7 @@ function TasksWorkspace({
                 checked={assignedToMe}
                 onCheckedChange={(v) => {
                   const nextValue = !!v;
+                  resetTaskClientState();
                   setAssignedToMe(nextValue);
                   replaceTaskUrl({ assigned: nextValue ? 'me' : null });
                 }}
@@ -1308,7 +1480,7 @@ function TasksWorkspace({
                 aria-describedby={TASK_BULK_COMPLETE_SCOPE_DESCRIPTION_ID}
               >
                 <CheckSquare className="mr-1.5 size-3.5" aria-hidden="true" />
-                表示中から選択した{completableTasks.length}件を完了
+                読込済みから選択した{completableTasks.length}件を完了
               </Button>
             </ActionRail>
           ) : null
@@ -1321,7 +1493,7 @@ function TasksWorkspace({
         ) : null}
         <FilterSummaryBar
           items={[
-            { label: '表示件数', value: `${tasks.length}件` },
+            { label: '読込済み', value: `${tasks.length}件` },
             { label: '選択中', value: `${selectedTasks.length}件` },
             { label: '完了可能', value: `${completableTasks.length}件` },
             ...(dedicatedCompletionCount > 0
@@ -1367,18 +1539,69 @@ function TasksWorkspace({
           />
         ) : (
           <>
+            <p className="sr-only" aria-live="polite" data-testid="tasks-cursor-live-status">
+              {isLoading
+                ? 'タスク一覧を読み込んでいます。'
+                : hasMoreTasks
+                  ? `タスクを${tasks.length}件読み込み済みです。未読込のタスクがあります。`
+                  : `タスクを${tasks.length}件読み込みました。`}
+            </p>
+            {hasMoreTasks ? (
+              <Alert>
+                <AlertDescription id={TASK_CURSOR_PARTIAL_DESCRIPTION_ID}>
+                  読込済み {tasks.length}
+                  件を表示しています。未読込のタスクがあります。1回に100件ずつ 追加できます。
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {activeTaskCursorTail.error ? (
+              <Alert role="alert" variant="destructive">
+                <AlertDescription className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <span>{activeTaskCursorTail.error}</span>
+                  {activeTaskCursorTail.canRetry ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="min-h-11 shrink-0"
+                      onClick={() => void loadMoreTasks()}
+                    >
+                      同じ位置から再試行
+                    </Button>
+                  ) : null}
+                </AlertDescription>
+              </Alert>
+            ) : null}
             <DataTable
+              key={taskQueryScopeKey}
               columns={columns}
               data={tasks}
               isLoading={isLoading}
               caption="タスク一覧"
               enableRowSelection
-              onSelectionChange={setSelectedTasks}
+              onSelectionChange={(rows) =>
+                setTaskSelectionState({ scopeKey: taskQueryScopeKey, tasks: rows })
+              }
               getRowId={(row) => row.id}
               getRowA11yLabel={(row) => row.title}
               enablePagination
               pageSize={50}
             />
+
+            {hasMoreTasks && !activeTaskCursorTail.error ? (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11"
+                  onClick={() => void loadMoreTasks()}
+                  disabled={activeTaskCursorTail.isLoading}
+                  aria-describedby={TASK_CURSOR_PARTIAL_DESCRIPTION_ID}
+                >
+                  {activeTaskCursorTail.isLoading ? '追加読込中…' : 'さらに読み込む'}
+                </Button>
+              </div>
+            ) : null}
 
             <div className="space-y-3 sm:hidden">
               {tasks.map((task) => {
@@ -1408,7 +1631,7 @@ function TasksWorkspace({
                   </div>
                 );
               })}
-              {!isLoading && tasks.length === 0 && (
+              {!isLoading && !hasMoreTasks && tasks.length === 0 && (
                 <p className="py-8 text-center text-sm text-muted-foreground">
                   該当するタスクはありません
                 </p>
