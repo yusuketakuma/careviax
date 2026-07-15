@@ -63,6 +63,42 @@
 
 ## 直近の作業
 
+- codex1/codex2: bounded HTTP ingress foundation + authoritative prescription search
+  (`SEC-HTTP-IO-BUDGET-001` PARTIAL `42f7ce928` / `2e1de27c9` / `940762409`,
+  `SEARCH-PALETTE-AUTHORITATIVE-QUERY-001` PARTIAL `e8ed604de`, 2026-07-15).
+  - HTTP foundation root cause / implementation:
+    共通JSON helperの`req.json()` / `req.text()`全bufferとContent-Length依存を、Web `ReadableStream`のraw
+    `Uint8Array` byte count、read deadline、request/provider abort、best-effort cancel/releaseへ置換した。default
+    1MiB/10s、hard 5MiB/30sを固定し、偽・欠落Content-Lengthでもchunk実測を正本にする。fatal UTF-8 decodeは
+    bounded read完了後だけ実行し、legacy約245 callerはobject/nullと既存400互換を維持する一方、strict helperの
+    oversizeはregistered `REQUEST_BODY_TOO_LARGE` 413、実deadlineだけを`REQUEST_BODY_TIMEOUT` 408へ写像する。
+    client abort/unreadableはtimeoutと誤表示せずfixed 400を維持し、raw body、abort reason、stream errorを返さない。
+    readerはRequest/Response共通sourceと外部signalを受理するため、後続proxy/providerでも同じbudget seamを再利用できる。
+  - source-specific ingress:
+    YRESE webhookはraw bytesを1MiB/10sで署名前に制限し、fatal UTF-8のexact decoded stringをHMACへ渡す。
+    split multibyteでも署名文字列を変えず、lying Content-Length oversizeは既存no-store 413、stallはno-store 408、
+    invalid UTF-8/abort/unreadableはfixed 400とし、failure logはcoded metadataとbounded byte countだけにした。
+    QR draft POSTはstrict helperへ移し、16 x 8192文字の現行合法multibyte payload 393KiBを受理できる512KiB/5sに狭め、
+    413/408を患者・店舗lookup、JAHIS parse、DB write前に返す。schemaの二重safeParseも除去した。
+  - prescription search root cause / implementation:
+    `/api/prescription-intakes?q=`は処方番号、処方医、医療機関、患者名/カナをserver-side部分一致しlimit=8で返すが、
+    paletteが患者名/医療機関`startsWith`で再filterして処方番号・処方医・中間一致をfalse-emptyにしていた。
+    stale `bestEffort` metadata/暫定labelとclient filter/capだけを削除し、server row/orderをauthoritativeにした。
+    permission/org no-fetch、runtime schema、abort/stale/fail-closed、generic metadata plumbingは維持した。
+  - consultation / validation:
+    Oracleは使用せず、codex2と別Codexへagmsgで計画、stream cancellation、Response再利用、abort/timeout分類、
+    NextRequest test型を相談した。mid-edit test mismatchと`duplex` excess-property TS2353をP1として検出し、typed init
+    variableのtest-only follow-upで閉じた。Aは3 files / 29 tests、strict callerを含む6 files / 61 tests、Bは
+    2 files / 39 tests、searchは3 files / 47 testsがPASS。exact ESLint、Prettier、diff-check、serialized
+    `pnpm typecheck` / `pnpm typecheck:no-unused`、API response shape 0、client JSON schema 363/0、frontend contract、
+    client PHI log/displayがPASSした。build/E2Eはbuild抑制指示に従い未実行。layout/visual reconstructionを伴わない
+    transport/search correctnessと固定label削除なのでimage generationは省略した。
+  - remaining / next:
+    HTTP親taskはPartial。PHOS proxyのrequest/response完全buffer、provider clientのheaders後timeout解除、FHIR response
+    budgetを同じreaderへ移す。QR confirmのline/string cardinalityは別medical input-amplification sliceとして扱う。
+    Search親taskもPartialで、care-reportがpatient候補を先にlimitして9人目以降のreportをfalse-emptyにするbackend半分が残る。
+    次もexact-path ownershipと相互reviewでnon-overlap実装し、詰まりはOracleではなく別Codexへ相談する。
+
 - codex1/codex2: explicit print intent + strict drug-master date/provenance
   (`PRIVACY-PRINT-EXPLICIT-INTENT-001` DONE `86fd09be7`, typecheck test follow-up `afb0d4b40`,
   `MEDSAFE-DRUG-MASTER-DATE-STRICT-001` PARTIAL `37bbc6554`, 2026-07-15).
