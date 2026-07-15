@@ -53,10 +53,7 @@ export type PaletteCategory = {
   /** ベストエフォート時の UI/aria 補足ラベル。 */
   bestEffortNote?: string;
   /**
-   * F-010A(backend の bounded/最小投影 server search)landing までパレットから一時除外する。
-   * 現バックエンドは prescription が q を無視して患者名込みの最新行を返し、contact が limit なしで
-   * phone/email/fax 等を spread するため、データ最小化(§9 系)の観点で palette には載せない。
-   * F-010A 完了後に min 投影へ合わせて deferred を外す。
+   * backend の bounded/minimal server search が未整備のカテゴリを一時除外するための readiness gate。
    */
   deferred?: boolean;
 };
@@ -262,14 +259,12 @@ export const PALETTE_CATEGORIES: PaletteCategory[] = [
     label: SEARCH_CATEGORY_LABELS.prescription,
     requiredPermission: 'canVisit',
     orgScoped: true,
-    // API は q を server 側で無視する(limit=8 で payload は bounded)。
-    // 取得 <=8 件を client 側で patient 名/施設名 前方一致 filter → 決定的 cap する。
+    // API の q は処方番号・処方医・医療機関・患者名/カナを server-side 部分一致検索する。
+    // server の bounded result/order を authoritative とし、client で再 filter しない。
     endpoint: (query) => buildPaletteEndpoint('/api/prescription-intakes', query),
     schema: prescriptionSchema,
     normalize: dataItems,
     build: (item) => buildPrescriptionResult(item as Parameters<typeof buildPrescriptionResult>[0]),
-    bestEffort: true,
-    bestEffortNote: '暫定（部分一致）',
   },
   {
     id: 'drug',
@@ -311,5 +306,5 @@ export const PALETTE_CATEGORIES: PaletteCategory[] = [
   },
 ];
 
-/** パレットで実際に有効(非 deferred)なカテゴリ。F-010A landing 後に prescription/contact が復帰する。 */
+/** パレットで実際に有効な非 deferred カテゴリ。 */
 export const ACTIVE_PALETTE_CATEGORIES = PALETTE_CATEGORIES.filter((c) => !c.deferred);

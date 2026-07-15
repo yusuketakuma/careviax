@@ -31,7 +31,6 @@ export type UseGlobalSearchResult = {
 
 const DEBOUNCE_MS = 250;
 const MIN_CHARS = 2;
-const PRESCRIPTION_CAP = 8;
 
 /** 結果の stale 判定に使う入力キー。query/role/orgId のいずれが変わっても別キーになる。 */
 export function globalSearchKey(query: string, role: MemberRole | null, orgId: string): string {
@@ -41,7 +40,7 @@ export function globalSearchKey(query: string, role: MemberRole | null, orgId: s
 /**
  * 権限と orgId から「実際に fetch してよいカテゴリ」を決める(URL 構築前ゲート)。
  * role が null(不明)のときは fail-closed で org/perm 必須カテゴリを除外し、
- * 認証のみで足りる drug のみ許可する。deferred カテゴリ(F-010A 待ち)は対象外。
+ * 認証のみで足りる drug のみ許可する。deferred カテゴリは対象外。
  */
 export function resolveEnabledCategories(
   role: MemberRole | null,
@@ -56,27 +55,6 @@ export function resolveEnabledCategories(
     if (category.orgScoped && !orgId) return false;
     return true;
   });
-}
-
-/**
- * prescription(bestEffort): 取得 items を query で client filter する。
- * patient 名 / 施設名 への前方一致(大小無視)→ 決定的 cap。
- */
-function filterPrescriptionItems(items: unknown[], query: string): unknown[] {
-  const needle = query.trim().toLowerCase();
-  const matched = items.filter((raw) => {
-    const item = raw as {
-      cycle?: { case_?: { patient?: { name?: string | null } | null } | null } | null;
-      prescriber_institution?: { name?: string | null } | null;
-    };
-    const patientName = item.cycle?.case_?.patient?.name ?? '';
-    const institutionName = item.prescriber_institution?.name ?? '';
-    return (
-      patientName.toLowerCase().startsWith(needle) ||
-      institutionName.toLowerCase().startsWith(needle)
-    );
-  });
-  return matched.slice(0, PRESCRIPTION_CAP);
 }
 
 async function fetchCategory(
@@ -99,10 +77,7 @@ async function fetchCategory(
       schema: category.schema,
       fallbackMessage: '検索結果を取得できませんでした',
     });
-    let items = category.normalize(parsed);
-    if (category.bestEffort) {
-      items = filterPrescriptionItems(items, query);
-    }
+    const items = category.normalize(parsed);
     const rows = items.map((item) => category.build(item));
     return { ...base, status: 'ok', rows };
   } catch {

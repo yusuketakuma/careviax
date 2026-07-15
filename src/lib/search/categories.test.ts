@@ -51,14 +51,14 @@ describe('palette category registry (F-009 MVP)', () => {
     expect(byId('drug').requiredPermission).toBeNull();
   });
 
-  it('flags org-scoped categories (all but drug) and best-effort (prescription only)', () => {
+  it('flags org-scoped categories (all but drug) without stale best-effort metadata', () => {
     expect(byId('drug').orgScoped).toBe(false);
     for (const id of ['patient', 'proposal', 'prescription', 'report', 'contact'] as const) {
       expect(byId(id).orgScoped, id).toBe(true);
     }
-    expect(byId('prescription').bestEffort).toBe(true);
-    for (const id of ['patient', 'proposal', 'drug', 'report', 'contact'] as const) {
-      expect(byId(id).bestEffort ?? false, id).toBe(false);
+    for (const category of PALETTE_CATEGORIES) {
+      expect(category.bestEffort ?? false, category.id).toBe(false);
+      expect(category.bestEffortNote, category.id).toBeUndefined();
     }
   });
 
@@ -69,6 +69,9 @@ describe('palette category registry (F-009 MVP)', () => {
     // contact は F-010A の最小投影 endpoint(q + limit=8)を消費する。
     expect(byId('contact').endpoint('田中')).toBe(
       `/api/contact-profiles?q=${encodeURIComponent('田中')}&limit=8`,
+    );
+    expect(byId('prescription').endpoint('佐藤 医師')).toBe(
+      `/api/prescription-intakes?q=${encodeURIComponent('佐藤 医師')}&limit=8`,
     );
   });
 

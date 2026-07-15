@@ -20,6 +20,7 @@ function okBody(url: string): unknown {
         { id: 'rx1', cycle: { case_: { patient: { name: '山田 太郎' } } } },
         { id: 'rx2', cycle: { case_: { patient: { name: '佐藤 花子' } } } },
       ],
+      meta: { has_more: false, next_cursor: null },
     };
   if (url.startsWith('/api/drug-masters'))
     return {
@@ -166,6 +167,64 @@ describe('useGlobalSearch', () => {
       '/api/visit-schedule-proposals',
     ]);
   });
+
+  it.each([
+    {
+      label: 'prescription number',
+      query: '000101',
+      item: { id: 'rx-number-match', display_id: 'r0000000101' },
+    },
+    {
+      label: 'prescriber',
+      query: '佐藤',
+      item: { id: 'rx-prescriber-match', prescriber_name: '佐藤 医師' },
+    },
+    {
+      label: 'mid-string institution',
+      query: '宅クリ',
+      item: {
+        id: 'rx-institution-match',
+        prescriber_institution: { name: '在宅クリニック' },
+      },
+    },
+  ])(
+    'preserves authoritative $label matches without client re-filtering',
+    async ({ query, item }) => {
+      installFetch(async (url) => {
+        if (url.startsWith('/api/prescription-intakes')) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  ...item,
+                  prescribed_date: '2026-07-15T00:00:00.000Z',
+                  cycle: {
+                    overall_status: 'intake',
+                    case_: { patient: { name: '山田 太郎' } },
+                  },
+                },
+              ],
+              meta: { has_more: false, next_cursor: null },
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify(okBody(url)), { status: 200 });
+      });
+
+      const { result } = await runSearch(query, MemberRole.admin, ORG);
+      const prescription = result.current.results.find(
+        (entry) => entry.category === 'prescription',
+      );
+
+      expect(prescription).toMatchObject({
+        status: 'ok',
+        rows: [expect.objectContaining({ id: item.id })],
+      });
+      expect(prescription?.bestEffort).toBeUndefined();
+      expect(prescription?.bestEffortNote).toBeUndefined();
+    },
+  );
 
   it('routes patient/proposal/report through view=palette (F-012 minimal projection over-fetch guard)', async () => {
     installFetch();
