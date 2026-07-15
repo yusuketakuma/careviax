@@ -4,7 +4,7 @@
   "mode": "static_source_only",
   "description": "SELECT-only static inventory for legacy clinical schema, readers, writers, adapters, routes, jobs, callers, and DTO contracts. This file does not authorize deletion, migration, database access, or production mutation.",
   "scope": {
-    "production_source_roots": ["src"],
+    "production_source_roots": ["src", "prisma"],
     "excluded_path_patterns": [
       "(?:^|/)__tests__(?:/|$)",
       "\\.(?:test|spec|stories)\\.[cm]?[jt]sx?$",
@@ -2028,6 +2028,19 @@
     }
   ],
   "expected_prisma_accesses": [
+    "prisma/seed-design-demo.ts|careCase|upsert|dot|2",
+    "prisma/seed-design-demo.ts|careReport|upsert|dot|2",
+    "prisma/seed-design-demo.ts|dispenseResult|upsert|dot|1",
+    "prisma/seed-design-demo.ts|medicationCycle|upsert|dot|3",
+    "prisma/seed-design-demo.ts|patient|upsert|dot|4",
+    "prisma/seed-design-demo.ts|prescriptionIntake|deleteMany|dot|1",
+    "prisma/seed-design-demo.ts|prescriptionIntake|upsert|dot|4",
+    "prisma/seed-design-demo.ts|prescriptionLine|upsert|dot|4",
+    "prisma/seed-design-demo.ts|visitRecord|upsert|dot|3",
+    "prisma/seed-design-demo.ts|visitSchedule|upsert|dot|3",
+    "prisma/seed.ts|careCase|upsert|dot|1",
+    "prisma/seed.ts|patient|upsert|dot|5",
+    "prisma/seed.ts|visitSchedule|updateMany|dot|1",
     "src/app/(dashboard)/visits/[id]/capture/page.tsx|visitSchedule|findFirst|dot|1",
     "src/app/api/admin/capacity/route.ts|medicationCycle|groupBy|dot|1",
     "src/app/api/admin/capacity/route.ts|visitSchedule|findMany|dot|1",
@@ -3050,5 +3063,5 @@
       "disposition": "replace_at_cutover"
     }
   ],
-  "expected_inventory_sha256": "25fdd2665a0c5fd1d1485a103454beaa1f827fd4d5ac2eadef0c3da8aac6106e"
+  "expected_inventory_sha256": "a2516fcd6406fa8b8829b99ba32117964bddb7be8a4e92988b80aef289d4ef83"
 }
