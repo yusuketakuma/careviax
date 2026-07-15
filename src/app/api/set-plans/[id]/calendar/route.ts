@@ -242,7 +242,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
       },
     });
   },
-  { permission: 'canSet' },
+  { permission: 'canViewDashboard' },
 );
 
 export const GET: typeof authenticatedGET = async (req, routeContext) => {

@@ -114,7 +114,7 @@ const authenticatedGET = withAuthContext(
     });
   },
   {
-    permission: 'canDispense',
+    permission: 'canViewDashboard',
     message: '調剤ワークベンチの閲覧権限がありません',
   },
 );

@@ -457,9 +457,30 @@ export const routeCatalog: RouteCatalogEntry[] = [
   },
   {
     path: '/api/dispense-audits',
-    methods: ['GET', 'POST'],
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: '調剤鑑査一覧取得',
+    area: 'dispensing',
+  },
+  {
+    path: '/api/dispense-audits',
+    methods: ['POST'],
     permission: 'canAuditDispense',
-    description: '鑑査一覧取得と鑑査実行',
+    description: '調剤鑑査実行',
+    area: 'dispensing',
+  },
+  {
+    path: '/api/set-audits',
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: 'セット鑑査一覧取得',
+    area: 'dispensing',
+  },
+  {
+    path: '/api/set-audits',
+    methods: ['POST'],
+    permission: 'canAuditSet',
+    description: 'セット鑑査実行',
     area: 'dispensing',
   },
   {

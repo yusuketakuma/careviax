@@ -356,7 +356,7 @@
     {
       "path": "src/app/api/dispense-audits/route.ts",
       "expectedCount": 2,
-      "permissions": ["canAuditDispense"],
+      "permissions": ["canAuditDispense", "canViewDashboard"],
       "sensitiveNoStore": true,
       "routePerformance": true,
       "owner": "platform-routing",
@@ -1236,7 +1236,7 @@
     {
       "path": "src/app/api/set-audits/route.ts",
       "expectedCount": 2,
-      "permissions": ["canAuditSet"],
+      "permissions": ["canAuditSet", "canViewDashboard"],
       "sensitiveNoStore": true,
       "routePerformance": true,
       "owner": "platform-routing",

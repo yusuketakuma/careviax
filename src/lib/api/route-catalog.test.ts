@@ -75,6 +75,33 @@ describe('routeCatalog', () => {
     );
   });
 
+  it('separates audit queue reads from audit execution by HTTP method', () => {
+    expect(routeCatalog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: '/api/dispense-audits',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+        }),
+        expect.objectContaining({
+          path: '/api/dispense-audits',
+          methods: ['POST'],
+          permission: 'canAuditDispense',
+        }),
+        expect.objectContaining({
+          path: '/api/set-audits',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+        }),
+        expect.objectContaining({
+          path: '/api/set-audits',
+          methods: ['POST'],
+          permission: 'canAuditSet',
+        }),
+      ]),
+    );
+  });
+
   it('labels direct visit schedule generation as removed in favor of proposals', () => {
     const entry = routeCatalog.find((item) => item.path === '/api/visit-schedules/generate');
 

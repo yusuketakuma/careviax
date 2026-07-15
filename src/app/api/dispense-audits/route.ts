@@ -39,7 +39,7 @@ const ROUTE = '/api/dispense-audits';
 
 async function authenticatedGET(req: NextRequest) {
   const auth = await requireAuthContext(req, {
-    permission: 'canAuditDispense',
+    permission: 'canViewDashboard',
     message: '調剤鑑査の閲覧権限がありません',
   });
   if ('response' in auth) return auth.response;

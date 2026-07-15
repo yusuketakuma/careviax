@@ -271,6 +271,21 @@ describe('/api/set-audits POST', () => {
     );
   });
 
+  it('denies clerk set-audit execution before parsing or transaction side effects', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+
+    const response = await POST(createMalformedPostRequest({ 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('marks visit schedules ready and downgrades already-ready schedules on approved audits', async () => {
     const response = await POST(
       createRequest(
@@ -2012,6 +2027,24 @@ describe('/api/set-audits GET', () => {
           org_id: 'org_1',
           cycle: { overall_status: 'setting' },
         }),
+      }),
+    );
+  });
+
+  it('allows clerks to read the set audit queue', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+
+    const response = await GET(createGetRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({ role: 'clerk' }),
       }),
     );
   });

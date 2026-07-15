@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import type { MemberRole } from '@prisma/client';
+import { hasPermission, type PermissionKey } from '@/lib/auth/permission-matrix';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
@@ -98,14 +100,26 @@ function createGetRequest(search = '') {
   return new NextRequest(`http://localhost/api/dispense-audits${search}`);
 }
 
-function setupAuthMocks() {
-  requireAuthContextMock.mockResolvedValue({
-    ctx: {
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist' as const,
+function setupAuthMocks(role: MemberRole = 'pharmacist') {
+  requireAuthContextMock.mockImplementation(
+    async (_req: NextRequest, options: { permission: PermissionKey; message?: string }) => {
+      if (!hasPermission(role, options.permission)) {
+        return {
+          response: Response.json(
+            { code: 'AUTH_FORBIDDEN', message: options.message ?? '権限がありません' },
+            { status: 403 },
+          ),
+        };
+      }
+      return {
+        ctx: {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role,
+        },
+      };
     },
-  });
+  );
   runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
   withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
 }
@@ -361,6 +375,27 @@ describe('/api/dispense-audits GET', () => {
         }),
       }),
     );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: '調剤鑑査の閲覧権限がありません',
+    });
+  });
+
+  it('allows clerks to read the dispense audit queue', async () => {
+    setupAuthMocks('clerk');
+
+    const response = await GET(createGetRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({ role: 'clerk' }),
+      }),
+    );
   });
 
   it('returns only the visible audit count for nav badges', async () => {
@@ -485,6 +520,22 @@ describe('/api/dispense-audits POST', () => {
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'AUTH_FORBIDDEN',
+      message: '調剤鑑査の作成権限がありません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('denies clerk audit execution before parsing or audit side effects', async () => {
+    setupAuthMocks('clerk');
+
+    const response = await POST(createMalformedJsonRequest());
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canAuditDispense',
       message: '調剤鑑査の作成権限がありません',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import type { MemberRole } from '@prisma/client';
+import { hasPermission, type PermissionKey } from '@/lib/auth/permission-matrix';
 import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
@@ -29,10 +30,10 @@ vi.mock('@/lib/auth/context', () => ({
         ctx: { orgId: string; userId: string; role: MemberRole },
         routeContext: { params: Promise<Record<string, never>> },
       ) => Promise<Response>,
-      options?: { permission?: string; message?: string },
+      options?: { permission?: PermissionKey; message?: string },
     ) =>
     (req: NextRequest, routeContext: { params: Promise<Record<string, never>> }) => {
-      if (options?.permission === 'canDispense' && authCtx.role === 'clerk') {
+      if (options?.permission && !hasPermission(authCtx.role, options.permission)) {
         return Promise.resolve(
           new Response(JSON.stringify({ code: 'AUTH_FORBIDDEN', message: options.message }), {
             status: 403,
@@ -765,9 +766,21 @@ describe('GET /api/dispense-workbench/patients', () => {
     expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when the role lacks dispense permission', async () => {
+  it('allows clerks to read the workbench patient list', async () => {
     authCtx.role = 'clerk';
+    medicationCycleFindManyMock.mockResolvedValue([]);
+
     const response = await GET(createRequest(), { params: Promise.resolve({}) });
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(medicationCycleFindManyMock).toHaveBeenCalled();
+  });
+
+  it('returns 403 when the role lacks dashboard read permission', async () => {
+    authCtx.role = 'driver';
+    const response = await GET(createRequest(), { params: Promise.resolve({}) });
+
     expect(response.status).toBe(403);
     expectNoStore(response);
     expect(medicationCycleFindManyMock).not.toHaveBeenCalled();

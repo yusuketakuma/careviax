@@ -510,8 +510,23 @@ describe('/api/set-plans/[id]/calendar GET', () => {
     expect(prismaMock.prescriptionIntake.findMany).not.toHaveBeenCalled();
   });
 
-  it('denies clerks via the canSet permission gate', async () => {
+  it('allows clerks to read the set calendar', async () => {
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'clerk' });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(prismaMock.setPlan.findFirst).toHaveBeenCalled();
+    expect(prismaMock.setBatch.findMany).toHaveBeenCalled();
+  });
+
+  it('denies roles without dashboard read permission', async () => {
+    prismaMock.membership.findFirst.mockResolvedValue({ role: 'driver' });
 
     const response = await GET(createRequest(), {
       params: Promise.resolve({ id: 'plan_1' }),

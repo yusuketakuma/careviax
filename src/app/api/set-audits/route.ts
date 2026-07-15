@@ -524,7 +524,7 @@ function summarizeCellStates(batches: Array<{ audit_state: SetAuditCellState }>)
 
 async function authenticatedGET(req: NextRequest) {
   const auth = await requireAuthContext(req, {
-    permission: 'canAuditSet',
+    permission: 'canViewDashboard',
     message: 'セット鑑査の閲覧権限がありません',
   });
   if ('response' in auth) return auth.response;
