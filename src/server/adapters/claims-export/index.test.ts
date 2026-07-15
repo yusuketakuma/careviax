@@ -76,10 +76,11 @@ describe('claims export adapter', () => {
   it('fails closed for malformed successful rececom responses', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({
-        status: 200,
-        text: () => Promise.resolve(JSON.stringify({ format: 'claims-xml', recordCount: 1 })),
-      }),
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ format: 'claims-xml', recordCount: 1 }), {
+          status: 200,
+        }),
+      ),
     );
 
     const adapter = createClaimsExportAdapter({
@@ -99,19 +100,18 @@ describe('claims export adapter', () => {
   it('returns normalized rececom export results', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({
-        status: 200,
-        text: () =>
-          Promise.resolve(
-            JSON.stringify({
-              format: 'csv',
-              content: 'patient_id,billing_code',
-              recordCount: 1,
-              generatedAt: '2026-05-31T00:00:00.000Z',
-              extra: 'ignored',
-            }),
-          ),
-      }),
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            format: 'csv',
+            content: 'patient_id,billing_code',
+            recordCount: 1,
+            generatedAt: '2026-05-31T00:00:00.000Z',
+            extra: 'ignored',
+          }),
+          { status: 200 },
+        ),
+      ),
     );
 
     const adapter = createClaimsExportAdapter({
@@ -126,5 +126,68 @@ describe('claims export adapter', () => {
       recordCount: 1,
       generatedAt: '2026-05-31T00:00:00.000Z',
     });
+  });
+
+  it('accepts bulk export responses above 1 MiB and within the shared 5 MiB hard limit', async () => {
+    const content = 'x'.repeat(1024 * 1024 + 1);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            format: 'csv',
+            content,
+            recordCount: 1,
+            generatedAt: '2026-05-31T00:00:00.000Z',
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const adapter = createClaimsExportAdapter({
+      provider: 'rececom',
+      baseUrl: 'https://rececom.example.test',
+    });
+
+    const result = await adapter.exportClaims(payload);
+
+    expect(result.content).toHaveLength(content.length);
+    expect(result.recordCount).toBe(1);
+  });
+
+  it('rejects bulk export responses above the shared 5 MiB hard limit', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            format: 'csv',
+            content: 'raw-patient-export'.repeat(Math.ceil((5 * 1024 * 1024) / 18)),
+            recordCount: 1,
+            generatedAt: '2026-05-31T00:00:00.000Z',
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const adapter = createClaimsExportAdapter({
+      provider: 'rececom',
+      baseUrl: 'https://rececom.example.test',
+    });
+
+    const error = await adapter.exportClaims(payload).catch((cause: unknown) => cause);
+
+    expect(error).toMatchObject({
+      name: 'HttpAdapterError',
+      status: 200,
+      causeDetail: {
+        reason: 'response_body_too_large',
+        upstream_status: 200,
+        max_bytes: 5 * 1024 * 1024,
+      },
+    });
+    expect(JSON.stringify((error as { causeDetail?: unknown }).causeDetail)).not.toContain(
+      'patient',
+    );
   });
 });

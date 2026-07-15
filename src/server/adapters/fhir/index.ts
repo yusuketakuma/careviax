@@ -4,6 +4,9 @@ import { readJsonObject } from '@/lib/db/json';
 export const JP_CORE_VERSION = '1.2.0';
 export const FHIR_R4_VERSION = '4.0.1';
 
+const FHIR_RESOURCE_RESPONSE_MAX_BYTES = 512 * 1024;
+const FHIR_SEARCH_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
+
 export interface FhirCoding {
   system: string;
   code: string;
@@ -590,6 +593,7 @@ export class FhirAdapter {
       `${this.baseUrl.replace(/\/$/, '')}/Patient/${encodeURIComponent(id)}`,
       {
         headers: buildBearerHeaders(this.options?.accessToken, this.options?.apiKey),
+        maxResponseBytes: FHIR_RESOURCE_RESPONSE_MAX_BYTES,
       },
     );
     if (status === 404) return null;
@@ -640,6 +644,7 @@ export class FhirAdapter {
       method: 'POST',
       headers: buildBearerHeaders(this.options?.accessToken, this.options?.apiKey),
       body: data,
+      maxResponseBytes: FHIR_RESOURCE_RESPONSE_MAX_BYTES,
     });
     if (result.status >= 400) {
       throw new HttpAdapterError(
@@ -661,6 +666,7 @@ export class FhirAdapter {
       `${this.baseUrl.replace(/\/$/, '')}/${resourceType}?patient=${encodeURIComponent(patientId)}`,
       {
         headers: buildBearerHeaders(this.options?.accessToken, this.options?.apiKey),
+        maxResponseBytes: FHIR_SEARCH_RESPONSE_MAX_BYTES,
       },
     );
     if (status >= 400) {

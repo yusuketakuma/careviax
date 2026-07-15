@@ -1,5 +1,6 @@
 import { buildBearerHeaders, fetchJson } from '../http-client';
 import { readJsonObject } from '@/lib/db/json';
+import { HARD_HTTP_BODY_MAX_BYTES } from '@/lib/http/bounded-body';
 
 /**
  * レセコン連携アダプタ（請求データエクスポート）
@@ -170,6 +171,7 @@ class RececomClaimsExportAdapter implements ClaimsExportAdapterContract {
         method: 'POST',
         headers: buildBearerHeaders(this.config.accessToken, this.config.apiKey),
         body: payload,
+        maxResponseBytes: HARD_HTTP_BODY_MAX_BYTES,
       },
     );
 

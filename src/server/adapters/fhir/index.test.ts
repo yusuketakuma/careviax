@@ -353,4 +353,75 @@ describe('FhirAdapter', () => {
       status: 200,
     });
   });
+
+  it('accepts medication search Bundles above 1 MiB and within the 2 MiB source budget', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          resourceType: 'Bundle',
+          entry: [{ resource: validMedicationRequest }],
+          padding: 'x'.repeat(1024 * 1024),
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const adapter = new FhirAdapter('https://example.jp/fhir');
+
+    await expect(adapter.getMedicationRequests('patient-1')).resolves.toHaveLength(1);
+  });
+
+  it('rejects medication search Bundles above the 2 MiB source budget', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          resourceType: 'Bundle',
+          entry: [{ resource: validMedicationRequest }],
+          padding: 'x'.repeat(2 * 1024 * 1024),
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const adapter = new FhirAdapter('https://example.jp/fhir');
+
+    await expect(adapter.getMedicationRequests('patient-1')).rejects.toMatchObject({
+      name: 'HttpAdapterError',
+      status: 200,
+      causeDetail: {
+        reason: 'response_body_too_large',
+        upstream_status: 200,
+        max_bytes: 2 * 1024 * 1024,
+      },
+    });
+  });
+
+  it('applies the 512 KiB source budget to Patient and create responses', async () => {
+    const oversizedPatient = new Response(
+      JSON.stringify({ ...validPatient, padding: 'x'.repeat(512 * 1024) }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+    const oversizedCreateResult = new Response(
+      JSON.stringify({ padding: 'x'.repeat(512 * 1024) }),
+      { status: 201, headers: { 'Content-Type': 'application/json' } },
+    );
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(oversizedPatient)
+      .mockResolvedValueOnce(oversizedCreateResult);
+
+    const adapter = new FhirAdapter('https://example.jp/fhir');
+
+    await expect(adapter.getPatient('patient-1')).rejects.toMatchObject({
+      name: 'HttpAdapterError',
+      status: 200,
+      causeDetail: { reason: 'response_body_too_large', max_bytes: 512 * 1024 },
+    });
+    await expect(
+      adapter.createMedicationDispense({ resourceType: 'MedicationDispense' }),
+    ).rejects.toMatchObject({
+      name: 'HttpAdapterError',
+      status: 201,
+      causeDetail: { reason: 'response_body_too_large', max_bytes: 512 * 1024 },
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   EPrescriptionAdapterError,
   StubEPrescriptionAdapter,
@@ -33,6 +33,11 @@ const validRecord: EPrescriptionRecord = {
 describe('EPrescriptionAdapter', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   it('exposes disabled capabilities for the stub provider', () => {
@@ -226,6 +231,71 @@ describe('EPrescriptionAdapter', () => {
       code: 'UPSTREAM_FAILURE',
       retriable: true,
       status: undefined,
+    } satisfies Partial<EPrescriptionAdapterError>);
+  });
+
+  it('keeps a stalled response body retriable without exposing provider details', async () => {
+    vi.useFakeTimers();
+    vi.stubEnv('HTTP_ADAPTER_TIMEOUT_MS', '60000');
+    const cancel = vi.fn();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull() {
+            return new Promise(() => undefined);
+          },
+          cancel,
+        }),
+        { status: 200 },
+      ),
+    );
+    const adapter = createEPrescriptionAdapter({
+      provider: 'mhlw',
+      baseUrl: 'https://example.jp/e-prescription',
+      accessToken: 'ep-token',
+    });
+
+    const pending = adapter.fetchPrescription('ep-1');
+    const rejection = expect(pending).rejects.toMatchObject({
+      name: 'EPrescriptionAdapterError',
+      code: 'UPSTREAM_FAILURE',
+      retriable: true,
+      status: undefined,
+      causeDetail: { reason: 'response_body_timeout', deadline_ms: 30_000 },
+    } satisfies Partial<EPrescriptionAdapterError>);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await rejection;
+    await Promise.resolve();
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps deterministic oversized HTTP 200 response bodies non-retriable', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ data: { ...validRecord, padding: 'x'.repeat(1024 * 1024) } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const adapter = createEPrescriptionAdapter({
+      provider: 'mhlw',
+      baseUrl: 'https://example.jp/e-prescription',
+      accessToken: 'ep-token',
+    });
+
+    const error = await adapter.fetchPrescription('ep-1').catch((cause: unknown) => cause);
+
+    expect(error).toMatchObject({
+      name: 'EPrescriptionAdapterError',
+      code: 'UPSTREAM_FAILURE',
+      retriable: false,
+      status: 200,
+      causeDetail: {
+        reason: 'response_body_too_large',
+        upstream_status: 200,
+        max_bytes: 1024 * 1024,
+      },
     } satisfies Partial<EPrescriptionAdapterError>);
   });
 
