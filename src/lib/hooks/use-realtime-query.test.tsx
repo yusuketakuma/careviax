@@ -12,10 +12,14 @@ const { useQueryMock, useQueryClientMock, useRealtimeEventsMock, invalidateQueri
     invalidateQueriesMock: vi.fn(),
   }));
 
-vi.mock('@tanstack/react-query', () => ({
-  useQuery: useQueryMock,
-  useQueryClient: useQueryClientMock,
-}));
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return {
+    ...actual,
+    useQuery: useQueryMock,
+    useQueryClient: useQueryClientMock,
+  };
+});
 
 vi.mock('./use-realtime-events', () => ({
   useRealtimeEvents: useRealtimeEventsMock,

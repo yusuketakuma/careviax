@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { hashKey, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { useRealtimeEvents } from './use-realtime-events';
 import type { RealtimePresenceTarget } from '@/lib/realtime/shared-event-stream';
 
@@ -61,7 +61,8 @@ export function useRealtimeInvalidation({
 }: UseRealtimeInvalidationOptions) {
   const queryClient = useQueryClient();
   const invalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const queryKeyHash = JSON.stringify(queryKey);
+  const pendingInvalidationsRef = useRef<Map<QueryClient, Map<string, QueryKey>>>(new Map());
+  const queryKeyHash = hashKey(queryKey);
   const invalidateOnHash = JSON.stringify(invalidateOn);
   const presenceTargetsHash = JSON.stringify(presenceTargets);
   const shouldInvalidateQuery =
@@ -92,19 +93,33 @@ export function useRealtimeInvalidation({
   );
 
   const scheduleInvalidate = useCallback(() => {
+    const pendingQueryKeys =
+      pendingInvalidationsRef.current.get(queryClient) ?? new Map<string, QueryKey>();
+    pendingQueryKeys.set(queryKeyHash, realtimeQueryKey);
+    pendingInvalidationsRef.current.set(queryClient, pendingQueryKeys);
+
     if (invalidateTimerRef.current) return;
 
     invalidateTimerRef.current = setTimeout(() => {
       invalidateTimerRef.current = null;
-      queryClient.invalidateQueries({ queryKey: realtimeQueryKey });
+      const pendingInvalidations = [...pendingInvalidationsRef.current.entries()];
+      pendingInvalidationsRef.current.clear();
+
+      for (const [pendingQueryClient, queryKeys] of pendingInvalidations) {
+        for (const pendingQueryKey of queryKeys.values()) {
+          pendingQueryClient.invalidateQueries({ queryKey: pendingQueryKey });
+        }
+      }
     }, REALTIME_INVALIDATION_DEBOUNCE_MS);
-  }, [queryClient, realtimeQueryKey]);
+  }, [queryClient, queryKeyHash, realtimeQueryKey]);
 
   useEffect(
     () => () => {
-      if (!invalidateTimerRef.current) return;
-      clearTimeout(invalidateTimerRef.current);
+      if (invalidateTimerRef.current) {
+        clearTimeout(invalidateTimerRef.current);
+      }
       invalidateTimerRef.current = null;
+      pendingInvalidationsRef.current.clear();
     },
     [],
   );

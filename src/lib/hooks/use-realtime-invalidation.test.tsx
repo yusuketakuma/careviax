@@ -10,9 +10,10 @@ const { useQueryClientMock, useRealtimeEventsMock, invalidateQueriesMock } = vi.
   invalidateQueriesMock: vi.fn(),
 }));
 
-vi.mock('@tanstack/react-query', () => ({
-  useQueryClient: useQueryClientMock,
-}));
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return { ...actual, useQueryClient: useQueryClientMock };
+});
 
 vi.mock('./use-realtime-events', () => ({
   useRealtimeEvents: useRealtimeEventsMock,
@@ -112,6 +113,97 @@ describe('useRealtimeInvalidation', () => {
 
     expect(invalidateQueriesMock).toHaveBeenCalledTimes(1);
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['workflow'] });
+  });
+
+  it('invalidates old and new query keys when the key and policy change during debounce', () => {
+    vi.useFakeTimers();
+    const { rerender } = renderHook(
+      ({ orgId, source }) =>
+        useRealtimeInvalidation({
+          queryKey: ['workflow', orgId],
+          invalidateOn: [{ type: 'workflow_refresh', source }],
+        }),
+      { initialProps: { orgId: 'org_1', source: 'dashboard_org_1' } },
+    );
+
+    const orgOneRealtimeOptions = useRealtimeEventsMock.mock.calls[0]?.[0];
+    act(() => {
+      orgOneRealtimeOptions.onEvent({
+        type: 'workflow_refresh',
+        source: 'dashboard_org_1',
+      });
+    });
+
+    rerender({ orgId: 'org_2', source: 'dashboard_org_2' });
+    const latestCallIndex = useRealtimeEventsMock.mock.calls.length - 1;
+    const orgTwoRealtimeOptions = useRealtimeEventsMock.mock.calls[latestCallIndex]?.[0];
+    act(() => {
+      orgTwoRealtimeOptions.onEvent({
+        type: 'workflow_refresh',
+        source: 'dashboard_org_1',
+      });
+      orgTwoRealtimeOptions.onEvent({
+        type: 'workflow_refresh',
+        source: 'dashboard_org_2',
+      });
+      vi.advanceTimersByTime(150);
+    });
+
+    expect(invalidateQueriesMock.mock.calls).toEqual([
+      [{ queryKey: ['workflow', 'org_1'] }],
+      [{ queryKey: ['workflow', 'org_2'] }],
+    ]);
+  });
+
+  it('deduplicates equivalent object query keys regardless of property insertion order', () => {
+    vi.useFakeTimers();
+    const { rerender } = renderHook(
+      ({ filters }) =>
+        useRealtimeInvalidation({
+          queryKey: ['workflow', filters],
+          invalidateOn: ['workflow_refresh'],
+        }),
+      { initialProps: { filters: { orgId: 'org_1', status: 'open' } } },
+    );
+
+    const firstRealtimeOptions = useRealtimeEventsMock.mock.calls[0]?.[0];
+    act(() => {
+      firstRealtimeOptions.onEvent({ type: 'workflow_refresh' });
+    });
+
+    rerender({ filters: { status: 'open', orgId: 'org_1' } });
+    const latestCallIndex = useRealtimeEventsMock.mock.calls.length - 1;
+    const latestRealtimeOptions = useRealtimeEventsMock.mock.calls[latestCallIndex]?.[0];
+    act(() => {
+      latestRealtimeOptions.onEvent({ type: 'workflow_refresh' });
+      vi.advanceTimersByTime(150);
+    });
+
+    expect(invalidateQueriesMock).toHaveBeenCalledTimes(1);
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({
+      queryKey: ['workflow', { orgId: 'org_1', status: 'open' }],
+    });
+  });
+
+  it('clears pending invalidations when the hook unmounts', () => {
+    vi.useFakeTimers();
+    const { unmount } = renderHook(() =>
+      useRealtimeInvalidation({
+        queryKey: ['workflow'],
+        invalidateOn: ['workflow_refresh'],
+      }),
+    );
+
+    const realtimeOptions = useRealtimeEventsMock.mock.calls[0]?.[0];
+    act(() => {
+      realtimeOptions.onEvent({ type: 'workflow_refresh' });
+    });
+    unmount();
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+
+    expect(invalidateQueriesMock).not.toHaveBeenCalled();
   });
 
   it('can scope invalidation by event source', () => {
