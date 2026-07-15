@@ -540,6 +540,7 @@ describe('protected PATCH/DELETE routes auth matrix', () => {
     it(`${route.name} returns 403 when role lacks permission`, async () => {
       authMock.mockResolvedValue({ user: { id: 'user_1' } });
       prismaMock.membership.findFirst.mockResolvedValue({ role: 'driver' });
+      txMock.membership.findFirst.mockResolvedValue({ role: 'driver' });
 
       const response = await route.handler();
 
@@ -554,6 +555,7 @@ describe('protected PATCH/DELETE routes auth matrix', () => {
     it(`${route.name} returns 200 when role has permission`, async () => {
       authMock.mockResolvedValue({ user: { id: 'user_1' } });
       prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
+      txMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
 
       const response = await route.handler();
 
