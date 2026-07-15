@@ -484,7 +484,7 @@
       "id": "FHIR-NATIVE-P0-FOUNDATION-003-RAW-INGRESS",
       "dependsOn": ["A0", "A1"],
       "status": "active",
-      "planStatus": "Not started"
+      "planStatus": "Blocked"
     },
     {
       "wave": "A4",
@@ -498,7 +498,7 @@
       "id": "FHIR-NATIVE-P0-FOUNDATION-004-CONFORMANCE",
       "dependsOn": ["A0", "A1"],
       "status": "active",
-      "planStatus": "Not started"
+      "planStatus": "Blocked"
     },
     {
       "wave": "B1",

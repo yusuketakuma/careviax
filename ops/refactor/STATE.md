@@ -64,7 +64,7 @@
 ## 直近の作業
 
 - codex1/codex2: CareViaX two-seat topology + FHIR Native A0/A1/A2 foundation
-  (A0/A1/A2 COMMITTED / A2 UNDER INDEPENDENT REVIEW / A3 BLOCKED, 2026-07-15).
+  (A0/A1/A2 COMMITTED / A2 UNDER INDEPENDENT REVIEW / A3+A5 BLOCKED, 2026-07-15).
   - topology:
     agmsg identity/teamを`codex1`と`codex2`だけへ整理し、codex3/codex4/default codex登録を削除した。
     project-local custom-agent 27設定とregistryを削除し、`features.multi_agent=false`へ固定した
@@ -86,8 +86,12 @@
   - blocked / next:
     A3はexact2のpure server-only設計・negative matrixまで完成したが、strict `gpt-5-pro` profileが未loginでOracle gateが
     timeoutし、256 KiB/2 MiB budgetとsource policyも未批准のため実装NO-GOを維持する。fallback/duplicate consultは行わない。
-    codex2はA5 conformance artifact closureをread-only計画レビュー中。codex1はA2 post-commit review findingを閉じ、
-    A5の安全ゲートを判定する。runtime/schema/migration/API/PHI persistenceは未変更。
+    A5 read-only reviewではofficial six-package closureが20,582,751 compressed bytes / 216,717,892 unpacked、対象artifact
+    7,720件、exact canonical+version重複0、同一canonical複数version 1,791件、version欠落7件、Questionnaire 0件と判明した。
+    `hl7.fhir.uv.tools.r4#0.8.0`がA1 lockに欠落し、その依存versionはofficial QAのeffective pinと衝突する。JP terminologyは
+    実identityとdependency keyが不一致でlicense fieldもない。Oracle score 12、strict Pro未実施、redistribution/legal未批准のため
+    A5もBlockedとし、candidate-only / `runtimeValidationEligible=false`を維持する。codex1はA2 post-commit review findingを閉じ、
+    次のlow-risk non-overlap taskを選定する。runtime/schema/migration/API/PHI persistence、package vendoringは未変更。
 
 - codex: repository-wide improvement audit wave 4 + strict Oracle GPT-5.6 Pro attempt
   (PLANS UPDATED / SOURCE IMPLEMENTATION NOT STARTED / GOAL CONTINUES, 2026-07-15).

@@ -49,7 +49,7 @@
     },
     {
       "path": "tools/fhir-native/foundation-registry.json",
-      "sha256": "850135edf466d032742b7fde8292c3aea3a3addb10855468a1ec2fb6a9772024"
+      "sha256": "c4a9527912a9597ac3be881f809594395015ac144f57491c132e451f3b2b0777"
     },
     {
       "path": "tools/fhir-native/package-lock.json",
@@ -64,5 +64,5 @@
       "sha256": "c963b91cf08e3bab8dd99a4e9d7f669ea5e0486273ca9b49a54a4c3399bf8970"
     }
   ],
-  "artifactSetSha256": "41c4a05640834d460fcc29c426cf549c239d76093460ccedea09be5093991def"
+  "artifactSetSha256": "bfe788a030213eb2e46d8586a85ca5bdf4410d0c8bfe1e010a072be77996a66f"
 }
