@@ -61,6 +61,72 @@
 
 ## 直近の作業
 
+- codex1/codex2: workflow dispatch input injection boundary
+  (`CI-WORKFLOW-DISPATCH-INPUT-INJECTION-001` DONE `e6dba3894`, 2026-07-16).
+  - root cause / implementation:
+    manual container workflowが6個の`workflow_dispatch` inputをcredential/action/buildへ直接流し、repository/tagはshell本文にも展開していた。
+    checkout直後かつ最初の`run` stepで全inputを検証し、regionは`ap-northeast-1`、ECR repositoryは公式pattern 2..256、tagは128以下、
+    app URLはbounded HTTPS origin、Cognito pool/clientはTokyo prefixと公式長/文字subsetへ限定した。全control/newlineをrejectし、固定errorだけを
+    出して値をlogしない。検証済み値だけを`GITHUB_OUTPUT`へ出し、OIDC/ECR/image/build argsはそのoutputだけを参照する。raw inputがvalidator外へ
+    再流入する、またはsetup/install/artifact/OIDC/ECR/buildがvalidatorより前へ移動するdriftをCI static ratchetでfailする。
+  - review / validation / safety:
+    codex2がexact5を実装し、codex1がraw expression、step order、output injection、consumer mappingを独立reviewしてP0/P1なし。focused
+    `tools/scripts/check-workflow-dispatch-input-safety.test.ts` 1 file / 20 tests、static checker、Prettier、`git diff --check`がPASS。
+    ESLintは0 error（YAML/packageはconfig対象外warningのみ）、`pnpm typecheck`と`pnpm typecheck:no-unused`を直列実行してPASSした。
+    GitHub Secure use/workflow syntax/env context、AWS ECR Repository API、Cognito DescribeUserPool/DescribeUserPoolClientを2026-07-16確認。
+    AWS API call、OIDC credential取得、workflow dispatch、image push、deploy、IAM/ECR mutationは実行していない。
+  - official references:
+    https://docs.github.com/en/actions/reference/security/secure-use ;
+    https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax ;
+    https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-variables ;
+    https://docs.aws.amazon.com/AmazonECR/latest/APIReference/API_Repository.html ;
+    https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_DescribeUserPool.html ;
+    https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_DescribeUserPoolClient.html .
+  - remaining / next:
+    unfinished-only `Plans.md`から完了行を削除した。container SHA/digest provenance、action/base pin、preview truth等は別queueのままで、
+    AWS mutation/deploy human gateを維持する。
+
+- codex1/codex2: truthful offline sync status + bounded dashboard projection
+  (`OFFLINE-SYNC-STATUS-TRUTH-001` DONE `56231c204` / `5a3873976`,
+  `DASHBOARD-BOUNDED-PROJECTION-TRUTH-001` DONE `a66b93e89`, 2026-07-16).
+  - root cause / implementation:
+    app headerがonline時に過去の`lastSyncedAt`だけで緑の「同期済み」を表示し、別componentでpending件数も同時表示していた。
+    offline storeへdetailed hydration、syncing、attempt failureを追加し、初期成功時刻を廃止した。bridgeはbootstrap refreshを
+    完了してからdrainし、online eventも同じbootstrap barrierを待つ。count/detailの全store readをmodule-scoped non-coalescing
+    promise tailで直列化し、古いdecrypt snapshotやcountがpost-drain stateを後勝ち上書きしない。失敗は元callerへrejectしつつ
+    recovered tailへ隔離し、次のreadをpoisonしない。post-drain refresh後かつqueue/conflict/errorが空の時だけ
+    `markSynced`し、headerは`offline > conflict > failed > syncing > pending > synced`を単一Linkへ排他的に投影する。
+    過去時刻は「最終成功」と明示し、全状態を`/offline-sync`のnative Link、固定aria label、reduced-motion対応へ統一した。
+    mobileもoffline/conflict/failed/syncing/pendingは44px Linkと常時visibleな日本語labelを維持し、icon/color-onlyにしない。
+    dashboard commentsはunrestricted/teamをDB exact count + stable top5へ、restricted mineを本文/著者/mentionsを読まない
+    `created_at desc, id desc`の80件x2ページ・最大160件metadata scanへ変更した。各pageのentityをassignment scopeでbatch検証し、
+    認可済みtop5だけをorg/id/type/entity/timeでguarded reloadする。exhausted時だけexact、未完了prefixはlower-bound metadataと
+    false-emptyを避ける固定copy/ハンドオフ導線を返す。full cockpitの`narcotic_audit_count`は上位30件materializationではなく
+    summaryのauthoritative aggregateを再利用し、cap超過でもsummary/fullを一致させた。
+  - review / safety / performance:
+    codex1/codex2がagmsgでexact8/exact6を非重複claimし相互reviewした。dashboardのmedication-cycle患者deep link劣化、
+    completeness metadata欠落時のfail-open、同期LinkのARIA role上書き、bootstrap/post-drain snapshot race、別caller間のdecrypted
+    queue/count stale-write、mobile critical state導線/label消失を検出して修正した。codex2の最終read-only reviewでP1/P2なしを確認した。
+    restricted comment本文は認可後top5に限定し、担当外本文をresponseへ含めない。restricted-emptyはTaskComment read 0、
+    restricted scanは最大160件/最大14 query、unrestrictedはcount/top5/visible cycle/authorの最大4 queryで固定した。
+    schema/migration、raw SQL追加、external send、production mutation、deploy、Oracle、subagentは実行していない。
+    layout/geometryの再構築ではなく既存状態/copyのtruthfulness修正のためimage generationは省略した。
+  - validation / commits:
+    combined focused suiteは6 files / 124 tests PASS（dashboard route/component、offline store/bridge/indicator/header）。
+    exact ESLint、Prettier、`git diff --check`、format、API response shape、client JSON schema、frontend contract、raw state color、
+    typography、client PHI log/displayがPASS。初回`pnpm typecheck`は新規test fixtureの必須`conflict`欠落TS2322を検出し、
+    `conflict: null`へ実型修正後に`pnpm typecheck`と`pnpm typecheck:no-unused`を直列再実行してPASSした。
+    stale old snapshot -> newer empty final state、refresh failure後tail recovery、mobile critical label/44px導線を追加後、
+    `pnpm typecheck`と`pnpm typecheck:no-unused`を再度直列実行してPASSした。ユーザーのbuild抑制指示に従いbuild/E2Eは未実行。
+    code commitsは`56231c204`、`5a3873976`、`a66b93e89`。ユーザー指定のagmsg `15:24:46Z` / `15:25:02Z` P1を再確認し、
+    offline exact4を再実行して4 files / 53 tests PASS。temporary appendixは修正後にcodex2が独立再reviewしP1/P2なしでFINAL PASSした。
+  - remaining / next:
+    完了2行をunfinished-only `Plans.md`から削除した。ユーザー貼付のBedrock AI v0.6.1 + Network Resilience v0.6は、20節、6 mode、
+    local FHIR/Bundle/Outbox、13-step recovery、AI use case、23 SSOT task、stop/phase、2026-07-16確認のAWS公式参照を含む
+    TEMPORARY DRAFTとして追記した。これはHuman gate/not ratified/not implementation authorizationで、既存
+    `FHIR-NATIVE-OFFLINE-EDGE-001`を参照し重複実装しない。既存route-catalog/auth/API/harness dirtyは保存し、このgroupへ含めない。
+    次は台帳commit/push/parityを閉じた後、Phase 0未批准AWS/AI/Edgeを実装せず、残るP0/P1から安全な非重複sliceを再選定する。
+
 - codex1/codex2: bounded HTTP ingress/proxy/provider + authoritative prescription/care-report search
   (`SEC-HTTP-IO-BUDGET-001` DONE `42f7ce928` / `2e1de27c9` / `940762409` / `559e4ced3` / `0731fdfd9` / `e4de1dfd1` / `957dd4966`,
   `SEARCH-PALETTE-AUTHORITATIVE-QUERY-001` DONE `e8ed604de` / `7486e5e3f`, 2026-07-15).

@@ -207,7 +207,7 @@ Patient matchingはstable yrese patient identifier、official prescription ident
 | ------------------------- | ----: | ---------------------------------------------------------------------------------------------------------------- |
 | Partial / residual track  |     7 | 下のPartial表。既存土台は再作成せず、残スコープだけimplementation queueへ切る。                                  |
 | FHIR child queue          |    24 | 下の`FHIR Native child execution registry`。完了済みA0/A1/A2を除くclaim可能なFHIR実装単位。                      |
-| Implementation queue      |   104 | `Implementation-ready queue`。FHIR親10行はroll-up、その他は次PRに切れる実装task。Human gateを含む。              |
+| Implementation queue      |   101 | `Implementation-ready queue`。FHIR親10行はroll-up、その他は次PRに切れる実装task。Human gateを含む。              |
 | Frontend queue            |    12 | `Frontend implementation queue`。7画面UI改善とbounded list UXを実在BFF/API/state matrixに基づくsliceとして扱う。 |
 | Unresolved / verification |     - | Blocked / Discovered / Verify required。解除条件または未検証証跡だけを記載する。                                 |
 | Program backlog           |     - | `Program backlog`表。着手時に小IDでqueueへ昇格する。                                                             |
@@ -266,11 +266,11 @@ external ecosystem enableは子taskのコードが完成しても個別human gat
 13. `AUTHZ-ACCOUNT-MODEL-V1-001` / `AUTHZ-CLINICAL-AUDIT-ACTOR-001` / `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`: 固定5ロール、tenant assignment、固定capability、薬剤師資格分離、legacy role/override移行をadditive-firstで設計する。監査read/govern/execute分離とcanonical verified/current薬剤師資格gateを維持し、既存SSEもsession/authz/assignment/purpose revokeで即時closeする。
 14. `JOB-TENANT-EXECUTION-001` / `STABILITY-DELIVERY-PROVIDER-READINESS-001` / `STABILITY-REALTIME-READINESS-RECONCILIATION-001` / `STABILITY-WORKFLOW-CACHE-COHERENCE-001`: tenant-bound RLS context、provider/channel readiness、authoritative refetch、cross-instance cache freshnessを揃え、虚偽接続・虚偽成功・stale clinical viewを止める。
 15. `AUTHZ-CLERK-PHARMACIST-BOUNDARY-001`: clerkの全件閲覧を維持し、薬歴記載・報告書作成・監査実行だけをcanonical薬剤師資格必須の実行境界として収束する。
-16. `DASHBOARD-BOUNDED-PROJECTION-TRUTH-001` / `EXP-SURFACE-REGISTRY-001` / `OFFLINE-SYNC-STATUS-TRUTH-001`: false-empty/false-count/false-safe/false-success/false-completeをbounded reader・authoritative projection・出口registryで閉じる。
+16. `EXP-SURFACE-REGISTRY-001`: false-empty/false-count/false-safe/false-success/false-completeをauthoritative出口registryで閉じる。
 17. `API-CONTRACT-001`: request correlationとerror registryを収束する。
 18. `MEDSAFE-INCIDENT-REVIEW-OCC-001` / `BILLING-PARTNER-INVOICE-TRANSITION-IDEMPOTENCY-001`: review対象versionと再発行intentをdurableに固定し、stale close・response-loss後の二重操作を止める。
 19. `QUERY-SHAPE-WATCHLIST-003-FOLLOW` / `PERF-DB-PATIENT-BOARD-CURSOR`: zero-debt watchlistを維持しつつ、残る全deep-row DB scanとsummary分離を再設計する。
-20. `CI-WORKFLOW-DISPATCH-INPUT-INJECTION-001` / `CI-CONTAINER-ARTIFACT-IMMUTABILITY-001` / `CI-SUPPLY-CHAIN-PINNING-001` / `SEC-VULNERABILITY-CONTROL-PARITY-001` / `CI-PREVIEW-URL-VERIFICATION-001` / `CI-SECURITY-RATCHET-PARITY-001`: credential前input validation、verified SHA→digest provenance、immutable dependency、実在security control、exact preview/release DAGを段階的に閉じる。IAM/ECR/Amplify mutation、push、deployはhuman gateまで実行しない。
+20. `CI-CONTAINER-ARTIFACT-IMMUTABILITY-001` / `CI-SUPPLY-CHAIN-PINNING-001` / `SEC-VULNERABILITY-CONTROL-PARITY-001` / `CI-PREVIEW-URL-VERIFICATION-001` / `CI-SECURITY-RATCHET-PARITY-001`: verified SHA→digest provenance、immutable dependency、実在security control、exact preview/release DAGを段階的に閉じる。IAM/ECR/Amplify mutation、push、deployはhuman gateまで実行しない。
 
 `AUTHZ-CLERK-PHARMACIST-BOUNDARY-001` S1 evidence: `faa37451f`でpermission matrix、Task/ONB/follow-up runtime、task type actor/assignee qualification、route catalog/allowlist、policy docsを同期し、`1f47707e1`で単一台帳へ記録した。codex1 + codex2 independent review後、focused 14 files / 273 tests、監査surface 5 files / 120 tests、permission doc parity、route-auth、API authz、exact lint/format、serialized typecheck/no-unusedをPASS。通常patient/visit/medication read migration、output境界review、nonclinical capability splitは未完了のため全体StatusはPartialを維持する。
 
@@ -418,7 +418,6 @@ Wave 4 acceptance merge: `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`のsession/offl
 | `AUTHZ-CLINICAL-AUDIT-ACTOR-001`                     | Human gate  | P0       | Clinical audit/Authz    | PHOSの調剤監査/set監査 `START/APPROVE/REJECT` 6 actionは`required_role`なし、classic APIはGET/POST/transition/uploadとtask・通知・badgeを同じlegacy audit capabilityへ接続している。`view/govern/execute/assign/notify/output`を分離し、全mutation入口を共通server evaluatorへ収束する。実行はtenant admin/pharmacist（global ownerは明示target tenant文脈のみ）AND actor本人のcanonical verified/current薬剤師資格 AND tenant/assignment/purpose/SoDを必須とし、clerk/supporter、legacy claim、free-form credential、資格だけを持つ不整合roleはdenyする。actor role/qualification record version/policy version/evaluated timeをaction transitionと同一atomic writeで最小decision evidenceとして残し、生の免許番号は保存しない。自己監査は既定denyとし、例外の要否・第二承認者・reason/TTLはmedical/legal/operations批准まで実装しない。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 6 action×role×資格全状態、admin/pharmacist qualified allow + unqualified deny、clerk/supporter execute deny + authorized read、Lambda/proxy/classic/task/notification/file/offline/idempotency parity、revoke競合、self-audit、zero side effect、atomic decision evidence、type/lint/test。role/claimだけのallow、GET/mutation同一gate、legacy再grant、未批准self-audit、非原子証跡なら停止。                                                                                                                      |
 | `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`             | Not started | P0/P1    | Identity lifecycle      | admin users UIはlegacy ownerをadminへ変換し、profile保存でもrole/個人overrideを送るため、まずprofile-only commandをrole/qualification/lifecycle変更から分離し、legacy roleを明示migrationまでread-only保持する。role、qualification、tenant suspension、global disable、reactivation、importはfresh step-up、target/from/to/reason/effect preview、self/last-admin invariant、before/after exact-once audit、`session_version`/authz epoch失効を持つ特権commandにする。tenant membership suspensionとglobal identity disableを別権限・別UIへ分け、canonical DB mutation + durable outbox + idempotent Cognito/PHOS projector/reconcilerを導入する。昇格/再有効化はgrant-after-sync、降格/停止/資格取消はdeny-firstとし、projectionを`pending/synced/failed/quarantined`で可視化する。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | profile save権限不変、legacy owner保持、固定3 role、self/last-admin/同時demotion、tenant/global停止分離、step-up、Cognito/DB片側失敗・timeout・重複delivery・reconciler再開、session/offline deny、drift metric、audit exact-once、type/lint/test。通常profile PATCHで権限変更、tenant adminのglobal disable、部分成功表示、DBより強いprojection、手動だけのreconcileなら停止。                                                                                                                                    |
 | `MEDSAFE-JAHIS-QR-CONFORMANCE-001`                   | Not started | P0/P1    | Medication safety       | JAHIS技術文書24-104 Ver.2.6に対し、現行exportは`JAHISTC08`とCRLF、患者必須identityまでは固定したが、QR libraryの自動segment + `toSJISFunc`へ文字列を渡すだけで、JIS X 0201/0208 representability、外字/置換文字、全角半角混在、field byte上限（患者氏名/カナ各40 byte等）、全recordの必須field・桁数・出力順をbuilder境界で検証していない。仕様表をversioned machine-readable field contractへ写し、canonical Shift-JIS byte列を生成・検証してからQRへ渡す。表示用Unicode payloadと実QR byte列を同一視せず、unsupported文字・byte超過・不正control・unknown versionはQR module呼出し前に非PHI reasonでfail-closedにする。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 公式Ver.2.6例のgolden fixture、ASCII/全角/半角カナ/漢字境界、39/40/41 byte、外字・emoji・全角半角混在・置換文字、全record required/type/order、canonical Shift-JIS bytes、ZXing等の独立decoder round-trip、multi-QR容量境界、UI version copy、type/lint/test。UTF-8 byte-mode混在、JS文字数をbyte数扱い、silent truncation/文字化け、payload string snapshotだけで適合宣言するなら停止。                                                                                                                           |
-| `OFFLINE-SYNC-STATUS-TRUTH-001`                      | Not started | P1       | Offline UX              | app headerのonline時常時「同期済み」と別のpending件数表示を、`offline > failed/conflict > pending/syncing > synced`の排他的なcanonical projectionへ統合する。pending時は緑の成功表示を抑止し、過去の`lastSyncedAt`を出す場合も「最終成功」と明示して現在queue完了の証明に使わない。各状態の固定回復導線とscreen-reader labelを揃える。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | pending/conflict/failed/offline/fully-synced/過去lastSyncedAtの排他snapshot、store transition、keyboard/aria、type/lint。未送信件数と「同期済み」を同時表示する、last successをcurrent queue成功扱いするなら停止。                                                                                                                                                                                                                                                                                                 |
 | `CLINICAL-SYNC-QUEUE-TX-ISOLATION-001`               | Not started | P1       | Clinical sync           | standard clinical sync queueの最大200件を単一interactive transactionで処理し、item例外後も同じtransactionでfailure updateする設計を、bounded due-ID scan + itemごとのclaim/projection/success transactionへ分離する。DB statement failureやtimeout後のfailure transitionは新しいtransactionで元status/attemptをCASし、競合workerの成功を上書きしない。先行成功をpoison itemでrollbackせず、raw FHIR/provider error・PHIを永続化/logしない。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 実PostgreSQLでstatement failure/aborted transaction、後続item成功、attempt/dead-letter、duplicate worker claim、timeout、CAS競合、RLS proof、focused jobs tests、type/lint。plain mockだけで完了扱い、batch-wide rollback、失敗更新で競合成功を上書きするなら停止。                                                                                                                                                                                                                                                |
 | `API-LIST-STABLE-ORDER-001`                          | Partial     | P1/P2    | API / DB read           | `f3949adb7`で対象5 routeへ同方向の`id` tie-breaker、cursor contract ratchet、focused tests、read-only DB integration testを実装済み。残るscopeはCIのprovisioned PostgreSQL上で同値sort keyの2 page exact-onceを実行し、passを確認することだけ。sort field自体がpage間更新された場合のsnapshot保証は本slice外。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `medical-ui-e2e-gate`の`Verify stable cursor pagination ordering`がPASSし、対象5 route tests、query-shape/API-shape/type/lintの既存PASSを維持する。CI DB test未実行/失敗のまま完了扱い、offsetへ戻す、一意末尾なしcursor queryを許す、visible primary orderを変えるなら停止。                                                                                                                                                                                                                                      |
 | `AUTHZ-AUDIT-UI-REACHABILITY-001`                    | Not started | P1/P2    | Authz / UX              | `/audit` / `/set-audit`のpage SSR、sidebar/mobile navigation、workbench/shortcutがserverのread/govern/execute境界と一致していない。`AUTHZ-CLINICAL-AUDIT-ACTOR-001`のserver projectionを唯一の入力に、full / oversight / read-only / denied modeを構成する。authorized clerk/supporterと資格未確認admin/pharmacistには監査情報のread-only表示を保ち、実行button、keyboard shortcut、bulk/confirm handlerを接続しない。`forbidden`、`qualification_required/expired`、`role_qualification_inconsistent`、network failureを非PHIのmachine-readable reasonで区別し、role変更・資格失効後はstale action UIを残さない。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | role×qualification×page×API matrix、admin/pharmacist qualified full + unqualified read-only、clerk authorized read + execute deny、owner target+qualified、supporter assigned read-only/zero-write、deep-link SSR、desktop/mobile nav、F-key/bulk/dialog、network write 0、disabled reason/keyboard/focus/live-region/axe、type/lint。UI独自判定、API 403だけを契約にする、navだけ隠す、資格不足を通信障害扱い、read情報まで一括redactするなら停止。                                                               |
@@ -494,7 +493,6 @@ Wave 4 acceptance merge: `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`のsession/offl
 | `SEC-CSRF-CANONICAL-ORIGIN-001`                      | Not started | P0/P1    | Security / HTTP         | proxyのCSRF判定はOrigin/Refererのhostだけをraw Hostまたはapp URL hostと比較してscheme/portを無視し、Origin不一致でもRefererへfall throughする。server-only canonical HTTPS originの`URL.origin`完全一致へ変更し、Originが存在する場合の不一致・`null`・malformed/multiple値は即deny、Referer fallbackはOrigin欠落時だけにする。raw Hostを採用する場合は検証済みproxy scheme/host topologyへ拘束し、job/FHIR S2S例外はexact path+method+auth-scheme registryでbrowser CSRFと分離する。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | exact origin、HTTP→HTTPS/port mismatch、bad Origin + good Referer、Origin欠落+exact Referer、malformed/multiple/null、untrusted Host、S2S job回帰。host一致だけ、Origin失敗後Referer rescue、broad CSRF bypassなら停止。                                                                                                                                                                                                                                                                                           |
 | `AUTH-CREDENTIAL-CHANGE-SESSION-REVOCATION-001`      | Human gate  | P0       | Auth / Session          | password change/resetはCognito成功後にDB`session_version`/authz epochを進めず、盗難NextAuth cookieが最大30分clinical/tenant APIを通過する。credential change/reset commandでcanonical local subjectを非列挙的に解決し、全端末失効または批准済みcurrent-session再発行、session/authz epoch増分、exact-once security audit、Cognito global sign-out/projectionを一貫化する。Cognito成功↔DB失敗はdurable intent/reconcilerでfail-visibleにし、provider側成功だけを完全なsession revokeと表示しない。AWS Cognito公式資料を実装当日に確認し、live User Pool操作は別承認とする。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | stolen versioned JWTの変更前allow/変更後401、change/reset双方、current-session UX、unknown identity非列挙、Cognito/DB各片側失敗・retry、audit exact-once、PHI-safe log。session_version不変、30分TTLだけに依存、部分成功を完了表示、承認なしlive AWS操作なら停止。                                                                                                                                                                                                                                                 |
 | `OPS-RATE-CLIENT-IP-READINESS-001`                   | Human gate  | P0/P1    | Runtime / Rate limit    | production proxyはclient IP不明のunauthenticated APIを503で拒否する一方、公式Lightsail env例とplan generatorは`TRUST_PROXY_HEADERS=false`、runtime validatorはtrust topologyを検査せずpassするため、credentials callback/password reset/MFA recoveryがhandler前に停止する。TLS/reverse-proxyのX-Forwarded-For append/overwrite contractとexact trusted hopsをSSOT化し、production validator/startup readiness/generated planを同じ契約へ揃える。単純にtrust=trueへ変えず、client-prepended XFFやdirect topologyをfail-closedに扱う。AWS/Next.js公式資料確認、live proxy変更・deployはhuman gateとする。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | omitted/false/invalid hopsのprod validator fail、generator/example parity、1/multi-hop、client-prepended spoof、malformed header、unauth login/reset/MFA smoke、direct topology。未検証XFFを信用、推奨envでlogin不能、validator false-green、承認なしdeployなら停止。                                                                                                                                                                                                                                              |
-| `DASHBOARD-BOUNDED-PROJECTION-TRUTH-001`             | Not started | P1       | Dashboard / Data        | comments segmentはorg-wide最新80件を先に取得してからassignment scopeでfilterするため、80件の担当外コメントの後にある担当内コメントをfalse-emptyにし、そのsubset件数をtotal/hiddenとして返す。full cockpitの`narcotic_audit_count`も上位30件のmaterialized queueだけから数え、summary segmentのauthoritative集計と不一致になる。assignment visibilityをquery/projectionまたはdeterministic cursor scanへ押し込み、`created_at + id`のstable cursor、`count_basis/scope_complete`、authoritative totalを返す。full endpointは同じaudit summaryを再利用するかsegmentへ移行し、bounded subsetを全件と名乗らない。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 80 denied newer + 1 allowed older、equal timestamp/id、empty assignment、team/mine、unknown entity、>30件でcap外麻薬、summary/full parity、count metadata、PHI excerpt。top-N後filter、tie-breakなし、subset countをexact表示、false emptyなら停止。                                                                                                                                                                                                                                                               |
 | `EXP-SURFACE-REGISTRY-001`                           | Human gate  | P1       | Output / Privacy        | audit/billing/communication/formularyだけの現registryを、CSV/PDF/print/download/public/signed URL/external shareの全route+methodへ拡張し、permission、purpose/step-up、tenant/patient/assignment scope、masking profile、row/byte budget、completeness mode（`exact` / `bounded_partial` / `async_job`）、cursor/job recovery、audit/no-store、filenameをmachine-readableにする。患者CSVはdirect identifier profileとminimized profileを分離する。`DataTable`やregistryの「検索条件全件」はexact snapshot/cursor/jobがある時だけ許し、固定10,000件capは取得件数/limit/continuationを伴う部分出力と明示する。route catalogとのCI ratchetで未登録出口を拒否する。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 全export route inventory、患者CSV/患者処方CSV、10,000/10,001件、巨大nested line byte budget、exact/partial/job、cursor/retry、role/assignment/step-up/purpose、direct/minimized snapshot、audit/no-store。screen DTO、storage key/signed URL、raw text/provider errorを流用、登録外output、roleだけのexport、cap subsetを全件表示、unbounded in-memory生成なら停止。                                                                                                                                               |
 | `BILLING-PARTNER-CONTRACT-APPROVAL-SOD-001`          | Human gate  | P0       | Billing / Authz / SoD   | pharmacy contract/contract versionのbody-supplied `base_approved_by` / `partner_approved_by`文字列でactive化する経路を廃止する。基幹側・協力側それぞれの認証済みactor、所属薬局、capability、対象terms/version hash、decision時刻をimmutable approvalとして別commandで記録し、別主体のcurrent approvalと有効partnershipが揃った時だけ同一transactionのCASでactive化する。draft作成とapprovalを分離し、terms変更・所属/権限失効・partnership停止で旧approvalを無効化する。self/two-role、緊急例外、既存active契約の扱いはlegal/operations批准までfail-closedとする。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | body actor文字列拒否、base actorのpartner代理承認拒否、self/two-role、所属/権限/partnership失効、同時承認/撤回/version更新、terms hash変更、active/fee rule/decision/audit原子性、既存active migration/rollback。単一request時刻で両者承認、表示名を本人性に使用、terms非拘束approval、批准前self-approval許可なら停止。                                                                                                                                                                                           |
 | `MEDSAFE-CARE-CASE-WRITE-OCC-001`                    | Not started | P0/P1    | Medical / Authz / OCC   | CareCase PATCHへexpected versionを必須化し、患者writable状態、actorのcurrent case assignment/capability、指定pharmacist/staffのcurrent org membershipを単一org transaction内で再検証する。`id + org + expected version + current assignment`のCAS、case revision、PHI-minimized auditを原子的に書き、stale/失効競合は409で返してUIへ再読込/差分確認を要求する。route外の一度きりprecheckをauthorization根拠にしない。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 同一field同時PATCH、assignment解除対PATCH、新担当者退職/組織離脱、患者archive、同時担当変更、stale時write/revision/audit 0、assigned/admin matrix、NOBYPASSRLS実DB。id-only update、last-write-wins、route precheckだけ、失効scopeでwrite、conflictを404/500へ隠すなら停止。                                                                                                                                                                                                                                       |
@@ -503,7 +501,6 @@ Wave 4 acceptance merge: `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`のsession/offl
 | `RLS-NOTIFICATION-STREAM-POLL-001`                   | Not started | P0/P1    | RLS / Notifications     | notification SSEのDB safety pollをdirect Prismaから各poll単位の短い`withOrgContext` transactionへ移し、FORCE RLS/NOBYPASSRLSで対象tenantだけ取得する。`created_at + id`のstable ascending cursorまたは未消化pageを持つbounded drainへ変更し、limit到達時に未読行を越えてwatermarkを進めない。長時間SSE全体へtransactionを保持せず、poll failure/retry/abortでconnectionとcursorを安全に解放・再開する。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | NOBYPASSRLS実DB、Redis unavailable、cross-tenant 0、10/11/25件、同一timestamp、途中poll failure/retry、duplicate 0/loss 0、stream abort/connection release。RLS contextなしread、`take:10`後window末尾へadvance、descending tie-breakなし、長時間transactionなら停止。                                                                                                                                                                                                                                             |
 | `STABILITY-REALTIME-READINESS-RECONCILIATION-001`    | Not started | P0/P1    | Realtime / Correctness  | HTTP stream transport接続とuser/org/presence各channelのauthoritative readinessを分離し、active queryが必要とするchannelがreadyになるまでfallback pollingを止めない。購読失敗はPHI-free control eventまたはstream closeでclientへ伝え、disconnect/5分rotation/reconnect後は対象active queryをauthoritative APIから再取得する。durable producer/replayは`DB-EVENT-001`へ接続するが、SSE notification自体を正本にしない。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | org reject/user fulfill、user reject/org fulfill、presence reject、reconnect中mutation、pub/sub loss、5分rotation、ready前poll継続、reconnect直後refetch、duplicate invalidation許容、stale query 0。HTTP 2xxだけでready、必要channel失敗を無視、reconnect後refetchなしなら停止。                                                                                                                                                                                                                                  |
 | `STABILITY-WORKFLOW-CACHE-COHERENCE-001`             | Not started | P1       | Cache / Clinical view   | workflow/cockpitのprocess-local cacheが別instanceのmutation invalidateを観測できず最大15秒旧clinical stateを返す経路を解消する。safety-critical viewはcacheを外すか、authoritative DB mutation epoch/versionをkey/responseへ含めて各instanceがfreshnessを検証する。distributed invalidationを使う場合もbest-effort broadcastだけをfreshness証明にせず、epoch mismatch/adapter failure時は再計算する。Projectionはtenant/user/role/assignment fingerprintを維持し、stale値をcurrentとして返さない。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 独立2 cache instanceでA mutation→B read、broadcast loss/duplicate/out-of-order、TTL境界、org/user/role/assignment isolation、cache失敗時authoritative fallback、query/p95 budget。local Map invalidateだけ、realtime受信をfreshness証明、TTL待ちをmedical consistency契約にするなら停止。                                                                                                                                                                                                                          |
-| `CI-WORKFLOW-DISPATCH-INPUT-INJECTION-001`           | Not started | P0/P1    | CI / AWS Security       | container workflowの`aws_region` / `ecr_repository` / `image_tag`を`${{ inputs.* }}`でshell本文へ展開せずstep env/action引数で渡し、region/repository/tag/改行/長さをstrict allowlistでAWS OIDC credential取得前に検証する。tag/image計算も認証前へ移し、validation failure時はconfigure/login/buildを開始しない。[GitHub Actions Secure use reference](https://docs.github.com/en/actions/reference/security/secure-use)（2026-07-15確認）のintermediate env/least privilegeを実装根拠とする。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | valid/default/境界長、shell制御文字/改行/空/不正repository、`run:`内direct expression static ratchet、failure時AWS step 0、output newline拒否。credential取得後validate、shell interpolation、未検証値をimage/outputへ流すなら停止。                                                                                                                                                                                                                                                                               |
 | `CI-CONTAINER-ARTIFACT-IMMUTABILITY-001`             | Human gate  | P0/P1    | Release / Supply chain  | manual image workflowをmainまたは明示承認されたimmutable commit SHAへ限定し、そのexact SHAのrequired CI成功後だけbuildする。ECR tagをimmutable契約へ変更し、push後digest、source SHA、workflow run、build manifest、SBOM/provenance attestationを保存し、runtime/deploy planはtagでなくdigestを受け取る。[Amazon ECR tag immutability](https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-tag-mutability.html)と[GitHub artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)（2026-07-15確認）を根拠にする。ECR/IAM変更、push、deployは別human gate。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | non-main/unverified SHA拒否、同tag再push拒否、digest必須、SHA↔digest manifest/attestation、validatorで`MUTABLE` fail、rollback同digest同bytes。tag-only promotion、CI未通過ref、mutable overwrite、digest/manifestなしdeploy、承認前AWS applyなら停止。                                                                                                                                                                                                                                                            |
 | `CI-SUPPLY-CHAIN-PINNING-001`                        | Not started | P1       | CI / Supply chain       | 全workflow actionを検証済みfull commit SHAへ、production Docker baseをapproved digestへpinし、人間可読versionをcommentで保持する。GitHub Actions/Docker/npmの更新PRを分離するDependabot等の運用を用意し、pin driftをstatic gate化する。[GitHub Secure use reference](https://docs.github.com/en/actions/reference/security/secure-use)（2026-07-15確認）がfull-length SHAをimmutable action referenceとして推奨する契約に従う。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `uses:` full SHA、external `FROM` digest、updater config schema/ecosystem/schedule、lockfile-only npm update、verified upstream/repository、pin drift fixture。moving major/tag、fork SHA、digestなしbase、更新運用なしpin凍結なら停止。                                                                                                                                                                                                                                                                           |
 | `SEC-VULNERABILITY-CONTROL-PARITY-001`               | Not started | P1       | Security / Compliance   | vulnerability management文書が稼働中と宣言するsecurity lint、secret scanning、Dependabotを実在gateへ揃える。security-specific lintとsecret scannerをCI/pre-commitの適切な境界へ導入し、既存findingはowner/期限付きbaselineへ限定する。Dependabot configは`CI-SUPPLY-CHAIN-PINNING-001`と単一SSOTを共有し、Actions/Docker/npmを重複定義しない。`pnpm audit`のmoderate failと文書上のhigh-fail/moderate-warning差異も批准してcode/docs/control inventoryをmachine-checkする。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | synthetic secret canary、security rule fixture、baseline expiry/owner、Dependabot schema/ecosystem/schedule、audit severity、docs/workflow/package parity。文書だけgreen、scanner未実行、無期限allowlist、既存gate弱体化、同じupdaterの二重configなら停止。                                                                                                                                                                                                                                                        |
@@ -586,8 +583,8 @@ Wave 4 acceptance merge: `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`のsession/offl
 7. `FHIR-NATIVE-UI-DOGFOOD-001` / `FHIR-NATIVE-OFFLINE-EDGE-001` / `FHIR-NATIVE-CUTOVER-001`: 旧API caller 0とrestore rehearsalを満たした後にhuman-approved hard cutoverへ進む。`FHIR-NATIVE-OPEN-ECOSYSTEM-001`はcutover後とする。
 8. `MEDSAFE-CYCLE-TRANSITION-OCC-001` / `MEDSAFE-MEDICATION-ISSUE-OCC-001` / `MEDSAFE-INCIDENT-REVIEW-OCC-001` / `BILLING-PARTNER-INVOICE-TRANSITION-IDEMPOTENCY-001` / `MEDSAFE-COOP-WORKFLOW-PATIENT-IDENTITY-001`: fresh authorization + expected-version CAS、review version、stable intent、不可逆操作の患者2識別子を閉じる。
 9. `SEC-WEBHOOK-DNS-PINNING-001` / `DB-EVENT-001` / `STABILITY-DELIVERY-PROVIDER-READINESS-001` / `STABILITY-REALTIME-READINESS-RECONCILIATION-001` / `STABILITY-WORKFLOW-CACHE-COHERENCE-001`: validated-IP、reference-only outbox、provider/channel readiness、authoritative refetch、cache epochへ収束する。
-10. `JOB-TENANT-EXECUTION-001` / `DASHBOARD-BOUNDED-PROJECTION-TRUTH-001` / `EXP-SURFACE-REGISTRY-001` / `STABILITY-JOB-PARTIAL-OUTCOME-001`: RLS-bound job、authoritative aggregate/export、cursor/epochを揃え、bounded subsetを空・全件・成功に見せない。
-11. `CI-WORKFLOW-DISPATCH-INPUT-INJECTION-001` / `CI-CONTAINER-ARTIFACT-IMMUTABILITY-001` / `CI-SUPPLY-CHAIN-PINNING-001` / `SEC-VULNERABILITY-CONTROL-PARITY-001` / `CI-PREVIEW-URL-VERIFICATION-001` / `CI-SECURITY-RATCHET-PARITY-001`: credential前validation、SHA→digest provenance、immutable pin、実在control、exact preview/release DAGを閉じる。AWS mutation/deployはhuman gate。
+10. `JOB-TENANT-EXECUTION-001` / `EXP-SURFACE-REGISTRY-001` / `STABILITY-JOB-PARTIAL-OUTCOME-001`: RLS-bound job、authoritative export、cursor/epochを揃え、bounded subsetを空・全件・成功に見せない。
+11. `CI-CONTAINER-ARTIFACT-IMMUTABILITY-001` / `CI-SUPPLY-CHAIN-PINNING-001` / `SEC-VULNERABILITY-CONTROL-PARITY-001` / `CI-PREVIEW-URL-VERIFICATION-001` / `CI-SECURITY-RATCHET-PARITY-001`: SHA→digest provenance、immutable pin、実在control、exact preview/release DAGを閉じる。AWS mutation/deployはhuman gate。
 12. `PERF-RTE-001A` / `PERF-REFERENCE-MASTER-TENANT-FANOUT-001`: process-local metricとtenant×全国master fan-outをbounded aggregate/cursorへ分離する。
 13. `FE-NOTIFICATION-AUTHORITATIVE-STATE-001` / `FE-PHARMACY-COOP-CURSOR-001` / `FE-SCHEDULE-001`: authoritative totalとloaded subset、empty/partial/error/staleをUIで分離し、mutation対象をlocal first pageへ限定しない。
 
@@ -623,6 +620,331 @@ Wave 4 acceptance merge: `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`のsession/offl
 | `Program backlog`               | Program context | 長期プログラムの残スコープ。sprint に数えず、着手時に小IDへ切り出して queue へ昇格する。           |
 | `External prerequisites`        | External gate   | 外部・人間作業。Codexだけで完了扱いにしない。証跡、runbook、承認条件を残す。                       |
 | `docs/plans-archive.md`         | Archive         | 旧board・証跡・詳細仕様・受入条件。未チェックboxを active backlog として数えない。                 |
+
+## TEMPORARY DRAFT — yrese / PH-OS Bedrock AI v0.6.1 + Network Resilience v0.6
+
+> **Status: Draft / Human gate / not ratified / not implementation authorization（2026-07-16）**。
+> ユーザー貼付の `yrese_phos_bedrock_ai_use_case_spec_v0_6_1.md` と
+> `yrese_phos_network_resilience_bedrock_ai_spec_v0_6.md` を、workspaceから原ファイルを読めない期間にも欠落させないための
+> 一時的な詳細展開である。Phase 0のproduct/medical/privacy/security/AWS/architecture reviewと人間承認前に、AWS resource作成、
+> model invocation、PHI送信、Edge採用、migration、external send、deployを許可しない。恒久SSOTへ分割・批准後、この付録を削除する。
+> Network scopeは既存`FHIR-NATIVE-OFFLINE-EDGE-001`を参照し、別のoffline正本を重複実装しない。
+
+### 1. 目的・前提・不変条件
+
+- 前提依存はFHIR/JP Core Native v0.5、ingress/adapter v0.3、批准済みauthz/consent/purpose、versioned FHIR Resource正本である。
+- authoritative truthは常にversioned FHIR Resource。projection、cache、local copy、AI output、印刷物は正本ではない。
+- AIは補助・説明・draft/candidate作成だけを行い、薬剤師またはaccountable operatorがsource/versionを確認し承認する。
+- AI停止は患者閲覧、処方取込、薬歴timeline、訪問/服薬/残薬記録、印刷、FHIR保存、outbox登録を停止させない。
+- 患者別FHIR/会話/記録をKnowledge Baseへ永続化しない。raw PHI prompt/response、request body、provider errorをapplication/server/
+  audit/RUM/model invocation logへ保存しない。認可済み業務画面の開示と、通知/SSE/log/export/AI境界を混同しない。
+- 自動禁止: 処方変更、疑義照会判断、相互作用/重複投薬の最終判断、billing/accounting/claim決定、official eRx/PMH/資格確認操作、
+  external send、安全alert確定、患者auto-message、2xxを根拠とする承認/同期完了。
+
+### 2. Network mode state machine（6 mode）
+
+各modeはserver/edgeのauthoritative health evidence、hysteresis、`generated_at`、reason、capability matrixを持つ。clientが単一request失敗から
+推測しない。transitionは`mode.changed` AuditEventへ記録し、exit時は再認可・再検証・同期を行う。
+
+- `NORMAL`: cloud、external、AIが批准済みSLO内。通常action可能だが各service固有authzは維持。
+- `EXTERNAL_DEGRADED`: eRx/PMH/資格/請求等の外部系だけ失敗。local/cloud coreを継続し、外部成功を表示しない。
+- `AI_DEGRADED`: Bedrock/Guardrails/KB/model aliasが利用不能・budget超過。manual workflowとFHIR/outboxを継続。
+- `CLOUD_DEGRADED`: cloud coreの一部依存が不健全。local保存可能範囲を明示し、cloud-finalを表示しない。
+- `LOCAL_ONLY`: Edge/local clientだけで批准済み最小業務を継続。全生成物はprovisional/pending state。
+- `RECOVERY_SYNC`: cloud復旧後のhistory pull、rebase、再検証、conflict review、transaction push、read-back確認中。未同期を成功扱いしない。
+
+### 3. Local operations、mandatory provisional state、禁止表示
+
+Draft candidateとしてのyrese local範囲: pre-synced患者検索/基本情報、stale表示付き最終Coverage snapshot、JAHIS処方QR、JAHIS電子版
+お薬手帳QR、暫定manual prescription、cached masterによる暫定計算、暫定薬袋/薬情/帳票、local audit、許諾済みNSIPS薬局内連携のみ、
+JAHIS local変換、local MedicationRequest/MedicationDispense/MedicationStatement、recovery outbox。
+
+PH-OS local範囲: 当日schedule、pre-synced patient/medication timeline/Offline Visit Bundle、訪問開始/完了、服薬/残薬、temporary
+attachment、多職種draft、follow-up Task、local FHIR/Provenance/AuditEvent、outbox。local作成候補ResourceはEncounter、
+MedicationStatement、Observation、DetectedIssue candidate、Task、Communication draft、DocumentReference metadata、
+QuestionnaireResponse、Provenance、AuditEventに限定する。
+
+必須stateは`LOCAL_ONLY_UNVERIFIED`、`PROVISIONAL_CALCULATION`、`PENDING_MASTER_REVALIDATION`、`PENDING_CLOUD_SYNC`、
+`PENDING_EXTERNAL_REVERIFY`、`PENDING_PHARMACIST_REVIEW`。online eligibility/eRx取得/結果送信/PMH/online claim成功、AI final、
+auto-send、stale masterを最新、local-onlyをcloud-final、unsyncedをexternal-sharedと表示してはならない。
+
+### 4. Edge / Local Client architecture candidate
+
+- UI/local client -> encrypted Local FHIR Store + rebuildable projection -> append-only Local Event Log -> Outbox/Inbox -> Recovery Sync -> Cloud FHIR。
+- Pharmacy Edge Node exact component inventory: Local FHIR Store、Local Search Projection、Local Master Cache、Local Terminology Cache、
+  Local Adapter Runtime、Local Event Store、Outbox/Inbox、Print Queue、NSIPS Legacy Adapter、JAHIS Adapter、Sync Agent。
+- PH-OS Local Client exact component inventory: Offline Visit Bundle、Local FHIR Resource Cache、Local Draft Store、Local Attachment Store、
+  Local Event Queue、Local AuditEvent Queue。
+- Pharmacy Edge NodeはADR/Human gate。Greengrass V2とrepo-local runtimeをhardware/OS/TPM/key/device identity、tenant/pharmacy binding、
+  least privilege、signed component/update/rollback、local IPC、capacity、physical loss、operability/costで比較し、ここでは選定しない。
+- AWS候補はECS Fargate/Lambda、Aurora PostgreSQL Multi-AZ、S3 versioning/Object Lock（必要時）、EventBridge/SQS/SNS/
+  Step Functions/CloudWatch/CloudTrail/KMS/Secrets Manager/WAF/AWS Backup。Blue-Green/Canary/Smoke/health/rollback、
+  expand-migrate-contract、feature flagもcandidateでありdeploy承認ではない。
+
+### 5. Local FHIR Store、projection、master/terminology cache
+
+- Local FHIR required fields: `tenant_id`, `pharmacy_id`, `resourceType`, `logical_id`, `meta.versionId`, `meta.lastUpdated`,
+  `meta.profile`, FHIR JSON, `resource_hash`, `source_server`, `sync_status`, `last_validated_at`, `local_created_flag`。
+- projectionは非正本・再構築可能で、`patient_name_kana`, `birth_date`, `medication_code`, `visit_date`, `status`,
+  `last_updated`, `sync_status`だけを用途別indexとして持つ。projectionからclinical truthを逆生成しない。
+- cache対象: Medication Master、CodeSystem、ValueSet、ConceptMap、JP Core package、yrese/PH-OS IG、JAHIS mapping、
+  許諾済みNSIPS mapping。metadataは`version`, `valid_from`, `valid_to`, `downloaded_at`, `hash`, `signature`, `source`,
+  `staleness_policy`。required terminology unavailable/expired/hash不一致はfail-closed。
+- local store/cacheは暗号化、key rotation、quota、disk pressure、tamper、clock skew、TTL/revoke、device/user/session/authz epochを扱い、
+  evictionでunsynced writeを無言削除しない。
+
+### 6. Offline Bundle policy candidate
+
+exact Resource listはPatient、Coverage、MedicationRequest、MedicationDispense、MedicationStatement、AllergyIntolerance、Condition、
+Observation、CarePlan、Task、Appointment、DocumentReference、Consent、Provenance。metadataは`bundle_id`, `patient_refs`,
+`facility_id`, `created_at`, `created_by`, `expires_at`, `source_server`, `source_version`, `hash`, `encryption_status`,
+`purpose_of_use`。48h/72h/24hは対象別TTLの**未批准candidate default**であり実測・法務・運用承認前にhardcodeしない。expired dataは
+freshness warningを出し、authorization、Consent revoke、denyを上書きしない。
+
+### 7. Outbox / Inbox contract、13-step Recovery Sync、conflict
+
+OutboxEvent exact fields: `event_id`, `tenant_id`, `pharmacy_id`, `source_device_id`, `actor_id`, `resource_refs[]`, `event_type`,
+`payload_type` (`fhir_resource|fhir_bundle|domain_event|attachment`), `payload_hash`, `idempotency_key`, `sequence_number`,
+`logical_clock`, `occurred_at_local`, `created_at`, `sync_status` (`pending|sending|sent|acknowledged|failed|dead_letter`),
+`retry_count`, `last_error`。accepted-local、sent、cloud-accepted、cloud-committed、read-back-confirmedを同一語に潰さない。
+
+source exact 13-step crosswalkは(1)health、(2)auth refresh、(3)clock drift、(4)terminology、(5)master、(6)FHIR validation、
+(7)duplicate、(8)conflict、(9)transaction Bundle、(10)OperationOutcome、(11)Provenance、(12)AuditEvent、(13)local status。
+Mandatory substepとして(6)前にcloud history pull -> local rebase、(8)でsource/field conflict検出 -> 人間review、(9)でidempotent push、
+(10)後にauthoritative read/vread確認を行う。source番号を維持したまま、各stepのcheckpoint/restart evidenceを残す。timestamp LWW、
+自動overwrite、blind push、2xxだけのsynced表示は禁止。exact conflict codeは`CONFLICT_REQUIRES_REVIEW`, `PATIENT_IDENTITY_CONFLICT`,
+`RESOURCE_VERSION_CONFLICT`, `MEDICATION_HISTORY_CONFLICT`, `MASTER_VERSION_CONFLICT`,
+`TERMINOLOGY_MAPPING_CONFLICT`。Resource owner/field/source authorityごとのpolicyを別SSOTで批准する。
+
+### 8. RTO / RPO candidate（未批准）
+
+- local patient access: RTO 0-5分 candidate / RPOは最終同期時点。
+- local visit write: RTO 0分 / RPO 0分（local durable acceptance基準）。
+- cloud API: RTO <=1時間 target / RPO <=5分 target。
+- AI: RTO <=24時間 candidate / RPO regenerable。
+- official eRx・online claim: external recovery依存。成功代替をlocalで捏造しない。
+
+値はWell-Architectedの定義に従いworkload別測定・business approval・DR rehearsal後に批准する。Aurora Global Database、multi-region、
+Edge台数、Blue-Green topologyを値から逆算して自動採用しない。
+
+### 9. Bedrock AI safe platform foundation
+
+`AI-BEDROCK-SAFE-PLATFORM-001`をPhase 0 Human gate umbrellaとし、以下をPR-sized subtaskに分ける。
+
+- `00` current inventory / threat model / use-case risk tier / source-of-truth map。
+- `01` typed AIOrchestrator request/response、idempotency、deadline、result state。
+- `02` use-case別PHI minimizer allowlist、token/byte budget、direct identifier除去、denied-field tests。
+- `03` consent/purpose/authz/assignment/qualification gate。denyはprovider call 0。
+- `04` server-only Bedrock Converse adapter。`BEDROCK_CLAUDE_SONNET_PRIMARY`等のapproved aliasを使いmodel IDをhardcodeしない。
+- `05` Guardrails input/output。authz/consent/決定論的minimizer/output validatorの代替にしない。
+- `06` immutable PromptTemplateRegistry、use-case/schema/model compatibility、promotion/rollback。Prompt Management ARNは批准後のみ。
+- `07` strict output schema、evidence/source-version/grounding、不確実/insufficient evidence、dangerous assertion reject。
+- `08` HumanReviewQueue (`generated|review_required|approved|rejected|expired|superseded`)、資格、OCC、edit diff、reason、recovery。
+- `09` approved-only FHIR/DocumentReference/Task draft persistence + version-specific Provenance。正本への自動確定なし。
+- `10` PHI-free audit/metrics（alias/template/guardrail/result/reviewer/latency/token/cost/errorのみ）。
+- `11` invocation logging policy/config drift gate。
+- `12` `AI_DEGRADED` fallback、fixed retry、circuit breaker、rate/cost budget、ordinary workflow continuity。
+
+### 10. AI request architecture / exact contract / output validator
+
+flowはUI -> server authn/authz/tenant/assignment/qualification gate -> authorized source reference解決 -> 必要最小PHI materialization -> AI Request
+Builder -> PHI Minimizer -> Consent/Purpose Check -> Bedrock Guardrails -> Claude Sonnet alias -> Output Validator -> Human Review Queue ->
+approved draft FHIR/DocumentReference/Task。access deny時はPHI fetch/materialization 0、provider invocation 0とする。
+
+AIRequest exact fields: `request_id`, `tenant_id`, `pharmacy_id`, `actor_id`, nullable `patient_ref`, `purpose_of_use`, `ai_use_case`,
+`input_resource_refs[]`（version/hash含む）, `prompt_template_id`, `prompt_template_version`, `model_alias`, `guardrail_id`,
+`phi_classification`, `offline_behavior`。追加runtime contextはrole/qualification、Consent ref、idempotency key、deadline、model alias version。
+
+PHI minimizerは必要でない氏名/住所/電話/保険者番号を除外し、patient IDをinternal refへ置換し、薬剤/訪問/服薬/残薬も用途に必要な
+最小field/versionだけを渡す。Output Validator exact gatesは(1)schema、(2)FHIR draft、(3)forbidden phrase、(4)unsupported medical advice、
+(5)PHI leakage、(6)grounding/citation、(7)hallucination risk + required human-review flag。
+
+### 11. Bedrock operations / privacy / security
+
+- Converse共通message interface、approved account/region/model/inference profile、timeout/retry/circuit breaker、release-time availabilityを固定。
+- primary/fallback aliasはregion/model allowlist付き。silent unsafe fallback、global/cross-region PHI inferenceはgeography/destination/data residency/
+  legal/SCP-IAM/abuse-detection批准までdefault deny。
+- AWS BAA、account、region、feature HIPAA eligibilityはpre-invocation human gate。HIPAA eligibleだけでauthorizationとみなさない。
+- Guardrailsは不適切出力、sensitive data、prohibited topic、grounding、prompt injectionのdefense-in-depthだがprobabilistic/text-onlyで、
+  tool_use parameter内PIIも決定論的には守れない。
+- Knowledge Baseは批准済みSSOT/manual/Runbook/FHIR IG/adapter safety docsだけ。tenant/public corpus分離、manifest/hash/owner/effective/
+  expiry、ACL、poisoning、deletion/reindex、minimum grounding/citationを検査し、patient-specific FHIRを投入しない。
+- Model Invocation Loggingのcontentはdefault off。許容metadataはrequest/tenant-safe correlation ID、model/use_case、token、latency、error code。
+  redacted content loggingも明示承認、KMS、短期retention、access audit、redaction検証が必要。
+- least-privilege IAM、KMS、CloudWatch、PrivateLink/VPC endpoint policy/private DNS/no-public-egress evidenceを評価するがtopologyは未批准。
+
+### 12. AI use-case inventory、priority、個別DoD
+
+各use caseを独立sliceにし、input/output schema、save target、permission/purpose、prompt/schema/model version、citation、review UI、
+AI_DEGRADED/manual baseline、latency/cost、PHI-free telemetry、route/component/contract/security testを持たせる。
+
+- P1 `AI-FHIR-VALIDATION-EXPLAIN-001`: pinned validator/package fingerprint + PHI-minimized OperationOutcomeから平易な説明、修正候補位置、
+  official citation/confidence。valid化・Resource変更は禁止。unknown code/multiple/package mismatch/no raw Resource/insufficient evidenceをtest。
+- P1 `AI-SSOT-RAG-001`: approved SSOT/manual/Runbook/FHIR IG/JAHIS safety policy RAG。no evidence時fail、ACL/poison/delete/reindex test。
+- P2 `AI-VISIT-PRE-SUMMARY-001`: current Patient/Medication\*/Observation/residual/previous Encounter/Communication/open Taskのexact versionから
+  identity/safety/change/open-task summary。long polypharmacy/conflict/stale/partial/deny/source link/AI unavailableをtest。
+- P2 `AI-MEDICATION-TIMELINE-SUMMARY-001`: inputsはversioned MedicationRequest/MedicationDispense/MedicationStatement、Medication、
+  Observation。outputはcurrent/history/source authority/unknownとadded/stopped/dose-change candidate。saveはreview queue draftのみで、
+  medication正本を更新しない。same name/different code、unit ambiguity、reorder、partial historyをtest。
+- P2 `AI-SUPPORT-INQUIRY-TRIAGE-001`: inputsはscreen context、sync status、PHI-minimized OperationOutcome、AuditEvent summary。
+  outputsはcategory、urgency candidate、safe log candidate、first-reply draft、escalation candidate。saveはsupport review queueのみで、clinical判断、
+  患者auto-message、Task auto-assign、raw provider error保存は禁止。missing screen、unknown error、cross-tenant、urgent false-positiveをtest。
+- P3 `AI-RESIDUAL-ADHERENCE-STRUCTURE-001`: inputsはvisit memo、人が確定した残薬写真読取結果、medication timeline、MedicationDispense/
+  MedicationStatement。outputはresidual/adherence candidate field + ambiguity。saveはQuestionnaireResponse/Observation draft reviewだけ。
+  AIだけの薬剤同定、錠数確定、stock ledger反映は禁止。photo absent、unit/否定/頓服/複数同名薬をtest。
+- P3 `AI-FOLLOWUP-NOTE-DRAFT-001`: inputsはapproved visit facts/open Task/recipient purpose。outputsはCommunication draft、Task completion draft、
+  next-follow-up candidate。saveはreview queueだけで、Task complete、recipient確定、external sendは禁止。no-change、stale task、recipient denyをtest。
+- P3 `AI-MULTIDISCIPLINARY-SHARE-DRAFT-001`: recipient/purpose/consent別draft。raw threadを無条件共有しない。
+- P4 `AI-MEDICATION-PROBLEM-CANDIDATE-001`: DetectedIssue候補のみ。相互作用/重複/処方変更の最終判断なし。
+- `AI-FHIR-RESOURCE-CREATION-ASSIST-001`: inputsはapproved structured facts + target profile/version + validation context。outputsはexact
+  QuestionnaireResponse、Observation、MedicationStatement、Communication、DocumentReference metadata draft。saveはhuman review queue/
+  draft storeだけで、自動create/update、missing cardinalityの捏造、profile bypassは禁止。required/unknown/reference mismatchをtest。
+- `AI-BILLING-ACCOUNTING-EXPLAIN-001`: inputsはCalculation Trace、Fee Items、Receipt、Payment Ledger、Unpaid Balanceのauthorized projection。
+  outputsはstaff向け説明、patient向け説明、unpaid/partial/refund/difference説明candidate。saveはreviewed explanation draftだけで、AI再計算、
+  claimability決定、claim submission、final receipt発行は禁止。rounding/source mismatch/partial payment/refund/stale ruleをtest。
+- mandatory v0.6.1 `AI-VISIT-NOTE-DRAFT-001`: visit memoと別途同意されたtranscriptからEncounter/Observation/
+  QuestionnaireResponse draft。speaker/source/time、不支持statement、silence/noise/negation/dose/unit/patient mismatch/stale/reviewer editをtest。
+  Audio/STT providerは別privacy/human gate。
+- mandatory `AI-POSTVISIT-REPORT-DRAFT-001`: approved factsからdoctor/care-manager/facility別CareReport/DocumentReference draft。
+  claim-level citation、missing/contradiction、purpose/consent/stale、approval後も既存delivery auth gate。send/approve禁止。
+- mandatory `AI-PATIENT-SUMMARY-001`: authorized pageの背景/薬剤/服薬/残薬/open task。current/history/unknown/withheld/partial、patient switch
+  reset、long/zero/error、direct source linkをtest。通知/logへ新規露出しない。
+- mandatory `AI-PRESCRIPTION-DELTA-SUMMARY-001`: explicit versioned MedicationRequest/Statement windowのadded/stopped/dose/frequency/status。
+  code/unit/source authority/ambiguityを出し、clinical intentを推論しない。reorder/no-change/same-name different-code/unit unavailable/correction/
+  equal-time stable orderをtest。
+- mandatory `AI-MULTIDISCIPLINARY-SUMMARY-001`: physician/care manager/nurse/facility/family Communicationをactor/time/topic/action別に要約し、
+  attribution/conflict/restricted attachmentを保持。Task/send auto-create禁止。
+- staged `AI-POSTVISIT-TASK-EXTRACT-001`: approved Encounter/Observation/CommunicationをinputにTask candidate（type/owner/due/evidence）を出し、
+  review queueだけへ保存。Task自動作成/assign/completeは禁止。negation、duplicate、no due evidence、restricted sourceをtest。
+- staged `AI-REPORT-QUALITY-CHECK-001`: report draft + required-field/citation/recipient-purpose policyをinputにmissing/contradiction/disclosure warningを
+  出し、quality review resultだけを保存。本文自動修正、approve/sendは禁止。no-change、false citation、over-disclosure、stale sourceをtest。
+- staged `AI-INQUIRY-WORDING-DRAFT-001`: approved medication issue facts + recipient/purposeをinputに疑義照会文面draftを出し、review queueだけへ
+  保存。照会要否判断、医師回答推測、送信は禁止。ambiguous dose、missing evidence、recipient mismatch、urgent escalationをtest。
+- batch auto-approvalは禁止。
+
+### 13. Degraded UX exact copy / fields / accessibility
+
+- cloud copy: 「現在クラウド同期が停止しています。ローカル保存で業務を継続できます。復旧後に再検証・同期が必要です。」
+- AI copy: 「AI補助機能は現在利用できません。記録・訪問・同期キュー登録は継続できます。」
+- recovery copy: 「クラウド接続が復旧しました。ローカル記録を再検証しています。未同期・競合・薬剤師確認待ちがあります。」
+- fields: last cloud sync、master update、bundle created、pending count、conflict count、AI availability、external availability。
+- AI status: `AI_UNAVAILABLE`, `AI_DEGRADED`, `AI_RETRY_LATER`, `AI_OUTPUT_PENDING_REVIEW`。
+- false success/empty/zeroを避け、offline/stale/syncing/conflict/provisional/review待ちを文言+iconで表示。mobile 44px、keyboard、screen reader、
+  fixed recovery actionを必須とする。local provisional printにはwatermarkを付け、revalidation前にofficial deliveryを示さない。
+
+### 14. AuditEvent / Provenance exact event registry
+
+Network: `mode.changed`, `cloud.unreachable`, `cloud.recovered`, `external.degraded`, `local.write.created`, `outbox.sent`,
+`sync.conflict_detected`, `sync.completed`。AI: `ai.request.created`, `ai.input.minimized`, `ai.guardrail.applied`,
+`ai.response.received`, `ai.output.validation_failed`, `ai.output.reviewed`, `ai.output.approved`, `ai.output.rejected`, `ai.unavailable`。
+actor/tenant/purpose/resource/version/alias/template/guardrail/result/reviewerをPHI-minimized AuditEvent/Provenanceへ結び、prompt/response本文は残さない。
+
+### 15. Failure / acceptance matrix
+
+Network matrix: Cloud Core、DNS、API Gateway、Aurora、S3、EventBridge delay、SQS delay、Edge-only、PH-OS offline、recovery sync、
+clock drift、duplicate、reordering、conflict、low disk、power loss、corrupt bundle、key loss、expired/revoked/role/Consent change、multi-worker
+lease takeover、old/new profile/terminology、restore、local->cloud read-back proof。
+
+AI matrix: Bedrock timeout/throttle/model unavailable、Guardrails block、KB unavailable/poisoned/no evidence、invalid schema、minimization failure、
+grounding不足、stale source、human review/OCC/qualification、alias missing/unknown、duplicate idempotency、AI disabled/manual baseline。
+
+acceptance: local visit durable creation、local JAHIS QR queue、AI outage non-blocking、recovery FHIR validation/conflict detection、review前final record 0、
+raw invocation logの不要PHI 0、cross-tenant/purpose/consent denyでprovider invocation 0、unsynced external send 0。
+
+### 16. SSOT document task registry（exact 23）
+
+全行のownerはcodex1/codex2 plan review後のnamed maintainer、GateはHuman、StatusはDraft。各docは既存FHIR/UI/security/AWS SSOTと差分照合し、
+批准済み内容だけ恒久SSOTへpromotionする。この一時付録からのpromotion後は該当行と重複本文を削除する。
+
+| Proposed file                       | Dependency            | Acceptance / review task                                       |
+| ----------------------------------- | --------------------- | -------------------------------------------------------------- |
+| `network_resilience_strategy.md`    | modes + RTO/RPO       | 6 mode、最小継続scope、DR責任者、測定証跡                      |
+| `local_first_architecture.md`       | FHIR v0.5             | authoritative/local/projection境界とdata flow                  |
+| `pharmacy_edge_node_runtime.md`     | ADR/security          | Greengrass vs local runtime、device/update/loss、人間選定      |
+| `offline_fhir_store_policy.md`      | local architecture    | exact fields、encryption/key/quota/rebuild/RLS相当境界         |
+| `offline_bundle_policy.md`          | Consent/purpose       | exact resources/metadata/TTL/revoke/tamper                     |
+| `local_master_cache_policy.md`      | master license        | version/hash/signature/stale/eviction                          |
+| `local_terminology_cache_policy.md` | JP Core/IG            | CodeSystem/ValueSet/ConceptMap/package fail-closed             |
+| `outbox_inbox_sync_policy.md`       | local event store     | exact schema/status/idempotency/lease/dead-letter              |
+| `recovery_sync_policy.md`           | outbox + cloud FHIR   | 13 steps、read-back、restart/rollback                          |
+| `conflict_resolution_policy.md`     | Resource ownership    | exact codes、field/source authority、人間review                |
+| `cloud_degraded_ux_policy.md`       | mode matrix           | exact copy/fields/capability/44px/accessibility                |
+| `ai_degraded_ux_policy.md`          | AI foundation         | status/copy/manual continuity/retry                            |
+| `bedrock_ai_architecture.md`        | threat model          | server-only flow、account/region/network/data boundary         |
+| `bedrock_model_alias_policy.md`     | model approval        | primary/fallback、availability、no hardcode/unsafe fallback    |
+| `ai_use_case_inventory.md`          | risk tier             | 全use case、purpose/input/output/save/prohibited/priority      |
+| `ai_prompt_template_registry.md`    | schema/model registry | immutable version、promotion/rollback、no PHI test values      |
+| `ai_phi_minimization_policy.md`     | use-case inventory    | field allowlist/budget/direct-ID removal/zero-invoke deny      |
+| `ai_guardrails_policy.md`           | minimizer + validator | probabilistic限界、input/output、drift/evaluation              |
+| `ai_knowledge_base_policy.md`       | docs corpus           | no patient FHIR、ACL/manifest/poison/delete/reindex/citation   |
+| `ai_invocation_logging_policy.md`   | AWS logging config    | content default-off、metadata、KMS/retention/access/drift      |
+| `ai_human_review_policy.md`         | authz/qualification   | state machine、OCC/edit/reason/expiry/supersede                |
+| `ai_output_validation_policy.md`    | schema/FHIR/grounding | seven gates、dangerous assertion、insufficient evidence        |
+| `ai_audit_provenance_policy.md`     | review + FHIR         | exact events、approved-only draft、version-specific Provenance |
+
+### 17. Blocking stop conditions（全項目）
+
+以下が1つでも未定義/違反なら実装・releaseを停止する: minimum cloud-down scope未定義、LOCAL_ONLY success semantics未定義、Outbox/Inboxなし、
+recovery sync policyなし、conflict policyなし、local FHIR暗号化なし、Offline Bundle TTLなし、stale-master表示policyなし、AIがmandatory
+business path、AIが薬剤師なしでfinalize、PHI minimizationなし、Guardrails policyなし、無制限PHI invocation log、Consent/purpose_of_useなし、
+hardcoded model ID、AI-degraded UXなし。加えてcurrent orgで全pending replay、localをcloud-synced表示、offline official external success、
+unencrypted/unbounded cache、PHI log、process-local mutexだけ、LWW/autowrite、未批准Greengrass/Aurora Global/Blue-Green採用も停止条件。
+
+### 18. Phase 0-4（依存順を固定）
+
+- Phase 0: modes、minimum scope、RTO/RPO、Edge structure、Offline Bundle、Outbox/Inbox、AI use-case inventory、AI safety、23 SSOTを批准。
+- Phase 1: Local FHIR Store、Local Event Store、Offline Bundle、Outbox/Inbox、cloud detector、mode switcher、AI Request Builder、PHI Minimizer。
+- Phase 2: local JAHIS QR、offline PH-OS visit、recovery validation、conflict detection、AI FHIR error explain、AI SSOT/manual RAG。
+- Phase 3: visit pre-summary、med timeline、follow-up draft、multidisciplinary draft、full Guardrails、KB operations。
+- Phase 4: DR rehearsal、Edge failure test、大規模施設round Bundle、AI evaluation criteria、SLO publication、Runbook。
+
+Phase 0 human approval前にPhase 1以降をimplementation-readyへ昇格しない。各phaseはprevious acceptance、rollback、security/privacy/medical/
+AWS reviewを満たす。
+
+### 19. Final principles（8 acceptance invariants）
+
+1. FHIR Resource/versionが唯一のclinical truthで、local/AI/projectionを第二正本にしない。
+2. local-firstはlocal-finalではなく、復旧後のhistory/rebase/revalidation/read-backを必須にする。
+3. provisional、stale、pending、conflict、review-requiredを成功/最新/完了と表示しない。
+4. offline継続は批准済み最小capabilityだけで、authz/Consent/revoke/qualificationを迂回しない。
+5. conflictをtimestamp LWWや自動mergeで消さず、Resource owner/source authorityと人間reviewで解決する。
+6. AIは補助draft/candidateだけで、人間がsource/versionを確認するまでmutation/send/final decisionを行わない。
+7. PHIはuse-case最小化し、KB/Prompt template/logへ患者固有contentを永続化しない。
+8. failure/degraded/recoveryを監査可能にし、AI/外部/AWS outageでも安全なmanual core workflowを継続する。
+
+### 20. Official references / confirmation record
+
+すべて2026-07-16確認。公式資料はmechanicsの根拠であり、AWS topology/数値/feature利用の批准ではない。
+
+- AWS Well-Architected Reliability Pillar: https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/
+- Disaster Recovery objectives: https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/disaster-recovery-dr-objectives.html
+- ECS blue/green: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-type-blue-green.html
+- Aurora Global Database DR: https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-global-database-disaster-recovery.html
+- Greengrass V2 architecture/offline auth: https://docs.aws.amazon.com/greengrass/v2/developerguide/how-it-works.html and
+  https://docs.aws.amazon.com/greengrass/v2/developerguide/offline-authentication.html
+- Bedrock overview/Converse: https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html and
+  https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html
+- Guardrails/sensitive filters: https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html and
+  https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-sensitive-filters.html
+- Knowledge Bases: https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html
+- Model Invocation Logging: https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html
+- Prompt Management: https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-management.html
+- Bedrock FAQ: https://aws.amazon.com/bedrock/faqs/
+- AWS HIPAA Eligible Services Reference / BAA guidance: https://aws.amazon.com/compliance/hipaa-eligible-services-reference/ and
+  https://aws.amazon.com/compliance/hipaa-compliance/
+- Bedrock geographic cross-Region inference: https://docs.aws.amazon.com/bedrock/latest/userguide/geographic-cross-region-inference.html
+- Bedrock VPC interface endpoints / PrivateLink: https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html
+
+Converseはcommon message interface、prompt-version ARN、guardrailConfig等を提供し、response生成用に提供text/image/documentを保存しないと
+説明する。一方Model Invocation Loggingは別機能で、enabled時はfull request/responseをCloudWatch/S3へ永続化し得るため混同しない。
+Guardrails sensitive filterは確率的・text中心でtool parameters内PIIの決定論的防御ではない。Bedrock FAQのbase model改善/共有なしの説明を
+optional customization/fine-tuningへ一般化しない。Knowledge Base/Prompt ManagementへPHIを入れない。
+
+### Temporary appendix completion / promotion rule
+
+このplanning taskは、sourceの全heading、field、state、event、test、23 doc、stop、phase、referenceが上記へtraceでき、既存
+`FHIR-NATIVE-OFFLINE-EDGE-001`との重複が明示的に除去された時点でDraft記録完了とする。実装完了ではない。Phase 0で各docを作成・
+レビュー・人間批准し、active queueへPR-sized IDを昇格した後にこのtemporary appendixを削除する。
 
 ### 2026-07-09 Archived Plan Board — 履歴参照 `cc:REFERENCE`
 
