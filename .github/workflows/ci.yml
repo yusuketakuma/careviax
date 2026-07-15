@@ -70,6 +70,9 @@ jobs:
       - name: API authorization status check
         run: pnpm api-authz-status:check
 
+      - name: API route reachability check
+        run: pnpm api-route-reachability:check
+
       - name: Client JSON schema check
         run: pnpm client-json-schema:check
 
