@@ -2476,7 +2476,7 @@
     "src/server/services/dashboard-cockpit.ts|careCase|findMany|dot|1",
     "src/server/services/dashboard-cockpit.ts|careReport|count|dot|1",
     "src/server/services/dashboard-cockpit.ts|careReport|findMany|dot|2",
-    "src/server/services/dashboard-cockpit.ts|medicationCycle|findMany|dot|1",
+    "src/server/services/dashboard-cockpit.ts|medicationCycle|findMany|dot|2",
     "src/server/services/dashboard-cockpit.ts|medicationCycle|groupBy|dot|1",
     "src/server/services/dashboard-cockpit.ts|patient|findMany|dot|8",
     "src/server/services/dashboard-cockpit.ts|task|count|dot|3",
@@ -3272,5 +3272,5 @@
       "disposition": "replace_at_cutover"
     }
   ],
-  "expected_inventory_sha256": "362395535161761c01a98505c5eb754b05a18b210fe4d255446a148f9afcc72f"
+  "expected_inventory_sha256": "32cd55d94f4068a5275281017613d32a7cbfac409333406bfabc686b66cb63de"
 }
