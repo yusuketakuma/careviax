@@ -26,7 +26,7 @@ changes this topology.
 Runtime model, approval, sandbox, service tier, and MCP settings belong in the user-level
 `~/.codex/config.toml`. Custom-agent registrations are intentionally absent. This repository
 file defines PH-OS-specific working rules; its two active seats are independent Codex CLI
-sessions coordinated through agmsg.
+sessions in dedicated tmux panes. agmsg and other agent transports are intentionally absent.
 
 ## Mission
 
@@ -39,7 +39,7 @@ Do not stop until the concrete task is actually complete or an explicit blocker 
 ## Autonomous Idle Search — codex1 / codex2 operation
 
 This repository is currently operated only by the independent `codex1` and
-`codex2` Codex CLI seats coordinated through agmsg. Do not use codex3/codex4,
+`codex2` Codex CLI seats in dedicated tmux panes. Do not use agmsg, codex3/codex4,
 Claude, Oracle, built-in custom agents, subagents, or external maker/checker workers
 unless the user explicitly changes this topology in a later instruction.
 
@@ -64,9 +64,9 @@ useful, safe work that moves the repository-level objective forward:
 残る体制記述（旧 Claude main / Codex-only / rev8 等）は歴史的記録であり、矛盾時は STATE.md に従う。
 
 2026-07-16 ユーザー指示により、現行運用は **codex1 / codex2 の二者運用**。
-両者が計画レビュー、non-overlap 実装、相互検証を agmsg で連携し、codex1 が単一台帳更新と
-integration を担当する。codex3/codex4、Claude、Oracle、built-in custom agent、subagent、外部
-maker/checker は使わない。ユーザーが明示的に変更しない限り、旧 single-Codex / broader
+両者はtmuxの独立paneで動作し、shared worktreeのexact-pathを重複させず、codex1 が単一台帳更新と
+integration を担当する。agmsg、codex3/codex4、Claude、Oracle、built-in custom agent、subagent、
+外部 maker/checker は使わない。ユーザーが明示的に変更しない限り、旧 single-Codex / broader
 multi-agent / maker-checker 記述は歴史的記録として扱う。
 
 shared worktree 前提を維持する。編集前に `git status --short --untracked-files=all`
@@ -91,7 +91,7 @@ For each iteration:
 
 The active loop is limited to `codex1` and `codex2`.
 
-- Both seats review plans before implementation, claim exact non-overlapping paths through agmsg, and independently verify the other seat's coherent slice.
+- Both seats review plans before implementation, use explicit exact-path assignments in their tmux prompts, and independently verify the other seat's coherent slice.
 - `codex1` owns the single ledger update and integration commits; `codex2` does not edit shared ledgers unless codex1 explicitly delegates an exact path.
 - Do not use codex3/codex4, Claude, Oracle, project custom agents, built-in subagents, or external maker/checker workers unless the user explicitly changes the topology.
 - Keep long Next.js gates serialized: do not run `pnpm build` concurrently with `pnpm typecheck` or `pnpm typecheck:no-unused`; `.next/types` can race.

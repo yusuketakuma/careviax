@@ -4,8 +4,8 @@
 # can select the intended model, reasoning, service tier, and search behavior.
 # Keep PH-OS-specific behavior in AGENTS.md.
 #
-# CareViaX uses two independent Codex CLI seats (codex1 and codex2) coordinated
-# through agmsg. Project-local Codex custom agents are intentionally disabled.
+# CareViaX uses two independent Codex CLI seats (codex1 and codex2) in dedicated
+# tmux panes. Agent messaging and project-local custom agents are disabled.
 ################################################################################
 project_doc_max_bytes = 131072
 project_doc_fallback_filenames = [
