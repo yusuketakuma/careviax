@@ -62,7 +62,7 @@
 ## 直近の作業
 
 - codex1/codex2: bounded HTTP ingress/proxy/provider + authoritative prescription/care-report search
-  (`SEC-HTTP-IO-BUDGET-001` PARTIAL `42f7ce928` / `2e1de27c9` / `940762409` / `559e4ced3` / `0731fdfd9` / `e4de1dfd1`,
+  (`SEC-HTTP-IO-BUDGET-001` DONE `42f7ce928` / `2e1de27c9` / `940762409` / `559e4ced3` / `0731fdfd9` / `e4de1dfd1` / `957dd4966`,
   `SEARCH-PALETTE-AUTHORITATIVE-QUERY-001` DONE `e8ed604de` / `7486e5e3f`, 2026-07-15).
   - HTTP foundation root cause / implementation:
     共通JSON helperの`req.json()` / `req.text()`全bufferとContent-Length依存を、Web `ReadableStream`のraw
@@ -106,7 +106,8 @@
     204/205/304 null bodyとrepresentation Content-Length順序をP1として検出し、castやraw error伝播なしで閉じた。
     Aは3 files / 29 tests、strict callerを含む6 files / 61 tests、Bは2 files / 39 tests、prescription searchは
     3 files / 47 tests、care-reportは1 file / 81 tests、PHOSは1 file / 22 tests、providerは5 files / 44 tests、
-    QR confirmは1 file / 34 tests、最終transport combinedは8 files / 121 testsがPASS。
+    QR confirmは1 file / 34 tests、provider/QR transport combinedは8 files / 121 tests、audit request-bodyは
+    2 files / 24 testsがPASS。
     exact ESLint、Prettier、diff-check、query-shape 4 allowlisted / 0 new、FHIR legacy inventory unchanged、serialized final
     `pnpm typecheck` / `pnpm typecheck:no-unused`、API response shape 0、client JSON schema 363/0、frontend contract、
     client PHI log/display、module boundary、route auth wrapper、FHIR foundationがPASSした。QR test header unionのTS2345は
@@ -114,10 +115,11 @@
     layout/visual reconstructionを伴わないtransport/search correctnessなのでimage generationは省略した。
   - remaining / next:
     Search親taskはDone。既存CareReport composite index候補は`PERF-DB-006D-INDEX`のhuman gateに残し、このsliceでmigrationしない。
-    HTTP親taskはPartial。live scanで残るrequest body bypassは`src/app/api/audit-logs/[id]/review/route.ts`のdirect
-    `req.json()` 1件だけで、codex2がexact route/testを実装中。これをbounded helperへ移してfocused/static/type gateを通した後に
-    親taskをDoneにする。line/free-text/days/quantity上限は独立した`MEDSAFE-PRESCRIPTION-INPUT-BOUNDS-001` Human gateであり、
-    未批准の推測値を入れない。詰まりはOracleではなくcodex1/codex2間で相談する。
+    HTTP親taskもDone。最後のaudit-review direct `req.json()`をdefault 1MiB/10s bounded readへ移し、413/408を
+    audit lookup/transaction前に返した。旧400のZod `{formErrors, fieldErrors}` wire contractはroute固有safeParseで維持し、
+    production API routeのdirect `req/request.json|text|arrayBuffer()` scanは0件。line/free-text/days/quantity上限は独立した
+    `MEDSAFE-PRESCRIPTION-INPUT-BOUNDS-001` Human gateであり未批准の推測値を入れない。次もexact-path ownershipと相互reviewを続け、
+    詰まりはOracleではなくcodex1/codex2間で相談する。
 
 - codex1/codex2: explicit print intent + strict drug-master date/provenance
   (`PRIVACY-PRINT-EXPLICIT-INTENT-001` DONE `86fd09be7`, typecheck test follow-up `afb0d4b40`,
