@@ -1,0 +1,893 @@
+{
+  "schemaVersion": 1,
+  "contractId": "FHIR-NATIVE-P0-FOUNDATION-002-RATCHET",
+  "confirmedOn": "2026-07-15",
+  "sourceBaseline": {
+    "repository": "https://github.com/yusuketakuma/careviax.git",
+    "baseCommit": "8d1205539c75d3acb9d242365f781c960074d21b",
+    "trackedPaths": [
+      ".github/workflows/ci.yml",
+      "Plans.md",
+      "docs/architecture/README.md",
+      "docs/architecture/fhir-first-prescription-platform.md",
+      "docs/decisions.md",
+      "docs/phase5-cutover-strategy.md",
+      "package.json",
+      "pnpm-lock.yaml",
+      "prisma/schema/standard-clinical-integration.prisma",
+      "src/server/adapters/fhir/index.ts",
+      "src/server/services/standard-clinical-fhir-validation.ts",
+      "src/server/fhir/native-contract-registry.json",
+      "src/server/fhir/native-contract.ts",
+      "src/server/fhir/native-contract.test.ts",
+      "tools/scripts/check-fhir-native-contract.mjs",
+      "tools/scripts/check-fhir-native-contract.test.ts"
+    ],
+    "build": {
+      "status": "not_built",
+      "artifactPath": null,
+      "sha256": null
+    }
+  },
+  "standards": {
+    "fhir": {
+      "release": "R4",
+      "version": "4.0.1",
+      "source": "https://hl7.org/fhir/R4/"
+    },
+    "jpCore": {
+      "packageId": "jpfhir.jp.core",
+      "version": "1.2.0",
+      "source": "https://jpfhir.jp/fhir/core/1.2.0/",
+      "package": {
+        "status": "not_pinned",
+        "artifactPath": null,
+        "sha256": null
+      }
+    }
+  },
+  "customExtensionCount": 0,
+  "resourceMatrix": [
+    {
+      "resourceType": "Patient",
+      "legacyInventory": "L1",
+      "nativeTarget": "L2",
+      "authoritativeServer": "yrese",
+      "nativeInteractions": ["read", "indexed search"],
+      "profilePolicy": "JP Core Patient 1.2.0",
+      "searchKey": "S-PATIENT",
+      "retentionKey": "R-REPLICA",
+      "accessKey": "A-CLINICAL-READ"
+    },
+    {
+      "resourceType": "Coverage",
+      "legacyInventory": "L1",
+      "nativeTarget": "L2",
+      "authoritativeServer": "yrese",
+      "nativeInteractions": ["read", "indexed search"],
+      "profilePolicy": "JP Core Coverage 1.2.0",
+      "searchKey": "S-COVERAGE",
+      "retentionKey": "R-REPLICA",
+      "accessKey": "A-CLINICAL-READ"
+    },
+    {
+      "resourceType": "Organization",
+      "legacyInventory": "L1",
+      "nativeTarget": "L2",
+      "authoritativeServer": "yrese / qualified source",
+      "nativeInteractions": ["read", "indexed search"],
+      "profilePolicy": "JP Core Organization 1.2.0",
+      "searchKey": "S-ORG",
+      "retentionKey": "R-REPLICA",
+      "accessKey": "A-IDENTITY"
+    },
+    {
+      "resourceType": "Location",
+      "legacyInventory": "L0、enum 未登録",
+      "nativeTarget": "L2",
+      "authoritativeServer": "yrese",
+      "nativeInteractions": ["read", "indexed search"],
+      "profilePolicy": "JP Core Location 1.2.0。PH-OS の訪問経路・最適化状態を混入させない。",
+      "searchKey": "S-LOCATION",
+      "retentionKey": "R-REPLICA",
+      "accessKey": "A-IDENTITY"
+    },
+    {
+      "resourceType": "Practitioner",
+      "legacyInventory": "L1",
+      "nativeTarget": "L2",
+      "authoritativeServer": "qualified identity source",
+      "nativeInteractions": ["read", "indexed search"],
+      "profilePolicy": "JP Core Practitioner 1.2.0。資格認可の正本を Resource 表示だけに依存させない。",
+      "searchKey": "S-PRACT",
+      "retentionKey": "R-REPLICA",
+      "accessKey": "A-IDENTITY"
+    },
+    {
+      "resourceType": "PractitionerRole",
+      "legacyInventory": "L1",
+      "nativeTarget": "L2",
+      "authoritativeServer": "yrese / tenant identity",
+      "nativeInteractions": ["read", "indexed search"],
+      "profilePolicy": "JP Core PractitionerRole 1.2.0。tenant role と薬剤師資格を混同しない。",
+      "searchKey": "S-PRACTROLE",
+      "retentionKey": "R-REPLICA",
+      "accessKey": "A-IDENTITY"
+    },
+    {
+      "resourceType": "Medication",
+      "legacyInventory": "L1",
+      "nativeTarget": "L2",
+      "authoritativeServer": "yrese / approved drug source",
+      "nativeInteractions": ["read", "reference resolution"],
+      "profilePolicy": "JP Core Medication は注射薬剤リスト用途。内服・外用へ単独適用しない。",
+      "searchKey": "S-MED",
+      "retentionKey": "R-REPLICA",
+      "accessKey": "A-REFERENCE"
+    },
+    {
+      "resourceType": "MedicationRequest",
+      "legacyInventory": "L1",
+      "nativeTarget": "L2",
+      "authoritativeServer": "yrese",
+      "nativeInteractions": ["read", "indexed search"],
+      "profilePolicy": "JP Core MedicationRequest または Injection。source category で選ぶ。",
+      "searchKey": "S-MEDREQ",
+      "retentionKey": "R-REPLICA",
+      "accessKey": "A-CLINICAL-READ"
+    },
+    {
+      "resourceType": "MedicationDispense",
+      "legacyInventory": "L1",
+      "nativeTarget": "L2",
+      "authoritativeServer": "yrese",
+      "nativeInteractions": ["read", "indexed search"],
+      "profilePolicy": "JP Core MedicationDispense または Injection。PH-OS create は禁止。",
+      "searchKey": "S-MEDDISP",
+      "retentionKey": "R-REPLICA",
+      "accessKey": "A-CLINICAL-READ"
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "legacyInventory": "L1",
+      "nativeTarget": "L2 inbound / L3 PH-OS-owned",
+      "authoritativeServer": "source-specific",
+      "nativeInteractions": ["read", "indexed search", "approved PH-OS create"],
+      "profilePolicy": "JP Core MedicationStatement または Injection。source authority と verification state を必須化する。",
+      "searchKey": "S-MEDSTMT",
+      "retentionKey": "R-CLINICAL",
+      "accessKey": "A-CLINICAL-WRITE"
+    },
+    {
+      "resourceType": "AllergyIntolerance",
+      "legacyInventory": "L1 metadata only",
+      "nativeTarget": "L2",
+      "authoritativeServer": "yrese / qualified clinical source",
+      "nativeInteractions": ["read", "indexed search"],
+      "profilePolicy": "JP Core AllergyIntolerance 1.2.0",
+      "searchKey": "S-ALLERGY",
+      "retentionKey": "R-REPLICA",
+      "accessKey": "A-CLINICAL-READ"
+    },
+    {
+      "resourceType": "Condition",
+      "legacyInventory": "L1 metadata only",
+      "nativeTarget": "L2",
+      "authoritativeServer": "yrese / qualified clinical source",
+      "nativeInteractions": ["read", "indexed search"],
+      "profilePolicy": "JP Core Condition / Diagnosis を semantics に応じて選ぶ。",
+      "searchKey": "S-CONDITION",
+      "retentionKey": "R-REPLICA",
+      "accessKey": "A-CLINICAL-READ"
+    },
+    {
+      "resourceType": "Observation",
+      "legacyInventory": "L1 metadata only",
+      "nativeTarget": "L2 inbound / L3 PH-OS-owned",
+      "authoritativeServer": "source-specific",
+      "nativeInteractions": ["read", "indexed search", "approved PH-OS create"],
+      "profilePolicy": "JP Core の category-specific Observation profile を使う。Common だけで適合宣言しない。",
+      "searchKey": "S-OBS",
+      "retentionKey": "R-CLINICAL",
+      "accessKey": "A-CLINICAL-WRITE"
+    },
+    {
+      "resourceType": "Encounter",
+      "legacyInventory": "L1 metadata only",
+      "nativeTarget": "L2 inbound / L3 PH-OS-owned",
+      "authoritativeServer": "source-specific",
+      "nativeInteractions": ["read", "indexed search", "approved PH-OS create"],
+      "profilePolicy": "JP Core Encounter 1.2.0",
+      "searchKey": "S-ENCOUNTER",
+      "retentionKey": "R-CLINICAL",
+      "accessKey": "A-CLINICAL-WRITE"
+    },
+    {
+      "resourceType": "CarePlan",
+      "legacyInventory": "L1 metadata only",
+      "nativeTarget": "L3",
+      "authoritativeServer": "PH-OS home-care",
+      "nativeInteractions": ["read", "approved create/update"],
+      "profilePolicy": "JP Core profile なし。FHIR Base R4 または批准済み PH-OS profile。",
+      "searchKey": "S-CAREPLAN",
+      "retentionKey": "R-CLINICAL",
+      "accessKey": "A-CLINICAL-WRITE"
+    },
+    {
+      "resourceType": "Task",
+      "legacyInventory": "L1 metadata only",
+      "nativeTarget": "L3",
+      "authoritativeServer": "PH-OS Workflow / home-care",
+      "nativeInteractions": ["read", "approved create/update"],
+      "profilePolicy": "FHIR Base R4。claim/lease/dedupe は Workflow Store に残す。",
+      "searchKey": "S-TASK",
+      "retentionKey": "R-WORKFLOW",
+      "accessKey": "A-WORKFLOW"
+    },
+    {
+      "resourceType": "Appointment",
+      "legacyInventory": "L1 metadata only",
+      "nativeTarget": "L3",
+      "authoritativeServer": "PH-OS home-care",
+      "nativeInteractions": ["read", "approved create/update"],
+      "profilePolicy": "FHIR Base R4。配送順・最適化状態は含めない。",
+      "searchKey": "S-APPT",
+      "retentionKey": "R-WORKFLOW",
+      "accessKey": "A-WORKFLOW"
+    },
+    {
+      "resourceType": "Communication",
+      "legacyInventory": "L1 metadata only",
+      "nativeTarget": "L3",
+      "authoritativeServer": "PH-OS home-care",
+      "nativeInteractions": ["read", "approved create"],
+      "profilePolicy": "FHIR Base R4。外部送信許可とは別 gate。",
+      "searchKey": "S-COMM",
+      "retentionKey": "R-CLINICAL",
+      "accessKey": "A-COMMUNICATION"
+    },
+    {
+      "resourceType": "QuestionnaireResponse",
+      "legacyInventory": "L0、enum 未登録",
+      "nativeTarget": "L3",
+      "authoritativeServer": "PH-OS home-care",
+      "nativeInteractions": ["read", "approved create/update"],
+      "profilePolicy": "FHIR Base R4。replacement schema migration + human DB review 後に有効化する。",
+      "searchKey": "S-QR",
+      "retentionKey": "R-CLINICAL",
+      "accessKey": "A-CLINICAL-WRITE"
+    },
+    {
+      "resourceType": "DetectedIssue",
+      "legacyInventory": "L0、enum 未登録",
+      "nativeTarget": "L3 candidate",
+      "authoritativeServer": "PH-OS home-care",
+      "nativeInteractions": ["read", "approved candidate create/update"],
+      "profilePolicy": "FHIR Base R4。疑義・相互作用等の review candidate に限定し、相手所有 Resource の自動変更に使わない。",
+      "searchKey": "S-DETECTED",
+      "retentionKey": "R-CLINICAL",
+      "accessKey": "A-CLINICAL-WRITE"
+    },
+    {
+      "resourceType": "DocumentReference",
+      "legacyInventory": "L1 metadata only",
+      "nativeTarget": "L3",
+      "authoritativeServer": "source-specific / PH-OS",
+      "nativeInteractions": ["read", "approved create"],
+      "profilePolicy": "FHIR Base R4。binary 本文・signed URL・storage key を埋め込まない。",
+      "searchKey": "S-DOC",
+      "retentionKey": "R-DOCUMENT",
+      "accessKey": "A-DOCUMENT"
+    },
+    {
+      "resourceType": "Binary",
+      "legacyInventory": "L0、enum 未登録",
+      "nativeTarget": "L2 conditional owner-scoped",
+      "authoritativeServer": "referencing DocumentReference owner",
+      "nativeInteractions": ["read through authorized reference only"],
+      "profilePolicy": "FHIR Base R4 Binary。FHIR REST 管理を選ぶ場合だけ使用し、peer は read-only。外部暗号化 object は Resource にせず Source Artifact とする。Attachment.hash の SHA-1 と別に manifest 用 SHA-256 を保持し、raw/presigned URL を Resource、Control Plane、log へ保存しない。",
+      "searchKey": "S-NONE",
+      "retentionKey": "R-DOCUMENT",
+      "accessKey": "A-DOCUMENT"
+    },
+    {
+      "resourceType": "Consent",
+      "legacyInventory": "L1 metadata only",
+      "nativeTarget": "L2 replica / L3 owner-local",
+      "authoritativeServer": "purpose/profile-designated server",
+      "nativeInteractions": ["read", "owner-approved create/update"],
+      "profilePolicy": "FHIR Base R4。home-care と prescription/dispensing の profile/owner を分離し、purpose を暗黙転用しない。",
+      "searchKey": "S-CONSENT",
+      "retentionKey": "R-CONSENT",
+      "accessKey": "A-CONSENT"
+    },
+    {
+      "resourceType": "CareTeam",
+      "legacyInventory": "L1 metadata only",
+      "nativeTarget": "UNRESOLVED",
+      "authoritativeServer": "Phase 0 owner decision required",
+      "nativeInteractions": ["none until owner/profile approval"],
+      "profilePolicy": "FHIR Base R4 candidate。tenant assignment を Resource だけから推測せず、owner を決めるまで昇格しない。",
+      "searchKey": "S-NONE",
+      "retentionKey": "R-QUARANTINE",
+      "accessKey": "A-QUARANTINE"
+    },
+    {
+      "resourceType": "Provenance",
+      "legacyInventory": "legacy event only",
+      "nativeTarget": "L3 server-local evidence",
+      "authoritativeServer": "event-origin server",
+      "nativeInteractions": ["read", "append owner-local evidence"],
+      "profilePolicy": "FHIR Base R4。Resource/version の生成・変換用。相手 server の evidence を上書きしない。",
+      "searchKey": "S-PROV",
+      "retentionKey": "R-EVENT",
+      "accessKey": "A-SECURITY"
+    },
+    {
+      "resourceType": "AuditEvent",
+      "legacyInventory": "legacy audit only",
+      "nativeTarget": "L3 server-local evidence",
+      "authoritativeServer": "event-origin server",
+      "nativeInteractions": ["tenant read", "append owner-local evidence"],
+      "profilePolicy": "FHIR Base R4。access/output/authz evidence。監査実行と閲覧を分け、相手 server の監査正本を上書きしない。",
+      "searchKey": "S-AUDIT",
+      "retentionKey": "R-EVENT",
+      "accessKey": "A-SECURITY"
+    },
+    {
+      "resourceType": "Bundle",
+      "legacyInventory": "L1 transport metadata",
+      "nativeTarget": "L1 transport / L4 endpoint envelope",
+      "authoritativeServer": "sender + receiver contract",
+      "nativeInteractions": ["validate and dispatch all entries"],
+      "profilePolicy": "JP Core は Bundle profile を定義せず FHIR Base R4 を使う。Bundle 自体を臨床正本にしない。",
+      "searchKey": "S-NONE",
+      "retentionKey": "R-TRANSIENT",
+      "accessKey": "A-TRANSPORT"
+    },
+    {
+      "resourceType": "other",
+      "legacyInventory": "L1 hash/metadata",
+      "nativeTarget": "quarantine only",
+      "authoritativeServer": "unknown",
+      "nativeInteractions": [],
+      "profilePolicy": "allowlist 外 Resource。canonical current head、search index、workflow reference を作らない。",
+      "searchKey": "S-NONE",
+      "retentionKey": "R-QUARANTINE",
+      "accessKey": "A-QUARANTINE"
+    }
+  ],
+  "searchRegistry": [
+    {
+      "key": "S-PATIENT",
+      "parameters": ["_id", "identifier"],
+      "note": null
+    },
+    {
+      "key": "S-COVERAGE",
+      "parameters": ["_id", "identifier", "beneficiary", "status"],
+      "note": null
+    },
+    {
+      "key": "S-ORG",
+      "parameters": ["_id", "identifier", "name"],
+      "note": null
+    },
+    {
+      "key": "S-LOCATION",
+      "parameters": ["_id", "identifier", "name", "organization", "status"],
+      "note": null
+    },
+    {
+      "key": "S-PRACT",
+      "parameters": ["_id", "identifier"],
+      "note": null
+    },
+    {
+      "key": "S-PRACTROLE",
+      "parameters": ["_id", "identifier", "practitioner", "organization", "active"],
+      "note": null
+    },
+    {
+      "key": "S-MED",
+      "parameters": ["_id", "code"],
+      "note": null
+    },
+    {
+      "key": "S-MEDREQ",
+      "parameters": ["_id", "identifier", "patient", "authoredon", "status", "code"],
+      "note": null
+    },
+    {
+      "key": "S-MEDDISP",
+      "parameters": ["_id", "identifier", "patient", "whenhandedover", "status", "code"],
+      "note": null
+    },
+    {
+      "key": "S-MEDSTMT",
+      "parameters": ["_id", "identifier", "patient", "effective", "status", "code"],
+      "note": null
+    },
+    {
+      "key": "S-ALLERGY",
+      "parameters": ["_id", "patient", "clinical-status", "code", "date"],
+      "note": null
+    },
+    {
+      "key": "S-CONDITION",
+      "parameters": ["_id", "patient", "clinical-status", "code"],
+      "note": null
+    },
+    {
+      "key": "S-OBS",
+      "parameters": ["_id", "patient", "category", "code", "date", "status"],
+      "note": null
+    },
+    {
+      "key": "S-ENCOUNTER",
+      "parameters": ["_id", "patient", "date", "status", "class"],
+      "note": null
+    },
+    {
+      "key": "S-CAREPLAN",
+      "parameters": ["_id", "patient", "date", "status"],
+      "note": null
+    },
+    {
+      "key": "S-TASK",
+      "parameters": ["_id", "patient", "owner", "status", "authored-on"],
+      "note": null
+    },
+    {
+      "key": "S-APPT",
+      "parameters": ["_id", "patient", "date", "status", "actor"],
+      "note": null
+    },
+    {
+      "key": "S-COMM",
+      "parameters": ["_id", "patient", "sent", "status", "recipient"],
+      "note": null
+    },
+    {
+      "key": "S-QR",
+      "parameters": ["_id", "patient", "authored", "status", "questionnaire"],
+      "note": null
+    },
+    {
+      "key": "S-DETECTED",
+      "parameters": ["_id", "identifier", "patient", "code", "identified", "implicated", "author"],
+      "note": null
+    },
+    {
+      "key": "S-DOC",
+      "parameters": ["_id", "patient", "date", "status", "type"],
+      "note": null
+    },
+    {
+      "key": "S-CONSENT",
+      "parameters": ["_id", "patient", "date", "status", "scope"],
+      "note": null
+    },
+    {
+      "key": "S-PROV",
+      "parameters": ["_id", "target", "recorded", "agent"],
+      "note": null
+    },
+    {
+      "key": "S-AUDIT",
+      "parameters": ["_id", "date", "agent", "entity", "outcome"],
+      "note": "security/compliance scope only"
+    },
+    {
+      "key": "S-NONE",
+      "parameters": [],
+      "note": "Resource search なし。Bundle dispatch または quarantine review の exact ID のみ。"
+    }
+  ],
+  "retentionRegistry": [
+    {
+      "key": "R-REPLICA",
+      "contract": "source/contract と法定記録 schedule に従う immutable version。削除通知も tombstone + Provenance とし、PH-OS が独自短縮しない。"
+    },
+    {
+      "key": "R-CLINICAL",
+      "contract": "批准済み臨床記録 schedule。Resource version、current head、Provenance、参照整合を同じ hold/purge decision で扱う。"
+    },
+    {
+      "key": "R-WORKFLOW",
+      "contract": "業務完了 event 起点の運用 schedule。臨床判断に利用された snapshot は R-CLINICAL へ固定し、workflow purge に巻き込まない。"
+    },
+    {
+      "key": "R-DOCUMENT",
+      "contract": "metadata と source artifact の schedule を関連付けるが、binary/FileAsset は別 retention/access policy とする。"
+    },
+    {
+      "key": "R-CONSENT",
+      "contract": "effective/withdrawn/superseded の証跡を批准済み同意 schedule で保持し、withdrawal を物理削除で表現しない。"
+    },
+    {
+      "key": "R-EVENT",
+      "contract": "append-only security/audit schedule。対象 Resource purge 後も必要最小の非 PHI decision evidence と chain integrity を維持する。"
+    },
+    {
+      "key": "R-TRANSIENT",
+      "contract": "全 entry の成功・隔離・再試行確定 + replay window まで。Bundle 自体を clinical current head にしない。"
+    },
+    {
+      "key": "R-QUARANTINE",
+      "contract": "source/use-case ごとの TTL + legal hold。通常 current head/search へ出さず、期限到来時も hold/review/audit を経て purge する。"
+    }
+  ],
+  "accessRegistry": [
+    {
+      "key": "A-CLINICAL-READ",
+      "contract": "care/dispensing/authorized operations purpose + effective consent/法的根拠。認可済み clerk は tenant 内を閲覧可。export/print/share/offline は別 gate。"
+    },
+    {
+      "key": "A-IDENTITY",
+      "contract": "identity/tenant administration または care purpose。Practitioner 表示から role・assignment・薬剤師資格を推定せず canonical registry を再評価する。"
+    },
+    {
+      "key": "A-REFERENCE",
+      "contract": "authenticated tenant の clinical/reference purpose。patient-linked query は A-CLINICAL-READ も満たす。"
+    },
+    {
+      "key": "A-CLINICAL-WRITE",
+      "contract": "A-CLINICAL-READ + Resource/action 固有 authoring capability。薬歴記載・報告書作成・監査実行は canonical verified/current 薬剤師資格を server で再評価する。"
+    },
+    {
+      "key": "A-WORKFLOW",
+      "contract": "tenant/assignment/purpose。認可済み clerk は read と非臨床運用 action のみ。臨床確定・監査 mutation は action 固有 gate を通す。"
+    },
+    {
+      "key": "A-COMMUNICATION",
+      "contract": "care coordination purpose + consent/legal basis + intended recipient。外部送信、添付、再送、export は別 approval/audit/retention gate。"
+    },
+    {
+      "key": "A-DOCUMENT",
+      "contract": "A-CLINICAL-READ + source artifact access。binary、signed URL、download、print、external share は別 capability と短期 access grant を要求する。"
+    },
+    {
+      "key": "A-CONSENT",
+      "contract": "consent administration authority + stated purpose。対象 Consent 自体を、その Consent の作成・撤回権限を正当化する循環根拠にしない。"
+    },
+    {
+      "key": "A-SECURITY",
+      "contract": "認可済み tenant の audit/evidence read は clerk を含めて許可する。監査実行、append、governance、cross-tenant oversight、export、raw security log は別 capability。"
+    },
+    {
+      "key": "A-TRANSPORT",
+      "contract": "authenticated adapter/use-case + Bundle type。各 entry Resource の tenant/purpose/consent/write owner を個別評価し、Bundle 単位の blanket grant を禁止する。"
+    },
+    {
+      "key": "A-QUARANTINE",
+      "contract": "明示 review assignment、reason、必要な step-up。通常 read/search へ公開せず、replay 時に最新 profile/terminology/identity/consent を再評価する。"
+    }
+  ],
+  "profileFamilies": [
+    {
+      "resourceFamily": "Patient / Coverage / Encounter / Organization / Location / Practitioner / PractitionerRole",
+      "approvedProfileSource": "JP Core 1.2.0 Administration profiles",
+      "selectionRule": "package canonical URL と version を validator が解決する。"
+    },
+    {
+      "resourceFamily": "MedicationRequest / MedicationDispense / MedicationStatement",
+      "approvedProfileSource": "JP Core 1.2.0 Medication profiles",
+      "selectionRule": "内服・外用と Injection を source category で分け、片方への黙示変換をしない。"
+    },
+    {
+      "resourceFamily": "Medication",
+      "approvedProfileSource": "JP Core 1.2.0 Medication profile",
+      "selectionRule": "Injection profile から参照される薬剤リスト用途に限定する。"
+    },
+    {
+      "resourceFamily": "Observation",
+      "approvedProfileSource": "JP Core 1.2.0 category-specific profile",
+      "selectionRule": "source observation category と一致する profile を選ぶ。unsupported category は quarantine。"
+    },
+    {
+      "resourceFamily": "AllergyIntolerance / Condition",
+      "approvedProfileSource": "JP Core 1.2.0 Clinical profiles",
+      "selectionRule": "Condition と Diagnosis の意味を mapping registry で分ける。"
+    },
+    {
+      "resourceFamily": "Questionnaire",
+      "approvedProfileSource": "FHIR Base R4 conformance artifact",
+      "selectionRule": "canonical、version、hash を pin し、QuestionnaireResponse validation の参照元に限定する。"
+    },
+    {
+      "resourceFamily": "CarePlan / Task / Appointment / Communication / QuestionnaireResponse / DetectedIssue / DocumentReference / Binary / Consent / Provenance / AuditEvent",
+      "approvedProfileSource": "FHIR Base R4、または批准済み PH-OS profile",
+      "selectionRule": "PH-OS custom profile は医療・privacy・security review と package 化前に使用しない。"
+    },
+    {
+      "resourceFamily": "CareTeam",
+      "approvedProfileSource": "UNRESOLVED",
+      "selectionRule": "Phase 0 で owner、profile、identifier、replica direction を同時批准するまで使用しない。"
+    },
+    {
+      "resourceFamily": "Bundle",
+      "approvedProfileSource": "FHIR Base R4",
+      "selectionRule": "Bundle type と用途別 contract を別に検証する。"
+    }
+  ],
+  "capability": {
+    "external": "none",
+    "metadataRoute": "/fhir/r4/metadata",
+    "scopes": [
+      {
+        "scope": "yrese-owned replica",
+        "requiredInteractions": ["read", "vread", "history", "approved indexed search"],
+        "contract": "PH-OS create/update/delete を拒否し、authoritative identity と version/hash を返す。"
+      },
+      {
+        "scope": "PH-OS-owned Resource",
+        "requiredInteractions": [
+          "read",
+          "vread",
+          "history",
+          "approved indexed search",
+          "create",
+          "update"
+        ],
+        "contract": "owner-side validation、OCC、authorization、Consent、Provenance、AuditEvent、outbox を原子的に扱う。"
+      },
+      {
+        "scope": "Bundle",
+        "requiredInteractions": ["transaction"],
+        "contract": "全 entry の owner/authz/validation、conditional reference、原子性、OperationOutcome を実装する。"
+      },
+      {
+        "scope": "cross-server change",
+        "requiredInteractions": ["Subscription または批准済み history pull"],
+        "contract": "owner-filter、cursor、retry、dedupe、correction/cancellation、gap reconciliation を実装する。"
+      },
+      {
+        "scope": "system metadata",
+        "requiredInteractions": ["capabilities"],
+        "contract": "live route/profile/search/security から CapabilityStatement を生成する。"
+      }
+    ]
+  },
+  "childTasks": [
+    {
+      "wave": "A0",
+      "taskId": "FHIR-NATIVE-P0-FOUNDATION-001-DOCS",
+      "dependsOn": [],
+      "deliverable": "v0.5の版、3 plane、source baseline、Resource owner/interaction/profile/search/retention/access、Bundle、validation、hard-cutover contractとtask graphをSSOTとして確定する。CareTeamはowner/profile批准までUNRESOLVEDとし、未批准値をdefaultで埋めない。"
+    },
+    {
+      "wave": "A1",
+      "taskId": "FHIR-NATIVE-P0-FOUNDATION-002-RATCHET",
+      "dependsOn": ["A0"],
+      "deliverable": "exact source SHA/dirty/build manifest、package lock/digest、Resource matrix、registry、Capability contractをmachine-readableにし、docs/code/live route差分をCIでfail-closedにする。runtime/schemaは変えない。"
+    },
+    {
+      "wave": "A2",
+      "taskId": "FHIR-NATIVE-LEGACY-MIGRATION-001-INVENTORY",
+      "dependsOn": ["A0"],
+      "deliverable": "旧 schema/table/column、direct e-prescription、createMedicationDispense、route/job/caller/DTO を SELECT-only manifest に固定し、cutover gate を zero reader/writer/caller で fail-closed にする。削除対象外へ分類する場合は owner review を必須にする。"
+    },
+    {
+      "wave": "A3",
+      "taskId": "FHIR-NATIVE-P0-FOUNDATION-003-RAW-INGRESS",
+      "dependsOn": ["A0", "A1"],
+      "deliverable": "server-only RawIngressEnvelope、source/trust 合法組合せ、version/hash/idempotency/payload-limit、encrypted cutover hold、epoch/watermark/replay contract を typed decision table と PHI-free fixture で固定する。通常 persistence/API は追加しない。"
+    },
+    {
+      "wave": "A4",
+      "taskId": "FHIR-NATIVE-PHOS-SERVER-001-BUNDLE-PREFLIGHT",
+      "dependsOn": ["A1", "A3"],
+      "deliverable": "bounded Bundle parser が全 entry を Resource/version work item と reference graph へ変換し、duplicate fullUrl、missing/cyclic reference、unsupported type、budget 超過を quarantine decision にする。DB write は行わない。"
+    },
+    {
+      "wave": "A5",
+      "taskId": "FHIR-NATIVE-P0-FOUNDATION-004-CONFORMANCE",
+      "dependsOn": ["A0", "A1"],
+      "deliverable": "FHIR R4、JP Core 1.2.0、StructureDefinition、ValueSet、CodeSystem、ConceptMap、Questionnaire の canonical/version/hash と source provenance を pin する。runtime network fallback と unversioned artifact を禁止する。"
+    },
+    {
+      "wave": "B1",
+      "taskId": "FHIR-NATIVE-CONFORMANCE-001-VALIDATOR",
+      "dependsOn": ["A5"],
+      "deliverable": "official JP Core examplesとPHI-free negative fixtureに加え、FHIR null placeholder、JP Core Patient cardinality、OperationOutcome severity/code/expression、validator/package fingerprintで標準validator、package resolution、timeout、cache key、throughputを比較し採否を記録する。dependency追加はreview後だけ。"
+    },
+    {
+      "wave": "B2",
+      "taskId": "FHIR-NATIVE-CONFORMANCE-002-TERMINOLOGY",
+      "dependsOn": ["A5"],
+      "deliverable": "HOT/YJ/レセ電/一般名/用法/status の namespaced exact mapping と exact / unmapped / ambiguous / retired を実装し、名称・近似一致による確定を拒否する。"
+    },
+    {
+      "wave": "B3",
+      "taskId": "FHIR-NATIVE-CONFORMANCE-003-RUNTIME",
+      "dependsOn": ["A4", "B1", "B2"],
+      "deliverable": "selected validator、terminology、reference graph、QuestionnaireをFHIR commit gateへ接続する。local preflight/external requested statusはvalidを付与できず、invalid/timeout/unavailableは正規化OperationOutcomeとfingerprint付きPHI-safe quarantineへ送る。"
+    },
+    {
+      "wave": "B4",
+      "taskId": "FHIR-NATIVE-PHOS-SERVER-002-SCHEMA",
+      "dependsOn": ["A1", "A3", "B3"],
+      "deliverable": "immutable Resource Version、history/current head、reference graph、search rebuild source、raw/object reference、RLS + FORCE RLS の replacement schema/migration と full recovery-set restore 手順を作る。DB review 前に apply しない。"
+    },
+    {
+      "wave": "B5",
+      "taskId": "FHIR-NATIVE-PHOS-SERVER-003-COMMIT",
+      "dependsOn": ["B4"],
+      "deliverable": "owner-side version/current-head/search/Provenance/AuditEvent と opaque Resource/version/hash outbox を原子的に commit する。OCC/idempotency/race を検証し、raw/clinical payload、URL、custom event DTO を Control Plane へ複製しない。"
+    },
+    {
+      "wave": "B6",
+      "taskId": "FHIR-NATIVE-PHOS-SERVER-004-SEARCH",
+      "dependsOn": ["B5"],
+      "deliverable": "§5 の approved SearchParameter だけを tenant-scoped index へ接続し、pagination、query/payload budget、query plan、rebuild parity を検証する。scan/filter fallback を禁止する。"
+    },
+    {
+      "wave": "C1",
+      "taskId": "FHIR-NATIVE-PHOS-SERVER-005-BUNDLE-COMMIT",
+      "dependsOn": ["A4", "B5"],
+      "deliverable": "importedResources[0] coupling を全 entry の transaction commit graph へ置換し、原子性、idempotency、retry、OperationOutcome を正しく実装する。"
+    },
+    {
+      "wave": "C2",
+      "taskId": "FHIR-NATIVE-PHOS-SERVER-006-PATIENT-LINKAGE",
+      "dependsOn": ["B3", "B5"],
+      "deliverable": "source-namespaced stable identifier を第一条件に patient link を解決し、missing/multiple/collision/demographic-only/cross-tenant を review に送る。氏名・生年月日だけで自動 link しない。"
+    },
+    {
+      "wave": "C3",
+      "taskId": "FHIR-NATIVE-YRESE-SYNC-001-REPLICA",
+      "dependsOn": ["B6", "C1", "C2"],
+      "deliverable": "yrese-owned Resource を canonical identity 付き read-only replica として history/Subscription から同期し、duplicate/order 逆転/correction/cancellation/RLS/AuditEvent/Provenance を検証する。"
+    },
+    {
+      "wave": "C4",
+      "taskId": "FHIR-NATIVE-ADAPTER-PLANE-001-JAHIS-SPLIT",
+      "dependsOn": ["A3", "B3"],
+      "deliverable": "transport decoder と 24-104 electronic medication notebook / 26-101 prescription symbol adapter を別 ID・version・mapping・commit rule に分離し、golden/version-reject/byte-record fixture を通す。"
+    },
+    {
+      "wave": "C5",
+      "taskId": "FHIR-NATIVE-ADAPTER-PLANE-002-NOTEBOOK",
+      "dependsOn": ["B5", "C2", "C4"],
+      "deliverable": "JAHISTC08 を MedicationStatement / reconciliation evidence first で commit し、批准済み条件だけ MedicationDispense history を許す。MedicationRequest 生成件数を常に 0 とする。"
+    },
+    {
+      "wave": "D1",
+      "taskId": "FHIR-NATIVE-YRESE-SYNC-002-PHOS-OWNED",
+      "dependsOn": ["A1", "B3", "B5"],
+      "deliverable": "PH-OS-owned Resource と version-specific Provenance を owner-side FHIR commit から送信可能な Bundle にし、resource owner deny fixture を通す。external send はしない。"
+    },
+    {
+      "wave": "D2",
+      "taskId": "FHIR-NATIVE-YRESE-SYNC-003-OUTBOX-ACK",
+      "dependsOn": ["B5", "D1"],
+      "deliverable": "Resource commit と opaque reference-only YreseOutboundEvent を同一 transaction にし、version/hash、delivery state、attempt/cursor、ack/conflict/loop suppression を atomic に記録する。臨床payloadは送信時にFHIR storeからBundle化し、eventへ保存しない。"
+    },
+    {
+      "wave": "D3",
+      "taskId": "FHIR-NATIVE-YRESE-SYNC-004-RECONCILE",
+      "dependsOn": ["B6", "D2"],
+      "deliverable": "yrese sandbox CapabilityStatement/IG/package/identifier/transaction/history/Subscription parity、双方consumer readiness、signed delivery、history gap reconciliation を証明する。custom webhookだけの接続を拒否し、production sendはhuman gateとする。"
+    },
+    {
+      "wave": "E1",
+      "taskId": "FHIR-NATIVE-LEGACY-MIGRATION-002-CONVERTER",
+      "dependsOn": ["C3", "C5", "D3"],
+      "deliverable": "deterministic converter、親profile非緩和missing/invalid policy、SELECT-only dry run、source manifest、semantic digest、approved exception/unexpected quarantine/full reconciliation、cutover epoch/source watermark planを実装する。production dataはhuman gate。"
+    },
+    {
+      "wave": "E2",
+      "taskId": "FHIR-NATIVE-CUTOVER-001-HARD-CUTOVER",
+      "dependsOn": ["E1", "E3", "E4", "E5"],
+      "deliverable": "signed full recovery-set rehearsal、all-ingress/outbound/export/Subscription epoch fence、hold/retry/ack/replay、single conversion、FHIR/yrese/UI smoke、accepted-write journal、post-unfreeze RPO=0、irreversible commit point、pre-commit whole-release abort、post-commit native recoveryを証明する。cutover/cleanupはhuman gate。"
+    },
+    {
+      "wave": "E3",
+      "taskId": "FHIR-NATIVE-UI-DOGFOOD-001-CLINICAL-UX",
+      "dependsOn": ["C3", "C5", "E4"],
+      "deliverable": "PH-OS UI を同じ FHIR Data Plane へ接続し、「処方を取り込む」と「お薬情報を取り込む」、authority、validation、薬剤師 review、claimability、sync version を文言 + icon で表示する。旧 clinical API caller を 0 にする。"
+    },
+    {
+      "wave": "E4",
+      "taskId": "FHIR-NATIVE-PHOS-SERVER-007-FHIR-REST",
+      "dependsOn": ["B3", "B6"],
+      "deliverable": "read/vread/history/search/create/update と profile/search/security だけから CapabilityStatement を生成し、OAuth/scope、tenant/purpose/Consent、pagination、rate/payload limit、audit と actual route parity を通す。"
+    },
+    {
+      "wave": "E5",
+      "taskId": "FHIR-NATIVE-PHOS-SERVER-008-TRANSACTION",
+      "dependsOn": ["A4", "B5", "E4"],
+      "deliverable": "approved use-case の transaction Bundle を受け、全 entry authz/owner/validation、原子性、OperationOutcome、retry contract を実装する。batch/patch/delete は個別批准まで宣言しない。"
+    },
+    {
+      "wave": "E6",
+      "taskId": "FHIR-NATIVE-OFFLINE-EDGE-001-FOUNDATION",
+      "dependsOn": ["D3", "E1", "E4"],
+      "deliverable": "offline Visit Bundle と批准済み NSIPS edge を、暗号化、TTL、device/session binding、manifest/hash、revoke、local audit、復旧時 revalidation/rebase 付きで実装する。実装・PHI carry は human gate とする。"
+    },
+    {
+      "wave": "E7",
+      "taskId": "FHIR-NATIVE-OPEN-ECOSYSTEM-001-FOUNDATION",
+      "dependsOn": ["E2", "E4", "E5"],
+      "deliverable": "core cutover 後に SMART on FHIR、Bulk Data、Partner Sandbox/SDK、CDS Hooks を別 task へ分解し、実装済み Capability だけを公開する。external enable/export は human gate とする。"
+    }
+  ],
+  "implementationEvidence": {
+    "schema": {
+      "path": "prisma/schema/standard-clinical-integration.prisma",
+      "enumName": "ClinicalFhirResourceType",
+      "values": [
+        "patient",
+        "coverage",
+        "medication",
+        "medication_request",
+        "medication_dispense",
+        "medication_statement",
+        "practitioner",
+        "practitioner_role",
+        "organization",
+        "allergy_intolerance",
+        "condition",
+        "observation",
+        "care_plan",
+        "task",
+        "appointment",
+        "communication",
+        "document_reference",
+        "audit_event",
+        "provenance",
+        "consent",
+        "encounter",
+        "care_team",
+        "bundle",
+        "other"
+      ],
+      "targetGaps": [
+        {
+          "resourceType": "Location",
+          "enumValue": "location"
+        },
+        {
+          "resourceType": "QuestionnaireResponse",
+          "enumValue": "questionnaire_response"
+        },
+        {
+          "resourceType": "DetectedIssue",
+          "enumValue": "detected_issue"
+        },
+        {
+          "resourceType": "Binary",
+          "enumValue": "binary"
+        }
+      ]
+    },
+    "handwrittenProfileMap": {
+      "path": "src/server/services/standard-clinical-fhir-validation.ts",
+      "mappings": [
+        {
+          "resourceType": "medication_dispense",
+          "canonicalUrl": "http://jpfhir.jp/fhir/core/StructureDefinition/JP_MedicationDispense"
+        },
+        {
+          "resourceType": "medication_request",
+          "canonicalUrl": "http://jpfhir.jp/fhir/core/StructureDefinition/JP_MedicationRequest"
+        },
+        {
+          "resourceType": "medication_statement",
+          "canonicalUrl": "http://jpfhir.jp/fhir/core/StructureDefinition/JP_MedicationStatement"
+        },
+        {
+          "resourceType": "patient",
+          "canonicalUrl": "http://jpfhir.jp/fhir/core/StructureDefinition/JP_Patient"
+        }
+      ]
+    },
+    "versions": {
+      "path": "src/server/adapters/fhir/index.ts",
+      "fhirR4": "4.0.1",
+      "jpCore": "1.2.0"
+    },
+    "fhirRoutes": []
+  }
+}

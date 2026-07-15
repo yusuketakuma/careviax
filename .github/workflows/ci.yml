@@ -76,6 +76,9 @@ jobs:
       - name: Plans active board check
         run: pnpm plans:active:check
 
+      - name: FHIR native contract check
+        run: pnpm fhir-native-contract:check
+
       - name: DB query shape check
         run: pnpm db:query-shape:check
 
