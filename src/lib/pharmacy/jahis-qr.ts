@@ -1,3 +1,5 @@
+import { isValidDateKey } from '@/lib/validations/date-key';
+
 /**
  * JAHIS お薬手帳データフォーマット ver.2.6 (JAHISTC08) パーサー
  *
@@ -182,6 +184,17 @@ export interface JahisQrExportInput {
   prescriptionDate?: string;
   dispensingDate?: string;
 }
+
+export type JahisQrPatientIdentity = {
+  name: string;
+  nameKana?: string;
+  birthDate: string;
+  gender: 'male' | 'female';
+};
+
+export type JahisQrPatientIdentityValidation =
+  | { success: true; data: JahisQrPatientIdentity }
+  | { success: false; reason: 'name' | 'birth_date' | 'gender' };
 
 export interface JahisParseError {
   recordType: string;
@@ -418,7 +431,60 @@ function buildSupplementalRecord(args: {
 // Build (Export)
 // ────────────────────────────────────────────────────────────────────────────
 
+const JAHIS_PATIENT_NAME_PLACEHOLDERS = new Set(['患者', '氏名不明', '不明']);
+const JAHIS_FORBIDDEN_FIELD_CONTROL_PATTERN = /[\u0000-\u001f\u007f]/u;
+
+function hasForbiddenJahisFieldControl(value: unknown): boolean {
+  return typeof value === 'string' && JAHIS_FORBIDDEN_FIELD_CONTROL_PATTERN.test(value);
+}
+
+export function validateJahisQrPatientIdentity(
+  patient: Partial<JahisPatient> | null | undefined,
+): JahisQrPatientIdentityValidation {
+  if (
+    hasForbiddenJahisFieldControl(patient?.name) ||
+    hasForbiddenJahisFieldControl(patient?.nameKana)
+  ) {
+    return { success: false, reason: 'name' };
+  }
+
+  const name = typeof patient?.name === 'string' ? patient.name.trim() : '';
+  if (!name || JAHIS_PATIENT_NAME_PLACEHOLDERS.has(name)) {
+    return { success: false, reason: 'name' };
+  }
+
+  if (hasForbiddenJahisFieldControl(patient?.birthDate)) {
+    return { success: false, reason: 'birth_date' };
+  }
+
+  const birthDate = normalizeJahisExportDateKey(patient?.birthDate);
+  if (!birthDate) {
+    return { success: false, reason: 'birth_date' };
+  }
+
+  if (patient?.gender !== 'male' && patient?.gender !== 'female') {
+    return { success: false, reason: 'gender' };
+  }
+
+  const nameKana = typeof patient?.nameKana === 'string' ? patient.nameKana.trim() : '';
+  return {
+    success: true,
+    data: {
+      name,
+      ...(nameKana ? { nameKana } : {}),
+      birthDate,
+      gender: patient.gender,
+    },
+  };
+}
+
 export function buildJahisQRText(input: JahisQrExportInput): string {
+  const patientIdentity = validateJahisQrPatientIdentity(input.patient);
+  if (!patientIdentity.success) {
+    throw new RangeError(`JAHIS_PATIENT_IDENTITY_INVALID:${patientIdentity.reason}`);
+  }
+
+  const patient = patientIdentity.data;
   const lines = ['JAHISTC08,1'];
 
   // Record 1: 患者情報
@@ -426,16 +492,16 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
   lines.push(
     [
       '1',
-      sanitizeJahisField(input.patient.name),
-      toJahisGenderCode(input.patient.gender),
-      formatJahisExportDate(input.patient.birthDate),
+      sanitizeJahisField(patient.name),
+      toJahisGenderCode(patient.gender),
+      formatJahisExportDate(patient.birthDate),
       '', // zip
       '', // address
       '', // phone
       '', // emergency
       '', // blood_type
       '', // weight
-      sanitizeJahisField(input.patient.nameKana),
+      sanitizeJahisField(patient.nameKana),
     ].join(','),
   );
 
@@ -513,7 +579,7 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
     }
   }
 
-  return lines.join('\n');
+  return `${lines.join('\r\n')}\r\n`;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1220,7 +1286,12 @@ function appendPrescriptionMedicationSupplement(
 // ────────────────────────────────────────────────────────────────────────────
 
 function sanitizeJahisField(value: string | null | undefined): string {
-  return (value ?? '').replace(/,/g, '，').replace(/\r?\n/g, ' ').trim();
+  const rawValue = value ?? '';
+  if (JAHIS_FORBIDDEN_FIELD_CONTROL_PATTERN.test(rawValue)) {
+    throw new RangeError('JAHIS_FIELD_CONTROL_CHARACTER_INVALID');
+  }
+
+  return rawValue.replace(/,/g, '，').trim();
 }
 
 function toJahisGenderCode(gender: JahisPatient['gender']): string {
@@ -1229,7 +1300,24 @@ function toJahisGenderCode(gender: JahisPatient['gender']): string {
   return '0';
 }
 
+function normalizeJahisExportDateKey(value: string | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.trim();
+  const match = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?Z)?$/.exec(normalized);
+  const dateKey = match?.[1];
+  if (!dateKey || !isValidDateKey(dateKey)) return null;
+
+  const [, , hours, minutes, seconds] = match;
+  if (hours !== undefined && (Number(hours) > 23 || Number(minutes) > 59 || Number(seconds) > 59)) {
+    return null;
+  }
+
+  return dateKey;
+}
+
 function formatJahisExportDate(value: string | undefined): string {
   if (!value) return '';
-  return value.replace(/\//g, '').replace(/-/g, '').trim();
+  const dateKey = normalizeJahisExportDateKey(value);
+  if (!dateKey) throw new RangeError('JAHIS_EXPORT_DATE_INVALID');
+  return dateKey.replace(/-/g, '');
 }

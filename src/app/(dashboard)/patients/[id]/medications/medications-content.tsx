@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { differenceInCalendarDays, format, parseISO } from 'date-fns';
@@ -55,7 +55,11 @@ import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
-import { buildJahisQRText, type JahisPatient } from '@/lib/pharmacy/jahis-qr';
+import {
+  buildJahisQRText,
+  validateJahisQrPatientIdentity,
+  type JahisQrPatientIdentity,
+} from '@/lib/pharmacy/jahis-qr';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import { toast } from 'sonner';
 import { messageFromError } from '@/lib/utils/error-message';
@@ -77,11 +81,21 @@ type IssueFormData = {
   status: MedicationIssue['status'];
 };
 
-type QrExportState = {
+type QrExportScope = {
+  orgId: string;
+  patientId: string;
+};
+
+type QrExportState = QrExportScope & {
   dataUrl: string;
   payload: string;
   generatedAt: string;
+  patientName: string;
 };
+
+function isCurrentQrExportScope(scope: QrExportScope | null, orgId: string, patientId: string) {
+  return scope?.orgId === orgId && scope.patientId === patientId;
+}
 
 type MedicationsContentProps = {
   patientId: string;
@@ -130,6 +144,7 @@ const issueStatusLabel: Record<MedicationIssue['status'], string> = {
 };
 
 const clinicalActionSizeClass = 'h-auto min-h-[44px] sm:h-auto sm:min-h-[44px]';
+const QR_PATIENT_IDENTITY_STATUS_ID = 'medication-qr-patient-identity-status';
 const MEDICATION_PROFILE_PAGE_LIMIT = 100;
 const MEDICATION_PROFILE_MAX_PAGES = 5;
 const MEDICATION_PROFILE_FALLBACK = '取得に失敗しました';
@@ -224,10 +239,12 @@ function buildMedicationStats(profiles: MedicationProfile[]) {
   ];
 }
 
-function normalizePatientGender(gender: string): JahisPatient['gender'] {
+function normalizePatientGender(
+  gender: string | undefined,
+): JahisQrPatientIdentity['gender'] | undefined {
   if (gender === 'male' || gender === '男性') return 'male';
   if (gender === 'female' || gender === '女性') return 'female';
-  return 'other';
+  return undefined;
 }
 
 function getIssueBadgeVariant(
@@ -568,12 +585,10 @@ function IssueEditorDialog({
 function QrExportDialog({
   open,
   onOpenChange,
-  patientName,
   state,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  patientName: string;
   state: QrExportState | null;
 }) {
   const handlePrint = () => {
@@ -584,19 +599,22 @@ function QrExportDialog({
       return;
     }
 
-    popup.document.write(`
-      <html lang="ja">
-        <head>
-          <title>${patientName} お薬手帳QR</title>
-        </head>
-        <body>
-          <h1>${patientName} お薬手帳QR</h1>
-          <p>生成日時: ${state.generatedAt}</p>
-          <img src="${state.dataUrl}" alt="${patientName} お薬手帳QR" width="320" height="320" />
-          <pre>${state.payload}</pre>
-        </body>
-      </html>
-    `);
+    const title = `${state.patientName} お薬手帳QR`;
+    const heading = popup.document.createElement('h1');
+    const generatedAt = popup.document.createElement('p');
+    const image = popup.document.createElement('img');
+    const payload = popup.document.createElement('pre');
+
+    popup.document.documentElement.lang = 'ja';
+    popup.document.title = title;
+    heading.textContent = title;
+    generatedAt.textContent = `生成日時: ${state.generatedAt}`;
+    image.src = state.dataUrl;
+    image.alt = title;
+    image.width = 320;
+    image.height = 320;
+    payload.textContent = state.payload;
+    popup.document.body.replaceChildren(heading, generatedAt, image, payload);
     popup.document.close();
     popup.focus();
     popup.print();
@@ -608,7 +626,7 @@ function QrExportDialog({
         <DialogHeader>
           <DialogTitle>お薬手帳QRコード</DialogTitle>
           <DialogDescription>
-            現在の服薬中薬剤から JAHIS Ver.2.5 形式の QR を生成しています。
+            現在の服薬中薬剤から JAHIS Ver.2.6 形式の QR を生成しています。
           </DialogDescription>
         </DialogHeader>
 
@@ -617,7 +635,7 @@ function QrExportDialog({
             <div className="rounded-lg border border-border/70 bg-white p-4 text-center shadow-sm">
               <Image
                 src={state.dataUrl}
-                alt={`${patientName} お薬手帳QR`}
+                alt={`${state.patientName} お薬手帳QR`}
                 width={320}
                 height={320}
                 unoptimized
@@ -625,14 +643,24 @@ function QrExportDialog({
               />
               <p className="mt-3 text-xs text-muted-foreground">生成日時: {state.generatedAt}</p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={handlePrint}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={clinicalActionSizeClass}
+                  onClick={handlePrint}
+                >
                   <Printer className="size-3.5" aria-hidden="true" />
                   印刷
                 </Button>
                 <a
                   href={state.dataUrl}
-                  download={`${patientName}-medication-qr.png`}
-                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                  download={`${state.patientName}-medication-qr.png`}
+                  className={buttonVariants({
+                    variant: 'outline',
+                    size: 'sm',
+                    className: clinicalActionSizeClass,
+                  })}
                 >
                   <QrCode className="size-3.5" aria-hidden="true" />
                   PNG保存
@@ -672,17 +700,35 @@ export function MedicationsContent({
 }: MedicationsContentProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
-  const hasPatientContext =
-    patientName !== undefined &&
-    patientNameKana !== undefined &&
-    birthDate !== undefined &&
-    gender !== undefined &&
-    allergyInfo !== undefined;
+  const hasPatientContext = allergyInfo !== undefined;
+  const providedPatientIdentity = validateJahisQrPatientIdentity({
+    name: patientName ?? '',
+    nameKana: patientNameKana,
+    birthDate,
+    gender: normalizePatientGender(gender),
+  });
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [issueDialogOpen, setIssueDialogOpen] = useState(false);
   const [editingIssue, setEditingIssue] = useState<MedicationIssue | null>(null);
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [qrDialogScope, setQrDialogScope] = useState<QrExportScope | null>(null);
   const [qrState, setQrState] = useState<QrExportState | null>(null);
+  const qrScopeRef = useRef<QrExportScope>({ orgId, patientId });
+  const qrGenerationRequestRef = useRef(0);
+
+  useEffect(() => {
+    if (!isCurrentQrExportScope(qrScopeRef.current, orgId, patientId)) {
+      qrScopeRef.current = { orgId, patientId };
+      qrGenerationRequestRef.current += 1;
+      setQrDialogOpen(false);
+      setQrDialogScope(null);
+      setQrState(null);
+    }
+
+    return () => {
+      qrGenerationRequestRef.current += 1;
+    };
+  }, [orgId, patientId]);
 
   const {
     data,
@@ -710,7 +756,7 @@ export function MedicationsContent({
       }
       return payload.data;
     },
-    enabled: !!orgId && !hasPatientContext,
+    enabled: !!orgId && (!hasPatientContext || !providedPatientIdentity.success),
   });
 
   const issuesQuery = useQuery({
@@ -833,10 +879,30 @@ export function MedicationsContent({
   const residuals = useMemo(() => residualQuery.data?.data ?? [], [residualQuery.data?.data]);
   const inquiries = useMemo(() => inquiryQuery.data?.data ?? [], [inquiryQuery.data?.data]);
   const medicationStats = buildMedicationStats(profiles);
-  const resolvedPatientName = patientName ?? patientSummaryQuery.data?.name ?? '患者';
-  const resolvedPatientNameKana = patientNameKana ?? patientSummaryQuery.data?.name_kana ?? '';
-  const resolvedBirthDate = birthDate ?? patientSummaryQuery.data?.birth_date ?? '';
-  const resolvedGender = gender ?? patientSummaryQuery.data?.gender ?? 'unknown';
+  const fetchedPatientIdentity = patientSummaryQuery.data
+    ? validateJahisQrPatientIdentity({
+        name: patientSummaryQuery.data.name,
+        nameKana: patientSummaryQuery.data.name_kana,
+        birthDate: patientSummaryQuery.data.birth_date,
+        gender: normalizePatientGender(patientSummaryQuery.data.gender),
+      })
+    : null;
+  const qrPatientIdentity = providedPatientIdentity.success
+    ? providedPatientIdentity.data
+    : fetchedPatientIdentity?.success
+      ? fetchedPatientIdentity.data
+      : null;
+  const isQrPatientIdentityLoading =
+    !providedPatientIdentity.success && patientSummaryQuery.isLoading;
+  const qrPatientIdentityUnavailableReason = qrPatientIdentity
+    ? null
+    : isQrPatientIdentityLoading
+      ? '患者情報を確認中のため、QRを生成できません。読み込み完了後に再度お試しください。'
+      : patientSummaryQuery.isError
+        ? '患者情報を取得できないため、QRを生成できません。再読み込みしてください。'
+        : '患者氏名・生年月日・性別を確認できないため、QRを生成できません。患者基本情報を確認して再読み込みしてください。';
+  const canRetryQrPatientIdentity =
+    !providedPatientIdentity.success && !isQrPatientIdentityLoading && !!orgId;
   const resolvedAllergyInfo = allergyInfo ?? patientSummaryQuery.data?.allergy_info ?? null;
   const isAllergyInfoError = allergyInfo === undefined && patientSummaryQuery.isError;
 
@@ -872,25 +938,39 @@ export function MedicationsContent({
   };
 
   const handleGenerateQrExport = async () => {
+    if (!qrPatientIdentity) {
+      toast.error('患者情報を確認できないため QR を生成できません');
+      return;
+    }
+
+    if (!orgId) {
+      toast.error('組織情報を確認できないため QR を生成できません');
+      return;
+    }
+
     if (profiles.length === 0) {
       toast.error('服薬中薬剤がないため QR を生成できません');
       return;
     }
 
+    const requestScope = { orgId, patientId };
+    const requestId = ++qrGenerationRequestRef.current;
+    const isCurrentRequest = () =>
+      qrGenerationRequestRef.current === requestId &&
+      isCurrentQrExportScope(qrScopeRef.current, requestScope.orgId, requestScope.patientId);
+
+    setQrDialogScope(requestScope);
     setQrDialogOpen(true);
     setQrState(null);
 
     try {
       const QRCode = await import('qrcode');
       const toSJISModule = await import('qrcode/helper/to-sjis');
+      if (!isCurrentRequest()) return;
+
       const toSJIS = (toSJISModule.default ?? toSJISModule) as (character: string) => number;
       const payload = buildJahisQRText({
-        patient: {
-          name: resolvedPatientName,
-          nameKana: resolvedPatientNameKana,
-          birthDate: resolvedBirthDate,
-          gender: normalizePatientGender(resolvedGender),
-        },
+        patient: qrPatientIdentity,
         medications: profiles.map((item) => ({
           drugCode: null,
           drugName: item.drug_name,
@@ -906,17 +986,37 @@ export function MedicationsContent({
         width: 320,
         toSJISFunc: toSJIS,
       });
+      if (!isCurrentRequest()) return;
 
       setQrState({
+        ...requestScope,
         dataUrl,
         payload,
         generatedAt: format(new Date(), 'yyyy/MM/dd HH:mm', { locale: ja }),
+        patientName: qrPatientIdentity.name,
       });
     } catch (error) {
+      if (!isCurrentRequest()) return;
+
       setQrDialogOpen(false);
+      setQrDialogScope(null);
+      setQrState(null);
       toast.error(messageFromError(error, 'QRコードの生成に失敗しました'));
     }
   };
+
+  const handleQrDialogOpenChange = (open: boolean) => {
+    setQrDialogOpen(open);
+    if (!open) {
+      qrGenerationRequestRef.current += 1;
+      setQrDialogScope(null);
+      setQrState(null);
+    }
+  };
+
+  const currentQrDialogOpen =
+    qrDialogOpen && isCurrentQrExportScope(qrDialogScope, orgId, patientId);
+  const currentQrState = isCurrentQrExportScope(qrState, orgId, patientId) ? qrState : null;
 
   return (
     <div className="space-y-6">
@@ -941,6 +1041,10 @@ export function MedicationsContent({
               size="sm"
               className={clinicalActionSizeClass}
               onClick={handleGenerateQrExport}
+              disabled={!!qrPatientIdentityUnavailableReason}
+              aria-describedby={
+                qrPatientIdentityUnavailableReason ? QR_PATIENT_IDENTITY_STATUS_ID : undefined
+              }
             >
               <Printer className="size-4" aria-hidden="true" />
               QR発行
@@ -1439,15 +1543,47 @@ export function MedicationsContent({
             <CardHeader>
               <h2 className="font-heading text-base leading-snug font-medium">お薬手帳QR発行</h2>
               <CardDescription>
-                服薬中薬剤から JAHIS Ver.2.5 の QR を生成し、その場で表示と印刷ができます。
+                服薬中薬剤から JAHIS Ver.2.6 の QR を生成し、その場で表示と印刷ができます。
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="rounded-xl border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
-                患者名、生年月日、服薬中薬剤を QR に反映します。QR
-                スキャンと対になる発行方向の導線です。
-              </div>
-              <Button type="button" onClick={handleGenerateQrExport}>
+              {qrPatientIdentityUnavailableReason ? (
+                <div
+                  id={QR_PATIENT_IDENTITY_STATUS_ID}
+                  role={patientSummaryQuery.isError ? 'alert' : 'status'}
+                  aria-live={patientSummaryQuery.isError ? 'assertive' : 'polite'}
+                  aria-atomic="true"
+                  className="rounded-xl border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground"
+                >
+                  <p>{qrPatientIdentityUnavailableReason}</p>
+                  {canRetryQrPatientIdentity ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className={`mt-3 ${clinicalActionSizeClass}`}
+                      onClick={() => void patientSummaryQuery.refetch()}
+                    >
+                      <RefreshCw className="size-4" aria-hidden="true" />
+                      患者情報を再読み込み
+                    </Button>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
+                  患者名、生年月日、服薬中薬剤を QR に反映します。QR
+                  スキャンと対になる発行方向の導線です。
+                </div>
+              )}
+              <Button
+                type="button"
+                className={clinicalActionSizeClass}
+                onClick={handleGenerateQrExport}
+                disabled={!!qrPatientIdentityUnavailableReason}
+                aria-describedby={
+                  qrPatientIdentityUnavailableReason ? QR_PATIENT_IDENTITY_STATUS_ID : undefined
+                }
+              >
                 <QrCode className="size-4" aria-hidden="true" />
                 お薬手帳QRを生成
               </Button>
@@ -1475,10 +1611,9 @@ export function MedicationsContent({
       ) : null}
 
       <QrExportDialog
-        open={qrDialogOpen}
-        onOpenChange={setQrDialogOpen}
-        patientName={resolvedPatientName}
-        state={qrState}
+        open={currentQrDialogOpen}
+        onOpenChange={handleQrDialogOpenChange}
+        state={currentQrState}
       />
     </div>
   );
