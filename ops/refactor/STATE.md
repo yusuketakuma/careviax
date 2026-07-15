@@ -63,6 +63,38 @@
 
 ## 直近の作業
 
+- codex1/codex2: stable ID-cursor total ordering
+  (`API-LIST-STABLE-ORDER-001`, IMPLEMENTED / LOCAL VALIDATED / CI DB PROOF PENDING,
+  commit `f3949adb7`, 2026-07-15).
+  - root cause / implementation:
+    billing candidates、cases、consent records、medication issues、patient self-reportsの5 GETはunique `id` cursorを使いながら
+    primary timestamp/monthだけをorderし、同値sort keyのrowsをDBが任意順序で返す余地があった。visible primary order、filter、
+    auth/RLS、no-store、envelopeを変えず、各`orderBy`末尾へ同方向の`id` tie-breakerを追加した。query-shape checkerへopt-inの
+    `cursor_pagination_contract`を追加し、実cursor、`skip: 1`、同方向のliteral final `id`を要求する。watchlist opt-inでも既定ruleを
+    抑止しないadditive unionとし、comment/string decoy、opposite direction、missing cursor/skip、invalid ruleをnegative fixtureで固定した。
+    static gateで顕在化した既存4 debtはowner/reason/planned action/expected count付きallowlistへ限定し、新規違反は0を維持する。
+  - validation / remaining:
+    focused route/checkerは6 files PASS + DB integration 1 file environment-skip、132 tests PASS / 1 skip。query-shapeは4 explicit
+    allowlisted / 0 new、exact ESLint/Prettier/diff、serialized `pnpm typecheck` / `pnpm typecheck:no-unused`がPASSした。
+    read-only integration testは安全なlocalhost:5433 `ph_os_e2e`だけを許可し、`BEGIN READ ONLY`を確認後、同値4 rowの2 page unionを
+    exact-onceで証明する。ローカルPostgreSQLはstale `postmaster.pid`が別live process PIDを指しており、codex2相談でも削除・起動・
+    reinitializeは不安全と合意したため実行していない。CI `medical-ui-e2e-gate`のprovisioned PostgreSQL 17でDB testをprepare直後に
+    実行するstepを追加済み。CI PASSまではPlansを`Partial`として残し、pass後だけ完了行を削除する。
+
+- codex1/codex2: realtime invalidation key-switch race
+  (`STABILITY-REALTIME-INVALIDATION-KEY-RACE-001`, COMPLETED / COMMITTED `9089fa3a2`, 2026-07-15).
+  - root cause / implementation:
+    shared hookの単一debounce timerが最初のquery client/keyをclose overし、150 ms内のpatient/filter/org/policy切替後に来たeventを
+    timer guardでdropしていた。pending stateを`Map<QueryClient, Map<hashKey, QueryKey>>`へ変更し、全matching eventをtimer guard前に
+    enqueue、flush時はsnapshotをclearしてからexact keyごとにinvalidateする。TanStack `hashKey`でobject property insertion orderを
+    canonicalizeし、同一semantic key burstは1回、異なるclient/keyは全件保持する。unmountはtimerとpending mapを両方clearする。
+    event filter、source policy、presence、`receivesRealtimeUpdates`、poll停止契約、broad invalidationは変更していない。
+  - independent review / validation:
+    codex2がexact3 pathを実装し、codex1がold event→key/policy/org switch→new event、old-source reject、新key必須invalidate、
+    equivalent object-key dedupe、unmount cleanupを独立reviewしてACCEPT、残るP0/P1なし。focused 2 files / 17 tests、exact
+    ESLint/Prettier/diff、aggregate typecheck/no-unusedがPASSした。非視覚のdata freshness修正であり、layout/animation変更も
+    visual reconstructionもないためimage generationは不要。active Plans行とpriority参照を削除した。
+
 - codex1/codex2: API route method reachability ratchet foundation
   (PARTIAL FOUNDATION VALIDATED / COMMITTED `995e67250`, 2026-07-15).
   - root cause / scope:
