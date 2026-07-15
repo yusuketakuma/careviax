@@ -193,7 +193,7 @@ describe('cursor-pagination-client', () => {
     expect(payload.data).toEqual([{ id: 'row_1' }]);
   });
 
-  it('keeps hasMore and nextCursor when the max page cap is exhausted', async () => {
+  it('rejects instead of returning partial rows when the max page cap is exhausted', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -209,19 +209,91 @@ describe('cursor-pagination-client', () => {
         }),
       );
 
-    const payload = await fetchAllCursorPages<{ id: string }>({
-      path: '/api/example',
-      errorMessage: 'failed',
-      fetchImpl,
-      maxPages: 2,
-      limit: 1,
-    });
+    await expect(
+      fetchAllCursorPages<{ id: string }>({
+        path: '/api/example',
+        errorMessage: 'fixed caller error',
+        fetchImpl,
+        maxPages: 2,
+        limit: 1,
+      }),
+    ).rejects.toThrow('fixed caller error');
 
     expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(payload.data).toEqual([{ id: 'row_1' }, { id: 'row_2' }]);
-    expect(payload.hasMore).toBe(true);
-    expect(payload.nextCursor).toBe('cursor_2');
   });
+
+  it('does not request beyond a one-page cap before rejecting an incomplete collection', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: [{ id: 'row_1' }],
+        meta: { has_more: true, next_cursor: 'cursor_1' },
+      }),
+    );
+
+    await expect(
+      fetchAllCursorPages({
+        path: '/api/example',
+        errorMessage: 'failed',
+        fetchImpl,
+        maxPages: 1,
+      }),
+    ).rejects.toThrow('failed');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a complete collection when the last allowed page is terminal', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ id: 'row_1' }],
+          meta: { has_more: true, next_cursor: 'cursor_1' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ id: 'row_2' }],
+          meta: { has_more: false, next_cursor: null },
+        }),
+      );
+
+    await expect(
+      fetchAllCursorPages<{ id: string }>({
+        path: '/api/example',
+        errorMessage: 'failed',
+        fetchImpl,
+        maxPages: 2,
+        limit: 1,
+      }),
+    ).resolves.toEqual({
+      data: [{ id: 'row_1' }, { id: 'row_2' }],
+      hasMore: false,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([undefined, Number.NaN])(
+    'rejects default-cap exhaustion for maxPages=%s without an unbounded request loop',
+    async (maxPages) => {
+      const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => {
+        const page = fetchImpl.mock.calls.length;
+        return jsonResponse({
+          data: [{ id: `row_${page}` }],
+          meta: { has_more: true, next_cursor: `cursor_${page}` },
+        });
+      });
+
+      await expect(
+        fetchAllCursorPages({
+          path: '/api/example',
+          errorMessage: 'failed',
+          fetchImpl,
+          maxPages,
+        }),
+      ).rejects.toThrow('failed');
+      expect(fetchImpl).toHaveBeenCalledTimes(20);
+    },
+  );
 
   it('rejects a cursor cycle instead of repeating pages until the page cap', async () => {
     const fetchImpl = vi

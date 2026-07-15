@@ -15,6 +15,12 @@ type FetchCursorPageArgs<T> = {
   itemSchema?: ZodType<T>;
 };
 
+export type CompleteCursorCollection<T> = {
+  data: T[];
+  hasMore: false;
+  nextCursor?: never;
+};
+
 function normalizePageLimit(limit: number | undefined) {
   if (limit === undefined || !Number.isFinite(limit)) return CURSOR_PAGINATION_PAGE_LIMIT;
   return Math.min(Math.max(Math.trunc(limit), 1), CURSOR_PAGINATION_PAGE_LIMIT);
@@ -63,7 +69,7 @@ export async function fetchAllCursorPages<T>(args: {
   maxPages?: number;
   errorMessage: string;
   itemSchema?: ZodType<T>;
-}): Promise<CursorPaginatedPage<T>> {
+}): Promise<CompleteCursorCollection<T>> {
   const maxPages = normalizeMaxPages(args.maxPages);
   const aggregated: T[] = [];
   const seenCursors = new Set<string>();
@@ -94,9 +100,12 @@ export async function fetchAllCursorPages<T>(args: {
     cursor = nextCursor;
   }
 
+  if (cursor) {
+    throw new Error(args.errorMessage);
+  }
+
   return {
     data: aggregated,
-    hasMore: Boolean(cursor),
-    ...(cursor ? { nextCursor: cursor } : {}),
+    hasMore: false,
   };
 }
