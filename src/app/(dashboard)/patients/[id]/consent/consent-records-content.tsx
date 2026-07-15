@@ -4,13 +4,14 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
-import { format, parseISO, differenceInDays } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { FileText, Pencil, Plus, ShieldOff, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/ui/state-badge';
+import { ExpiryBadge, classifyExpiry } from '@/components/ui/expiry-badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -138,9 +139,14 @@ function inferConsentDocumentMimeType(file: File) {
   return 'application/pdf';
 }
 
-function getConsentStatus(record: ConsentRecord): 'active' | 'revoked' | 'expired' {
-  if (!record.is_active && record.revoked_date) return 'revoked';
-  if (record.expiry_date && new Date(record.expiry_date) < new Date()) return 'expired';
+function getConsentStatus(
+  record: ConsentRecord,
+  now: Date,
+): 'active' | 'revoked' | 'expired' | 'invalid-expiry' {
+  if (record.revoked_date) return 'revoked';
+  const expiryStatus = classifyExpiry(record.expiry_date, {}, now).status;
+  if (expiryStatus === 'expired') return 'expired';
+  if (expiryStatus === 'invalid') return 'invalid-expiry';
   return 'active';
 }
 
@@ -157,6 +163,7 @@ function useColumns(args: {
   onEdit: (record: ConsentRecord) => void;
   onRevoke: (record: ConsentRecord) => void;
 }): ColumnDef<ConsentRecord>[] {
+  const now = new Date();
   return [
     {
       accessorKey: 'consent_type',
@@ -199,35 +206,23 @@ function useColumns(args: {
     {
       accessorKey: 'expiry_date',
       header: '有効期限',
-      cell: ({ row }) => {
-        const expiryDate = row.original.expiry_date;
-        if (!expiryDate) return <span className="text-sm text-muted-foreground">—</span>;
-        const daysUntilExpiry = differenceInDays(new Date(expiryDate), new Date());
-        const isExpiringSoon = daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
-        return (
-          <span className="flex items-center gap-1.5 text-sm">
-            {format(parseISO(expiryDate), 'yyyy/MM/dd', { locale: ja })}
-            {isExpiringSoon && (
-              <StateBadge role="confirm" className="text-xs">
-                {daysUntilExpiry === 0 ? '本日期限' : `${daysUntilExpiry}日後`}
-              </StateBadge>
-            )}
-          </span>
-        );
-      },
+      cell: ({ row }) => <ExpiryBadge date={row.original.expiry_date} now={now} showDate />,
     },
     {
       id: 'status',
       header: 'ステータス',
       cell: ({ row }) => {
-        const status = getConsentStatus(row.original);
+        const status = getConsentStatus(row.original, now);
         if (status === 'active') {
-          return <Badge variant="default">有効</Badge>;
+          return <Badge variant="outline">有効</Badge>;
         }
         if (status === 'revoked') {
-          return <Badge variant="destructive">撤回済</Badge>;
+          return <StateBadge role="blocked">撤回済</StateBadge>;
         }
-        return <Badge variant="outline">期限切れ</Badge>;
+        if (status === 'invalid-expiry') {
+          return <StateBadge role="confirm">期限要確認</StateBadge>;
+        }
+        return <StateBadge role="blocked">期限切れ</StateBadge>;
       },
     },
     {
@@ -259,7 +254,7 @@ function useColumns(args: {
       id: 'actions',
       header: '操作',
       cell: ({ row }) => {
-        const status = getConsentStatus(row.original);
+        const status = getConsentStatus(row.original, now);
         if (status !== 'active') return null;
         return (
           <div className="flex items-center gap-2">

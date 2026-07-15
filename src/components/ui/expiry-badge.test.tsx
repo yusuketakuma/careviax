@@ -83,6 +83,49 @@ describe('classifyExpiry', () => {
     });
     expect(classifyExpiry('2026-06-26', {}, jstMidnightCross).status).toBe('expired');
   });
+
+  it.each(['Asia/Tokyo', 'America/New_York'])(
+    'keeps exact 30/31/90/91-day boundaries under the %s runtime timezone',
+    (runtimeTimezone) => {
+      const originalTimezone = process.env.TZ;
+      process.env.TZ = runtimeTimezone;
+      try {
+        const now = new Date('2026-06-26T15:30:00Z'); // JST 2026-06-27 00:30
+        expect(now.getDate()).toBe(runtimeTimezone === 'Asia/Tokyo' ? 27 : 26);
+        expect(classifyExpiry('2026-06-26', {}, now)).toEqual({
+          status: 'expired',
+          days: -1,
+        });
+        expect(classifyExpiry('2026-06-27', {}, now)).toEqual({
+          status: 'due-critical',
+          days: 0,
+        });
+        expect(classifyExpiry('2026-07-27', {}, now)).toEqual({
+          status: 'due-critical',
+          days: 30,
+        });
+        expect(classifyExpiry('2026-07-28', {}, now)).toEqual({
+          status: 'due-soon',
+          days: 31,
+        });
+        expect(classifyExpiry('2026-09-25', {}, now)).toEqual({
+          status: 'due-soon',
+          days: 90,
+        });
+        expect(classifyExpiry('2026-09-26', {}, now)).toEqual({ status: 'ok', days: 91 });
+        expect(classifyExpiry('not-a-date', {}, now)).toEqual({
+          status: 'invalid',
+          days: null,
+        });
+      } finally {
+        if (originalTimezone === undefined) {
+          delete process.env.TZ;
+        } else {
+          process.env.TZ = originalTimezone;
+        }
+      }
+    },
+  );
 });
 
 describe('ExpiryBadge', () => {

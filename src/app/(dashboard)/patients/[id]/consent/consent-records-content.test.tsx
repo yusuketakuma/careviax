@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { PropsWithChildren } from 'react';
 import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -196,6 +196,7 @@ describe('ConsentRecordsContent', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -425,6 +426,137 @@ describe('ConsentRecordsContent', () => {
 
     expect((await screen.findAllByText('期限切れ')).length).toBeGreaterThan(0);
     expect((await screen.findAllByText('撤回済')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: '更新' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '撤回' })).toBeNull();
+  });
+
+  it('projects consent expiry from the canonical JST date-key SSOT at every threshold', async () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-06-26T15:30:00Z')); // JST 2026-06-27 00:30
+
+    try {
+      expect(new Date().getDate()).toBe(26); // Prove the runtime calendar is not JST.
+      const scenarioRecord = (
+        label: string,
+        overrides: Partial<TestConsentRecord> = {},
+      ): TestConsentRecord => ({
+        ...defaultConsentRecord,
+        id: `consent_${label}`,
+        template_id: `template_${label}`,
+        template_version: 1,
+        template: { id: `template_${label}`, name: label, version: 1 },
+        ...overrides,
+      });
+      stubFetch([
+        scenarioRecord('revoked_priority', {
+          expiry_date: '2026-09-26T00:00:00.000Z',
+          is_active: false,
+          revoked_date: '2026-06-20T00:00:00.000Z',
+        }),
+        scenarioRecord('expired_previous_day', {
+          expiry_date: '2026-06-26T00:00:00.000Z',
+        }),
+        scenarioRecord('expires_today', {
+          expiry_date: '2026-06-27T00:00:00.000Z',
+        }),
+        scenarioRecord('expires_in_30_days', {
+          expiry_date: '2026-07-27T00:00:00.000Z',
+        }),
+        scenarioRecord('expires_in_31_days', {
+          expiry_date: '2026-07-28T00:00:00.000Z',
+        }),
+        scenarioRecord('expires_in_90_days', {
+          expiry_date: '2026-09-25T00:00:00.000Z',
+        }),
+        scenarioRecord('expires_in_91_days', {
+          expiry_date: '2026-09-26T00:00:00.000Z',
+        }),
+      ]);
+      renderContent();
+
+      const rowFor = async (consentType: string) => {
+        const cells = await screen.findAllByText(`${consentType} v1`);
+        const row = cells.map((cell) => cell.closest('tr')).find((candidate) => candidate !== null);
+        if (!row) throw new Error(`Missing consent row for ${consentType}`);
+        return within(row);
+      };
+
+      expect((await rowFor('revoked_priority')).getByText('撤回済')).toBeTruthy();
+      expect((await rowFor('expired_previous_day')).getAllByText(/期限切れ/).length).toBe(2);
+      expect((await rowFor('expires_today')).getByText('2026/06/27（残0日）')).toBeTruthy();
+      expect((await rowFor('expires_in_30_days')).getByText('2026/07/27（残30日）')).toBeTruthy();
+      expect((await rowFor('expires_in_31_days')).getByText('2026/07/28（残31日）')).toBeTruthy();
+      expect((await rowFor('expires_in_90_days')).getByText('2026/09/25（残90日）')).toBeTruthy();
+      expect((await rowFor('expires_in_91_days')).getByText('2026/09/26')).toBeTruthy();
+
+      expect((await rowFor('expires_today')).getByText('有効')).toBeTruthy();
+      expect((await rowFor('expires_in_31_days')).getByText('有効')).toBeTruthy();
+      expect((await rowFor('expires_in_91_days')).getByText('有効')).toBeTruthy();
+      expect((await rowFor('revoked_priority')).queryByRole('button', { name: '更新' })).toBeNull();
+      expect(
+        (await rowFor('expired_previous_day')).queryByRole('button', { name: '更新' }),
+      ).toBeNull();
+      for (const activeConsent of [
+        'expires_today',
+        'expires_in_30_days',
+        'expires_in_31_days',
+        'expires_in_90_days',
+        'expires_in_91_days',
+      ]) {
+        expect((await rowFor(activeConsent)).getByRole('button', { name: '更新' })).toBeTruthy();
+        expect((await rowFor(activeConsent)).getByRole('button', { name: '撤回' })).toBeTruthy();
+      }
+    } finally {
+      if (originalTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimezone;
+      }
+    }
+  });
+
+  it('rejects invalid expiry payloads before rendering status or mutation actions', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/consent-records?patient_id=patient_1') {
+        return new Response(
+          JSON.stringify(
+            buildConsentListResponse([
+              {
+                ...defaultConsentRecord,
+                expiry_date: 'not-a-date',
+              },
+            ]),
+          ),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/templates?template_type=consent_form') {
+        return new Response(
+          JSON.stringify({
+            data: [],
+            meta: {
+              total_count: 0,
+              visible_count: 0,
+              hidden_count: 0,
+              truncated: false,
+              count_basis: 'templates',
+              filters_applied: { template_type: 'consent_form', target_role: null },
+              limit: 100,
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    expect(await screen.findByText('同意記録を取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('有効')).toBeNull();
     expect(screen.queryByRole('button', { name: '更新' })).toBeNull();
     expect(screen.queryByRole('button', { name: '撤回' })).toBeNull();
   });
