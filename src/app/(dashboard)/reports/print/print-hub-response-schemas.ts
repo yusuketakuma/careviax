@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { buildCareReportDetailResponseSchema } from '@/app/(dashboard)/reports/[id]/report-detail-response-schema';
+import type { CareReportForPrint } from './print-hub.shared';
 
 const idSchema = z.string().trim().min(1).max(255);
 const textSchema = z.string().max(10_000);
@@ -29,6 +31,7 @@ const setPlanSchema = z
       .nullable(),
     notes: nullableTextSchema,
     created_at: dateSchema,
+    updated_at: dateSchema,
     packaging_method_ref: z
       .object({ id: idSchema, name: z.string().trim().min(1).max(500) })
       .strip()
@@ -55,41 +58,86 @@ const setPlanSchema = z
   })
   .strip();
 
-export function buildPrintHubSetPlansResponseSchema(expectedPatientId: string | null) {
+export function buildPrintHubSetPlanResponseSchema(
+  expectedPlanId: string,
+  expectedPatientId: string,
+) {
   return z
-    .object({ data: z.array(setPlanSchema) })
+    .object({ data: setPlanSchema })
     .strict()
-    .superRefine(({ data }, context) => {
-      if (new Set(data.map((plan) => plan.id)).size !== data.length) {
+    .superRefine(({ data: plan }, context) => {
+      if (plan.id !== expectedPlanId) {
+        context.addIssue({
+          code: 'custom',
+          path: ['data', 'id'],
+          message: 'set plan identity mismatch',
+        });
+      }
+      if (
+        plan.cycle.id !== plan.cycle_id ||
+        plan.cycle.patient_id !== expectedPatientId ||
+        plan.cycle.case_.patient.id !== expectedPatientId
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['data', 'cycle'],
+          message: 'set plan patient or cycle relation mismatch',
+        });
+      }
+      if (
+        new Date(plan.target_period_end).getTime() < new Date(plan.target_period_start).getTime()
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['data', 'target_period_end'],
+          message: 'set plan period is reversed',
+        });
+      }
+    })
+    .transform(({ data }) => data);
+}
+
+export function buildPrintHubCareReportResponseSchema(
+  expectedReportId: string,
+  expectedPatientId: string,
+) {
+  return buildCareReportDetailResponseSchema(expectedReportId)
+    .superRefine(({ data: report }, context) => {
+      const patient = report.patient_summary;
+      if (
+        report.patient_id !== expectedPatientId ||
+        patient?.id !== expectedPatientId ||
+        !patient.name?.trim() ||
+        !patient.birth_date ||
+        report.status !== 'confirmed'
+      ) {
         context.addIssue({
           code: 'custom',
           path: ['data'],
-          message: 'duplicate set plan identity',
+          message: 'care report patient identity or confirmed status mismatch',
         });
       }
-      data.forEach((plan, index) => {
-        if (
-          plan.cycle.id !== plan.cycle_id ||
-          plan.cycle.case_.patient.id !== plan.cycle.patient_id ||
-          (expectedPatientId !== null && plan.cycle.patient_id !== expectedPatientId)
-        ) {
-          context.addIssue({
-            code: 'custom',
-            path: ['data', index, 'cycle'],
-            message: 'set plan patient or cycle relation mismatch',
-          });
-        }
-        if (
-          new Date(plan.target_period_end).getTime() < new Date(plan.target_period_start).getTime()
-        ) {
-          context.addIssue({
-            code: 'custom',
-            path: ['data', index, 'target_period_end'],
-            message: 'set plan period is reversed',
-          });
-        }
-      });
-    });
+    })
+    .transform(({ data: report }): { data: CareReportForPrint } => ({
+      data: {
+        id: report.id,
+        patient_id: report.patient_id,
+        patient_name: report.patient_summary?.name ?? null,
+        patient_birth_date: report.patient_summary?.birth_date ?? null,
+        report_type: report.report_type,
+        status: report.status,
+        content: report.content,
+        created_at: report.created_at,
+        updated_at: report.updated_at,
+        delivery_records: report.delivery_records.map((record) => ({
+          id: record.id,
+          channel: record.channel,
+          recipient_name: record.recipient_name,
+          status: record.status,
+          sent_at: record.sent_at,
+        })),
+      },
+    }));
 }
 
 const prescriptionLineSchema = z
@@ -111,6 +159,7 @@ const prescriptionIntakeSchema = z
     id: idSchema,
     cycle_id: idSchema,
     prescribed_date: nullableDateSchema,
+    updated_at: dateSchema,
     prescriber_name: nullableTextSchema,
     prescriber_institution: nullableTextSchema,
     lines: z.array(prescriptionLineSchema),

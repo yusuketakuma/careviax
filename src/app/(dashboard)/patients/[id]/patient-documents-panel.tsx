@@ -20,6 +20,7 @@ import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { apiDataSchema } from '@/lib/api/response-schemas';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { messageFromError } from '@/lib/utils/error-message';
+import { buildFirstVisitPrintCopyUrl } from '@/app/(dashboard)/reports/print/print-hub.shared';
 import type { PatientDocumentsSnapshot, PatientOverview } from './patient-detail.types';
 
 type FirstVisitDocumentItem = PatientDocumentsSnapshot['first_visit_documents'][number];
@@ -95,9 +96,6 @@ export function FirstVisitDocumentsPanel({
   orgId?: string;
   patientId?: string;
 }) {
-  const printPreviewHref = patientId
-    ? `/reports/print?type=first_visit_documents&patient_id=${encodeURIComponent(patientId)}`
-    : null;
   const activeCase =
     cases.find((careCase) => careCase.status === 'active') ??
     cases.find((careCase) =>
@@ -117,20 +115,7 @@ export function FirstVisitDocumentsPanel({
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="font-heading text-base leading-snug font-medium">
-            初回訪問文書・交付記録
-          </h2>
-          {printPreviewHref ? (
-            <Link
-              href={printPreviewHref}
-              className={buttonVariants({ variant: 'outline', size: 'sm' })}
-            >
-              <Printer className="mr-1.5 size-4" aria-hidden="true" />
-              印刷プレビュー
-            </Link>
-          ) : null}
-        </div>
+        <h2 className="font-heading text-base leading-snug font-medium">初回訪問文書・交付記録</h2>
       </CardHeader>
       <CardContent>
         {printReadiness ? <PrintReadinessSummary readiness={printReadiness} /> : null}
@@ -187,16 +172,30 @@ export function FirstVisitDocumentsPanel({
                       </p>
                     </div>
 
-                    {document.document_url ? (
-                      <Link
-                        href={document.document_url}
-                        target="_blank"
-                        className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                      >
-                        <FileDown className="mr-1.5 size-4" aria-hidden="true" />
-                        控え
-                      </Link>
-                    ) : null}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {patientId ? (
+                        <Link
+                          href={buildFirstVisitPrintCopyUrl({
+                            patientId,
+                            documentId: document.id,
+                          })}
+                          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                        >
+                          <Printer className="mr-1.5 size-4" aria-hidden="true" />
+                          印刷プレビュー
+                        </Link>
+                      ) : null}
+                      {document.document_url ? (
+                        <Link
+                          href={document.document_url}
+                          target="_blank"
+                          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                        >
+                          <FileDown className="mr-1.5 size-4" aria-hidden="true" />
+                          控え
+                        </Link>
+                      ) : null}
+                    </div>
                   </div>
 
                   {orgId && patientId ? (

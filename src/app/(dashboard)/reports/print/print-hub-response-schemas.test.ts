@@ -1,54 +1,111 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildPrintHubCareReportResponseSchema,
   buildPrintHubPatientDocumentsResponseSchema,
   buildPrintHubPrescriptionsPageSchema,
-  buildPrintHubSetPlansResponseSchema,
+  buildPrintHubSetPlanResponseSchema,
 } from './print-hub-response-schemas';
 
 describe('print hub response schemas', () => {
-  it('validates set-plan patient and cycle relations and strips provider-only fields', () => {
-    const schema = buildPrintHubSetPlansResponseSchema('patient_1');
-    const result = schema.parse({
-      data: [
-        {
-          id: 'plan_1',
-          org_id: 'org_1',
-          cycle_id: 'cycle_1',
-          target_period_start: '2026-07-01T00:00:00.000Z',
-          target_period_end: '2026-07-28T00:00:00.000Z',
-          set_method: 'facility_calendar',
-          packaging_summary_snapshot: null,
-          notes: null,
-          created_at: '2026-07-01T00:00:00.000Z',
-          packaging_method_ref: null,
-          cycle: {
-            id: 'cycle_1',
-            patient_id: 'patient_1',
-            overall_status: 'set_in_progress',
-            case_: {
-              patient: {
-                id: 'patient_1',
-                name: '患者A',
-                name_kana: 'カンジャエー',
-              },
-            },
+  it('validates the exact set-plan identity and relations and strips provider-only fields', () => {
+    const schema = buildPrintHubSetPlanResponseSchema('plan_1', 'patient_1');
+    const rawPlan = {
+      id: 'plan_1',
+      org_id: 'org_1',
+      cycle_id: 'cycle_1',
+      target_period_start: '2026-07-01T00:00:00.000Z',
+      target_period_end: '2026-07-28T00:00:00.000Z',
+      set_method: 'facility_calendar',
+      packaging_summary_snapshot: null,
+      notes: null,
+      created_at: '2026-07-01T00:00:00.000Z',
+      updated_at: '2026-07-01T01:00:00.000Z',
+      packaging_method_ref: null,
+      cycle: {
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        overall_status: 'set_in_progress',
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '患者A',
+            name_kana: 'カンジャエー',
           },
-          audits: [],
         },
-      ],
-    });
-    expect(result.data[0]).not.toHaveProperty('org_id');
-    expect(result.data[0]?.cycle).not.toHaveProperty('overall_status');
+      },
+      audits: [],
+    };
+    const result = schema.parse({ data: rawPlan });
+    expect(result).not.toHaveProperty('org_id');
+    expect(result.cycle).not.toHaveProperty('overall_status');
     expect(() =>
       schema.parse({
-        data: [
-          {
-            ...result.data[0],
-            cycle: { ...result.data[0]?.cycle, patient_id: 'patient_2' },
-          },
-        ],
+        data: {
+          ...rawPlan,
+          cycle: { ...rawPlan.cycle, patient_id: 'patient_2' },
+        },
       }),
     ).toThrow('set plan patient or cycle relation mismatch');
+    expect(result.id).toBe('plan_1');
+    expect(() => schema.parse({ data: { ...rawPlan, id: 'plan_other' } })).toThrow(
+      'set plan identity mismatch',
+    );
+  });
+
+  it('accepts only the exact confirmed care report with complete patient identity', () => {
+    const report = {
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: null,
+      report_type: 'physician_report',
+      status: 'confirmed',
+      template_id: null,
+      pdf_url: null,
+      created_by: 'user_1',
+      created_at: '2026-07-01T00:00:00.000Z',
+      updated_at: '2026-07-01T01:00:00.000Z',
+      delivery_records: [],
+      patient_summary: {
+        id: 'patient_1',
+        name: '患者A',
+        name_kana: 'カンジャエー',
+        birth_date: '1940-01-01',
+        archive: { status: 'active', archived: false, archived_at: null },
+      },
+      visit_summary: null,
+      intake_baseline_context: null,
+      permissions: {
+        can_edit: false,
+        can_send: false,
+        can_create_external_share: false,
+        can_create_followup_task: false,
+        can_view_patient: true,
+        can_view_related_requests: false,
+      },
+      delivery_rule_suggestion: null,
+      external_professional_suggestions: [],
+      prescriber_institution_suggestion: null,
+    };
+    const schema = buildPrintHubCareReportResponseSchema('report_1', 'patient_1');
+    expect(schema.parse({ data: report }).data).toMatchObject({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      patient_name: '患者A',
+      patient_birth_date: '1940-01-01',
+      status: 'confirmed',
+    });
+    expect(() => schema.parse({ data: { ...report, status: 'draft' } })).toThrow(
+      'care report patient identity or confirmed status mismatch',
+    );
+    expect(() =>
+      schema.parse({
+        data: { ...report, patient_summary: { ...report.patient_summary, birth_date: null } },
+      }),
+    ).toThrow('care report patient identity or confirmed status mismatch');
+    expect(() =>
+      buildPrintHubCareReportResponseSchema('report_other', 'patient_1').parse({ data: report }),
+    ).toThrow('Care report scope drift');
   });
 
   it('validates prescription page identity, bounds, and cursor contract', () => {
@@ -62,6 +119,7 @@ describe('print hub response schemas', () => {
               id: 'intake_1',
               cycle_id: 'cycle_1',
               prescribed_date: '2026-07-01',
+              updated_at: '2026-07-01T01:00:00.000Z',
               prescriber_name: null,
               prescriber_institution: null,
               provider_only: 'removed',

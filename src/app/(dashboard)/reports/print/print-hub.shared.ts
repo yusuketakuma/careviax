@@ -11,6 +11,7 @@ import {
   REPORT_STATUS_CONFIG,
   REPORT_TYPE_LABELS,
 } from '@/lib/constants/status-labels';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 
 // ─── 帳票種別 ────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,39 @@ export type PrintDocumentTypeKey =
 export type PrintDocumentTypeOption = {
   key: PrintDocumentTypeKey;
   label: string;
+};
+
+const PRINT_TARGET_RESOURCE_PARAMS = ['set_plan_id', 'report_id', 'document_id'] as const;
+
+export type PrintTargetResourceParam = (typeof PRINT_TARGET_RESOURCE_PARAMS)[number];
+
+const PRINT_TARGET_RESOURCE_PARAM = {
+  set_instruction: 'set_plan_id',
+  medication_calendar: 'set_plan_id',
+  visit_report: 'report_id',
+  document_receipt: 'report_id',
+  medication_label: 'set_plan_id',
+  first_visit_documents: 'document_id',
+} as const satisfies Record<PrintDocumentTypeKey, PrintTargetResourceParam>;
+
+export type ValidPrintTargetSelection = {
+  status: 'valid';
+  documentType: PrintDocumentTypeKey;
+  patientId: string;
+  resourceParam: PrintTargetResourceParam;
+  resourceId: string;
+};
+
+export type InvalidPrintTargetSelection = {
+  status: 'invalid';
+  documentType: PrintDocumentTypeKey | null;
+  message: string;
+};
+
+export type PrintTargetSelection = ValidPrintTargetSelection | InvalidPrintTargetSelection;
+
+type SearchParamReader = {
+  getAll: (key: string) => string[];
 };
 
 /** 左カラム「印刷するもの」のカード(target の並び順) */
@@ -51,6 +85,66 @@ export function printDocumentTypeLabel(key: PrintDocumentTypeKey): string {
   return PRINT_DOCUMENT_TYPES.find((type) => type.key === key)?.label ?? key;
 }
 
+function readSingleTargetValue(params: SearchParamReader, key: string): string | null {
+  const values = params.getAll(key);
+  if (values.length !== 1) return null;
+  const value = values[0]?.trim() ?? '';
+  if (!value || value.length > 255) return null;
+  return value;
+}
+
+/**
+ * 印刷対象は URL 上の patient + exact resource の組だけを正とする。
+ * 欠落、空値、重複、種別と互換性のない selector は fail-closed にし、
+ * 組織全体の一覧や「先頭/最新」から暗黙に対象を選ばない。
+ */
+export function resolvePrintTargetSelection(params: SearchParamReader): PrintTargetSelection {
+  const rawType = readSingleTargetValue(params, 'type');
+  const documentType = rawType
+    ? (PRINT_DOCUMENT_TYPES.find((type) => type.key === rawType)?.key ?? null)
+    : null;
+  if (!documentType) {
+    return {
+      status: 'invalid',
+      documentType: null,
+      message:
+        '印刷種別が未指定、重複、または不正です。患者画面か対象文書の印刷リンクから開き直してください。',
+    };
+  }
+
+  const patientId = readSingleTargetValue(params, 'patient_id');
+  if (!patientId) {
+    return {
+      status: 'invalid',
+      documentType,
+      message:
+        '患者が一意に指定されていません。患者画面か対象文書の印刷リンクから開き直してください。',
+    };
+  }
+
+  const resourceParam = PRINT_TARGET_RESOURCE_PARAM[documentType];
+  const hasIncompatibleSelector = PRINT_TARGET_RESOURCE_PARAMS.some(
+    (candidate) => candidate !== resourceParam && params.getAll(candidate).length > 0,
+  );
+  const resourceId = readSingleTargetValue(params, resourceParam);
+  if (hasIncompatibleSelector || !resourceId) {
+    return {
+      status: 'invalid',
+      documentType,
+      message:
+        '印刷元の文書が一意に指定されていません。対象文書の印刷リンクから開き直してください。',
+    };
+  }
+
+  return {
+    status: 'valid',
+    documentType,
+    patientId,
+    resourceParam,
+    resourceId,
+  };
+}
+
 export function buildFirstVisitPrintCopyUrl({
   patientId,
   documentId,
@@ -70,8 +164,6 @@ export function buildFirstVisitPrintCopyUrl({
 // ─── 出力設定(右カラム) ─────────────────────────────────────────────────────
 
 export type PrintOutputSettings = {
-  /** 患者名を表示 */
-  showPatientName: boolean;
   /** 施設名(発行元)を表示 */
   showFacilityName: boolean;
   /** QRコードを付ける(プレースホルダ矩形) */
@@ -81,7 +173,6 @@ export type PrintOutputSettings = {
 };
 
 export const DEFAULT_PRINT_OUTPUT_SETTINGS: PrintOutputSettings = {
-  showPatientName: true,
   showFacilityName: true,
   showQr: true,
   saveCopy: true,
@@ -102,6 +193,7 @@ export type SetPlanForPrint = {
   } | null;
   notes: string | null;
   created_at: string;
+  updated_at: string;
   packaging_method_ref?: { id: string; name: string } | null;
   cycle: {
     id: string;
@@ -127,6 +219,7 @@ export type PrescriptionIntakeForPrint = {
   id: string;
   cycle_id: string;
   prescribed_date: string | null;
+  updated_at: string;
   prescriber_name: string | null;
   prescriber_institution: string | null;
   lines: PrescriptionLineForPrint[];
@@ -144,6 +237,7 @@ export type CareReportForPrint = {
   id: string;
   patient_id: string;
   patient_name?: string | null;
+  patient_birth_date?: string | null;
   report_type: string;
   status: string;
   content?: unknown;
@@ -269,56 +363,27 @@ export function firstVisitPrintBlockReason({
 
 // ─── 日付整形 ────────────────────────────────────────────────────────────────
 
-/** ISO 文字列 → 「2026/6/1」。不正値は「—」 */
+/** ISO 文字列 → 「2026年6月1日」(Asia/Tokyo)。不正値は「—」。 */
 export function formatPrintDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('ja-JP');
+  const [year, month, day] = japanDateKey(date).split('-').map(Number);
+  return `${year}年${month}月${day}日`;
 }
 
-/** 対象期間ラベル「2026/6/1 〜 2026/6/28」 */
+/** 対象期間ラベル「2026年6月1日 〜 2026年6月28日」 */
 export function formatPrintPeriod(startIso: string, endIso: string): string {
   return `${formatPrintDate(startIso)} 〜 ${formatPrintDate(endIso)}`;
 }
 
-// ─── セットプラン選択 ────────────────────────────────────────────────────────
-
-/**
- * セット指示書の既定プラン選択。
- * 対象期間が最も長いプラン(=訪問サイクル全体を覆う主帳票)を優先し、
- * 同じ長さなら作成が新しいものを選ぶ。施設の当日 1 日分プランより
- * 在宅 28 日分プラン(デモでは田中一郎)が前に出る。
- */
-export function pickPrintSetPlan(plans: readonly SetPlanForPrint[]): SetPlanForPrint | null {
-  if (plans.length === 0) return null;
-  const spanOf = (plan: SetPlanForPrint) =>
-    new Date(plan.target_period_end).getTime() - new Date(plan.target_period_start).getTime();
-  return plans.reduce((best, candidate) => {
-    const bestSpan = spanOf(best);
-    const candidateSpan = spanOf(candidate);
-    if (candidateSpan > bestSpan) return candidate;
-    if (
-      candidateSpan === bestSpan &&
-      new Date(candidate.created_at).getTime() > new Date(best.created_at).getTime()
-    ) {
-      return candidate;
-    }
-    return best;
-  });
-}
-
-/** プランのサイクルに紐づく処方受付を選ぶ(一致なしは先頭=最新) */
+/** プランのサイクルに紐づく処方受付だけを選ぶ。別サイクルへの fallback はしない。 */
 export function pickIntakeForCycle(
   intakes: readonly PrescriptionIntakeForPrint[],
   cycleId: string | null | undefined,
 ): PrescriptionIntakeForPrint | null {
-  if (intakes.length === 0) return null;
-  if (cycleId) {
-    const matched = intakes.find((intake) => intake.cycle_id === cycleId);
-    if (matched) return matched;
-  }
-  return intakes[0];
+  if (!cycleId) return null;
+  return intakes.find((intake) => intake.cycle_id === cycleId) ?? null;
 }
 
 // ─── 用法 → スロット射影 ────────────────────────────────────────────────────
@@ -530,37 +595,6 @@ function readStringArray(record: Record<string, unknown> | null, key: string): s
   const value = record?.[key];
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string');
-}
-
-/** 確定度スコア: 確定済み(confirmed/sent)を下書きより優先 */
-const REPORT_STATUS_PRIORITY: Record<string, number> = {
-  confirmed: 4,
-  sent: 3,
-  response_waiting: 2,
-  failed: 1,
-  draft: 0,
-};
-
-/** 訪問報告書プレビューに使う報告書を選ぶ(確定済み優先 → 内容の充実度 → 新しさ) */
-export function pickVisitReportForPrint(
-  reports: readonly CareReportForPrint[],
-): CareReportForPrint | null {
-  if (reports.length === 0) return null;
-  const scoreOf = (report: CareReportForPrint) => {
-    const statusScore = (REPORT_STATUS_PRIORITY[report.status] ?? 0) * 10;
-    const content = asRecord(report.content);
-    const richnessScore =
-      (asRecord(content?.['medication_management_summary']) ? 2 : 0) +
-      (asRecord(content?.['medication_management']) ? 2 : 0) +
-      (asRecord(content?.['residual_status']) ? 1 : 0) +
-      (readString(content, 'assessment') ? 1 : 0);
-    return statusScore + richnessScore;
-  };
-  return [...reports].sort((a, b) => {
-    const diff = scoreOf(b) - scoreOf(a);
-    if (diff !== 0) return diff;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  })[0];
 }
 
 /** care-report の content(Json)から要約行を防御的に組み立てる */

@@ -227,7 +227,7 @@ describe('FirstVisitDocumentsPanel', () => {
     const printPreviewLink = screen.getByRole('link', { name: '印刷プレビュー' });
     expect(printPreviewLink).toHaveProperty(
       'href',
-      'http://localhost:3000/reports/print?type=first_visit_documents&patient_id=patient_1',
+      'http://localhost:3000/reports/print?type=first_visit_documents&patient_id=patient_1&document_id=doc_1&copy=1',
     );
     expect(screen.getAllByText('差替え').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/契約書/).length).toBeGreaterThan(0);
@@ -236,6 +236,41 @@ describe('FirstVisitDocumentsPanel', () => {
     expect(screen.getByText('署名者: 山田 花子 / 家族 / 長女')).toBeTruthy();
     expect(screen.getByText('理由: 署名者を長女へ訂正')).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+  });
+
+  it('links each document to an explicit patient and document print target', () => {
+    const patientId = 'patient/1?tab=documents';
+    const documents = ['doc/1?copy=a', 'doc_2'].map((id, index) => ({
+      id,
+      case_id: 'case_1',
+      emergency_contacts: [],
+      document_url: null,
+      delivered_at: null,
+      delivered_to: null,
+      created_at: `2026-06-${String(16 + index).padStart(2, '0')}T00:00:00.000Z`,
+      updated_at: `2026-06-${String(16 + index).padStart(2, '0')}T00:00:00.000Z`,
+      history: [],
+    }));
+
+    render(
+      <FirstVisitDocumentsPanel
+        patientId={patientId}
+        cases={[{ id: 'case_1', status: 'active' } as never]}
+        documents={documents}
+      />,
+    );
+
+    const links = screen.getAllByRole('link', { name: '印刷プレビュー' });
+    expect(links).toHaveLength(2);
+    expect(links[0]).toHaveProperty(
+      'href',
+      'http://localhost:3000/reports/print?type=first_visit_documents&patient_id=patient%2F1%3Ftab%3Ddocuments&document_id=doc%2F1%3Fcopy%3Da&copy=1',
+    );
+    expect(links[1]).toHaveProperty(
+      'href',
+      'http://localhost:3000/reports/print?type=first_visit_documents&patient_id=patient%2F1%3Ftab%3Ddocuments&document_id=doc_2&copy=1',
+    );
+    expect(links.every((link) => link.getAttribute('href')?.includes('document_id='))).toBe(true);
   });
 
   it('requires signed document URL and delivery target for document history actions', () => {

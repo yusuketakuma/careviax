@@ -13,9 +13,8 @@ import {
   formatSlotLabel,
   parsePrintDocumentType,
   pickIntakeForCycle,
-  pickPrintSetPlan,
-  pickVisitReportForPrint,
   PRINT_DOCUMENT_TYPES,
+  resolvePrintTargetSelection,
   summarizeFirstVisitPrintReadiness,
   type CareReportForPrint,
   type FirstVisitDocumentForPrint,
@@ -36,6 +35,7 @@ function makePlan(overrides: Partial<SetPlanForPrint> = {}): SetPlanForPrint {
     packaging_summary_snapshot: null,
     notes: '残薬充当あり / 中止薬回収あり',
     created_at: '2026-05-30T10:00:00+09:00',
+    updated_at: '2026-05-30T11:00:00+09:00',
     packaging_method_ref: null,
     cycle: {
       id: 'cycle_tanaka',
@@ -54,6 +54,7 @@ function makeIntake(
     id: 'intake_tanaka',
     cycle_id: 'cycle_tanaka',
     prescribed_date: '2026-06-01T12:00:00+09:00',
+    updated_at: '2026-06-01T12:30:00+09:00',
     prescriber_name: '佐藤 太郎',
     prescriber_institution: 'サンプル在宅クリニック',
     lines: [
@@ -162,31 +163,45 @@ describe('parsePrintDocumentType', () => {
       '/reports/print?type=first_visit_documents&patient_id=patient_1&document_id=doc_contract_1&copy=1',
     );
   });
-});
 
-// ─── プラン選択 ──────────────────────────────────────────────────────────────
+  it.each([
+    ['set_instruction', 'set_plan_id', 'plan_1'],
+    ['medication_calendar', 'set_plan_id', 'plan_1'],
+    ['medication_label', 'set_plan_id', 'plan_1'],
+    ['visit_report', 'report_id', 'report_1'],
+    ['document_receipt', 'report_id', 'report_1'],
+    ['first_visit_documents', 'document_id', 'document_1'],
+  ] as const)(
+    '%s は患者と exact %s が一意な場合だけ印刷対象として受理する',
+    (type, resourceParam, resourceId) => {
+      const params = new URLSearchParams({
+        type,
+        patient_id: ' patient_1 ',
+        [resourceParam]: ` ${resourceId} `,
+      });
+      expect(resolvePrintTargetSelection(params)).toEqual({
+        status: 'valid',
+        documentType: type,
+        patientId: 'patient_1',
+        resourceParam,
+        resourceId,
+      });
+    },
+  );
 
-describe('pickPrintSetPlan', () => {
-  it('対象期間が最も長いプラン(在宅28日分)を当日1日分の施設プランより優先する', () => {
-    const facilityPlan = makePlan({
-      id: 'plan_facility',
-      target_period_start: '2026-06-13T12:00:00+09:00',
-      target_period_end: '2026-06-13T12:00:00+09:00',
-      created_at: '2026-06-13T08:00:00+09:00',
-    });
-    const tanakaPlan = makePlan();
-    expect(pickPrintSetPlan([facilityPlan, tanakaPlan])?.id).toBe('plan_tanaka');
-    expect(pickPrintSetPlan([tanakaPlan, facilityPlan])?.id).toBe('plan_tanaka');
-  });
-
-  it('期間が同じなら作成が新しい方を選ぶ', () => {
-    const older = makePlan({ id: 'plan_old', created_at: '2026-05-01T10:00:00+09:00' });
-    const newer = makePlan({ id: 'plan_new', created_at: '2026-06-01T10:00:00+09:00' });
-    expect(pickPrintSetPlan([older, newer])?.id).toBe('plan_new');
-  });
-
-  it('空配列は null', () => {
-    expect(pickPrintSetPlan([])).toBeNull();
+  it.each([
+    ['missing all', ''],
+    ['type=set_instruction', 'patient_id=patient_1&set_plan_id=plan_1'],
+    ['patient_id=patient_1', 'type=set_instruction&set_plan_id=plan_1'],
+    ['set_plan_id=plan_1', 'type=set_instruction&patient_id=patient_1'],
+    ['duplicate patient', 'type=set_instruction&patient_id=p1&patient_id=p1&set_plan_id=plan_1'],
+    ['blank resource', 'type=set_instruction&patient_id=p1&set_plan_id=%20'],
+    [
+      'incompatible resource',
+      'type=set_instruction&patient_id=p1&set_plan_id=plan_1&report_id=report_1',
+    ],
+  ])('欠落・重複・空値・非互換 selector を fail-closed にする: %s', (_label, query) => {
+    expect(resolvePrintTargetSelection(new URLSearchParams(query)).status).toBe('invalid');
   });
 });
 
@@ -197,10 +212,11 @@ describe('pickIntakeForCycle', () => {
     expect(pickIntakeForCycle([other, target], 'cycle_tanaka')?.id).toBe('intake_tanaka');
   });
 
-  it('一致がなければ先頭(最新)へフォールバックする', () => {
+  it('一致がなくても別サイクルの先頭へフォールバックしない', () => {
     const latest = makeIntake({ id: 'intake_latest', cycle_id: 'cycle_x' });
-    expect(pickIntakeForCycle([latest], 'cycle_tanaka')?.id).toBe('intake_latest');
+    expect(pickIntakeForCycle([latest], 'cycle_tanaka')).toBeNull();
     expect(pickIntakeForCycle([], 'cycle_tanaka')).toBeNull();
+    expect(pickIntakeForCycle([latest], null)).toBeNull();
   });
 });
 
@@ -351,7 +367,7 @@ describe('buildFirstVisitDocumentPrintSummary', () => {
       deliveredToLabel: '長女 田中花子',
       documentUrlLabel: '控えあり',
       latestActionLabel: '回収',
-      latestPrintedAtLabel: '2026/6/16',
+      latestPrintedAtLabel: '2026年6月16日',
       latestStorageLabel: '本部',
       latestTemplateLabel: '居宅療養管理指導契約書 v1.1',
     });
@@ -518,20 +534,7 @@ describe('buildMedicationCalendarDocument', () => {
 
 // ─── 訪問報告書 ──────────────────────────────────────────────────────────────
 
-describe('pickVisitReportForPrint / buildVisitReportDocument', () => {
-  it('下書きより確定済み(sent)の報告書を優先する', () => {
-    const draft = makeReport({
-      id: 'report_draft',
-      status: 'draft',
-      created_at: '2026-06-12T10:00:00+09:00',
-      content: { title: '下書き', body: '記載中' },
-      delivery_records: [],
-    });
-    const sent = makeReport();
-    expect(pickVisitReportForPrint([draft, sent])?.id).toBe('report_kato');
-    expect(pickVisitReportForPrint([])).toBeNull();
-  });
-
+describe('buildVisitReportDocument', () => {
   it('構造化 content から要約行を組み立てる', () => {
     const document = buildVisitReportDocument(makeReport());
     expect(document).not.toBeNull();
@@ -620,8 +623,9 @@ describe('buildMedicationLabelCards', () => {
 // ─── 日付整形 ────────────────────────────────────────────────────────────────
 
 describe('formatPrintDate', () => {
-  it('ISO 文字列を ja-JP 表記へ整形し、不正値は「—」', () => {
-    expect(formatPrintDate('2026-06-10T12:00:00+09:00')).toBe('2026/6/10');
+  it('ISO 文字列を JST の和式表記へ整形し、不正値は「—」', () => {
+    expect(formatPrintDate('2026-06-10T12:00:00+09:00')).toBe('2026年6月10日');
+    expect(formatPrintDate('2026-06-10T15:30:00Z')).toBe('2026年6月11日');
     expect(formatPrintDate(null)).toBe('—');
     expect(formatPrintDate('not-a-date')).toBe('—');
   });

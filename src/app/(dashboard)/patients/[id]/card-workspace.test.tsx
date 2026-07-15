@@ -1548,9 +1548,7 @@ describe('CardWorkspace', () => {
     expect(within(documentsPanel).getByText('確認あり / 確認 1件')).toBeTruthy();
     expect(within(documentsPanel).getByText('契約・同意書類の現在状態')).toBeTruthy();
     expect(within(documentsPanel).getAllByText('契約書').length).toBeGreaterThan(0);
-    expect(
-      within(documentsPanel).getByRole('link', { name: '印刷プレビュー' }).getAttribute('href'),
-    ).toBe('/reports/print?type=first_visit_documents&patient_id=patient_1');
+    expect(within(documentsPanel).queryByRole('link', { name: '印刷プレビュー' })).toBeNull();
     const sharingHomeOps = getVisibleTestId('patient-home-operations-panel');
     expect(within(sharingHomeOps).getAllByText('契約・同意・書類').length).toBeGreaterThan(0);
     expect(within(sharingHomeOps).getByText('MCS・外部連携')).toBeTruthy();
