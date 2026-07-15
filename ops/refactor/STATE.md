@@ -61,6 +61,29 @@
 
 ## 直近の作業
 
+- codex1/codex2: authoritative SSE channel readiness + reconnect reconciliation
+  (`STABILITY-REALTIME-READINESS-RECONCILIATION-001` DONE `6aad7974c`, 2026-07-16).
+  - root cause / implementation:
+    shared SSE clientがHTTP 2xx/bodyを得た時点でconnectedとし、org/user/presenceの一部購読失敗を区別せず
+    fallback pollingを停止し得た。serverは`Promise.allSettled`後に識別子やPHIを含まないstrict
+    `realtime_readiness` v1 (`org`/`user`/`presence` booleanのみ)を送信し、adapter生成失敗と各channel失敗を
+    独立にfalseとした。clientはcontrol eventをbusiness listenerへ流さず、subscriberごとに必要channel
+    (`org` invalidation/predicate、`user` direct event only、`presence` target)がすべてreadyの場合だけconnectedとする。
+    presence target変更直後とstream end/reconnectで即座falseに戻し、初回readyでは二重fetchせず、過去に
+    readyだったqueryのfalse -> ready recovery時だけactive queryをauthoritative APIから1回refetchする。unsubscribeは
+    listener/status/presence referenceを解放し、最後listenerでtimer/AbortController/stream mapをcleanupする。
+  - review / validation / safety:
+    codex2がexact8を実装し、codex1がfresh diffでroot cause、strict PHI-free parser、required-channel導出、
+    presence rotation、disconnect/reconnect、query-key scoped recovery refetch、cleanupを独立reviewした。初回reviewで
+    serverのuser-only subscription failureとpresence target付きadapter failure証跡不足をP2とし、codex2が双方向の
+    partial failureとpresence target有無の回帰を追加、最終reviewはP1/P2なし。focused Vitestは4 files / 58 tests
+    PASS、exact8 ESLint、Prettier、`git diff --check`がPASS、`pnpm typecheck`と`pnpm typecheck:no-unused`を直列実行し
+    PASS。現スライスはnon-visual correctness/privacy repairのためimage generationを省略し、ユーザーのbuild抑制指示に
+    従いbuild/E2Eは未実行。schema/migration、external send、push、deploy、production mutationは実行していない。
+  - remaining / next:
+    `Plans.md`のunfinished-only queueと実装完了状態の整合を次のplanning-only boundaryで行い、unrelated dirtyに触れず
+    次のnon-overlap sliceをcodex1/codex2でclaimする。
+
 - codex1/codex2: Network Resilience v0.6 / Bedrock AI v0.6.1 atomic replacement plan
   (`Plans.md` TEMPORARY DRAFT subdivided, 2026-07-16).
   - planning result:
