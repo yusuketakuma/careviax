@@ -49,7 +49,7 @@
     },
     {
       "path": "tools/fhir-native/foundation-registry.json",
-      "sha256": "22392b43653542084972df6d1f4da9ea8fdad3cdff0a94d0df8d9095d07e96a2"
+      "sha256": "850135edf466d032742b7fde8292c3aea3a3addb10855468a1ec2fb6a9772024"
     },
     {
       "path": "tools/fhir-native/package-lock.json",
@@ -57,12 +57,12 @@
     },
     {
       "path": "tools/scripts/check-fhir-native-foundation.mjs",
-      "sha256": "450d9ad31431b433dcdf72d501f526559466c7630305a1ac7a840829c283a9aa"
+      "sha256": "8a940639e96006a796aebfd2eacd320ddc58763914f007a12365e5b4c3da6592"
     },
     {
       "path": "tools/scripts/check-fhir-native-foundation.test.ts",
-      "sha256": "4e993c0d943eab6cafe09411c440ab36a3d90c943f010445e46a9d905fa6dd84"
+      "sha256": "c963b91cf08e3bab8dd99a4e9d7f669ea5e0486273ca9b49a54a4c3399bf8970"
     }
   ],
-  "artifactSetSha256": "2cb968c05c3f9e2b80f9def7142f381b28538bdf4719d7f25543c75bb93a7fa9"
+  "artifactSetSha256": "41c4a05640834d460fcc29c426cf549c239d76093460ccedea09be5093991def"
 }

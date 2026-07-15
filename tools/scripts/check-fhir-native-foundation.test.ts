@@ -105,12 +105,26 @@ describe('check-fhir-native-foundation', () => {
   it('rejects reintroducing a completed foundation task into the active Plans queue', () => {
     const registry = readJson('tools/fhir-native/foundation-registry.json');
     const plans = readFileSync(path.join(process.cwd(), 'Plans.md'), 'utf8').replace(
+      '| A3   | `FHIR-NATIVE-P0-FOUNDATION-003-RAW-INGRESS`',
       '| A2   | `FHIR-NATIVE-LEGACY-MIGRATION-001-INVENTORY`',
-      '| A0   | `FHIR-NATIVE-P0-FOUNDATION-001-DOCS`',
     );
 
     expect(() => foundation.validatePlans(plans, registry)).toThrow(
       /completed FHIR task must not remain active/,
+    );
+  });
+
+  it('rejects completing a task before every dependency is complete', () => {
+    const registry = clone(readJson('tools/fhir-native/foundation-registry.json'));
+    const packageLock = readJson('tools/fhir-native/package-lock.json');
+    const taskGraph = registry.taskGraph as Array<Record<string, unknown>>;
+    const task = taskGraph.find((candidate) => candidate.wave === 'A4');
+    if (!task) throw new Error('A4 fixture missing');
+    task.status = 'completed';
+    delete task.planStatus;
+
+    expect(() => foundation.validateRegistry(registry, packageLock)).toThrow(
+      /A4 completed before dependencies/,
     );
   });
 

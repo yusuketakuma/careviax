@@ -34,6 +34,12 @@ type FixtureOptions = {
   callSurfaces?: Array<Record<string, unknown>>;
 };
 
+type FixtureManifest = Record<string, unknown> & {
+  schema_surfaces: Array<Record<string, unknown> & { owner_review?: Record<string, unknown> }>;
+  tracked_prisma_delegates: Array<Record<string, unknown>>;
+  expected_raw_sql_accesses: string[];
+};
+
 afterEach(() => {
   while (temporaryRoots.length > 0) {
     rmSync(temporaryRoots.pop()!, { recursive: true, force: true });
@@ -55,7 +61,7 @@ function runCheck(root: string, args: string[] = []) {
 }
 
 function readManifest(root: string) {
-  return JSON.parse(readFileSync(path.join(root, MANIFEST_PATH), 'utf8')) as Record<string, any>;
+  return JSON.parse(readFileSync(path.join(root, MANIFEST_PATH), 'utf8')) as FixtureManifest;
 }
 
 function writeManifest(root: string, manifest: unknown) {
@@ -262,7 +268,9 @@ describe('check-fhir-native-legacy-inventory', () => {
     );
 
     const manifest = readManifest(root);
-    delete manifest.schema_surfaces[0].owner_review.reason;
+    const schemaSurface = manifest.schema_surfaces[0];
+    if (!schemaSurface?.owner_review) throw new Error('fixture owner review is missing');
+    delete schemaSurface.owner_review.reason;
     writeManifest(root, manifest);
     expect(() => runCheck(root)).toThrow(/owner_review is missing reason/);
   });

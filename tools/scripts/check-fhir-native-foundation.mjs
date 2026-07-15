@@ -400,11 +400,35 @@ export function validateRegistry(registry, packageLock) {
       `${wave} must be recorded as completed in the foundation registry`,
     );
   }
+  const completedWaves = new Set(
+    registry.taskGraph.filter((task) => task.status === 'completed').map((task) => task.wave),
+  );
+  for (const task of registry.taskGraph) {
+    invariant(
+      task.status === 'completed' || task.status === 'active',
+      `FHIR task ${task.wave} has unsupported status`,
+    );
+    if (task.status === 'completed') {
+      invariant(
+        task.planStatus === undefined,
+        `completed FHIR task ${task.wave} must not carry an active Plans status`,
+      );
+      const unresolvedDependencies = activeDependencies(task, completedWaves);
+      invariant(
+        unresolvedDependencies.length === 0,
+        `FHIR task ${task.wave} completed before dependencies`,
+        unresolvedDependencies,
+      );
+      continue;
+    }
+    invariant(
+      typeof task.planStatus === 'string',
+      `active FHIR task ${task.wave} must carry a Plans status`,
+    );
+  }
   invariant(
-    registry.taskGraph
-      .filter((task) => !['A0', 'A1'].includes(task.wave))
-      .every((task) => task.status === 'active' && typeof task.planStatus === 'string'),
-    'remaining FHIR tasks must be active and carry a Plans status',
+    registry.taskGraph.filter((task) => task.status === 'active').length > 0,
+    'FHIR task graph must retain unfinished implementation work',
   );
 
   validatePackageLock(packageLock);

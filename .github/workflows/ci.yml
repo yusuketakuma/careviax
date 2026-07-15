@@ -79,6 +79,9 @@ jobs:
       - name: FHIR native foundation drift check
         run: pnpm fhir-native:foundation:check
 
+      - name: FHIR native legacy inventory drift check
+        run: pnpm fhir-native:legacy-inventory:check
+
       - name: DB query shape check
         run: pnpm db:query-shape:check
 

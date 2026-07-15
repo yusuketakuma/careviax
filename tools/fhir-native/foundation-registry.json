@@ -477,8 +477,7 @@
       "wave": "A2",
       "id": "FHIR-NATIVE-LEGACY-MIGRATION-001-INVENTORY",
       "dependsOn": ["A0"],
-      "status": "active",
-      "planStatus": "Not started"
+      "status": "completed"
     },
     {
       "wave": "A3",
