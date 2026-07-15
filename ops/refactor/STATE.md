@@ -64,7 +64,7 @@
 ## 直近の作業
 
 - codex1/codex2: CareViaX two-seat topology + FHIR Native A0/A1/A2 foundation
-  (A0/A1/A2 COMMITTED / A2 UNDER INDEPENDENT REVIEW / A3+A5 BLOCKED, 2026-07-15).
+  (A0/A1/A2 COMMITTED + INDEPENDENT ACCEPT / A3+A5 BLOCKED, 2026-07-15).
   - topology:
     agmsg identity/teamを`codex1`と`codex2`だけへ整理し、codex3/codex4/default codex登録を削除した。
     project-local custom-agent 27設定とregistryを削除し、`features.multi_agent=false`へ固定した
@@ -76,13 +76,24 @@
     well-formed wrong digest/source/base commit/incomplete coverageのnegative testを追加した。codex2が公式5 artifactを
     GET-only再取得して全hash一致とchecker/testを独立ACCEPTし、A0/A1を`8a6e19107`へcommitした。
   - A2 implementation / evidence:
-    SELECT-only static inventoryで45 schema surface、637 Prisma access group、17 raw SQL access group、17 code surface、
+    SELECT-only static inventoryで45 schema surface、661 Prisma access group、17 raw SQL access group、17 code surface、
     8 caller surfaceをdeterministic digestへ固定し、schema/column、reader/writer、raw SQL、DTO/export、route/job/caller、
-    owner-reviewのdriftをfail-closedにした（inventory `06ccebc0f`、completion ratchet `0a660cfc6`）。通常baselineはPASSし、`--require-zero`は残存638 blockerで
+    owner-reviewのdriftをfail-closedにした（inventory `06ccebc0f`、completion ratchet `0a660cfc6`）。初回commit後のrepo-wide再確認で
+    `prisma/seed.ts` / `prisma/seed-design-demo.ts`が`src`限定scopeの外にあり、13 Prisma access groupを棚卸しできていない
+    false-greenを検出した。production source rootへ`prisma`を追加し、digestを更新した（`48d6d9a54`）。codex2 reviewでさらに
+    variable raw SQLとPrisma delegate alias/destructuring/optional/dynamic accessが棚卸しをすり抜けるP1を2件検出したため、
+    TypeScript ASTでindirectionを分類し、未解決raw SQLは明示`dynamic_raw_sql` code surfaceで覆われない限り通常checkから
+    fail-closedにした（`8513e09d2`）。再レビューでinline template内の動的table identifierもゼロ一致として抜けるP1を検出し、
+    first argument以外のtemplateによる誤解決を拒否した（`85c19887d`）。全raw SQL invocationを既知table一致、exact
+    `dynamic_raw_sql`、またはhash/path/API/count固定の削除対象外面へ必ず分類し、既存14除外をすべてowner-review pendingとして
+    zero gateへ含めた（`8180c4e43`、digest `362395535161761c01a98505c5eb754b05a18b210fe4d255446a148f9afcc72f`）。
+    既知table literalと動的JOIN / `Prisma.raw`の混在もunresolvedへ戻す最終P1を`fd3d5f2cc`で閉じ、codex2がfocused
+    checker/testを再実行して`A2 FINAL ACCEPT fd3d5f2cc`を返した。
+    通常baselineはPASSし、`--require-zero`は残存671 blockerで
     意図どおりFAILする。CI/package scriptを追加し、初回full typecheckがtest fixtureのunchecked array accessを検出したため、
-    `any`を除去してowner-review存在guardを追加した。foundation+A2 checks、22 tests、exact ESLint/Prettier/diff、
+    `any`を除去してowner-review存在guardを追加した。foundation+A2 checks、26 tests、exact ESLint/Prettier/diff、
     `pnpm typecheck`、`pnpm typecheck:no-unused`は最終PASS。A2はactive Plans queueから除外し、後続taskの完了は
-    dependency closureを満たさない限り拒否する。codex2 independent review待ち。
+    dependency closureを満たさない限り拒否する。A2 independent reviewは完了済み。
   - blocked / next:
     A3はexact2のpure server-only設計・negative matrixまで完成したが、strict `gpt-5-pro` profileが未loginでOracle gateが
     timeoutし、256 KiB/2 MiB budgetとsource policyも未批准のため実装NO-GOを維持する。fallback/duplicate consultは行わない。
