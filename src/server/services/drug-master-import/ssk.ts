@@ -1,15 +1,23 @@
 import { Prisma, PrismaClient } from '@prisma/client';
+import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { parseSourceDate, type SourceDateInvalidReason } from '@/lib/validations/date-key';
 import {
   FetchLike,
   SSK_IMPORT_URL_POLICY,
   ZipExpansionLimits,
+  assertDateQuarantineAllowsImport,
+  createDateQuarantineSummary,
+  dateQuarantineSummaryFields,
+  type DateQuarantineSummary,
+  extractStrictImportSourceDateFromUrl,
   fetchBytes,
   fetchText,
+  recordDateQuarantine,
+  resolveDateQuarantineImportMode,
   normalizeCell,
   normalizePreviewRowLimit,
   normalizeImportSourceUrl,
   resolveImportSourceUrl,
-  extractImportSourceDateFromUrl,
   sha256ImportPayload,
   splitDelimitedLine,
   unzipWithLimits,
@@ -66,6 +74,8 @@ export type ParsedSskDrugMasterFile = {
   zipUrl: string;
   sourceFileHash: string;
   records: ParsedSskDrugMasterRecord[];
+  candidateRecordCount: number;
+  dateQuarantine: DateQuarantineSummary;
 };
 
 export type SskDrugMasterZipPayload = {
@@ -109,6 +119,10 @@ export type SskDrugMasterImportPreview = {
       update_count: number;
       unchanged_count: number;
       sampled_rows: number;
+      quarantined_date_records?: number;
+      quarantine_invalid_format_count?: number;
+      quarantine_invalid_calendar_date_count?: number;
+      quarantine_invalid_era_boundary_count?: number;
     };
     rows: SskDrugMasterImportPreviewRow[];
   };
@@ -141,17 +155,6 @@ function parseGenericName(value: string | null) {
   return value.replace(/^【般】/, '').trim() || null;
 }
 
-function parseSskDate(value: string | null) {
-  if (!value || value === '0' || value === '99999999') return null;
-  if (!/^\d{8}$/.test(value)) return null;
-
-  const year = Number(value.slice(0, 4));
-  const month = Number(value.slice(4, 6));
-  const day = Number(value.slice(6, 8));
-
-  return new Date(Date.UTC(year, month - 1, day));
-}
-
 function parseDosageForm(code: string | null) {
   if (!code) return null;
   return SSK_DOSAGE_FORM_MAP[code] ?? null;
@@ -164,7 +167,8 @@ function differenceInDays(from: Date, to: Date) {
 function parseMaxAdministrationDays(listedAt: Date | null, now = new Date()) {
   if (!listedAt) return null;
 
-  const daysSinceListing = differenceInDays(listedAt, now);
+  const currentBusinessDate = utcDateFromLocalKey(japanDateKey(now));
+  const daysSinceListing = differenceInDays(listedAt, currentBusinessDate);
   if (daysSinceListing < 0 || daysSinceListing > ONE_YEAR_IN_DAYS) {
     return null;
   }
@@ -180,34 +184,53 @@ function parseControlledDrugFlags(code: string | null) {
   };
 }
 
-function mapSskRowToDrugMaster(row: string[]): ParsedSskDrugMasterRecord | null {
-  if (row.length < SSK_TOTAL_COLUMNS) return null;
+type SskRowParseResult =
+  | { status: 'skipped' }
+  | { status: 'quarantined'; reason: SourceDateInvalidReason }
+  | { status: 'record'; record: ParsedSskDrugMasterRecord };
+
+function mapSskRowToDrugMaster(row: string[]): SskRowParseResult {
+  if (row.length < SSK_TOTAL_COLUMNS) return { status: 'skipped' };
 
   const yjCode = normalizeCell(row[31]);
   const productName = normalizeCell(row[34]) ?? normalizeCell(row[4]);
-  if (!yjCode || !productName) return null;
-  const listedAt = parseSskDate(normalizeCell(row[35]));
+  if (!yjCode || !productName) return { status: 'skipped' };
+  const listedAt = parseSourceDate(normalizeCell(row[35]), 'ssk');
+  const transitionalExpiry = parseSourceDate(normalizeCell(row[33]), 'ssk');
+  const invalidDate =
+    listedAt.status === 'invalid'
+      ? listedAt
+      : transitionalExpiry.status === 'invalid'
+        ? transitionalExpiry
+        : null;
+  if (invalidDate) return { status: 'quarantined', reason: invalidDate.reason };
 
   const controlledFlags = parseControlledDrugFlags(normalizeCell(row[13]));
 
   return {
-    receipt_code: normalizeCell(row[2]),
-    yj_code: yjCode,
-    drug_name: productName,
-    drug_name_kana: normalizeCell(row[6]),
-    generic_name: parseGenericName(normalizeCell(row[37])),
-    drug_price: parseSskDecimal(normalizeCell(row[11])),
-    unit: normalizeCell(row[9]),
-    dosage_form: parseDosageForm(normalizeCell(row[27])),
-    therapeutic_category: yjCode.slice(0, 4) || null,
-    manufacturer: null,
-    is_generic: normalizeCell(row[16]) === '1',
-    is_narcotic: controlledFlags.is_narcotic,
-    is_psychotropic: controlledFlags.is_psychotropic,
-    is_biologic: normalizeCell(row[15]) === '1',
-    max_administration_days: parseMaxAdministrationDays(listedAt),
-    transitional_expiry_date: parseSskDate(normalizeCell(row[33])),
-    raw_row: row,
+    status: 'record',
+    record: {
+      receipt_code: normalizeCell(row[2]),
+      yj_code: yjCode,
+      drug_name: productName,
+      drug_name_kana: normalizeCell(row[6]),
+      generic_name: parseGenericName(normalizeCell(row[37])),
+      drug_price: parseSskDecimal(normalizeCell(row[11])),
+      unit: normalizeCell(row[9]),
+      dosage_form: parseDosageForm(normalizeCell(row[27])),
+      therapeutic_category: yjCode.slice(0, 4) || null,
+      manufacturer: null,
+      is_generic: normalizeCell(row[16]) === '1',
+      is_narcotic: controlledFlags.is_narcotic,
+      is_psychotropic: controlledFlags.is_psychotropic,
+      is_biologic: normalizeCell(row[15]) === '1',
+      max_administration_days: parseMaxAdministrationDays(
+        listedAt.status === 'valid' ? listedAt.date : null,
+      ),
+      transitional_expiry_date:
+        transitionalExpiry.status === 'valid' ? transitionalExpiry.date : null,
+      raw_row: row,
+    },
   };
 }
 
@@ -320,10 +343,18 @@ export async function parseSskDrugMasterZip(
   const csvText = new TextDecoder('shift_jis').decode(entryBytes);
   const lines = csvText.split(/\r?\n/).filter((line) => line.trim().length > 0);
   const deduped = new Map<string, ParsedSskDrugMasterRecord>();
+  const dateQuarantine = createDateQuarantineSummary();
+  let candidateRecordCount = 0;
 
   for (const line of lines) {
-    const record = mapSskRowToDrugMaster(splitDelimitedLine(line));
-    if (!record) continue;
+    const parsedRow = mapSskRowToDrugMaster(splitDelimitedLine(line));
+    if (parsedRow.status === 'skipped') continue;
+    candidateRecordCount += 1;
+    if (parsedRow.status === 'quarantined') {
+      recordDateQuarantine(dateQuarantine, parsedRow.reason);
+      continue;
+    }
+    const { record } = parsedRow;
 
     const current = deduped.get(record.yj_code);
     if (!current || shouldReplaceRecord(current, record)) {
@@ -340,6 +371,8 @@ export async function parseSskDrugMasterZip(
     zipUrl: zipPayload.zipUrl,
     sourceFileHash: zipPayload.sourceFileHash,
     records: [...deduped.values()],
+    candidateRecordCount,
+    dateQuarantine,
   };
 }
 
@@ -443,6 +476,9 @@ export async function previewSskDrugMasterImport(
   options: PreviewSskDrugMasterImportOptions = {},
 ): Promise<SskDrugMasterImportPreview> {
   const parsed = await parseSskDrugMasterZip(options);
+  const sourcePublishedAt = extractStrictImportSourceDateFromUrl(parsed.zipUrl, [
+    /y_ALL(\d{8})\.zip/i,
+  ]);
   const previewLimit = normalizePreviewRowLimit(options.previewLimit);
   const existingByYjCode = await fetchExistingSskDrugMastersByYjCode(
     db,
@@ -491,8 +527,7 @@ export async function previewSskDrugMasterImport(
     entryName: parsed.entryName,
     zipUrl: parsed.zipUrl,
     sourceFileHash: parsed.sourceFileHash,
-    sourcePublishedAt:
-      extractImportSourceDateFromUrl(parsed.zipUrl, [/y_ALL(\d{8})\.zip/i])?.toISOString() ?? null,
+    sourcePublishedAt: sourcePublishedAt?.toISOString() ?? null,
     preview: {
       summary: {
         parsed_records: parsed.records.length,
@@ -500,6 +535,7 @@ export async function previewSskDrugMasterImport(
         update_count: updateCount,
         unchanged_count: unchangedCount,
         sampled_rows: rows.length,
+        ...dateQuarantineSummaryFields(parsed.dateQuarantine),
       },
       rows,
     },
@@ -520,6 +556,11 @@ export async function importSskDrugMaster(
 
   try {
     const parsed = await parseSskDrugMasterZip(options);
+    const sourcePublishedAt = extractStrictImportSourceDateFromUrl(parsed.zipUrl, [
+      /y_ALL(\d{8})\.zip/i,
+    ]);
+    assertDateQuarantineAllowsImport(parsed.records.length, parsed.dateQuarantine);
+    const importMode = resolveDateQuarantineImportMode('full', parsed.dateQuarantine);
 
     for (let index = 0; index < parsed.records.length; index += UPSERT_CHUNK_SIZE) {
       await upsertDrugMasterChunk(db, parsed.records.slice(index, index + UPSERT_CHUNK_SIZE));
@@ -532,13 +573,14 @@ export async function importSskDrugMaster(
         record_count: parsed.records.length,
         source_url: parsed.zipUrl,
         source_file_hash: parsed.sourceFileHash,
-        source_published_at: extractImportSourceDateFromUrl(parsed.zipUrl, [/y_ALL(\d{8})\.zip/i]),
-        import_mode: 'full',
+        source_published_at: sourcePublishedAt,
+        import_mode: importMode,
         change_summary: {
-          mode: 'full',
+          mode: importMode,
           parsed_records: parsed.records.length,
           imported_records: parsed.records.length,
           entry_name: parsed.entryName,
+          ...dateQuarantineSummaryFields(parsed.dateQuarantine),
         },
       },
     });

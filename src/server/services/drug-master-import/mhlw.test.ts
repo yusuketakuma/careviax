@@ -155,6 +155,28 @@ describe('resolveLatestMhlwPriceWorkbookUrl', () => {
     });
   });
 
+  it('fails a matched invalid applicable date with a fixed source-date code', () => {
+    const html = `
+      <a href="/topics/2026/04/tp20260401-01.html">薬価基準収載品目（令和8年2月30日適用）</a>
+    `;
+
+    expect(() => resolveLatestMhlwPriceListPageMetadata(html)).toThrow(
+      'DRUG_MASTER_SOURCE_DATE_INVALID',
+    );
+  });
+
+  it('does not treat an era-only fiscal-year mention as an applicable date candidate', () => {
+    const html = `
+      <h1>令和8年度の薬価改定資料</h1>
+      <a href="/topics/2026/04/tp20260401-01.html">薬価基準収載品目リスト</a>
+    `;
+
+    expect(resolveLatestMhlwPriceListPageMetadata(html)).toEqual({
+      priceListPageUrl: 'https://www.mhlw.go.jp/topics/2026/04/tp20260401-01.html',
+      applicableDate: null,
+    });
+  });
+
   it('extracts the latest price workbook url from the index page', () => {
     const html = `
       <ul>
@@ -430,6 +452,80 @@ describe('importMhlwPriceList', () => {
     );
   });
 
+  it('quarantines invalid date rows and persists a bounded partial-import summary', async () => {
+    const workbook = await workbookBlob({
+      ＨＰ用: [
+        ['区分', '薬価基準収載医薬品コード', '品名', '薬価', '経過措置による使用期限'],
+        ['内用薬', '1124001F1022', 'VALID-DRUG', '6.30', '2027/03/31'],
+        ['内用薬', '1124001F1030', 'SECRET-DRUG', '7.10', '2027/02/30'],
+      ],
+    });
+
+    const result = await importMhlwPriceList(db, {
+      workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260520-01_01.xlsx',
+      fetchImpl: async () => toWorkbookResponse(workbook),
+    });
+
+    expect(result.importedCount).toBe(1);
+    expect(db.drugMaster.upsert).toHaveBeenCalledOnce();
+    const completedUpdate = db.drugMasterImportLog.update.mock.calls.at(-1)?.[0];
+    expect(completedUpdate).toEqual({
+      where: { id: 'log_1' },
+      data: expect.objectContaining({
+        status: 'completed',
+        record_count: 1,
+        import_mode: 'partial',
+        change_summary: expect.objectContaining({
+          mode: 'partial',
+          parsed_records: 1,
+          imported_records: 1,
+          quarantined_date_records: 1,
+          quarantine_invalid_format_count: 0,
+          quarantine_invalid_calendar_date_count: 1,
+          quarantine_invalid_era_boundary_count: 0,
+        }),
+      }),
+    });
+    expect(JSON.stringify(completedUpdate)).not.toMatch(/SECRET-DRUG|2027\/02\/30|1124001F1030/);
+  });
+
+  it('fails before price or version writes when all candidate dates are quarantined', async () => {
+    const workbook = await workbookBlob({
+      ＨＰ用: [
+        ['区分', '薬価基準収載医薬品コード', '品名', '薬価', '経過措置による使用期限'],
+        ['内用薬', '1124001F1030', 'SECRET-DRUG', '7.10', '2027/02/30'],
+      ],
+    });
+
+    await expect(
+      importMhlwPriceList(db, {
+        workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260520-01_01.xlsx',
+        fetchImpl: async () => toWorkbookResponse(workbook),
+      }),
+    ).rejects.toThrow('DRUG_MASTER_DATE_ALL_ROWS_QUARANTINED');
+    expect(db.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(db.drugMaster.upsert).not.toHaveBeenCalled();
+    expect(db.drugPriceVersion.create).not.toHaveBeenCalled();
+    expect(db.drugMasterChangeEvent.create).not.toHaveBeenCalled();
+    expect(JSON.stringify(db.drugMasterImportLog.update.mock.calls)).not.toMatch(
+      /SECRET-DRUG|2027\/02\/30|1124001F1030/,
+    );
+  });
+
+  it('fails a matched-invalid workbook date before fetch or database writes', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+
+    await expect(
+      importMhlwPriceList(db, {
+        workbookUrl: 'https://www.mhlw.go.jp/topics/xls/tp20260230-01_01.xlsx',
+        fetchImpl,
+      }),
+    ).rejects.toThrow('DRUG_MASTER_SOURCE_DATE_INVALID');
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(db.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(db.drugMaster.upsert).not.toHaveBeenCalled();
+  });
+
   it('closes prior open price versions in the same transaction when creating a newer version', async () => {
     const workbook = await workbookBlob({
       ＨＰ用: [
@@ -670,6 +766,33 @@ describe('importMhlwPriceList', () => {
     ]);
     expect(db.drugMaster.upsert).not.toHaveBeenCalled();
     expect(db.drugMasterChangeEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('exposes only bounded date-quarantine counters in the price preview', async () => {
+    const workbook = await workbookBlob({
+      ＨＰ用: [
+        ['区分', '薬価基準収載医薬品コード', '品名', '薬価', '経過措置による使用期限'],
+        ['内用薬', '1124001F1022', 'VALID-DRUG', '6.30', '2027/03/31'],
+        ['内用薬', '1124001F1030', 'SECRET-DRUG', '7.10', '2027/02/30'],
+      ],
+    });
+
+    const result = await previewMhlwPriceList(db, {
+      workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260520-01_01.xlsx',
+      fetchImpl: async () => toWorkbookResponse(workbook),
+      previewLimit: 10,
+    });
+
+    expect(result.preview.summary).toMatchObject({
+      parsed_records: 1,
+      drug_master_upsert_count: 1,
+      quarantined_date_records: 1,
+      quarantine_invalid_format_count: 0,
+      quarantine_invalid_calendar_date_count: 1,
+      quarantine_invalid_era_boundary_count: 0,
+    });
+    expect(result.preview.rows).toHaveLength(1);
+    expect(JSON.stringify(result.preview)).not.toMatch(/SECRET-DRUG|2027\/02\/30|1124001F1030/);
   });
 
   it('previews MHLW price upserts and change events without writing rows', async () => {
@@ -963,6 +1086,24 @@ describe('importMhlwGenericFlags', () => {
         },
       }),
     });
+  });
+
+  it('fails matched-invalid generic-flag provenance before DrugMaster writes', async () => {
+    const workbook = await workbookBlob({
+      ＨＰ用: [
+        ['区分', '薬価基準収載医薬品コード', '品名'],
+        ['内用薬', '1124001F1030', 'エスタゾラム錠'],
+      ],
+    });
+
+    await expect(
+      importMhlwGenericFlags(db, {
+        workbookUrl: 'https://www.mhlw.go.jp/topics/xls/tp20260230-01_01.xlsx',
+        fetchImpl: async () => toWorkbookResponse(workbook),
+      }),
+    ).rejects.toThrow('DRUG_MASTER_SOURCE_DATE_INVALID');
+    expect(db.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(db.drugMaster.upsert).not.toHaveBeenCalled();
   });
 });
 
@@ -1274,6 +1415,21 @@ describe('importGenericNameMappings', () => {
         }),
       }),
     });
+  });
+
+  it('fails matched-invalid mapping provenance before replacing any mappings', async () => {
+    const workbook = await genericNameWorkbookBlob();
+
+    await expect(
+      importGenericNameMappings(db, {
+        workbookUrl:
+          'https://www.mhlw.go.jp/seisakunitsuite/bunya/kenkou_iryou/iryouhoken/dl/ippanmeishohoumaster_260230.xlsx',
+        fetchImpl: async () => toWorkbookResponse(workbook),
+      }),
+    ).rejects.toThrow('DRUG_MASTER_SOURCE_DATE_INVALID');
+    expect(db.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(db.genericDrugMapping.deleteMany).not.toHaveBeenCalled();
+    expect(db.genericDrugMapping.create).not.toHaveBeenCalled();
   });
 });
 

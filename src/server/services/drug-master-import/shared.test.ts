@@ -13,12 +13,19 @@ vi.mock('@/lib/utils/logger', () => ({
 
 import {
   MHLW_IMPORT_URL_POLICY,
+  ALL_DATE_ROWS_QUARANTINED_CODE,
+  INVALID_IMPORT_SOURCE_DATE_CODE,
+  assertDateQuarantineAllowsImport,
+  createDateQuarantineSummary,
   extractImportSourceDateFromUrl,
+  extractStrictImportSourceDateFromUrl,
+  extractStrictJapaneseEraApplicableDateText,
   fetchBytes,
   normalizePreviewRowLimit,
   parseDelimitedRows,
   parseImportSourceDateToken,
   parseJapaneseEraApplicableDateText,
+  recordDateQuarantine,
   readDelimitedCell,
   stripBom,
   unzipWithLimits,
@@ -87,6 +94,24 @@ describe('import source date helpers', () => {
     expect(parseImportSourceDateToken('20260611')?.toISOString()).toBe('2026-06-11T00:00:00.000Z');
     expect(parseImportSourceDateToken('260401')?.toISOString()).toBe('2026-04-01T00:00:00.000Z');
     expect(parseImportSourceDateToken('not-a-date')).toBeNull();
+    expect(parseImportSourceDateToken('20260230')).toBeNull();
+    expect(parseImportSourceDateToken('260230')).toBeNull();
+  });
+
+  it('fails a matched invalid source date with a fixed raw-free code', () => {
+    const sourceUrl = 'https://www.mhlw.go.jp/topics/xls/tp20260230-secret-01.xlsx';
+    expect(() => extractStrictImportSourceDateFromUrl(sourceUrl, [/tp(\d{8})-/i])).toThrow(
+      INVALID_IMPORT_SOURCE_DATE_CODE,
+    );
+    try {
+      extractStrictImportSourceDateFromUrl(sourceUrl, [/tp(\d{8})-/i]);
+    } catch (error) {
+      expect((error as Error).message).toBe(INVALID_IMPORT_SOURCE_DATE_CODE);
+      expect((error as Error).message).not.toMatch(/20260230|secret/);
+    }
+    expect(
+      extractStrictImportSourceDateFromUrl('https://www.mhlw.go.jp/file.xlsx', [/tp(\d{8})-/i]),
+    ).toBeNull();
   });
 
   it('extracts publication dates from source URLs only through caller-supplied patterns', () => {
@@ -103,6 +128,25 @@ describe('import source date helpers', () => {
     ).toBeNull();
   });
 
+  it('derives provenance from pathname only and rejects malformed URLs with a fixed code', () => {
+    const pattern = /tp(\d{8})-/i;
+    expect(
+      extractStrictImportSourceDateFromUrl(
+        'https://www.mhlw.go.jp/file.xlsx?ref=tp20260230-secret-01#tp20260401-',
+        [pattern],
+      ),
+    ).toBeNull();
+    expect(
+      extractStrictImportSourceDateFromUrl(
+        'https://www.mhlw.go.jp/tp20260401-file.xlsx?ref=tp20260230-',
+        [pattern],
+      )?.toISOString(),
+    ).toBe('2026-04-01T00:00:00.000Z');
+    expect(() => extractStrictImportSourceDateFromUrl('not a url secret', [pattern])).toThrow(
+      INVALID_IMPORT_SOURCE_DATE_CODE,
+    );
+  });
+
   it('parses Japanese era applicable dates without timezone drift', () => {
     expect(parseJapaneseEraApplicableDateText('令和8年5月20日適用')?.toISOString()).toBe(
       '2026-05-20T00:00:00.000Z',
@@ -110,12 +154,40 @@ describe('import source date helpers', () => {
     expect(parseJapaneseEraApplicableDateText('令和８年５月２０日')?.toISOString()).toBe(
       '2026-05-20T00:00:00.000Z',
     );
+    expect(parseJapaneseEraApplicableDateText('令和元年5月1日')?.toISOString()).toBe(
+      '2019-05-01T00:00:00.000Z',
+    );
     expect(parseJapaneseEraApplicableDateText('平成1年1月8日適用')?.toISOString()).toBe(
       '1989-01-08T00:00:00.000Z',
     );
     expect(parseJapaneseEraApplicableDateText('令和8年13月1日適用')).toBeNull();
     expect(parseJapaneseEraApplicableDateText('令和8年2月31日適用')).toBeNull();
+    expect(parseJapaneseEraApplicableDateText('平成1年1月7日適用')).toBeNull();
     expect(parseJapaneseEraApplicableDateText('適用日未掲載')).toBeNull();
+    expect(parseJapaneseEraApplicableDateText('令和8年度の薬価改定資料')).toBeNull();
+    expect(() =>
+      extractStrictJapaneseEraApplicableDateText('令和8年度の薬価改定資料'),
+    ).not.toThrow();
+    expect(() => extractStrictJapaneseEraApplicableDateText('令和8年2月31日適用')).toThrow(
+      INVALID_IMPORT_SOURCE_DATE_CODE,
+    );
+  });
+
+  it('counts fixed quarantine reasons and rejects an all-quarantined import', () => {
+    const summary = createDateQuarantineSummary();
+    recordDateQuarantine(summary, 'invalid_format');
+    recordDateQuarantine(summary, 'invalid_calendar_date');
+    recordDateQuarantine(summary, 'invalid_era_boundary');
+    expect(summary).toEqual({
+      quarantinedDateRecords: 3,
+      invalidFormatCount: 1,
+      invalidCalendarDateCount: 1,
+      invalidEraBoundaryCount: 1,
+    });
+    expect(() => assertDateQuarantineAllowsImport(0, summary)).toThrow(
+      ALL_DATE_ROWS_QUARANTINED_CODE,
+    );
+    expect(() => assertDateQuarantineAllowsImport(1, summary)).not.toThrow();
   });
 });
 

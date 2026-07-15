@@ -199,6 +199,7 @@ export function formatImportPublishedAt(value: string) {
 
 export function formatImportMode(value: string) {
   if (value === 'full') return '全件';
+  if (value === 'partial') return '一部取込（隔離あり）';
   if (value === 'delta') return '差分';
   if (value === 'manual') return '手動';
   return value;
@@ -220,6 +221,17 @@ export function formatImportChangeSummary(summary: unknown) {
     'skipped_unmatched_primary_records',
   );
   const workbookCount = readImportSummaryNumber(summary, 'workbook_count');
+  const quarantinedDateRecords = readImportSummaryNumber(summary, 'quarantined_date_records');
+  const invalidDateFormat = readImportSummaryNumber(summary, 'quarantine_invalid_format_count');
+  const invalidCalendarDate = readImportSummaryNumber(
+    summary,
+    'quarantine_invalid_calendar_date_count',
+  );
+  const invalidEraBoundary = readImportSummaryNumber(
+    summary,
+    'quarantine_invalid_era_boundary_count',
+  );
+  const recognizedMonthPrecision = readImportSummaryNumber(summary, 'recognized_month_precision');
   const parts: string[] = [];
 
   if (workbookCount != null) parts.push(`file ${workbookCount.toLocaleString()}件`);
@@ -228,6 +240,14 @@ export function formatImportChangeSummary(summary: unknown) {
   if (changes != null) parts.push(`差分 ${changes.toLocaleString()}件`);
   const skipped = (skippedMissingYj ?? 0) + (skippedUnmatchedPrimary ?? 0);
   if (skipped > 0) parts.push(`skip ${skipped.toLocaleString()}件`);
+  if (quarantinedDateRecords != null && quarantinedDateRecords > 0) {
+    parts.push(
+      `日付隔離 ${quarantinedDateRecords.toLocaleString()}件（形式 ${(invalidDateFormat ?? 0).toLocaleString()} / 暦 ${(invalidCalendarDate ?? 0).toLocaleString()} / 元号 ${(invalidEraBoundary ?? 0).toLocaleString()}）`,
+    );
+  }
+  if (recognizedMonthPrecision != null && recognizedMonthPrecision > 0) {
+    parts.push(`月精度認識 ${recognizedMonthPrecision.toLocaleString()}件`);
+  }
 
   return parts.length > 0 ? parts.join(' / ') : null;
 }
@@ -261,6 +281,21 @@ export function formatOfficialImportPreviewSummary(summary: unknown) {
   pushOfficialPreviewCountPart(parts, summary, 'skipped_missing_yj', 'YJ欠損');
   pushOfficialPreviewCountPart(parts, summary, 'skipped_package_conflict_count', '包装競合');
   pushOfficialPreviewCountPart(parts, summary, 'skipped_unmatched_primary_records', '未照合');
+  pushOfficialPreviewCountPart(parts, summary, 'quarantined_date_records', '日付隔離');
+  pushOfficialPreviewCountPart(parts, summary, 'quarantine_invalid_format_count', '日付形式不正');
+  pushOfficialPreviewCountPart(
+    parts,
+    summary,
+    'quarantine_invalid_calendar_date_count',
+    '暦日不正',
+  );
+  pushOfficialPreviewCountPart(
+    parts,
+    summary,
+    'quarantine_invalid_era_boundary_count',
+    '元号境界不正',
+  );
+  pushOfficialPreviewCountPart(parts, summary, 'recognized_month_precision', '月精度認識');
   pushOfficialPreviewCountPart(parts, summary, 'sampled_rows', 'sample');
 
   return parts.length > 0 ? parts.join(' / ') : '差分なし';

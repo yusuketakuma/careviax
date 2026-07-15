@@ -1,19 +1,26 @@
 import { InteractionSeverity, InteractionSource } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { XMLParser } from 'fast-xml-parser';
+import type { SourceDateInvalidReason } from '@/lib/validations/date-key';
 import {
   decodeTextBuffer,
   FetchLike,
   PMDA_IMPORT_URL_POLICY,
   type DrugMasterImportLogDbClient,
   ZipExpansionLimits,
+  assertDateQuarantineAllowsImport,
+  createDateQuarantineSummary,
+  dateQuarantineSummaryFields,
+  type DateQuarantineSummary,
+  extractStrictImportSourceDateFromUrl,
   fetchBytes,
-  extractImportSourceDateFromUrl,
   isZipBuffer,
   normalizeCell,
   normalizeImportSourceUrl,
   normalizePreviewRowLimit,
-  parseDate,
+  parseDrugMasterDate,
+  recordDateQuarantine,
+  resolveDateQuarantineImportMode,
   sha256ImportPayload,
   unzipWithLimits,
   withImportLog,
@@ -45,11 +52,27 @@ type ParsedPmdaInteractionCandidate = {
   clinical_effect: string | null;
 };
 
-type ParsedPmdaPackageInsertRecord = {
+type ParsedPmdaRevisionFields =
+  | {
+      revision_date_precision: 'exact';
+      revision_month_key: string;
+      revised_at: Date;
+    }
+  | {
+      revision_date_precision: 'month';
+      revision_month_key: string;
+      revised_at: null;
+    }
+  | {
+      revision_date_precision: 'missing';
+      revision_month_key: null;
+      revised_at: null;
+    };
+
+type ParsedPmdaPackageInsertRecord = ParsedPmdaRevisionFields & {
   yj_code: string | null;
   drug_name: string | null;
   document_version: string | null;
-  revised_at: Date | null;
   contraindications: string[];
   interaction_summaries: {
     contraindicated: string[];
@@ -100,6 +123,11 @@ export type PmdaPackageInsertImportPreview = {
       unchanged_count: number;
       matched_interaction_pair_count: number;
       sampled_rows: number;
+      quarantined_date_records?: number;
+      quarantine_invalid_format_count?: number;
+      quarantine_invalid_calendar_date_count?: number;
+      quarantine_invalid_era_boundary_count?: number;
+      recognized_month_precision?: number;
     };
     rows: PmdaPackageInsertPreviewRow[];
   };
@@ -192,6 +220,142 @@ function firstMatchingText(node: unknown, patterns: RegExp[]) {
     }
   });
   return values[0] ?? null;
+}
+
+type PmdaRevisionParseResult =
+  | {
+      status: 'valid';
+      fields: ParsedPmdaRevisionFields;
+      documentVersion?: string | null;
+    }
+  | { status: 'invalid'; reason: SourceDateInvalidReason };
+
+function findFirstExactKey(node: unknown, targetKey: string): { found: boolean; value?: unknown } {
+  if (Array.isArray(node)) {
+    for (const value of node) {
+      const result = findFirstExactKey(value, targetKey);
+      if (result.found) return result;
+    }
+    return { found: false };
+  }
+
+  if (!node || typeof node !== 'object') return { found: false };
+  const record = node as Record<string, unknown>;
+  if (Object.hasOwn(record, targetKey)) {
+    return { found: true, value: record[targetKey] };
+  }
+  for (const value of Object.values(record)) {
+    const result = findFirstExactKey(value, targetKey);
+    if (result.found) return result;
+  }
+  return { found: false };
+}
+
+function readPmdaTextNode(node: unknown): string | null {
+  if (typeof node === 'string') return normalizeCell(node);
+  if (Array.isArray(node)) {
+    for (const value of node) {
+      const text = readPmdaTextNode(value);
+      if (text) return text;
+    }
+    return null;
+  }
+  if (!node || typeof node !== 'object') return null;
+  return readPmdaTextNode((node as Record<string, unknown>)['#text']);
+}
+
+function parseOfficialPmdaYearMonth(value: string | null): PmdaRevisionParseResult {
+  if (!value) {
+    return {
+      status: 'valid',
+      fields: {
+        revision_date_precision: 'missing',
+        revision_month_key: null,
+        revised_at: null,
+      },
+    };
+  }
+
+  const monthMatch = /^(\d{4})-(\d{2})$/.exec(value);
+  if (monthMatch) {
+    const year = Number(monthMatch[1]);
+    const month = Number(monthMatch[2]);
+    if (year < 1 || month < 1 || month > 12) {
+      return { status: 'invalid', reason: 'invalid_calendar_date' };
+    }
+    return {
+      status: 'valid',
+      fields: {
+        revision_date_precision: 'month',
+        revision_month_key: value,
+        revised_at: null,
+      },
+    };
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return { status: 'invalid', reason: 'invalid_format' };
+  }
+  const parsed = parseDrugMasterDate(value);
+  if (parsed.status === 'invalid') return parsed;
+  if (parsed.status !== 'valid') return { status: 'invalid', reason: 'invalid_format' };
+  return {
+    status: 'valid',
+    fields: {
+      revision_date_precision: 'exact',
+      revision_month_key: parsed.dateKey.slice(0, 7),
+      revised_at: parsed.date,
+    },
+  };
+}
+
+function parseLegacyPmdaRevisionDate(value: string | null): PmdaRevisionParseResult {
+  const parsed = parseDrugMasterDate(value);
+  if (parsed.status === 'invalid') return parsed;
+  if (parsed.status === 'valid') {
+    return {
+      status: 'valid',
+      fields: {
+        revision_date_precision: 'exact',
+        revision_month_key: parsed.dateKey.slice(0, 7),
+        revised_at: parsed.date,
+      },
+    };
+  }
+  return parseOfficialPmdaYearMonth(null);
+}
+
+function parseCurrentPmdaRevisionDate(xml: unknown): PmdaRevisionParseResult {
+  const officialContainer = findFirstExactKey(xml, 'DateOfPreparationOrRevision');
+  if (!officialContainer.found) {
+    return parseLegacyPmdaRevisionDate(
+      firstMatchingText(xml, [/改訂年月/, /改訂日/, /作成又は改訂年月日/, /revision.?date/i]),
+    );
+  }
+
+  if (!officialContainer.value || typeof officialContainer.value !== 'object') {
+    return { status: 'invalid', reason: 'invalid_format' };
+  }
+  const revisionsNode = (officialContainer.value as Record<string, unknown>)[
+    'PreparationOrRevision'
+  ];
+  const revisions = Array.isArray(revisionsNode) ? revisionsNode : [revisionsNode];
+  const current = revisions.find(
+    (revision) =>
+      revision != null &&
+      typeof revision === 'object' &&
+      normalizeCell((revision as Record<string, unknown>)['@_id'] as string | undefined) === '今回',
+  );
+  if (!current || typeof current !== 'object') {
+    return { status: 'invalid', reason: 'invalid_format' };
+  }
+  const currentRecord = current as Record<string, unknown>;
+  const parsed = parseOfficialPmdaYearMonth(readPmdaTextNode(currentRecord['YearMonth']));
+  if (parsed.status === 'invalid') return parsed;
+  return {
+    ...parsed,
+    documentVersion: readPmdaTextNode(currentRecord['Version']),
+  };
 }
 
 function collectMatchingTexts(node: unknown, patterns: RegExp[]) {
@@ -294,20 +458,30 @@ function dedupeInteractionCandidates(candidates: ParsedPmdaInteractionCandidate[
   return deduped;
 }
 
-function parsePmdaXmlDocument(xmlText: string): ParsedPmdaPackageInsertRecord {
+function parsePmdaXmlDocument(
+  xmlText: string,
+  dateQuarantine: DateQuarantineSummary,
+): ParsedPmdaPackageInsertRecord | null {
   const xml = parser.parse(xmlText);
   const contraindicationSections = collectSectionsByTitle(xml, [/禁忌/]);
   const contraindicatedInteractionSections = collectSectionsByTitle(xml, [/併用禁忌/]);
   const cautionInteractionSections = collectSectionsByTitle(xml, [/併用注意/]);
   const adverseSections = collectSectionsByTitle(xml, [/重大な副作用/]);
   const dosageSections = collectSectionsByTitle(xml, [/用法及び用量/, /用法用量/]);
+  const revision = parseCurrentPmdaRevisionDate(xml);
+  if (revision.status === 'invalid') {
+    recordDateQuarantine(dateQuarantine, revision.reason);
+    return null;
+  }
 
   return {
+    ...revision.fields,
     yj_code: firstMatchingText(xml, [/薬価基準収載医薬品コード/, /YJ/i, /drug.?code/i]) ?? null,
     drug_name: firstMatchingText(xml, [/販売名/, /品名/, /医薬品名/, /drug.?name/i]) ?? null,
-    document_version: firstMatchingText(xml, [/版/, /version/i, /文書番号/, /document/i]) ?? null,
-    revised_at:
-      parseDate(firstMatchingText(xml, [/改訂年月/, /改訂日/, /作成又は改訂年月日/])) ?? null,
+    document_version:
+      revision.documentVersion !== undefined
+        ? revision.documentVersion
+        : (firstMatchingText(xml, [/版/, /^version$/i, /文書番号/, /document.?version/i]) ?? null),
     contraindications: contraindicationSections.flatMap((section) =>
       summarizeSection(section.value),
     ),
@@ -333,21 +507,37 @@ function parsePmdaXmlDocument(xmlText: string): ParsedPmdaPackageInsertRecord {
 export async function parsePmdaPackageInsertArchive(options: ImportPmdaPackageInsertOptions = {}) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const zipUrl = resolvePmdaArchiveUrl(options);
+  const sourcePublishedAt = extractStrictImportSourceDateFromUrl(zipUrl, [
+    /(?:^|[^\d])(\d{8})(?:[^\d]|$)/,
+  ]);
   const buffer = await fetchBytes(zipUrl, {
     fetchImpl,
     policy: PMDA_IMPORT_URL_POLICY,
   });
   const records: ParsedPmdaPackageInsertRecord[] = [];
+  const dateQuarantine = createDateQuarantineSummary();
+  let candidateRecordCount = 0;
+  let recognizedMonthPrecisionCount = 0;
 
   if (isZipBuffer(buffer) && !zipUrl.toLowerCase().endsWith('.xml')) {
     const entries = unzipPmdaPackageInsertArchive(new Uint8Array(buffer), options.zipLimits);
     for (const [entryName, bytes] of Object.entries(entries)) {
       if (!/\.xml$/i.test(entryName)) continue;
+      candidateRecordCount += 1;
       const xmlText = decodeTextBuffer(Buffer.from(bytes));
-      records.push(parsePmdaXmlDocument(xmlText));
+      const record = parsePmdaXmlDocument(xmlText, dateQuarantine);
+      if (record) {
+        records.push(record);
+        if (record.revision_date_precision === 'month') recognizedMonthPrecisionCount += 1;
+      }
     }
   } else {
-    records.push(parsePmdaXmlDocument(decodeTextBuffer(buffer)));
+    candidateRecordCount += 1;
+    const record = parsePmdaXmlDocument(decodeTextBuffer(buffer), dateQuarantine);
+    if (record) {
+      records.push(record);
+      if (record.revision_date_precision === 'month') recognizedMonthPrecisionCount += 1;
+    }
   }
 
   return {
@@ -355,6 +545,10 @@ export async function parsePmdaPackageInsertArchive(options: ImportPmdaPackageIn
     sourceFileHash: sha256ImportPayload(buffer),
     mode: options.mode ?? 'full',
     records,
+    candidateRecordCount,
+    dateQuarantine,
+    recognizedMonthPrecisionCount,
+    sourcePublishedAt,
   };
 }
 
@@ -405,6 +599,12 @@ function isPreviewValueEqual(left: unknown, right: unknown) {
   return stableStringify(left) === stableStringify(right);
 }
 
+function pmdaRevisionPrecisionSummaryFields(recognizedMonthPrecisionCount: number) {
+  return recognizedMonthPrecisionCount > 0
+    ? { recognized_month_precision: recognizedMonthPrecisionCount }
+    : {};
+}
+
 function changedPmdaPackageInsertFields(
   record: ParsedPmdaPackageInsertRecord,
   existing: {
@@ -437,11 +637,15 @@ function changedPmdaPackageInsertFields(
       next: record.document_version,
       current: existing.document_version,
     },
-    {
-      field: 'revised_at',
-      next: record.revised_at,
-      current: existing.revised_at,
-    },
+    ...(record.revision_date_precision === 'exact'
+      ? [
+          {
+            field: 'revised_at',
+            next: record.revised_at,
+            current: existing.revised_at,
+          },
+        ]
+      : []),
     {
       field: 'source_format',
       next: 'xml',
@@ -580,7 +784,7 @@ export async function previewPmdaPackageInserts(
             'interactions',
             'adverse_effects',
             'document_version',
-            'revised_at',
+            ...(record.revision_date_precision === 'exact' ? ['revised_at'] : []),
             'source_format',
           ],
           interaction_candidate_count: record.interaction_candidates.length,
@@ -615,10 +819,7 @@ export async function previewPmdaPackageInserts(
     zipUrl: parsed.zipUrl,
     mode: parsed.mode,
     sourceFileHash: parsed.sourceFileHash,
-    sourcePublishedAt:
-      extractImportSourceDateFromUrl(parsed.zipUrl, [
-        /(?:^|[^\d])(\d{8})(?:[^\d]|$)/,
-      ])?.toISOString() ?? null,
+    sourcePublishedAt: parsed.sourcePublishedAt?.toISOString() ?? null,
     preview: {
       summary: {
         parsed_records: parsed.records.length,
@@ -629,6 +830,8 @@ export async function previewPmdaPackageInserts(
         unchanged_count: unchangedCount,
         matched_interaction_pair_count: matchedPairCount,
         sampled_rows: rows.length,
+        ...dateQuarantineSummaryFields(parsed.dateQuarantine),
+        ...pmdaRevisionPrecisionSummaryFields(parsed.recognizedMonthPrecisionCount),
       },
       rows,
     },
@@ -641,6 +844,8 @@ export async function importPmdaPackageInserts(
 ) {
   return withImportLog(db, 'pmda', async () => {
     const parsed = await parsePmdaPackageInsertArchive(options);
+    assertDateQuarantineAllowsImport(parsed.records.length, parsed.dateQuarantine);
+    const importMode = resolveDateQuarantineImportMode(parsed.mode, parsed.dateQuarantine);
     const masters = await db.drugMaster.findMany({
       select: {
         id: true,
@@ -690,7 +895,9 @@ export async function importPmdaPackageInserts(
               interactions: record.interaction_summaries,
               adverse_effects: record.adverse_effects,
               document_version: record.document_version,
-              revised_at: record.revised_at,
+              ...(record.revision_date_precision === 'exact'
+                ? { revised_at: record.revised_at }
+                : {}),
               source_format: 'xml',
             },
           });
@@ -759,12 +966,11 @@ export async function importPmdaPackageInserts(
       recordCount: importedCount,
       sourceUrl: parsed.zipUrl,
       sourceFileHash: parsed.sourceFileHash,
-      sourcePublishedAt: extractImportSourceDateFromUrl(parsed.zipUrl, [
-        /(?:^|[^\d])(\d{8})(?:[^\d]|$)/,
-      ]),
-      importMode: parsed.mode,
+      sourcePublishedAt: parsed.sourcePublishedAt,
+      importMode,
       changeSummary: {
-        mode: parsed.mode,
+        mode: importMode,
+        ...(importMode !== parsed.mode ? { requested_mode: parsed.mode } : {}),
         parsed_records: parsed.records.length,
         imported_records: importedCount,
         skipped_unmatched_primary_records: skippedUnmatchedPrimaryCount,
@@ -772,6 +978,8 @@ export async function importPmdaPackageInserts(
         update_count: updateCount,
         unchanged_count: unchangedCount,
         matched_interaction_pair_count: matchedPairCount,
+        ...dateQuarantineSummaryFields(parsed.dateQuarantine),
+        ...pmdaRevisionPrecisionSummaryFields(parsed.recognizedMonthPrecisionCount),
       },
       payload: {
         zipUrl: parsed.zipUrl,

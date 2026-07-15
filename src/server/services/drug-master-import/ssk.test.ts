@@ -177,6 +177,50 @@ describe('parseSskDrugMasterZip', () => {
     );
   });
 
+  it('quarantines a whole row when either SSK date has an invalid calendar value', async () => {
+    const csv = [
+      buildRow({
+        2: '610412196',
+        31: '1149034F1026',
+        33: '20270331',
+        34: 'VALID-DRUG',
+        35: '20260228',
+      }),
+      buildRow({
+        2: '610412197',
+        31: '1149034F1027',
+        33: '20270230',
+        34: 'ROLLOVER-DRUG',
+        35: '20260228',
+      }),
+      buildRow({
+        2: '610412198',
+        31: '1149034F1028',
+        33: '0',
+        34: 'SENTINEL-DRUG',
+        35: '99999999',
+      }),
+    ].join('\r\n');
+
+    const parsed = await parseSskDrugMasterZip({
+      zipUrl: 'https://www.ssk.or.jp/y_ALL_test.zip',
+      fetchImpl: buildZipFetch(buildSskZip(csv)),
+    });
+
+    expect(parsed.records.map((record) => record.yj_code)).toEqual([
+      '1149034F1026',
+      '1149034F1028',
+    ]);
+    expect(parsed.candidateRecordCount).toBe(3);
+    expect(parsed.dateQuarantine).toEqual({
+      quarantinedDateRecords: 1,
+      invalidFormatCount: 0,
+      invalidCalendarDateCount: 1,
+      invalidEraBoundaryCount: 0,
+    });
+    expect(JSON.stringify(parsed.dateQuarantine)).not.toMatch(/20270230|1149034F1027/);
+  });
+
   it('derives 14-day max administration windows for newly listed drugs', async () => {
     const recentListingDate = new Date();
     recentListingDate.setUTCDate(recentListingDate.getUTCDate() - 30);
@@ -215,6 +259,43 @@ describe('parseSskDrugMasterZip', () => {
     expect(parsed.records).toHaveLength(2);
     expect(parsed.records[0]?.max_administration_days).toBe(14);
     expect(parsed.records[1]?.max_administration_days).toBeNull();
+  });
+
+  it('uses the JST business date for the inclusive day 0 through day 365 rule', async () => {
+    vi.useFakeTimers();
+    // 2026-07-15 00:30 JST is still 2026-07-14 in UTC.
+    vi.setSystemTime(new Date('2026-07-14T15:30:00.000Z'));
+    try {
+      const listedDate = (daysFromToday: number) => {
+        const date = new Date('2026-07-15T00:00:00.000Z');
+        date.setUTCDate(date.getUTCDate() + daysFromToday);
+        return formatDate(date);
+      };
+      const csv = [1, 0, -365, -366]
+        .map((offset, index) =>
+          buildRow({
+            2: `61041220${index}`,
+            31: `1149034F103${index}`,
+            34: `BOUNDARY-${offset}`,
+            35: listedDate(offset),
+          }),
+        )
+        .join('\r\n');
+
+      const parsed = await parseSskDrugMasterZip({
+        zipUrl: 'https://www.ssk.or.jp/y_ALL_test.zip',
+        fetchImpl: buildZipFetch(buildSskZip(csv)),
+      });
+
+      expect(parsed.records.map((record) => record.max_administration_days)).toEqual([
+        null,
+        14,
+        14,
+        null,
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rejects ZIP entries that exceed the configured expansion byte limit', async () => {
@@ -291,6 +372,101 @@ describe('parseSskDrugMasterZip', () => {
         },
       }),
     });
+  });
+
+  it('imports valid SSK rows as partial while persisting only bounded quarantine counters', async () => {
+    const csv = [
+      buildRow({ 2: '610412196', 31: '1149034F1026', 34: 'VALID-DRUG', 33: '20270331' }),
+      buildRow({
+        2: '610412197',
+        31: '1149034F1027',
+        34: 'SECRET-DRUG',
+        33: '20270230',
+      }),
+    ].join('\r\n');
+    const db = {
+      drugMasterImportLog: {
+        create: vi.fn().mockResolvedValue({ id: 'log_1', status: 'running' }),
+        update: vi.fn().mockResolvedValue({ id: 'log_1', status: 'completed' }),
+      },
+      drugMaster: { upsert: vi.fn().mockResolvedValue({ id: 'drug_1' }) },
+    };
+
+    const result = await importSskDrugMaster(
+      db as unknown as Parameters<typeof importSskDrugMaster>[0],
+      {
+        zipUrl: 'https://www.ssk.or.jp/y_ALL20260715.zip',
+        fetchImpl: buildZipFetch(buildSskZip(csv)),
+      },
+    );
+
+    expect(result.importedCount).toBe(1);
+    expect(db.drugMaster.upsert).toHaveBeenCalledOnce();
+    const completedUpdate = db.drugMasterImportLog.update.mock.calls.at(-1)?.[0];
+    expect(completedUpdate).toEqual({
+      where: { id: 'log_1' },
+      data: expect.objectContaining({
+        status: 'completed',
+        record_count: 1,
+        import_mode: 'partial',
+        change_summary: expect.objectContaining({
+          mode: 'partial',
+          parsed_records: 1,
+          imported_records: 1,
+          quarantined_date_records: 1,
+          quarantine_invalid_format_count: 0,
+          quarantine_invalid_calendar_date_count: 1,
+          quarantine_invalid_era_boundary_count: 0,
+        }),
+      }),
+    });
+    expect(JSON.stringify(completedUpdate)).not.toMatch(/SECRET-DRUG|20270230|1149034F1027/);
+  });
+
+  it('fails before DrugMaster writes when every candidate date is quarantined', async () => {
+    const csv = buildRow({
+      2: '610412197',
+      31: '1149034F1027',
+      34: 'SECRET-DRUG',
+      35: '20260230',
+    });
+    const db = {
+      drugMasterImportLog: {
+        create: vi.fn().mockResolvedValue({ id: 'log_1', status: 'running' }),
+        update: vi.fn().mockResolvedValue({ id: 'log_1', status: 'failed' }),
+      },
+      drugMaster: { upsert: vi.fn() },
+    };
+
+    await expect(
+      importSskDrugMaster(db as unknown as Parameters<typeof importSskDrugMaster>[0], {
+        zipUrl: 'https://www.ssk.or.jp/y_ALL20260715.zip',
+        fetchImpl: buildZipFetch(buildSskZip(csv)),
+      }),
+    ).rejects.toThrow('DRUG_MASTER_DATE_ALL_ROWS_QUARANTINED');
+    expect(db.drugMaster.upsert).not.toHaveBeenCalled();
+    expect(JSON.stringify(db.drugMasterImportLog.update.mock.calls)).not.toMatch(
+      /SECRET-DRUG|20260230|1149034F1027/,
+    );
+  });
+
+  it('fails a matched-invalid source date before DrugMaster writes', async () => {
+    const csv = buildRow({ 2: '610412196', 31: '1149034F1026', 34: 'VALID-DRUG' });
+    const db = {
+      drugMasterImportLog: {
+        create: vi.fn().mockResolvedValue({ id: 'log_1', status: 'running' }),
+        update: vi.fn().mockResolvedValue({ id: 'log_1', status: 'failed' }),
+      },
+      drugMaster: { upsert: vi.fn() },
+    };
+
+    await expect(
+      importSskDrugMaster(db as unknown as Parameters<typeof importSskDrugMaster>[0], {
+        zipUrl: 'https://www.ssk.or.jp/y_ALL20260230.zip',
+        fetchImpl: buildZipFetch(buildSskZip(csv)),
+      }),
+    ).rejects.toThrow('DRUG_MASTER_SOURCE_DATE_INVALID');
+    expect(db.drugMaster.upsert).not.toHaveBeenCalled();
   });
 
   it('persists a safe failure message when SSK import upsert fails', async () => {

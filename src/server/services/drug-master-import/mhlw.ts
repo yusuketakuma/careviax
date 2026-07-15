@@ -4,16 +4,23 @@ import {
   FetchLike,
   MHLW_IMPORT_URL_POLICY,
   type DrugMasterImportLogDbClient,
+  assertDateQuarantineAllowsImport,
   combineImportSourceFingerprints,
+  createDateQuarantineSummary,
+  dateQuarantineSummaryFields,
+  type DateQuarantineSummary,
+  extractStrictImportSourceDateFromUrl,
+  extractStrictJapaneseEraApplicableDateText,
   fetchBytes,
   fetchText,
+  mergeDateQuarantineSummary,
   normalizeCell,
   normalizePreviewRowLimit,
   normalizeImportSourceUrl,
-  extractImportSourceDateFromUrl,
-  parseJapaneseEraApplicableDateText,
-  parseDate,
+  parseDrugMasterDate,
   parseDecimal,
+  recordDateQuarantine,
+  resolveDateQuarantineImportMode,
   resolveImportSourceUrl,
   sha256ImportPayload,
   withImportLog,
@@ -41,6 +48,8 @@ type ParsedMhlwPriceWorkbook = {
   sourceFileHash: string;
   records: ParsedMhlwPriceRecord[];
   skippedInvalidYjCount: number;
+  candidateRecordCount: number;
+  dateQuarantine: DateQuarantineSummary;
 };
 
 type MhlwPriceWorkbookSources = {
@@ -182,6 +191,10 @@ export type MhlwPriceImportPreview = {
       price_version_close_count: number;
       price_version_skipped_missing_effective_from: number;
       sampled_rows: number;
+      quarantined_date_records?: number;
+      quarantine_invalid_format_count?: number;
+      quarantine_invalid_calendar_date_count?: number;
+      quarantine_invalid_era_boundary_count?: number;
     };
     rows: MhlwPricePreviewRow[];
   };
@@ -208,6 +221,10 @@ export type MhlwGenericFlagImportPreview = {
       skipped_invalid_yj: number;
       changed_flag_count: number;
       sampled_rows: number;
+      quarantined_date_records?: number;
+      quarantine_invalid_format_count?: number;
+      quarantine_invalid_calendar_date_count?: number;
+      quarantine_invalid_era_boundary_count?: number;
     };
     rows: MhlwGenericFlagPreviewRow[];
   };
@@ -329,7 +346,7 @@ export function resolveLatestMhlwPriceListPageMetadata(
   }
   return {
     priceListPageUrl: resolveImportSourceUrl(match[1], pageUrl, MHLW_IMPORT_URL_POLICY),
-    applicableDate: parseJapaneseEraApplicableDateText(match[2]),
+    applicableDate: extractStrictJapaneseEraApplicableDateText(match[2]),
   };
 }
 
@@ -349,7 +366,8 @@ async function fetchLatestMhlwPriceListPage(
 
   return {
     priceListPageUrl: metadata.priceListPageUrl,
-    applicableDate: metadata.applicableDate ?? parseJapaneseEraApplicableDateText(priceListHtml),
+    applicableDate:
+      metadata.applicableDate ?? extractStrictJapaneseEraApplicableDateText(priceListHtml),
     html: priceListHtml,
   };
 }
@@ -412,6 +430,8 @@ export async function parseMhlwPriceWorkbook(
   const headerMap = indexHeaderMap(rows[headerIndex]);
   const records: ParsedMhlwPriceRecord[] = [];
   let skippedInvalidYjCount = 0;
+  let candidateRecordCount = 0;
+  const dateQuarantine = createDateQuarantineSummary();
 
   for (const row of rows.slice(headerIndex + 1)) {
     const rawYjCode = readCell(row, headerMap, '薬価基準収載医薬品コード');
@@ -419,6 +439,15 @@ export async function parseMhlwPriceWorkbook(
     const drugName = readCell(row, headerMap, '品名');
     if (!yjCode || !drugName) {
       if (rawYjCode && !yjCode) skippedInvalidYjCount += 1;
+      continue;
+    }
+    candidateRecordCount += 1;
+
+    const transitionalExpiry = parseDrugMasterDate(
+      readCell(row, headerMap, '経過措置による使用期限'),
+    );
+    if (transitionalExpiry.status === 'invalid') {
+      recordDateQuarantine(dateQuarantine, transitionalExpiry.reason);
       continue;
     }
 
@@ -438,7 +467,8 @@ export async function parseMhlwPriceWorkbook(
       is_generic:
         genericIndicator != null &&
         (genericIndicator.includes('後発') || genericIndicator.includes('★')),
-      transitional_expiry_date: parseDate(readCell(row, headerMap, '経過措置による使用期限')),
+      transitional_expiry_date:
+        transitionalExpiry.status === 'valid' ? transitionalExpiry.date : null,
     });
   }
 
@@ -447,6 +477,8 @@ export async function parseMhlwPriceWorkbook(
     sourceFileHash: sha256ImportPayload(workbookBuffer),
     records,
     skippedInvalidYjCount,
+    candidateRecordCount,
+    dateQuarantine,
   };
 }
 
@@ -476,7 +508,9 @@ async function resolveMhlwPriceWorkbookSources(
 }
 
 function resolveMhlwPriceEffectiveDate(workbookUrl: string, fallbackApplicableDate: Date | null) {
-  return extractImportSourceDateFromUrl(workbookUrl, [/tp(\d{8})-/i]) ?? fallbackApplicableDate;
+  return (
+    extractStrictImportSourceDateFromUrl(workbookUrl, [/tp(\d{8})-/i]) ?? fallbackApplicableDate
+  );
 }
 
 function collectMhlwPriceChanges(
@@ -825,11 +859,13 @@ export async function previewMhlwPriceList(
   let priceVersionUpdateCount = 0;
   let priceVersionCloseCount = 0;
   let priceVersionSkippedMissingEffectiveFrom = 0;
+  const dateQuarantine = createDateQuarantineSummary();
 
   for (const workbookUrl of workbookUrls) {
     const parsed = await parseMhlwPriceWorkbook({ workbookUrl, fetchImpl });
     recordCount += parsed.records.length;
     skippedInvalidYjCount += parsed.skippedInvalidYjCount;
+    mergeDateQuarantineSummary(dateQuarantine, parsed.dateQuarantine);
     sourceFingerprints.push({
       sourceUrl: parsed.workbookUrl,
       sourceFileHash: parsed.sourceFileHash,
@@ -931,6 +967,7 @@ export async function previewMhlwPriceList(
         price_version_close_count: priceVersionCloseCount,
         price_version_skipped_missing_effective_from: priceVersionSkippedMissingEffectiveFrom,
         sampled_rows: rows.length,
+        ...dateQuarantineSummaryFields(dateQuarantine),
       },
       rows,
     },
@@ -945,8 +982,24 @@ export async function importMhlwPriceList(
     const fetchImpl = options.fetchImpl ?? fetch;
     const workbookSources = await resolveMhlwPriceWorkbookSources(options);
     const { workbookUrls } = workbookSources;
+    const sourcePublishedAtByUrl = new Map(
+      workbookUrls.map((workbookUrl) => [
+        workbookUrl,
+        resolveMhlwPriceEffectiveDate(workbookUrl, workbookSources.applicableDate),
+      ]),
+    );
+    const parsedWorkbooks: ParsedMhlwPriceWorkbook[] = [];
+    for (const workbookUrl of workbookUrls) {
+      parsedWorkbooks.push(await parseMhlwPriceWorkbook({ workbookUrl, fetchImpl }));
+    }
 
-    let recordCount = 0;
+    const dateQuarantine = createDateQuarantineSummary();
+    const recordCount = parsedWorkbooks.reduce((sum, parsed) => {
+      mergeDateQuarantineSummary(dateQuarantine, parsed.dateQuarantine);
+      return sum + parsed.records.length;
+    }, 0);
+    assertDateQuarantineAllowsImport(recordCount, dateQuarantine);
+    const importMode = resolveDateQuarantineImportMode('full', dateQuarantine);
     let skippedInvalidYjCount = 0;
     let changeEventCount = 0;
     let priceVersionCreateCount = 0;
@@ -954,13 +1007,8 @@ export async function importMhlwPriceList(
     let priceVersionCloseCount = 0;
     let priceVersionSkippedMissingEffectiveFrom = 0;
     const sourceFingerprints: Array<{ sourceUrl: string; sourceFileHash: string }> = [];
-    for (const workbookUrl of workbookUrls) {
-      const parsed = await parseMhlwPriceWorkbook({ workbookUrl, fetchImpl });
-      const sourcePublishedAt = resolveMhlwPriceEffectiveDate(
-        parsed.workbookUrl,
-        workbookSources.applicableDate,
-      );
-      recordCount += parsed.records.length;
+    for (const parsed of parsedWorkbooks) {
+      const sourcePublishedAt = sourcePublishedAtByUrl.get(parsed.workbookUrl) ?? null;
       skippedInvalidYjCount += parsed.skippedInvalidYjCount;
       sourceFingerprints.push({
         sourceUrl: parsed.workbookUrl,
@@ -996,9 +1044,9 @@ export async function importMhlwPriceList(
         workbookUrls[0] != null
           ? resolveMhlwPriceEffectiveDate(workbookUrls[0], workbookSources.applicableDate)
           : null,
-      importMode: 'full',
+      importMode,
       changeSummary: {
-        mode: 'full',
+        mode: importMode,
         workbook_count: workbookUrls.length,
         parsed_records: recordCount,
         imported_records: recordCount,
@@ -1009,6 +1057,7 @@ export async function importMhlwPriceList(
         price_version_update_count: priceVersionUpdateCount,
         price_version_close_count: priceVersionCloseCount,
         price_version_skipped_missing_effective_from: priceVersionSkippedMissingEffectiveFrom,
+        ...dateQuarantineSummaryFields(dateQuarantine),
       },
       payload: {
         workbookUrl: workbookUrls[0] ?? null,
@@ -1023,6 +1072,9 @@ export async function previewMhlwGenericFlags(
   options: PreviewMhlwGenericOptions = {},
 ): Promise<MhlwGenericFlagImportPreview> {
   const parsed = await parseMhlwPriceWorkbook(options);
+  const sourcePublishedAt = extractStrictImportSourceDateFromUrl(parsed.workbookUrl, [
+    /tp(\d{8})-/i,
+  ]);
   const previewLimit = normalizePreviewRowLimit(options.previewLimit);
   const rows: MhlwGenericFlagPreviewRow[] = [];
   let changedFlagCount = 0;
@@ -1054,8 +1106,7 @@ export async function previewMhlwGenericFlags(
     operation: 'generic_flags',
     workbookUrl: parsed.workbookUrl,
     sourceFileHash: parsed.sourceFileHash,
-    sourcePublishedAt:
-      extractImportSourceDateFromUrl(parsed.workbookUrl, [/tp(\d{8})-/i])?.toISOString() ?? null,
+    sourcePublishedAt: sourcePublishedAt?.toISOString() ?? null,
     preview: {
       summary: {
         parsed_records: parsed.records.length,
@@ -1063,6 +1114,7 @@ export async function previewMhlwGenericFlags(
         skipped_invalid_yj: parsed.skippedInvalidYjCount,
         changed_flag_count: changedFlagCount,
         sampled_rows: rows.length,
+        ...dateQuarantineSummaryFields(parsed.dateQuarantine),
       },
       rows,
     },
@@ -1075,6 +1127,11 @@ export async function importMhlwGenericFlags(
 ) {
   return withImportLog(db, 'mhlw_generic', async () => {
     const parsed = await parseMhlwPriceWorkbook(options);
+    const sourcePublishedAt = extractStrictImportSourceDateFromUrl(parsed.workbookUrl, [
+      /tp(\d{8})-/i,
+    ]);
+    assertDateQuarantineAllowsImport(parsed.records.length, parsed.dateQuarantine);
+    const importMode = resolveDateQuarantineImportMode('full', parsed.dateQuarantine);
 
     for (let index = 0; index < parsed.records.length; index += 200) {
       await upsertPriceChunk(db, parsed.records.slice(index, index + 200), 'generic');
@@ -1084,14 +1141,15 @@ export async function importMhlwGenericFlags(
       recordCount: parsed.records.length,
       sourceUrl: parsed.workbookUrl,
       sourceFileHash: parsed.sourceFileHash,
-      sourcePublishedAt: extractImportSourceDateFromUrl(parsed.workbookUrl, [/tp(\d{8})-/i]),
-      importMode: 'full',
+      sourcePublishedAt,
+      importMode,
       changeSummary: {
-        mode: 'full',
+        mode: importMode,
         operation: 'generic_flags',
         parsed_records: parsed.records.length,
         imported_records: parsed.records.length,
         skipped_invalid_yj: parsed.skippedInvalidYjCount,
+        ...dateQuarantineSummaryFields(parsed.dateQuarantine),
       },
       payload: {
         workbookUrl: parsed.workbookUrl,
@@ -1240,6 +1298,9 @@ export async function previewGenericNameMappings(
   options: PreviewMhlwGenericOptions = {},
 ): Promise<MhlwGenericMappingImportPreview> {
   const parsed = await parseGenericNameWorkbook(options);
+  const sourcePublishedAt = extractStrictImportSourceDateFromUrl(parsed.workbookUrl, [
+    /_(\d{6})\.xlsx$/i,
+  ]);
   const previewLimit = normalizePreviewRowLimit(options.previewLimit);
   const masters = await db.drugMaster.findMany({
     select: {
@@ -1267,9 +1328,7 @@ export async function previewGenericNameMappings(
     operation: 'generic_mapping',
     workbookUrl: parsed.workbookUrl,
     sourceFileHash: parsed.sourceFileHash,
-    sourcePublishedAt:
-      extractImportSourceDateFromUrl(parsed.workbookUrl, [/_(\d{6})\.xlsx$/i])?.toISOString() ??
-      null,
+    sourcePublishedAt: sourcePublishedAt?.toISOString() ?? null,
     preview: {
       summary: {
         parsed_records: parsed.entries.length,
@@ -1289,6 +1348,9 @@ export async function importGenericNameMappings(
 ) {
   return withImportLog(db, 'mhlw_generic', async () => {
     const parsed = await parseGenericNameWorkbook(options);
+    const sourcePublishedAt = extractStrictImportSourceDateFromUrl(parsed.workbookUrl, [
+      /_(\d{6})\.xlsx$/i,
+    ]);
     const masters = await db.drugMaster.findMany({
       select: {
         id: true,
@@ -1326,7 +1388,7 @@ export async function importGenericNameMappings(
       recordCount: records.length,
       sourceUrl: parsed.workbookUrl,
       sourceFileHash: parsed.sourceFileHash,
-      sourcePublishedAt: extractImportSourceDateFromUrl(parsed.workbookUrl, [/_(\d{6})\.xlsx$/i]),
+      sourcePublishedAt,
       importMode: 'full',
       changeSummary: {
         mode: 'full',

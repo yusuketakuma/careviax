@@ -30,8 +30,10 @@ describe('parseJahisDate', () => {
     expect(parseJahisDate('19500315')).toBe('1950-03-15');
   });
 
-  it('parses YYYY/MM/DD format', () => {
-    expect(parseJahisDate('2026/04/01')).toBe('2026-04-01');
+  it('rejects non-official slash and whitespace variants', () => {
+    expect(parseJahisDate('2026/04/01')).toBeUndefined();
+    expect(parseJahisDate(' 20260401')).toBeUndefined();
+    expect(parseJahisDate('20260401 ')).toBeUndefined();
   });
 
   it('returns undefined for invalid dates', () => {
@@ -46,11 +48,15 @@ describe('parseJahisDate', () => {
 
   it('returns undefined when day is out of range', () => {
     expect(parseJahisDate('20260132')).toBeUndefined();
+    expect(parseJahisDate('20260230')).toBeUndefined();
+    expect(parseJahisDate('19000229')).toBeUndefined();
+    expect(parseJahisDate('20000229')).toBe('2000-02-29');
   });
 
-  it('returns undefined when year is out of range', () => {
-    expect(parseJahisDate('18991231')).toBeUndefined();
-    expect(parseJahisDate('21010101')).toBeUndefined();
+  it('does not impose an unapproved product-year cap on valid fixed dates', () => {
+    expect(parseJahisDate('18991231')).toBe('1899-12-31');
+    expect(parseJahisDate('21010101')).toBe('2101-01-01');
+    expect(parseJahisDate('00000101')).toBeUndefined();
   });
 
   it('parses Japanese era format S (昭和)', () => {
@@ -61,6 +67,21 @@ describe('parseJahisDate', () => {
   it('parses Japanese era format H (平成)', () => {
     // H10 = 1988+10 = 1998
     expect(parseJahisDate('H100101')).toBe('1998-01-01');
+  });
+
+  it('enforces the actual first-day boundary for Japanese eras', () => {
+    // JAHIS/HL7 medical conversion convention uses 1868-09-08 for Meiji 1.
+    expect(parseJahisDate('M010907')).toBeUndefined();
+    expect(parseJahisDate('M010908')).toBe('1868-09-08');
+    expect(parseJahisDate('S011224')).toBeUndefined();
+    expect(parseJahisDate('S011225')).toBe('1926-12-25');
+    expect(parseJahisDate('S640107')).toBe('1989-01-07');
+    expect(parseJahisDate('S640108')).toBeUndefined();
+    expect(parseJahisDate('H010107')).toBeUndefined();
+    expect(parseJahisDate('H010108')).toBe('1989-01-08');
+    expect(parseJahisDate('R010430')).toBeUndefined();
+    expect(parseJahisDate('R010501')).toBe('2019-05-01');
+    expect(parseJahisDate('H000108')).toBeUndefined();
   });
 
   it('parses Japanese era format R (令和)', () => {
@@ -508,6 +529,62 @@ describe('parseJahisQR', () => {
 // ── parseJahisQRSafe ──
 
 describe('parseJahisQRSafe', () => {
+  it('returns fixed raw-free errors and no projection for invalid medication-notebook dates', () => {
+    const result = parseJahisQRSafe(
+      ['JAHISTC08,1', '1,SECRET-PATIENT,1,20260230', '5,20260431'].join('\n'),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data.patient?.birthDate).toBeUndefined();
+    expect(result.data.dispensingDate).toBeUndefined();
+    if (!result.success) {
+      expect(result.errors).toEqual([
+        {
+          recordType: '1',
+          lineNumber: 2,
+          field: 'birth_date',
+          message: 'JAHIS_DATE_INVALID',
+        },
+        {
+          recordType: '5',
+          lineNumber: 3,
+          field: 'dispensing_date',
+          message: 'JAHIS_DATE_INVALID',
+        },
+      ]);
+      expect(JSON.stringify(result.errors)).not.toMatch(/SECRET-PATIENT|20260230|20260431/);
+    }
+  });
+
+  it('returns fixed raw-free errors for invalid prescription issue and expiry dates', () => {
+    const result = parseJahisQRSafe(
+      ['JAHIS11', '13,20260230', '51,R010430', '52,20260431'].join('\n'),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data.patient?.birthDate).toBeUndefined();
+    expect(result.data.prescriptionIssueDate).toBeUndefined();
+    expect(result.data.prescriptionExpirationDate).toBeUndefined();
+    if (!result.success) {
+      expect(
+        result.errors.map(({ recordType, field, message }) => ({ recordType, field, message })),
+      ).toEqual([
+        { recordType: '13', field: 'birth_date', message: 'JAHIS_DATE_INVALID' },
+        {
+          recordType: '51',
+          field: 'prescription_issue_date',
+          message: 'JAHIS_DATE_INVALID',
+        },
+        {
+          recordType: '52',
+          field: 'prescription_expiration_date',
+          message: 'JAHIS_DATE_INVALID',
+        },
+      ]);
+      expect(JSON.stringify(result.errors)).not.toMatch(/20260230|R010430|20260431/);
+    }
+  });
+
   describe('with QR_WITH_ERRORS', () => {
     it('collects warnings for unknown record types', () => {
       const result = parseJahisQRSafe(QR_WITH_ERRORS);

@@ -1,4 +1,4 @@
-import { isValidDateKey } from '@/lib/validations/date-key';
+import { isValidDateKey, parseSourceDate } from '@/lib/validations/date-key';
 
 /**
  * JAHIS お薬手帳データフォーマット ver.2.6 (JAHISTC08) パーサー
@@ -241,53 +241,30 @@ export function isJahisQR(text: string): boolean {
  *
  * 対応フォーマット:
  *   - YYYYMMDD (8桁, 西暦)
- *   - YYYY/MM/DD (スラッシュ区切り)
  *   - GYYMMDD (7桁, 日本元号: M=明治, T=大正, S=昭和, H=平成, R=令和)
  */
 export function parseJahisDate(raw: string): string | undefined {
-  const cleaned = raw.replace(/\//g, '').trim();
+  const parsed = parseSourceDate(raw, 'jahis');
+  return parsed.status === 'valid' ? parsed.dateKey : undefined;
+}
 
-  // 日本元号フォーマット: GYYMMDD (7文字)
-  if (cleaned.length === 7) {
-    const era = cleaned[0].toUpperCase();
-    const eraYear = parseInt(cleaned.substring(1, 3), 10);
-    const m = cleaned.substring(3, 5);
-    const d = cleaned.substring(5, 7);
+const JAHIS_DATE_INVALID_MESSAGE = 'JAHIS_DATE_INVALID';
 
-    const eraOffsets: Record<string, number> = {
-      M: 1867,
-      T: 1911,
-      S: 1925,
-      H: 1988,
-      R: 2018,
-    };
-    const offset = eraOffsets[era];
-    if (offset !== undefined && !isNaN(eraYear)) {
-      const year = offset + eraYear;
-      const month = parseInt(m, 10);
-      const day = parseInt(d, 10);
-      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-        return `${year}-${m}-${d}`;
-      }
-    }
-    return undefined;
-  }
-
-  // 西暦フォーマット: YYYYMMDD (8文字)
-  if (cleaned.length === 8) {
-    const y = cleaned.substring(0, 4);
-    const m = cleaned.substring(4, 6);
-    const d = cleaned.substring(6, 8);
-
-    const year = parseInt(y, 10);
-    const month = parseInt(m, 10);
-    const day = parseInt(d, 10);
-    if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) {
-      return undefined;
-    }
-    return `${y}-${m}-${d}`;
-  }
-
+function parseJahisDateField(args: {
+  raw: string;
+  recordType: string;
+  lineNumber: number;
+  field: string;
+  errors: JahisParseError[];
+}) {
+  const parsed = parseSourceDate(args.raw, 'jahis');
+  if (parsed.status === 'valid') return parsed.dateKey;
+  args.errors.push({
+    recordType: args.recordType,
+    lineNumber: args.lineNumber,
+    field: args.field,
+    message: JAHIS_DATE_INVALID_MESSAGE,
+  });
   return undefined;
 }
 
@@ -802,7 +779,15 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
             const g = parts[2].trim();
             patient.gender = g === '1' ? 'male' : g === '2' ? 'female' : 'other';
           }
-          if (parts[3]) patient.birthDate = parseJahisDate(parts[3]);
+          if (parts[3]) {
+            patient.birthDate = parseJahisDateField({
+              raw: parts[3],
+              recordType,
+              lineNumber: i + 1,
+              field: 'birth_date',
+              errors,
+            });
+          }
           if (parts[10]) patient.nameKana = parts[10];
           break;
         }
@@ -811,7 +796,15 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
           break;
         }
         case '5': {
-          if (parts[1]) dispensingDate = parseJahisDate(parts[1]);
+          if (parts[1]) {
+            dispensingDate = parseJahisDateField({
+              raw: parts[1],
+              recordType,
+              lineNumber: i + 1,
+              field: 'dispensing_date',
+              errors,
+            });
+          }
           break;
         }
         case '11': {
@@ -1076,7 +1069,15 @@ function parseJahisPrescriptionQRSafe(
           break;
         }
         case '13': {
-          if (parts[1]) patient.birthDate = parseJahisDate(parts[1]);
+          if (parts[1]) {
+            patient.birthDate = parseJahisDateField({
+              raw: parts[1],
+              recordType,
+              lineNumber: i + 1,
+              field: 'birth_date',
+              errors,
+            });
+          }
           break;
         }
         case '21': {
@@ -1121,11 +1122,27 @@ function parseJahisPrescriptionQRSafe(
           break;
         }
         case '51': {
-          if (parts[1]) prescriptionIssueDate = parseJahisDate(parts[1]);
+          if (parts[1]) {
+            prescriptionIssueDate = parseJahisDateField({
+              raw: parts[1],
+              recordType,
+              lineNumber: i + 1,
+              field: 'prescription_issue_date',
+              errors,
+            });
+          }
           break;
         }
         case '52': {
-          if (parts[1]) prescriptionExpirationDate = parseJahisDate(parts[1]);
+          if (parts[1]) {
+            prescriptionExpirationDate = parseJahisDateField({
+              raw: parts[1],
+              recordType,
+              lineNumber: i + 1,
+              field: 'prescription_expiration_date',
+              errors,
+            });
+          }
           break;
         }
         case '81': {

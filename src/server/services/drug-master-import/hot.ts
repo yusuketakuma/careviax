@@ -4,8 +4,8 @@ import {
   HOT_IMPORT_URL_POLICY,
   type DrugMasterImportLogDbClient,
   ZipExpansionLimits,
+  extractStrictImportSourceDateFromUrl,
   fetchBytes,
-  extractImportSourceDateFromUrl,
   isZipBuffer,
   normalizeCell,
   normalizePreviewRowLimit,
@@ -26,6 +26,7 @@ const HOT_ZIP_EXPANSION_LIMITS: ZipExpansionLimits = {
   maxEntryBytes: 128 * 1024 * 1024,
   maxTotalBytes: 128 * 1024 * 1024,
 };
+const HOT_SOURCE_DATE_PATTERNS = [/(?:^|[^\d])(\d{8})(?:[^\d]|$)/] as const;
 
 type ParsedHotRecord = {
   hot_code: string;
@@ -224,6 +225,7 @@ function unzipHotMasterArchive(buffer: Uint8Array, overrides?: Partial<ZipExpans
 
 export async function parseHotMasterFile(options: ImportHotMasterOptions = {}) {
   const fileUrl = resolveConfiguredHotUrl(options.fileUrl);
+  const sourcePublishedAt = extractStrictImportSourceDateFromUrl(fileUrl, HOT_SOURCE_DATE_PATTERNS);
   const buffer = await fetchBytes(fileUrl, {
     fetchImpl: options.fetchImpl ?? fetch,
     policy: HOT_IMPORT_URL_POLICY,
@@ -255,6 +257,7 @@ export async function parseHotMasterFile(options: ImportHotMasterOptions = {}) {
   return {
     fileUrl,
     sourceFileHash: sha256ImportPayload(buffer),
+    sourcePublishedAt,
     records: parseHotRows(rows),
   };
 }
@@ -426,10 +429,7 @@ export async function previewHotMaster(
     dryRun: true,
     fileUrl: parsed.fileUrl,
     sourceFileHash: parsed.sourceFileHash,
-    sourcePublishedAt:
-      extractImportSourceDateFromUrl(parsed.fileUrl, [
-        /(?:^|[^\d])(\d{8})(?:[^\d]|$)/,
-      ])?.toISOString() ?? null,
+    sourcePublishedAt: parsed.sourcePublishedAt?.toISOString() ?? null,
     preview: {
       summary: {
         parsed_records: parsed.records.length,
@@ -549,9 +549,7 @@ export async function importHotMaster(
       recordCount: updatedCount,
       sourceUrl: parsed.fileUrl,
       sourceFileHash: parsed.sourceFileHash,
-      sourcePublishedAt: extractImportSourceDateFromUrl(parsed.fileUrl, [
-        /(?:^|[^\d])(\d{8})(?:[^\d]|$)/,
-      ]),
+      sourcePublishedAt: parsed.sourcePublishedAt,
       importMode: 'full',
       changeSummary: {
         mode: 'full',

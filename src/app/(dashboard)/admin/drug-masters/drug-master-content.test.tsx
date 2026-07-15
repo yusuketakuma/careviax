@@ -17,8 +17,36 @@ import {
   buildPharmacyDrugStockTemplateApplyApiPath,
 } from '@/lib/pharmacy-drug-stocks/api-paths';
 import { DrugMasterContent, parseReorderPointInput } from './drug-master-content';
+import {
+  formatImportChangeSummary,
+  formatImportMode,
+  formatOfficialImportPreviewSummary,
+} from './drug-master-content-format';
 
 setupDomTestEnv();
+
+describe('drug master date-quarantine formatting', () => {
+  it('labels partial imports and renders only bounded fixed counters', () => {
+    const summary = {
+      parsed_records: 8,
+      imported_records: 8,
+      quarantined_date_records: 3,
+      quarantine_invalid_format_count: 1,
+      quarantine_invalid_calendar_date_count: 1,
+      quarantine_invalid_era_boundary_count: 1,
+      recognized_month_precision: 2,
+    };
+
+    expect(formatImportMode('partial')).toBe('一部取込（隔離あり）');
+    expect(formatImportChangeSummary(summary)).toBe(
+      '解析 8件 / 反映 8件 / 日付隔離 3件（形式 1 / 暦 1 / 元号 1） / 月精度認識 2件',
+    );
+    expect(formatOfficialImportPreviewSummary({ ...summary, sampled_rows: 0 })).toBe(
+      '解析 8件 / 日付隔離 3件 / 日付形式不正 1件 / 暦日不正 1件 / 元号境界不正 1件 / 月精度認識 2件',
+    );
+    expect(JSON.stringify(summary)).not.toMatch(/患者|YJ|20260230|source/i);
+  });
+});
 
 type MutationOptions = {
   mutationFn?: (...args: unknown[]) => unknown;

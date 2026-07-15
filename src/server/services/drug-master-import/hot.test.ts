@@ -210,6 +210,18 @@ describe('parseHotMasterFile', () => {
       }),
     ).rejects.toThrow();
   });
+
+  it('fails a matched-invalid source date before fetching HOT content', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+
+    await expect(
+      parseHotMasterFile({
+        fileUrl: 'https://www.medis.or.jp/hot_20260230-secret.csv',
+        fetchImpl,
+      }),
+    ).rejects.toThrow('DRUG_MASTER_SOURCE_DATE_INVALID');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });
 
 describe('importHotMaster', () => {
@@ -286,6 +298,30 @@ describe('importHotMaster', () => {
       }),
     });
     expect(db.drugPackage.upsert).not.toHaveBeenCalled();
+  });
+
+  it('fails invalid provenance before HOT reads or writes and persists only a fixed failed log', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+
+    await expect(
+      importHotMaster(db, {
+        fileUrl: 'https://www.medis.or.jp/hot_20260230-secret.csv',
+        fetchImpl,
+      }),
+    ).rejects.toThrow('DRUG_MASTER_SOURCE_DATE_INVALID');
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(db.drugPackage.findMany).not.toHaveBeenCalled();
+    expect(db.drugMaster.upsert).not.toHaveBeenCalled();
+    expect(db.drugPackage.upsert).not.toHaveBeenCalled();
+    expect(db.drugMasterImportLog.update).toHaveBeenCalledWith({
+      where: { id: 'log_1' },
+      data: {
+        status: 'failed',
+        error_log: '医薬品マスタ取込に失敗しました',
+      },
+    });
+    expect(JSON.stringify(db.drugMasterImportLog.update.mock.calls)).not.toMatch(/20260230|secret/);
   });
 
   it('upserts DrugPackage rows from HOT package JAN columns', async () => {

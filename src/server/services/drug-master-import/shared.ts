@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
 import { Prisma, PrismaClient } from '@prisma/client';
+import {
+  parseSourceDate,
+  type SourceDateInvalidReason,
+  type SourceDateParseResult,
+} from '@/lib/validations/date-key';
 import { logger } from '@/lib/utils/logger';
 import type { ImportSourceUrlPolicy } from '@/server/services/import-source/shared';
 export {
@@ -56,6 +61,68 @@ const BYTES_PER_MIB = 1024 * 1024;
 export const DEFAULT_IMPORT_PREVIEW_ROW_LIMIT = 20;
 export const MAX_IMPORT_PREVIEW_ROW_LIMIT = 100;
 const DRUG_MASTER_IMPORT_FAILURE_MESSAGE = '医薬品マスタ取込に失敗しました';
+export const INVALID_IMPORT_SOURCE_DATE_CODE = 'DRUG_MASTER_SOURCE_DATE_INVALID';
+export const ALL_DATE_ROWS_QUARANTINED_CODE = 'DRUG_MASTER_DATE_ALL_ROWS_QUARANTINED';
+
+export type DateQuarantineSummary = {
+  quarantinedDateRecords: number;
+  invalidFormatCount: number;
+  invalidCalendarDateCount: number;
+  invalidEraBoundaryCount: number;
+};
+
+export function createDateQuarantineSummary(): DateQuarantineSummary {
+  return {
+    quarantinedDateRecords: 0,
+    invalidFormatCount: 0,
+    invalidCalendarDateCount: 0,
+    invalidEraBoundaryCount: 0,
+  };
+}
+
+export function recordDateQuarantine(
+  summary: DateQuarantineSummary,
+  reason: SourceDateInvalidReason,
+) {
+  summary.quarantinedDateRecords += 1;
+  if (reason === 'invalid_format') summary.invalidFormatCount += 1;
+  if (reason === 'invalid_calendar_date') summary.invalidCalendarDateCount += 1;
+  if (reason === 'invalid_era_boundary') summary.invalidEraBoundaryCount += 1;
+}
+
+export function mergeDateQuarantineSummary(
+  target: DateQuarantineSummary,
+  source: DateQuarantineSummary,
+) {
+  target.quarantinedDateRecords += source.quarantinedDateRecords;
+  target.invalidFormatCount += source.invalidFormatCount;
+  target.invalidCalendarDateCount += source.invalidCalendarDateCount;
+  target.invalidEraBoundaryCount += source.invalidEraBoundaryCount;
+  return target;
+}
+
+export function dateQuarantineSummaryFields(summary: DateQuarantineSummary) {
+  if (summary.quarantinedDateRecords === 0) return {};
+  return {
+    quarantined_date_records: summary.quarantinedDateRecords,
+    quarantine_invalid_format_count: summary.invalidFormatCount,
+    quarantine_invalid_calendar_date_count: summary.invalidCalendarDateCount,
+    quarantine_invalid_era_boundary_count: summary.invalidEraBoundaryCount,
+  };
+}
+
+export function assertDateQuarantineAllowsImport(
+  validRecordCount: number,
+  summary: DateQuarantineSummary,
+) {
+  if (validRecordCount === 0 && summary.quarantinedDateRecords > 0) {
+    throw new RangeError(ALL_DATE_ROWS_QUARANTINED_CODE);
+  }
+}
+
+export function resolveDateQuarantineImportMode(baseMode: string, summary: DateQuarantineSummary) {
+  return summary.quarantinedDateRecords > 0 ? 'partial' : baseMode;
+}
 
 export type DrugMasterImportUrlPolicy = ImportSourceUrlPolicy<DrugMasterImportSource>;
 
@@ -106,58 +173,54 @@ export function combineImportSourceFingerprints(fingerprints: readonly ImportSou
 }
 
 export function parseImportSourceDateToken(value: string) {
-  if (/^\d{8}$/.test(value)) {
-    const year = Number(value.slice(0, 4));
-    const month = Number(value.slice(4, 6));
-    const day = Number(value.slice(6, 8));
-    return new Date(Date.UTC(year, month - 1, day));
+  const parsed = parseSourceDate(value, 'import_source_token');
+  return parsed.status === 'valid' ? parsed.date : null;
+}
+
+function parseImportSourceDateFromUrl(
+  url: string,
+  patterns: readonly RegExp[],
+): SourceDateParseResult {
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    return { status: 'invalid', reason: 'invalid_format' };
   }
 
-  if (/^\d{6}$/.test(value)) {
-    const year = 2000 + Number(value.slice(0, 2));
-    const month = Number(value.slice(2, 4));
-    const day = Number(value.slice(4, 6));
-    return new Date(Date.UTC(year, month - 1, day));
+  for (const pattern of patterns) {
+    // Provenance dates belong to official file paths. Query and fragment text
+    // must never inject or poison the date recorded for an import.
+    const match = pathname.match(pattern);
+    const token = match?.[1];
+    if (!token) continue;
+    return parseSourceDate(token, 'import_source_token');
   }
-
-  return null;
+  return { status: 'missing' };
 }
 
 export function extractImportSourceDateFromUrl(url: string, patterns: readonly RegExp[]) {
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    const token = match?.[1];
-    if (!token) continue;
-    const parsed = parseImportSourceDateToken(token);
-    if (parsed) return parsed;
-  }
+  const parsed = parseImportSourceDateFromUrl(url, patterns);
+  return parsed.status === 'valid' ? parsed.date : null;
+}
+
+export function extractStrictImportSourceDateFromUrl(url: string, patterns: readonly RegExp[]) {
+  const parsed = parseImportSourceDateFromUrl(url, patterns);
+  if (parsed.status === 'invalid') throw new RangeError(INVALID_IMPORT_SOURCE_DATE_CODE);
+  if (parsed.status === 'valid') return parsed.date;
   return null;
 }
 
 export function parseJapaneseEraApplicableDateText(value: string | null | undefined) {
-  if (!value) return null;
-  const normalized = normalizeDigits(value);
-  const match = normalized.match(/(令和|平成)(\d{1,2})年(\d{1,2})月(\d{1,2})日(?:\s*適用)?/);
-  if (!match) return null;
+  const parsed = parseSourceDate(value, 'japanese_era_text');
+  return parsed.status === 'valid' ? parsed.date : null;
+}
 
-  const era = match[1];
-  const eraYear = Number(match[2]);
-  const month = Number(match[3]);
-  const day = Number(match[4]);
-  if (eraYear < 1) return null;
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-
-  const baseYear = era === '令和' ? 2018 : 1988;
-  const year = baseYear + eraYear;
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) {
-    return null;
-  }
-  return date;
+export function extractStrictJapaneseEraApplicableDateText(value: string | null | undefined) {
+  const parsed = parseSourceDate(value, 'japanese_era_text');
+  if (parsed.status === 'invalid') throw new RangeError(INVALID_IMPORT_SOURCE_DATE_CODE);
+  if (parsed.status === 'valid') return parsed.date;
+  return null;
 }
 
 export function normalizePreviewRowLimit(
@@ -196,20 +259,12 @@ export function parseDecimal(value: string | null) {
 }
 
 export function parseDate(value: string | null) {
-  if (!value) return null;
-  const normalized = normalizeDigits(value).trim();
-  const isoMatch = normalized.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
-  if (isoMatch) {
-    return new Date(Date.UTC(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3])));
-  }
+  const parsed = parseDrugMasterDate(value);
+  return parsed.status === 'valid' ? parsed.date : null;
+}
 
-  const jpMatch = normalized.match(/^R?(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/);
-  if (jpMatch) {
-    const year = 2018 + Number(jpMatch[1]);
-    return new Date(Date.UTC(year, Number(jpMatch[2]) - 1, Number(jpMatch[3])));
-  }
-
-  return null;
+export function parseDrugMasterDate(value: string | null | undefined) {
+  return parseSourceDate(value, 'mhlw_pmda');
 }
 
 type LoggedImportResult<T> = {
