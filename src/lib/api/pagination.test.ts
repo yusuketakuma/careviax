@@ -52,12 +52,47 @@ describe('buildCursorPage', () => {
     expect(cursorOf).not.toHaveBeenCalled();
   });
 
+  it.each([undefined, '', '   '])(
+    'fails closed when an overflow page has no usable next cursor (%s)',
+    (nextCursor) => {
+      const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+
+      expect(() => buildCursorPage(rows, 2, () => nextCursor)).toThrow(
+        'Cursor pagination invariant violated: overflow page requires a next cursor',
+      );
+      expect(rows).toEqual([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+    },
+  );
+
+  it('propagates cursor extractor failures without mutating the input rows', () => {
+    const rows = Object.freeze([{ id: 'a' }, { id: 'b' }]);
+    const failure = new Error('cursor encoding failed');
+
+    expect(() =>
+      buildCursorPage(rows, 1, () => {
+        throw failure;
+      }),
+    ).toThrow(failure);
+    expect(rows).toEqual([{ id: 'a' }, { id: 'b' }]);
+  });
+
   it('normalizes invalid direct limits to one row', () => {
     expect(buildCursorPage([{ id: 'a' }, { id: 'b' }], 0, (row) => row.id)).toEqual({
       data: [{ id: 'a' }],
       hasMore: true,
       nextCursor: 'a',
     });
+  });
+
+  it('normalizes non-finite direct limits without requesting a cursor for one row', () => {
+    const cursorOf = vi.fn((row: { id: string }) => row.id);
+
+    expect(buildCursorPage([{ id: 'a' }], Number.NaN, cursorOf)).toEqual({
+      data: [{ id: 'a' }],
+      hasMore: false,
+      nextCursor: undefined,
+    });
+    expect(cursorOf).not.toHaveBeenCalled();
   });
 });
 

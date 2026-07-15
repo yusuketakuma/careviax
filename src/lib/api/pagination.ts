@@ -13,10 +13,19 @@ export function buildCursorPage<T>(
   const normalizedLimit = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 1;
   const data = rows.length > normalizedLimit ? rows.slice(0, normalizedLimit) : [...rows];
   const hasMore = rows.length > normalizedLimit;
+  if (!hasMore) {
+    return { data, hasMore: false, nextCursor: undefined };
+  }
+
+  const nextCursor = cursorOf(data[data.length - 1]!);
+  if (typeof nextCursor !== 'string' || nextCursor.trim().length === 0) {
+    throw new Error('Cursor pagination invariant violated: overflow page requires a next cursor');
+  }
+
   return {
     data,
-    hasMore,
-    nextCursor: hasMore ? cursorOf(data[data.length - 1]!) : undefined,
+    hasMore: true,
+    nextCursor,
   };
 }
 
