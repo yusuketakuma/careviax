@@ -128,4 +128,34 @@ describe('cloudwatch metrics helper', () => {
     expect(logged).not.toContain('cloudwatch down');
     errorSpy.mockRestore();
   });
+
+  it('logs once and rethrows the original error in explicit throw mode', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { StandardUnit, putMetrics } = await import('./cloudwatch');
+    const providerError = new Error('cloudwatch down token=secret db_password=value');
+    cloudWatchSendMock.mockRejectedValue(providerError);
+
+    await expect(
+      putMetrics([{ MetricName: 'Failing', Value: 1, Unit: StandardUnit.Count }], {
+        failureMode: 'throw',
+      }),
+    ).rejects.toBe(providerError);
+
+    expect(cloudWatchSendMock).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const entry = JSON.parse(String(errorSpy.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(entry).toMatchObject({
+      level: 'error',
+      message: 'cloudwatch.metric_emission_failed',
+      event: 'cloudwatch.metric_emission_failed',
+      operation: 'put_metrics',
+      externalProvider: 'cloudwatch',
+      error_name: 'Error',
+    });
+    const logged = JSON.stringify(entry);
+    expect(logged).not.toContain('token=secret');
+    expect(logged).not.toContain('db_password=value');
+    expect(logged).not.toContain('cloudwatch down');
+    errorSpy.mockRestore();
+  });
 });

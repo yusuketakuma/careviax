@@ -9,8 +9,15 @@ import {
 
 const DEFAULT_TARGET_MS = 500;
 const DEFAULT_MAX_SAMPLES_PER_ROUTE = 200;
-const DEFAULT_MAX_ROUTES = 500;
 const DEFAULT_TOP_ROUTES = 8;
+const MAX_CLOUDWATCH_METRIC_DATUMS = 1000;
+const MAX_ROUTE_METRIC_DATUMS = 7;
+const MAX_SUMMARY_METRIC_DATUMS = 8;
+const MAX_ROUTES_PER_CLOUDWATCH_FLUSH = Math.min(
+  100,
+  Math.floor((MAX_CLOUDWATCH_METRIC_DATUMS - MAX_SUMMARY_METRIC_DATUMS) / MAX_ROUTE_METRIC_DATUMS),
+);
+const DEFAULT_MAX_ROUTES = MAX_ROUTES_PER_CLOUDWATCH_FLUSH;
 const EXCLUDED_PATHS = new Set(['/api/admin/performance-metrics']);
 export const ROUTE_QUERY_COUNT_HEADER = 'x-phos-query-count';
 const activeRoutePerformanceRequests = new WeakSet<NextRequest>();
@@ -100,6 +107,8 @@ type RouteOrgScopeSummary = RouteOrgScope | 'mixed';
 declare global {
   var __phOsRoutePerformanceStore: RoutePerformanceStore | undefined;
 }
+
+let performanceMetricsFlushPromise: Promise<void> | null = null;
 
 function getStore(): RoutePerformanceStore {
   if (!globalThis.__phOsRoutePerformanceStore) {
@@ -245,11 +254,13 @@ export function recordRoutePerformance(args: {
   }
 }
 
-export function getPerformanceSnapshot(options?: {
-  targetMs?: number;
-  topRoutes?: number;
-}): PerformanceSnapshot {
-  const store = getStore();
+function createPerformanceSnapshot(
+  store: RoutePerformanceStore,
+  options?: {
+    targetMs?: number;
+    topRoutes?: number;
+  },
+): PerformanceSnapshot {
   const targetMs = options?.targetMs ?? DEFAULT_TARGET_MS;
   const topRoutes = options?.topRoutes ?? DEFAULT_TOP_ROUTES;
 
@@ -359,6 +370,14 @@ export function getPerformanceSnapshot(options?: {
   };
 }
 
+export function getPerformanceSnapshot(options?: {
+  targetMs?: number;
+  topRoutes?: number;
+}): PerformanceSnapshot {
+  const store = getStore();
+  return createPerformanceSnapshot(store, options);
+}
+
 async function measureRoutePerformance<T extends NextResponse | Response>(
   req: NextRequest,
   handler: () => Promise<T>,
@@ -425,151 +444,244 @@ export function resetPerformanceMetrics(): void {
   };
 }
 
+function resolveFlushRouteLimit(topRoutes: number | undefined): number {
+  // The scheduled no-options path atomically drains the entire bounded process store.
+  // Explicit limits are reserved for diagnostic/test subset flushes.
+  const requested = topRoutes ?? MAX_ROUTES_PER_CLOUDWATCH_FLUSH;
+  if (!Number.isFinite(requested)) return DEFAULT_TOP_ROUTES;
+  return Math.max(0, Math.min(Math.floor(requested), MAX_ROUTES_PER_CLOUDWATCH_FLUSH));
+}
+
+function detachPerformanceBuckets(options?: {
+  targetMs?: number;
+  topRoutes?: number;
+}): RoutePerformanceStore {
+  const liveStore = getStore();
+  const topRoutes = resolveFlushRouteLimit(options?.topRoutes);
+  const selection = createPerformanceSnapshot(liveStore, { ...options, topRoutes });
+  const routes = new Map<string, RoutePerformanceBucket>();
+
+  for (const route of selection.routes) {
+    const key = routeMetricsKey(route.method, route.route);
+    const bucket = liveStore.routes.get(key);
+    if (!bucket) continue;
+    routes.set(key, bucket);
+    liveStore.routes.delete(key);
+  }
+
+  return {
+    started_at: liveStore.started_at,
+    max_samples_per_route: liveStore.max_samples_per_route,
+    max_routes: liveStore.max_routes,
+    routes,
+  };
+}
+
+function restorePerformanceBuckets(detachedStore: RoutePerformanceStore): void {
+  const liveStore = getStore();
+  const restoredOldBuckets: Array<[string, RoutePerformanceBucket]> = [];
+
+  for (const [key, detachedBucket] of detachedStore.routes) {
+    const currentBucket = liveStore.routes.get(key);
+    if (currentBucket) {
+      currentBucket.samples = [...detachedBucket.samples, ...currentBucket.samples].slice(
+        -liveStore.max_samples_per_route,
+      );
+      continue;
+    }
+
+    restoredOldBuckets.push([
+      key,
+      {
+        ...detachedBucket,
+        samples: detachedBucket.samples.slice(-liveStore.max_samples_per_route),
+      },
+    ]);
+  }
+
+  // Restored data is older than anything recorded while the send was in flight.
+  // Prepending it ensures LRU trimming protects new buckets rather than overwriting them.
+  liveStore.routes = new Map([...restoredOldBuckets, ...liveStore.routes]);
+  while (liveStore.routes.size > liveStore.max_routes) {
+    const oldestKey = liveStore.routes.keys().next().value;
+    if (!oldestKey) break;
+    liveStore.routes.delete(oldestKey);
+  }
+  liveStore.started_at = Math.min(liveStore.started_at, detachedStore.started_at);
+}
+
 /**
  * Flush the current performance snapshot as CloudWatch custom metrics.
  * Emits p50/p95/p99 latency and error rate per route.
  * Call this on a schedule (e.g., every 5 minutes) from a cron API route.
- * Silently no-ops when not in a Node.js server context.
+ * The no-options production path drains the entire bounded current-process store.
+ * An explicit topRoutes value intentionally flushes only that diagnostic subset.
+ * Shares one in-flight send and restores detached samples when emission fails.
  */
-export async function flushPerformanceMetricsToCloudWatch(options?: {
+async function runPerformanceMetricsFlush(options?: {
   targetMs?: number;
   topRoutes?: number;
 }): Promise<void> {
   // Dynamic import so the CloudWatch SDK is never bundled into the client
   const { putMetrics, StandardUnit } = await import('@/lib/aws/cloudwatch');
-  const snapshot = getPerformanceSnapshot(options);
+  const detachedStore = detachPerformanceBuckets(options);
 
-  if (snapshot.routes.length === 0) return;
+  if (detachedStore.routes.size === 0) return;
 
-  const timestamp = new Date();
-  const runtimeDimensions = resolveRuntimeMetricDimensions();
-  const routeDimensions = (route: RoutePerformanceSummary) => [
-    { Name: 'Route', Value: route.route },
-    { Name: 'Method', Value: route.method },
-    { Name: 'OrgScope', Value: route.org_scope },
-    ...runtimeDimensions,
-  ];
-  const summaryDimensions = [{ Name: 'OrgScope', Value: 'aggregate' }, ...runtimeDimensions];
-  const stableSummaryDimensions = [{ Name: 'OrgScope', Value: 'aggregate' }];
-  const datums = snapshot.routes.flatMap((route) => [
-    {
-      MetricName: 'RouteP50LatencyMs',
-      Value: route.p50_ms,
-      Unit: StandardUnit.Milliseconds,
-      Timestamp: timestamp,
-      Dimensions: routeDimensions(route),
-    },
-    {
-      MetricName: 'RouteP95LatencyMs',
-      Value: route.p95_ms,
-      Unit: StandardUnit.Milliseconds,
-      Timestamp: timestamp,
-      Dimensions: routeDimensions(route),
-    },
-    {
-      MetricName: 'RouteP99LatencyMs',
-      Value: route.p99_ms,
-      Unit: StandardUnit.Milliseconds,
-      Timestamp: timestamp,
-      Dimensions: routeDimensions(route),
-    },
-    {
-      MetricName: 'RouteErrorRate',
-      Value: route.error_count > 0 ? (route.error_count / route.request_count) * 100 : 0,
-      Unit: StandardUnit.Percent,
-      Timestamp: timestamp,
-      Dimensions: routeDimensions(route),
-    },
-    {
-      MetricName: 'RouteSlowRate',
-      Value: route.slow_rate,
-      Unit: StandardUnit.Percent,
-      Timestamp: timestamp,
-      Dimensions: routeDimensions(route),
-    },
-    {
-      MetricName: 'RoutePayloadBudgetOverCount',
-      Value: route.payload_budget_over_count,
-      Unit: StandardUnit.Count,
-      Timestamp: timestamp,
-      Dimensions: routeDimensions(route),
-    },
-    ...(route.p95_query_count == null
-      ? []
-      : [
-          {
-            MetricName: 'RouteP95QueryCount',
-            Value: route.p95_query_count,
-            Unit: StandardUnit.Count,
-            Timestamp: timestamp,
-            Dimensions: routeDimensions(route),
-          },
-        ]),
-  ]);
+  try {
+    const snapshot = createPerformanceSnapshot(detachedStore, {
+      ...options,
+      topRoutes: detachedStore.routes.size,
+    });
+    const timestamp = new Date();
+    const runtimeDimensions = resolveRuntimeMetricDimensions();
+    const routeDimensions = (route: RoutePerformanceSummary) => [
+      { Name: 'Route', Value: sanitizeDimensionValue(route.route, 'unknown_route') },
+      { Name: 'Method', Value: sanitizeDimensionValue(route.method, 'UNKNOWN') },
+      { Name: 'OrgScope', Value: route.org_scope },
+      ...runtimeDimensions,
+    ];
+    const summaryDimensions = [{ Name: 'OrgScope', Value: 'aggregate' }, ...runtimeDimensions];
+    const stableSummaryDimensions = [{ Name: 'OrgScope', Value: 'aggregate' }];
+    const datums = snapshot.routes.flatMap((route) => [
+      {
+        MetricName: 'RouteP50LatencyMs',
+        Value: route.p50_ms,
+        Unit: StandardUnit.Milliseconds,
+        Timestamp: timestamp,
+        Dimensions: routeDimensions(route),
+      },
+      {
+        MetricName: 'RouteP95LatencyMs',
+        Value: route.p95_ms,
+        Unit: StandardUnit.Milliseconds,
+        Timestamp: timestamp,
+        Dimensions: routeDimensions(route),
+      },
+      {
+        MetricName: 'RouteP99LatencyMs',
+        Value: route.p99_ms,
+        Unit: StandardUnit.Milliseconds,
+        Timestamp: timestamp,
+        Dimensions: routeDimensions(route),
+      },
+      {
+        MetricName: 'RouteErrorRate',
+        Value: route.error_count > 0 ? (route.error_count / route.request_count) * 100 : 0,
+        Unit: StandardUnit.Percent,
+        Timestamp: timestamp,
+        Dimensions: routeDimensions(route),
+      },
+      {
+        MetricName: 'RouteSlowRate',
+        Value: route.slow_rate,
+        Unit: StandardUnit.Percent,
+        Timestamp: timestamp,
+        Dimensions: routeDimensions(route),
+      },
+      {
+        MetricName: 'RoutePayloadBudgetOverCount',
+        Value: route.payload_budget_over_count,
+        Unit: StandardUnit.Count,
+        Timestamp: timestamp,
+        Dimensions: routeDimensions(route),
+      },
+      ...(route.p95_query_count == null
+        ? []
+        : [
+            {
+              MetricName: 'RouteP95QueryCount',
+              Value: route.p95_query_count,
+              Unit: StandardUnit.Count,
+              Timestamp: timestamp,
+              Dimensions: routeDimensions(route),
+            },
+          ]),
+    ]);
 
-  // Overall summary metrics (no Route dimension)
-  datums.push(
-    {
-      MetricName: 'OverallP95LatencyMs',
-      Value: snapshot.summary.overall_p95_ms,
-      Unit: StandardUnit.Milliseconds,
-      Timestamp: timestamp,
-      Dimensions: summaryDimensions,
-    },
-    {
-      MetricName: 'OverallP99LatencyMs',
-      Value: snapshot.summary.overall_p99_ms,
-      Unit: StandardUnit.Milliseconds,
-      Timestamp: timestamp,
-      Dimensions: summaryDimensions,
-    },
-    {
-      MetricName: 'OverallP99LatencyMs',
-      Value: snapshot.summary.overall_p99_ms,
-      Unit: StandardUnit.Milliseconds,
-      Timestamp: timestamp,
-      Dimensions: stableSummaryDimensions,
-    },
-    {
-      MetricName: 'SlowRequestRate',
-      Value: snapshot.summary.slow_request_rate,
-      Unit: StandardUnit.Percent,
-      Timestamp: timestamp,
-      Dimensions: summaryDimensions,
-    },
-    {
-      MetricName: 'PayloadBudgetOverRoutes',
-      Value: snapshot.summary.routes_over_payload_budget,
-      Unit: StandardUnit.Count,
-      Timestamp: timestamp,
-      Dimensions: summaryDimensions,
-    },
-    {
-      MetricName: 'PayloadBudgetOverRoutes',
-      Value: snapshot.summary.routes_over_payload_budget,
-      Unit: StandardUnit.Count,
-      Timestamp: timestamp,
-      Dimensions: stableSummaryDimensions,
-    },
-    ...(snapshot.summary.overall_p95_query_count == null
-      ? []
-      : [
-          {
-            MetricName: 'OverallP95QueryCount',
-            Value: snapshot.summary.overall_p95_query_count,
-            Unit: StandardUnit.Count,
-            Timestamp: timestamp,
-            Dimensions: summaryDimensions,
-          },
-          {
-            MetricName: 'OverallP95QueryCount',
-            Value: snapshot.summary.overall_p95_query_count,
-            Unit: StandardUnit.Count,
-            Timestamp: timestamp,
-            Dimensions: stableSummaryDimensions,
-          },
-        ]),
-  );
+    // Overall summary metrics (no Route dimension)
+    datums.push(
+      {
+        MetricName: 'OverallP95LatencyMs',
+        Value: snapshot.summary.overall_p95_ms,
+        Unit: StandardUnit.Milliseconds,
+        Timestamp: timestamp,
+        Dimensions: summaryDimensions,
+      },
+      {
+        MetricName: 'OverallP99LatencyMs',
+        Value: snapshot.summary.overall_p99_ms,
+        Unit: StandardUnit.Milliseconds,
+        Timestamp: timestamp,
+        Dimensions: summaryDimensions,
+      },
+      {
+        MetricName: 'OverallP99LatencyMs',
+        Value: snapshot.summary.overall_p99_ms,
+        Unit: StandardUnit.Milliseconds,
+        Timestamp: timestamp,
+        Dimensions: stableSummaryDimensions,
+      },
+      {
+        MetricName: 'SlowRequestRate',
+        Value: snapshot.summary.slow_request_rate,
+        Unit: StandardUnit.Percent,
+        Timestamp: timestamp,
+        Dimensions: summaryDimensions,
+      },
+      {
+        MetricName: 'PayloadBudgetOverRoutes',
+        Value: snapshot.summary.routes_over_payload_budget,
+        Unit: StandardUnit.Count,
+        Timestamp: timestamp,
+        Dimensions: summaryDimensions,
+      },
+      {
+        MetricName: 'PayloadBudgetOverRoutes',
+        Value: snapshot.summary.routes_over_payload_budget,
+        Unit: StandardUnit.Count,
+        Timestamp: timestamp,
+        Dimensions: stableSummaryDimensions,
+      },
+      ...(snapshot.summary.overall_p95_query_count == null
+        ? []
+        : [
+            {
+              MetricName: 'OverallP95QueryCount',
+              Value: snapshot.summary.overall_p95_query_count,
+              Unit: StandardUnit.Count,
+              Timestamp: timestamp,
+              Dimensions: summaryDimensions,
+            },
+            {
+              MetricName: 'OverallP95QueryCount',
+              Value: snapshot.summary.overall_p95_query_count,
+              Unit: StandardUnit.Count,
+              Timestamp: timestamp,
+              Dimensions: stableSummaryDimensions,
+            },
+          ]),
+    );
 
-  await putMetrics(datums);
+    await putMetrics(datums, { failureMode: 'throw' });
+  } catch (error) {
+    restorePerformanceBuckets(detachedStore);
+    throw error;
+  }
+}
+
+export function flushPerformanceMetricsToCloudWatch(options?: {
+  targetMs?: number;
+  topRoutes?: number;
+}): Promise<void> {
+  if (performanceMetricsFlushPromise) return performanceMetricsFlushPromise;
+
+  const flushPromise = runPerformanceMetricsFlush(options);
+  const trackedPromise = flushPromise.finally(() => {
+    if (performanceMetricsFlushPromise === trackedPromise) {
+      performanceMetricsFlushPromise = null;
+    }
+  });
+  performanceMetricsFlushPromise = trackedPromise;
+  return trackedPromise;
 }

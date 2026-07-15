@@ -22,9 +22,18 @@ import {
   withRoutePerformance,
 } from './performance';
 
+function alphabeticRouteSuffix(index: number): string {
+  return [
+    String.fromCharCode(97 + (index % 26)),
+    String.fromCharCode(97 + (Math.floor(index / 26) % 26)),
+    String.fromCharCode(97 + (Math.floor(index / (26 * 26)) % 26)),
+  ].join('');
+}
+
 describe('performance metrics', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    putMetricsMock.mockReset();
     resetPerformanceMetrics();
   });
 
@@ -572,8 +581,8 @@ describe('performance metrics', () => {
 
     const snapshot = getPerformanceSnapshot({ topRoutes: 600 });
 
-    expect(snapshot.summary.route_count).toBeLessThanOrEqual(500);
-    expect(snapshot.summary.total_requests).toBeLessThanOrEqual(500);
+    expect(snapshot.summary.route_count).toBe(100);
+    expect(snapshot.summary.total_requests).toBe(100);
   });
 
   it('flushes p99 and payload-budget metrics with deployment dimensions for CloudWatch', async () => {
@@ -602,6 +611,7 @@ describe('performance metrics', () => {
     await flushPerformanceMetricsToCloudWatch({ topRoutes: 5 });
 
     expect(putMetricsMock).toHaveBeenCalledTimes(1);
+    expect(putMetricsMock).toHaveBeenCalledWith(expect.any(Array), { failureMode: 'throw' });
     const metricData = putMetricsMock.mock.calls[0]?.[0] as Array<{
       MetricName: string;
       Value: number;
@@ -660,5 +670,188 @@ describe('performance metrics', () => {
       ]),
     );
     expect(JSON.stringify(metricData)).not.toContain('org_');
+  });
+
+  it('shares one in-flight send, preserves new samples, and does not resend drained samples', async () => {
+    let resolveSend: (() => void) | undefined;
+    putMetricsMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+    recordRoutePerformance({
+      route: '/api/patients/board',
+      method: 'GET',
+      status: 200,
+      durationMs: 100,
+    });
+
+    const firstFlush = flushPerformanceMetricsToCloudWatch({ topRoutes: 5 });
+    const concurrentFlush = flushPerformanceMetricsToCloudWatch({ topRoutes: 5 });
+
+    expect(concurrentFlush).toBe(firstFlush);
+    await vi.waitFor(() => expect(putMetricsMock).toHaveBeenCalledTimes(1));
+    expect(getPerformanceSnapshot().summary.total_requests).toBe(0);
+
+    recordRoutePerformance({
+      route: '/api/patients/board',
+      method: 'GET',
+      status: 200,
+      durationMs: 777,
+    });
+    resolveSend?.();
+    await Promise.all([firstFlush, concurrentFlush]);
+
+    expect(getPerformanceSnapshot().routes[0]).toMatchObject({
+      route: '/api/patients/board',
+      request_count: 1,
+      p95_ms: 777,
+    });
+
+    putMetricsMock.mockResolvedValue(undefined);
+    await flushPerformanceMetricsToCloudWatch({ topRoutes: 5 });
+    await flushPerformanceMetricsToCloudWatch({ topRoutes: 5 });
+
+    expect(putMetricsMock).toHaveBeenCalledTimes(2);
+    expect(getPerformanceSnapshot().summary.total_requests).toBe(0);
+  });
+
+  it('restores failed samples before newly recorded samples, reapplies caps, and retries them', async () => {
+    let rejectSend: ((error: Error) => void) | undefined;
+    putMetricsMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSend = reject;
+        }),
+    );
+    for (let index = 0; index < 200; index += 1) {
+      recordRoutePerformance({
+        route: '/api/patients/board',
+        method: 'GET',
+        status: 200,
+        durationMs: index,
+      });
+    }
+
+    const failedFlush = flushPerformanceMetricsToCloudWatch({ topRoutes: 5 });
+    await vi.waitFor(() => expect(putMetricsMock).toHaveBeenCalledTimes(1));
+    for (let index = 0; index < 10; index += 1) {
+      recordRoutePerformance({
+        route: '/api/patients/board',
+        method: 'GET',
+        status: 200,
+        durationMs: 1_000 + index,
+      });
+    }
+    const providerError = new Error('provider secret must not enter metrics state');
+    rejectSend?.(providerError);
+
+    await expect(failedFlush).rejects.toBe(providerError);
+    expect(getPerformanceSnapshot().routes[0]).toMatchObject({
+      route: '/api/patients/board',
+      request_count: 200,
+      max_ms: 1_009,
+      last_status: 200,
+    });
+    expect(JSON.stringify(getPerformanceSnapshot())).not.toContain('provider secret');
+
+    putMetricsMock.mockResolvedValue(undefined);
+    await flushPerformanceMetricsToCloudWatch({ topRoutes: 5 });
+
+    expect(putMetricsMock).toHaveBeenCalledTimes(2);
+    expect(getPerformanceSnapshot().summary.total_requests).toBe(0);
+  });
+
+  it('keeps new LRU buckets when failure restoration exceeds the route cap', async () => {
+    let rejectSend: ((error: Error) => void) | undefined;
+    putMetricsMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSend = reject;
+        }),
+    );
+    recordRoutePerformance({
+      route: '/api/custom/restored-old',
+      method: 'GET',
+      status: 200,
+      durationMs: 900,
+    });
+
+    const failedFlush = flushPerformanceMetricsToCloudWatch({ topRoutes: 1 });
+    await vi.waitFor(() => expect(putMetricsMock).toHaveBeenCalledTimes(1));
+    for (let index = 0; index < 500; index += 1) {
+      const suffix = alphabeticRouteSuffix(index);
+      recordRoutePerformance({
+        route: `/api/custom/new-${suffix}`,
+        method: 'GET',
+        status: 200,
+        durationMs: 10,
+      });
+    }
+    rejectSend?.(new Error('expected provider failure'));
+
+    await expect(failedFlush).rejects.toThrow('expected provider failure');
+    const snapshot = getPerformanceSnapshot({ topRoutes: 500 });
+    expect(snapshot.summary.route_count).toBe(100);
+    expect(snapshot.routes).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ route: '/api/custom/restored-old' })]),
+    );
+    expect(snapshot.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ route: `/api/custom/new-${alphabeticRouteSuffix(499)}` }),
+      ]),
+    );
+  });
+
+  it('bounds the worst-case payload and drains the full max-cap store by default', async () => {
+    vi.stubEnv('APP_ENV', 'environment '.repeat(20));
+    vi.stubEnv('DEPLOY_SHA', 'deploy '.repeat(30));
+    vi.stubEnv('PHOS_INSTANCE_ID', 'instance '.repeat(30));
+    putMetricsMock.mockResolvedValue(undefined);
+    for (let index = 0; index < 100; index += 1) {
+      const suffix = alphabeticRouteSuffix(index);
+      recordRoutePerformance({
+        route: `/api/custom/${suffix}-${'long-route-segment-'.repeat(80)}`,
+        method: 'EXTREMELY-LONG-METHOD'.repeat(20),
+        status: 200,
+        durationMs: index + 1,
+        queryCount: 1,
+      });
+    }
+
+    expect(getPerformanceSnapshot({ topRoutes: 500 }).summary.route_count).toBe(100);
+    await flushPerformanceMetricsToCloudWatch();
+    await flushPerformanceMetricsToCloudWatch();
+
+    expect(putMetricsMock).toHaveBeenCalledTimes(1);
+    const [datums, options] = putMetricsMock.mock.calls[0] as [
+      Array<{
+        MetricName: string;
+        Value: number;
+        Dimensions: Array<{ Name: string; Value: string }>;
+      }>,
+      { failureMode: string },
+    ];
+    expect(datums).toHaveLength(708);
+    expect(datums.length).toBeLessThanOrEqual(1000);
+    expect(new TextEncoder().encode(JSON.stringify(datums)).byteLength).toBeLessThan(750_000);
+    expect(options).toEqual({ failureMode: 'throw' });
+    for (const datum of datums) {
+      for (const dimension of datum.Dimensions) {
+        expect(dimension.Value).toBeTruthy();
+        expect(dimension.Value.length).toBeLessThanOrEqual(128);
+      }
+    }
+    expect(datums).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          MetricName: 'OverallP95LatencyMs',
+          Value: 95,
+          Dimensions: expect.arrayContaining([expect.objectContaining({ Name: 'Environment' })]),
+        }),
+      ]),
+    );
+    expect(getPerformanceSnapshot().summary.total_requests).toBe(0);
   });
 });
