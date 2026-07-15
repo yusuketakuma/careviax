@@ -104,9 +104,16 @@ export type OnboardingRenewalBoardItem = {
 };
 
 export type OnboardingRenewalBoard = {
+  state: 'ok' | 'empty' | 'partial';
   generated_at: string;
   as_of: string;
   window_days: number;
+  count_basis: 'bounded_active_patient_window';
+  patient_window: {
+    limit: number;
+    visible_count: number;
+    truncated: boolean;
+  };
   summary: Record<OnboardingRenewalIssue, number> & {
     total: number;
     blocking: number;
@@ -455,6 +462,7 @@ const DEFAULT_RENEWAL_WINDOW_DAYS = 30;
 const MAX_RENEWAL_WINDOW_DAYS = 180;
 const DEFAULT_RENEWAL_BOARD_LIMIT = 250;
 const MAX_RENEWAL_BOARD_LIMIT = 500;
+const RENEWAL_BOARD_COUNT_BASIS = 'bounded_active_patient_window' as const;
 
 const EMPTY_RENEWAL_ISSUE_COUNTS: Record<OnboardingRenewalIssue, number> = {
   missing_visit_consent: 0,
@@ -738,10 +746,10 @@ function buildOnboardingRenewalItems(args: {
   });
 }
 
-export async function buildOnboardingRenewalBoard(
+async function scanOnboardingRenewals(
   tx: OnboardingRenewalDb,
   args: { orgId: string; now?: Date; windowDays?: number | null; limit?: number | null },
-): Promise<OnboardingRenewalBoard> {
+) {
   const now = args.now ?? new Date();
   const todayKey = japanDateKey(now);
   const today = utcDateFromLocalKey(todayKey);
@@ -750,7 +758,7 @@ export async function buildOnboardingRenewalBoard(
   const windowEndKey = formatUtcDateKey(windowEnd);
   const limit = normalizeRenewalBoardLimit(args.limit);
 
-  const patients = (await tx.patient.findMany({
+  const scannedPatients = (await tx.patient.findMany({
     where: {
       org_id: args.orgId,
       archived_at: null,
@@ -761,8 +769,8 @@ export async function buildOnboardingRenewalBoard(
         },
       },
     },
-    orderBy: [{ name_kana: 'asc' }, { name: 'asc' }],
-    take: limit,
+    orderBy: [{ name_kana: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+    take: limit + 1,
     select: {
       id: true,
       display_id: true,
@@ -818,14 +826,32 @@ export async function buildOnboardingRenewalBoard(
     },
   })) as OnboardingRenewalPatientRow[];
 
+  const truncated = scannedPatients.length > limit;
+  const patients = scannedPatients.slice(0, limit);
   const items = buildOnboardingRenewalItems({ patients, todayKey, windowEndKey });
-  return {
+  const board: OnboardingRenewalBoard = {
+    state: truncated ? 'partial' : items.length === 0 ? 'empty' : 'ok',
     generated_at: now.toISOString(),
     as_of: todayKey,
     window_days: windowDays,
+    count_basis: RENEWAL_BOARD_COUNT_BASIS,
+    patient_window: {
+      limit,
+      visible_count: patients.length,
+      truncated,
+    },
     summary: buildRenewalSummary(items),
     items,
   };
+
+  return { board, patients };
+}
+
+export async function buildOnboardingRenewalBoard(
+  tx: OnboardingRenewalDb,
+  args: { orgId: string; now?: Date; windowDays?: number | null; limit?: number | null },
+): Promise<OnboardingRenewalBoard> {
+  return (await scanOnboardingRenewals(tx, args)).board;
 }
 
 async function syncRenewalItem(
@@ -897,7 +923,7 @@ export async function syncOnboardingRenewalTasks(
   tx: OnboardingRenewalDb,
   args: { orgId: string; now?: Date; windowDays?: number | null; limit?: number | null },
 ) {
-  const board = await buildOnboardingRenewalBoard(tx, args);
+  const { board, patients } = await scanOnboardingRenewals(tx, args);
   const openKeys = new Set(board.items.map((item) => item.dedupe_key));
   let upserted = 0;
   let resolved = 0;
@@ -906,45 +932,6 @@ export async function syncOnboardingRenewalTasks(
     await syncRenewalItem(tx, args.orgId, item);
     upserted += 1;
   }
-
-  const patients = (await tx.patient.findMany({
-    where: {
-      org_id: args.orgId,
-      archived_at: null,
-      cases: {
-        some: {
-          org_id: args.orgId,
-          status: { in: ACTIVE_ONBOARDING_CASE_STATUSES },
-        },
-      },
-    },
-    take: normalizeRenewalBoardLimit(args.limit),
-    select: {
-      id: true,
-      cases: {
-        where: {
-          org_id: args.orgId,
-          status: { in: ACTIVE_ONBOARDING_CASE_STATUSES },
-        },
-        select: {
-          id: true,
-          management_plans: {
-            where: {
-              org_id: args.orgId,
-              status: 'approved',
-              approved_at: { not: null },
-            },
-            orderBy: [{ effective_from: 'desc' }, { version: 'desc' }, { approved_at: 'desc' }],
-            take: 1,
-            select: { id: true },
-          },
-        },
-      },
-    },
-  })) as Array<{
-    id: string;
-    cases: Array<{ id: string; management_plans: Array<{ id: string }> }>;
-  }>;
 
   for (const patient of patients) {
     const consentKey = consentRenewalTaskKey(patient.id);
@@ -980,8 +967,14 @@ export async function syncOnboardingRenewalTasks(
   return {
     board,
     synced: {
+      state: board.patient_window.truncated ? ('partial' as const) : ('ok' as const),
       upserted,
       resolved,
+      scope_complete: !board.patient_window.truncated,
+      count_basis: board.count_basis,
+      processed_patient_count: patients.length,
+      limit: board.patient_window.limit,
+      truncated: board.patient_window.truncated,
     },
   };
 }

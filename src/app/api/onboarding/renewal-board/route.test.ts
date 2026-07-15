@@ -106,7 +106,16 @@ describe('/api/onboarding/renewal-board', () => {
   it('syncs renewal tasks from POST body parameters', async () => {
     syncOnboardingRenewalTasksMock.mockResolvedValue({
       board: { generated_at: '2026-07-05T00:00:00.000Z', items: [] },
-      synced: { upserted: 0, resolved: 2 },
+      synced: {
+        state: 'ok',
+        upserted: 0,
+        resolved: 2,
+        scope_complete: true,
+        count_basis: 'bounded_active_patient_window',
+        processed_patient_count: 2,
+        limit: 50,
+        truncated: false,
+      },
     });
 
     const response = await POST(
@@ -118,10 +127,43 @@ describe('/api/onboarding/renewal-board', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.data.synced).toEqual({ upserted: 0, resolved: 2 });
+    expect(body.data.synced).toMatchObject({
+      state: 'ok',
+      upserted: 0,
+      resolved: 2,
+      scope_complete: true,
+      count_basis: 'bounded_active_patient_window',
+      truncated: false,
+    });
+    expect(requireAuthContextMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ permission: 'canVisit' }),
+    );
     expect(syncOnboardingRenewalTasksMock).toHaveBeenCalledWith(
       { tx: true },
       expect.objectContaining({ orgId: 'org_1', windowDays: 7, limit: 50 }),
     );
+  });
+
+  it('rejects POST without mutation capability before opening org context', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'AUTH_FORBIDDEN' }), { status: 403 }),
+    });
+
+    const response = await POST(
+      makeRequest('/api/onboarding/renewal-board', {
+        method: 'POST',
+        body: JSON.stringify({ window_days: 7, limit: 50 }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ permission: 'canVisit' }),
+    );
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(syncOnboardingRenewalTasksMock).not.toHaveBeenCalled();
+    expect(withSensitiveNoStoreMock).toHaveBeenCalledOnce();
   });
 });

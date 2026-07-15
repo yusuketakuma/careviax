@@ -647,6 +647,19 @@ describe('buildOnboardingRenewalBoard', () => {
 
     expect(board.as_of).toBe('2026-07-05');
     expect(board.window_days).toBe(30);
+    expect(board.state).toBe('ok');
+    expect(board.count_basis).toBe('bounded_active_patient_window');
+    expect(board.patient_window).toEqual({
+      limit: 250,
+      visible_count: 3,
+      truncated: false,
+    });
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ name_kana: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+        take: 251,
+      }),
+    );
     expect(board.summary).toMatchObject({
       total: 6,
       blocking: 3,
@@ -685,6 +698,23 @@ describe('buildOnboardingRenewalBoard', () => {
       }),
     );
   });
+
+  it('marks an empty complete patient window explicitly', async () => {
+    patientFindManyMock.mockResolvedValue([]);
+
+    const board = await buildOnboardingRenewalBoard(makeRenewalDb(), {
+      orgId: 'org_1',
+      now: new Date('2026-07-05T03:00:00.000Z'),
+      limit: 10,
+    });
+
+    expect(board.state).toBe('empty');
+    expect(board.patient_window).toEqual({
+      limit: 10,
+      visible_count: 0,
+      truncated: false,
+    });
+  });
 });
 
 describe('syncOnboardingRenewalTasks', () => {
@@ -696,45 +726,34 @@ describe('syncOnboardingRenewalTasks', () => {
   });
 
   it('upserts open renewal findings and resolves stale dedupe tasks for scanned patients', async () => {
-    patientFindManyMock
-      .mockResolvedValueOnce([
-        {
-          id: 'patient-1',
-          display_id: 'P-001',
-          name: '青葉 太郎',
-          primary_pharmacist_id: 'pharmacist-1',
-          primary_staff_id: null,
-          consents: [],
-          cases: [
-            {
-              id: 'case-1',
-              display_id: 'C-001',
-              status: 'active',
-              primary_pharmacist_id: null,
-              primary_staff_id: null,
-              management_plans: [
-                {
-                  id: 'plan-1',
-                  next_review_date: new Date('2026-07-20T00:00:00.000Z'),
-                  effective_from: new Date('2026-01-01T00:00:00.000Z'),
-                  version: 1,
-                  approved_at: new Date('2026-01-01T00:00:00.000Z'),
-                },
-              ],
-            },
-          ],
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          id: 'patient-1',
-          cases: [{ id: 'case-1', management_plans: [{ id: 'plan-1' }] }],
-        },
-        {
-          id: 'patient-2',
-          cases: [{ id: 'case-2', management_plans: [{ id: 'plan-2' }] }],
-        },
-      ]);
+    patientFindManyMock.mockResolvedValue([
+      {
+        id: 'patient-1',
+        display_id: 'P-001',
+        name: '青葉 太郎',
+        primary_pharmacist_id: 'pharmacist-1',
+        primary_staff_id: null,
+        consents: [],
+        cases: [
+          {
+            id: 'case-1',
+            display_id: 'C-001',
+            status: 'active',
+            primary_pharmacist_id: null,
+            primary_staff_id: null,
+            management_plans: [
+              {
+                id: 'plan-1',
+                next_review_date: new Date('2026-07-20T00:00:00.000Z'),
+                effective_from: new Date('2026-01-01T00:00:00.000Z'),
+                version: 1,
+                approved_at: new Date('2026-01-01T00:00:00.000Z'),
+              },
+            ],
+          },
+        ],
+      },
+    ]);
 
     const result = await syncOnboardingRenewalTasks(makeRenewalDb(), {
       orgId: 'org_1',
@@ -775,26 +794,117 @@ describe('syncOnboardingRenewalTasks', () => {
       expect.anything(),
       expect.objectContaining({
         orgId: 'org_1',
-        taskType: 'visit_consent_renewal',
-        dedupeKey: 'onboarding-renewal:visit-consent:patient-2',
-      }),
-    );
-    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        orgId: 'org_1',
         taskType: 'management_plan_missing',
-        dedupeKey: 'onboarding-renewal:management-plan:case-2',
+        dedupeKey: 'onboarding-renewal:management-plan:case-1',
       }),
     );
-    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(resolveOperationalTasksMock).toHaveBeenCalledOnce();
+    expect(patientFindManyMock).toHaveBeenCalledOnce();
+    expect(result.synced).toEqual({
+      state: 'ok',
+      upserted: 2,
+      resolved: 1,
+      scope_complete: true,
+      count_basis: 'bounded_active_patient_window',
+      processed_patient_count: 1,
+      limit: 250,
+      truncated: false,
+    });
+  });
+
+  it('never resolves task keys outside a truncated deterministic patient window', async () => {
+    patientFindManyMock.mockResolvedValue([
+      {
+        id: 'patient-1',
+        display_id: 'P-001',
+        name: '青葉 太郎',
+        primary_pharmacist_id: 'pharmacist-1',
+        primary_staff_id: null,
+        consents: [
+          {
+            id: 'consent-1',
+            expiry_date: new Date('2027-07-05T00:00:00.000Z'),
+            obtained_date: new Date('2026-01-01T00:00:00.000Z'),
+          },
+        ],
+        cases: [
+          {
+            id: 'case-1',
+            display_id: 'C-001',
+            status: 'active',
+            primary_pharmacist_id: null,
+            primary_staff_id: null,
+            management_plans: [
+              {
+                id: 'plan-1',
+                next_review_date: new Date('2027-07-05T00:00:00.000Z'),
+                effective_from: new Date('2026-01-01T00:00:00.000Z'),
+                version: 1,
+                approved_at: new Date('2026-01-01T00:00:00.000Z'),
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'patient-2',
+        display_id: 'P-002',
+        name: '桜 花子',
+        primary_pharmacist_id: 'pharmacist-2',
+        primary_staff_id: null,
+        consents: [],
+        cases: [
+          {
+            id: 'case-2',
+            display_id: 'C-002',
+            status: 'active',
+            primary_pharmacist_id: null,
+            primary_staff_id: null,
+            management_plans: [],
+          },
+        ],
+      },
+    ]);
+
+    const result = await syncOnboardingRenewalTasks(makeRenewalDb(), {
+      orgId: 'org_1',
+      now: new Date('2026-07-05T03:00:00.000Z'),
+      windowDays: 30,
+      limit: 1,
+    });
+
+    expect(patientFindManyMock).toHaveBeenCalledOnce();
+    expect(patientFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        orgId: 'org_1',
-        taskType: 'management_plan_review',
-        dedupeKey: 'management-plan-review:plan-2',
+        orderBy: [{ name_kana: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+        take: 2,
       }),
     );
-    expect(result.synced.resolved).toBeGreaterThanOrEqual(3);
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).toHaveBeenCalledTimes(3);
+    expect(resolveOperationalTasksMock.mock.calls.map(([, input]) => input.dedupeKey)).toEqual([
+      'onboarding-renewal:visit-consent:patient-1',
+      'onboarding-renewal:management-plan:case-1',
+      'management-plan-review:plan-1',
+    ]);
+    expect(result.board).toMatchObject({
+      state: 'partial',
+      count_basis: 'bounded_active_patient_window',
+      patient_window: {
+        limit: 1,
+        visible_count: 1,
+        truncated: true,
+      },
+    });
+    expect(result.synced).toEqual({
+      state: 'partial',
+      upserted: 0,
+      resolved: 3,
+      scope_complete: false,
+      count_basis: 'bounded_active_patient_window',
+      processed_patient_count: 1,
+      limit: 1,
+      truncated: true,
+    });
   });
 });

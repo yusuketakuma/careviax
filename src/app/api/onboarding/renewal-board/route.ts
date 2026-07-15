@@ -70,7 +70,7 @@ async function authenticatedGET(req: NextRequest) {
 
 async function authenticatedPOST(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
+    permission: 'canVisit',
     message: '同意・管理計画更新タスクの同期権限がありません',
   });
   if ('response' in authResult) return authResult.response;
