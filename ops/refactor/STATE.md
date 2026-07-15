@@ -63,8 +63,47 @@
 
 ## 直近の作業
 
+- codex1 + codex2 planning integration / continuous-improvement scan
+  (DONE / PLANS COMMITTED, 2026-07-15; plan commits `069ddfd6e`, `b00a32a71`).
+  - fixed-role/account-model decision:
+    `Plans.md`の最上位SSOTを、global `owner` / `supporter`、tenant `admin > pharmacist > clerk`の固定5公開roleへ更新した。
+    supporterは明示assignment tenantだけread-onlyで、通常support/break-glassを含む全modeでzero-write。tenant業務は
+    admin/pharmacistの薬剤師側business actionとadmin/pharmacist/clerkの非薬剤師actionへ分け、その内側で法令上の
+    薬剤師資格を要する確定・承認・実施・変更・取消・監査をcanonical verified/current qualificationへ二段gateする。
+    role名、legacy claim、free-form credentialから資格を推定せず、資格未確認のadmin/global ownerも法的資格actionは
+    fail-closedにする。global ownerのfull capabilityも各tenantへのexplicit target pin、RLS、purpose、step-up、auditを迂回しない。
+  - migration / split-brain inventory:
+    Prisma tenant 7 role、platform 3 role、必須`User.org_id`、4個人override flagに加え、別planeのPHOS
+    `UserRole`（`PHARMACIST/PHARMACY_CLERK/DISPENSE_ASSISTANT/MANAGER/ADMIN`）、`phosRoleFromMemberRole`、Cognito
+    `custom:role`、JWT/session、provision/import、PHOS backend/API Gateway `allowed_roles`、action/DTO `required_role`、
+    blocker/UI consumerまで同じversioned contractで移す必要を記録した。codex2 final reviewの追補`b00a32a71`では、DynamoDB
+    card/action/transaction/lifecycleの`required_role` / `owner_role`、strict client parser、browser offline queue/cacheも
+    role-bearing persisted projectionとしてscopeへ追加した。redacted inventory、versioned re-projection/backfill、offline再認可/
+    claim-cache invalidation、rollback、zero-legacy-value/old-reader telemetryを必須とし、歴史`AuditLog` role snapshotはactive
+    authへ再利用せず不変の表示互換だけを保つ。freeze + SELECT-only inventory → additive model → shadow evaluation →
+    controlled cutover → zero-read/value cleanupの順とし、tenant owner/trainee/driver/external/platform_adminをstronger fixed roleへ
+    自動mappingしない。schema/DML/IaC/deployは人間承認前に行わない。
+  - task-finder result / priority:
+    Implementation-ready queueは43→60、追加17 ID、既存ID削除0、重複0。うちaccount-model umbrellaと既存clerk boundaryの
+    queue昇格を除く新規15候補は、`JOB-TENANT-EXECUTION-001`、`MEDSAFE-JAHIS-QR-PATIENT-IDENTITY-001`、
+    `PRIVACY-PRINT-EXPLICIT-INTENT-001`、`MEDSAFE-CDS-FALSE-SAFE-PARSE-001`、`CONSENT-EXPIRY-JST-SSOT-001`、
+    `OFFLINE-SYNC-STATUS-TRUTH-001`、`CLINICAL-SYNC-QUEUE-TX-ISOLATION-001`、`API-LIST-STABLE-ORDER-001`、
+    `AUTHZ-AUDIT-UI-REACHABILITY-001`、`STABILITY-JOB-LEASE-001`、`STABILITY-JOB-PARTIAL-OUTCOME-001`、
+    `AUTHZ-SYSTEM-SETTINGS-TENANT-BOUNDARY-001`、`AUTH-MFA-CONTROL-ENFORCEMENT-001`、
+    `PRESCRIPTION-INTAKE-CREATE-IDEMPOTENCY-001`、`MEDSAFE-PRESCRIPTION-INPUT-BOUNDS-001`。各rowへlive evidence、
+    reproduction/DoD、negative/concurrency/RLS/medical/privacy test、stop/human gateを持たせた。既存`FE-PATIENT-DETAIL-001`も
+    consent/MCS subrouteと不可逆overlayのpinned 2 identifiers + Safetyへ具体化した。次のsmall verified sliceはglobal job境界、
+    JAHIS QR patient identity fail-close、explicit print intentの順。DB/AWS/medical threshold系は批准まで実装しない。
+  - peer agreement / validation:
+    codex2とsupporter zero-write、verified qualification、legacy自動昇格禁止、PHOS/Cognito/IaC split-brain stop gateで合意し、
+    Plans ownership RELEASE後にcodex1が統合した。codex2の最終read-only correction 1件（persisted role projection）も追補後に
+    合意済み。`pnpm plans:active:check`、`pnpm exec prettier --check Plans.md`、
+    `git diff --check -- Plans.md`、queue count/duplicate/HEAD差分checkをPASSし、60 rows・duplicate 0・removed 0を確認した。
+    build/E2Eはdocumentation-only integrationかつno-frequent-build方針のため未実行、Oracleは現行STATEどおり不使用。
+    account model、DB migration、Cognito/IaC、role cutoverは計画完了であり実装済みではない。
+
 - user policy + codex1/codex2 live recon: PH-OS account / fixed-role model V1
-  (AUTHORITATIVE POLICY RECEIVED / HIGH-RISK MIGRATION PLAN IN PROGRESS, 2026-07-15).
+  (AUTHORITATIVE POLICY RECEIVED / MIGRATION PLAN COMMITTED / IMPLEMENTATION NOT STARTED, 2026-07-15).
   - user decision:
     public account types are fixed to platform `owner` / `supporter` and tenant `admin > pharmacist > clerk`.
     platform owner has full PH-OS tenant/system/account/audit capability; supporter is read-only and only for explicitly assigned
@@ -84,11 +123,11 @@
     canonical legal-license fact. Static inventory found old-role references in 94 trainee / 61 driver / 58 external-viewer files,
     tenant-owner references in 91 files, and individual dispense/audit flags in 22 / 32 files.
   - execution boundary / next:
-    do not delete enum values, rewrite memberships, apply a migration, or blanket-enable actions in this slice. `codex2` owns the
-    `Plans.md` consolidation under `AUTHZ-ACCOUNT-MODEL-V1-001` (or a deduplicated umbrella), refining existing
-    `TENANT-SUPPORT-001` / permission-doc work with additive schema, explicit legacy mapping, qualification gate, RLS/audit proof,
-    compatibility, rollback, and human migration approval. Full platform-owner capability must not become an unscoped/unaudited DB
-    bypass. The ordinary clerk-read slice below is compatible with the new policy; pharmacist-only writes/outputs remain closed.
+    do not delete enum values, rewrite memberships, apply a migration, or blanket-enable actions before the committed
+    `AUTHZ-ACCOUNT-MODEL-V1-001` freeze/inventory and human gates. `TENANT-SUPPORT-001`、`PERM-DOC-SYNC-001`、
+    `AUTHZ-CLERK-PHARMACIST-BOUNDARY-001`はumbrellaのsubtrackとして重複実装しない。Full platform-owner capability must not
+    become an unscoped/unaudited DB bypass. The ordinary clerk-read slice below is compatible with the new policy;
+    pharmacist-only writes/outputs remain closed until method/purpose/qualification classification is proven.
 
 - codex2 implementation + codex1 independent review/integration: clerk ordinary patient reads S2
   (DONE / CODE COMMITTED, 2026-07-15; implementation `2c6f975af`).
