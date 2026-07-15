@@ -20,13 +20,14 @@ public URLs, and Codex prompts.
 For any AWS-related implementation, consult the relevant AWS official documentation or API reference before editing code, IaC, runtime env, IAM/S3/RDS/ECS/DynamoDB/SES/Cognito/CloudWatch/Route 53/ACM/Secrets Manager/EventBridge configuration, or operational scripts. Record the official reference name, URL, and confirmation date in the implementation notes, PR description, `ops/refactor/STATE.md`, or the relevant docs. If AWS official guidance conflicts with repository planning docs, prefer the official guidance and update `Plans.md` with the delta before implementation.
 
 CareViaX must not invoke Oracle or any external reviewer agent. High-risk work remains
-within the independent `codex1` / `codex2` review boundary unless the user explicitly
-changes this topology.
+with `codex1` for evidence-backed self-review and any applicable human gate unless the
+user explicitly changes this topology.
 
 Runtime model, approval, sandbox, service tier, and MCP settings belong in the user-level
 `~/.codex/config.toml`. Custom-agent registrations are intentionally absent. This repository
-file defines PH-OS-specific working rules; its two active seats are independent Codex CLI
-sessions coordinated through agmsg.
+file defines PH-OS-specific working rules; its only active engineering seat is `codex1`.
+agmsg remains available for automatic inbox delivery and the human control plane, not for
+an additional Codex seat.
 
 ## Mission
 
@@ -36,12 +37,12 @@ Work in YOLO mode.
 Use Ralph-loop execution.
 Do not stop until the concrete task is actually complete or an explicit blocker is proven.
 
-## Autonomous Idle Search — codex1 / codex2 operation
+## Autonomous Idle Search — codex1-only operation
 
-This repository is currently operated only by the independent `codex1` and
-`codex2` Codex CLI seats coordinated through agmsg. Do not use codex3/codex4,
-Claude, Oracle, built-in custom agents, subagents, or external maker/checker workers
-unless the user explicitly changes this topology in a later instruction.
+This repository is currently operated only by the `codex1` Codex CLI seat. Do not use
+codex2, codex3/codex4, Claude, Oracle, built-in custom agents, subagents, or external
+maker/checker workers unless the user explicitly changes this topology in a later
+instruction.
 
 When a current slice is waiting on review, LOCK release, commit/land, another
 agent, or a narrow blocker, do not become passively idle. Continue looking for
@@ -63,11 +64,11 @@ useful, safe work that moves the repository-level objective forward:
 **現行の運用体制は `ops/refactor/STATE.md` が唯一の正（SSOT）。** このファイルや他の文書に
 残る体制記述（旧 Claude main / Codex-only / rev8 等）は歴史的記録であり、矛盾時は STATE.md に従う。
 
-2026-07-16 ユーザー指示により、現行運用は **codex1 / codex2 の二者運用**。
-両者が計画レビュー、non-overlap 実装、相互検証を agmsg で連携し、codex1 が単一台帳更新と
-integration を担当する。codex3/codex4、Claude、Oracle、built-in custom agent、subagent、外部
-maker/checker は使わない。ユーザーが明示的に変更しない限り、旧 single-Codex / broader
-multi-agent / maker-checker 記述は歴史的記録として扱う。
+2026-07-16 ユーザー指示により、現行運用は **codex1 の単独運転**。
+codex1 が計画、実装、検証、単一台帳更新、integration を一貫して担当する。codex2、
+codex3/codex4、Claude、Oracle、built-in custom agent、subagent、外部 maker/checker は使わない。
+ユーザーが明示的に変更しない限り、旧 two-seat / broader multi-agent / maker-checker 記述は
+歴史的記録として扱う。
 
 shared worktree 前提を維持する。編集前に `git status --short --untracked-files=all`
 と対象 diff を確認し、既存の user/peer dirty 変更を保存する。コミット時は明示した owned path だけを
@@ -87,12 +88,12 @@ For each iteration:
 7. Update only `ops/refactor/STATE.md` when recording progress, validation, remaining work, or next action.
 8. Before any commit, inspect `git status --short --untracked-files=all`, stage only explicit owned paths, and continue. Do not push unless the user explicitly asks.
 
-## Two-agent coordination
+## Single-seat coordination
 
-The active loop is limited to `codex1` and `codex2`.
+The active loop is limited to `codex1`.
 
-- Both seats review plans before implementation, claim exact non-overlapping paths through agmsg, and independently verify the other seat's coherent slice.
-- `codex1` owns the single ledger update and integration commits; `codex2` does not edit shared ledgers unless codex1 explicitly delegates an exact path.
+- `codex1` owns planning, implementation, validation, the single ledger update, and integration commits.
+- Do not assign new claims, edits, reviews, or ledger work to `codex2`.
 - Do not use codex3/codex4, Claude, Oracle, project custom agents, built-in subagents, or external maker/checker workers unless the user explicitly changes the topology.
 - Keep long Next.js gates serialized: do not run `pnpm build` concurrently with `pnpm typecheck` or `pnpm typecheck:no-unused`; `.next/types` can race.
 - For commits, stage only explicit owned files. Never use `git add -A` in this shared dirty worktree.
@@ -114,7 +115,7 @@ The active loop is limited to `codex1` and `codex2`.
 
 The current operational SSOT and only active progress ledger is `ops/refactor/STATE.md`, with
 `.agent-loop/README.md` as the operator guide. Historical Claude x Codex and broader-agent rules remain background only.
-The active loop is codex1/codex2 execution plus validation/gbrain. Before editing, inspect the dirty tree;
+The active loop is codex1-only execution plus validation/gbrain. Before editing, inspect the dirty tree;
 before committing, stage only owned files; and follow the objective gates in `.agent-loop/GATE_CONFIG.md`.
 
 Do not append new progress entries to `.codex/ralph-state.md`, `CODEX_GOAL_PROGRESS.md`,
