@@ -22,7 +22,11 @@ describe('LineNotificationAdapter', () => {
       channelAccessToken: 'line-token',
     });
 
-    await expect(adapter.sendMessage('user-1', '通知本文')).resolves.toEqual({
+    await expect(
+      adapter.sendMessage('user-1', '通知本文', {
+        idempotencyKey: '4fda4c0e-95c0-4a38-8e8f-75822b5e55fb',
+      }),
+    ).resolves.toEqual({
       status: 'accepted',
       provider: 'line',
       providerMessageId: 'line-request-1',
@@ -34,6 +38,7 @@ describe('LineNotificationAdapter', () => {
         method: 'POST',
         headers: expect.objectContaining({
           Authorization: 'Bearer line-token',
+          'X-Line-Retry-Key': '4fda4c0e-95c0-4a38-8e8f-75822b5e55fb',
         }),
         signal: expect.any(AbortSignal),
       }),
@@ -140,6 +145,19 @@ describe('LineNotificationAdapter', () => {
     await expect(adapter.sendMessage('user-1', '   ')).rejects.toThrow(
       'LINE delivery message is required',
     );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed retry keys before calling LINE', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const adapter = new LineNotificationAdapter({
+      provider: 'line',
+      channelAccessToken: 'line-token',
+    });
+
+    await expect(
+      adapter.sendMessage('user-1', '通知本文', { idempotencyKey: 'not-a-uuid' }),
+    ).rejects.toThrow('LINE idempotency key must be a UUID');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

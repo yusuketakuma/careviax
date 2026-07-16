@@ -71,6 +71,7 @@ async function waitForAsyncAssertion(assertion: () => void) {
 
 function createTx() {
   const notificationRuleFindMany = vi.fn();
+  const domainEventOutboxCreateMany = vi.fn().mockResolvedValue({ count: 0 });
   const membershipFindMany = vi.fn();
   const notificationCreate = vi.fn();
   const notificationUpsert = vi.fn();
@@ -79,6 +80,9 @@ function createTx() {
 
   return {
     tx: {
+      domainEventOutbox: {
+        createMany: domainEventOutboxCreateMany,
+      },
       notificationRule: {
         findMany: notificationRuleFindMany,
       },
@@ -97,6 +101,7 @@ function createTx() {
       },
     },
     notificationRuleFindMany,
+    domainEventOutboxCreateMany,
     membershipFindMany,
     notificationCreate,
     notificationUpsert,
@@ -117,12 +122,10 @@ describe('dispatchNotificationEvent', () => {
   it('delivers to explicit users when no notification rules exist', async () => {
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
-    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
-      createTx();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate } = createTx();
 
     notificationRuleFindMany.mockResolvedValue([]);
     membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
-    userFindMany.mockResolvedValue([]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: 'notification_1',
       created_at: new Date('2026-06-17T00:00:00.000Z'),
@@ -186,12 +189,10 @@ describe('dispatchNotificationEvent', () => {
   it('logs a safe warning when realtime broadcast fails without rejecting persisted notifications', async () => {
     loggerWarnMock.mockReset();
     const rawError = 'realtime failed for 患者A token=secret notification body';
-    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
-      createTx();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate } = createTx();
 
     notificationRuleFindMany.mockResolvedValue([]);
     membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
-    userFindMany.mockResolvedValue([]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: 'notification_1',
       created_at: new Date('2026-06-17T00:00:00.000Z'),
@@ -304,8 +305,13 @@ describe('dispatchNotificationEvent', () => {
     vi.useFakeTimers();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
-    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
-      createTx();
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      domainEventOutboxCreateMany,
+    } = createTx();
     const configuredUserIds = [
       'valid_rule',
       'cross_org',
@@ -336,10 +342,6 @@ describe('dispatchNotificationEvent', () => {
     membershipFindMany.mockResolvedValue([
       { user_id: 'valid_explicit', role: 'pharmacist' },
       { user_id: 'valid_rule', role: 'admin' },
-    ]);
-    userFindMany.mockResolvedValue([
-      { id: 'valid_explicit', phone: '09000000001' },
-      { id: 'valid_rule', phone: '09000000002' },
     ]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: `notification_${data.user_id as string}`,
@@ -391,30 +393,23 @@ describe('dispatchNotificationEvent', () => {
       ),
     ).toEqual(['valid_explicit', 'valid_rule']);
     expect(broadcastStatusUpdateMock).toHaveBeenCalledTimes(2);
-    expect(userFindMany).toHaveBeenCalledWith({
-      where: {
-        id: { in: ['valid_explicit', 'valid_rule'] },
-        is_active: true,
-        account_status: 'active',
-        memberships: {
-          some: {
-            org_id: 'org_1',
-            is_active: true,
-          },
-        },
-      },
-      select: { id: true, phone: true },
+    expect(domainEventOutboxCreateMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          aggregate_id: 'valid_explicit',
+          metadata: expect.objectContaining({ channel: 'sms' }),
+        }),
+        expect.objectContaining({
+          aggregate_id: 'valid_rule',
+          metadata: expect.objectContaining({ channel: 'sms' }),
+        }),
+      ]),
+      skipDuplicates: true,
     });
-
-    await runScheduledDeliveries();
-
-    expect(sendSmsMock).toHaveBeenCalledTimes(2);
     const serializedSideEffects = JSON.stringify([
       notificationCreate.mock.calls,
       broadcastStatusUpdateMock.mock.calls,
-      userFindMany.mock.calls,
-      sendSmsMock.mock.calls,
-      sendLineMessageMock.mock.calls,
+      domainEventOutboxCreateMany.mock.calls,
     ]);
     for (const invalidUserId of [
       'cross_org',
@@ -543,7 +538,8 @@ describe('dispatchNotificationEvent', () => {
     vi.useFakeTimers();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
-    const { tx, notificationRuleFindMany, membershipFindMany, userFindMany } = createTx();
+    const { tx, notificationRuleFindMany, membershipFindMany, domainEventOutboxCreateMany } =
+      createTx();
     notificationRuleFindMany.mockResolvedValue([
       {
         id: 'rule_sms',
@@ -555,7 +551,6 @@ describe('dispatchNotificationEvent', () => {
       },
     ]);
     membershipFindMany.mockResolvedValue([{ user_id: 'multi_org_user', role: 'pharmacist' }]);
-    userFindMany.mockResolvedValue([{ id: 'multi_org_user', phone: '09000000001' }]);
 
     const notifications = await dispatchNotificationEvent(tx, {
       orgId: 'org_1',
@@ -566,27 +561,16 @@ describe('dispatchNotificationEvent', () => {
     });
 
     expect(notifications).toEqual([]);
-    expect(userFindMany).toHaveBeenCalledTimes(1);
-    const userWhere = userFindMany.mock.calls[0]?.[0]?.where;
-    expect(userWhere).toEqual({
-      id: { in: ['multi_org_user'] },
-      is_active: true,
-      account_status: 'active',
-      memberships: {
-        some: {
+    expect(domainEventOutboxCreateMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
           org_id: 'org_1',
-          is_active: true,
-        },
-      },
+          aggregate_id: 'multi_org_user',
+          metadata: expect.objectContaining({ channel: 'sms' }),
+        }),
+      ],
+      skipDuplicates: true,
     });
-    expect(userWhere).not.toHaveProperty('org_id');
-
-    await runScheduledDeliveries();
-
-    expect(sendSmsMock).toHaveBeenCalledWith(
-      '09000000001',
-      'PH-OS通知\nアプリで詳細を確認してください',
-    );
     expect(sendLineMessageMock).not.toHaveBeenCalled();
   });
 
@@ -637,8 +621,7 @@ describe('dispatchNotificationEvent', () => {
   it('bounds concurrent notification row creation for large recipient sets', async () => {
     const originalConcurrency = process.env.NOTIFICATION_DELIVERY_CONCURRENCY;
     process.env.NOTIFICATION_DELIVERY_CONCURRENCY = '2';
-    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
-      createTx();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate } = createTx();
     notificationRuleFindMany.mockResolvedValue([]);
     membershipFindMany.mockResolvedValue([
       { user_id: 'user_1', role: 'pharmacist' },
@@ -646,7 +629,6 @@ describe('dispatchNotificationEvent', () => {
       { user_id: 'user_3', role: 'pharmacist' },
       { user_id: 'user_4', role: 'pharmacist' },
     ]);
-    userFindMany.mockResolvedValue([]);
 
     let activeCreates = 0;
     let maxActiveCreates = 0;
@@ -803,12 +785,17 @@ describe('dispatchNotificationEvent', () => {
     );
   });
 
-  it('routes sms notifications to users with phone numbers when sms rules are enabled', async () => {
+  it('persists sms delivery intents for eligible rule recipients', async () => {
     vi.useFakeTimers();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
-    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
-      createTx();
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      domainEventOutboxCreateMany,
+    } = createTx();
 
     notificationRuleFindMany.mockResolvedValue([
       {
@@ -828,11 +815,6 @@ describe('dispatchNotificationEvent', () => {
       { user_id: 'user_2', role: 'pharmacist' },
       { user_id: 'user_3', role: 'admin' },
     ]);
-    userFindMany.mockResolvedValue([
-      { id: 'user_1', phone: '09000000001' },
-      { id: 'user_2', phone: null },
-      { id: 'user_3', phone: '09000000003' },
-    ]);
 
     const notifications = await dispatchNotificationEvent(tx, {
       orgId: 'org_1',
@@ -848,27 +830,32 @@ describe('dispatchNotificationEvent', () => {
     expect(sendSmsMock).not.toHaveBeenCalled();
     expect(sendLineMessageMock).not.toHaveBeenCalled();
 
-    await runScheduledDeliveries();
-
-    expect(sendSmsMock).toHaveBeenCalledTimes(2);
-    expect(sendSmsMock).toHaveBeenNthCalledWith(
-      1,
-      '09000000001',
-      'PH-OS通知\nアプリで詳細を確認してください',
-    );
-    expect(sendSmsMock).toHaveBeenNthCalledWith(
-      2,
-      '09000000003',
-      'PH-OS通知\nアプリで詳細を確認してください',
-    );
+    expect(domainEventOutboxCreateMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          aggregate_id: 'user_1',
+          metadata: expect.objectContaining({ channel: 'sms' }),
+        }),
+        expect.objectContaining({
+          aggregate_id: 'user_2',
+          metadata: expect.objectContaining({ channel: 'sms' }),
+        }),
+        expect.objectContaining({
+          aggregate_id: 'user_3',
+          metadata: expect.objectContaining({ channel: 'sms' }),
+        }),
+      ]),
+      skipDuplicates: true,
+    });
     expect(sendLineMessageMock).not.toHaveBeenCalled();
   });
 
-  it('routes line notifications to explicit and rule-based user ids', async () => {
+  it('persists line delivery intents for explicit and rule-based user ids', async () => {
     vi.useFakeTimers();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
-    const { tx, notificationRuleFindMany, membershipFindMany, userFindMany } = createTx();
+    const { tx, notificationRuleFindMany, membershipFindMany, domainEventOutboxCreateMany } =
+      createTx();
 
     notificationRuleFindMany.mockResolvedValue([
       {
@@ -886,10 +873,6 @@ describe('dispatchNotificationEvent', () => {
       { user_id: 'user_1', role: 'pharmacist' },
       { user_id: 'user_2', role: 'pharmacist' },
     ]);
-    userFindMany.mockResolvedValue([
-      { id: 'user_1', phone: null },
-      { id: 'user_2', phone: null },
-    ]);
 
     await dispatchNotificationEvent(tx, {
       orgId: 'org_1',
@@ -903,19 +886,19 @@ describe('dispatchNotificationEvent', () => {
     expect(sendLineMessageMock).not.toHaveBeenCalled();
     expect(sendSmsMock).not.toHaveBeenCalled();
 
-    await runScheduledDeliveries();
-
-    expect(sendLineMessageMock).toHaveBeenCalledTimes(2);
-    expect(sendLineMessageMock).toHaveBeenNthCalledWith(
-      1,
-      'user_1',
-      'PH-OS通知\nアプリで詳細を確認してください',
-    );
-    expect(sendLineMessageMock).toHaveBeenNthCalledWith(
-      2,
-      'user_2',
-      'PH-OS通知\nアプリで詳細を確認してください',
-    );
+    expect(domainEventOutboxCreateMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          aggregate_id: 'user_1',
+          metadata: expect.objectContaining({ channel: 'line' }),
+        }),
+        expect.objectContaining({
+          aggregate_id: 'user_2',
+          metadata: expect.objectContaining({ channel: 'line' }),
+        }),
+      ]),
+      skipDuplicates: true,
+    });
     expect(sendSmsMock).not.toHaveBeenCalled();
   });
 
@@ -923,8 +906,13 @@ describe('dispatchNotificationEvent', () => {
     vi.useFakeTimers();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
-    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
-      createTx();
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      domainEventOutboxCreateMany,
+    } = createTx();
 
     notificationRuleFindMany.mockResolvedValue([
       {
@@ -949,7 +937,6 @@ describe('dispatchNotificationEvent', () => {
       },
     ]);
     membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
-    userFindMany.mockResolvedValue([{ id: 'user_1', phone: '09000000001' }]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: 'notification_1',
       created_at: new Date('2026-06-17T00:00:00.000Z'),
@@ -987,14 +974,21 @@ describe('dispatchNotificationEvent', () => {
     expect(realtimePayload).not.toContain('モルヒネ');
     expect(realtimePayload).not.toContain('肺がん');
 
-    await runScheduledDeliveries();
-
-    const expectedExternalBody = 'PH-OS通知\nアプリで詳細を確認してください';
-    expect(sendSmsMock).toHaveBeenCalledWith('09000000001', expectedExternalBody);
-    expect(sendLineMessageMock).toHaveBeenCalledWith('user_1', expectedExternalBody);
+    expect(domainEventOutboxCreateMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          aggregate_id: 'user_1',
+          metadata: { channel: 'sms', source_event_type: 'patient_self_report_followup_due' },
+        }),
+        expect.objectContaining({
+          aggregate_id: 'user_1',
+          metadata: { channel: 'line', source_event_type: 'patient_self_report_followup_due' },
+        }),
+      ]),
+      skipDuplicates: true,
+    });
     const externalPayloads = JSON.stringify([
-      sendSmsMock.mock.calls,
-      sendLineMessageMock.mock.calls,
+      domainEventOutboxCreateMany.mock.calls,
       buildExternalNotificationContent(),
     ]);
     expect(externalPayloads).not.toContain('田中');
@@ -1209,8 +1203,13 @@ describe('dispatchNotificationEvent', () => {
     vi.useFakeTimers();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
-    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
-      createTx();
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      domainEventOutboxCreateMany,
+    } = createTx();
 
     notificationRuleFindMany.mockResolvedValue([
       {
@@ -1245,7 +1244,6 @@ describe('dispatchNotificationEvent', () => {
       },
     ]);
     membershipFindMany.mockResolvedValue([{ user_id: 'user_admin', role: 'admin' }]);
-    userFindMany.mockResolvedValue([{ id: 'user_admin', phone: '09000000000' }]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: `notification_${data.user_id as string}`,
       ...data,
@@ -1279,18 +1277,32 @@ describe('dispatchNotificationEvent', () => {
     expect(sendSmsMock).not.toHaveBeenCalled();
     expect(sendLineMessageMock).not.toHaveBeenCalled();
 
-    await runScheduledDeliveries();
-
-    expect(sendSmsMock).toHaveBeenCalledTimes(1);
-    expect(sendLineMessageMock).toHaveBeenCalledTimes(1);
+    expect(domainEventOutboxCreateMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          aggregate_id: 'user_admin',
+          metadata: expect.objectContaining({ channel: 'sms' }),
+        }),
+        expect.objectContaining({
+          aggregate_id: 'user_admin',
+          metadata: expect.objectContaining({ channel: 'line' }),
+        }),
+      ]),
+      skipDuplicates: true,
+    });
   });
 
   it('uses one membership snapshot for direct and role recipients across channels', async () => {
     vi.useFakeTimers();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
-    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
-      createTx();
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      domainEventOutboxCreateMany,
+    } = createTx();
 
     notificationRuleFindMany.mockResolvedValue([
       {
@@ -1326,7 +1338,6 @@ describe('dispatchNotificationEvent', () => {
       { user_id: 'user_explicit', role: 'pharmacist' },
       { user_id: 'user_admin', role: 'admin' },
     ]);
-    userFindMany.mockResolvedValue([{ id: 'user_admin', phone: '09000000000' }]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: `notification_${data.user_id as string}`,
       ...data,
@@ -1346,19 +1357,32 @@ describe('dispatchNotificationEvent', () => {
     expect(sendSmsMock).not.toHaveBeenCalled();
     expect(sendLineMessageMock).not.toHaveBeenCalled();
 
-    await runScheduledDeliveries();
-
-    expect(sendSmsMock).toHaveBeenCalledTimes(1);
-    expect(sendLineMessageMock).toHaveBeenCalledTimes(1);
+    expect(domainEventOutboxCreateMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          aggregate_id: 'user_admin',
+          metadata: expect.objectContaining({ channel: 'sms' }),
+        }),
+        expect.objectContaining({
+          aggregate_id: 'user_admin',
+          metadata: expect.objectContaining({ channel: 'line' }),
+        }),
+      ]),
+      skipDuplicates: true,
+    });
   });
 
-  it('does not wait for external delivery promises before returning persisted notifications', async () => {
+  it('persists external intents without starting provider requests in the mutation transaction', async () => {
     vi.useFakeTimers();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
-    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
-      createTx();
-    const releases: Array<() => void> = [];
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      domainEventOutboxCreateMany,
+    } = createTx();
 
     notificationRuleFindMany.mockResolvedValue([
       {
@@ -1373,14 +1397,10 @@ describe('dispatchNotificationEvent', () => {
       },
     ]);
     membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
-    userFindMany.mockResolvedValue([{ id: 'user_1', phone: '09000000001' }]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: `notification_${data.user_id as string}`,
       ...data,
     }));
-    sendSmsMock.mockImplementation(
-      () => new Promise((resolve) => releases.push(() => resolve(undefined))),
-    );
 
     const notifications = await dispatchNotificationEvent(tx, {
       orgId: 'org_1',
@@ -1394,21 +1414,22 @@ describe('dispatchNotificationEvent', () => {
     expect(notifications).toHaveLength(1);
     expect(sendSmsMock).not.toHaveBeenCalled();
 
-    await vi.runOnlyPendingTimersAsync();
-
-    expect(sendSmsMock).toHaveBeenCalledTimes(1);
-    expect(releases).toHaveLength(1);
-    releases.forEach((release) => release());
-    await Promise.resolve();
+    expect(domainEventOutboxCreateMany).toHaveBeenCalledTimes(1);
+    expect(sendSmsMock).not.toHaveBeenCalled();
   });
 
-  it('logs normalized non-accepted delivery results without rejecting the dispatch', async () => {
+  it('leaves provider result handling to the durable worker', async () => {
     vi.useFakeTimers();
     loggerWarnMock.mockReset();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
-    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
-      createTx();
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      domainEventOutboxCreateMany,
+    } = createTx();
 
     notificationRuleFindMany.mockResolvedValue([
       {
@@ -1423,16 +1444,10 @@ describe('dispatchNotificationEvent', () => {
       },
     ]);
     membershipFindMany.mockResolvedValue([{ user_id: 'user_1', role: 'pharmacist' }]);
-    userFindMany.mockResolvedValue([{ id: 'user_1', phone: '09000000001' }]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: `notification_${data.user_id as string}`,
       ...data,
     }));
-    sendSmsMock.mockResolvedValue({
-      status: 'not_configured',
-      provider: null,
-      providerMessageId: null,
-    });
 
     const notifications = await dispatchNotificationEvent(tx, {
       orgId: 'org_1',
@@ -1446,11 +1461,7 @@ describe('dispatchNotificationEvent', () => {
     expect(notifications).toHaveLength(1);
     expect(loggerWarnMock).not.toHaveBeenCalled();
 
-    await runScheduledDeliveries();
-
-    expect(sendSmsMock).toHaveBeenCalledTimes(1);
-    expect(loggerWarnMock).toHaveBeenCalledWith('[notifications] background delivery failed', {
-      failedCount: 1,
-    });
+    expect(domainEventOutboxCreateMany).toHaveBeenCalledTimes(1);
+    expect(sendSmsMock).not.toHaveBeenCalled();
   });
 });

@@ -31,6 +31,7 @@ const {
   drainMedicationHistoryBulkExportJobsMock,
   cleanupExpiredBulkExportArtifactsMock,
   retryWebhookDeliveriesMock,
+  drainNotificationDeliveriesMock,
   drainYreseClinicalSyncQueueJobMock,
   purgeExpiredClinicalFhirRawResourceVaultJobMock,
   reconcileCredentialRevocationIntentsMock,
@@ -72,6 +73,7 @@ const {
   drainMedicationHistoryBulkExportJobsMock: vi.fn(),
   cleanupExpiredBulkExportArtifactsMock: vi.fn(),
   retryWebhookDeliveriesMock: vi.fn(),
+  drainNotificationDeliveriesMock: vi.fn(),
   drainYreseClinicalSyncQueueJobMock: vi.fn(),
   purgeExpiredClinicalFhirRawResourceVaultJobMock: vi.fn(),
   reconcileCredentialRevocationIntentsMock: vi.fn(),
@@ -125,6 +127,7 @@ vi.mock('@/server/jobs', () => ({
   drainMedicationHistoryBulkExportJobs: drainMedicationHistoryBulkExportJobsMock,
   cleanupExpiredBulkExportArtifacts: cleanupExpiredBulkExportArtifactsMock,
   retryWebhookDeliveries: retryWebhookDeliveriesMock,
+  drainNotificationDeliveries: drainNotificationDeliveriesMock,
   drainYreseClinicalSyncQueueJob: drainYreseClinicalSyncQueueJobMock,
   purgeExpiredClinicalFhirRawResourceVaultJob: purgeExpiredClinicalFhirRawResourceVaultJobMock,
   reconcileCredentialRevocationIntents: reconcileCredentialRevocationIntentsMock,
@@ -163,6 +166,7 @@ describe('/api/jobs/[jobType] POST', () => {
     vi.clearAllMocks();
     process.env.JOB_API_KEY = 'job-secret';
     checkMedicationDeadlinesMock.mockResolvedValue({ processedCount: 3 });
+    drainNotificationDeliveriesMock.mockResolvedValue({ processedCount: 0, errors: [] });
     checkRefillPrescriptionsMock.mockResolvedValue({ processedCount: 0 });
     checkPrescriptionExpiryMock.mockResolvedValue({ processedCount: 0 });
     checkUnrecordedVisitsMock.mockResolvedValue({ processedCount: 0 });
@@ -803,6 +807,29 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(retryWebhookDeliveriesMock).toHaveBeenCalledWith({ orgId: 'org_1' });
+  });
+
+  it('allows the scheduler to drain notification deliveries across tenant-scoped workers', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
+      params: Promise.resolve({ jobType: 'notification-delivery-drain' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(drainNotificationDeliveriesMock).toHaveBeenCalledWith(undefined);
+  });
+
+  it('pins an authenticated notification delivery drain to the admin organization', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'notification-delivery-drain' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(drainNotificationDeliveriesMock).toHaveBeenCalledWith({ orgId: 'org_1' });
   });
 
   it('scopes authenticated yrese clinical sync queue drains to the admin organization', async () => {

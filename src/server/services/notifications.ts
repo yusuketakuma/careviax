@@ -8,8 +8,7 @@ import { redactNotificationForOsBridge } from '@/lib/notifications/os-bridge-red
 import { normalizeNotificationStreamItem } from '@/lib/notifications/stream-payload';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { isProviderDeliveryResult } from '@/server/adapters/delivery-result';
-import { LineNotificationAdapter } from '@/server/adapters/line';
-import { SmsNotificationAdapter } from '@/server/adapters/sms';
+import { enqueueNotificationDeliveries } from '@/server/services/notification-delivery-outbox';
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
@@ -35,6 +34,7 @@ if (getWebPushEnabled()) {
 }
 
 type Tx = {
+  domainEventOutbox: Pick<Prisma.TransactionClient['domainEventOutbox'], 'createMany'>;
   membership: Pick<Prisma.TransactionClient['membership'], 'findMany'>;
   notification: Pick<Prisma.TransactionClient['notification'], 'create' | 'upsert'>;
   notificationRule: Pick<Prisma.TransactionClient['notificationRule'], 'findMany'>;
@@ -91,9 +91,6 @@ function readRecipientUserIds(recipients: Prisma.JsonValue) {
     ? userIds.filter((userId): userId is string => typeof userId === 'string')
     : [];
 }
-
-const smsAdapter = new SmsNotificationAdapter();
-const lineAdapter = new LineNotificationAdapter();
 
 function scheduleNotificationDeliveries(tasks: NotificationDeliveryTask[]) {
   if (tasks.length === 0) return;
@@ -363,15 +360,6 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
 
   const smsUserIds = resolveTargetUserIds(input, rules, 'sms', eligibleRecipients);
   const lineUserIds = resolveTargetUserIds(input, rules, 'line', eligibleRecipients);
-  const faxUserIds = resolveTargetUserIds(input, rules, 'fax', eligibleRecipients);
-  const mcsUserIds = resolveTargetUserIds(input, rules, 'mcs', eligibleRecipients);
-  const externalUserIds = uniqueStrings([
-    ...smsUserIds,
-    ...lineUserIds,
-    ...faxUserIds,
-    ...mcsUserIds,
-  ]);
-
   // Web Push — send to all subscriptions for in-app notification recipients
   if (getWebPushEnabled() && targetUserIds.length > 0) {
     const pushSubscriptions = await tx.pushSubscription.findMany({
@@ -402,48 +390,15 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
     );
   }
 
-  if (externalUserIds.length > 0) {
-    const externalNotification = buildExternalNotificationContent();
-    const users = await tx.user.findMany({
-      where: {
-        id: { in: externalUserIds },
-        is_active: true,
-        account_status: 'active',
-        memberships: {
-          some: {
-            org_id: input.orgId,
-            is_active: true,
-          },
-        },
-      },
-      select: {
-        id: true,
-        phone: true,
-      },
-    });
-    const usersById = new Map(users.map((user) => [user.id, user]));
-
-    scheduleNotificationDeliveries([
-      ...smsUserIds
-        .filter((userId) => usersById.get(userId)?.phone)
-        .map(
-          (userId) => () =>
-            smsAdapter.sendSms(
-              usersById.get(userId)!.phone!,
-              `${externalNotification.title}\n${externalNotification.message}`,
-            ),
-        ),
-      ...lineUserIds
-        .filter((userId) => usersById.has(userId))
-        .map(
-          (userId) => () =>
-            lineAdapter.sendMessage(
-              userId,
-              `${externalNotification.title}\n${externalNotification.message}`,
-            ),
-        ),
-    ]);
-  }
+  await enqueueNotificationDeliveries(tx, {
+    orgId: input.orgId,
+    sourceEventType: input.eventType,
+    dedupeKey: input.dedupeKey,
+    targets: [
+      ...smsUserIds.map((userId) => ({ channel: 'sms' as const, userId })),
+      ...lineUserIds.map((userId) => ({ channel: 'line' as const, userId })),
+    ],
+  });
 
   return notifications;
 }

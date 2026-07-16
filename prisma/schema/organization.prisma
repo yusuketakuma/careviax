@@ -74,6 +74,7 @@ model Organization {
   operating_hours              PharmacyOperatingHours[]
   webhook_registrations        WebhookRegistration[]
   webhook_deliveries           WebhookDelivery[]
+  domain_event_outbox          DomainEventOutbox[]
   drug_alert_rules             DrugAlertRule[]
   file_assets                  FileAsset[]
   visitScheduleProposalBatches VisitScheduleProposalBatch[]

@@ -255,6 +255,27 @@
       "state": "ENABLED"
     },
     {
+      "name": "ph-os-notification-delivery-drain",
+      "description": "Drain tenant-scoped notification delivery intents from the durable outbox",
+      "scheduleExpression": "cron(0/1 * * * ? *)",
+      "scheduleExpressionTimezone": "UTC",
+      "comment": "Every minute UTC; provider retry and dead-letter state remains authoritative in PostgreSQL",
+      "target": {
+        "type": "HTTP",
+        "method": "POST",
+        "url": "${APP_URL}/api/jobs/notification-delivery-drain",
+        "headers": {
+          "x-api-key": "${JOB_API_KEY}",
+          "Content-Type": "application/json"
+        }
+      },
+      "retryPolicy": {
+        "maximumRetryAttempts": 1,
+        "maximumEventAgeInSeconds": 1800
+      },
+      "state": "ENABLED"
+    },
+    {
       "name": "ph-os-flush-metrics",
       "description": "Flush in-memory route performance metrics to CloudWatch custom metrics",
       "scheduleExpression": "cron(0/5 * * * ? *)",

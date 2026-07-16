@@ -42,6 +42,7 @@ export {
   drainMedicationHistoryBulkExportJobs,
 } from './pdf-bulk-export';
 export { retryWebhookDeliveries } from './webhook';
+export { drainNotificationDeliveries } from './notification-delivery';
 export {
   drainYreseClinicalSyncQueueJob,
   purgeExpiredClinicalFhirRawResourceVaultJob,

@@ -45,6 +45,7 @@ import {
   drainMedicationHistoryBulkExportJobs,
   cleanupExpiredBulkExportArtifacts,
   retryWebhookDeliveries,
+  drainNotificationDeliveries,
   drainYreseClinicalSyncQueueJob,
   purgeExpiredClinicalFhirRawResourceVaultJob,
   reconcileCredentialRevocationIntents,
@@ -120,6 +121,10 @@ const JOB_HANDLERS: Record<string, JobHandler> = {
     ),
   'webhook-delivery-retry': (context) =>
     retryWebhookDeliveries(
+      context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
+    ),
+  'notification-delivery-drain': (context) =>
+    drainNotificationDeliveries(
       context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
     ),
   'yrese-clinical-sync-queue-drain': (context) =>

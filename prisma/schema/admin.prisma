@@ -260,6 +260,43 @@ model IntegrationJob {
   @@index([run_at])
 }
 
+/// Reference-only transactional outbox. PHI-bearing snapshots and provider
+/// addresses are deliberately excluded; workers resolve the aggregate under
+/// the row's tenant RLS context immediately before delivery.
+model DomainEventOutbox {
+  id                  String    @id @default(cuid())
+  org_id              String
+  event_type          String
+  aggregate_type      String
+  aggregate_id        String
+  schema_version      Int       @default(1)
+  pii_class           String    @default("reference_only")
+  metadata            Json?
+  dedupe_key          String
+  idempotency_key     String    @default(uuid())
+  status              String    @default("pending")
+  attempt_count       Int       @default(0)
+  max_attempts        Int       @default(5)
+  next_attempt_at     DateTime  @default(now())
+  lock_token          String?
+  locked_until        DateTime?
+  provider            String?
+  provider_message_id String?
+  last_error_code     String?
+  accepted_at         DateTime?
+  completed_at        DateTime?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+
+  organization Organization @relation(fields: [org_id], references: [id])
+
+  @@unique([org_id, dedupe_key])
+  @@unique([org_id, idempotency_key])
+  @@index([org_id, status, next_attempt_at, created_at], map: "DomainEventOutbox_org_drain_idx")
+  @@index([org_id, locked_until], map: "DomainEventOutbox_org_lease_idx")
+  @@index([aggregate_type, aggregate_id])
+}
+
 model Template {
   id              String          @id @default(cuid())
   org_id          String

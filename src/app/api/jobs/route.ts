@@ -138,6 +138,11 @@ const JOB_DEFINITIONS = [
     endpoint: '/api/jobs/webhook-delivery-retry',
   },
   {
+    job_type: 'notification-delivery-drain',
+    schedule_hint: '1分毎 + 要求時',
+    endpoint: '/api/jobs/notification-delivery-drain',
+  },
+  {
     job_type: 'yrese-clinical-sync-queue-drain',
     schedule_hint: '5分毎 + 要求時',
     endpoint: '/api/jobs/yrese-clinical-sync-queue-drain',

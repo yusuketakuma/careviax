@@ -10,6 +10,7 @@ type LineAdapterConfig =
     };
 
 const DEFAULT_LINE_DELIVERY_TIMEOUT_MS = 10_000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type LineProviderReadiness = {
   status: 'ready' | 'not_configured';
@@ -46,12 +47,19 @@ export function getLineProviderReadiness(): LineProviderReadiness {
 export class LineNotificationAdapter {
   constructor(private readonly config: LineAdapterConfig = resolveLineConfig()) {}
 
-  async sendMessage(userId: string, message: string): Promise<ProviderDeliveryResult> {
+  async sendMessage(
+    userId: string,
+    message: string,
+    options: { idempotencyKey?: string } = {},
+  ): Promise<ProviderDeliveryResult> {
     if (userId.trim().length === 0) {
       throw new LineNotificationAdapterError('LINE delivery target is required');
     }
     if (message.trim().length === 0) {
       throw new LineNotificationAdapterError('LINE delivery message is required');
+    }
+    if (options.idempotencyKey && !UUID_RE.test(options.idempotencyKey)) {
+      throw new LineNotificationAdapterError('LINE idempotency key must be a UUID');
     }
 
     if (this.config.provider === 'not_configured') {
@@ -66,6 +74,7 @@ export class LineNotificationAdapter {
         headers: {
           Authorization: `Bearer ${this.config.channelAccessToken}`,
           'Content-Type': 'application/json',
+          ...(options.idempotencyKey ? { 'X-Line-Retry-Key': options.idempotencyKey } : {}),
         },
         body: JSON.stringify({
           to: userId,
