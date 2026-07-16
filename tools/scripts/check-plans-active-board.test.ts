@@ -7,15 +7,21 @@ import { describe, expect, it } from 'vitest';
 
 const SCRIPT_PATH = path.join(process.cwd(), 'tools/scripts/check-plans-active-board.mjs');
 
-function createFixtureRepo(plansContent: string, allowlistDebt = 109) {
+function createFixtureRepo(
+  plansContent: string,
+  allowlistDebt = 109,
+  completedArchiveContent = '# Completed plan archive\n',
+) {
   const root = mkdtempSync(path.join(tmpdir(), 'phos-plans-board-'));
   mkdirSync(path.join(root, 'tools/scripts'), { recursive: true });
+  mkdirSync(path.join(root, 'docs'), { recursive: true });
   cpSync(SCRIPT_PATH, path.join(root, 'tools/scripts/check-plans-active-board.mjs'));
   writeFileSync(
     path.join(root, 'tools/api-response-shape-allowlist.json'),
     JSON.stringify({ entries: [{ route: '/api/test', expectedCount: allowlistDebt }] }),
   );
   writeFileSync(path.join(root, 'Plans.md'), plansContent);
+  writeFileSync(path.join(root, 'docs/plans-archive.md'), completedArchiveContent);
   return root;
 }
 
@@ -183,6 +189,21 @@ describe('check-plans-active-board', () => {
 
     expect(() => runCheck(root)).toThrow(
       /completed statuses must not remain in active implementation queues/,
+    );
+  });
+
+  it('rejects an active task that is already recorded in the completed archive', () => {
+    const root = createFixtureRepo(
+      fixturePlans(),
+      109,
+      `# Completed plan archive
+
+- [x] \`INBOUND-002-REVIEW-DETAIL\`
+`,
+    );
+
+    expect(() => runCheck(root)).toThrow(
+      /completed archive IDs must not remain in active implementation queues/,
     );
   });
 

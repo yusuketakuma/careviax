@@ -9,6 +9,7 @@ import path from 'node:path';
 
 const REPO_ROOT = process.cwd();
 const PLANS_PATH = 'Plans.md';
+const COMPLETED_ARCHIVE_PATH = 'docs/plans-archive.md';
 const API_RESPONSE_ALLOWLIST_PATH = 'tools/api-response-shape-allowlist.json';
 const ACTIVE_HEADING = '### 2026-07-09 Active Plan Board v9';
 const ARCHIVE_HEADING = '### 2026-07-09 Archived Plan Board';
@@ -164,6 +165,33 @@ function assertNoCompletedStatusesInActiveQueues(activeLines) {
   }
 }
 
+function readActiveQueueIds(activeLines) {
+  return new Set(
+    ACTIVE_QUEUE_HEADINGS.flatMap((heading) =>
+      dataRows(extractTableAfterHeading(activeLines, heading)).flatMap((row) => {
+        const [idCell] = splitTableRow(row);
+        const match = idCell?.match(/`([^`]+)`/);
+        return match ? [match[1]] : [];
+      }),
+    ),
+  );
+}
+
+function assertNoArchivedIdsInActiveQueues(activeLines, completedArchiveContent) {
+  const activeIds = readActiveQueueIds(activeLines);
+  const archivedIds = new Set(
+    [...completedArchiveContent.matchAll(/^\s*- \[x\] `([^`]+)`/gm)].map((match) => match[1]),
+  );
+  const overlap = [...activeIds].filter((id) => archivedIds.has(id)).sort();
+
+  if (overlap.length > 0) {
+    fail(
+      'completed archive IDs must not remain in active implementation queues',
+      overlap.map((id) => `- ${id}`),
+    );
+  }
+}
+
 function assertNoCompletedHistorySections(activeLines, counts) {
   if (counts.has('Done / frozen')) {
     fail('unfinished-only Plans board must not include a Done / frozen summary bucket');
@@ -249,7 +277,7 @@ function assertArchiveIsReferenceOnly(content) {
   }
 }
 
-export function checkPlansActiveBoard(content) {
+export function checkPlansActiveBoard(content, completedArchiveContent = '') {
   const activeLines = extractActiveLines(content);
   const counts = readBucketCounts(activeLines);
 
@@ -272,6 +300,7 @@ export function checkPlansActiveBoard(content) {
   );
 
   assertNoCompletedStatusesInActiveQueues(activeLines);
+  assertNoArchivedIdsInActiveQueues(activeLines, completedArchiveContent);
   assertNoLegacyActiveDashboardRail(activeLines);
   assertNoStaleBoardVersion(activeLines);
   assertApiResponseDebtMatchesAllowlist(activeLines);
@@ -280,6 +309,10 @@ export function checkPlansActiveBoard(content) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const content = readFileSync(path.join(REPO_ROOT, PLANS_PATH), 'utf8');
-  checkPlansActiveBoard(content);
+  const completedArchiveContent = readFileSync(
+    path.join(REPO_ROOT, COMPLETED_ARCHIVE_PATH),
+    'utf8',
+  );
+  checkPlansActiveBoard(content, completedArchiveContent);
   console.log('Plans active board check passed.');
 }

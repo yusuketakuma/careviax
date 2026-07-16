@@ -5,6 +5,21 @@
 
 ---
 
+## 2026-07-16: Active queue reconciliation `cc:完了`
+
+- [x] `MEDSAFE-MEDICATION-ISSUE-OCC-001` — fresh transactional authz + durable version CAS (`ea2ba1d3c`)
+- [x] `SEC-FILE-OBJECT-IMMUTABILITY-001` — checksum/VersionId-pinned S3 object identity (`051aff5e5`)
+- [x] `SEC-CSRF-CANONICAL-ORIGIN-001` — server-canonical browser origin boundary (`9e33ee2d7`)
+- [x] `AUTH-CREDENTIAL-CHANGE-SESSION-REVOCATION-001` — credential-change session epoch and revoke intent (`6be9b5c6a`, `18d90d577`)
+- [x] `OPS-RATE-CLIENT-IP-READINESS-001` — exact trusted proxy topology (`5337df5a3`)
+- [x] `MEDSAFE-CARE-CASE-WRITE-OCC-001` — fresh transactional authz + CareCase version CAS (`f5c4cbf05`)
+- [x] `BILLING-PARTNER-INVOICE-TRANSITION-IDEMPOTENCY-001` — durable lifecycle intent and exact-once reissue (`31b145bb3`)
+- [x] `RLS-NOTIFICATION-STREAM-POLL-001` — org-scoped bounded lossless SSE safety poll (`21167b82a`)
+
+These tasks had current DONE evidence in `ops/refactor/STATE.md` but remained in the active implementation table. They were removed from the active queue, and the active-board checker now rejects any exact ID shared by the completed archive and an active queue.
+
+---
+
 ## 2026-07-16: Startup secret bootstrap readiness `cc:完了`
 
 - [x] `OPS-SECRET-BOOTSTRAP-READINESS-001`
