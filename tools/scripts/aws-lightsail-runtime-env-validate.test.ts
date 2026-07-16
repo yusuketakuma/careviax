@@ -20,6 +20,9 @@ COGNITO_CLIENT_SECRET=secret123
 S3_BUCKET_NAME=ph-os-prod-files
 SES_FROM_EMAIL=noreply@example.com
 PHOS_DISABLE_LEGACY_FILE_API=1
+TRUST_PROXY_HEADERS=true
+TRUSTED_PROXY_TOPOLOGY=single-overwrite
+TRUSTED_PROXY_HOPS=0
 RATE_LIMIT_STORE=dynamodb
 RATE_LIMIT_DDB_TABLE_NAME=ph-os-rate-limit
 AWS_CONTAINER_CREDENTIALS_RELATIVE_URI=/v2/credentials/app
@@ -33,7 +36,7 @@ describe('validateLightsailRuntimeEnv', () => {
       now: new Date('2026-06-17T00:00:00Z'),
     });
 
-    expect(report.summary).toEqual({ pass: 10, warn: 0, fail: 0, skip: 2 });
+    expect(report.summary).toEqual({ pass: 11, warn: 0, fail: 0, skip: 2 });
     expect(
       report.checks.find((check) => check.name === 'aws-runtime-credential-source')?.status,
     ).toBe('pass');
@@ -95,5 +98,21 @@ describe('validateLightsailRuntimeEnv', () => {
     });
 
     expect(report.checks.find((check) => check.name === 'secret-shape')?.status).toBe('fail');
+  });
+
+  it.each([
+    ['TRUST_PROXY_HEADERS=true', 'TRUST_PROXY_HEADERS=false'],
+    ['TRUSTED_PROXY_TOPOLOGY=single-overwrite', 'TRUSTED_PROXY_TOPOLOGY=direct'],
+    ['TRUSTED_PROXY_HOPS=0', 'TRUSTED_PROXY_HOPS='],
+    ['TRUSTED_PROXY_HOPS=0', 'TRUSTED_PROXY_HOPS=1'],
+  ])('fails an unsafe production proxy contract: %s', (from, to) => {
+    const report = validateLightsailRuntimeEnv({
+      envFile: '.env.production.aws',
+      envText: validEnv.replace(from, to),
+    });
+
+    expect(report.checks.find((check) => check.name === 'trusted-proxy-topology')?.status).toBe(
+      'fail',
+    );
   });
 });

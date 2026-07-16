@@ -3,129 +3,188 @@ import { getClientIp } from './request-ip';
 
 describe('getClientIp', () => {
   const originalTrustProxyHeaders = process.env.TRUST_PROXY_HEADERS;
+  const originalTrustedProxyTopology = process.env.TRUSTED_PROXY_TOPOLOGY;
   const originalTrustedProxyHops = process.env.TRUSTED_PROXY_HOPS;
+  const originalTrustedProxyCidrs = process.env.TRUSTED_PROXY_CIDRS;
+
+  function restoreEnv(key: string, value: string | undefined) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 
   afterEach(() => {
-    process.env.TRUST_PROXY_HEADERS = originalTrustProxyHeaders;
-    process.env.TRUSTED_PROXY_HOPS = originalTrustedProxyHops;
+    restoreEnv('TRUST_PROXY_HEADERS', originalTrustProxyHeaders);
+    restoreEnv('TRUSTED_PROXY_TOPOLOGY', originalTrustedProxyTopology);
+    restoreEnv('TRUSTED_PROXY_HOPS', originalTrustedProxyHops);
+    restoreEnv('TRUSTED_PROXY_CIDRS', originalTrustedProxyCidrs);
   });
 
-  it('ignores proxy headers unless explicitly trusted', () => {
+  function useSingleOverwriteProxy() {
+    process.env.TRUST_PROXY_HEADERS = 'true';
+    process.env.TRUSTED_PROXY_TOPOLOGY = 'single-overwrite';
+    process.env.TRUSTED_PROXY_HOPS = '0';
+    process.env.TRUSTED_PROXY_CIDRS = '';
+  }
+
+  function useAppendProxy(hops: number) {
+    process.env.TRUST_PROXY_HEADERS = 'true';
+    process.env.TRUSTED_PROXY_TOPOLOGY = 'append-chain';
+    process.env.TRUSTED_PROXY_HOPS = String(hops);
+    process.env.TRUSTED_PROXY_CIDRS =
+      hops === 0 ? '' : Array.from({ length: hops }, () => '10.0.0.0/8').join(',');
+  }
+
+  it('ignores proxy headers unless the complete topology is explicitly trusted', () => {
     delete process.env.TRUST_PROXY_HEADERS;
-
-    const ip = getClientIp({
-      headers: new Headers({
-        'x-forwarded-for': '203.0.113.10, 10.0.0.1',
-        'x-real-ip': '203.0.113.11',
-      }),
-    });
-
-    expect(ip).toBeUndefined();
-  });
-
-  it('uses the first forwarded address when proxy headers are trusted', () => {
-    process.env.TRUST_PROXY_HEADERS = 'true';
+    delete process.env.TRUSTED_PROXY_TOPOLOGY;
     delete process.env.TRUSTED_PROXY_HOPS;
+    delete process.env.TRUSTED_PROXY_CIDRS;
 
-    const ip = getClientIp({
-      headers: new Headers({
-        'x-forwarded-for': '203.0.113.10, 10.0.0.1',
+    expect(
+      getClientIp({
+        headers: new Headers({ 'x-forwarded-for': '203.0.113.10' }),
       }),
-    });
+    ).toBeUndefined();
 
-    expect(ip).toBe('203.0.113.10');
+    process.env.TRUST_PROXY_HEADERS = 'true';
+    expect(
+      getClientIp({
+        headers: new Headers({ 'x-forwarded-for': '203.0.113.10' }),
+      }),
+    ).toBeUndefined();
   });
 
-  it('uses the client address before the configured trusted proxy hops', () => {
-    process.env.TRUST_PROXY_HEADERS = 'true';
-    process.env.TRUSTED_PROXY_HOPS = '1';
+  it('accepts one address from a single proxy that overwrites forwarded-for', () => {
+    useSingleOverwriteProxy();
 
-    const ip = getClientIp({
-      headers: new Headers({
-        'x-forwarded-for': '198.51.100.200, 203.0.113.10, 10.0.0.1',
+    expect(
+      getClientIp({
+        headers: new Headers({ 'x-forwarded-for': '203.0.113.10' }),
       }),
-    });
-
-    expect(ip).toBe('203.0.113.10');
+    ).toBe('203.0.113.10');
   });
 
-  it('ignores malformed forwarded values', () => {
-    process.env.TRUST_PROXY_HEADERS = 'true';
+  it('rejects a client-prepended chain in single-overwrite mode', () => {
+    useSingleOverwriteProxy();
 
-    const ip = getClientIp({
-      headers: new Headers({
-        'x-forwarded-for': 'not an ip',
-        'x-real-ip': '203.0.113.11',
+    expect(
+      getClientIp({
+        headers: new Headers({ 'x-forwarded-for': '198.51.100.200, 203.0.113.10' }),
       }),
-    });
-
-    expect(ip).toBe('203.0.113.11');
+    ).toBeUndefined();
   });
 
-  it('rejects invalid IPv6-looking forwarded values', () => {
-    process.env.TRUST_PROXY_HEADERS = 'true';
+  it('selects the rightmost address when one append proxy receives client-supplied XFF', () => {
+    useAppendProxy(0);
 
-    for (const forwardedFor of ['::::', '::ffff:999.999.999.999', '[2001:db8::1]']) {
-      const ip = getClientIp({
+    expect(
+      getClientIp({
         headers: new Headers({
-          'x-forwarded-for': forwardedFor,
-          'x-real-ip': '2001:db8::11',
+          'x-forwarded-for': 'not-trusted-client-value, 203.0.113.10',
         }),
-      });
+      }),
+    ).toBe('203.0.113.10');
+  });
 
-      expect(ip).toBe('2001:db8::11');
+  it('selects the client before an exact trusted multi-hop suffix', () => {
+    useAppendProxy(1);
+
+    expect(
+      getClientIp({
+        headers: new Headers({
+          'x-forwarded-for': '198.51.100.200, 203.0.113.10, 10.0.0.1',
+        }),
+      }),
+    ).toBe('203.0.113.10');
+  });
+
+  it('fails closed when the configured hop count exceeds the received chain', () => {
+    useAppendProxy(2);
+
+    expect(
+      getClientIp({
+        headers: new Headers({ 'x-forwarded-for': '203.0.113.10, 10.0.0.1' }),
+      }),
+    ).toBeUndefined();
+  });
+
+  it('fails closed when a trusted suffix address is outside its ordered CIDR', () => {
+    useAppendProxy(1);
+
+    expect(
+      getClientIp({
+        headers: new Headers({ 'x-forwarded-for': '203.0.113.10, 192.0.2.10' }),
+      }),
+    ).toBeUndefined();
+  });
+
+  it('rejects malformed selected or trusted-suffix addresses', () => {
+    useAppendProxy(1);
+
+    for (const forwardedFor of [
+      'not-an-ip, 10.0.0.1',
+      '203.0.113.10, not-a-proxy-ip',
+      '203.0.113.10,,10.0.0.1',
+    ]) {
+      expect(
+        getClientIp({ headers: new Headers({ 'x-forwarded-for': forwardedFor }) }),
+      ).toBeUndefined();
     }
   });
 
-  it('accepts valid IPv6 forwarded values', () => {
-    process.env.TRUST_PROXY_HEADERS = 'true';
+  it('accepts canonical IPv4 and IPv6 literals', () => {
+    useSingleOverwriteProxy();
 
-    const ip = getClientIp({
-      headers: new Headers({
-        'x-forwarded-for': '2001:db8::10',
-      }),
-    });
-
-    expect(ip).toBe('2001:db8::10');
+    for (const forwardedFor of ['203.0.113.10', '2001:db8::10']) {
+      expect(getClientIp({ headers: new Headers({ 'x-forwarded-for': forwardedFor }) })).toBe(
+        forwardedFor,
+      );
+    }
   });
 
-  it('rejects non-canonical IPv4 forwarded values', () => {
-    process.env.TRUST_PROXY_HEADERS = 'true';
+  it('rejects non-canonical or decorated IP values', () => {
+    useSingleOverwriteProxy();
 
-    for (const forwardedFor of ['0177.0.0.1', '127.1', '192.168.001.010']) {
-      const ip = getClientIp({
+    for (const forwardedFor of [
+      '0177.0.0.1',
+      '127.1',
+      '192.168.001.010',
+      '[2001:db8::1]',
+      '203.0.113.10:443',
+    ]) {
+      expect(
+        getClientIp({ headers: new Headers({ 'x-forwarded-for': forwardedFor }) }),
+      ).toBeUndefined();
+    }
+  });
+
+  it('does not fall back to a different proxy header', () => {
+    useSingleOverwriteProxy();
+
+    expect(
+      getClientIp({
+        headers: new Headers({ 'x-real-ip': '203.0.113.11' }),
+      }),
+    ).toBeUndefined();
+    expect(
+      getClientIp({
         headers: new Headers({
-          'x-forwarded-for': forwardedFor,
+          'x-forwarded-for': 'not-an-ip',
           'x-real-ip': '203.0.113.11',
         }),
-      });
-
-      expect(ip).toBe('203.0.113.11');
-    }
+      }),
+    ).toBeUndefined();
   });
 
   it('ignores oversized forwarded-for headers', () => {
-    process.env.TRUST_PROXY_HEADERS = 'true';
+    useAppendProxy(0);
 
-    const ip = getClientIp({
-      headers: new Headers({
-        'x-forwarded-for': `${'1'.repeat(600)}, 203.0.113.10`,
-        'x-real-ip': '203.0.113.11',
+    expect(
+      getClientIp({
+        headers: new Headers({
+          'x-forwarded-for': `${'1'.repeat(600)}, 203.0.113.10`,
+        }),
       }),
-    });
-
-    expect(ip).toBe('203.0.113.11');
-  });
-
-  it('falls back to x-real-ip when forwarded-for is absent', () => {
-    process.env.TRUST_PROXY_HEADERS = '1';
-
-    const ip = getClientIp({
-      headers: new Headers({
-        'x-real-ip': '203.0.113.11',
-      }),
-    });
-
-    expect(ip).toBe('203.0.113.11');
+    ).toBeUndefined();
   });
 });

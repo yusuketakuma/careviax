@@ -1,3 +1,5 @@
+import { LIGHTSAIL_SINGLE_PROXY_ENV } from '@/lib/api/proxy-trust';
+
 type PlanCommand = {
   id: string;
   description: string;
@@ -282,8 +284,14 @@ export function createLightsailPilotPlan(
       )} --query ${shellSingleQuote('relationalDatabase.masterEndpoint.address')} --output text`,
     ),
     command(
+      'copy-reverse-proxy-config',
+      'Upload the reviewed single-overwrite reverse-proxy config to the instance.',
+      `scp tools/infra/ph-os-nginx.conf ec2-user@<STATIC_IP>:/tmp/ph-os-nginx.conf`,
+      true,
+    ),
+    command(
       'ssh-configure-runtime',
-      'SSH to the instance, write /opt/phos/.env from approved secrets, pull the image, and start the container.',
+      'SSH to the instance, install the overwrite proxy, write /opt/phos/.env, and start the loopback-only container.',
       [
         `ssh ec2-user@<STATIC_IP>`,
         `# On the instance:`,
@@ -296,14 +304,23 @@ export function createLightsailPilotPlan(
         `DIRECT_URL=postgresql://${options.masterUsername}:<PASSWORD>@<DB_ENDPOINT>:5432/${options.masterDatabaseName}?sslmode=require`,
         `NEXTAUTH_URL=https://<DOMAIN>`,
         `NEXT_PUBLIC_APP_URL=https://<DOMAIN>`,
-        `TRUST_PROXY_HEADERS=false`,
+        `TRUST_PROXY_HEADERS=${LIGHTSAIL_SINGLE_PROXY_ENV.TRUST_PROXY_HEADERS}`,
+        `TRUSTED_PROXY_TOPOLOGY=${LIGHTSAIL_SINGLE_PROXY_ENV.TRUSTED_PROXY_TOPOLOGY}`,
+        `TRUSTED_PROXY_HOPS=${LIGHTSAIL_SINGLE_PROXY_ENV.TRUSTED_PROXY_HOPS}`,
+        `TRUSTED_PROXY_CIDRS=${LIGHTSAIL_SINGLE_PROXY_ENV.TRUSTED_PROXY_CIDRS}`,
         `PHOS_DISABLE_LEGACY_FILE_API=1`,
         `RATE_LIMIT_STORE=dynamodb`,
         `RATE_LIMIT_DDB_TABLE_NAME=ph-os-rate-limit`,
         `PHOS_ENV`,
-        `sudo docker run -d --restart unless-stopped --name ph-os --env-file /opt/phos/.env -p 80:3000 ${envRef(
+        `sudo dnf install -y nginx`,
+        `sudo install -m 0644 /tmp/ph-os-nginx.conf /etc/nginx/conf.d/ph-os.conf`,
+        `rm -f /tmp/ph-os-nginx.conf`,
+        `sudo nginx -t`,
+        `sudo docker run -d --restart unless-stopped --name ph-os --env-file /opt/phos/.env -p 127.0.0.1:3000:3000 ${envRef(
           options.containerImageEnv,
         )}`,
+        `sudo systemctl enable --now nginx`,
+        `sudo systemctl reload nginx`,
       ].join('\n'),
       true,
     ),
@@ -328,6 +345,7 @@ export function createLightsailPilotPlan(
       'Do not run this pilot topology for HA production; it is intentionally single-instance and low-cost.',
       'Do not put PHI into the pilot until S3 Object Lock, backups, audit trails, and approved production secrets are configured.',
       'Keep the database non-public. The create command uses --no-publicly-accessible.',
+      'Keep the application port loopback-only; Nginx is the sole public hop and overwrites X-Forwarded-For.',
     ],
   };
 }

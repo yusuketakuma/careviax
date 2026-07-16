@@ -41,7 +41,9 @@ describe('proxy', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     delete process.env.TRUST_PROXY_HEADERS;
+    delete process.env.TRUSTED_PROXY_TOPOLOGY;
     delete process.env.TRUSTED_PROXY_HOPS;
+    delete process.env.TRUSTED_PROXY_CIDRS;
     delete process.env.RATE_LIMIT_STORE;
     delete process.env.RATE_LIMIT_DDB_TABLE_NAME;
     delete process.env.AWS_ACCESS_KEY_ID;
@@ -602,9 +604,59 @@ describe('proxy', () => {
     );
   });
 
+  it.each([
+    '/api/auth/callback/credentials',
+    '/api/auth/password/reset/request',
+    '/api/auth/mfa/recovery',
+  ])(
+    'allows the unauthenticated auth entrypoint through a verified production proxy: %s',
+    async (pathname) => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('TRUST_PROXY_HEADERS', 'true');
+      vi.stubEnv('TRUSTED_PROXY_TOPOLOGY', 'single-overwrite');
+      vi.stubEnv('TRUSTED_PROXY_HOPS', '0');
+      vi.stubEnv('RATE_LIMIT_STORE', 'dynamodb');
+      vi.stubEnv('RATE_LIMIT_DDB_TABLE_NAME', 'ph-os-rate-limit');
+      vi.stubEnv('AWS_REGION', 'ap-northeast-1');
+      vi.stubEnv('AWS_ACCESS_KEY_ID', 'test-access-key');
+      vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test-secret-key');
+      resetRateLimitStoreForTests();
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            Attributes: {
+              hit_count: { N: '1' },
+              reset_at: { N: String(Date.now() + 60_000) },
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/x-amz-json-1.0' } },
+        ),
+      );
+
+      const response = await proxy(
+        createRequest({
+          method: 'POST',
+          pathname,
+          headers: {
+            host: 'ph-os.example',
+            origin: 'https://ph-os.example',
+            'x-forwarded-for': '203.0.113.73',
+          },
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('X-RateLimit-Remaining')).not.toBeNull();
+      expect(fetchMock).toHaveBeenCalledOnce();
+      fetchMock.mockRestore();
+    },
+  );
+
   it('returns 503 when production rate-limit storage is misconfigured', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('TRUST_PROXY_HEADERS', '1');
+    vi.stubEnv('TRUSTED_PROXY_TOPOLOGY', 'single-overwrite');
+    vi.stubEnv('TRUSTED_PROXY_HOPS', '0');
     delete process.env.RATE_LIMIT_STORE;
     resetRateLimitStoreForTests();
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -676,6 +728,8 @@ describe('proxy', () => {
 
   it('returns 429 when POST requests churn ids under the same dynamic route', async () => {
     vi.stubEnv('TRUST_PROXY_HEADERS', '1');
+    vi.stubEnv('TRUSTED_PROXY_TOPOLOGY', 'single-overwrite');
+    vi.stubEnv('TRUSTED_PROXY_HOPS', '0');
     const baseHeaders = {
       host: 'ph-os.example',
       origin: 'https://ph-os.example',

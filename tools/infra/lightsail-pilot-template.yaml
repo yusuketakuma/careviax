@@ -78,14 +78,15 @@ Resources:
         set -euo pipefail
 
         dnf update -y
-        dnf install -y docker
-        systemctl enable --now docker
+        dnf install -y docker nginx
+        systemctl enable --now docker nginx
         usermod -aG docker ec2-user || true
         install -d -m 0755 /opt/phos
         cat >/opt/phos/README.txt <<'README'
         PH-OS host bootstrap is complete.
         Do not store long-lived AWS access keys on this host.
         Configure /opt/phos/.env from approved runtime secrets before starting the app container.
+        Install the reviewed PH-OS Nginx config and bind the app container only to 127.0.0.1:3000.
         README
       Networking:
         Ports:

@@ -25,6 +25,9 @@ describe('assertProductionEnvSafety', () => {
     DATABASE_URL: 'postgresql://example',
     NEXTAUTH_URL: 'https://ph-os.example',
     NEXTAUTH_SECRET: 'nextauth-secret',
+    TRUST_PROXY_HEADERS: 'true',
+    TRUSTED_PROXY_TOPOLOGY: 'single-overwrite',
+    TRUSTED_PROXY_HOPS: '0',
   };
 
   it('passes for a safe production env', () => {
@@ -54,7 +57,23 @@ describe('assertProductionEnvSafety', () => {
       assertProductionEnvSafety({
         APP_ENV: 'production',
       }),
-    ).toThrow(/DATABASE_URL.*NEXTAUTH_URL.*NEXTAUTH_SECRET or AUTH_SECRET/);
+    ).toThrow(/DATABASE_URL.*NEXTAUTH_URL.*NEXTAUTH_SECRET or AUTH_SECRET.*trusted proxy topology/);
+  });
+
+  it.each([
+    { TRUST_PROXY_HEADERS: undefined },
+    { TRUST_PROXY_HEADERS: 'false' },
+    { TRUSTED_PROXY_TOPOLOGY: undefined },
+    { TRUSTED_PROXY_TOPOLOGY: 'direct' },
+    { TRUSTED_PROXY_HOPS: undefined },
+    { TRUSTED_PROXY_HOPS: '-1' },
+  ])('fails fast for an unsafe production client-IP topology: %o', (override) => {
+    expect(() =>
+      assertProductionEnvSafety({
+        ...safeProductionEnv,
+        ...override,
+      }),
+    ).toThrow(/invalid trusted proxy topology/);
   });
 
   it('allows local switches outside production', () => {

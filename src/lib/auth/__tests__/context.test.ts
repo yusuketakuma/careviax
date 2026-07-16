@@ -41,6 +41,14 @@ vi.mock('../security-events', () => ({
 import { getAuthContext, requireAuthContext } from '../context';
 
 const originalTrustProxyHeaders = process.env.TRUST_PROXY_HEADERS;
+const originalTrustedProxyTopology = process.env.TRUSTED_PROXY_TOPOLOGY;
+const originalTrustedProxyHops = process.env.TRUSTED_PROXY_HOPS;
+const originalTrustedProxyCidrs = process.env.TRUSTED_PROXY_CIDRS;
+
+function restoreEnv(key: string, value: string | undefined) {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
 
 function createRequest(headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/test-auth-context', {
@@ -110,7 +118,10 @@ describe('requireAuthContext', () => {
   });
 
   afterEach(() => {
-    process.env.TRUST_PROXY_HEADERS = originalTrustProxyHeaders;
+    restoreEnv('TRUST_PROXY_HEADERS', originalTrustProxyHeaders);
+    restoreEnv('TRUSTED_PROXY_TOPOLOGY', originalTrustedProxyTopology);
+    restoreEnv('TRUSTED_PROXY_HOPS', originalTrustedProxyHops);
+    restoreEnv('TRUSTED_PROXY_CIDRS', originalTrustedProxyCidrs);
   });
 
   it('returns 401 when the session is missing', async () => {
@@ -249,13 +260,16 @@ describe('requireAuthContext', () => {
 
   it('returns auth context when permission check passes', async () => {
     process.env.TRUST_PROXY_HEADERS = 'true';
+    process.env.TRUSTED_PROXY_TOPOLOGY = 'single-overwrite';
+    process.env.TRUSTED_PROXY_HOPS = '0';
+    process.env.TRUSTED_PROXY_CIDRS = '';
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
     const result = await requireAuthContext(
       createRequest({
         'x-org-id': 'org_1',
-        'x-forwarded-for': '203.0.113.10, 10.0.0.1',
+        'x-forwarded-for': '203.0.113.10',
         'user-agent': 'Vitest Browser',
       }),
       {
@@ -278,6 +292,9 @@ describe('requireAuthContext', () => {
 
   it('adds the current actor site only when the default site is valid for the user', async () => {
     process.env.TRUST_PROXY_HEADERS = 'true';
+    process.env.TRUSTED_PROXY_TOPOLOGY = 'single-overwrite';
+    process.env.TRUSTED_PROXY_HOPS = '0';
+    process.env.TRUSTED_PROXY_CIDRS = '';
     authMock.mockResolvedValue({ user: { id: 'user_1', defaultSiteId: 'site_1' } });
     membershipFindFirstMock
       .mockResolvedValueOnce({ role: 'admin', site_id: null })

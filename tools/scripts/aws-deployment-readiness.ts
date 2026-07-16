@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import process from 'node:process';
+import { resolveTrustedProxyConfig } from '@/lib/api/proxy-trust';
 
 type CheckStatus = 'pass' | 'warn' | 'fail' | 'skip';
 
@@ -414,6 +415,23 @@ export function evaluateReadiness(input: ReadinessInput, now = new Date()): Read
     missingEnv.length === 0
       ? undefined
       : 'Set these in the target AWS runtime or Secrets Manager before deployment.',
+  );
+
+  const proxyConfig = resolveTrustedProxyConfig(input.env);
+  add(
+    checks,
+    missingEnv.length > 0 ? 'warn' : proxyConfig.ok ? 'pass' : 'fail',
+    'production-client-ip-topology',
+    missingEnv.length > 0
+      ? 'Trusted proxy topology cannot be verified until the production environment is complete.'
+      : proxyConfig.ok
+        ? `Trusted proxy topology is ${proxyConfig.config.topology} with ${proxyConfig.config.trustedProxyHops} trailing hop(s).`
+        : `Production client-IP topology is unsafe: ${proxyConfig.reason}`,
+    missingEnv.length > 0
+      ? 'Complete the production environment and rerun readiness.'
+      : proxyConfig.ok
+        ? undefined
+        : 'Use the checked-in loopback-bound app plus overwrite-proxy contract, or verify and declare the exact append chain.',
   );
 
   if (input.liveAws?.attempted) {

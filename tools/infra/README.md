@@ -12,6 +12,7 @@
 - `eventbridge-schedules.json` : scheduled operational jobs
 - `cognito-advanced-security.json` : Cognito advanced security settings
 - `rate-limit-dynamodb.json` : DynamoDB table / TTL / IAM contract for production distributed rate limiting
+- `ph-os-nginx.conf` : single-hop overwrite proxy contract; the app container remains loopback-only and never trusts client-supplied XFF
 - `rds-aws-backup-template.yaml` : RDS AWS Backup vault / plan / selection / restore-testing baseline
 
 ## RDS AWS Backup

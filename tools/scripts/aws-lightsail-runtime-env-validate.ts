@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import process from 'node:process';
 import { parse } from 'dotenv';
+import { resolveTrustedProxyConfig } from '@/lib/api/proxy-trust';
 
 type CheckStatus = 'pass' | 'warn' | 'fail' | 'skip';
 
@@ -44,6 +45,9 @@ const REQUIRED_KEYS = [
   'S3_BUCKET_NAME',
   'SES_FROM_EMAIL',
   'PHOS_DISABLE_LEGACY_FILE_API',
+  'TRUST_PROXY_HEADERS',
+  'TRUSTED_PROXY_TOPOLOGY',
+  'TRUSTED_PROXY_HOPS',
   'RATE_LIMIT_STORE',
   'RATE_LIMIT_DDB_TABLE_NAME',
 ] as const;
@@ -326,6 +330,19 @@ export function validateLightsailRuntimeEnv(input: {
     'legacy-file-api-disabled',
     'Legacy Next.js file APIs are disabled.',
     'Set PHOS_DISABLE_LEGACY_FILE_API=1 for PH-OS production.',
+  );
+
+  const proxyConfig = resolveTrustedProxyConfig(env);
+  add(
+    checks,
+    proxyConfig.ok ? 'pass' : 'fail',
+    'trusted-proxy-topology',
+    proxyConfig.ok
+      ? `Client IP uses ${proxyConfig.config.topology} with ${proxyConfig.config.trustedProxyHops} trusted trailing hop(s).`
+      : `Client IP topology is unsafe: ${proxyConfig.reason}`,
+    proxyConfig.ok
+      ? undefined
+      : 'Use the checked-in loopback-bound app plus overwrite-proxy contract, or declare and verify the exact append chain before deployment.',
   );
 
   const source = credentialSource(env);

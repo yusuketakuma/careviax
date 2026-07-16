@@ -1,3 +1,5 @@
+import { resolveTrustedProxyConfig } from '@/lib/api/proxy-trust';
+
 type EnvSource = Record<string, string | undefined>;
 
 const PRODUCTION_VALUES = new Set(['production', 'prod']);
@@ -43,6 +45,7 @@ export function assertProductionEnvSafety(env: EnvSource = process.env): void {
   const dangerousEnabled = DANGEROUS_LOCAL_SWITCHES.filter((key) => isTruthy(env[key]));
   const missingRequired: string[] = REQUIRED_PRODUCTION_KEYS.filter((key) => !isPresent(env[key]));
   const hasAuthSecret = isPresent(env.NEXTAUTH_SECRET) || isPresent(env.AUTH_SECRET);
+  const proxyConfig = resolveTrustedProxyConfig(env);
 
   if (!hasAuthSecret) {
     missingRequired.push('NEXTAUTH_SECRET or AUTH_SECRET');
@@ -55,6 +58,7 @@ export function assertProductionEnvSafety(env: EnvSource = process.env): void {
     missingRequired.length > 0
       ? `missing required production env: ${missingRequired.join(', ')}`
       : null,
+    !proxyConfig.ok ? `invalid trusted proxy topology: ${proxyConfig.reason}` : null,
   ].filter((message): message is string => message !== null);
 
   if (messages.length > 0) {

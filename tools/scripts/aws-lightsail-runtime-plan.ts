@@ -12,6 +12,7 @@ export type LightsailRuntimePlan = {
   sshUser: string;
   image: string;
   envFile: string;
+  proxyConfigPath: string;
   commands: RuntimeCommand[];
   warnings: string[];
 };
@@ -29,6 +30,7 @@ type CliArgs = {
 const DEFAULT_HOST = '<STATIC_IP_OR_DOMAIN>';
 const DEFAULT_IMAGE = '${PHOS_CONTAINER_IMAGE}';
 const DEFAULT_ENV_FILE = '.env.production.aws';
+const DEFAULT_PROXY_CONFIG_PATH = 'tools/infra/ph-os-nginx.conf';
 
 function readArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
@@ -109,12 +111,14 @@ export function createLightsailRuntimePlan(input: {
   sshUser?: string;
   image?: string;
   envFile?: string;
+  proxyConfigPath?: string;
   region?: string;
 }): LightsailRuntimePlan {
   const host = input.host ?? DEFAULT_HOST;
   const sshUser = input.sshUser ?? 'ec2-user';
   const image = input.image ?? DEFAULT_IMAGE;
   const envFile = input.envFile ?? DEFAULT_ENV_FILE;
+  const proxyConfigPath = input.proxyConfigPath ?? DEFAULT_PROXY_CONFIG_PATH;
   const region = input.region ?? process.env.AWS_REGION ?? 'ap-northeast-1';
   const target = `${sshUser}@${host}`;
   const registry = image.split('/')[0] ?? '';
@@ -125,6 +129,10 @@ export function createLightsailRuntimePlan(input: {
     'sudo install -d -m 0700 /opt/phos',
     'sudo install -m 0600 /tmp/phos.env /opt/phos/.env',
     'rm -f /tmp/phos.env',
+    'sudo dnf install -y nginx',
+    'sudo install -m 0644 /tmp/ph-os-nginx.conf /etc/nginx/conf.d/ph-os.conf',
+    'rm -f /tmp/ph-os-nginx.conf',
+    'sudo nginx -t',
     'sudo docker pull "$IMAGE"',
     'sudo docker rm -f ph-os 2>/dev/null || true',
     [
@@ -132,9 +140,11 @@ export function createLightsailRuntimePlan(input: {
       '--restart unless-stopped',
       '--name ph-os',
       '--env-file /opt/phos/.env',
-      '-p 80:3000',
+      '-p 127.0.0.1:3000:3000',
       '"$IMAGE"',
     ].join(' '),
+    'sudo systemctl enable --now nginx',
+    'sudo systemctl reload nginx',
     'for attempt in $(seq 1 30); do curl -fsS http://127.0.0.1/api/health && exit 0; sleep 2; done',
     'sudo docker logs --tail 100 ph-os',
     'exit 1',
@@ -153,6 +163,12 @@ export function createLightsailRuntimePlan(input: {
       'validate-env',
       'Validate the untracked runtime env file before uploading secrets or starting the container.',
       `pnpm aws:lightsail:runtime-env:validate -- --env-file ${q(envFile)} --strict`,
+    ),
+    command(
+      'copy-proxy-config',
+      'Upload the reviewed overwrite-proxy configuration without changing it on the host.',
+      `scp -p ${q(proxyConfigPath)} ${q(`${target}:/tmp/ph-os-nginx.conf`)}`,
+      true,
     ),
     command(
       'copy-env',
@@ -190,11 +206,14 @@ export function createLightsailRuntimePlan(input: {
     sshUser,
     image,
     envFile,
+    proxyConfigPath,
     commands,
     warnings: [
       'This plan is non-executing; review every MUTATES command before running it.',
       'The env file contains secrets. Keep it untracked, chmod 0600, and upload it only to the approved host.',
       'Do not store long-lived AWS access keys on the Lightsail instance.',
+      'The application port is loopback-only. Nginx must remain the sole public hop and overwrite X-Forwarded-For.',
+      'Terminate TLS at this Nginx host or at an approved upstream; if another proxy is added, update both the proxy config and runtime declaration to an explicitly verified append-chain with the exact hop count.',
       isPrivateEcrImage
         ? 'Private ECR image detected; run the generated ecr-docker-login command before start-container.'
         : 'For private registries, authenticate Docker on the host using the registry-approved short-lived mechanism before start-container.',
@@ -207,6 +226,7 @@ function printShell(plan: LightsailRuntimePlan) {
   console.log(`# ssh user: ${plan.sshUser}`);
   console.log(`# image: ${plan.image}`);
   console.log(`# env file: ${plan.envFile}`);
+  console.log(`# proxy config: ${plan.proxyConfigPath}`);
   console.log('');
   for (const warning of plan.warnings) {
     console.log(`# WARNING: ${warning}`);

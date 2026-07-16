@@ -1,7 +1,16 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createLightsailRuntimePlan } from './aws-lightsail-runtime-plan';
 
 describe('createLightsailRuntimePlan', () => {
+  it('keeps the checked-in proxy as a single overwriting XFF writer', () => {
+    const config = readFileSync('tools/infra/ph-os-nginx.conf', 'utf8');
+
+    expect(config).toContain('proxy_pass http://127.0.0.1:3000;');
+    expect(config).toContain('proxy_set_header X-Forwarded-For $remote_addr;');
+    expect(config).not.toContain('$proxy_add_x_forwarded_for');
+  });
+
   it('prints mutating runtime setup commands without embedding env file contents', () => {
     const plan = createLightsailRuntimePlan({
       host: '203.0.113.10',
@@ -12,12 +21,14 @@ describe('createLightsailRuntimePlan', () => {
     expect(plan.commands.map((item) => item.id)).toEqual([
       'prepare-env',
       'validate-env',
+      'copy-proxy-config',
       'copy-env',
       'start-container',
       'public-health',
     ]);
     expect(plan.commands.filter((item) => item.mutates).map((item) => item.id)).toEqual([
       'prepare-env',
+      'copy-proxy-config',
       'copy-env',
       'start-container',
     ]);
@@ -27,6 +38,10 @@ describe('createLightsailRuntimePlan', () => {
     expect(JSON.stringify(plan)).toContain('scp -p');
     expect(JSON.stringify(plan)).toContain('sudo install -m 0600 /tmp/phos.env /opt/phos/.env');
     expect(JSON.stringify(plan)).toContain('sudo docker run -d');
+    expect(JSON.stringify(plan)).toContain('-p 127.0.0.1:3000:3000');
+    expect(JSON.stringify(plan)).not.toContain('-p 80:3000');
+    expect(JSON.stringify(plan)).toContain('sudo nginx -t');
+    expect(JSON.stringify(plan)).toContain('/etc/nginx/conf.d/ph-os.conf');
     expect(JSON.stringify(plan)).not.toContain('DATABASE_URL=');
     expect(JSON.stringify(plan)).not.toContain('NEXTAUTH_SECRET=');
   });

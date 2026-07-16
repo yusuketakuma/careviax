@@ -1,17 +1,7 @@
 import { isIP } from 'node:net';
+import { isAddressInCidr, resolveTrustedProxyConfig } from './proxy-trust';
 
 const MAX_FORWARDED_FOR_LENGTH = 512;
-
-function isProxyHeaderTrusted() {
-  const trustProxyHeaders =
-    process.env.TRUST_PROXY_HEADERS === '1' || process.env.TRUST_PROXY_HEADERS === 'true';
-
-  if (!trustProxyHeaders) {
-    return false;
-  }
-
-  return true;
-}
 
 function isValidIpLiteral(value: string) {
   if (!value || value.length > 45 || /\s/.test(value)) {
@@ -26,13 +16,6 @@ function isValidIpLiteral(value: string) {
   return parts.every((part) => String(Number(part)) === part);
 }
 
-function readTrustedProxyHops() {
-  const raw = process.env.TRUSTED_PROXY_HOPS;
-  if (!raw) return 0;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-}
-
 /**
  * Extract the client IP address from trusted proxy headers.
  *
@@ -42,26 +25,37 @@ function readTrustedProxyHops() {
  * environments where a trusted reverse proxy is not guaranteed.
  */
 export function getClientIp(request: { headers: Headers }): string | undefined {
-  if (!isProxyHeaderTrusted()) {
+  const proxyConfig = resolveTrustedProxyConfig();
+  if (!proxyConfig.ok) return undefined;
+
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  if (!forwardedFor || forwardedFor.length > MAX_FORWARDED_FOR_LENGTH) return undefined;
+
+  const candidates = forwardedFor.split(',').map((value) => value.trim());
+  if (candidates.length === 0 || candidates.some((candidate) => candidate.length === 0)) {
     return undefined;
   }
 
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  if (forwardedFor && forwardedFor.length <= MAX_FORWARDED_FOR_LENGTH) {
-    const candidates = forwardedFor
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean);
-    const trustedProxyHops = readTrustedProxyHops();
-    const index = trustedProxyHops > 0 ? Math.max(0, candidates.length - trustedProxyHops - 1) : 0;
-    const candidate = candidates[index];
-    if (candidate && isValidIpLiteral(candidate)) {
-      return candidate;
-    }
+  if (proxyConfig.config.topology === 'single-overwrite' && candidates.length !== 1) {
+    return undefined;
   }
 
-  const realIp = request.headers.get('x-real-ip')?.trim();
-  return realIp && isValidIpLiteral(realIp) ? realIp : undefined;
+  const index = candidates.length - proxyConfig.config.trustedProxyHops - 1;
+  if (index < 0) return undefined;
+
+  const trustedSuffix = candidates.slice(index);
+  if (!trustedSuffix.every(isValidIpLiteral)) return undefined;
+
+  const trustedProxyAddresses = candidates.slice(index + 1);
+  if (
+    !trustedProxyAddresses.every((address, offset) =>
+      isAddressInCidr(address, proxyConfig.config.trustedProxyCidrs[offset] ?? ''),
+    )
+  ) {
+    return undefined;
+  }
+
+  return candidates[index];
 }
 
 export function isProductionLikeRuntime() {

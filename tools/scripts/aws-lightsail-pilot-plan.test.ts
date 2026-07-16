@@ -39,6 +39,23 @@ describe('createLightsailPilotPlan', () => {
     );
   });
 
+  it('uses the reviewed overwrite proxy and never publishes the app port directly', () => {
+    const plan = createLightsailPilotPlan();
+    const proxyCopy = plan.postProvisionCommands.find(
+      (item) => item.id === 'copy-reverse-proxy-config',
+    );
+    const runtime = plan.postProvisionCommands.find((item) => item.id === 'ssh-configure-runtime');
+
+    expect(proxyCopy?.command).toContain('tools/infra/ph-os-nginx.conf');
+    expect(runtime?.command).toContain('TRUST_PROXY_HEADERS=true');
+    expect(runtime?.command).toContain('TRUSTED_PROXY_TOPOLOGY=single-overwrite');
+    expect(runtime?.command).toContain('TRUSTED_PROXY_HOPS=0');
+    expect(runtime?.command).toContain('TRUSTED_PROXY_CIDRS=');
+    expect(runtime?.command).toContain('-p 127.0.0.1:3000:3000');
+    expect(runtime?.command).not.toContain('-p 80:3000');
+    expect(runtime?.command).toContain('sudo nginx -t');
+  });
+
   it('allows resource names and regions to be overridden consistently', () => {
     const plan = createLightsailPilotPlan({
       region: 'ap-northeast-1',

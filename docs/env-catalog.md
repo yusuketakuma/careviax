@@ -134,8 +134,10 @@ Current key count: 142. The earlier refactor note recorded 118 keys; the live re
 | `SENTRY_PROJECT`                             | optional             |                                                                                         |
 | `SES_FROM_EMAIL`                             | infra optional       |                                                                                         |
 | `SMS_DELIVERY_TIMEOUT_MS`                    | optional             |                                                                                         |
-| `TRUSTED_PROXY_HOPS`                         | optional             |                                                                                         |
-| `TRUST_PROXY_HEADERS`                        | optional             |                                                                                         |
+| `TRUSTED_PROXY_HOPS`                         | required-production  | Trusted XFF entries right of client; `0` for overwrite proxy.                           |
+| `TRUSTED_PROXY_CIDRS`                        | topology-dependent   | Ordered CIDRs for `append-chain`; empty for overwrite proxy.                            |
+| `TRUSTED_PROXY_TOPOLOGY`                     | required-production  | Proxy mode: `single-overwrite` or verified `append-chain`.                              |
+| `TRUST_PROXY_HEADERS`                        | required-production  | Enable only when the app port is reachable solely through trusted proxies.              |
 | `TWILIO_ACCOUNT_SID`                         | secret optional      | Secret or credential-like value; manage through secret storage.                         |
 | `TWILIO_AUTH_TOKEN`                          | secret optional      | Secret or credential-like value; manage through secret storage.                         |
 | `TWILIO_FROM_NUMBER`                         | optional             |                                                                                         |

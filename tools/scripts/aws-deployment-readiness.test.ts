@@ -63,6 +63,9 @@ function baseInput(overrides: Partial<ReadinessInput> = {}): ReadinessInput {
       NEXT_PUBLIC_APP_URL: 'https://example.test',
       ENCRYPTION_KEY: 'key',
       JWT_SIGNING_SECRET: 'jwt',
+      TRUST_PROXY_HEADERS: 'true',
+      TRUSTED_PROXY_TOPOLOGY: 'single-overwrite',
+      TRUSTED_PROXY_HOPS: '0',
     },
     liveAws: { attempted: false, ok: false, message: 'not attempted' },
     ...overrides,
@@ -73,7 +76,7 @@ describe('evaluateReadiness', () => {
   it('passes local AWS deployment prerequisites when artifacts and env are present', () => {
     const report = evaluateReadiness(baseInput(), new Date('2026-06-17T00:00:00.000Z'));
 
-    expect(report.summary).toEqual({ pass: 15, warn: 0, fail: 0, skip: 1 });
+    expect(report.summary).toEqual({ pass: 16, warn: 0, fail: 0, skip: 1 });
     expect(report.checks.find((check) => check.name === 'aws-credentials')?.status).toBe('skip');
     expect(
       report.checks.find((check) => check.name === 'eventbridge-flush-metrics-schedule'),
@@ -98,7 +101,22 @@ describe('evaluateReadiness', () => {
     expect(report.checks.find((check) => check.name === 'docker')?.status).toBe('warn');
     expect(report.checks.find((check) => check.name === 'production-env')?.status).toBe('warn');
     expect(report.summary.fail).toBe(0);
-    expect(report.summary.warn).toBe(2);
+    expect(report.summary.warn).toBe(3);
+  });
+
+  it('fails a complete production environment with an unsafe client-IP topology', () => {
+    const input = baseInput({
+      env: {
+        ...baseInput().env,
+        TRUST_PROXY_HEADERS: 'false',
+      },
+    });
+
+    const report = evaluateReadiness(input);
+
+    expect(
+      report.checks.find((check) => check.name === 'production-client-ip-topology'),
+    ).toMatchObject({ status: 'fail' });
   });
 
   it('fails when required build assets or AWS CLI are absent', () => {
