@@ -4,6 +4,7 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   withOrgContextMock,
+  visitRecordFindFirstMock,
   visitRecordFindManyMock,
   billingCandidateFindManyMock,
   patientFindManyMock,
@@ -14,6 +15,7 @@ const {
   japanMonthRangeForBillingMonthMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
+  visitRecordFindFirstMock: vi.fn(),
   visitRecordFindManyMock: vi.fn(),
   billingCandidateFindManyMock: vi.fn(),
   patientFindManyMock: vi.fn(),
@@ -103,6 +105,10 @@ describe('/api/billing-candidates', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     visitRecordFindManyMock.mockResolvedValue([{ id: 'visit_1' }, { id: 'visit_2' }]);
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'visit_2',
+      created_at: new Date('2026-03-15T00:00:00.000Z'),
+    });
     billingCandidateFindManyMock.mockResolvedValue([
       {
         id: 'candidate_1',
@@ -148,6 +154,7 @@ describe('/api/billing-candidates', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitRecord: {
+          findFirst: visitRecordFindFirstMock,
           findMany: visitRecordFindManyMock,
         },
         billingCandidate: {
@@ -578,14 +585,20 @@ describe('/api/billing-candidates', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
-    expect(withOrgContextMock).toHaveBeenCalledTimes(4);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(5);
     expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_1', expect.any(Function));
-    expect(withOrgContextMock).toHaveBeenNthCalledWith(
-      2,
-      'org_1',
-      expect.any(Function),
-      expect.objectContaining({ requestContext: expect.objectContaining({ orgId: 'org_1' }) }),
-    );
+    expect(visitRecordFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        visit_date: {
+          gte: new Date('2026-02-28T15:00:00.000Z'),
+          lt: new Date('2026-03-31T15:00:00.000Z'),
+        },
+      },
+      select: { id: true, created_at: true },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    });
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_1', expect.any(Function));
     expect(withOrgContextMock).toHaveBeenNthCalledWith(
       3,
       'org_1',
@@ -599,10 +612,17 @@ describe('/api/billing-candidates', () => {
           gte: new Date('2026-02-28T15:00:00.000Z'),
           lt: new Date('2026-03-31T15:00:00.000Z'),
         },
+        OR: [
+          { created_at: { lt: new Date('2026-03-15T00:00:00.000Z') } },
+          {
+            created_at: new Date('2026-03-15T00:00:00.000Z'),
+            id: { lte: 'visit_2' },
+          },
+        ],
       },
-      select: {
-        id: true,
-      },
+      select: { id: true },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+      take: 100,
     });
     expect(upsertBillingEvidenceForVisitMock).toHaveBeenCalledTimes(2);
     expect(generateBillingCandidatesForMonthMock).toHaveBeenCalledWith(
@@ -688,9 +708,37 @@ describe('/api/billing-candidates', () => {
     );
 
     expect(upsertBillingEvidenceForVisitMock).toHaveBeenCalledTimes(2);
-    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(4);
     expect(generateBillingCandidatesForMonthMock).not.toHaveBeenCalled();
     expect(generatePcaRentalBillingCandidatesForMonthMock).not.toHaveBeenCalled();
+  });
+
+  it('pages the watermarked visit inventory instead of materializing the whole month', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      id: `visit_${String(index + 1).padStart(3, '0')}`,
+    }));
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'visit_101',
+      created_at: new Date('2026-03-31T00:00:00.000Z'),
+    });
+    visitRecordFindManyMock
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce([{ id: 'visit_101' }]);
+
+    const response = await POST(createRequest({ billing_month: '2026-03-01' }));
+
+    expect(response.status).toBe(200);
+    expect(visitRecordFindManyMock).toHaveBeenCalledTimes(2);
+    expect(visitRecordFindManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: { id: 'visit_100' },
+        skip: 1,
+        take: 100,
+      }),
+    );
+    expect(upsertBillingEvidenceForVisitMock).toHaveBeenCalledTimes(101);
+    expect(generateBillingCandidatesForMonthMock).toHaveBeenCalledTimes(1);
   });
 
   it('rejects invalid billing_domain on generation before database work', async () => {

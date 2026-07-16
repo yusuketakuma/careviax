@@ -18,6 +18,7 @@ import { BILLING_DOMAIN_ERROR_MESSAGE, parseOptionalBillingDomain } from './bill
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from './billing-month';
 
 const BILLING_CANDIDATE_STATUSES = ['candidate', 'confirmed', 'excluded', 'exported'] as const;
+const BILLING_EVIDENCE_VISIT_PAGE_SIZE = 100;
 type BillingCandidateStatus = (typeof BILLING_CANDIDATE_STATUSES)[number];
 
 function readWorkflowState(sourceSnapshot: unknown) {
@@ -320,9 +321,9 @@ export const POST = withAuthContext(
     const billingMonthRange = generateHomeCare
       ? japanMonthRangeForBillingMonth(billingMonth.start)
       : null;
-    const visitRecords = billingMonthRange
+    const visitWatermark = billingMonthRange
       ? await withOrgContext(ctx.orgId, (tx) =>
-          tx.visitRecord.findMany({
+          tx.visitRecord.findFirst({
             where: {
               org_id: ctx.orgId,
               visit_date: {
@@ -332,22 +333,54 @@ export const POST = withAuthContext(
             },
             select: {
               id: true,
+              created_at: true,
             },
+            orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
           }),
         )
-      : [];
+      : null;
 
-    if (generateHomeCare) {
-      for (const visitRecord of visitRecords) {
-        await withOrgContext(
-          ctx.orgId,
-          (tx) =>
-            upsertBillingEvidenceForVisit(tx, {
-              orgId: ctx.orgId,
-              visitRecordId: visitRecord.id,
-            }),
-          { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
+    if (billingMonthRange && visitWatermark) {
+      let cursor: string | undefined;
+      while (true) {
+        const visitRecords = await withOrgContext(ctx.orgId, (tx) =>
+          tx.visitRecord.findMany({
+            where: {
+              org_id: ctx.orgId,
+              visit_date: {
+                gte: billingMonthRange.start,
+                lt: billingMonthRange.nextStart,
+              },
+              OR: [
+                { created_at: { lt: visitWatermark.created_at } },
+                {
+                  created_at: visitWatermark.created_at,
+                  id: { lte: visitWatermark.id },
+                },
+              ],
+            },
+            select: { id: true },
+            orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+            take: BILLING_EVIDENCE_VISIT_PAGE_SIZE,
+            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          }),
         );
+
+        for (const visitRecord of visitRecords) {
+          await withOrgContext(
+            ctx.orgId,
+            (tx) =>
+              upsertBillingEvidenceForVisit(tx, {
+                orgId: ctx.orgId,
+                visitRecordId: visitRecord.id,
+              }),
+            { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
+          );
+        }
+
+        if (visitRecords.length < BILLING_EVIDENCE_VISIT_PAGE_SIZE) break;
+        cursor = visitRecords.at(-1)?.id;
+        if (!cursor) break;
       }
     }
 

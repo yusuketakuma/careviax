@@ -240,6 +240,7 @@ model VisitRecord {
   @@unique([org_id, display_id])
   @@unique([id, org_id])
   @@index([org_id])
+  @@index([org_id, visit_date, created_at, id], map: "VisitRecord_billing_month_scan_idx")
   @@index([patient_id])
   @@index([visit_date])
   @@index([schedule_id])
