@@ -1,6 +1,7 @@
 ---
 type: ImplementationDecision
 title: Keep partner billing cursor reads explicit and partial-aware
+created: '2026-07-16T18:29:49+09:00'
 branch: codex1/continuous-optimization-20260716
 source:
   - >-
