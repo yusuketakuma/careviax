@@ -21,7 +21,9 @@ const {
           authContext: TestAuthContext,
           ctx: DraftRouteContext,
         ) => Promise<Response>,
+        _options?: unknown,
       ) => {
+        void _options;
         return (req: NextRequest, ctx: DraftRouteContext) => {
           const authResponse = authGateResponseMock();
           return (
@@ -60,6 +62,7 @@ vi.mock('@/lib/db/client', () => ({
 import { GET, DELETE } from './route';
 
 const DRAFT_PARAMS = { params: Promise.resolve({ id: 'draft_1' }) };
+const withAuthRegistrationCalls = [...withAuthContextMock.mock.calls];
 
 function createRequest(method: 'DELETE' | 'GET' = 'GET') {
   return new NextRequest('http://localhost/api/qr-scan-drafts/draft_1', { method });
@@ -69,6 +72,20 @@ function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('cache-control')).toBe('private, no-store, max-age=0');
   expect(response.headers.get('pragma')).toBe('no-cache');
 }
+
+describe('/api/qr-scan-drafts/[id] authorization', () => {
+  it('uses dashboard read permission for GET and visit permission for DELETE', () => {
+    expect(withAuthRegistrationCalls).toHaveLength(2);
+    expect(withAuthRegistrationCalls[0]?.[1]).toEqual({
+      permission: 'canViewDashboard',
+      message: 'QRスキャン下書きの閲覧権限がありません',
+    });
+    expect(withAuthRegistrationCalls[1]?.[1]).toEqual({
+      permission: 'canVisit',
+      message: 'QRスキャン下書きの操作権限がありません',
+    });
+  });
+});
 
 describe('/api/qr-scan-drafts/[id] GET', () => {
   beforeEach(() => {

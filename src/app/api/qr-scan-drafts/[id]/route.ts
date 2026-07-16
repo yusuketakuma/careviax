@@ -88,7 +88,7 @@ const authenticatedGET = withAuthContext(
     return success({ data: toQrDraftResponse(draft) });
   },
   {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: 'QRスキャン下書きの閲覧権限がありません',
   },
 );

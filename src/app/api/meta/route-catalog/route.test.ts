@@ -116,6 +116,20 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'prescriptions',
         }),
         expect.objectContaining({
+          path: '/api/qr-scan-drafts/:id',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+          description: 'サニタイズ済みQRスキャン下書き詳細取得',
+          area: 'prescriptions',
+        }),
+        expect.objectContaining({
+          path: '/api/qr-scan-drafts/:id',
+          methods: ['DELETE'],
+          permission: 'canVisit',
+          description: 'QRスキャン下書き破棄',
+          area: 'prescriptions',
+        }),
+        expect.objectContaining({
           path: '/api/first-visit-documents',
           methods: ['GET', 'POST'],
           permission: 'canVisit',

@@ -149,6 +149,18 @@ describe('routeCatalog', () => {
           area: 'prescriptions',
         }),
         expect.objectContaining({
+          path: '/api/qr-scan-drafts/:id',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+          area: 'prescriptions',
+        }),
+        expect.objectContaining({
+          path: '/api/qr-scan-drafts/:id',
+          methods: ['DELETE'],
+          permission: 'canVisit',
+          area: 'prescriptions',
+        }),
+        expect.objectContaining({
           path: '/api/interventions/:id',
           methods: ['GET'],
           permission: 'canViewDashboard',
@@ -256,6 +268,7 @@ describe('routeCatalog', () => {
       '/api/patients/:id/overview',
       '/api/patients/:id/prescriptions',
       '/api/patients/:id/prescriptions/export',
+      '/api/qr-scan-drafts/:id',
       '/api/interventions',
       '/api/residual-medications',
       '/api/dispense-tasks/:id/workbench',

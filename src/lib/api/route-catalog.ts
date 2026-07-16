@@ -393,6 +393,20 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'prescriptions',
   },
   {
+    path: '/api/qr-scan-drafts/:id',
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: 'サニタイズ済みQRスキャン下書き詳細取得',
+    area: 'prescriptions',
+  },
+  {
+    path: '/api/qr-scan-drafts/:id',
+    methods: ['DELETE'],
+    permission: 'canVisit',
+    description: 'QRスキャン下書き破棄',
+    area: 'prescriptions',
+  },
+  {
     path: '/api/medication-cycles',
     methods: ['GET', 'POST'],
     permission: 'canDispense',
