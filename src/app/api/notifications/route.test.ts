@@ -151,6 +151,37 @@ describe('/api/notifications GET', () => {
       { created_at: 'desc' },
       { id: 'desc' },
     ]);
+    expect(findManyMock.mock.calls[0]?.[0].select).toEqual({
+      id: true,
+      type: true,
+      event_type: true,
+      title: true,
+      message: true,
+      link: true,
+      created_at: true,
+      is_read: true,
+    });
+  });
+
+  it.each([
+    ['duplicate limit', '?limit=20&limit=50'],
+    ['invalid limit', '?limit=many'],
+    ['out-of-range limit', '?limit=101'],
+    ['invalid summary', '?summary=true'],
+    ['invalid read filter', '?is_read=1'],
+    ['blank user id', '?user_id=%20'],
+  ])('rejects %s before querying notifications', async (_label, query) => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+
+    const response = await GET(
+      createRequest(`http://localhost/api/notifications${query}`, { 'x-org-id': 'org_1' }),
+    );
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(countMock).not.toHaveBeenCalled();
+    expect(findManyMock).not.toHaveBeenCalled();
   });
 
   it('returns notification list in a data/meta envelope without legacy cursor fields', async () => {
@@ -232,12 +263,11 @@ describe('/api/notifications GET', () => {
     expect(bodyText).not.toContain('raw patient notification secret');
     expect(loggerErrorMock).toHaveBeenCalledOnce();
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      {
-        event: 'notifications_get_unhandled_error',
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
         route: '/api/notifications',
         method: 'GET',
-        status: 500,
-      },
+      }),
       unsafeError,
     );
     const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
@@ -247,13 +277,11 @@ describe('/api/notifications GET', () => {
     expect(loggedContext).not.toContain('body');
   });
 
-  it('marks only valid unique notification ids as read', async () => {
+  it('trims and marks valid unique notification ids as read', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
 
-    const response = await PATCH(
-      createPatchRequest({ ids: ['notice_1', '', 'notice_1', 123, ' notice_2 '] }),
-    );
+    const response = await PATCH(createPatchRequest({ ids: ['notice_1', ' notice_2 '] }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -275,7 +303,14 @@ describe('/api/notifications GET', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
 
-    for (const body of [{ ids: [123, ''] }, { ids: 'notice_1' }, { all: 'true' }, []]) {
+    for (const body of [
+      { ids: [123, ''] },
+      { ids: ['notice_1', 'notice_1'] },
+      { ids: 'notice_1' },
+      { all: 'true' },
+      { all: true, ids: ['notice_1'] },
+      [],
+    ]) {
       const response = await PATCH(createPatchRequest(body));
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(400);
@@ -335,12 +370,11 @@ describe('/api/notifications GET', () => {
     expect(bodyText).not.toContain('raw notification patient secret');
     expect(loggerErrorMock).toHaveBeenCalledOnce();
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      {
-        event: 'notifications_patch_unhandled_error',
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
         route: '/api/notifications',
         method: 'PATCH',
-        status: 500,
-      },
+      }),
       unsafeError,
     );
     const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
