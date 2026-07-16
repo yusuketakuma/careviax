@@ -14,6 +14,7 @@ import {
 } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import {
@@ -162,7 +163,7 @@ async function withSerializableVisitSchedulePatchTransaction<T>(
 
 async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '訪問予定の閲覧権限がありません',
   });
   if ('response' in authResult) return authResult.response;
@@ -195,13 +196,22 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
 
   const safeSchedule = attachVisitSchedulePatientSummary(schedule);
 
-  return success({
+  const response = success({
     data: {
       ...safeSchedule,
       patient_id: careCase.patient_id,
       cycle_id: schedule.cycle_id,
     },
   });
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: careCase.patient_id,
+    targetType: 'visit_schedule',
+    targetId: schedule.id,
+    view: 'visit_schedule_detail',
+  });
+
+  return response;
 }
 
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

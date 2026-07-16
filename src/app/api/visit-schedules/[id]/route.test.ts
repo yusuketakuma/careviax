@@ -28,6 +28,7 @@ const {
   sanitizeReadyTransitionDetailsMock,
   withOrgContextMock,
   auditLogCreateMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -65,6 +66,11 @@ const {
   })),
   withOrgContextMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -404,6 +410,16 @@ describe('/api/visit-schedules/[id] GET', () => {
       visitScheduleFindFirstMock.mock.calls[0]?.[0]?.include.case_.select.patient.select;
     expect(patientSelect.insurances.where).toMatchObject({ org_id: 'org_1' });
     expect(patientSelect.lab_observations.where).toMatchObject({ org_id: 'org_1' });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'visit_schedule',
+        targetId: 'schedule_1',
+        view: 'visit_schedule_detail',
+      },
+    );
   });
 
   it('rejects blank schedule ids before loading schedule details', async () => {
@@ -421,6 +437,66 @@ describe('/api/visit-schedules/[id] GET', () => {
     });
     expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit when the schedule is not found', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'missing_schedule' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit when the scheduled case cannot be resolved', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+  });
+
+  it('allows a clerk to read an org-scoped schedule and records one patient audit', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'clerk' });
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      confirmed_at: null,
+      pharmacist_id: 'user_other',
+      visit_record: null,
+      preparation: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+        patient: { id: 'patient_1', name: '患者A' },
+      },
+    });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ role: 'clerk' }),
+      expect.objectContaining({ patientId: 'patient_1', view: 'visit_schedule_detail' }),
+    );
   });
 
   it('allows an org-wide pharmacist to read a schedule regardless of assignment', async () => {
@@ -473,6 +549,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(JSON.stringify(body)).not.toContain('東京都千代田区1-1-1');
     expect(JSON.stringify(body)).not.toContain('raw schedule detail');
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('allows an org-wide pharmacist to patch a schedule regardless of assignment', async () => {

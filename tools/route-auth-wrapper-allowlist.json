@@ -1588,7 +1588,7 @@
     {
       "path": "src/app/api/visit-schedules/[id]/route.ts",
       "expectedCount": 3,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard", "canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",

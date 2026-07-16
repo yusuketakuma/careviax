@@ -195,6 +195,18 @@ describe('routeCatalog', () => {
           area: 'visits',
         }),
         expect.objectContaining({
+          path: '/api/visit-schedules/:id',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+          area: 'schedules',
+        }),
+        expect.objectContaining({
+          path: '/api/visit-schedules/:id',
+          methods: ['PATCH', 'DELETE'],
+          permission: 'canVisit',
+          area: 'schedules',
+        }),
+        expect.objectContaining({
           path: '/api/visit-records/:id',
           methods: ['GET'],
           permission: 'canViewDashboard',
@@ -285,6 +297,7 @@ describe('routeCatalog', () => {
       '/api/dispense-tasks/:id/workbench',
       '/api/set-plans',
       '/api/visit-schedules/day-board',
+      '/api/visit-schedules/:id',
       '/api/visit-schedule-proposals',
       '/api/visit-schedule-proposals/overload-rebalance-preview',
       '/api/visits/today-preparation',

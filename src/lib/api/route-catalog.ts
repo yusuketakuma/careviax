@@ -218,6 +218,20 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'schedules',
   },
   {
+    path: '/api/visit-schedules/:id',
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: '訪問予定詳細取得',
+    area: 'schedules',
+  },
+  {
+    path: '/api/visit-schedules/:id',
+    methods: ['PATCH', 'DELETE'],
+    permission: 'canVisit',
+    description: '訪問予定更新・取消',
+    area: 'schedules',
+  },
+  {
     path: '/api/visit-schedules/generate',
     methods: ['POST'],
     permission: 'canVisit',

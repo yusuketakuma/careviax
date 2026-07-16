@@ -157,6 +157,20 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'schedules',
         }),
         expect.objectContaining({
+          path: '/api/visit-schedules/:id',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+          description: '訪問予定詳細取得',
+          area: 'schedules',
+        }),
+        expect.objectContaining({
+          path: '/api/visit-schedules/:id',
+          methods: ['PATCH', 'DELETE'],
+          permission: 'canVisit',
+          description: '訪問予定更新・取消',
+          area: 'schedules',
+        }),
+        expect.objectContaining({
           path: '/api/visit-schedule-proposals',
           methods: ['GET', 'POST', 'PUT'],
           permission: 'canVisit',
