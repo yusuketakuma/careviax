@@ -3,12 +3,16 @@ import { NextRequest } from 'next/server';
 
 const {
   getAuthContextMock,
+  getLineProviderReadinessMock,
   getSecretsBootstrapStatusMock,
+  getSmsProviderReadinessMock,
   queryRawMock,
   runBackupMonitorChecksMock,
 } = vi.hoisted(() => ({
   getAuthContextMock: vi.fn(),
+  getLineProviderReadinessMock: vi.fn(),
   getSecretsBootstrapStatusMock: vi.fn(),
+  getSmsProviderReadinessMock: vi.fn(),
   queryRawMock: vi.fn(),
   runBackupMonitorChecksMock: vi.fn(),
 }));
@@ -27,6 +31,14 @@ vi.mock('@/lib/config/secrets', () => ({
   getSecretsBootstrapStatus: getSecretsBootstrapStatusMock,
 }));
 
+vi.mock('@/server/adapters/sms', () => ({
+  getSmsProviderReadiness: getSmsProviderReadinessMock,
+}));
+
+vi.mock('@/server/adapters/line', () => ({
+  getLineProviderReadiness: getLineProviderReadinessMock,
+}));
+
 vi.mock('@/server/services/backup-monitor', () => ({
   runBackupMonitorChecks: runBackupMonitorChecksMock,
 }));
@@ -42,6 +54,8 @@ describe('/api/health GET', () => {
     vi.clearAllMocks();
     getAuthContextMock.mockResolvedValue(null);
     getSecretsBootstrapStatusMock.mockReturnValue({ state: 'ready', source: 'environment' });
+    getSmsProviderReadinessMock.mockReturnValue({ status: 'ready' });
+    getLineProviderReadinessMock.mockReturnValue({ status: 'ready' });
   });
 
   it('keeps unauthenticated public liveness cheap', async () => {
@@ -65,6 +79,8 @@ describe('/api/health GET', () => {
     expect(queryRawMock).not.toHaveBeenCalled();
     expect(runBackupMonitorChecksMock).not.toHaveBeenCalled();
     expect(getSecretsBootstrapStatusMock).not.toHaveBeenCalled();
+    expect(getSmsProviderReadinessMock).not.toHaveBeenCalled();
+    expect(getLineProviderReadinessMock).not.toHaveBeenCalled();
   });
 
   it('returns detailed checks for authenticated admins', async () => {
@@ -87,10 +103,34 @@ describe('/api/health GET', () => {
       status: 'degraded',
       checks: {
         startupSecrets: { status: 'ok' },
+        smsProvider: { status: 'ok' },
+        lineProvider: { status: 'ok' },
         backups: { status: 'warning' },
       },
     });
     expect(runBackupMonitorChecksMock).toHaveBeenCalledOnce();
+  });
+
+  it('reports optional provider readiness as degraded without taking liveness down', async () => {
+    getAuthContextMock.mockResolvedValue({
+      userId: 'user_1',
+      orgId: 'org_1',
+      role: 'admin',
+    });
+    getSmsProviderReadinessMock.mockReturnValue({ status: 'misconfigured' });
+    getLineProviderReadinessMock.mockReturnValue({ status: 'not_configured' });
+    queryRawMock.mockResolvedValue([{ '?column?': 1 }]);
+    runBackupMonitorChecksMock.mockResolvedValue({ overall: 'ok', checks: {} });
+
+    const response = await GET(healthRequest());
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'degraded',
+      checks: {
+        smsProvider: { status: 'misconfigured' },
+        lineProvider: { status: 'not_configured' },
+      },
+    });
   });
 
   it('keeps public liveness separate but reports admin readiness down on secret failure', async () => {

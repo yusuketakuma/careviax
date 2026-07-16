@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LineNotificationAdapter } from './index';
+import { getLineProviderReadiness, LineNotificationAdapter } from './index';
 
 describe('LineNotificationAdapter', () => {
   beforeEach(() => {
@@ -14,13 +14,19 @@ describe('LineNotificationAdapter', () => {
   it('sends LINE messages through the Messaging API when configured', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response('{}', { status: 200 }));
+      .mockResolvedValue(
+        new Response('{}', { status: 200, headers: { 'x-line-request-id': 'line-request-1' } }),
+      );
     const adapter = new LineNotificationAdapter({
       provider: 'line',
       channelAccessToken: 'line-token',
     });
 
-    await expect(adapter.sendMessage('user-1', '通知本文')).resolves.toBeUndefined();
+    await expect(adapter.sendMessage('user-1', '通知本文')).resolves.toEqual({
+      status: 'accepted',
+      provider: 'line',
+      providerMessageId: 'line-request-1',
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.line.me/v2/bot/message/push',
@@ -46,13 +52,17 @@ describe('LineNotificationAdapter', () => {
       .mockImplementation((() => undefined) as typeof clearTimeout);
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response('{}', { status: 200 }));
+      .mockResolvedValue(
+        new Response('{}', { status: 200, headers: { 'x-line-request-id': 'line-request-1' } }),
+      );
     const adapter = new LineNotificationAdapter({
       provider: 'line',
       channelAccessToken: 'line-token',
     });
 
-    await expect(adapter.sendMessage('user-1', '通知本文')).resolves.toBeUndefined();
+    await expect(adapter.sendMessage('user-1', '通知本文')).resolves.toMatchObject({
+      status: 'accepted',
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.line.me/v2/bot/message/push',
@@ -65,12 +75,54 @@ describe('LineNotificationAdapter', () => {
     expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
   });
 
-  it('silently skips delivery when no provider is configured', async () => {
-    const warnMock = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const adapter = new LineNotificationAdapter({ provider: 'stub' });
+  it('returns not_configured instead of reporting stub delivery success', async () => {
+    const adapter = new LineNotificationAdapter({ provider: 'not_configured' });
 
-    await expect(adapter.sendMessage('user-1', '通知本文')).resolves.toBeUndefined();
-    expect(warnMock).toHaveBeenCalled();
+    expect(getLineProviderReadiness()).toEqual({ status: 'not_configured' });
+    await expect(adapter.sendMessage('user-1', '通知本文')).resolves.toEqual({
+      status: 'not_configured',
+      provider: null,
+      providerMessageId: null,
+    });
+  });
+
+  it.each([
+    {
+      label: 'provider rejection',
+      response: new Response('{}', { status: 400 }),
+      status: 'failed',
+    },
+    {
+      label: 'missing provider ID',
+      response: new Response('{}', { status: 200 }),
+      status: 'unknown',
+    },
+  ])('returns $status for $label', async ({ response, status }) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
+    const adapter = new LineNotificationAdapter({
+      provider: 'line',
+      channelAccessToken: 'line-token',
+    });
+
+    await expect(adapter.sendMessage('user-1', '通知本文')).resolves.toMatchObject({
+      status,
+      provider: 'line',
+      providerMessageId: null,
+    });
+  });
+
+  it('returns unknown when the request outcome cannot be determined', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network response lost'));
+    const adapter = new LineNotificationAdapter({
+      provider: 'line',
+      channelAccessToken: 'line-token',
+    });
+
+    await expect(adapter.sendMessage('user-1', '通知本文')).resolves.toEqual({
+      status: 'unknown',
+      provider: 'line',
+      providerMessageId: null,
+    });
   });
 
   it('rejects blank delivery targets and messages before calling LINE', async () => {

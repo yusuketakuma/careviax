@@ -692,6 +692,11 @@ describe('/api/external-access GET', () => {
 describe('/api/external-access POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sendSmsMock.mockResolvedValue({
+      status: 'accepted',
+      provider: 'twilio',
+      providerMessageId: `SM${'a'.repeat(32)}`,
+    });
     currentRole.value = 'pharmacist';
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     consentRecordFindFirstMock.mockResolvedValue({
@@ -971,6 +976,16 @@ describe('/api/external-access POST', () => {
       '090-1234-5678',
       expect.stringContaining('PH-OS共有OTP:'),
     );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'external_access_otp_delivery_accepted',
+        changes: expect.objectContaining({
+          otp_delivery_result: 'sms',
+          provider_status: 'accepted',
+          provider_message_id: `SM${'a'.repeat(32)}`,
+        }),
+      }),
+    });
     expect(validateExternalAccessScopeForRoleMock).toHaveBeenCalledWith(
       { medication_list: true },
       'pharmacist',
@@ -992,8 +1007,12 @@ describe('/api/external-access POST', () => {
     expect(bodyText).not.toMatch(/token_hash|otp_hash|provisional|bcrypt/);
   });
 
-  it('keeps the grant creation audit when SMS delivery falls back to manual OTP handling', async () => {
-    sendSmsMock.mockRejectedValueOnce(new Error('sms unavailable'));
+  it('keeps the grant creation audit when SMS is not configured and returns the OTP manually', async () => {
+    sendSmsMock.mockResolvedValueOnce({
+      status: 'not_configured',
+      provider: null,
+      providerMessageId: null,
+    });
 
     const response = await POST(
       createRequest({
@@ -1028,6 +1047,7 @@ describe('/api/external-access POST', () => {
           granted_to_contact_masked: '090****5678',
           otp_delivery_intent: 'sms',
           otp_delivery_result: 'manual',
+          provider_status: 'not_configured',
           actor_id: 'user_1',
         }),
       }),

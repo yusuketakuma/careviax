@@ -1,9 +1,13 @@
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import { createFetchTimeout } from '@/server/services/fetch-timeout';
+import type { ProviderDeliveryResult } from '../delivery-result';
 
 type SmsAdapterConfig =
   | {
-      provider: 'stub';
+      provider: 'not_configured';
+    }
+  | {
+      provider: 'misconfigured';
     }
   | {
       provider: 'twilio';
@@ -13,6 +17,20 @@ type SmsAdapterConfig =
     };
 
 const DEFAULT_SMS_DELIVERY_TIMEOUT_MS = 10_000;
+const TWILIO_MESSAGE_SID_RE = /^(?:SM|MM)[0-9a-fA-F]{32}$/;
+const TWILIO_ACCEPTED_STATUSES = new Set([
+  'accepted',
+  'scheduled',
+  'queued',
+  'sending',
+  'sent',
+  'delivered',
+]);
+const TWILIO_FAILED_STATUSES = new Set(['canceled', 'failed', 'undelivered']);
+
+export type SmsProviderReadiness = {
+  status: 'ready' | 'not_configured' | 'misconfigured';
+};
 
 export class SmsNotificationAdapterError extends Error {
   constructor(message: string) {
@@ -28,25 +46,55 @@ function resolveSmsDeliveryTimeoutMs() {
 }
 
 function resolveSmsConfig(): SmsAdapterConfig {
-  if (
-    process.env.TWILIO_ACCOUNT_SID &&
-    process.env.TWILIO_AUTH_TOKEN &&
-    process.env.TWILIO_FROM_NUMBER
-  ) {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+  const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+  const fromNumber = process.env.TWILIO_FROM_NUMBER?.trim();
+  const configuredCount = [accountSid, authToken, fromNumber].filter(Boolean).length;
+
+  if (accountSid && authToken && fromNumber) {
     return {
       provider: 'twilio',
-      accountSid: process.env.TWILIO_ACCOUNT_SID,
-      authToken: process.env.TWILIO_AUTH_TOKEN,
-      fromNumber: process.env.TWILIO_FROM_NUMBER,
+      accountSid,
+      authToken,
+      fromNumber,
     };
   }
-  return { provider: 'stub' };
+  return { provider: configuredCount === 0 ? 'not_configured' : 'misconfigured' };
+}
+
+export function getSmsProviderReadiness(): SmsProviderReadiness {
+  const config = resolveSmsConfig();
+  if (config.provider === 'twilio') return { status: 'ready' };
+  return { status: config.provider };
+}
+
+async function readTwilioAcceptance(response: Response) {
+  try {
+    const body: unknown = await response.json();
+    if (!body || typeof body !== 'object') return { status: 'unknown' as const };
+    const sid = Reflect.get(body, 'sid');
+    const providerStatus = Reflect.get(body, 'status');
+    if (typeof providerStatus === 'string' && TWILIO_FAILED_STATUSES.has(providerStatus)) {
+      return { status: 'failed' as const };
+    }
+    if (
+      typeof sid === 'string' &&
+      TWILIO_MESSAGE_SID_RE.test(sid) &&
+      typeof providerStatus === 'string' &&
+      TWILIO_ACCEPTED_STATUSES.has(providerStatus)
+    ) {
+      return { status: 'accepted' as const, providerMessageId: sid };
+    }
+    return { status: 'unknown' as const };
+  } catch {
+    return { status: 'unknown' as const };
+  }
 }
 
 export class SmsNotificationAdapter {
   constructor(private readonly config: SmsAdapterConfig = resolveSmsConfig()) {}
 
-  async sendSms(phoneNumber: string, message: string): Promise<void> {
+  async sendSms(phoneNumber: string, message: string): Promise<ProviderDeliveryResult> {
     if (phoneNumber.trim().length === 0) {
       throw new SmsNotificationAdapterError('SMS delivery target is required');
     }
@@ -54,9 +102,11 @@ export class SmsNotificationAdapter {
       throw new SmsNotificationAdapterError('SMS delivery message is required');
     }
 
-    if (this.config.provider === 'stub') {
-      console.warn('[SMS] provider is not configured; skipping delivery');
-      return;
+    if (this.config.provider === 'not_configured') {
+      return { status: 'not_configured', provider: null, providerMessageId: null };
+    }
+    if (this.config.provider === 'misconfigured') {
+      return { status: 'failed', provider: 'twilio', providerMessageId: null };
     }
 
     if (this.config.provider === 'twilio') {
@@ -81,14 +131,26 @@ export class SmsNotificationAdapter {
             signal: abort.signal,
           },
         );
+      } catch {
+        return { status: 'unknown', provider: 'twilio', providerMessageId: null };
       } finally {
         abort.clear();
       }
 
       if (!response.ok) {
-        throw new Error(`SMS delivery failed: ${response.status}`);
+        return { status: 'failed', provider: 'twilio', providerMessageId: null };
       }
-      return;
+      const acceptance = await readTwilioAcceptance(response);
+      if (acceptance.status === 'accepted') {
+        return {
+          status: 'accepted',
+          provider: 'twilio',
+          providerMessageId: acceptance.providerMessageId,
+        };
+      }
+      return { status: acceptance.status, provider: 'twilio', providerMessageId: null };
     }
+
+    throw new SmsNotificationAdapterError('Unsupported SMS provider configuration');
   }
 }

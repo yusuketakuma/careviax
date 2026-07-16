@@ -1402,7 +1402,7 @@ describe('dispatchNotificationEvent', () => {
     await Promise.resolve();
   });
 
-  it('logs background delivery failures without rejecting the dispatch', async () => {
+  it('logs normalized non-accepted delivery results without rejecting the dispatch', async () => {
     vi.useFakeTimers();
     loggerWarnMock.mockReset();
     sendSmsMock.mockReset();
@@ -1428,7 +1428,11 @@ describe('dispatchNotificationEvent', () => {
       id: `notification_${data.user_id as string}`,
       ...data,
     }));
-    sendSmsMock.mockRejectedValue(new Error('sms unavailable'));
+    sendSmsMock.mockResolvedValue({
+      status: 'not_configured',
+      provider: null,
+      providerMessageId: null,
+    });
 
     const notifications = await dispatchNotificationEvent(tx, {
       orgId: 'org_1',

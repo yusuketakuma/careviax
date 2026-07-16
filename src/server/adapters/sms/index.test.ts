@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SmsNotificationAdapter } from './index';
+import { getSmsProviderReadiness, SmsNotificationAdapter } from './index';
+
+const TWILIO_MESSAGE_SID = `SM${'a'.repeat(32)}`;
 
 describe('SmsNotificationAdapter', () => {
   beforeEach(() => {
@@ -14,7 +16,9 @@ describe('SmsNotificationAdapter', () => {
   it('sends SMS via Twilio when configured', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response('{}', { status: 201 }));
+      .mockResolvedValue(
+        Response.json({ sid: TWILIO_MESSAGE_SID, status: 'queued' }, { status: 201 }),
+      );
     const adapter = new SmsNotificationAdapter({
       provider: 'twilio',
       accountSid: 'AC123',
@@ -22,7 +26,11 @@ describe('SmsNotificationAdapter', () => {
       fromNumber: '+819012345678',
     });
 
-    await expect(adapter.sendSms('+819011111111', '通知本文')).resolves.toBeUndefined();
+    await expect(adapter.sendSms('+819011111111', '通知本文')).resolves.toEqual({
+      status: 'accepted',
+      provider: 'twilio',
+      providerMessageId: TWILIO_MESSAGE_SID,
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.twilio.com/2010-04-01/Accounts/AC123/Messages.json',
@@ -48,7 +56,9 @@ describe('SmsNotificationAdapter', () => {
       .mockImplementation((() => undefined) as typeof clearTimeout);
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response('{}', { status: 201 }));
+      .mockResolvedValue(
+        Response.json({ sid: TWILIO_MESSAGE_SID, status: 'queued' }, { status: 201 }),
+      );
     const adapter = new SmsNotificationAdapter({
       provider: 'twilio',
       accountSid: 'AC123',
@@ -56,7 +66,9 @@ describe('SmsNotificationAdapter', () => {
       fromNumber: '+819012345678',
     });
 
-    await expect(adapter.sendSms('+819011111111', '通知本文')).resolves.toBeUndefined();
+    await expect(adapter.sendSms('+819011111111', '通知本文')).resolves.toMatchObject({
+      status: 'accepted',
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.twilio.com/2010-04-01/Accounts/AC123/Messages.json',
@@ -69,12 +81,76 @@ describe('SmsNotificationAdapter', () => {
     expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
   });
 
-  it('silently skips delivery when no provider is configured', async () => {
-    const warnMock = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const adapter = new SmsNotificationAdapter({ provider: 'stub' });
+  it('returns not_configured instead of reporting stub delivery success', async () => {
+    const adapter = new SmsNotificationAdapter({ provider: 'not_configured' });
 
-    await expect(adapter.sendSms('+819011111111', '通知本文')).resolves.toBeUndefined();
-    expect(warnMock).toHaveBeenCalled();
+    expect(getSmsProviderReadiness()).toEqual({ status: 'not_configured' });
+    await expect(adapter.sendSms('+819011111111', '通知本文')).resolves.toEqual({
+      status: 'not_configured',
+      provider: null,
+      providerMessageId: null,
+    });
+  });
+
+  it('reports partial Twilio configuration as misconfigured readiness and failed delivery', async () => {
+    vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC123');
+
+    expect(getSmsProviderReadiness()).toEqual({ status: 'misconfigured' });
+    await expect(
+      new SmsNotificationAdapter().sendSms('+819011111111', '通知本文'),
+    ).resolves.toEqual({
+      status: 'failed',
+      provider: 'twilio',
+      providerMessageId: null,
+    });
+  });
+
+  it.each([
+    {
+      label: 'provider rejection',
+      response: new Response('{}', { status: 400 }),
+      status: 'failed',
+    },
+    {
+      label: 'missing provider ID',
+      response: new Response('{}', { status: 201 }),
+      status: 'unknown',
+    },
+    {
+      label: 'provider-declared failure',
+      response: Response.json({ sid: TWILIO_MESSAGE_SID, status: 'failed' }, { status: 201 }),
+      status: 'failed',
+    },
+  ])('returns $status for $label', async ({ response, status }) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
+    const adapter = new SmsNotificationAdapter({
+      provider: 'twilio',
+      accountSid: 'AC123',
+      authToken: 'auth-token',
+      fromNumber: '+819012345678',
+    });
+
+    await expect(adapter.sendSms('+819011111111', '通知本文')).resolves.toMatchObject({
+      status,
+      provider: 'twilio',
+      providerMessageId: null,
+    });
+  });
+
+  it('returns unknown when the request outcome cannot be determined', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network response lost'));
+    const adapter = new SmsNotificationAdapter({
+      provider: 'twilio',
+      accountSid: 'AC123',
+      authToken: 'auth-token',
+      fromNumber: '+819012345678',
+    });
+
+    await expect(adapter.sendSms('+819011111111', '通知本文')).resolves.toEqual({
+      status: 'unknown',
+      provider: 'twilio',
+      providerMessageId: null,
+    });
   });
 
   it('rejects blank delivery targets and messages before calling Twilio', async () => {

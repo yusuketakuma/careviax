@@ -4,6 +4,8 @@ import { hasPermission } from '@/lib/auth/permissions';
 import { getSecretsBootstrapStatus } from '@/lib/config/secrets';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
+import { getLineProviderReadiness } from '@/server/adapters/line';
+import { getSmsProviderReadiness } from '@/server/adapters/sms';
 import { runBackupMonitorChecks } from '@/server/services/backup-monitor';
 
 const BACKUP_MONITOR_FAILED_MESSAGE = 'backup monitor failed';
@@ -65,6 +67,14 @@ export async function GET(req: NextRequest) {
     checks.startupSecrets = { status: secretsStatus.state === 'ready' ? 'ok' : 'down' };
     if (secretsStatus.state !== 'ready') {
       overall = 'down';
+    }
+
+    const smsStatus = getSmsProviderReadiness();
+    const lineStatus = getLineProviderReadiness();
+    checks.smsProvider = { status: smsStatus.status === 'ready' ? 'ok' : smsStatus.status };
+    checks.lineProvider = { status: lineStatus.status === 'ready' ? 'ok' : lineStatus.status };
+    if (overall === 'ok' && (smsStatus.status !== 'ready' || lineStatus.status !== 'ready')) {
+      overall = 'degraded';
     }
 
     // DB readiness is admin-only; public liveness must remain cheap.

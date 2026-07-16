@@ -579,29 +579,39 @@ export const POST = withAuthContext(
 
     let otpDelivery: 'sms' | 'manual' = 'manual';
     let otpDeliveryDestination: string | null = null;
+    let otpProviderStatus: 'accepted' | 'not_configured' | 'failed' | 'unknown' | null = null;
+    let otpProviderMessageId: string | null = null;
 
     if (otpDeliveryIntent === 'sms' && normalizedGrantedToContact) {
       try {
         const smsAdapter = new SmsNotificationAdapter();
-        await smsAdapter.sendSms(
+        const deliveryResult = await smsAdapter.sendSms(
           normalizedGrantedToContact,
           `PH-OS共有OTP: ${rawOtp} 有効期限 ${expiresAt.toLocaleString('ja-JP')}`,
         );
-        otpDelivery = 'sms';
-        otpDeliveryDestination = maskPhoneContact(normalizedGrantedToContact, {
-          leadingDigits: 3,
-        });
+        otpProviderStatus = deliveryResult.status;
+        if (deliveryResult.status === 'accepted') {
+          otpProviderMessageId = deliveryResult.providerMessageId;
+          otpDelivery = 'sms';
+          otpDeliveryDestination = maskPhoneContact(normalizedGrantedToContact, {
+            leadingDigits: 3,
+          });
+        }
       } catch {
+        otpProviderStatus = 'unknown';
         otpDelivery = 'manual';
         otpDeliveryDestination = null;
       }
     }
 
-    if (otpDeliveryIntent === 'sms' && otpDelivery === 'manual') {
+    if (otpDeliveryIntent === 'sms') {
       try {
         await withOrgContext(ctx.orgId, (tx) =>
           createAuditLogEntry(tx, ctx, {
-            action: 'external_access_otp_delivery_fallback',
+            action:
+              otpDelivery === 'sms'
+                ? 'external_access_otp_delivery_accepted'
+                : 'external_access_otp_delivery_fallback',
             targetType: 'external_access_grant',
             targetId: grant.id,
             changes: {
@@ -609,6 +619,8 @@ export const POST = withAuthContext(
               granted_to_contact_masked: maskExternalAccessContact(normalizedGrantedToContact),
               otp_delivery_intent: otpDeliveryIntent,
               otp_delivery_result: otpDelivery,
+              provider_status: otpProviderStatus,
+              ...(otpProviderMessageId ? { provider_message_id: otpProviderMessageId } : {}),
               actor_id: ctx.userId,
             },
           }),

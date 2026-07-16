@@ -7,6 +7,7 @@ import { logger } from '@/lib/utils/logger';
 import { redactNotificationForOsBridge } from '@/lib/notifications/os-bridge-redaction';
 import { normalizeNotificationStreamItem } from '@/lib/notifications/stream-payload';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
+import { isProviderDeliveryResult } from '@/server/adapters/delivery-result';
 import { LineNotificationAdapter } from '@/server/adapters/line';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
 
@@ -100,7 +101,10 @@ function scheduleNotificationDeliveries(tasks: NotificationDeliveryTask[]) {
   setTimeout(() => {
     void mapWithConcurrency(tasks, resolveNotificationDeliveryConcurrency(), async (task) => {
       try {
-        await task();
+        const result = await task();
+        if (isProviderDeliveryResult(result) && result.status !== 'accepted') {
+          return new Error(`External delivery was not accepted: ${result.status}`);
+        }
         return null;
       } catch (error) {
         return error;

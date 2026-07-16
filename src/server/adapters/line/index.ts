@@ -1,14 +1,19 @@
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import { createFetchTimeout } from '@/server/services/fetch-timeout';
+import type { ProviderDeliveryResult } from '../delivery-result';
 
 type LineAdapterConfig =
-  | { provider: 'stub' }
+  | { provider: 'not_configured' }
   | {
       provider: 'line';
       channelAccessToken: string;
     };
 
 const DEFAULT_LINE_DELIVERY_TIMEOUT_MS = 10_000;
+
+export type LineProviderReadiness = {
+  status: 'ready' | 'not_configured';
+};
 
 export class LineNotificationAdapterError extends Error {
   constructor(message: string) {
@@ -24,19 +29,24 @@ function resolveLineDeliveryTimeoutMs() {
 }
 
 function resolveLineConfig(): LineAdapterConfig {
-  if (process.env.LINE_CHANNEL_ACCESS_TOKEN) {
+  const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim();
+  if (channelAccessToken) {
     return {
       provider: 'line',
-      channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+      channelAccessToken,
     };
   }
-  return { provider: 'stub' };
+  return { provider: 'not_configured' };
+}
+
+export function getLineProviderReadiness(): LineProviderReadiness {
+  return { status: resolveLineConfig().provider === 'line' ? 'ready' : 'not_configured' };
 }
 
 export class LineNotificationAdapter {
   constructor(private readonly config: LineAdapterConfig = resolveLineConfig()) {}
 
-  async sendMessage(userId: string, message: string): Promise<void> {
+  async sendMessage(userId: string, message: string): Promise<ProviderDeliveryResult> {
     if (userId.trim().length === 0) {
       throw new LineNotificationAdapterError('LINE delivery target is required');
     }
@@ -44,9 +54,8 @@ export class LineNotificationAdapter {
       throw new LineNotificationAdapterError('LINE delivery message is required');
     }
 
-    if (this.config.provider === 'stub') {
-      console.warn('[LINE] provider is not configured; skipping delivery');
-      return;
+    if (this.config.provider === 'not_configured') {
+      return { status: 'not_configured', provider: null, providerMessageId: null };
     }
 
     const abort = createFetchTimeout(resolveLineDeliveryTimeoutMs());
@@ -69,12 +78,18 @@ export class LineNotificationAdapter {
         }),
         signal: abort.signal,
       });
+    } catch {
+      return { status: 'unknown', provider: 'line', providerMessageId: null };
     } finally {
       abort.clear();
     }
 
     if (!response.ok) {
-      throw new Error(`LINE delivery failed: ${response.status}`);
+      return { status: 'failed', provider: 'line', providerMessageId: null };
     }
+    const providerMessageId = response.headers.get('x-line-request-id')?.trim();
+    return providerMessageId
+      ? { status: 'accepted', provider: 'line', providerMessageId }
+      : { status: 'unknown', provider: 'line', providerMessageId: null };
   }
 }
