@@ -27,6 +27,13 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { PatientPinnedHeader } from '@/components/ui/patient-pinned-header';
 import { SegmentError, SegmentLoading } from '@/components/ui/segment-state';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -81,7 +88,11 @@ const REASON_LABELS: Record<string, string> = {
   quantity_non_positive: '処方供給量は0より大きい必要があります。',
   equivalence_review_pending: '薬剤名寄せの確認が完了していません。',
   non_stock_relevant_line: 'この処方行は外用薬・頓服薬の残数管理対象ではありません。',
+  existing_stock_item_available: '同一薬剤の既存台帳が見つかりました。',
 };
+
+type ManagingParty = 'patient' | 'family' | 'facility' | 'pharmacy';
+type ApplyCommand = { stock_item_id: string } | { create_new: true; managing_party: ManagingParty };
 
 function unitLabel(unit: string) {
   return UNIT_LABELS[unit] ?? unit;
@@ -230,6 +241,7 @@ export function PrescriptionSupplyReviewContent({ taskId }: { taskId: string }) 
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState('');
   const [confirmed, setConfirmed] = useState(false);
+  const [managingParty, setManagingParty] = useState<ManagingParty | ''>('');
   const apiPath = `/api/tasks/${encodeURIComponent(taskId)}/prescription-supply/resolve`;
   const query = useQuery({
     queryKey: ['prescription-supply-review', orgId, taskId],
@@ -248,11 +260,11 @@ export function PrescriptionSupplyReviewContent({ taskId }: { taskId: string }) 
     },
   });
   const mutation = useMutation({
-    mutationFn: async (stockItemId: string) => {
+    mutationFn: async (command: ApplyCommand) => {
       const response = await fetch(apiPath, {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({ stock_item_id: stockItemId }),
+        body: JSON.stringify(command),
       });
       return readApiJson(response, {
         fallbackMessage: '処方供給を残数台帳へ反映できませんでした',
@@ -280,6 +292,13 @@ export function PrescriptionSupplyReviewContent({ taskId }: { taskId: string }) 
       ? query.data.preview.candidates.find((candidate) => candidate.id === selectedId)
       : undefined;
   const canApply = Boolean(selectedCandidate?.applicable && confirmed && !mutation.isPending);
+  const canCreateAndApply = Boolean(
+    query.data?.preview.kind === 'reviewable' &&
+    query.data.preview.candidates.length === 0 &&
+    managingParty &&
+    confirmed &&
+    !mutation.isPending,
+  );
 
   return (
     <PageScaffold variant="bare">
@@ -357,9 +376,106 @@ export function PrescriptionSupplyReviewContent({ taskId }: { taskId: string }) 
                       </AlertDialogCancel>
                       <AlertDialogAction
                         disabled={!canApply}
-                        onClick={() => selectedId && mutation.mutate(selectedId)}
+                        onClick={() => selectedId && mutation.mutate({ stock_item_id: selectedId })}
                       >
                         {mutation.isPending ? '反映中...' : '反映してタスクを完了'}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </PageSection>
+          ) : null}
+
+          {query.data.preview.kind === 'reviewable' &&
+          query.data.preview.candidates.length === 0 ? (
+            <PageSection
+              title="新しい残数台帳を作成して反映"
+              description="処方の薬剤コード・包装・単位を正本として台帳を作成し、同じ処理内で供給量を反映します。"
+              tone="warning"
+            >
+              <div className="space-y-4">
+                <div className="max-w-sm space-y-2">
+                  <label
+                    htmlFor="prescription-supply-managing-party"
+                    className="text-sm font-medium"
+                  >
+                    主な管理者
+                  </label>
+                  <Select
+                    value={managingParty}
+                    onValueChange={(value) => {
+                      setManagingParty(value as ManagingParty);
+                      setConfirmed(false);
+                      mutation.reset();
+                    }}
+                  >
+                    <SelectTrigger
+                      id="prescription-supply-managing-party"
+                      className="min-h-11 w-full"
+                    >
+                      <SelectValue placeholder="管理者を選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="patient">患者本人</SelectItem>
+                      <SelectItem value="family">家族</SelectItem>
+                      <SelectItem value="facility">施設</SelectItem>
+                      <SelectItem value="pharmacy">薬局</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-md border border-state-confirm/30 bg-background p-3">
+                  <Checkbox
+                    checked={confirmed}
+                    disabled={!managingParty || mutation.isPending}
+                    onCheckedChange={(checked) => setConfirmed(checked === true)}
+                    aria-describedby="prescription-supply-create-confirmation-description"
+                  />
+                  <span
+                    id="prescription-supply-create-confirmation-description"
+                    className="text-sm"
+                  >
+                    患者・薬剤コード・包装・供給単位・管理者を照合しました
+                  </span>
+                </label>
+
+                <AlertDialog>
+                  <AlertDialogTrigger
+                    render={
+                      <Button
+                        type="button"
+                        size="lg"
+                        disabled={!canCreateAndApply}
+                        className="min-h-11"
+                      />
+                    }
+                  >
+                    <CheckCircle2 className="size-4" aria-hidden="true" />
+                    台帳を作成して反映
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>新しい残数台帳を作成しますか？</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {query.data.patient.name} / {query.data.preview.line.drug_name} /{' '}
+                        {query.data.preview.normalized_supply.quantity}{' '}
+                        {unitLabel(query.data.preview.normalized_supply.unit)}
+                        の台帳を作成し、処方供給を反映します。既存台帳が見つかった場合は作成せず停止します。
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={mutation.isPending}>
+                        キャンセル
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        disabled={!canCreateAndApply}
+                        onClick={() =>
+                          managingParty &&
+                          mutation.mutate({ create_new: true, managing_party: managingParty })
+                        }
+                      >
+                        {mutation.isPending ? '作成・反映中...' : '作成してタスクを完了'}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>

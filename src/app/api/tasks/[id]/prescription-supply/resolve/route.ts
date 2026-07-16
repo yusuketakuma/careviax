@@ -11,8 +11,11 @@ import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectString } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
-import { applyPrescriptionSupplyForIntake } from '@/modules/pharmacy/medication-stock/application/apply-prescription-supply';
-import { previewPrescriptionSupplyReview } from '@/modules/pharmacy/medication-stock/application/apply-prescription-supply';
+import {
+  applyPrescriptionSupplyForIntake,
+  createPrescriptionSupplyStockItemForReview,
+  previewPrescriptionSupplyReview,
+} from '@/modules/pharmacy/medication-stock/application/apply-prescription-supply';
 import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
@@ -24,13 +27,22 @@ export const dynamic = 'force-dynamic';
 
 const TASK_TYPE = 'pharmacy.medication_stock_unlinked_prescription_supply';
 
-const resolvePrescriptionSupplySchema = z
-  .object({
-    stock_item_id: z.string().trim().min(1).max(191),
-  })
-  .strict();
+const resolvePrescriptionSupplySchema = z.union([
+  z.object({ stock_item_id: z.string().trim().min(1).max(191) }).strict(),
+  z
+    .object({
+      create_new: z.literal(true),
+      managing_party: z.enum(['patient', 'family', 'facility', 'pharmacy']),
+    })
+    .strict(),
+]);
 
 class PrescriptionSupplyReviewConflict extends Error {}
+class PrescriptionSupplyCreationConflict extends Error {
+  constructor(readonly reasonCode: string) {
+    super('Prescription supply application failed after stock item creation');
+  }
+}
 
 const authenticatedGET = withAuthContext(
   async (_req: NextRequest, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
@@ -146,8 +158,19 @@ const authenticatedPOST = withAuthContext(
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
-    const stockItemId = normalizeRequiredRouteParam(parsed.data.stock_item_id);
-    if (!stockItemId) return validationError('残数台帳IDが不正です');
+    const command =
+      'stock_item_id' in parsed.data
+        ? {
+            kind: 'existing' as const,
+            stockItemId: normalizeRequiredRouteParam(parsed.data.stock_item_id),
+          }
+        : {
+            kind: 'create_new' as const,
+            managingParty: parsed.data.managing_party,
+          };
+    if (command.kind === 'existing' && !command.stockItemId) {
+      return validationError('残数台帳IDが不正です');
+    }
 
     const assignmentScope = await resolveDashboardAssignmentScope({
       db: prisma,
@@ -215,6 +238,35 @@ const authenticatedPOST = withAuthContext(
             return { kind: 'response' as const, response: writablePatient.response };
           }
 
+          let stockItemId = command.kind === 'existing' ? command.stockItemId : null;
+          let stockItemCreated = false;
+          if (command.kind === 'create_new') {
+            const creation = await createPrescriptionSupplyStockItemForReview(tx, {
+              orgId: ctx.orgId,
+              userId: ctx.userId,
+              intakeId: line.intake_id,
+              patientId,
+              prescriptionLineId: line.id,
+              managingParty: command.managingParty,
+            });
+            if (creation.kind !== 'created') {
+              return {
+                kind:
+                  creation.kind === 'not_found'
+                    ? ('not_found' as const)
+                    : ('review_required' as const),
+                ...(creation.kind === 'review_required'
+                  ? { reasonCode: creation.reason_code }
+                  : {}),
+              };
+            }
+            stockItemId = creation.stock_item_id;
+            stockItemCreated = true;
+          }
+          if (!stockItemId) {
+            return { kind: 'review_required' as const, reasonCode: 'selection_not_applicable' };
+          }
+
           const result = await applyPrescriptionSupplyForIntake(tx, {
             orgId: ctx.orgId,
             userId: ctx.userId,
@@ -227,12 +279,14 @@ const authenticatedPOST = withAuthContext(
           });
           const lineResult = result.results[0];
           if (!lineResult || lineResult.kind !== 'applied') {
+            const reasonCode =
+              lineResult?.kind === 'review_required'
+                ? lineResult.reason_code
+                : 'selection_not_applicable';
+            if (stockItemCreated) throw new PrescriptionSupplyCreationConflict(reasonCode);
             return {
               kind: 'review_required' as const,
-              reasonCode:
-                lineResult?.kind === 'review_required'
-                  ? lineResult.reason_code
-                  : 'selection_not_applicable',
+              reasonCode,
             };
           }
 
@@ -247,6 +301,8 @@ const authenticatedPOST = withAuthContext(
               stock_item_id: lineResult.stock_item_id,
               stock_event_id: lineResult.stock_event_id,
               idempotent_replay: lineResult.idempotent_replay,
+              stock_item_created: stockItemCreated,
+              ...(command.kind === 'create_new' ? { managing_party: command.managingParty } : {}),
             },
           });
           const resolved = await resolveOperationalTasks(tx, {
@@ -270,7 +326,10 @@ const authenticatedPOST = withAuthContext(
               : null;
           if (resolvedCount !== 1) throw new PrescriptionSupplyReviewConflict();
 
-          return { kind: 'applied' as const, result: lineResult };
+          return {
+            kind: 'applied' as const,
+            result: { ...lineResult, stock_item_created: stockItemCreated },
+          };
         },
         {
           requestContext: ctx,
@@ -288,6 +347,11 @@ const authenticatedPOST = withAuthContext(
       }
       return success({ data: outcome.result });
     } catch (error) {
+      if (error instanceof PrescriptionSupplyCreationConflict) {
+        return conflict('新しい残数台帳を作成して処方供給を反映できませんでした', {
+          reason_code: error.reasonCode,
+        });
+      }
       if (error instanceof PrescriptionSupplyReviewConflict) {
         return conflict('タスクはすでに解決されています。再読み込みしてください');
       }

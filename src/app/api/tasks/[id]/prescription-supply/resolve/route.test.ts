@@ -13,6 +13,7 @@ const {
   patientFindFirstMock,
   requireWritablePatientMock,
   applyPrescriptionSupplyForIntakeMock,
+  createPrescriptionSupplyStockItemForReviewMock,
   previewPrescriptionSupplyReviewMock,
   createAuditLogEntryMock,
   resolveOperationalTasksMock,
@@ -27,6 +28,7 @@ const {
   patientFindFirstMock: vi.fn(),
   requireWritablePatientMock: vi.fn(),
   applyPrescriptionSupplyForIntakeMock: vi.fn(),
+  createPrescriptionSupplyStockItemForReviewMock: vi.fn(),
   previewPrescriptionSupplyReviewMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
@@ -62,6 +64,7 @@ vi.mock('@/server/services/operational-tasks', () => ({
 }));
 vi.mock('@/modules/pharmacy/medication-stock/application/apply-prescription-supply', () => ({
   applyPrescriptionSupplyForIntake: applyPrescriptionSupplyForIntakeMock,
+  createPrescriptionSupplyStockItemForReview: createPrescriptionSupplyStockItemForReviewMock,
   previewPrescriptionSupplyReview: previewPrescriptionSupplyReviewMock,
 }));
 
@@ -158,6 +161,10 @@ describe('POST /api/tasks/[id]/prescription-supply/resolve', () => {
           idempotent_replay: false,
         },
       ],
+    });
+    createPrescriptionSupplyStockItemForReviewMock.mockResolvedValue({
+      kind: 'created',
+      stock_item_id: 'stock_created_1',
     });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
@@ -265,6 +272,7 @@ describe('POST /api/tasks/[id]/prescription-supply/resolve', () => {
         stock_item_id: 'stock_1',
         stock_event_id: 'event_1',
         idempotent_replay: false,
+        stock_item_created: false,
       },
     });
     expect(resolveOperationalTasksMock).toHaveBeenCalledWith(tx, {
@@ -284,6 +292,92 @@ describe('POST /api/tasks/[id]/prescription-supply/resolve', () => {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       timeoutMs: 10_000,
     });
+  });
+
+  it('creates an exact reviewed stock item and applies supply in the same transaction', async () => {
+    applyPrescriptionSupplyForIntakeMock.mockResolvedValueOnce({
+      intake_id: 'intake_1',
+      applied_count: 1,
+      review_required_count: 0,
+      skipped_count: 0,
+      results: [
+        {
+          kind: 'applied',
+          prescription_line_id: 'line_1',
+          stock_item_id: 'stock_created_1',
+          stock_event_id: 'event_1',
+          snapshot: {
+            current_quantity: 10,
+            stock_risk_level: 'ok',
+            calculated_at: '2026-07-17T00:00:00.000Z',
+          },
+          idempotent_replay: false,
+        },
+      ],
+    });
+
+    const response = await post({ create_new: true, managing_party: 'patient' });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { stock_item_id: 'stock_created_1', stock_item_created: true },
+    });
+    expect(createPrescriptionSupplyStockItemForReviewMock).toHaveBeenCalledWith(tx, {
+      orgId: 'org_1',
+      userId: 'user_1',
+      intakeId: 'intake_1',
+      patientId: 'patient_1',
+      prescriptionLineId: 'line_1',
+      managingParty: 'patient',
+    });
+    expect(applyPrescriptionSupplyForIntakeMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        reviewSelection: {
+          prescriptionLineId: 'line_1',
+          stockItemId: 'stock_created_1',
+        },
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      tx,
+      expect.anything(),
+      expect.objectContaining({
+        changes: expect.objectContaining({
+          stock_item_id: 'stock_created_1',
+          stock_item_created: true,
+          managing_party: 'patient',
+        }),
+      }),
+    );
+  });
+
+  it('rolls back a newly created item when supply application fails', async () => {
+    applyPrescriptionSupplyForIntakeMock.mockResolvedValueOnce({
+      intake_id: 'intake_1',
+      applied_count: 0,
+      review_required_count: 1,
+      skipped_count: 0,
+      results: [
+        {
+          kind: 'review_required',
+          prescription_line_id: 'line_1',
+          reason_code: 'idempotency_fingerprint_conflict',
+          task_id: 'task_1',
+          candidate_count: 1,
+        },
+      ],
+    });
+
+    const response = await post({ create_new: true, managing_party: 'patient' });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { reason_code: 'idempotency_fingerprint_conflict' },
+    });
+    expect(createPrescriptionSupplyStockItemForReviewMock).toHaveBeenCalledOnce();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
   it('returns a neutral 404 for an inaccessible or malformed review task', async () => {

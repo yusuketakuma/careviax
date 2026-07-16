@@ -212,6 +212,25 @@ export type PrescriptionSupplyReviewCandidate = {
   snapshot_calculated_at: string | null;
 };
 
+export type PrescriptionSupplyManagingParty = 'patient' | 'family' | 'facility' | 'pharmacy';
+
+export type CreatePrescriptionSupplyStockItemResult =
+  | {
+      kind: 'created';
+      stock_item_id: string;
+    }
+  | {
+      kind: 'not_found';
+      reason_code: 'intake_not_found' | 'prescription_line_not_found';
+    }
+  | {
+      kind: 'review_required';
+      reason_code:
+        | PrescriptionSupplyReviewReason
+        | PrescriptionSupplySkipReason
+        | 'existing_stock_item_available';
+    };
+
 type DrugMasterIndexes = {
   byId: Map<string, DrugMasterIdentityRow>;
   byYj: Map<string, DrugMasterIdentityRow[]>;
@@ -1169,6 +1188,93 @@ export async function previewPrescriptionSupplyReview(
       };
     }),
   };
+}
+
+function medicationStockCategoryForLine(
+  line: PrescriptionSupplyLineRow,
+): 'prn' | 'topical' | 'external' {
+  if (isLikelyPrnLine(line)) return 'prn';
+  const text = normalizeText([line.dosage_form, line.drug_name].filter(Boolean).join(' '));
+  return text && /軟膏|クリーム|ゲル|ローション|塗布/.test(text) ? 'topical' : 'external';
+}
+
+export async function createPrescriptionSupplyStockItemForReview(
+  db: ApplyPrescriptionSupplyDb,
+  args: {
+    orgId: string;
+    userId: string;
+    intakeId: string;
+    patientId: string;
+    prescriptionLineId: string;
+    managingParty: PrescriptionSupplyManagingParty;
+  },
+): Promise<CreatePrescriptionSupplyStockItemResult> {
+  const intake = await loadPrescriptionSupplyIntake(db, args);
+  if (!intake) return { kind: 'not_found', reason_code: 'intake_not_found' };
+  const line = intake.lines.find((candidate) => candidate.id === args.prescriptionLineId);
+  if (!line) return { kind: 'not_found', reason_code: 'prescription_line_not_found' };
+  if (!isStockRelevantLine(line)) {
+    return { kind: 'review_required', reason_code: 'non_stock_relevant_line' };
+  }
+
+  const drugMasters = await loadDrugMasterIndexes(db, [line]);
+  const drugPackages = await loadDrugPackageIndexes(db, [line], intake.prescribed_date);
+  const target = resolvePrescriptionSupplyTarget({ line, drugMasters, drugPackages });
+  if (!target.ok) {
+    return { kind: 'review_required', reason_code: target.reasonCode };
+  }
+
+  const existingItems = await findExactStockItemCandidates({
+    db,
+    orgId: args.orgId,
+    patientId: args.patientId,
+    caseId: intake.cycle.case_id,
+    drugMasterId: target.drugMasterId,
+    ...(target.drugPackage ? { drugPackageId: target.drugPackage.id } : {}),
+  });
+  if (existingItems.length > 0) {
+    return { kind: 'review_required', reason_code: 'existing_stock_item_available' };
+  }
+
+  const stockItem = await db.patientMedicationStockItem.create({
+    data: {
+      org_id: args.orgId,
+      display_id: await allocateDisplayId(
+        db as Prisma.TransactionClient,
+        'PatientMedicationStockItem',
+        args.orgId,
+      ),
+      patient_id: args.patientId,
+      case_id: intake.cycle.case_id,
+      drug_master_id: target.drugMasterId,
+      drug_package_id: target.drugPackage?.id ?? null,
+      canonical_medication_group_id: null,
+      source_type: 'prescription',
+      medication_category: medicationStockCategoryForLine(line),
+      display_name: line.drug_name,
+      normalized_name: normalizeText(line.drug_name),
+      ingredient_name: null,
+      strength: null,
+      dosage_form: line.dosage_form,
+      route: line.route,
+      unit: target.unit as never,
+      default_usage_amount_per_day: null,
+      default_usage_frequency_text: line.frequency,
+      max_usage_amount_per_day: null,
+      indication_text: null,
+      usage_instruction_text: [line.dose, line.frequency].filter(Boolean).join(' / '),
+      managing_party: args.managingParty,
+      equivalence_review_status: 'reviewed',
+      equivalence_confidence: 'exact_code',
+      active: true,
+      archived_at: null,
+      archived_by: null,
+      created_by: args.userId,
+    },
+    select: { id: true },
+  });
+
+  return { kind: 'created', stock_item_id: stockItem.id };
 }
 
 export async function applyPrescriptionSupplyForIntake(

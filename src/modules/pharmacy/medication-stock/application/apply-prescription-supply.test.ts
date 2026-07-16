@@ -17,6 +17,7 @@ vi.mock('@/server/services/operational-tasks', () => ({
 
 import {
   applyPrescriptionSupplyForIntake,
+  createPrescriptionSupplyStockItemForReview,
   previewPrescriptionSupplyReview,
   type ApplyPrescriptionSupplyDb,
 } from './apply-prescription-supply';
@@ -74,6 +75,7 @@ function createDb() {
       upsert: vi.fn(),
     },
     patientMedicationStockItem: {
+      create: vi.fn(),
       findMany: vi.fn(),
     },
     prescriptionIntake: {
@@ -193,6 +195,73 @@ describe('previewPrescriptionSupplyReview', () => {
 
     expect(result).toMatchObject({ kind: 'blocked', reason_code: 'unsupported_unit' });
     expect(db.patientMedicationStockItem.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('createPrescriptionSupplyStockItemForReview', () => {
+  it('creates a pharmacist-reviewed exact-code item when no matching ledger exists', async () => {
+    const db = createDb();
+    setupExactIdentity(db);
+    db.patientMedicationStockItem.findMany.mockResolvedValue([]);
+    db.patientMedicationStockItem.create.mockResolvedValue({ id: 'stock_created_1' });
+    allocateDisplayIdMock.mockResolvedValueOnce('pmsi_001');
+
+    const result = await createPrescriptionSupplyStockItemForReview(
+      db as unknown as ApplyPrescriptionSupplyDb,
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        intakeId: 'intake_1',
+        patientId: 'patient_1',
+        prescriptionLineId: 'line_1',
+        managingParty: 'patient',
+      },
+    );
+
+    expect(result).toEqual({ kind: 'created', stock_item_id: 'stock_created_1' });
+    expect(db.patientMedicationStockItem.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        display_id: 'pmsi_001',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        drug_master_id: 'drug_master_1',
+        drug_package_id: null,
+        source_type: 'prescription',
+        medication_category: 'prn',
+        display_name: '湿布A',
+        unit: 'sheet',
+        managing_party: 'patient',
+        equivalence_review_status: 'reviewed',
+        equivalence_confidence: 'exact_code',
+        created_by: 'user_1',
+      }),
+      select: { id: true },
+    });
+  });
+
+  it('refuses to create a duplicate when an exact patient ledger already exists', async () => {
+    const db = createDb();
+    setupExactIdentity(db);
+    setupSingleStockItem(db);
+
+    const result = await createPrescriptionSupplyStockItemForReview(
+      db as unknown as ApplyPrescriptionSupplyDb,
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        intakeId: 'intake_1',
+        patientId: 'patient_1',
+        prescriptionLineId: 'line_1',
+        managingParty: 'patient',
+      },
+    );
+
+    expect(result).toEqual({
+      kind: 'review_required',
+      reason_code: 'existing_stock_item_available',
+    });
+    expect(db.patientMedicationStockItem.create).not.toHaveBeenCalled();
   });
 });
 

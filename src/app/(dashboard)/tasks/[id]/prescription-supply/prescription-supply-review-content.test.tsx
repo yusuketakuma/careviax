@@ -165,7 +165,33 @@ describe('PrescriptionSupplyReviewContent', () => {
 
     fireEvent.click(applyButton);
     fireEvent.click(screen.getByRole('button', { name: '反映してタスクを完了' }));
-    expect(mutateMock).toHaveBeenCalledWith('stock_1');
+    expect(mutateMock).toHaveBeenCalledWith({ stock_item_id: 'stock_1' });
+  });
+
+  it('requires an explicit managing party and confirmation before creating a new ledger', () => {
+    useQueryMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: {
+        ...reviewDetail,
+        preview: { ...reviewDetail.preview, candidates: [] },
+      },
+      refetch: vi.fn(),
+    });
+
+    render(<PrescriptionSupplyReviewContent taskId="task_1" />);
+
+    const createButton = screen.getByRole('button', { name: '台帳を作成して反映' });
+    expect((createButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('combobox', { name: '主な管理者' }));
+    fireEvent.click(screen.getByRole('option', { name: '患者本人' }));
+    expect((createButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect((createButton as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(createButton);
+    fireEvent.click(screen.getByRole('button', { name: '作成してタスクを完了' }));
+    expect(mutateMock).toHaveBeenCalledWith({ create_new: true, managing_party: 'patient' });
   });
 
   it('shows a fixed remediation state when the prescription identity is blocked', () => {
