@@ -1257,6 +1257,13 @@ function buildPharmacyCoopPartnerRecord(args: { created: boolean; status: string
         : null,
     confirmed_at: args.status === 'confirmed' ? '2026-06-20T03:00:00.000Z' : null,
     updated_at: '2026-06-20T03:00:00.000Z',
+    patient_safe_display: {
+      display_id: 'RM-COOP-001',
+      name: '薬局間RouteMock 患者',
+      name_kana: 'ヤッキョクカンルートモック カンジャ',
+      birth_date: '1942-04-12',
+      updated_at: '2026-06-19T00:00:00.000Z',
+    },
     owner_partner_pharmacy: {
       id: PHARMACY_COOP_PARTNER_PHARMACY_ID,
       name: 'RouteMock協力薬局',
@@ -1414,7 +1421,7 @@ function buildPharmacyCoopMessageThread(args: {
 
 async function installPharmacyCooperationRouteMocks(
   page: Page,
-  options: { visitRequestCreated?: boolean } = {},
+  options: { visitRequestCreated?: boolean; partnerRecordCreated?: boolean } = {},
 ) {
   const requests = {
     patientShareCases: [] as CapturedRouteRequest[],
@@ -1439,7 +1446,7 @@ async function installPharmacyCooperationRouteMocks(
     consentCreated: false,
     visitRequestCreated: options.visitRequestCreated ?? false,
     visitRequestStatus: 'requested',
-    partnerRecordCreated: false,
+    partnerRecordCreated: options.partnerRecordCreated ?? false,
     partnerRecordStatus: 'draft',
     billingCandidateGenerated: false,
     invoiceCreated: false,
@@ -1778,9 +1785,35 @@ async function installPharmacyCooperationRouteMocks(
       created: state.partnerRecordCreated,
       status: state.partnerRecordStatus,
     });
+    const url = new URL(request.url);
+    const statusFilter = url.searchParams.get('status');
+    const rows = record && (!statusFilter || record.status === statusFilter) ? [record] : [];
+    const statusCounts = {
+      draft: 0,
+      submitted: 0,
+      confirmed: 0,
+      returned: 0,
+      superseded: 0,
+    };
+    if (rows[0] && rows[0].status in statusCounts) {
+      statusCounts[rows[0].status as keyof typeof statusCounts] = 1;
+    }
     await fulfillJson(route, {
-      data: record ? [record] : [],
-      meta: { has_more: false, next_cursor: null },
+      data: rows,
+      meta: {
+        has_more: false,
+        next_cursor: null,
+        returned_count: rows.length,
+        total_count: rows.length,
+        count_basis: 'filtered_query_exact',
+        filters_applied: {
+          status: statusFilter,
+          visit_request_id: null,
+          share_case_id: null,
+        },
+        request_cursor: url.searchParams.get('cursor'),
+        status_counts: statusCounts,
+      },
     });
   });
 
@@ -3781,6 +3814,50 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
     expect(errors).toEqual([]);
   });
 
+  test('keeps partner-record exact counts and server cursor filters accessible', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    const requests = await installPharmacyCooperationRouteMocks(page, {
+      visitRequestCreated: true,
+      partnerRecordCreated: true,
+    });
+
+    await openStableRoute(page, '/workflow/pharmacy-cooperation');
+    const recordsTable = page.getByRole('table', { name: '協力訪問記録一覧' });
+    const recordRow = recordsTable.getByRole('row').filter({
+      hasText: PHARMACY_COOP_PARTNER_RECORD_ID,
+    });
+    await expect(recordRow).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByText('協力訪問記録 読込済み 1 / 全 1 件（全件読込済み）').first(),
+    ).toBeVisible();
+
+    await page.getByLabel('協力訪問記録状態').selectOption('draft');
+    await expect
+      .poll(
+        () =>
+          requests.partnerVisitRecords.some((request) => {
+            if (request.method !== 'GET') return false;
+            const searchParams = new URL(request.url).searchParams;
+            return searchParams.get('status') === 'draft' && !searchParams.has('cursor');
+          }),
+        { message: 'partner-record status changes should start a fresh cursor chain at page one' },
+      )
+      .toBe(true);
+    await page.getByLabel('協力訪問記録状態').selectOption('all');
+    await expect(recordRow).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const overflowWidth = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflowWidth).toBeLessThanOrEqual(1);
+    expect(errors).toEqual([]);
+  });
+
   test('keeps partner billing server filters, exact counts, and loaded-scope search accessible', async ({
     context,
   }, testInfo) => {
@@ -3932,7 +4009,9 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
     await shareCaseRow
       .getByLabel(`${PHARMACY_COOP_SHARE_CASE_ID} の協力側生年月日`)
       .fill('1942-04-12');
-    await shareCaseRow.getByRole('button', { name: /協力受諾/ }).click();
+    const partnerAcceptButton = shareCaseRow.getByRole('button', { name: /協力受諾/ });
+    await expect(partnerAcceptButton).toBeEnabled({ timeout: 10_000 });
+    await partnerAcceptButton.click();
     await expect(page.getByRole('heading', { name: '患者リンクを協力受諾します' })).toBeVisible();
     await page.getByRole('button', { name: '協力受諾する' }).click();
     await expect
@@ -4123,6 +4202,23 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       hasText: PHARMACY_COOP_PARTNER_RECORD_ID,
     });
     await expect(partnerRecordRow).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByText('協力訪問記録 読込済み 1 / 全 1 件（全件読込済み）').first(),
+    ).toBeVisible();
+    await page.getByLabel('協力訪問記録状態').selectOption('draft');
+    await expect
+      .poll(
+        () =>
+          requests.partnerVisitRecords.some((request) => {
+            if (request.method !== 'GET') return false;
+            const searchParams = new URL(request.url).searchParams;
+            return searchParams.get('status') === 'draft' && !searchParams.has('cursor');
+          }),
+        { message: 'partner-record status changes should start a fresh cursor chain at page one' },
+      )
+      .toBe(true);
+    await page.getByLabel('協力訪問記録状態').selectOption('all');
+    await expect(partnerRecordRow).toBeVisible();
     await partnerRecordRow
       .getByRole('button', {
         name: `${PHARMACY_COOP_PARTNER_RECORD_ID} RouteMock協力薬局 の協力訪問記録を提出`,

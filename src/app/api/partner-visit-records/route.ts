@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -19,6 +20,27 @@ const partnerVisitRecordStatusSchema = z.enum([
   'returned',
   'superseded',
 ]);
+const partnerVisitRecordStatuses = partnerVisitRecordStatusSchema.options;
+const viewContextSchema = z
+  .enum(['pharmacy_cooperation_workflow', 'partner_visit_records_api'])
+  .default('partner_visit_records_api');
+
+type PartnerVisitRecordStatus = (typeof partnerVisitRecordStatuses)[number];
+type PartnerVisitRecordStatusCounts = Record<PartnerVisitRecordStatus, number>;
+
+function createEmptyPartnerVisitRecordStatusCounts(): PartnerVisitRecordStatusCounts {
+  return Object.fromEntries(
+    partnerVisitRecordStatuses.map((status) => [status, 0]),
+  ) as PartnerVisitRecordStatusCounts;
+}
+
+function buildPartnerVisitRecordStatusCounts(
+  rows: Array<{ status: PartnerVisitRecordStatus; _count: { _all: number } }>,
+): PartnerVisitRecordStatusCounts {
+  const counts = createEmptyPartnerVisitRecordStatusCounts();
+  for (const row of rows) counts[row.status] = row._count._all;
+  return counts;
+}
 
 const recordContentSchema = z
   .record(z.string(), z.unknown())
@@ -133,23 +155,38 @@ const authenticatedGET = withAuthContext(
       '患者共有ケースIDを指定してください',
     );
     if (!shareCaseIdResult.ok) return shareCaseIdResult.response;
+    const rawViewContextResult = readPresentOptionalSearchParam(
+      searchParams,
+      'view_context',
+      '閲覧画面を指定してください',
+    );
+    if (!rawViewContextResult.ok) return rawViewContextResult.response;
     const visitRequestId = visitRequestIdResult.value;
     const shareCaseId = shareCaseIdResult.value;
+    const viewContext = viewContextSchema.safeParse(rawViewContextResult.value ?? undefined);
+    if (!viewContext.success) {
+      return validationError('検索条件が不正です', {
+        view_context: ['対応していない閲覧画面です'],
+      });
+    }
     const now = new Date();
 
-    const rows = await withOrgContext(
+    const partnerVisitRecordWhere = {
+      org_id: ctx.orgId,
+      ...(status ? { status: status.data } : {}),
+      ...(visitRequestId ? { visit_request_id: visitRequestId } : {}),
+      ...(shareCaseId ? { share_case_id: shareCaseId } : {}),
+      share_case: {
+        is: buildActivePatientShareCaseReadWhere({ orgId: ctx.orgId, asOf: now }),
+      },
+    };
+    const shouldExposeWorkflowMeta = viewContext.data === 'pharmacy_cooperation_workflow';
+
+    const result = await withOrgContext(
       ctx.orgId,
-      (tx) =>
-        tx.partnerVisitRecord.findMany({
-          where: {
-            org_id: ctx.orgId,
-            ...(status ? { status: status.data } : {}),
-            ...(visitRequestId ? { visit_request_id: visitRequestId } : {}),
-            ...(shareCaseId ? { share_case_id: shareCaseId } : {}),
-            share_case: {
-              is: buildActivePatientShareCaseReadWhere({ orgId: ctx.orgId, asOf: now }),
-            },
-          },
+      async (tx) => {
+        const rows = await tx.partnerVisitRecord.findMany({
+          where: partnerVisitRecordWhere,
           take: limit + 1,
           ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
           orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
@@ -198,16 +235,51 @@ const authenticatedGET = withAuthContext(
               },
             },
           },
-        }),
-      { requestContext: ctx },
+        });
+        const page = buildCursorPage(rows, limit, (row) => row.id);
+        let countSummary: {
+          totalCount: number;
+          statusCounts: PartnerVisitRecordStatusCounts;
+        } | null = null;
+        if (shouldExposeWorkflowMeta) {
+          const totalCount = await tx.partnerVisitRecord.count({ where: partnerVisitRecordWhere });
+          const statusRows = await tx.partnerVisitRecord.groupBy({
+            by: ['status'],
+            where: partnerVisitRecordWhere,
+            _count: { _all: true },
+          });
+          countSummary = {
+            totalCount,
+            statusCounts: buildPartnerVisitRecordStatusCounts(statusRows),
+          };
+        }
+        return { page, countSummary };
+      },
+      {
+        requestContext: ctx,
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      },
     );
 
-    const page = buildCursorPage(rows, limit, (row) => row.id);
     return success({
-      data: page.data.map(toSafePartnerVisitRecord),
+      data: result.page.data.map(toSafePartnerVisitRecord),
       meta: {
-        has_more: page.hasMore,
-        next_cursor: page.nextCursor ?? null,
+        has_more: result.page.hasMore,
+        next_cursor: result.page.nextCursor ?? null,
+        ...(result.countSummary
+          ? {
+              returned_count: result.page.data.length,
+              total_count: result.countSummary.totalCount,
+              count_basis: 'filtered_query_exact' as const,
+              filters_applied: {
+                status: status?.data ?? null,
+                visit_request_id: visitRequestId ?? null,
+                share_case_id: shareCaseId ?? null,
+              },
+              request_cursor: cursor ?? null,
+              status_counts: result.countSummary.statusCounts,
+            }
+          : {}),
       },
     });
   },

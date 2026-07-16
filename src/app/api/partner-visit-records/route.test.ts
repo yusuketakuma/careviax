@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { expectNoStore } from '@/test/api-response-assertions';
@@ -6,6 +7,8 @@ const {
   authPlumbingFailureRef,
   withOrgContextMock,
   partnerVisitRecordFindManyMock,
+  partnerVisitRecordCountMock,
+  partnerVisitRecordGroupByMock,
   pharmacyVisitRequestFindFirstMock,
   pharmacyVisitRequestUpdateManyMock,
   sourceVisitRecordFindFirstMock,
@@ -18,6 +21,8 @@ const {
   authPlumbingFailureRef: { current: null as Error | null },
   withOrgContextMock: vi.fn(),
   partnerVisitRecordFindManyMock: vi.fn(),
+  partnerVisitRecordCountMock: vi.fn(),
+  partnerVisitRecordGroupByMock: vi.fn(),
   pharmacyVisitRequestFindFirstMock: vi.fn(),
   pharmacyVisitRequestUpdateManyMock: vi.fn(),
   sourceVisitRecordFindFirstMock: vi.fn(),
@@ -177,6 +182,8 @@ describe('/api/partner-visit-records', () => {
         claim_note: null,
       },
     ]);
+    partnerVisitRecordCountMock.mockResolvedValue(1);
+    partnerVisitRecordGroupByMock.mockResolvedValue([{ status: 'submitted', _count: { _all: 1 } }]);
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -192,6 +199,8 @@ describe('/api/partner-visit-records', () => {
             ((await partnerVisitRecordFindManyMock(...args)) as object[]).map(
               withPatientSafeRelation,
             ),
+          count: partnerVisitRecordCountMock,
+          groupBy: partnerVisitRecordGroupByMock,
           findFirst: partnerVisitRecordFindFirstMock,
           create: async (...args: unknown[]) =>
             withPatientSafeRelation((await partnerVisitRecordCreateMock(...args)) as object),
@@ -217,6 +226,7 @@ describe('/api/partner-visit-records', () => {
     expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
     });
     const where = partnerVisitRecordFindManyMock.mock.calls[0]?.[0]?.where;
     expect(where).toEqual(
@@ -273,6 +283,56 @@ describe('/api/partner-visit-records', () => {
         take: 9,
       }),
     );
+  });
+
+  it('returns exact workflow counts and filter echoes on every cursor page', async () => {
+    partnerVisitRecordCountMock.mockResolvedValueOnce(9);
+    partnerVisitRecordGroupByMock.mockResolvedValueOnce([
+      { status: 'submitted', _count: { _all: 9 } },
+    ]);
+
+    const response = await GET(
+      createGetRequest(
+        '?limit=8&cursor=partner_visit_record_09&status=submitted&visit_request_id=visit_request_1&share_case_id=share_case_1&view_context=pharmacy_cooperation_workflow',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.meta).toEqual({
+      has_more: false,
+      next_cursor: null,
+      returned_count: 1,
+      total_count: 9,
+      count_basis: 'filtered_query_exact',
+      filters_applied: {
+        status: 'submitted',
+        visit_request_id: 'visit_request_1',
+        share_case_id: 'share_case_1',
+      },
+      request_cursor: 'partner_visit_record_09',
+      status_counts: {
+        draft: 0,
+        submitted: 9,
+        confirmed: 0,
+        returned: 0,
+        superseded: 0,
+      },
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+    });
+  });
+
+  it('keeps the public API cursor response free of workflow-only exact metadata', async () => {
+    const response = await GET(createGetRequest('?limit=8'));
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.meta).toEqual({ has_more: false, next_cursor: null });
+    expect(partnerVisitRecordCountMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordGroupByMock).not.toHaveBeenCalled();
   });
 
   it('trims and applies valid status and id filters', async () => {

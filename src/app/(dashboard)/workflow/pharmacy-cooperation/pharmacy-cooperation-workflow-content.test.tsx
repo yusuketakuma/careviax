@@ -181,6 +181,78 @@ function createVisitRequestRow(id: string, status = 'requested') {
   };
 }
 
+const emptyPartnerVisitRecordStatusCounts = {
+  draft: 0,
+  submitted: 0,
+  confirmed: 0,
+  returned: 0,
+  superseded: 0,
+};
+
+function partnerVisitRecordMeta({
+  returnedCount,
+  totalCount = returnedCount,
+  hasMore = false,
+  nextCursor = null,
+  requestCursor = null,
+  status = null,
+  statusCounts = { ...emptyPartnerVisitRecordStatusCounts, submitted: totalCount },
+}: {
+  returnedCount: number;
+  totalCount?: number;
+  hasMore?: boolean;
+  nextCursor?: string | null;
+  requestCursor?: string | null;
+  status?: string | null;
+  statusCounts?: typeof emptyPartnerVisitRecordStatusCounts;
+}) {
+  return {
+    has_more: hasMore,
+    next_cursor: nextCursor,
+    returned_count: returnedCount,
+    total_count: totalCount,
+    count_basis: 'filtered_query_exact',
+    filters_applied: {
+      status,
+      visit_request_id: null,
+      share_case_id: null,
+    },
+    request_cursor: requestCursor,
+    status_counts: statusCounts,
+  };
+}
+
+function createPartnerVisitRecordRow(id: string, status = 'submitted') {
+  return {
+    id,
+    visit_request_id: 'visit_request_record_ready',
+    share_case_id: 'share_case_active',
+    revision_no: 1,
+    status,
+    pharmacist_name: '担当薬剤師',
+    visit_at: '2026-06-20T02:00:00.000Z',
+    submitted_at: status === 'submitted' ? '2026-06-20T03:00:00.000Z' : null,
+    confirmed_at: status === 'confirmed' ? '2026-06-20T04:00:00.000Z' : null,
+    updated_at: '2026-06-20T03:00:00.000Z',
+    patient_safe_display: { ...patientSafeDisplay, display_id: `PT-${id}` },
+    owner_partner_pharmacy: {
+      id: 'partner_pharmacy_1',
+      name: '協力薬局',
+      status: 'active',
+    },
+    visit_request: {
+      id: 'visit_request_record_ready',
+      status: 'submitted',
+      urgency: 'normal',
+    },
+    claim_note: null,
+    has_record_content: true,
+    attachment_count: 0,
+    has_returned_reason: false,
+    has_base_confirmation_snapshot: false,
+  };
+}
+
 function renderContent() {
   return render(<PharmacyCooperationWorkflowContent />, { wrapper: createQueryClientWrapper() });
 }
@@ -490,7 +562,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
             { status: 200 },
           );
         }
-        if (url === '/api/partner-visit-records?limit=8') {
+        if (
+          url === '/api/partner-visit-records?limit=8&view_context=pharmacy_cooperation_workflow'
+        ) {
           return new Response(
             JSON.stringify({
               data: [
@@ -590,7 +664,16 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   has_base_confirmation_snapshot: false,
                 },
               ],
-              meta: { has_more: false, next_cursor: null },
+              meta: partnerVisitRecordMeta({
+                returnedCount: 3,
+                statusCounts: {
+                  draft: 1,
+                  submitted: 1,
+                  confirmed: 1,
+                  returned: 0,
+                  superseded: 0,
+                },
+              }),
             }),
             { status: 200 },
           );
@@ -1444,9 +1527,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(originalFetch).toBeTruthy();
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/partner-visit-records?limit=8') {
+      if (url === '/api/partner-visit-records?limit=8&view_context=pharmacy_cooperation_workflow') {
         return new Response(
-          JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+          JSON.stringify({ data: [], meta: partnerVisitRecordMeta({ returnedCount: 0 }) }),
           { status: 200 },
         );
       }
@@ -1464,7 +1547,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(originalFetch).toBeTruthy();
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/partner-visit-records?limit=8') {
+      if (url === '/api/partner-visit-records?limit=8&view_context=pharmacy_cooperation_workflow') {
         return new Response(JSON.stringify({ error: 'boom' }), { status: 500 });
       }
       return originalFetch!(input, init);
@@ -1474,6 +1557,184 @@ describe('PharmacyCooperationWorkflowContent', () => {
 
     expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
     expect(screen.queryByText('協力訪問記録はまだありません')).toBeNull();
+  });
+
+  it('loads a ninth partner visit record through explicit cursor continuation', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    const firstPageRows = Array.from({ length: 8 }, (_, index) =>
+      createPartnerVisitRecordRow(`partner_record_page_${String(index + 1).padStart(2, '0')}`),
+    );
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/partner-visit-records?limit=8&view_context=pharmacy_cooperation_workflow') {
+        return new Response(
+          JSON.stringify({
+            data: firstPageRows,
+            meta: partnerVisitRecordMeta({
+              returnedCount: 8,
+              totalCount: 9,
+              hasMore: true,
+              nextCursor: 'partner_record_page_08',
+              statusCounts: { ...emptyPartnerVisitRecordStatusCounts, submitted: 9 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/partner-visit-records?limit=8&view_context=pharmacy_cooperation_workflow&cursor=partner_record_page_08'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [createPartnerVisitRecordRow('partner_record_page_09')],
+            meta: partnerVisitRecordMeta({
+              returnedCount: 1,
+              totalCount: 9,
+              requestCursor: 'partner_record_page_08',
+              statusCounts: { ...emptyPartnerVisitRecordStatusCounts, submitted: 9 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    await screen.findAllByText('協力訪問記録 読込済み 8 / 全 9 件');
+    fireEvent.click(screen.getByRole('button', { name: '協力訪問記録をさらに読み込む' }));
+
+    expect((await screen.findAllByText('partner_record_page_09')).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('協力訪問記録 読込済み 9 / 全 9 件（全件読込済み）').length,
+    ).toBeGreaterThanOrEqual(1);
+    const recordsTable = screen.getByRole('table', { name: '協力訪問記録一覧' });
+    expect(within(recordsTable).getAllByRole('row')).toHaveLength(10);
+  });
+
+  it('starts a fresh scope when the partner-visit-record status filter changes', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/partner-visit-records?limit=8&view_context=pharmacy_cooperation_workflow&status=confirmed'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [createPartnerVisitRecordRow('partner_record_filtered', 'confirmed')],
+            meta: partnerVisitRecordMeta({
+              returnedCount: 1,
+              status: 'confirmed',
+              statusCounts: { ...emptyPartnerVisitRecordStatusCounts, confirmed: 1 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    await screen.findAllByText('partner_record_confirmed');
+    fireEvent.change(screen.getByRole('combobox', { name: '協力訪問記録状態' }), {
+      target: { value: 'confirmed' },
+    });
+
+    expect((await screen.findAllByText('partner_record_filtered')).length).toBeGreaterThan(0);
+    expect(
+      findFetchCall(
+        (input) =>
+          String(input) ===
+          '/api/partner-visit-records?limit=8&view_context=pharmacy_cooperation_workflow&status=confirmed',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('retains loaded partner visit records and retries a failed continuation', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    const firstPageRows = Array.from({ length: 8 }, (_, index) =>
+      createPartnerVisitRecordRow(`partner_record_retry_${String(index + 1).padStart(2, '0')}`),
+    );
+    let continuationAttempts = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/partner-visit-records?limit=8&view_context=pharmacy_cooperation_workflow') {
+        return new Response(
+          JSON.stringify({
+            data: firstPageRows,
+            meta: partnerVisitRecordMeta({
+              returnedCount: 8,
+              totalCount: 9,
+              hasMore: true,
+              nextCursor: 'partner_record_retry_08',
+              statusCounts: { ...emptyPartnerVisitRecordStatusCounts, submitted: 9 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/partner-visit-records?limit=8&view_context=pharmacy_cooperation_workflow&cursor=partner_record_retry_08'
+      ) {
+        continuationAttempts += 1;
+        if (continuationAttempts === 1) {
+          return new Response(JSON.stringify({ code: 'TEMPORARY_FAILURE' }), { status: 503 });
+        }
+        return new Response(
+          JSON.stringify({
+            data: [createPartnerVisitRecordRow('partner_record_retry_09')],
+            meta: partnerVisitRecordMeta({
+              returnedCount: 1,
+              totalCount: 9,
+              requestCursor: 'partner_record_retry_08',
+              statusCounts: { ...emptyPartnerVisitRecordStatusCounts, submitted: 9 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    await screen.findAllByText('協力訪問記録 読込済み 8 / 全 9 件');
+    fireEvent.click(screen.getByRole('button', { name: '協力訪問記録をさらに読み込む' }));
+
+    expect(await screen.findByText('協力訪問記録の続きを読み込めませんでした')).toBeTruthy();
+    expect(screen.getAllByText('partner_record_retry_01').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+
+    expect((await screen.findAllByText('partner_record_retry_09')).length).toBeGreaterThan(0);
+    expect(continuationAttempts).toBe(2);
+  });
+
+  it('rejects legacy partner visit record pages without canonical count metadata', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/partner-visit-records?limit=8&view_context=pharmacy_cooperation_workflow') {
+        return new Response(
+          JSON.stringify({
+            data: [createPartnerVisitRecordRow('partner_record_legacy')],
+            meta: { has_more: false, next_cursor: null },
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
+    expect(screen.queryByText('partner_record_legacy')).toBeNull();
   });
 
   it('shows exact total and loaded share-case counts instead of treating one page as complete', async () => {
