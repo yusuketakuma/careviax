@@ -7,34 +7,20 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import {
+  notificationChannelSchema,
+  notificationEventTypeSchema,
+  notificationRecipientsSchema,
+  notificationRulePublicSelect,
+} from '@/lib/notification-rules/server-contract';
 
-const notificationChannelSchema = z.enum(['in_app', 'email', 'sms', 'line', 'fax', 'mcs']);
 const expectedUpdatedAtSchema = z.string().datetime('通知ルールの版情報が不正です');
-const recipientIdSchema = z.string().trim().min(1).max(200);
-
-const recipientsSchema = z
-  .object({
-    roles: z.array(recipientIdSchema).max(200).optional(),
-    user_ids: z.array(recipientIdSchema).max(500).optional(),
-  })
-  .superRefine((recipients, context) => {
-    for (const key of ['roles', 'user_ids'] as const) {
-      const values = recipients[key] ?? [];
-      if (new Set(values).size !== values.length) {
-        context.addIssue({
-          code: 'custom',
-          path: [key],
-          message: `${key} に重複があります`,
-        });
-      }
-    }
-  });
 
 const updateRuleSchema = z.object({
   expected_updated_at: expectedUpdatedAtSchema,
-  event_type: z.string().trim().min(1).max(200).optional(),
+  event_type: notificationEventTypeSchema.optional(),
   channel: notificationChannelSchema.optional(),
-  recipients: recipientsSchema.optional(),
+  recipients: notificationRecipientsSchema.optional(),
   enabled: z.boolean().optional(),
   conditions: z.record(z.string(), z.unknown()).optional(),
 });
@@ -42,16 +28,6 @@ const updateRuleSchema = z.object({
 const deleteRuleQuerySchema = z.object({
   expected_updated_at: expectedUpdatedAtSchema,
 });
-
-const notificationRuleSelect = {
-  id: true,
-  event_type: true,
-  channel: true,
-  recipients: true,
-  enabled: true,
-  created_at: true,
-  updated_at: true,
-} as const;
 
 function staleNotificationRuleConflict(expected: string, current: Date | null) {
   return conflict('通知ルールが更新されています。再読み込みしてください', {
@@ -75,7 +51,7 @@ async function notificationRuleGET(
     (tx) =>
       tx.notificationRule.findFirst({
         where: { id: ruleId, org_id: ctx.orgId },
-        select: notificationRuleSelect,
+        select: notificationRulePublicSelect,
       }),
     { requestContext: ctx },
   );
@@ -142,7 +118,7 @@ async function notificationRulePATCH(
 
       const updated = await tx.notificationRule.findFirst({
         where: { id: ruleId, org_id: ctx.orgId },
-        select: notificationRuleSelect,
+        select: notificationRulePublicSelect,
       });
       return updated
         ? { status: 'updated' as const, updated }
