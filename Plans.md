@@ -300,6 +300,8 @@ S13 evidence: `1df162430`でassignment-aware、tenant RLS、bounded message quer
 
 S14 evidence: `c3f09c84e`でorg-scoped visit schedule detail GETを`canViewDashboard`へ移し、canonical case patient解決とsuccess response生成後だけ`visit_schedule_detail` PHI read auditを1回追加した。PATCH/DELETEは`canVisit`を維持し、catalog/direct-auth inventoryをmethod splitした。clerk successはaudit 1、invalid ID、missing schedule、missing case、例外はaudit 0を固定。focused route/catalog 3 files / 99 tests、protected GET 384 tests、route-auth `147 / 212 / 0 new`、API authz/response、client schema `364 / 0`、DTO `30 / 0 new`、scoped lint/format/diff、full typecheckをPASS。mixed GET/PATCH/DELETE fileのため`canVisit` route file数は107のまま。
 
+`AUTHZ-CLINICAL-AUDIT-ACTOR-001A` evidence: `9c908623d`でclassic調剤監査/set監査POSTの自己監査をterminal/idempotent replayより前で既定denyし、理由または同一actorのadmin roleによる例外、例外用membership lookup、例外監査writeを除去した。set監査は`cell_audits`の有無ではなくplan内の全batchを対象に本人の`set_by`を検出する。focused 2 files / 71 tests、exact lint/format/diff、route-auth/API authz/response/client schema/DTO static gates、full typecheck、独立reviewをPASS。通常二者監査とemergency admin gateは維持する。親taskはcanonical資格、PHOS 6 action、read/govern/execute分離、atomic decision evidence、批准済みの別subject承認契約が残るためHuman gateを維持する。
+
 **Account model v1 — authoritative role SSOT（2026-07-15）**:
 
 - 公開ロールは固定5種: global `owner`、global `supporter`、tenant `admin`、tenant `pharmacist`、tenant `clerk`。tenant内の管理責任上の序列は `admin > pharmacist > clerk` だが、これは全actionの包含関係ではない。専門actionはrole順位で自動許可せず、action classificationと資格を別々に評価する。legacy enum名を公開ロールとして延命しない。
