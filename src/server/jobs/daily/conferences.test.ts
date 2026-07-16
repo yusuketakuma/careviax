@@ -3,12 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   conferenceNoteFindManyMock,
   careCaseFindManyMock,
+  organizationFindManyMock,
   dispatchNotificationEventMock,
   withOrgContextMock,
   runJobMock,
 } = vi.hoisted(() => ({
   conferenceNoteFindManyMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  organizationFindManyMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   runJobMock: vi.fn(async (_jobType: string, fn: () => Promise<unknown>) => fn()),
@@ -16,8 +18,7 @@ const {
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
-    conferenceNote: { findMany: conferenceNoteFindManyMock },
-    careCase: { findMany: careCaseFindManyMock },
+    organization: { findMany: organizationFindManyMock },
   },
 }));
 
@@ -69,8 +70,14 @@ describe('checkConferenceMeetingReminders', () => {
     // UTCでは7月3日だが、JSTの業務日は7月4日。
     vi.setSystemTime(new Date('2026-07-03T16:30:00.000Z'));
     runJobMock.mockImplementation(async (_jobType: string, fn: () => Promise<unknown>) => fn());
+    organizationFindManyMock.mockResolvedValue([{ id: 'org_a' }]);
     withOrgContextMock.mockImplementation(
-      async (orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn({ orgId }),
+      async (orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          orgId,
+          conferenceNote: { findMany: conferenceNoteFindManyMock },
+          careCase: { findMany: careCaseFindManyMock },
+        }),
     );
   });
 
@@ -79,40 +86,59 @@ describe('checkConferenceMeetingReminders', () => {
   });
 
   it('dispatches each reminder inside its own note org context (multi-org, no cross-org bleed)', async () => {
-    conferenceNoteFindManyMock.mockResolvedValue([
-      buildNote({
-        id: 'note_a',
-        org_id: 'org_a',
-        case_id: 'case_a',
-        structured_content: { sections: [{ key: 'next_meeting_date', body: tomorrowText }] },
-      }),
-      buildNote({
-        id: 'note_b',
-        org_id: 'org_b',
-        case_id: 'case_b',
-        structured_content: { sections: [{ key: 'next_meeting_date', body: tomorrowText }] },
-      }),
-    ]);
-    careCaseFindManyMock.mockResolvedValue([
-      buildCase({ id: 'case_a', primary_pharmacist_id: 'pharmacist_a' }),
-      buildCase({ id: 'case_b', primary_pharmacist_id: 'pharmacist_b' }),
-    ]);
+    organizationFindManyMock.mockResolvedValue([{ id: 'org_a' }, { id: 'org_b' }]);
+    conferenceNoteFindManyMock
+      .mockResolvedValueOnce([
+        buildNote({
+          id: 'note_a',
+          org_id: 'org_a',
+          case_id: 'case_a',
+          structured_content: { sections: [{ key: 'next_meeting_date', body: tomorrowText }] },
+        }),
+      ])
+      .mockResolvedValueOnce([
+        buildNote({
+          id: 'note_b',
+          org_id: 'org_b',
+          case_id: 'case_b',
+          structured_content: { sections: [{ key: 'next_meeting_date', body: tomorrowText }] },
+        }),
+      ]);
+    careCaseFindManyMock
+      .mockResolvedValueOnce([buildCase({ id: 'case_a', primary_pharmacist_id: 'pharmacist_a' })])
+      .mockResolvedValueOnce([buildCase({ id: 'case_b', primary_pharmacist_id: 'pharmacist_b' })]);
 
     const result = await checkConferenceMeetingReminders();
 
     expect(result).toEqual({ processedCount: 2 });
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
-      { orgId: 'org_a' },
+      expect.objectContaining({ orgId: 'org_a' }),
       expect.objectContaining({ orgId: 'org_a', explicitUserIds: ['pharmacist_a'] }),
     );
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
-      { orgId: 'org_b' },
+      expect.objectContaining({ orgId: 'org_b' }),
       expect.objectContaining({ orgId: 'org_b', explicitUserIds: ['pharmacist_b'] }),
     );
     // org_a のケース担当を org_b の通知宛先に混同していないこと。
     expect(dispatchNotificationEventMock).not.toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ orgId: 'org_a', explicitUserIds: ['pharmacist_b'] }),
+    );
+    expect(conferenceNoteFindManyMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ where: expect.objectContaining({ org_id: 'org_a' }) }),
+    );
+    expect(conferenceNoteFindManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ where: expect.objectContaining({ org_id: 'org_b' }) }),
+    );
+    expect(careCaseFindManyMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ where: expect.objectContaining({ org_id: 'org_a' }) }),
+    );
+    expect(careCaseFindManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ where: expect.objectContaining({ org_id: 'org_b' }) }),
     );
   });
 
@@ -149,7 +175,8 @@ describe('checkConferenceMeetingReminders', () => {
 
     expect(result).toEqual({ processedCount: 0 });
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock.mock.calls.every(([orgId]) => orgId === 'org_a')).toBe(true);
   });
 
   it('skips a note whose next-meeting section has no parseable date', async () => {

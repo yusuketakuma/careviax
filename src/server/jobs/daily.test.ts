@@ -2940,6 +2940,13 @@ describe('checkConferenceMeetingReminders', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-30T00:00:00.000Z'));
+    organizationFindManyMock.mockResolvedValue([{ id: 'org_1' }]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        conferenceNote: { findMany: conferenceNoteFindManyMock },
+        careCase: { findMany: careCaseFindManyMock },
+      }),
+    );
     conferenceNoteFindManyMock.mockResolvedValue([
       {
         id: 'note_service_1',
