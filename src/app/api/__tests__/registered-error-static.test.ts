@@ -442,6 +442,22 @@ function collectRouteFiles(dir: string): string[] {
   });
 }
 
+// Parse the route tree once at module load. The assertions inspect the same immutable
+// source set for each helper, so reparsing every route inside each five-second test
+// only adds coverage-run contention without increasing the contract's confidence.
+const apiRouteSourceFiles = new Map(
+  collectRouteFiles(apiRoot).map((filePath) => {
+    const source = readFileSync(filePath, 'utf8');
+    return [filePath, ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true)] as const;
+  }),
+);
+
+function getApiRouteSourceFile(filePath: string): ts.SourceFile {
+  const sourceFile = apiRouteSourceFiles.get(filePath);
+  if (!sourceFile) throw new Error(`API route source was not preloaded: ${filePath}`);
+  return sourceFile;
+}
+
 function isRegisteredErrorCode(code: string): code is RegisteredErrorCode {
   return Object.prototype.hasOwnProperty.call(API_ERROR_CODE_REGISTRY, code);
 }
@@ -480,8 +496,7 @@ function normalizedExpressionText(sourceFile: ts.SourceFile, node: ts.Node): str
 }
 
 function findErrorUsages(filePath: string, importedHelperName: RawErrorHelperName): RawErrorUsages {
-  const source = readFileSync(filePath, 'utf8');
-  const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
+  const sourceFile = getApiRouteSourceFile(filePath);
   const bindings = collectErrorHelperBindings(sourceFile, importedHelperName);
   const usages: RawErrorUsages = {
     literal: [],
@@ -551,7 +566,7 @@ function findErrorUsages(filePath: string, importedHelperName: RawErrorHelperNam
 }
 
 function collectSortedErrorUsages(importedHelperName: RawErrorHelperName): RawErrorUsages {
-  const usages = collectRouteFiles(apiRoot).map((filePath) =>
+  const usages = [...apiRouteSourceFiles.keys()].map((filePath) =>
     findErrorUsages(filePath, importedHelperName),
   );
 

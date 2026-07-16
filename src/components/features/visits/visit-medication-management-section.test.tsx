@@ -79,14 +79,14 @@ describe('VisitMedicationManagementSection', () => {
 
   it('retains cached source details behind an explicit stale warning', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date(2026, 5, 15, 10, 15));
+    vi.setSystemTime(new Date('2026-06-15T10:15:00+09:00'));
     try {
       const onRetryPreparation = vi.fn();
       render(
         <VisitMedicationManagementSection
           structuredSoap={buildSoap()}
           preparationSourceStatus="stale"
-          preparationSourceUpdatedAt={new Date(2026, 5, 15, 9, 30).getTime()}
+          preparationSourceUpdatedAt={new Date('2026-06-15T09:30:00+09:00').getTime()}
           onRetryPreparation={onRetryPreparation}
           prescriptionChanges={{
             current_prescribed_date: '2026-06-15',

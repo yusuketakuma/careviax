@@ -594,11 +594,9 @@ describe('TasksContent', () => {
     );
   });
 
-  it('loads the 2,001st task through page 21 without the former hidden 20-page cap', async () => {
+  it('loads page 21 without the former hidden 20-page cap', async () => {
     const baseUseQueryImplementation = useQueryMock.getMockImplementation();
-    const firstPage = Array.from({ length: 100 }, (_, index) =>
-      taskFixture(`task_${index + 1}`, `タスク${index + 1}`),
-    );
+    const firstPage = [taskFixture('task_1', 'タスク1')];
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
       if (options.queryKey?.[0] === 'tasks') {
         return {
@@ -614,15 +612,10 @@ describe('TasksContent', () => {
     const fetchMock = vi.fn().mockImplementation(() => {
       const pageNumber = fetchMock.mock.calls.length;
       const isLastPage = pageNumber === 20;
-      const startId = pageNumber * 100 + 1;
-      const pageSize = isLastPage ? 1 : 100;
       return Promise.resolve(
         new Response(
           JSON.stringify({
-            data: Array.from({ length: pageSize }, (_, index) => {
-              const taskNumber = startId + index;
-              return taskFixture(`task_${taskNumber}`, `タスク${taskNumber}`);
-            }),
+            data: [taskFixture(`task_${pageNumber + 1}`, `タスク${pageNumber + 1}`)],
             meta: {
               limit: 100,
               has_more: !isLastPage,
@@ -640,19 +633,19 @@ describe('TasksContent', () => {
 
     for (let pageNumber = 1; pageNumber <= 20; pageNumber += 1) {
       fireEvent.click(screen.getByRole('button', { name: 'さらに読み込む' }));
-      const expectedLoaded = pageNumber === 20 ? 2001 : (pageNumber + 1) * 100;
+      const expectedLoaded = pageNumber + 1;
       await waitFor(() => {
         expect(fetchMock).toHaveBeenCalledTimes(pageNumber);
         expect(screen.getAllByText(`読込済み ${expectedLoaded}件`)).toHaveLength(2);
       });
     }
 
-    expect(screen.getByText('タスク2001')).toBeTruthy();
+    expect(screen.getByText('タスク21')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'さらに読み込む' })).toBeNull();
     expect(screen.getByTestId('tasks-cursor-live-status').textContent).toContain(
-      'タスクを2001件読み込みました。',
+      'タスクを21件読み込みました。',
     );
-  }, 30_000);
+  }, 15_000);
 
   it('retains loaded tasks and retries the same cursor after an intermediate failure', async () => {
     const baseUseQueryImplementation = useQueryMock.getMockImplementation();

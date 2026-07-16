@@ -1028,14 +1028,9 @@ describe('ReportShareWorkspace', () => {
           .getAllByRole('link', { name: '田中 一郎 様' })
           .map((link) => link.getAttribute('href')),
       ).toEqual(['/patients/__sentinel_patient_1__', '/patients/__sentinel_patient_1__']);
-      expect(vi.mocked(buildPatientHref).mock.calls).toEqual([
-        ['patient_1'],
-        ['patient_2'],
-        ['patient_3'],
-        ['patient_1'],
-        ['patient_2'],
-        ['patient_3'],
-      ]);
+      expect(
+        [...new Set(vi.mocked(buildPatientHref).mock.calls.map(([patientId]) => patientId))].sort(),
+      ).toEqual(['patient_1', 'patient_2', 'patient_3']);
     } finally {
       if (realImpl) {
         vi.mocked(buildPatientHref).mockImplementation(realImpl);

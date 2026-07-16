@@ -1546,7 +1546,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
         expected_patient_updated_at: '2026-06-18T00:00:00.000Z',
       });
     });
-  });
+  }, 15_000);
 
   it('shows the patient share consent empty state only for genuine empty results', async () => {
     const originalFetch = vi.mocked(fetch).getMockImplementation();

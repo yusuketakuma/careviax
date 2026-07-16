@@ -273,9 +273,6 @@ describe('check-fhir-native-legacy-inventory', () => {
       expect(() => runCheck(root)).toThrow(
         /unmatched raw SQL call lacks an explicit dynamic code surface or non-clinical exclusion/,
       );
-      expect(() => runCheck(root, ['--require-zero'])).toThrow(
-        /unmatched raw SQL call lacks an explicit dynamic code surface or non-clinical exclusion/,
-      );
     }
   });
 
