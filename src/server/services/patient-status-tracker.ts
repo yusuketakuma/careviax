@@ -92,6 +92,7 @@ export async function trackPatientStatusChanges(
   args: {
     orgId: string;
     actorId: string;
+    patientIds?: string[];
   },
 ): Promise<{
   changed: Array<{
@@ -110,8 +111,10 @@ export async function trackPatientStatusChanges(
   // Get current risk summaries for all patients
   const riskSummaries = await listPatientRiskSummaries(db as typeof prisma, {
     orgId: args.orgId,
+    ...(args.patientIds ? { patientIds: args.patientIds } : {}),
     includeStable: true,
-    limit: 500,
+    limit: args.patientIds?.length ?? 500,
+    ...(args.patientIds ? {} : { candidateLimit: 500 }),
   });
 
   const patientIds = riskSummaries.map((p) => p.patient_id);
