@@ -153,7 +153,7 @@ const routes: RouteEntry[] = [
   { name: 'care-reports POST', handler: (req) => careReportsPost(req) },
   {
     name: 'document-delivery-rules POST',
-    handler: (req) => documentDeliveryRulesPost(req),
+    handler: (req) => documentDeliveryRulesPost(req, emptyRouteContext),
     invalidBody: [],
   },
   { name: 'tasks POST', handler: (req) => tasksPost(req), invalidBody: [] },

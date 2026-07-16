@@ -19,7 +19,43 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: string },
+    ) => Promise<Response>,
+    options: unknown,
+  ) => {
+    return async (req: NextRequest) => {
+      let response: Response;
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        response =
+          authResult && typeof authResult === 'object' && 'response' in authResult
+            ? authResult.response
+            : await handler(req, authResult.ctx);
+      } catch (error) {
+        loggerErrorMock(
+          {
+            event: 'route_handler_unhandled_error',
+            route: req.nextUrl.pathname,
+            method: req.method,
+          },
+          error,
+        );
+        response = new Response(
+          JSON.stringify({
+            code: 'INTERNAL_ERROR',
+            message: 'サーバー内部でエラーが発生しました',
+          }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      return response;
+    };
+  },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -32,11 +68,12 @@ vi.mock('@/lib/utils/logger', () => ({
   },
 }));
 
-import { GET, POST } from './route';
+import { GET as routeGET, POST as routePOST } from './route';
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 
 const documentDeliveryRulesUrl = 'http://localhost/api/document-delivery-rules';
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 function createRequest(body?: unknown, url = documentDeliveryRulesUrl) {
   const init: NextRequestInit = {
@@ -55,6 +92,14 @@ function createMalformedJsonPostRequest() {
     headers: { 'content-type': 'application/json' },
     body: '{bad json',
   } satisfies NextRequestInit);
+}
+
+function GET(req: NextRequest) {
+  return routeGET(req, emptyRouteContext);
+}
+
+function POST(req: NextRequest) {
+  return routePOST(req, emptyRouteContext);
 }
 
 function expectOrgContextBoundToRequestContext() {
@@ -233,6 +278,19 @@ describe('/api/document-delivery-rules', () => {
     expect(documentDeliveryRuleCountMock).not.toHaveBeenCalled();
   });
 
+  it('rejects duplicate list query values before opening an org context', async () => {
+    const response = (await GET(
+      createRequest(
+        undefined,
+        `${documentDeliveryRulesUrl}?document_type=care_report&document_type=management_plan`,
+      ),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
   it('creates a document delivery rule', async () => {
     const response = (await POST(
       createRequest({
@@ -279,6 +337,25 @@ describe('/api/document-delivery-rules', () => {
     expect(documentDeliveryRuleCreateMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['a duplicate fallback', ['email', 'email']],
+    ['the primary channel as a fallback', ['fax']],
+  ])('rejects %s before opening an org transaction', async (_name, fallbackChannels) => {
+    const response = (await POST(
+      createRequest({
+        document_type: 'care_report',
+        target_role: 'physician',
+        channel: 'fax',
+        fallback_channels: fallbackChannels,
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(documentDeliveryRuleCreateMock).not.toHaveBeenCalled();
+  });
+
   it('adds no-store headers to auth failures before opening an org context', async () => {
     requireAuthContextMock.mockResolvedValue({
       response: new Response(JSON.stringify({ message: '権限がありません' }), { status: 403 }),
@@ -319,10 +396,9 @@ describe('/api/document-delivery-rules', () => {
     await expectInternalError(response, rawMessage);
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'document_delivery_rules_get_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/document-delivery-rules',
         method: 'GET',
-        status: 500,
       }),
       error,
     );
@@ -344,10 +420,9 @@ describe('/api/document-delivery-rules', () => {
     await expectInternalError(response, rawMessage);
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'document_delivery_rules_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/document-delivery-rules',
         method: 'POST',
-        status: 500,
       }),
       error,
     );

@@ -829,6 +829,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       documentDeliveryRulesGet(
         createRequest('http://localhost/api/document-delivery-rules', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
       ),
   },
   {
