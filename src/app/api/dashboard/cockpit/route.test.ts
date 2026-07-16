@@ -433,16 +433,7 @@ describe('/api/dashboard/cockpit', () => {
 
     expect(json.data.carryover_count).toBe(2);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
-    expect(serverCacheSetMock).toHaveBeenCalledWith(
-      expect.stringContaining('cockpit:org_1:admin:user_1:2026-06-12:team'),
-      expect.objectContaining({
-        audit_pending_count: 2,
-        audit_queue_total_count: 2,
-        audit_queue_visible_count: 2,
-        audit_queue_hidden_count: 0,
-      }),
-      15_000,
-    );
+    expect(serverCacheSetMock).not.toHaveBeenCalled();
   });
 
   it('keeps the visible audit queue capped while reporting the exact total count', async () => {
@@ -495,18 +486,9 @@ describe('/api/dashboard/cockpit', () => {
     expect(queryRawMock).toHaveBeenCalledTimes(3);
   });
 
-  it('serves a cached cockpit response without rerunning aggregate queries', async () => {
-    serverCacheGetMock.mockReturnValueOnce({
-      generated_at: '2026-06-12T00:00:00.000Z',
-      scope: { requested: 'team', applied: 'team', can_view_team: true },
-      cycle_status_counts: { audit_pending: 1 },
-      audit_pending_count: 1,
-      narcotic_audit_count: 0,
-      audit_queue: [],
-      today_visits: [],
-      blocked_reasons: [],
-      carryover_count: 0,
-      team_capacity: [],
+  it('ignores stale process-local cache state and reruns authoritative cockpit queries', async () => {
+    serverCacheGetMock.mockImplementationOnce(() => {
+      throw new Error('cache adapter unavailable');
     });
 
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
@@ -514,11 +496,12 @@ describe('/api/dashboard/cockpit', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
-      data: { cycle_status_counts: { audit_pending: 1 } },
+      data: { generated_at: expect.any(String) },
     });
-    expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
-    expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
-    expect(queryRawMock).not.toHaveBeenCalled();
+    expect(serverCacheGetMock).not.toHaveBeenCalled();
+    expect(medicationCycleGroupByMock).toHaveBeenCalled();
+    expect(dispenseTaskFindManyMock).toHaveBeenCalled();
+    expect(queryRawMock).toHaveBeenCalled();
     expect(serverCacheSetMock).not.toHaveBeenCalled();
   });
 
@@ -565,11 +548,7 @@ describe('/api/dashboard/cockpit', () => {
     expect(taskCountMock).not.toHaveBeenCalled();
     expect(membershipFindManyMock).not.toHaveBeenCalled();
     expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
-    expect(serverCacheSetMock).toHaveBeenCalledWith(
-      expect.stringContaining('cockpit:org_1:admin:user_1:2026-06-12:team:summary'),
-      expect.objectContaining({ today_visit_count: 1 }),
-      15_000,
-    );
+    expect(serverCacheSetMock).not.toHaveBeenCalled();
   });
 
   it('returns the details segment without cycle count or team capacity reads', async () => {
@@ -696,11 +675,7 @@ describe('/api/dashboard/cockpit', () => {
     expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
     expect(membershipFindManyMock).not.toHaveBeenCalled();
     expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
-    expect(serverCacheSetMock).toHaveBeenCalledWith(
-      expect.stringContaining('cockpit:org_1:admin:user_1:2026-06-12:team:details'),
-      expect.objectContaining({ carryover_count: 2 }),
-      15_000,
-    );
+    expect(serverCacheSetMock).not.toHaveBeenCalled();
   });
 
   it('builds source drilldown links with source-total count basis and app-relative hrefs', () => {
@@ -2308,11 +2283,7 @@ describe('/api/dashboard/cockpit', () => {
     expect(queryRawMock).not.toHaveBeenCalled();
     expect(workflowExceptionFindManyMock).not.toHaveBeenCalled();
     expect(taskCountMock).not.toHaveBeenCalled();
-    expect(serverCacheSetMock).toHaveBeenCalledWith(
-      expect.stringContaining('cockpit:org_1:admin:user_1:2026-06-12:team:team'),
-      expect.objectContaining({ team_capacity: expect.any(Array) }),
-      15_000,
-    );
+    expect(serverCacheSetMock).not.toHaveBeenCalled();
   });
 
   it('returns a PHI-minimized comments segment without cockpit cache writes', async () => {
@@ -2880,13 +2851,7 @@ describe('/api/dashboard/cockpit', () => {
     const auditWhere = dispenseTaskFindManyMock.mock.calls.at(-1)?.[0]?.where;
     expect(auditWhere?.cycle).toEqual({ case_id: { in: ['case_1'] } });
     expect(queryRawMock).toHaveBeenCalledTimes(2);
-    expect(serverCacheSetMock).toHaveBeenCalledWith(
-      expect.stringContaining('cockpit:org_1:pharmacist:user_1:2026-06-12:mine'),
-      expect.objectContaining({
-        scope: { requested: 'team', applied: 'mine', can_view_team: false },
-      }),
-      15_000,
-    );
+    expect(serverCacheSetMock).not.toHaveBeenCalled();
   });
 
   it('JST でも scheduled_date(@db.Date)は UTC レンジ、created_at(DateTime)はローカル深夜で比較する', async () => {

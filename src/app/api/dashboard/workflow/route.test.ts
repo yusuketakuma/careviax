@@ -197,10 +197,6 @@ vi.mock('@/server/services/visit-schedule-billing-preview', () => ({
   buildVisitScheduleBillingPreviewBatch: billingPreviewBatchMock,
 }));
 
-import {
-  buildWorkflowAssignmentScopeFingerprint,
-  buildWorkflowCacheKey,
-} from '@/server/services/workflow-dashboard-cache';
 import { GET as rawGET } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
@@ -839,7 +835,10 @@ describe('/api/dashboard/workflow GET', () => {
     });
   });
 
-  it('wraps cached workflow responses in no-store headers without rerunning aggregate reads', async () => {
+  it('reruns authoritative workflow reads for consecutive no-store responses', async () => {
+    const cacheGetSpy = vi.spyOn(serverCache, 'get').mockImplementation(() => {
+      throw new Error('cache adapter unavailable');
+    });
     const firstResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
     const secondResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
 
@@ -848,11 +847,14 @@ describe('/api/dashboard/workflow GET', () => {
     expectSensitiveNoStore(firstResponse);
     expectSensitiveNoStore(secondResponse);
     expect(withRoutePerformanceMock).toHaveBeenCalledTimes(2);
-    expect(cycleGroupByMock).toHaveBeenCalledTimes(1);
+    expect(cacheGetSpy).not.toHaveBeenCalled();
+    expect(cycleGroupByMock).toHaveBeenCalledTimes(2);
 
     const firstPayload = await readMeasuredJson(firstResponse);
     const secondPayload = await readMeasuredJson(secondResponse);
-    expect(secondPayload).toEqual(firstPayload);
+    expect(firstPayload.data.facility_visibility.clusters).toHaveLength(1);
+    expect(secondPayload.data.facility_visibility.clusters).toHaveLength(0);
+    expect(secondPayload).not.toEqual(firstPayload);
   });
 
   it('passes upcoming schedule local calendar dates to billing previews', async () => {
@@ -1210,7 +1212,7 @@ describe('/api/dashboard/workflow GET', () => {
     expect(secondPayload.data.role_inboxes.current_role).toBe('pharmacist');
   });
 
-  it('does not replay cached workflow PHI after the same user assignment scope changes', async () => {
+  it('re-evaluates assignment scope and does not replay workflow PHI', async () => {
     careCaseFindManyMock
       .mockResolvedValueOnce([{ id: 'case_1', patient_id: 'patient_1' }])
       .mockResolvedValueOnce([]);
@@ -1231,77 +1233,5 @@ describe('/api/dashboard/workflow GET', () => {
         }),
       }),
     );
-  });
-
-  it('keys workflow cache by org, role, user, and local day', () => {
-    expect(buildWorkflowCacheKey('org_1', 'clerk', 'user_1', new Date(2026, 2, 27, 12, 0, 0))).toBe(
-      'workflow:org_1:clerk:user_1:2026-03-27',
-    );
-    expect(buildWorkflowCacheKey('org_1', 'clerk', 'user_1', new Date(2026, 2, 28, 12, 0, 0))).toBe(
-      'workflow:org_1:clerk:user_1:2026-03-28',
-    );
-  });
-
-  it('adds a stable assignment-scope fingerprint to scoped workflow cache keys', () => {
-    const fingerprint = buildWorkflowAssignmentScopeFingerprint({
-      assignedToUserId: 'user_1',
-      caseIds: ['case_2', 'case_1'],
-      patientIds: ['patient_1'],
-      caseIdsByPatient: {
-        patient_1: ['case_2', 'case_1'],
-      },
-    });
-
-    expect(fingerprint).toMatch(/^[A-Za-z0-9_-]{24}$/);
-    expect(
-      buildWorkflowCacheKey(
-        'org_1',
-        'clerk',
-        'user_1',
-        new Date(2026, 2, 27, 12, 0, 0),
-        fingerprint,
-      ),
-    ).toBe(`workflow:org_1:clerk:user_1:2026-03-27:${fingerprint}`);
-    expect(
-      buildWorkflowCacheKey(
-        'org_1',
-        'clerk',
-        'user_1',
-        new Date(2026, 2, 27, 12, 0, 0),
-        fingerprint,
-        'phase',
-      ),
-    ).toBe(`workflow:org_1:clerk:user_1:2026-03-27:${fingerprint}:phase`);
-    expect(
-      buildWorkflowCacheKey(
-        'org_1',
-        'clerk',
-        'user_1',
-        new Date(2026, 2, 27, 12, 0, 0),
-        fingerprint,
-        'realtime',
-      ),
-    ).toBe(`workflow:org_1:clerk:user_1:2026-03-27:${fingerprint}:realtime`);
-    expect(
-      buildWorkflowCacheKey(
-        'org_1',
-        'clerk',
-        'user_1',
-        new Date(2026, 2, 27, 12, 0, 0),
-        fingerprint,
-        'performance',
-      ),
-    ).toBe(`workflow:org_1:clerk:user_1:2026-03-27:${fingerprint}:performance`);
-    expect(
-      buildWorkflowAssignmentScopeFingerprint({
-        assignedToUserId: 'user_1',
-        caseIds: ['case_1', 'case_2'],
-        patientIds: ['patient_1'],
-        caseIdsByPatient: {
-          patient_1: ['case_1', 'case_2'],
-        },
-      }),
-    ).toBe(fingerprint);
-    expect(buildWorkflowAssignmentScopeFingerprint({})).toBeUndefined();
   });
 });

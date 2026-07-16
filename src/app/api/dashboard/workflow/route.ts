@@ -2,15 +2,10 @@ import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
-import {
-  RECENT_WINDOW_DAYS,
-  UPCOMING_WINDOW_DAYS,
-  WORKFLOW_CACHE_TTL_MS,
-} from '@/lib/constants/workflow';
+import { RECENT_WINDOW_DAYS, UPCOMING_WINDOW_DAYS } from '@/lib/constants/workflow';
 import { internalError, successWithMeasuredJsonPayload, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
-import { serverCache } from '@/lib/utils/server-cache';
 import {
   fetchWorkflowCoreData,
   fetchWorkflowDependentData,
@@ -19,8 +14,6 @@ import {
   fetchWorkflowRealtimeCoreData,
 } from '@/server/services/workflow-dashboard-queries';
 import {
-  buildWorkflowAssignmentScopeFingerprint,
-  buildWorkflowCacheKey,
   type WorkflowDashboardView,
   WORKFLOW_DASHBOARD_VIEWS,
 } from '@/server/services/workflow-dashboard-cache';
@@ -29,10 +22,8 @@ import { resolveDashboardAssignmentScope } from '@/server/services/dashboard-ass
 import { logger } from '@/lib/utils/logger';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { withRoutePerformance } from '@/lib/utils/performance';
-import type { WorkflowDashboardResponse } from '@/types/api/workflow-dashboard';
 
 const ROUTE = '/api/dashboard/workflow';
-type WorkflowDashboardData = WorkflowDashboardResponse['data'];
 
 type WorkflowViewQuery =
   | { ok: true; view: WorkflowDashboardView }
@@ -86,19 +77,6 @@ async function authenticatedGET(req: NextRequest) {
       orgId: ctx.orgId,
       accessContext: ctx,
     });
-    const cacheKey = buildWorkflowCacheKey(
-      ctx.orgId,
-      ctx.role,
-      ctx.userId,
-      today,
-      buildWorkflowAssignmentScopeFingerprint(assignmentScope),
-      view,
-    );
-    const cachedData = serverCache.get<WorkflowDashboardData>(cacheKey);
-    if (cachedData) {
-      return successWithMeasuredJsonPayload({ data: cachedData });
-    }
-
     const upcomingWindow = addUtcDays(today, UPCOMING_WINDOW_DAYS);
     const sevenDaysFromNow = addUtcDays(today, RECENT_WINDOW_DAYS);
     const recentOutcomeWindow = addUtcDays(today, -RECENT_WINDOW_DAYS);
@@ -144,7 +122,6 @@ async function authenticatedGET(req: NextRequest) {
       upcomingWindow,
     });
 
-    serverCache.set(cacheKey, data, WORKFLOW_CACHE_TTL_MS);
     return successWithMeasuredJsonPayload({ data });
   });
 }

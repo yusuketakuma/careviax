@@ -3,7 +3,6 @@ import type { NextRequest } from 'next/server';
 import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
-import { COCKPIT_CACHE_TTL_MS } from '@/lib/constants/workflow';
 import { successWithMeasuredJsonPayload, validationError } from '@/lib/api/response';
 import { contactMethodLabel } from '@/lib/contact-profile-options';
 import { prisma } from '@/lib/db/client';
@@ -22,7 +21,6 @@ import { getTaskTypeDefinition } from '@/lib/tasks/task-registry';
 import { canViewAllDashboardWork } from '@/lib/auth/visit-schedule-access';
 import { buildVisitHref, buildVisitRecordHref } from '@/lib/visits/navigation';
 import { applyTimeDateToDate, timeDateToString } from '@/lib/visits/time-of-day';
-import { serverCache } from '@/lib/utils/server-cache';
 import { japanDayInstantRange, todayUtcRange } from '@/lib/utils/date-boundary';
 import {
   buildDashboardTaskAssignmentWhere,
@@ -35,10 +33,6 @@ import {
   type DashboardMedicationStockLedgerRiskRow,
   type DashboardMedicationStockSignalRiskRow,
 } from '@/modules/pharmacy/medication-stock/application/dashboard-stock-risk-reader';
-import {
-  buildCockpitCacheKey,
-  buildWorkflowAssignmentScopeFingerprint,
-} from '@/server/services/workflow-dashboard-cache';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import { billingMonthForJapanTimestamp } from '@/server/services/billing-evidence';
 import {
@@ -131,7 +125,6 @@ type DashboardCockpitScopeContext = {
   canViewTeam: boolean;
   assignmentScope: DashboardAssignmentScope;
   metadata: DashboardCockpitScopeMetadata;
-  cacheKey: string;
 };
 
 type AuditTaskLine = {
@@ -1319,10 +1312,6 @@ function readCount(value: bigint | number | string | null | undefined): number {
   return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
 }
 
-function buildSegmentCacheKey(baseKey: string, part: DashboardCockpitPart) {
-  return part === 'full' ? baseKey : `${baseKey}:${part}`;
-}
-
 async function readPendingAuditQueueTaskRows(args: {
   orgId: string;
   caseIds?: string[];
@@ -1455,15 +1444,6 @@ async function resolveCockpitScopeContext(args: {
     accessContext: args.ctx,
     scope: args.requestedScope ? appliedScope : 'role_default',
   });
-  const baseCacheKey = buildCockpitCacheKey(
-    args.ctx.orgId,
-    args.ctx.role,
-    args.ctx.userId,
-    todayRange.gte,
-    appliedScope,
-    buildWorkflowAssignmentScopeFingerprint(assignmentScope),
-  );
-
   return {
     now,
     todayRange,
@@ -1480,7 +1460,6 @@ async function resolveCockpitScopeContext(args: {
         can_view_team: canViewTeam,
       },
     },
-    cacheKey: buildSegmentCacheKey(baseCacheKey, args.part),
   };
 }
 
@@ -3891,20 +3870,13 @@ async function buildCockpitSegment(args: {
     return readDashboardReportBilling({ ctx: args.ctx, scopeContext });
   }
 
-  const cachedData = serverCache.get<DashboardCockpitSegmentResponse>(scopeContext.cacheKey);
-  if (cachedData) return cachedData;
-
-  const data =
-    args.part === 'summary'
-      ? await buildCockpitSummary(args.ctx, scopeContext)
-      : args.part === 'details'
-        ? await buildCockpitDetails(args.ctx, scopeContext)
-        : args.part === 'team'
-          ? await buildCockpitTeam(args.ctx, scopeContext)
-          : await buildCockpitFull(args.ctx, scopeContext);
-
-  serverCache.set(scopeContext.cacheKey, data, COCKPIT_CACHE_TTL_MS);
-  return data;
+  return args.part === 'summary'
+    ? await buildCockpitSummary(args.ctx, scopeContext)
+    : args.part === 'details'
+      ? await buildCockpitDetails(args.ctx, scopeContext)
+      : args.part === 'team'
+        ? await buildCockpitTeam(args.ctx, scopeContext)
+        : await buildCockpitFull(args.ctx, scopeContext);
 }
 
 export async function dashboardCockpitSegmentResponse(

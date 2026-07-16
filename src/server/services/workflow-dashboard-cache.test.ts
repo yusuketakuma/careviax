@@ -1,14 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { broadcastStatusUpdateMock, invalidateMock } = vi.hoisted(() => ({
+const { broadcastStatusUpdateMock } = vi.hoisted(() => ({
   broadcastStatusUpdateMock: vi.fn(),
-  invalidateMock: vi.fn(),
-}));
-
-vi.mock('@/lib/utils/server-cache', () => ({
-  serverCache: {
-    invalidate: invalidateMock,
-  },
 }));
 
 vi.mock('@/server/adapters/realtime', () => ({
@@ -28,7 +21,7 @@ describe('notifyWorkflowMutation', () => {
     vi.clearAllMocks();
   });
 
-  it('invalidates workflow cache and redacts org-wide realtime identifiers', async () => {
+  it('broadcasts a refresh trigger without exposing workflow identifiers', async () => {
     await notifyWorkflowMutation({
       orgId: 'org_1',
       eventType: 'cycle_transition',
@@ -44,8 +37,6 @@ describe('notifyWorkflowMutation', () => {
       },
     });
 
-    expect(invalidateMock).toHaveBeenCalledWith('workflow:org_1:');
-    expect(invalidateMock).toHaveBeenCalledWith('cockpit:org_1:');
     expect(broadcastStatusUpdateMock).toHaveBeenCalledWith('org:org_1', {
       type: 'cycle_transition',
       payload: { source: 'medication_cycles_transition' },
@@ -90,7 +81,7 @@ describe('notifyWorkflowMutation', () => {
     expect(JSON.stringify(event)).not.toContain('case_1');
   });
 
-  it('keeps cache invalidation even when realtime broadcast fails', async () => {
+  it('does not turn an optional realtime broadcast failure into a mutation failure', async () => {
     broadcastStatusUpdateMock.mockRejectedValueOnce(new Error('redis unavailable'));
 
     await expect(
@@ -99,9 +90,6 @@ describe('notifyWorkflowMutation', () => {
         payload: { source: 'visit_schedules_update', schedule_id: 'schedule_1' },
       }),
     ).resolves.toBeUndefined();
-
-    expect(invalidateMock).toHaveBeenCalledWith('workflow:org_1:');
-    expect(invalidateMock).toHaveBeenCalledWith('cockpit:org_1:');
   });
 });
 
