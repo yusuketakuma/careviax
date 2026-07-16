@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -19,6 +20,26 @@ import {
 import { resolvePatientShareCorrectionRequestPolicy } from '@/server/services/patient-share-policy';
 
 const correctionStatusSchema = z.enum(['open', 'responded', 'resolved', 'cancelled']);
+const correctionStatuses = correctionStatusSchema.options;
+const viewContextSchema = z
+  .enum(['pharmacy_cooperation_workflow', 'correction_requests_api'])
+  .default('correction_requests_api');
+type CorrectionStatus = (typeof correctionStatuses)[number];
+type CorrectionStatusCounts = Record<CorrectionStatus, number>;
+
+function createEmptyCorrectionStatusCounts(): CorrectionStatusCounts {
+  return Object.fromEntries(
+    correctionStatuses.map((status) => [status, 0]),
+  ) as CorrectionStatusCounts;
+}
+
+function buildCorrectionStatusCounts(
+  rows: Array<{ status: CorrectionStatus; _count: { _all: number } }>,
+): CorrectionStatusCounts {
+  const counts = createEmptyCorrectionStatusCounts();
+  for (const row of rows) counts[row.status] = row._count._all;
+  return counts;
+}
 
 const createCorrectionRequestSchema = z
   .object({
@@ -83,70 +104,111 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         status: ['対応していないステータスです'],
       });
     }
-
-    const rows = await withOrgContext(ctx.orgId, async (tx) => {
-      const shareCase = await tx.patientShareCase.findFirst({
-        where: { id, org_id: ctx.orgId },
-        select: { id: true, base_patient_id: true },
+    const rawViewContextResult = readPresentOptionalSearchParam(
+      searchParams,
+      'view_context',
+      '閲覧画面を指定してください',
+    );
+    if (!rawViewContextResult.ok) return rawViewContextResult.response;
+    const viewContext = viewContextSchema.safeParse(rawViewContextResult.value ?? undefined);
+    if (!viewContext.success) {
+      return validationError('検索条件が不正です', {
+        view_context: ['対応していない閲覧画面です'],
       });
-      if (!shareCase) return null;
+    }
+    const shouldExposeWorkflowMeta = viewContext.data === 'pharmacy_cooperation_workflow';
 
-      const correctionRequests = await tx.patientShareCorrectionRequest.findMany({
-        where: {
+    const result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const shareCase = await tx.patientShareCase.findFirst({
+          where: { id, org_id: ctx.orgId },
+          select: { id: true, base_patient_id: true },
+        });
+        if (!shareCase) return null;
+
+        const correctionRequestWhere = {
           org_id: ctx.orgId,
           share_case_id: id,
           ...(status ? { status: status.data } : {}),
-        },
-        select: {
-          id: true,
-          share_case_id: true,
-          target_owner: true,
-          target_type: true,
-          target_id: true,
-          field_path: true,
-          request_type: true,
-          status: true,
-          requested_by: true,
-          responded_by: true,
-          resolved_by: true,
-          resolved_at: true,
-          created_at: true,
-          updated_at: true,
-        },
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-      });
-      const page = buildCursorPage(correctionRequests, limit, (row) => row.id);
+        };
+        const correctionRequests = await tx.patientShareCorrectionRequest.findMany({
+          where: correctionRequestWhere,
+          select: {
+            id: true,
+            share_case_id: true,
+            target_owner: true,
+            target_type: true,
+            target_id: true,
+            field_path: true,
+            request_type: true,
+            status: true,
+            requested_by: true,
+            responded_by: true,
+            resolved_by: true,
+            resolved_at: true,
+            created_at: true,
+            updated_at: true,
+          },
+          take: limit + 1,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        });
+        const page = buildCursorPage(correctionRequests, limit, (row) => row.id);
+        let countSummary: { totalCount: number; statusCounts: CorrectionStatusCounts } | null =
+          null;
+        if (shouldExposeWorkflowMeta) {
+          const totalCount = await tx.patientShareCorrectionRequest.count({
+            where: correctionRequestWhere,
+          });
+          const statusRows = await tx.patientShareCorrectionRequest.groupBy({
+            by: ['status'],
+            where: correctionRequestWhere,
+            _count: { _all: true },
+          });
+          countSummary = { totalCount, statusCounts: buildCorrectionStatusCounts(statusRows) };
+        }
 
-      await createAuditLogEntry(tx, ctx, {
-        action: 'patient_share_correction_requests_viewed',
-        targetType: 'PatientShareCorrectionRequest',
-        targetId: id,
-        patientId: shareCase.base_patient_id,
-        changes: {
-          target_screen: 'patient_share_case_correction_requests',
-          viewer_role: ctx.role,
-          share_case_id: id,
-          viewed_count: page.data.length,
-          correction_request_ids: page.data.map((row) => row.id),
-          statuses: [...new Set(page.data.map((row) => row.status))].sort(),
-          has_status_filter: Boolean(status),
-          has_cursor: Boolean(cursor),
-          has_more: page.hasMore,
-          limit,
-        },
-      });
+        await createAuditLogEntry(tx, ctx, {
+          action: 'patient_share_correction_requests_viewed',
+          targetType: 'PatientShareCorrectionRequest',
+          targetId: id,
+          patientId: shareCase.base_patient_id,
+          changes: {
+            target_screen: 'patient_share_case_correction_requests',
+            viewer_role: ctx.role,
+            share_case_id: id,
+            viewed_count: page.data.length,
+            correction_request_ids: page.data.map((row) => row.id),
+            statuses: [...new Set(page.data.map((row) => row.status))].sort(),
+            has_status_filter: Boolean(status),
+            has_cursor: Boolean(cursor),
+            has_more: page.hasMore,
+            limit,
+          },
+        });
 
-      return page;
-    });
+        return { page, countSummary };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
 
-    if (!rows) return notFound('患者共有ケースが見つかりません');
+    if (!result) return notFound('患者共有ケースが見つかりません');
     return success({
-      data: rows.data.map(toPatientShareCorrectionRequestRow),
+      data: result.page.data.map(toPatientShareCorrectionRequestRow),
       meta: {
-        has_more: rows.hasMore,
-        next_cursor: rows.nextCursor ?? null,
+        has_more: result.page.hasMore,
+        next_cursor: result.page.nextCursor ?? null,
+        ...(result.countSummary
+          ? {
+              returned_count: result.page.data.length,
+              total_count: result.countSummary.totalCount,
+              count_basis: 'filtered_query_exact' as const,
+              filters_applied: { status: status?.data ?? null, share_case_id: id },
+              request_cursor: cursor ?? null,
+              status_counts: result.countSummary.statusCounts,
+            }
+          : {}),
       },
     });
   },

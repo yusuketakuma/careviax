@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
@@ -11,6 +12,8 @@ const {
   claimCooperationNoteFindFirstMock,
   visitBillingCandidateFindFirstMock,
   correctionRequestFindManyMock,
+  correctionRequestCountMock,
+  correctionRequestGroupByMock,
   correctionRequestCreateMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
@@ -22,6 +25,8 @@ const {
   claimCooperationNoteFindFirstMock: vi.fn(),
   visitBillingCandidateFindFirstMock: vi.fn(),
   correctionRequestFindManyMock: vi.fn(),
+  correctionRequestCountMock: vi.fn(),
+  correctionRequestGroupByMock: vi.fn(),
   correctionRequestCreateMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
 }));
@@ -137,6 +142,8 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
         response_note: '確認済み',
       },
     ]);
+    correctionRequestCountMock.mockResolvedValue(1);
+    correctionRequestGroupByMock.mockResolvedValue([{ status: 'open', _count: { _all: 1 } }]);
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -157,6 +164,8 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
         },
         patientShareCorrectionRequest: {
           findMany: correctionRequestFindManyMock,
+          count: correctionRequestCountMock,
+          groupBy: correctionRequestGroupByMock,
           create: correctionRequestCreateMock,
         },
       }),
@@ -281,6 +290,51 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
         }),
       }),
     );
+  });
+
+  it('returns exact filtered workflow counts in the same repeatable-read snapshot', async () => {
+    correctionRequestCountMock.mockResolvedValueOnce(9);
+    correctionRequestGroupByMock.mockResolvedValueOnce([{ status: 'open', _count: { _all: 9 } }]);
+
+    const response = await rawGET(
+      createGetRequest(
+        '?limit=8&status=open&cursor=correction_9&view_context=pharmacy_cooperation_workflow',
+      ),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+    });
+    const where = { org_id: 'org_1', share_case_id: 'share_case_1', status: 'open' };
+    expect(correctionRequestCountMock).toHaveBeenCalledWith({ where });
+    expect(correctionRequestGroupByMock).toHaveBeenCalledWith({
+      by: ['status'],
+      where,
+      _count: { _all: true },
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      meta: {
+        returned_count: 1,
+        total_count: 9,
+        count_basis: 'filtered_query_exact',
+        filters_applied: { status: 'open', share_case_id: 'share_case_1' },
+        request_cursor: 'correction_9',
+        status_counts: { open: 9, responded: 0, resolved: 0, cancelled: 0 },
+      },
+    });
+  });
+
+  it('keeps exact workflow counts out of the general correction request API response', async () => {
+    const response = await rawGET(createGetRequest('?limit=8'), routeContext);
+
+    expect(response.status).toBe(200);
+    expect(correctionRequestCountMock).not.toHaveBeenCalled();
+    expect(correctionRequestGroupByMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.meta).not.toHaveProperty('total_count');
+    expect(body.meta).not.toHaveProperty('status_counts');
   });
 
   it.each([

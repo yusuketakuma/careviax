@@ -253,6 +253,63 @@ function createPartnerVisitRecordRow(id: string, status = 'submitted') {
   };
 }
 
+const emptyCorrectionRequestStatusCounts = {
+  open: 0,
+  responded: 0,
+  resolved: 0,
+  cancelled: 0,
+};
+
+function correctionRequestMeta({
+  shareCaseId,
+  returnedCount,
+  totalCount = returnedCount,
+  hasMore = false,
+  nextCursor = null,
+  requestCursor = null,
+  status = null,
+  statusCounts = { ...emptyCorrectionRequestStatusCounts, open: totalCount },
+}: {
+  shareCaseId: string;
+  returnedCount: number;
+  totalCount?: number;
+  hasMore?: boolean;
+  nextCursor?: string | null;
+  requestCursor?: string | null;
+  status?: string | null;
+  statusCounts?: typeof emptyCorrectionRequestStatusCounts;
+}) {
+  return {
+    has_more: hasMore,
+    next_cursor: nextCursor,
+    returned_count: returnedCount,
+    total_count: totalCount,
+    count_basis: 'filtered_query_exact',
+    filters_applied: { status, share_case_id: shareCaseId },
+    request_cursor: requestCursor,
+    status_counts: statusCounts,
+  };
+}
+
+function createCorrectionRequestRow(id: string, shareCaseId: string, status = 'open') {
+  return {
+    id,
+    share_case_id: shareCaseId,
+    target_owner: 'base_pharmacy',
+    target_type: 'patient_profile',
+    target_id: null,
+    field_path: 'notes',
+    request_type: 'correction',
+    status,
+    requested_by: 'partner_user',
+    responded_by: null,
+    resolved_by: null,
+    resolved_at: null,
+    created_at: '2026-06-18T01:00:00.000Z',
+    updated_at: '2026-06-18T01:00:00.000Z',
+  };
+}
+
 function renderContent() {
   return render(<PharmacyCooperationWorkflowContent />, { wrapper: createQueryClientWrapper() });
 }
@@ -421,51 +478,60 @@ describe('PharmacyCooperationWorkflowContent', () => {
             { status: 200 },
           );
         }
-        if (url === '/api/patient-share-cases/share_case_active/correction-requests?limit=8') {
+        if (
+          url ===
+          '/api/patient-share-cases/share_case_active/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow'
+        ) {
           return new Response(
             JSON.stringify({
-              data: [
-                {
-                  id: 'correction_1',
-                  share_case_id: 'share_case_active',
-                  target_owner: 'base_pharmacy',
-                  target_type: 'patient_profile',
-                  target_id: null,
-                  field_path: 'notes',
-                  request_type: 'correction',
-                  status: 'open',
-                  requested_by: 'partner_user',
-                  responded_by: null,
-                  resolved_by: null,
-                  resolved_at: null,
-                  created_at: '2026-06-18T01:00:00.000Z',
-                  updated_at: '2026-06-18T01:00:00.000Z',
-                },
-              ],
-              meta: { has_more: false, next_cursor: null },
+              data: [createCorrectionRequestRow('correction_1', 'share_case_active')],
+              meta: correctionRequestMeta({
+                shareCaseId: 'share_case_active',
+                returnedCount: 1,
+              }),
             }),
             { status: 200 },
           );
         }
-        if (url === '/api/patient-share-cases/share_case_1/correction-requests?limit=8') {
+        if (
+          url ===
+          '/api/patient-share-cases/share_case_1/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow'
+        ) {
           return new Response(
-            JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+            JSON.stringify({
+              data: [],
+              meta: correctionRequestMeta({ shareCaseId: 'share_case_1', returnedCount: 0 }),
+            }),
             { status: 200 },
           );
         }
         if (
-          url === '/api/patient-share-cases/share_case_accept_ready/correction-requests?limit=8'
+          url ===
+          '/api/patient-share-cases/share_case_accept_ready/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow'
         ) {
           return new Response(
-            JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+            JSON.stringify({
+              data: [],
+              meta: correctionRequestMeta({
+                shareCaseId: 'share_case_accept_ready',
+                returnedCount: 0,
+              }),
+            }),
             { status: 200 },
           );
         }
         if (
-          url === '/api/patient-share-cases/share_case_activation_ready/correction-requests?limit=8'
+          url ===
+          '/api/patient-share-cases/share_case_activation_ready/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow'
         ) {
           return new Response(
-            JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+            JSON.stringify({
+              data: [],
+              meta: correctionRequestMeta({
+                shareCaseId: 'share_case_activation_ready',
+                returnedCount: 0,
+              }),
+            }),
             { status: 200 },
           );
         }
@@ -987,7 +1053,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
       }
       if (
         url === '/api/patient-share-cases/share_case_legacy/consents?limit=8' ||
-        url === '/api/patient-share-cases/share_case_legacy/correction-requests?limit=8'
+        url ===
+          '/api/patient-share-cases/share_case_legacy/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow'
       ) {
         return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
       }
@@ -1839,12 +1906,24 @@ describe('PharmacyCooperationWorkflowContent', () => {
           { status: 200 },
         );
       }
-      if (
-        url === '/api/patient-share-cases/share_case_page_01/consents?limit=8' ||
-        url === '/api/patient-share-cases/share_case_page_01/correction-requests?limit=8'
-      ) {
+      if (url === '/api/patient-share-cases/share_case_page_01/consents?limit=8') {
         return new Response(
           JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_page_01/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [],
+            meta: correctionRequestMeta({
+              shareCaseId: 'share_case_page_01',
+              returnedCount: 0,
+            }),
+          }),
           { status: 200 },
         );
       }
@@ -1955,12 +2034,24 @@ describe('PharmacyCooperationWorkflowContent', () => {
           { status: 200 },
         );
       }
-      if (
-        url === '/api/patient-share-cases/share_case_retry_01/consents?limit=8' ||
-        url === '/api/patient-share-cases/share_case_retry_01/correction-requests?limit=8'
-      ) {
+      if (url === '/api/patient-share-cases/share_case_retry_01/consents?limit=8') {
         return new Response(
           JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_retry_01/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [],
+            meta: correctionRequestMeta({
+              shareCaseId: 'share_case_retry_01',
+              returnedCount: 0,
+            }),
+          }),
           { status: 200 },
         );
       }
@@ -2467,6 +2558,195 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(screen.getAllByText(/1訪問固定/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/単価 5,500円/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/見積済み/).length).toBeGreaterThan(0);
+  });
+
+  it('loads a ninth correction request through the exact cursor continuation', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    const firstPageRows = Array.from({ length: 8 }, (_, index) =>
+      createCorrectionRequestRow(
+        `correction_page_${String(index + 1).padStart(2, '0')}`,
+        'share_case_active',
+      ),
+    );
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_active/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: firstPageRows,
+            meta: correctionRequestMeta({
+              shareCaseId: 'share_case_active',
+              returnedCount: 8,
+              totalCount: 9,
+              hasMore: true,
+              nextCursor: 'correction_page_08',
+              statusCounts: { ...emptyCorrectionRequestStatusCounts, open: 9 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_active/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow&cursor=correction_page_08'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [createCorrectionRequestRow('correction_page_09', 'share_case_active')],
+            meta: correctionRequestMeta({
+              shareCaseId: 'share_case_active',
+              returnedCount: 1,
+              totalCount: 9,
+              requestCursor: 'correction_page_08',
+              statusCounts: { ...emptyCorrectionRequestStatusCounts, open: 9 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    expect(await screen.findByText('修正依頼 読込済み 8 / 全 9 件')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '修正依頼をさらに読み込む' }));
+
+    expect((await screen.findAllByText('correction_page_09')).length).toBeGreaterThan(0);
+    expect(screen.getByText('修正依頼 読込済み 9 / 全 9 件（全件読込済み）')).toBeTruthy();
+  });
+
+  it('starts a fresh correction-request scope when the status filter changes', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_active/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow&status=resolved'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              createCorrectionRequestRow('correction_resolved', 'share_case_active', 'resolved'),
+            ],
+            meta: correctionRequestMeta({
+              shareCaseId: 'share_case_active',
+              returnedCount: 1,
+              status: 'resolved',
+              statusCounts: { ...emptyCorrectionRequestStatusCounts, resolved: 1 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    await screen.findAllByText('correction_1');
+    fireEvent.change(screen.getByRole('combobox', { name: '修正依頼状態' }), {
+      target: { value: 'resolved' },
+    });
+
+    expect((await screen.findAllByText('correction_resolved')).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('correction_1')).toHaveLength(0);
+    expect(screen.getByText('修正依頼 読込済み 1 / 全 1 件（全件読込済み）')).toBeTruthy();
+  });
+
+  it('retains loaded correction requests and retries a failed continuation', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    const firstPageRows = Array.from({ length: 8 }, (_, index) =>
+      createCorrectionRequestRow(
+        `correction_retry_${String(index + 1).padStart(2, '0')}`,
+        'share_case_active',
+      ),
+    );
+    let continuationAttempts = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_active/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: firstPageRows,
+            meta: correctionRequestMeta({
+              shareCaseId: 'share_case_active',
+              returnedCount: 8,
+              totalCount: 9,
+              hasMore: true,
+              nextCursor: 'correction_retry_08',
+              statusCounts: { ...emptyCorrectionRequestStatusCounts, open: 9 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_active/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow&cursor=correction_retry_08'
+      ) {
+        continuationAttempts += 1;
+        if (continuationAttempts === 1) {
+          return new Response(JSON.stringify({ code: 'TEMPORARY_FAILURE' }), { status: 503 });
+        }
+        return new Response(
+          JSON.stringify({
+            data: [createCorrectionRequestRow('correction_retry_09', 'share_case_active')],
+            meta: correctionRequestMeta({
+              shareCaseId: 'share_case_active',
+              returnedCount: 1,
+              totalCount: 9,
+              requestCursor: 'correction_retry_08',
+              statusCounts: { ...emptyCorrectionRequestStatusCounts, open: 9 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    await screen.findByText('修正依頼 読込済み 8 / 全 9 件');
+    fireEvent.click(screen.getByRole('button', { name: '修正依頼をさらに読み込む' }));
+
+    const errorHeading = await screen.findByText('修正依頼の続きを読み込めませんでした');
+    expect(screen.getAllByText('correction_retry_01').length).toBeGreaterThan(0);
+    expect(errorHeading).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+
+    expect((await screen.findAllByText('correction_retry_09')).length).toBeGreaterThan(0);
+    expect(continuationAttempts).toBe(2);
+  });
+
+  it('rejects legacy correction-request pages without exact workflow metadata', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_active/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
+        return new Response(
+          JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
+    expect(screen.queryByText('修正依頼 読込済み 0 / 全 0 件')).toBeNull();
   });
 
   it('creates and lists correction requests without rendering raw reason or proposed value', async () => {

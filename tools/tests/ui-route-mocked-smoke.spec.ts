@@ -1426,6 +1426,7 @@ async function installPharmacyCooperationRouteMocks(
   const requests = {
     patientShareCases: [] as CapturedRouteRequest[],
     patientShareConsents: [] as CapturedRouteRequest[],
+    correctionRequests: [] as CapturedRouteRequest[],
     patientLinks: [] as CapturedRouteRequest[],
     shareCaseActivations: [] as CapturedRouteRequest[],
     visitRequests: [] as CapturedRouteRequest[],
@@ -1637,7 +1638,25 @@ async function installPharmacyCooperationRouteMocks(
   await page.route(
     apiPathPattern(`/api/patient-share-cases/${PHARMACY_COOP_SHARE_CASE_ID}/correction-requests`),
     async (route) => {
-      await fulfillJson(route, { data: [], meta: { has_more: false, next_cursor: null } });
+      const request = captureRouteRequest(route);
+      requests.correctionRequests.push(request);
+      const url = new URL(request.url);
+      await fulfillJson(route, {
+        data: [],
+        meta: {
+          has_more: false,
+          next_cursor: null,
+          returned_count: 0,
+          total_count: 0,
+          count_basis: 'filtered_query_exact',
+          filters_applied: {
+            status: url.searchParams.get('status'),
+            share_case_id: PHARMACY_COOP_SHARE_CASE_ID,
+          },
+          request_cursor: url.searchParams.get('cursor'),
+          status_counts: { open: 0, responded: 0, resolved: 0, cancelled: 0 },
+        },
+      });
     },
   );
 
@@ -3849,6 +3868,39 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       .toBe(true);
     await page.getByLabel('協力訪問記録状態').selectOption('all');
     await expect(recordRow).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const overflowWidth = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflowWidth).toBeLessThanOrEqual(1);
+    expect(errors).toEqual([]);
+  });
+
+  test('keeps correction-request exact counts and server cursor filters accessible', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    const requests = await installPharmacyCooperationRouteMocks(page);
+
+    await openStableRoute(page, '/workflow/pharmacy-cooperation');
+    await expect(page.getByLabel('修正依頼状態')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('修正依頼 読込済み 0 / 全 0 件（全件読込済み）')).toBeVisible();
+
+    await page.getByLabel('修正依頼状態').selectOption('open');
+    await expect
+      .poll(
+        () =>
+          requests.correctionRequests.some((request) => {
+            if (request.method !== 'GET') return false;
+            const searchParams = new URL(request.url).searchParams;
+            return searchParams.get('status') === 'open' && !searchParams.has('cursor');
+          }),
+        { message: 'correction-request status changes should start a fresh cursor chain' },
+      )
+      .toBe(true);
 
     await page.setViewportSize({ width: 390, height: 844 });
     const overflowWidth = await page.evaluate(

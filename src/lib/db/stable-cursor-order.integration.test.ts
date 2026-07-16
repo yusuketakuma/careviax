@@ -268,6 +268,64 @@ async function fetchPartnerVisitRecordWorkflowPage(
   };
 }
 
+async function fetchCorrectionRequestWorkflowPage(
+  client: PoolClient,
+  cursor: string | null,
+): Promise<CursorPage & { totalCount: number }> {
+  const result = await client.query<BillingOrderedRow>(
+    `WITH rows AS (
+       SELECT
+         'correction_request_' || lpad(series::text, 2, '0') AS id,
+         TIMESTAMPTZ '2026-07-16 00:00:00+00' AS created_at,
+         'share_case_1'::text AS share_case_id,
+         'open'::text AS status
+       FROM generate_series(1, 9) AS series
+       UNION ALL
+       SELECT
+         'correction_request_other_case',
+         TIMESTAMPTZ '2026-07-16 00:00:00+00',
+         'share_case_2',
+         'open'
+       UNION ALL
+       SELECT
+         'correction_request_resolved',
+         TIMESTAMPTZ '2026-07-16 00:00:00+00',
+         'share_case_1',
+         'resolved'
+     ),
+     filtered AS (
+       SELECT *
+       FROM rows
+       WHERE share_case_id = $1::text
+         AND status = $2::text
+     ),
+     cursor_row AS (
+       SELECT created_at, id
+       FROM filtered
+       WHERE id = $3::text
+     )
+     SELECT
+       filtered.id,
+       (SELECT count(*)::text FROM filtered) AS total_count
+     FROM filtered
+     LEFT JOIN cursor_row ON true
+     WHERE $3::text IS NULL
+        OR (filtered.created_at, filtered.id) < (cursor_row.created_at, cursor_row.id)
+     ORDER BY filtered.created_at DESC, filtered.id DESC
+     LIMIT $4`,
+    ['share_case_1', 'open', cursor, 9],
+  );
+  const hasMore = result.rows.length > 8;
+  const visibleRows = hasMore ? result.rows.slice(0, 8) : result.rows;
+
+  return {
+    ids: visibleRows.map((row) => row.id),
+    hasMore,
+    nextCursor: hasMore ? (visibleRows[visibleRows.length - 1]?.id ?? null) : null,
+    totalCount: Number(result.rows[0]?.total_count ?? 0),
+  };
+}
+
 describeDatabase('stable cursor ordering (PAGINATION_ORDER_DATABASE_URL)', () => {
   it('returns equal-key rows exactly once across two limit-plus-one pages', async () => {
     expect(databaseUrl).toBeTruthy();
@@ -470,6 +528,49 @@ describeDatabase('stable cursor ordering (PAGINATION_ORDER_DATABASE_URL)', () =>
         });
         expect(new Set(allIds).size).toBe(9);
         expect(allIds).not.toContain('partner_record_confirmed');
+      } finally {
+        try {
+          await client.query('ROLLBACK');
+        } finally {
+          client.release();
+        }
+      }
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it('keeps a share-case correction-request 8/9 cursor chain exact across equal keys', async () => {
+    expect(databaseUrl).toBeTruthy();
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      max: 1,
+      connectionTimeoutMillis: 3_000,
+    });
+
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN READ ONLY');
+        const firstPage = await fetchCorrectionRequestWorkflowPage(client, null);
+        const secondPage = await fetchCorrectionRequestWorkflowPage(client, firstPage.nextCursor);
+        const allIds = [...firstPage.ids, ...secondPage.ids];
+
+        expect(firstPage).toMatchObject({
+          hasMore: true,
+          nextCursor: 'correction_request_02',
+          totalCount: 9,
+        });
+        expect(firstPage.ids).toHaveLength(8);
+        expect(secondPage).toEqual({
+          ids: ['correction_request_01'],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 9,
+        });
+        expect(new Set(allIds).size).toBe(9);
+        expect(allIds).not.toContain('correction_request_other_case');
+        expect(allIds).not.toContain('correction_request_resolved');
       } finally {
         try {
           await client.query('ROLLBACK');

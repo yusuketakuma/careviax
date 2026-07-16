@@ -44,7 +44,6 @@ import {
 } from '@/lib/pharmacy-cooperation/api-contracts';
 import { buildPartnerVisitRecordApiPath } from '@/lib/pharmacy-cooperation/navigation';
 import {
-  patientShareCorrectionRequestPageSchema,
   patientShareCorrectionRequestRowSchema,
   type PatientShareCorrectionRequestRow,
   type PatientShareCorrectionRequestType as CorrectionRequestType,
@@ -242,6 +241,134 @@ type LinkAcceptForm = {
 };
 
 type CorrectionRequestRow = PatientShareCorrectionRequestRow;
+const correctionRequestStatuses = ['open', 'responded', 'resolved', 'cancelled'] as const;
+type CorrectionRequestStatus = (typeof correctionRequestStatuses)[number];
+type CorrectionRequestStatusCounts = Record<CorrectionRequestStatus, number>;
+type CorrectionRequestPage = CursorPaginatedPage<CorrectionRequestRow> & {
+  total_count: number;
+  returned_count: number;
+  count_basis: 'filtered_query_exact';
+  filters_applied: { status: CorrectionRequestStatus | null; share_case_id: string };
+  request_cursor: string | null;
+  status_counts: CorrectionRequestStatusCounts;
+};
+type CorrectionRequestAggregate = {
+  rows: CorrectionRequestRow[];
+  totalCount: number;
+  statusCounts: CorrectionRequestStatusCounts;
+  scopeComplete: boolean;
+  contractError: string | null;
+};
+
+function createEmptyCorrectionRequestStatusCounts(): CorrectionRequestStatusCounts {
+  return Object.fromEntries(
+    correctionRequestStatuses.map((status) => [status, 0]),
+  ) as CorrectionRequestStatusCounts;
+}
+
+function aggregateCorrectionRequestPages(
+  pages: CorrectionRequestPage[],
+): CorrectionRequestAggregate {
+  const firstPage = pages[0];
+  if (!firstPage) {
+    return {
+      rows: [],
+      totalCount: 0,
+      statusCounts: createEmptyCorrectionRequestStatusCounts(),
+      scopeComplete: false,
+      contractError: null,
+    };
+  }
+  const rows: CorrectionRequestRow[] = [];
+  const seenIds = new Set<string>();
+  const seenCursors = new Set<string>();
+  const expectedCounts = JSON.stringify(firstPage.status_counts);
+  const expectedFilters = JSON.stringify(firstPage.filters_applied);
+  for (const [index, page] of pages.entries()) {
+    const previous = pages[index - 1];
+    if (page.total_count !== firstPage.total_count) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        statusCounts: firstPage.status_counts,
+        scopeComplete: false,
+        contractError: '修正依頼の総件数がページ間で一致しません。',
+      };
+    }
+    if (
+      JSON.stringify(page.status_counts) !== expectedCounts ||
+      JSON.stringify(page.filters_applied) !== expectedFilters
+    ) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        statusCounts: firstPage.status_counts,
+        scopeComplete: false,
+        contractError: '修正依頼の検索範囲がページ間で一致しません。',
+      };
+    }
+    if (index === 0 ? page.request_cursor !== null : page.request_cursor !== previous?.nextCursor) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        statusCounts: firstPage.status_counts,
+        scopeComplete: false,
+        contractError: '修正依頼のカーソル連鎖が一致しません。',
+      };
+    }
+    for (const row of page.data) {
+      if (seenIds.has(row.id)) {
+        return {
+          rows,
+          totalCount: firstPage.total_count,
+          statusCounts: firstPage.status_counts,
+          scopeComplete: false,
+          contractError: '修正依頼に重複した行が含まれています。',
+        };
+      }
+      seenIds.add(row.id);
+      rows.push(row);
+    }
+    if (page.nextCursor) {
+      if (seenCursors.has(page.nextCursor)) {
+        return {
+          rows,
+          totalCount: firstPage.total_count,
+          statusCounts: firstPage.status_counts,
+          scopeComplete: false,
+          contractError: '修正依頼のカーソルが循環しています。',
+        };
+      }
+      seenCursors.add(page.nextCursor);
+    }
+  }
+  const lastPage = pages[pages.length - 1];
+  if (rows.length > firstPage.total_count) {
+    return {
+      rows,
+      totalCount: firstPage.total_count,
+      statusCounts: firstPage.status_counts,
+      scopeComplete: false,
+      contractError: '修正依頼の読込件数が総件数を超えています。',
+    };
+  }
+  if (lastPage && !lastPage.hasMore && rows.length !== firstPage.total_count) {
+    return {
+      rows,
+      totalCount: firstPage.total_count,
+      statusCounts: firstPage.status_counts,
+      scopeComplete: false,
+      contractError: '修正依頼の終端件数が総件数と一致しません。',
+    };
+  }
+  return {
+    rows,
+    totalCount: firstPage.total_count,
+    statusCounts: firstPage.status_counts,
+    scopeComplete: Boolean(lastPage && !lastPage.hasMore && rows.length === firstPage.total_count),
+    contractError: null,
+  };
+}
 
 type PatientShareConsentRow = {
   id: string;
@@ -1170,7 +1297,82 @@ const partnerVisitRecordPageSchema: z.ZodType<PartnerVisitRecordPage> = z
 const partnerVisitRecordResponseSchema = z.object({
   data: partnerVisitRecordRowSchema,
 });
-const correctionRequestPageSchema = patientShareCorrectionRequestPageSchema;
+const correctionRequestStatusCountsSchema = z.object({
+  open: z.number().int().nonnegative(),
+  responded: z.number().int().nonnegative(),
+  resolved: z.number().int().nonnegative(),
+  cancelled: z.number().int().nonnegative(),
+});
+const correctionRequestPageSchema: z.ZodType<CorrectionRequestPage> = z
+  .object({
+    data: z.array(patientShareCorrectionRequestRowSchema),
+    meta: z
+      .object({
+        has_more: z.boolean(),
+        next_cursor: z.string().trim().min(1).nullable(),
+        returned_count: z.number().int().nonnegative(),
+        total_count: z.number().int().nonnegative(),
+        count_basis: z.literal('filtered_query_exact'),
+        filters_applied: z
+          .object({
+            status: z.enum(correctionRequestStatuses).nullable(),
+            share_case_id: z.string().trim().min(1),
+          })
+          .strict(),
+        request_cursor: z.string().trim().min(1).nullable(),
+        status_counts: correctionRequestStatusCountsSchema,
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const statusTotal = correctionRequestStatuses.reduce(
+      (sum, status) => sum + value.meta.status_counts[status],
+      0,
+    );
+    if (value.meta.has_more && !value.meta.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor is required when has_more is true',
+      });
+    }
+    if (value.meta.next_cursor && value.meta.next_cursor === value.meta.request_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor must advance beyond request_cursor',
+      });
+    }
+    if (value.meta.returned_count !== value.data.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'returned_count'],
+        message: 'returned_count must match data length',
+      });
+    }
+    if (
+      value.meta.total_count < value.meta.returned_count ||
+      statusTotal !== value.meta.total_count
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'total_count'],
+        message: 'total_count must match status counts and returned scope',
+      });
+    }
+  })
+  .transform(({ data, meta }) => ({
+    data,
+    hasMore: meta.has_more,
+    ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
+    returned_count: meta.returned_count,
+    total_count: meta.total_count,
+    count_basis: meta.count_basis,
+    filters_applied: meta.filters_applied,
+    request_cursor: meta.request_cursor,
+    status_counts: meta.status_counts,
+  }));
 const correctionRequestResponseSchema = apiDataSchema(
   patientShareCorrectionRequestRowSchema,
 ).transform(({ data }) => data);
@@ -1400,17 +1602,34 @@ async function fetchPartnerVisitRecords(
   return page;
 }
 
-async function fetchCorrectionRequests(orgId: string, shareCaseId: string) {
+async function fetchCorrectionRequests(
+  orgId: string,
+  shareCaseId: string,
+  cursor: string | null,
+  status: CorrectionRequestStatus | null,
+) {
+  const params = new URLSearchParams({
+    limit: '8',
+    view_context: 'pharmacy_cooperation_workflow',
+  });
+  if (status) params.set('status', status);
+  if (cursor) params.set('cursor', cursor);
   const response = await fetch(
-    `/api/patient-share-cases/${shareCaseId}/correction-requests?limit=8`,
-    {
-      headers: buildOrgHeaders(orgId),
-    },
+    `/api/patient-share-cases/${shareCaseId}/correction-requests?${params.toString()}`,
+    { headers: buildOrgHeaders(orgId) },
   );
-  return readApiJson<CursorPaginatedPage<CorrectionRequestRow>>(response, {
+  const page = await readApiJson<CorrectionRequestPage>(response, {
     fallbackMessage: '修正依頼の取得に失敗しました',
     schema: correctionRequestPageSchema,
   });
+  if (
+    page.request_cursor !== cursor ||
+    page.filters_applied.status !== status ||
+    page.filters_applied.share_case_id !== shareCaseId
+  ) {
+    throw new Error('修正依頼の検索条件が応答と一致しません');
+  }
+  return page;
 }
 
 async function fetchPatientShareConsents(orgId: string, shareCaseId: string) {
@@ -3357,8 +3576,16 @@ function CorrectionRequestsPanel({
   isLoading,
   isError,
   error,
+  statusFilter,
+  setStatusFilter,
+  countLabel,
+  isFetchNextPageError,
+  hasNextPage,
+  isFetchingNextPage,
   isBusy,
   onRetry,
+  onRetryNextPage,
+  onLoadNextPage,
   onCreate,
 }: {
   shareCases: PatientShareCaseRow[];
@@ -3370,8 +3597,16 @@ function CorrectionRequestsPanel({
   isLoading: boolean;
   isError: boolean;
   error: unknown;
+  statusFilter: CorrectionRequestStatus | 'all';
+  setStatusFilter: (status: CorrectionRequestStatus | 'all') => void;
+  countLabel: string;
+  isFetchNextPageError: boolean;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
   isBusy: boolean;
   onRetry: () => void;
+  onRetryNextPage: () => void;
+  onLoadNextPage: () => void;
   onCreate: () => void;
 }) {
   const selectedShareCase = shareCases.find((row) => row.id === selectedShareCaseId) ?? null;
@@ -3519,31 +3754,72 @@ function CorrectionRequestsPanel({
       </div>
 
       <QueryFallback isLoading={isLoading} isError={isError} error={error} onRetry={onRetry}>
-        {correctionRequests.length === 0 ? (
-          <EmptyState title="修正依頼はまだありません" />
-        ) : (
-          <DataTable
-            columns={correctionRequestColumns}
-            data={correctionRequests}
-            caption="修正依頼一覧"
-            getRowId={(row) => row.id}
-            getRowA11yLabel={(row) =>
-              `${row.id} ${CORRECTION_TARGET_LABELS[row.target_type] ?? row.target_type} ${statusLabel(
-                row.status,
-              )}`
-            }
-            emptyMessage="修正依頼はまだありません"
-            toolbar={{
-              enableGlobalFilter: true,
-              globalFilterPlaceholder: '修正依頼内検索',
-              enableColumnVisibility: true,
-              filterFields: [
-                { columnId: 'target', label: '対象', placeholder: '対象で絞り込み' },
-                { columnId: 'status', label: '状態', placeholder: '状態で絞り込み' },
-              ],
-            }}
-          />
-        )}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <label className="flex min-w-48 flex-col gap-1">
+              <FieldLabel>修正依頼状態</FieldLabel>
+              <NativeSelect
+                value={statusFilter}
+                onChange={(value) => setStatusFilter(value as CorrectionRequestStatus | 'all')}
+                ariaLabel="修正依頼状態"
+              >
+                <option value="all">すべて</option>
+                {correctionRequestStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {statusLabel(status)}
+                  </option>
+                ))}
+              </NativeSelect>
+            </label>
+            <p className="text-xs text-muted-foreground tabular-nums" role="status">
+              {countLabel}
+            </p>
+          </div>
+          {correctionRequests.length === 0 ? (
+            <EmptyState title="修正依頼はまだありません" />
+          ) : (
+            <DataTable
+              columns={correctionRequestColumns}
+              data={correctionRequests}
+              caption="修正依頼一覧"
+              getRowId={(row) => row.id}
+              getRowA11yLabel={(row) =>
+                `${row.id} ${CORRECTION_TARGET_LABELS[row.target_type] ?? row.target_type} ${statusLabel(
+                  row.status,
+                )}`
+              }
+              emptyMessage="修正依頼はまだありません"
+              toolbar={{
+                enableGlobalFilter: true,
+                globalFilterPlaceholder: '修正依頼内検索',
+                enableColumnVisibility: true,
+                filterFields: [
+                  { columnId: 'target', label: '対象', placeholder: '対象で絞り込み' },
+                  { columnId: 'status', label: '状態', placeholder: '状態で絞り込み' },
+                ],
+              }}
+            />
+          )}
+          {isFetchNextPageError ? (
+            <ErrorState
+              title="修正依頼の続きを読み込めませんでした"
+              description="読み込み済みの修正依頼は保持されています。"
+              onRetry={onRetryNextPage}
+            />
+          ) : null}
+          {hasNextPage ? (
+            <div className="flex justify-center">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isFetchingNextPage}
+                onClick={onLoadNextPage}
+              >
+                {isFetchingNextPage ? '読み込み中…' : '修正依頼をさらに読み込む'}
+              </Button>
+            </div>
+          ) : null}
+        </div>
       </QueryFallback>
     </div>
   );
@@ -3754,6 +4030,9 @@ export function PharmacyCooperationWorkflowContent() {
   const [partnerVisitRecordStatusFilter, setPartnerVisitRecordStatusFilter] = useState<
     PartnerVisitRecordStatus | 'all'
   >('all');
+  const [correctionRequestStatusFilter, setCorrectionRequestStatusFilter] = useState<
+    CorrectionRequestStatus | 'all'
+  >('all');
   const enabled = Boolean(orgId);
 
   const shareCasesQuery = useInfiniteQuery({
@@ -3884,9 +4163,22 @@ export function PharmacyCooperationWorkflowContent() {
     ? selectedMessageVisitRequestId
     : '';
 
-  const correctionRequestsQuery = useQuery({
-    queryKey: ['pharmacy-cooperation-correction-requests', orgId, effectiveCorrectionShareCaseId],
-    queryFn: () => fetchCorrectionRequests(orgId, effectiveCorrectionShareCaseId),
+  const correctionRequestsQuery = useInfiniteQuery({
+    queryKey: [
+      'pharmacy-cooperation-correction-requests',
+      orgId,
+      effectiveCorrectionShareCaseId,
+      correctionRequestStatusFilter,
+    ],
+    queryFn: ({ pageParam }) =>
+      fetchCorrectionRequests(
+        orgId,
+        effectiveCorrectionShareCaseId,
+        pageParam,
+        correctionRequestStatusFilter === 'all' ? null : correctionRequestStatusFilter,
+      ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
     enabled: enabled && effectiveCorrectionShareCaseId.length > 0,
     staleTime: 20_000,
   });
@@ -4481,7 +4773,14 @@ export function PharmacyCooperationWorkflowContent() {
     }
   };
 
-  const correctionRequests = correctionRequestsQuery.data?.data ?? [];
+  const correctionRequestPages = correctionRequestsQuery.data?.pages ?? [];
+  const correctionRequestAggregate = aggregateCorrectionRequestPages(correctionRequestPages);
+  const correctionRequests = correctionRequestAggregate.rows;
+  const correctionRequestCountLabel = `修正依頼 読込済み ${correctionRequests.length} / 全 ${correctionRequestAggregate.totalCount} 件${
+    correctionRequestAggregate.scopeComplete ? '（全件読込済み）' : ''
+  }`;
+  const correctionRequestInitialError =
+    correctionRequestsQuery.isError && correctionRequestPages.length === 0;
   const patientShareConsents = patientShareConsentsQuery.data?.data ?? [];
   const messageThreads = messageThreadsQuery.data?.data ?? [];
   const submittedRecordCount = partnerVisitRecordAggregate.statusCounts.submitted;
@@ -4690,10 +4989,22 @@ export function PharmacyCooperationWorkflowContent() {
           correctionForm={correctionForm}
           setCorrectionForm={setCorrectionForm}
           isLoading={correctionRequestsQuery.isLoading}
-          isError={correctionRequestsQuery.isError}
-          error={correctionRequestsQuery.error}
+          isError={
+            correctionRequestInitialError || Boolean(correctionRequestAggregate.contractError)
+          }
+          error={correctionRequestAggregate.contractError ?? correctionRequestsQuery.error}
+          statusFilter={correctionRequestStatusFilter}
+          setStatusFilter={setCorrectionRequestStatusFilter}
+          countLabel={correctionRequestCountLabel}
+          isFetchNextPageError={
+            correctionRequestsQuery.isFetchNextPageError && correctionRequestPages.length > 0
+          }
+          hasNextPage={Boolean(correctionRequestsQuery.hasNextPage)}
+          isFetchingNextPage={correctionRequestsQuery.isFetchingNextPage}
           isBusy={isBusy}
           onRetry={() => void correctionRequestsQuery.refetch()}
+          onRetryNextPage={() => void correctionRequestsQuery.fetchNextPage()}
+          onLoadNextPage={() => void correctionRequestsQuery.fetchNextPage()}
           onCreate={() => createCorrectionRequestMutation.mutate()}
         />
       </SectionShell>
