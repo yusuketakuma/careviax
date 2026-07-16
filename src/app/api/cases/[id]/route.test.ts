@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  withAuthContextMock,
   careCaseFindFirstMock,
   firstVisitDocumentFindFirstMock,
   recordPhiReadAuditForRequestMock,
@@ -13,22 +14,65 @@ const {
   writePatientFieldRevisionsMock,
   createAuditLogEntryMock,
   withOrgContextMock,
-} = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  careCaseFindFirstMock: vi.fn(),
-  firstVisitDocumentFindFirstMock: vi.fn(),
-  recordPhiReadAuditForRequestMock: vi.fn(),
-  txCareCaseFindFirstMock: vi.fn(),
-  careCaseUpdateManyMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
-  membershipFindManyMock: vi.fn(),
-  writePatientFieldRevisionsMock: vi.fn(),
-  createAuditLogEntryMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-}));
+} = vi.hoisted(() => {
+  const requireAuthContextMock = vi.fn();
+  const withAuthContextMock = vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: string },
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) => {
+      return async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+        const authResult = await requireAuthContextMock(req, options);
+        let response: Response;
+        if (authResult && typeof authResult === 'object' && 'response' in authResult) {
+          response = authResult.response;
+        } else {
+          try {
+            response = await handler(req, authResult.ctx, routeContext);
+          } catch {
+            response = new Response(
+              JSON.stringify({
+                code: 'INTERNAL_ERROR',
+                message: 'サーバー内部でエラーが発生しました',
+              }),
+              { status: 500, headers: { 'Content-Type': 'application/json' } },
+            );
+          }
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('X-Request-Id', '00000000-0000-4000-8000-000000000001');
+        response.headers.set(
+          'X-Correlation-Id',
+          req.headers.get('x-correlation-id') ?? '00000000-0000-4000-8000-000000000001',
+        );
+        return response;
+      };
+    },
+  );
+
+  return {
+    requireAuthContextMock,
+    withAuthContextMock,
+    careCaseFindFirstMock: vi.fn(),
+    firstVisitDocumentFindFirstMock: vi.fn(),
+    recordPhiReadAuditForRequestMock: vi.fn(),
+    txCareCaseFindFirstMock: vi.fn(),
+    careCaseUpdateManyMock: vi.fn(),
+    membershipFindFirstMock: vi.fn(),
+    membershipFindManyMock: vi.fn(),
+    writePatientFieldRevisionsMock: vi.fn(),
+    createAuditLogEntryMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+  };
+});
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -61,7 +105,9 @@ vi.mock('@/lib/db/rls', () => ({
 import { GET, PATCH } from './route';
 
 function createGetRequest() {
-  return new NextRequest('http://localhost/api/cases/case_1');
+  return new NextRequest('http://localhost/api/cases/case_1', {
+    headers: { 'x-correlation-id': 'case_get_test' },
+  });
 }
 
 function createPatchRequest(body: unknown) {
@@ -71,7 +117,7 @@ function createPatchRequest(body: unknown) {
       : body;
   return new NextRequest('http://localhost/api/cases/case_1', {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-correlation-id': 'case_patch_test' },
     body: JSON.stringify(payload),
   });
 }
@@ -79,7 +125,7 @@ function createPatchRequest(body: unknown) {
 function createMalformedPatchRequest() {
   return new NextRequest('http://localhost/api/cases/case_1', {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-correlation-id': 'case_patch_test' },
     body: '{"primary_pharmacist_id":',
   });
 }
@@ -157,6 +203,8 @@ describe('/api/cases/[id]', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(response.headers.get('X-Request-Id')).toBe('00000000-0000-4000-8000-000000000001');
+    expect(response.headers.get('X-Correlation-Id')).toBe('case_get_test');
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
       permission: 'canViewDashboard',
       message: 'ケース参照の権限がありません',
@@ -340,6 +388,10 @@ describe('/api/cases/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(response.headers.get('X-Request-Id')).toBe('00000000-0000-4000-8000-000000000001');
+    expect(response.headers.get('X-Correlation-Id')).toBe('case_patch_test');
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
       permission: 'canVisit',
       message: 'ケース更新の権限がありません',
@@ -538,6 +590,31 @@ describe('/api/cases/[id]', () => {
 
     expect(response.status).toBe(403);
     expect(txCareCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
+    expect(writePatientFieldRevisionsMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when the case update transaction fails unexpectedly', async () => {
+    membershipFindFirstMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 東京都千代田区1-1-1 raw case update failure'),
+    );
+
+    const response = (await PATCH(createPatchRequest({ notes: 'updated' }), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(response.headers.get('X-Correlation-Id')).toBe('case_patch_test');
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('東京都千代田区1-1-1');
     expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
     expect(writePatientFieldRevisionsMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();

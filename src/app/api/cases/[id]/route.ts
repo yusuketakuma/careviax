@@ -1,22 +1,13 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { normalizeJsonInput } from '@/lib/db/json';
-import {
-  success,
-  validationError,
-  notFound,
-  internalError,
-  conflict,
-  forbidden,
-} from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { success, validationError, notFound, conflict, forbidden } from '@/lib/api/response';
 import { updateCaseSchema } from '@/lib/validations/case';
 import { prisma } from '@/lib/db/client';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -58,14 +49,11 @@ function toRevisionValue(value: unknown): unknown {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: 'ケース参照の権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function caseGET(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('ケースIDが不正です');
@@ -122,23 +110,16 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   });
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(caseGET, {
+  permission: 'canViewDashboard',
+  message: 'ケース参照の権限がありません',
+});
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: 'ケース更新の権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function casePATCH(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('ケースIDが不正です');
@@ -316,3 +297,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (result instanceof Response) return result;
   return success({ data: result });
 }
+
+export const PATCH = withAuthContext(casePATCH, {
+  permission: 'canVisit',
+  message: 'ケース更新の権限がありません',
+});
