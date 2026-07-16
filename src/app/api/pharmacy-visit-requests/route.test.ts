@@ -6,6 +6,8 @@ const {
   withOrgContextMock,
   acquireAdvisoryTxLockMock,
   pharmacyVisitRequestFindManyMock,
+  pharmacyVisitRequestCountMock,
+  pharmacyVisitRequestGroupByMock,
   patientShareCaseFindFirstMock,
   pharmacyContractFindFirstMock,
   pharmacyContractVersionFindFirstMock,
@@ -15,6 +17,8 @@ const {
   withOrgContextMock: vi.fn(),
   acquireAdvisoryTxLockMock: vi.fn(),
   pharmacyVisitRequestFindManyMock: vi.fn(),
+  pharmacyVisitRequestCountMock: vi.fn(),
+  pharmacyVisitRequestGroupByMock: vi.fn(),
   patientShareCaseFindFirstMock: vi.fn(),
   pharmacyContractFindFirstMock: vi.fn(),
   pharmacyContractVersionFindFirstMock: vi.fn(),
@@ -203,6 +207,10 @@ describe('/api/pharmacy-visit-requests', () => {
         partnership: { id: 'partnership_1', base_site: { id: 'site_1', name: '基幹薬局' } },
       },
     ]);
+    pharmacyVisitRequestCountMock.mockResolvedValue(1);
+    pharmacyVisitRequestGroupByMock.mockResolvedValue([
+      { status: 'requested', _count: { _all: 1 } },
+    ]);
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -220,6 +228,8 @@ describe('/api/pharmacy-visit-requests', () => {
             ((await pharmacyVisitRequestFindManyMock(...args)) as object[]).map(
               withPatientSafeRelation,
             ),
+          count: pharmacyVisitRequestCountMock,
+          groupBy: pharmacyVisitRequestGroupByMock,
           create: async (...args: unknown[]) =>
             withPatientSafeRelation((await pharmacyVisitRequestCreateMock(...args)) as object),
         },
@@ -295,6 +305,71 @@ describe('/api/pharmacy-visit-requests', () => {
         take: 9,
       }),
     );
+  });
+
+  it('returns exact workflow counts and filter echoes on every cursor page', async () => {
+    pharmacyVisitRequestCountMock.mockResolvedValueOnce(9);
+    pharmacyVisitRequestGroupByMock.mockResolvedValueOnce([
+      { status: 'requested', _count: { _all: 9 } },
+    ]);
+
+    const response = await GET(
+      createGetRequest(
+        '?limit=8&cursor=visit_request_09&status=requested&share_case_id=share_case_1&partner_pharmacy_id=partner_pharmacy_1&view_context=pharmacy_cooperation_workflow',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.meta).toEqual({
+      has_more: false,
+      next_cursor: null,
+      returned_count: 1,
+      total_count: 9,
+      count_basis: 'filtered_query_exact',
+      filters_applied: {
+        status: 'requested',
+        share_case_id: 'share_case_1',
+        partner_pharmacy_id: 'partner_pharmacy_1',
+      },
+      request_cursor: 'visit_request_09',
+      status_counts: {
+        draft: 0,
+        requested: 9,
+        accepted: 0,
+        declined: 0,
+        scheduled: 0,
+        visited: 0,
+        recording: 0,
+        submitted: 0,
+        base_reviewing: 0,
+        returned: 0,
+        confirmed: 0,
+        physician_report_created: 0,
+        claim_checked: 0,
+        completed: 0,
+      },
+    });
+    expect(pharmacyVisitRequestCountMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        status: 'requested',
+        share_case_id: 'share_case_1',
+        partner_pharmacy_id: 'partner_pharmacy_1',
+      }),
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+    });
+  });
+
+  it('keeps the public API cursor response free of workflow-only exact metadata', async () => {
+    const response = await GET(createGetRequest('?limit=8'));
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.meta).toEqual({ has_more: false, next_cursor: null });
+    expect(pharmacyVisitRequestCountMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestGroupByMock).not.toHaveBeenCalled();
   });
 
   it('trims and applies valid status and id filters', async () => {

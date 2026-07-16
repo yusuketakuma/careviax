@@ -91,6 +91,96 @@ function createShareCaseRow(id: string, status = 'draft') {
   };
 }
 
+const emptyVisitRequestStatusCounts = {
+  draft: 0,
+  requested: 0,
+  accepted: 0,
+  declined: 0,
+  scheduled: 0,
+  visited: 0,
+  recording: 0,
+  submitted: 0,
+  base_reviewing: 0,
+  returned: 0,
+  confirmed: 0,
+  physician_report_created: 0,
+  claim_checked: 0,
+  completed: 0,
+};
+
+function visitRequestMeta({
+  returnedCount,
+  totalCount = returnedCount,
+  hasMore = false,
+  nextCursor = null,
+  requestCursor = null,
+  status = null,
+  statusCounts = { ...emptyVisitRequestStatusCounts, requested: totalCount },
+}: {
+  returnedCount: number;
+  totalCount?: number;
+  hasMore?: boolean;
+  nextCursor?: string | null;
+  requestCursor?: string | null;
+  status?: string | null;
+  statusCounts?: typeof emptyVisitRequestStatusCounts;
+}) {
+  return {
+    has_more: hasMore,
+    next_cursor: nextCursor,
+    returned_count: returnedCount,
+    total_count: totalCount,
+    count_basis: 'filtered_query_exact',
+    filters_applied: {
+      status,
+      share_case_id: null,
+      partner_pharmacy_id: null,
+    },
+    request_cursor: requestCursor,
+    status_counts: statusCounts,
+  };
+}
+
+function createVisitRequestRow(id: string, status = 'requested') {
+  return {
+    id,
+    share_case_id: 'share_case_active',
+    urgency: 'normal',
+    desired_start_at: '2026-06-20T01:00:00.000Z',
+    desired_end_at: null,
+    visit_type: 'regular',
+    status,
+    contract_id: 'contract_1',
+    contract_version_id: 'contract_version_1',
+    estimated_amount: 5500,
+    estimated_snapshot: {
+      estimate_status: 'estimated',
+      billing_model: 'fixed_per_visit',
+      unit_price: 5500,
+      tax_category: 'taxable',
+    },
+    accepted_at: status === 'accepted' ? '2026-06-20T00:30:00.000Z' : null,
+    declined_at: null,
+    completed_at: null,
+    updated_at: '2026-06-18T00:00:00.000Z',
+    patient_safe_display: { ...patientSafeDisplay, display_id: `PT-${id}` },
+    partner_pharmacy: {
+      id: 'partner_pharmacy_1',
+      name: '協力薬局',
+      status: 'active',
+    },
+    partnership: {
+      id: 'partnership_1',
+      base_site: { id: 'site_1', name: '基幹薬局' },
+    },
+    has_request_reason: true,
+    has_physician_instruction: false,
+    has_carry_items: false,
+    has_patient_home_notes: false,
+    has_decline_reason: false,
+  };
+}
+
 function renderContent() {
   return render(<PharmacyCooperationWorkflowContent />, { wrapper: createQueryClientWrapper() });
 }
@@ -307,7 +397,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
             { status: 200 },
           );
         }
-        if (url === '/api/pharmacy-visit-requests?limit=8') {
+        if (
+          url === '/api/pharmacy-visit-requests?limit=8&view_context=pharmacy_cooperation_workflow'
+        ) {
           return new Response(
             JSON.stringify({
               data: [
@@ -386,7 +478,14 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   has_decline_reason: false,
                 },
               ],
-              meta: { has_more: false, next_cursor: null },
+              meta: visitRequestMeta({
+                returnedCount: 2,
+                statusCounts: {
+                  ...emptyVisitRequestStatusCounts,
+                  requested: 1,
+                  accepted: 1,
+                },
+              }),
             }),
             { status: 200 },
           );
@@ -1114,9 +1213,11 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(originalFetch).toBeTruthy();
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/pharmacy-visit-requests?limit=8') {
+      if (
+        url === '/api/pharmacy-visit-requests?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
         return new Response(
-          JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+          JSON.stringify({ data: [], meta: visitRequestMeta({ returnedCount: 0 }) }),
           { status: 200 },
         );
       }
@@ -1134,7 +1235,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(originalFetch).toBeTruthy();
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/pharmacy-visit-requests?limit=8') {
+      if (
+        url === '/api/pharmacy-visit-requests?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
         return new Response(JSON.stringify({ error: 'boom' }), { status: 500 });
       }
       return originalFetch!(input, init);
@@ -1144,6 +1247,196 @@ describe('PharmacyCooperationWorkflowContent', () => {
 
     expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
     expect(screen.queryByText('協力薬局への訪問依頼はまだありません')).toBeNull();
+  });
+
+  it('loads a ninth visit request through the explicit cursor continuation without duplicates', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    const firstPageRows = Array.from({ length: 8 }, (_, index) =>
+      createVisitRequestRow(`visit_request_page_${String(index + 1).padStart(2, '0')}`),
+    );
+
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url === '/api/pharmacy-visit-requests?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: firstPageRows,
+            meta: visitRequestMeta({
+              returnedCount: 8,
+              totalCount: 9,
+              hasMore: true,
+              nextCursor: 'visit_request_page_08',
+              statusCounts: { ...emptyVisitRequestStatusCounts, requested: 9 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/pharmacy-visit-requests?limit=8&view_context=pharmacy_cooperation_workflow&cursor=visit_request_page_08'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [createVisitRequestRow('visit_request_page_09')],
+            meta: visitRequestMeta({
+              returnedCount: 1,
+              totalCount: 9,
+              requestCursor: 'visit_request_page_08',
+              statusCounts: { ...emptyVisitRequestStatusCounts, requested: 9 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(
+      (await screen.findAllByText('訪問依頼 読込済み 8 / 全 9 件')).length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('visit_request_page_09')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '訪問依頼をさらに読み込む' }));
+
+    expect((await screen.findAllByText('visit_request_page_09')).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('訪問依頼 読込済み 9 / 全 9 件（全件読込済み）').length,
+    ).toBeGreaterThanOrEqual(1);
+    const visitRequestsTable = screen.getByRole('table', { name: '協力薬局訪問依頼一覧' });
+    expect(within(visitRequestsTable).getAllByRole('row')).toHaveLength(10);
+  });
+
+  it('starts a fresh exact-count cursor scope when the visit-request status filter changes', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/pharmacy-visit-requests?limit=8&view_context=pharmacy_cooperation_workflow&status=accepted'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [createVisitRequestRow('visit_request_accepted', 'accepted')],
+            meta: visitRequestMeta({
+              returnedCount: 1,
+              status: 'accepted',
+              statusCounts: { ...emptyVisitRequestStatusCounts, accepted: 1 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    await screen.findAllByText('visit_request_1');
+    fireEvent.change(screen.getByRole('combobox', { name: '訪問依頼状態' }), {
+      target: { value: 'accepted' },
+    });
+
+    expect((await screen.findAllByText('visit_request_accepted')).length).toBeGreaterThan(0);
+    expect(
+      findFetchCall(
+        (input) =>
+          String(input) ===
+          '/api/pharmacy-visit-requests?limit=8&view_context=pharmacy_cooperation_workflow&status=accepted',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('retains loaded visit requests and retries a failed continuation page', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    const firstPageRows = Array.from({ length: 8 }, (_, index) =>
+      createVisitRequestRow(`visit_request_retry_${String(index + 1).padStart(2, '0')}`),
+    );
+    let continuationAttempts = 0;
+
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url === '/api/pharmacy-visit-requests?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: firstPageRows,
+            meta: visitRequestMeta({
+              returnedCount: 8,
+              totalCount: 9,
+              hasMore: true,
+              nextCursor: 'visit_request_retry_08',
+              statusCounts: { ...emptyVisitRequestStatusCounts, requested: 9 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/pharmacy-visit-requests?limit=8&view_context=pharmacy_cooperation_workflow&cursor=visit_request_retry_08'
+      ) {
+        continuationAttempts += 1;
+        if (continuationAttempts === 1) {
+          return new Response(JSON.stringify({ code: 'TEMPORARY_FAILURE' }), { status: 503 });
+        }
+        return new Response(
+          JSON.stringify({
+            data: [createVisitRequestRow('visit_request_retry_09')],
+            meta: visitRequestMeta({
+              returnedCount: 1,
+              totalCount: 9,
+              requestCursor: 'visit_request_retry_08',
+              statusCounts: { ...emptyVisitRequestStatusCounts, requested: 9 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    await screen.findAllByText('訪問依頼 読込済み 8 / 全 9 件');
+    fireEvent.click(screen.getByRole('button', { name: '訪問依頼をさらに読み込む' }));
+
+    expect(await screen.findByText('訪問依頼の続きを読み込めませんでした')).toBeTruthy();
+    expect(screen.getAllByText('visit_request_retry_01').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+
+    expect((await screen.findAllByText('visit_request_retry_09')).length).toBeGreaterThan(0);
+    expect(continuationAttempts).toBe(2);
+  });
+
+  it('rejects legacy visit-request pages that omit the canonical count metadata', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url === '/api/pharmacy-visit-requests?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [createVisitRequestRow('visit_request_legacy')],
+            meta: { has_more: false, next_cursor: null },
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
+    expect(screen.queryByText('visit_request_legacy')).toBeNull();
   });
 
   it('shows the partner visit record empty state only for genuine empty results', async () => {

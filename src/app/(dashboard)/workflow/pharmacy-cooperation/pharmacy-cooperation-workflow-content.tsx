@@ -312,6 +312,25 @@ type VisitRequestEstimateSnapshot = {
   tax_category?: string | null;
 };
 
+const pharmacyVisitRequestStatuses = [
+  'draft',
+  'requested',
+  'accepted',
+  'declined',
+  'scheduled',
+  'visited',
+  'recording',
+  'submitted',
+  'base_reviewing',
+  'returned',
+  'confirmed',
+  'physician_report_created',
+  'claim_checked',
+  'completed',
+] as const;
+type PharmacyVisitRequestStatus = (typeof pharmacyVisitRequestStatuses)[number];
+type PharmacyVisitRequestStatusCounts = Record<PharmacyVisitRequestStatus, number>;
+
 type PartnerVisitRecordDraftForm = {
   pharmacistId: string;
   pharmacistName: string;
@@ -349,6 +368,147 @@ type PharmacyVisitRequestRow = {
   has_patient_home_notes: boolean;
   has_decline_reason: boolean;
 };
+
+type PharmacyVisitRequestPage = CursorPaginatedPage<PharmacyVisitRequestRow> & {
+  total_count: number;
+  returned_count: number;
+  count_basis: 'filtered_query_exact';
+  filters_applied: {
+    status: PharmacyVisitRequestStatus | null;
+    share_case_id: string | null;
+    partner_pharmacy_id: string | null;
+  };
+  request_cursor: string | null;
+  status_counts: PharmacyVisitRequestStatusCounts;
+};
+
+type PharmacyVisitRequestAggregate = {
+  rows: PharmacyVisitRequestRow[];
+  totalCount: number;
+  statusCounts: PharmacyVisitRequestStatusCounts;
+  scopeComplete: boolean;
+  contractError: string | null;
+};
+
+function createEmptyPharmacyVisitRequestStatusCounts(): PharmacyVisitRequestStatusCounts {
+  return Object.fromEntries(
+    pharmacyVisitRequestStatuses.map((status) => [status, 0]),
+  ) as PharmacyVisitRequestStatusCounts;
+}
+
+function aggregatePharmacyVisitRequestPages(
+  pages: PharmacyVisitRequestPage[],
+): PharmacyVisitRequestAggregate {
+  const firstPage = pages[0];
+  if (!firstPage) {
+    return {
+      rows: [],
+      totalCount: 0,
+      statusCounts: createEmptyPharmacyVisitRequestStatusCounts(),
+      scopeComplete: false,
+      contractError: null,
+    };
+  }
+
+  const rows: PharmacyVisitRequestRow[] = [];
+  const seenIds = new Set<string>();
+  const seenContinuationCursors = new Set<string>();
+  const expectedStatusCounts = JSON.stringify(firstPage.status_counts);
+  const expectedFilters = JSON.stringify(firstPage.filters_applied);
+
+  for (const [pageIndex, page] of pages.entries()) {
+    const previousPage = pages[pageIndex - 1];
+    if (page.total_count !== firstPage.total_count) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        statusCounts: firstPage.status_counts,
+        scopeComplete: false,
+        contractError: '訪問依頼の総件数がページ間で一致しません。',
+      };
+    }
+    if (
+      JSON.stringify(page.status_counts) !== expectedStatusCounts ||
+      JSON.stringify(page.filters_applied) !== expectedFilters
+    ) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        statusCounts: firstPage.status_counts,
+        scopeComplete: false,
+        contractError: '訪問依頼の検索範囲がページ間で一致しません。',
+      };
+    }
+    if (
+      pageIndex === 0
+        ? page.request_cursor !== null
+        : page.request_cursor !== previousPage?.nextCursor
+    ) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        statusCounts: firstPage.status_counts,
+        scopeComplete: false,
+        contractError: '訪問依頼のカーソル連鎖が一致しません。',
+      };
+    }
+
+    for (const row of page.data) {
+      if (seenIds.has(row.id)) {
+        return {
+          rows,
+          totalCount: firstPage.total_count,
+          statusCounts: firstPage.status_counts,
+          scopeComplete: false,
+          contractError: '訪問依頼に重複した行が含まれています。',
+        };
+      }
+      seenIds.add(row.id);
+      rows.push(row);
+    }
+
+    if (page.nextCursor) {
+      if (seenContinuationCursors.has(page.nextCursor)) {
+        return {
+          rows,
+          totalCount: firstPage.total_count,
+          statusCounts: firstPage.status_counts,
+          scopeComplete: false,
+          contractError: '訪問依頼のカーソルが循環しています。',
+        };
+      }
+      seenContinuationCursors.add(page.nextCursor);
+    }
+  }
+
+  const lastPage = pages[pages.length - 1];
+  if (rows.length > firstPage.total_count) {
+    return {
+      rows,
+      totalCount: firstPage.total_count,
+      statusCounts: firstPage.status_counts,
+      scopeComplete: false,
+      contractError: '訪問依頼の読込件数が総件数を超えています。',
+    };
+  }
+  if (lastPage && !lastPage.hasMore && rows.length !== firstPage.total_count) {
+    return {
+      rows,
+      totalCount: firstPage.total_count,
+      statusCounts: firstPage.status_counts,
+      scopeComplete: false,
+      contractError: '訪問依頼の終端件数が総件数と一致しません。',
+    };
+  }
+
+  return {
+    rows,
+    totalCount: firstPage.total_count,
+    statusCounts: firstPage.status_counts,
+    scopeComplete: Boolean(lastPage && !lastPage.hasMore && rows.length === firstPage.total_count),
+    contractError: null,
+  };
+}
 
 type PartnerVisitRecordRow = {
   id: string;
@@ -508,6 +668,23 @@ const pharmacyVisitRequestRowSchema = z.object({
   has_carry_items: z.boolean(),
   has_patient_home_notes: z.boolean(),
   has_decline_reason: z.boolean(),
+});
+
+const pharmacyVisitRequestStatusCountsSchema = z.object({
+  draft: z.number().int().nonnegative(),
+  requested: z.number().int().nonnegative(),
+  accepted: z.number().int().nonnegative(),
+  declined: z.number().int().nonnegative(),
+  scheduled: z.number().int().nonnegative(),
+  visited: z.number().int().nonnegative(),
+  recording: z.number().int().nonnegative(),
+  submitted: z.number().int().nonnegative(),
+  base_reviewing: z.number().int().nonnegative(),
+  returned: z.number().int().nonnegative(),
+  confirmed: z.number().int().nonnegative(),
+  physician_report_created: z.number().int().nonnegative(),
+  claim_checked: z.number().int().nonnegative(),
+  completed: z.number().int().nonnegative(),
 });
 
 const partnerVisitRecordRowSchema = z.object({
@@ -679,7 +856,81 @@ const patientShareCasePageSchema: z.ZodType<PatientShareCasePage> = z
     request_cursor: meta.request_cursor,
     status_counts: meta.status_counts,
   }));
-const pharmacyVisitRequestPageSchema = apiCursorPageSchema(pharmacyVisitRequestRowSchema);
+const pharmacyVisitRequestPageSchema: z.ZodType<PharmacyVisitRequestPage> = z
+  .object({
+    data: z.array(pharmacyVisitRequestRowSchema),
+    meta: z
+      .object({
+        has_more: z.boolean(),
+        next_cursor: z.string().trim().min(1).nullable(),
+        returned_count: z.number().int().nonnegative(),
+        total_count: z.number().int().nonnegative(),
+        count_basis: z.literal('filtered_query_exact'),
+        filters_applied: z
+          .object({
+            status: z.enum(pharmacyVisitRequestStatuses).nullable(),
+            share_case_id: z.string().trim().min(1).nullable(),
+            partner_pharmacy_id: z.string().trim().min(1).nullable(),
+          })
+          .strict(),
+        request_cursor: z.string().trim().min(1).nullable(),
+        status_counts: pharmacyVisitRequestStatusCountsSchema,
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const statusCountTotal = pharmacyVisitRequestStatuses.reduce(
+      (sum, status) => sum + value.meta.status_counts[status],
+      0,
+    );
+    if (value.meta.has_more && !value.meta.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor is required when has_more is true',
+      });
+    }
+    if (value.meta.next_cursor && value.meta.next_cursor === value.meta.request_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor must advance beyond request_cursor',
+      });
+    }
+    if (value.meta.returned_count !== value.data.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'returned_count'],
+        message: 'returned_count must match the returned data length',
+      });
+    }
+    if (value.meta.total_count < value.meta.returned_count) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'total_count'],
+        message: 'total_count must be greater than or equal to returned_count',
+      });
+    }
+    if (statusCountTotal !== value.meta.total_count) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'status_counts'],
+        message: 'status_counts must sum to total_count',
+      });
+    }
+  })
+  .transform(({ data, meta }) => ({
+    data,
+    hasMore: meta.has_more,
+    ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
+    returned_count: meta.returned_count,
+    total_count: meta.total_count,
+    count_basis: meta.count_basis,
+    filters_applied: meta.filters_applied,
+    request_cursor: meta.request_cursor,
+    status_counts: meta.status_counts,
+  }));
 const pharmacyVisitRequestResponseSchema = apiDataSchema(pharmacyVisitRequestRowSchema).transform(
   ({ data }) => data,
 );
@@ -862,14 +1113,33 @@ async function fetchShareCases(
   return page;
 }
 
-async function fetchVisitRequests(orgId: string) {
-  const response = await fetch('/api/pharmacy-visit-requests?limit=8', {
+async function fetchVisitRequests(
+  orgId: string,
+  cursor: string | null,
+  status: PharmacyVisitRequestStatus | null,
+) {
+  const params = new URLSearchParams({
+    limit: '8',
+    view_context: 'pharmacy_cooperation_workflow',
+  });
+  if (status) params.set('status', status);
+  if (cursor) params.set('cursor', cursor);
+  const response = await fetch(`/api/pharmacy-visit-requests?${params.toString()}`, {
     headers: buildOrgHeaders(orgId),
   });
-  return readApiJson<CursorPaginatedPage<PharmacyVisitRequestRow>>(response, {
+  const page = await readApiJson<PharmacyVisitRequestPage>(response, {
     fallbackMessage: '訪問依頼の取得に失敗しました',
     schema: pharmacyVisitRequestPageSchema,
   });
+  if (
+    page.request_cursor !== cursor ||
+    page.filters_applied.status !== status ||
+    page.filters_applied.share_case_id !== null ||
+    page.filters_applied.partner_pharmacy_id !== null
+  ) {
+    throw new Error('訪問依頼の検索条件が応答と一致しません');
+  }
+  return page;
 }
 
 async function fetchPartnerVisitRecords(orgId: string) {
@@ -3230,6 +3500,9 @@ export function PharmacyCooperationWorkflowContent() {
   const [shareCaseStatusFilter, setShareCaseStatusFilter] = useState<
     PatientShareCaseStatus | 'all'
   >('all');
+  const [visitRequestStatusFilter, setVisitRequestStatusFilter] = useState<
+    PharmacyVisitRequestStatus | 'all'
+  >('all');
   const enabled = Boolean(orgId);
 
   const shareCasesQuery = useInfiniteQuery({
@@ -3246,9 +3519,16 @@ export function PharmacyCooperationWorkflowContent() {
     staleTime: 20_000,
   });
 
-  const visitRequestsQuery = useQuery({
-    queryKey: ['pharmacy-cooperation-visit-requests', orgId],
-    queryFn: () => fetchVisitRequests(orgId),
+  const visitRequestsQuery = useInfiniteQuery({
+    queryKey: ['pharmacy-cooperation-visit-requests', orgId, visitRequestStatusFilter],
+    queryFn: ({ pageParam }) =>
+      fetchVisitRequests(
+        orgId,
+        pageParam,
+        visitRequestStatusFilter === 'all' ? null : visitRequestStatusFilter,
+      ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
     enabled,
     staleTime: 20_000,
   });
@@ -3274,7 +3554,17 @@ export function PharmacyCooperationWorkflowContent() {
     ? new Error(shareCaseAggregate.contractError)
     : null;
   const shareCaseInitialError = shareCasesQuery.isError && shareCasePages.length === 0;
-  const visitRequests = visitRequestsQuery.data?.data ?? [];
+  const visitRequestPages = visitRequestsQuery.data?.pages ?? [];
+  const visitRequestAggregate = aggregatePharmacyVisitRequestPages(visitRequestPages);
+  const visitRequests = visitRequestAggregate.rows;
+  const visitRequestTotalCount = visitRequestAggregate.totalCount;
+  const visitRequestCountLabel = `訪問依頼 読込済み ${visitRequests.length} / 全 ${visitRequestTotalCount} 件${
+    visitRequestAggregate.scopeComplete ? '（全件読込済み）' : ''
+  }`;
+  const visitRequestContractError = visitRequestAggregate.contractError
+    ? new Error(visitRequestAggregate.contractError)
+    : null;
+  const visitRequestInitialError = visitRequestsQuery.isError && visitRequestPages.length === 0;
   const partnerVisitRecords = partnerVisitRecordsQuery.data?.data ?? [];
   const activeShareCases = shareCases.filter((shareCase) => shareCase.status === 'active');
   const draftableVisitRequests = visitRequests.filter(
@@ -3926,7 +4216,7 @@ export function PharmacyCooperationWorkflowContent() {
   const patientShareConsents = patientShareConsentsQuery.data?.data ?? [];
   const messageThreads = messageThreadsQuery.data?.data ?? [];
   const submittedRecords = partnerVisitRecords.filter((record) => record.status === 'submitted');
-  const requestedVisits = visitRequests.filter((request) => request.status === 'requested');
+  const requestedVisitCount = visitRequestAggregate.statusCounts.requested;
 
   return (
     <div
@@ -3948,9 +4238,9 @@ export function PharmacyCooperationWorkflowContent() {
             依頼中の訪問
           </p>
           <p className="mt-1 text-2xl leading-8 font-bold tabular-nums sm:text-[26px] sm:leading-9">
-            {requestedVisits.length}
+            {requestedVisitCount}
           </p>
-          <TinyMeta>訪問依頼 {visitRequests.length} 件</TinyMeta>
+          <TinyMeta>{visitRequestCountLabel}</TinyMeta>
         </div>
         <div className="flex min-h-[96px] flex-col justify-center rounded-lg border border-border/70 bg-card p-3 sm:p-4">
           <p className="text-xs leading-tight font-semibold text-foreground sm:text-sm">
@@ -4155,26 +4445,84 @@ export function PharmacyCooperationWorkflowContent() {
         />
         <QueryFallback
           isLoading={visitRequestsQuery.isLoading}
-          isError={visitRequestsQuery.isError}
-          error={visitRequestsQuery.error}
+          isError={visitRequestInitialError || Boolean(visitRequestContractError)}
+          error={visitRequestContractError ?? visitRequestsQuery.error}
           onRetry={() => void visitRequestsQuery.refetch()}
         >
-          <VisitRequestsTable
-            rows={visitRequests}
-            declineReasons={declineReasons}
-            setDeclineReasons={setDeclineReasons}
-            isBusy={isBusy}
-            onAccept={(request) =>
-              setPendingWorkflowAction({ kind: 'acceptVisitRequest', request })
-            }
-            onDecline={(request, declineReason) =>
-              setPendingWorkflowAction({
-                kind: 'declineVisitRequest',
-                request,
-                declineReason,
-              })
-            }
-          />
+          <div className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <label className="grid gap-1 text-sm font-medium text-foreground">
+                訪問依頼状態
+                <select
+                  className="h-11 min-h-11 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  value={visitRequestStatusFilter}
+                  onChange={(event) =>
+                    setVisitRequestStatusFilter(
+                      event.target.value as PharmacyVisitRequestStatus | 'all',
+                    )
+                  }
+                >
+                  <option value="all">すべて</option>
+                  {pharmacyVisitRequestStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {statusLabel(status)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="text-sm tabular-nums text-muted-foreground" role="status">
+                {visitRequestCountLabel}
+              </p>
+            </div>
+
+            <VisitRequestsTable
+              rows={visitRequests}
+              declineReasons={declineReasons}
+              setDeclineReasons={setDeclineReasons}
+              isBusy={isBusy}
+              onAccept={(request) =>
+                setPendingWorkflowAction({ kind: 'acceptVisitRequest', request })
+              }
+              onDecline={(request, declineReason) =>
+                setPendingWorkflowAction({
+                  kind: 'declineVisitRequest',
+                  request,
+                  declineReason,
+                })
+              }
+            />
+
+            {visitRequestsQuery.isFetchNextPageError ? (
+              <ErrorState
+                variant="server"
+                title="訪問依頼の続きを読み込めませんでした"
+                description={`読込済み ${visitRequests.length} 件は保持しています。通信状態を確認して再試行してください。`}
+                onRetry={() => void visitRequestsQuery.fetchNextPage()}
+              />
+            ) : null}
+
+            {visitRequestsQuery.hasNextPage ? (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={visitRequestsQuery.isFetchingNextPage}
+                  onClick={() => void visitRequestsQuery.fetchNextPage()}
+                >
+                  <RefreshCw
+                    className={cn(
+                      'size-4',
+                      visitRequestsQuery.isFetchingNextPage && 'animate-spin',
+                    )}
+                    aria-hidden="true"
+                  />
+                  {visitRequestsQuery.isFetchingNextPage
+                    ? '続きを読込中'
+                    : '訪問依頼をさらに読み込む'}
+                </Button>
+              </div>
+            ) : null}
+          </div>
         </QueryFallback>
       </SectionShell>
 

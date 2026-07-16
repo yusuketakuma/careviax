@@ -37,7 +37,28 @@ const visitRequestStatusSchema = z.enum([
   'claim_checked',
   'completed',
 ]);
+const visitRequestStatuses = visitRequestStatusSchema.options;
+const viewContextSchema = z
+  .enum(['pharmacy_cooperation_workflow', 'pharmacy_visit_requests_api'])
+  .default('pharmacy_visit_requests_api');
 const urgencySchema = z.enum(['normal', 'urgent', 'emergency']);
+
+type VisitRequestStatus = (typeof visitRequestStatuses)[number];
+type VisitRequestStatusCounts = Record<VisitRequestStatus, number>;
+
+function createEmptyVisitRequestStatusCounts(): VisitRequestStatusCounts {
+  return Object.fromEntries(
+    visitRequestStatuses.map((status) => [status, 0]),
+  ) as VisitRequestStatusCounts;
+}
+
+function buildVisitRequestStatusCounts(
+  rows: Array<{ status: VisitRequestStatus; _count: { _all: number } }>,
+): VisitRequestStatusCounts {
+  const counts = createEmptyVisitRequestStatusCounts();
+  for (const row of rows) counts[row.status] = row._count._all;
+  return counts;
+}
 
 const optionalTrimmedString = (max: number) =>
   z
@@ -283,76 +304,126 @@ const authenticatedGET = withAuthContext(
       '協力薬局IDを指定してください',
     );
     if (!partnerPharmacyIdResult.ok) return partnerPharmacyIdResult.response;
+    const rawViewContextResult = readPresentOptionalSearchParam(
+      searchParams,
+      'view_context',
+      '閲覧画面を指定してください',
+    );
+    if (!rawViewContextResult.ok) return rawViewContextResult.response;
     const shareCaseId = shareCaseIdResult.value;
     const partnerPharmacyId = partnerPharmacyIdResult.value;
+    const viewContext = viewContextSchema.safeParse(rawViewContextResult.value ?? undefined);
+    if (!viewContext.success) {
+      return validationError('検索条件が不正です', {
+        view_context: ['対応していない閲覧画面です'],
+      });
+    }
     const now = new Date();
 
-    const rows = await withOrgContext(ctx.orgId, (tx) =>
-      tx.pharmacyVisitRequest.findMany({
-        where: {
-          org_id: ctx.orgId,
-          ...(status ? { status: status.data } : {}),
-          ...(shareCaseId ? { share_case_id: shareCaseId } : {}),
-          ...(partnerPharmacyId ? { partner_pharmacy_id: partnerPharmacyId } : {}),
-          share_case: { is: buildActivePatientShareCaseReadWhere({ orgId: ctx.orgId, asOf: now }) },
-        },
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
-        select: {
-          id: true,
-          org_id: true,
-          share_case_id: true,
-          partnership_id: true,
-          partner_pharmacy_id: true,
-          requested_by: true,
-          urgency: true,
-          desired_start_at: true,
-          desired_end_at: true,
-          visit_type: true,
-          status: true,
-          contract_id: true,
-          contract_version_id: true,
-          estimated_amount: true,
-          estimated_snapshot: true,
-          accepted_by: true,
-          accepted_at: true,
-          declined_by: true,
-          declined_at: true,
-          cancelled_at: true,
-          completed_at: true,
-          created_at: true,
-          updated_at: true,
-          partner_pharmacy: { select: { id: true, name: true, status: true } },
-          partnership: {
-            select: {
-              id: true,
-              base_site: { select: { id: true, name: true } },
+    const visitRequestWhere = {
+      org_id: ctx.orgId,
+      ...(status ? { status: status.data } : {}),
+      ...(shareCaseId ? { share_case_id: shareCaseId } : {}),
+      ...(partnerPharmacyId ? { partner_pharmacy_id: partnerPharmacyId } : {}),
+      share_case: { is: buildActivePatientShareCaseReadWhere({ orgId: ctx.orgId, asOf: now }) },
+    };
+    const shouldExposeWorkflowMeta = viewContext.data === 'pharmacy_cooperation_workflow';
+
+    const result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const rows = await tx.pharmacyVisitRequest.findMany({
+          where: visitRequestWhere,
+          take: limit + 1,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+          select: {
+            id: true,
+            org_id: true,
+            share_case_id: true,
+            partnership_id: true,
+            partner_pharmacy_id: true,
+            requested_by: true,
+            urgency: true,
+            desired_start_at: true,
+            desired_end_at: true,
+            visit_type: true,
+            status: true,
+            contract_id: true,
+            contract_version_id: true,
+            estimated_amount: true,
+            estimated_snapshot: true,
+            accepted_by: true,
+            accepted_at: true,
+            declined_by: true,
+            declined_at: true,
+            cancelled_at: true,
+            completed_at: true,
+            created_at: true,
+            updated_at: true,
+            partner_pharmacy: { select: { id: true, name: true, status: true } },
+            partnership: {
+              select: {
+                id: true,
+                base_site: { select: { id: true, name: true } },
+              },
             },
-          },
-          share_case: {
-            select: {
-              base_patient: {
-                select: {
-                  display_id: true,
-                  name: true,
-                  name_kana: true,
-                  birth_date: true,
-                  updated_at: true,
+            share_case: {
+              select: {
+                base_patient: {
+                  select: {
+                    display_id: true,
+                    name: true,
+                    name_kana: true,
+                    birth_date: true,
+                    updated_at: true,
+                  },
                 },
               },
             },
           },
-        },
-      }),
+        });
+        const page = buildCursorPage(rows, limit, (row) => row.id);
+        let countSummary: {
+          totalCount: number;
+          statusCounts: VisitRequestStatusCounts;
+        } | null = null;
+        if (shouldExposeWorkflowMeta) {
+          const totalCount = await tx.pharmacyVisitRequest.count({ where: visitRequestWhere });
+          const statusRows = await tx.pharmacyVisitRequest.groupBy({
+            by: ['status'],
+            where: visitRequestWhere,
+            _count: { _all: true },
+          });
+          countSummary = {
+            totalCount,
+            statusCounts: buildVisitRequestStatusCounts(statusRows),
+          };
+        }
+        return { page, countSummary };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
 
-    const page = buildCursorPage(rows, limit, (row) => row.id);
     return success({
-      data: page.data.map(toSafeVisitRequest),
+      data: result.page.data.map(toSafeVisitRequest),
       meta: {
-        has_more: page.hasMore,
-        next_cursor: page.nextCursor ?? null,
+        has_more: result.page.hasMore,
+        next_cursor: result.page.nextCursor ?? null,
+        ...(result.countSummary
+          ? {
+              returned_count: result.page.data.length,
+              total_count: result.countSummary.totalCount,
+              count_basis: 'filtered_query_exact' as const,
+              filters_applied: {
+                status: status?.data ?? null,
+                share_case_id: shareCaseId ?? null,
+                partner_pharmacy_id: partnerPharmacyId ?? null,
+              },
+              request_cursor: cursor ?? null,
+              status_counts: result.countSummary.statusCounts,
+            }
+          : {}),
       },
     });
   },
