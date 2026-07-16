@@ -57,14 +57,6 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    visitRecord: {
-      findMany: visitRecordFindManyMock,
-    },
-  },
-}));
-
 vi.mock('@/server/services/billing-evidence', () => ({
   getBillingCandidateWorkbenchSummary: workbenchSummaryMock,
   upsertBillingEvidenceForVisit: upsertBillingEvidenceForVisitMock,
@@ -155,6 +147,9 @@ describe('/api/billing-candidates', () => {
     generatePcaRentalBillingCandidatesForMonthMock.mockResolvedValue([{ status: 'candidate' }]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        visitRecord: {
+          findMany: visitRecordFindManyMock,
+        },
         billingCandidate: {
           findMany: billingCandidateFindManyMock,
         },
@@ -583,6 +578,8 @@ describe('/api/billing-candidates', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_1', expect.any(Function));
     expect(visitRecordFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',

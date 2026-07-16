@@ -5,7 +5,6 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
-import { prisma } from '@/lib/db/client';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { readBillingValidationLayers } from '@/lib/billing/validation-layers';
 import {
@@ -322,18 +321,20 @@ export const POST = withAuthContext(
       ? japanMonthRangeForBillingMonth(billingMonth.start)
       : null;
     const visitRecords = billingMonthRange
-      ? await prisma.visitRecord.findMany({
-          where: {
-            org_id: ctx.orgId,
-            visit_date: {
-              gte: billingMonthRange.start,
-              lt: billingMonthRange.nextStart,
+      ? await withOrgContext(ctx.orgId, (tx) =>
+          tx.visitRecord.findMany({
+            where: {
+              org_id: ctx.orgId,
+              visit_date: {
+                gte: billingMonthRange.start,
+                lt: billingMonthRange.nextStart,
+              },
             },
-          },
-          select: {
-            id: true,
-          },
-        })
+            select: {
+              id: true,
+            },
+          }),
+        )
       : [];
 
     const created = await withOrgContext(
