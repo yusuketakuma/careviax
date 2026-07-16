@@ -665,6 +665,28 @@ describe('applyPrescriptionSupplyForIntake', () => {
       stock_item_id: 'stock_item_1',
       snapshot: { current_quantity: 100 },
     });
+    expect(db.drugPackage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          is_active: true,
+          AND: expect.arrayContaining([
+            expect.objectContaining({ OR: expect.any(Array) }),
+            {
+              OR: [
+                { effective_from: null },
+                { effective_from: { lte: new Date('2026-07-07T00:00:00.000Z') } },
+              ],
+            },
+            {
+              OR: [
+                { effective_to: null },
+                { effective_to: { gte: new Date('2026-07-07T00:00:00.000Z') } },
+              ],
+            },
+          ]),
+        }),
+      }),
+    );
     expect(db.patientMedicationStockItem.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
