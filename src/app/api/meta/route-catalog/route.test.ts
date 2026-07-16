@@ -268,9 +268,16 @@ describe('/api/meta/route-catalog GET', () => {
         }),
         expect.objectContaining({
           path: '/api/management-plans/:id',
-          methods: ['GET', 'PATCH'],
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+          description: '管理計画書詳細取得',
+          area: 'patients',
+        }),
+        expect.objectContaining({
+          path: '/api/management-plans/:id',
+          methods: ['PATCH'],
           permission: 'canVisit',
-          description: '管理計画書詳細取得・更新',
+          description: '管理計画書更新・承認・アーカイブ',
           area: 'patients',
         }),
         expect.objectContaining({

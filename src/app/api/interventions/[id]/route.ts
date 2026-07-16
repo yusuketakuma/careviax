@@ -112,7 +112,7 @@ async function updateIntervention(
 }
 
 const authenticatedGET = withAuthContext(getIntervention, {
-  permission: 'canVisit',
+  permission: 'canViewDashboard',
   message: '介入記録の閲覧権限がありません',
 });
 

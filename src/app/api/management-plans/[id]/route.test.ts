@@ -159,6 +159,10 @@ describe('/api/management-plans/[id]', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: '管理計画書の閲覧権限がありません',
+    });
     expect(managementPlanFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'plan_1',
@@ -598,6 +602,10 @@ describe('/api/management-plans/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '管理計画書の更新権限がありません',
+    });
     expect(managementPlanTransactionFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'plan_1',

@@ -107,7 +107,7 @@ describe('/api/interventions/[id]', () => {
       expect(requireAuthContextMock).toHaveBeenCalledWith(
         expect.any(NextRequest),
         expect.objectContaining({
-          permission: 'canVisit',
+          permission: 'canViewDashboard',
           message: '介入記録の閲覧権限がありません',
         }),
       );

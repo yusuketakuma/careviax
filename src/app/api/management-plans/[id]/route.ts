@@ -34,7 +34,7 @@ function dateOnlyString(value: Date | string | null | undefined) {
 
 async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '管理計画書の閲覧権限がありません',
   });
   if ('response' in authResult) return authResult.response;

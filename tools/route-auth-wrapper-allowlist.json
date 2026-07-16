@@ -664,7 +664,7 @@
     {
       "path": "src/app/api/management-plans/[id]/route.ts",
       "expectedCount": 2,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard", "canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
