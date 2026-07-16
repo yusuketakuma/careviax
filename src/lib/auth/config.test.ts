@@ -140,6 +140,7 @@ describe('authOptions jwt callback', () => {
       account_status: 'active',
       activated_at: new Date('2026-06-01T00:00:00.000Z'),
       session_version: 4,
+      credential_revocation_id: null,
     } as const;
     vi.mocked(resolveLocalUserByIdentity).mockResolvedValue(localUser);
     vi.mocked(markLocalUserActive).mockResolvedValue(localUser);

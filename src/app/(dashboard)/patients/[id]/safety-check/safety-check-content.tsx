@@ -441,10 +441,8 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
     mutationFn: async (content: string) => {
       // open 課題のフォローアップ PATCH パスを fetch 前に検証する。
       // dot segment id は RangeError を投げ、interventions POST の副作用より前に fail-closed する。
-      const followUpIssuePath =
-        selectedIssue && selectedIssue.status === 'open'
-          ? encodePathSegment(selectedIssue.id)
-          : null;
+      const followUpIssue = selectedIssue?.status === 'open' ? selectedIssue : null;
+      const followUpIssuePath = followUpIssue ? encodePathSegment(followUpIssue.id) : null;
 
       const response = await fetch('/api/interventions', {
         method: 'POST',
@@ -467,7 +465,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
         const patchResponse = await fetch(`/api/medication-issues/${followUpIssuePath}`, {
           method: 'PATCH',
           headers: buildOrgJsonHeaders(orgId),
-          body: JSON.stringify({ status: 'in_progress', version: selectedIssue.version }),
+          body: JSON.stringify({ status: 'in_progress', version: followUpIssue!.version }),
         });
         if (!patchResponse.ok) {
           const patchPayload = await patchResponse.json().catch(() => null);

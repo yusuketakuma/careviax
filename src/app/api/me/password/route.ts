@@ -34,6 +34,7 @@ export const PATCH = withAuthContext(async (req: NextRequest, ctx) => {
   try {
     await changePasswordAndRevokeSessions({
       userId: ctx.userId,
+      orgId: ctx.orgId,
       accessToken,
       currentPassword,
       newPassword,

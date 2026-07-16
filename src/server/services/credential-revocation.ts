@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { resolveLocalUserByIdentity } from '@/lib/auth/user-resolution';
 import { adminGlobalSignOutCognitoUser } from '@/server/services/cognito-admin';
 import {
   changePasswordWithAccessToken,
@@ -124,7 +125,7 @@ async function completeCredentialRevocation(args: {
         {
           orgId: args.user.org_id,
           userId: args.user.id,
-          ipAddress: args.actor.ipAddress,
+          ipAddress: args.actor.ipAddress ?? undefined,
           userAgent: args.actor.userAgent,
           requestId: args.actor.requestId,
           correlationId: args.actor.correlationId,
@@ -179,13 +180,14 @@ async function runCredentialMutation(args: {
 
 export async function changePasswordAndRevokeSessions(args: {
   userId: string;
+  orgId: string;
   accessToken: string;
   currentPassword: string;
   newPassword: string;
   actor: CredentialActor;
 }) {
-  const user = await prisma.user.findUnique({
-    where: { id: args.userId },
+  const user = await prisma.user.findFirst({
+    where: { id: args.userId, org_id: args.orgId },
     select: { id: true, org_id: true, email: true, cognito_username: true },
   });
   if (!user) throw new Error('LOCAL_USER_NOT_FOUND');
@@ -209,10 +211,15 @@ export async function confirmForgotPasswordAndRevokeSessions(args: {
   actor: CredentialActor;
 }) {
   const normalizedEmail = args.email.trim().toLowerCase();
-  const user = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-    select: { id: true, org_id: true, email: true, cognito_username: true },
-  });
+  const localIdentity = await resolveLocalUserByIdentity({ email: normalizedEmail });
+  const user = localIdentity
+    ? {
+        id: localIdentity.id,
+        org_id: localIdentity.org_id,
+        email: localIdentity.email,
+        cognito_username: null,
+      }
+    : null;
 
   if (!user) {
     await confirmForgotPassword({

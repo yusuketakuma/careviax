@@ -304,7 +304,7 @@ describe('SafetyCheckContent', () => {
 
   it('keeps a failed resolve dialog open and retries the exact snapshotted issue', async () => {
     type ResolveMutationConfig = {
-      onError?: (error: Error, issueId: string) => void;
+      onError?: (error: Error, issue: { id: string; version: number }) => void;
       onSuccess?: () => Promise<void> | void;
     };
     const consultationMutate = vi.fn();

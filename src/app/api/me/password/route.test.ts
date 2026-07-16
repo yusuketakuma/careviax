@@ -29,6 +29,10 @@ vi.mock('@/server/services/credential-revocation', () => ({
 
 import { PATCH } from './route';
 
+function callPatch(request: NextRequest) {
+  return PATCH(request, { params: Promise.resolve({}) });
+}
+
 function createPasswordPatchRequest(body: unknown) {
   return new NextRequest('http://localhost/api/me/password', {
     method: 'PATCH',
@@ -57,7 +61,7 @@ describe('/api/me/password PATCH', () => {
   });
 
   it('changes the password when the payload is valid', async () => {
-    const response = await PATCH(
+    const response = await callPatch(
       createPasswordPatchRequest({
         currentPassword: 'old-password-value',
         newPassword: 'new-password-12345',
@@ -67,6 +71,7 @@ describe('/api/me/password PATCH', () => {
     expect(response.status).toBe(200);
     expect(changePasswordAndRevokeSessionsMock).toHaveBeenCalledWith({
       userId: 'user_1',
+      orgId: 'org_1',
       accessToken: 'token',
       currentPassword: 'old-password-value',
       newPassword: 'new-password-12345',
@@ -80,14 +85,14 @@ describe('/api/me/password PATCH', () => {
   });
 
   it('rejects non-object request bodies before Cognito password change', async () => {
-    const response = await PATCH(createPasswordPatchRequest(['unexpected']));
+    const response = await callPatch(createPasswordPatchRequest(['unexpected']));
 
     expect(response.status).toBe(400);
     expect(changePasswordAndRevokeSessionsMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON bodies before Cognito password change', async () => {
-    const response = await PATCH(createMalformedPasswordPatchRequest());
+    const response = await callPatch(createMalformedPasswordPatchRequest());
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -101,7 +106,7 @@ describe('/api/me/password PATCH', () => {
     error.name = 'NotAuthorizedException';
     changePasswordAndRevokeSessionsMock.mockRejectedValueOnce(error);
 
-    const response = await PATCH(
+    const response = await callPatch(
       createPasswordPatchRequest({
         currentPassword: 'wrong-password',
         newPassword: 'new-password-12345',
@@ -114,7 +119,7 @@ describe('/api/me/password PATCH', () => {
   it('returns 502 when provider or durable revocation completion is indeterminate', async () => {
     changePasswordAndRevokeSessionsMock.mockRejectedValueOnce(new Error('timeout'));
 
-    const response = await PATCH(
+    const response = await callPatch(
       createPasswordPatchRequest({
         currentPassword: 'old-password-value',
         newPassword: 'new-password-12345',

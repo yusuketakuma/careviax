@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
-  userFindUniqueMock,
+  userFindFirstMock,
   userFindManyMock,
   userUpdateManyMock,
   txUserFindFirstMock,
@@ -11,8 +11,9 @@ const {
   changePasswordMock,
   confirmForgotPasswordMock,
   adminGlobalSignOutMock,
+  resolveLocalUserByIdentityMock,
 } = vi.hoisted(() => ({
-  userFindUniqueMock: vi.fn(),
+  userFindFirstMock: vi.fn(),
   userFindManyMock: vi.fn(),
   userUpdateManyMock: vi.fn(),
   txUserFindFirstMock: vi.fn(),
@@ -22,6 +23,7 @@ const {
   changePasswordMock: vi.fn(),
   confirmForgotPasswordMock: vi.fn(),
   adminGlobalSignOutMock: vi.fn(),
+  resolveLocalUserByIdentityMock: vi.fn(),
 }));
 
 vi.mock('node:crypto', async (importActual) => ({
@@ -32,7 +34,7 @@ vi.mock('node:crypto', async (importActual) => ({
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     user: {
-      findUnique: userFindUniqueMock,
+      findFirst: userFindFirstMock,
       findMany: userFindManyMock,
       updateMany: userUpdateManyMock,
     },
@@ -40,6 +42,9 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 vi.mock('@/lib/db/rls', () => ({ withOrgContext: withOrgContextMock }));
+vi.mock('@/lib/auth/user-resolution', () => ({
+  resolveLocalUserByIdentity: resolveLocalUserByIdentityMock,
+}));
 vi.mock('@/lib/audit/audit-entry', () => ({ createAuditLogEntry: createAuditLogEntryMock }));
 vi.mock('@/server/services/cognito-auth', () => ({
   changePasswordWithAccessToken: changePasswordMock,
@@ -65,7 +70,8 @@ const user = {
 describe('credential revocation orchestration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    userFindUniqueMock.mockResolvedValue(user);
+    userFindFirstMock.mockResolvedValue(user);
+    resolveLocalUserByIdentityMock.mockResolvedValue(user);
     userFindManyMock.mockResolvedValue([]);
     userUpdateManyMock.mockResolvedValue({ count: 1 });
     txUserFindFirstMock.mockResolvedValue({ credential_revocation_local_completed_at: null });
@@ -85,6 +91,7 @@ describe('credential revocation orchestration', () => {
   it('persists intent before provider change and clears it only after local epoch, audit, and admin sign-out', async () => {
     await changePasswordAndRevokeSessions({
       userId: 'user_1',
+      orgId: 'org_1',
       accessToken: 'access-token',
       currentPassword: 'old-password',
       newPassword: 'new-password',
@@ -124,6 +131,7 @@ describe('credential revocation orchestration', () => {
     await expect(
       changePasswordAndRevokeSessions({
         userId: 'user_1',
+        orgId: 'org_1',
         accessToken: 'access-token',
         currentPassword: 'wrong',
         newPassword: 'new-password',
@@ -143,6 +151,7 @@ describe('credential revocation orchestration', () => {
     await expect(
       changePasswordAndRevokeSessions({
         userId: 'user_1',
+        orgId: 'org_1',
         accessToken: 'access-token',
         currentPassword: 'old-password',
         newPassword: 'new-password',
@@ -160,6 +169,7 @@ describe('credential revocation orchestration', () => {
     await expect(
       changePasswordAndRevokeSessions({
         userId: 'user_1',
+        orgId: 'org_1',
         accessToken: 'access-token',
         currentPassword: 'old-password',
         newPassword: 'new-password',
@@ -193,7 +203,7 @@ describe('credential revocation orchestration', () => {
   });
 
   it('does not expose whether an unknown reset identity exists locally', async () => {
-    userFindUniqueMock.mockResolvedValueOnce(null);
+    resolveLocalUserByIdentityMock.mockResolvedValueOnce(null);
 
     await confirmForgotPasswordAndRevokeSessions({
       email: ' UNKNOWN@example.com ',

@@ -806,17 +806,18 @@ export function MedicationsContent({
 
   const saveIssueMutation = useMutation({
     mutationFn: async (form: IssueFormData) => {
-      const isUpdate = Boolean(editingIssue);
+      const issueBeingEdited = editingIssue;
+      const isUpdate = issueBeingEdited !== null;
       const response = await fetch(
-        editingIssue
-          ? `/api/medication-issues/${encodePathSegment(editingIssue.id)}`
+        issueBeingEdited
+          ? `/api/medication-issues/${encodePathSegment(issueBeingEdited.id)}`
           : '/api/medication-issues',
         {
           method: isUpdate ? 'PATCH' : 'POST',
           headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify(
             isUpdate
-              ? { ...form, version: editingIssue.version }
+              ? { ...form, version: issueBeingEdited.version }
               : {
                   patient_id: patientId,
                   ...form,
