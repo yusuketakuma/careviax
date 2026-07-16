@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,6 +78,7 @@ export default function PasswordChangePage() {
         throw new Error(payload?.message ?? 'パスワードの変更に失敗しました');
       }
 
+      await signOut({ redirect: false });
       setSuccess(true);
     } catch {
       setError('パスワードの変更に失敗しました。現在のパスワードを確認してください。');
