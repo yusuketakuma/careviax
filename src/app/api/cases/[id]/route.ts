@@ -60,7 +60,7 @@ function toRevisionValue(value: unknown): unknown {
 
 async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: 'ケース参照の権限がありません',
   });
   if ('response' in authResult) return authResult.response;

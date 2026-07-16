@@ -11,7 +11,7 @@ import { getCaseRiskCockpit } from '@/server/services/case-risk-cockpit';
 
 async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: 'ケースリスク参照の権限がありません',
   });
   if ('response' in authResult) return authResult.response;

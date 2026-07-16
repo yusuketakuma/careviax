@@ -169,7 +169,7 @@
     {
       "path": "src/app/api/cases/[id]/risk-cockpit/route.ts",
       "expectedCount": 1,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
@@ -202,7 +202,7 @@
     {
       "path": "src/app/api/cases/[id]/route.ts",
       "expectedCount": 2,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard", "canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",

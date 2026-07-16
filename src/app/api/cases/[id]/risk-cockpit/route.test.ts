@@ -115,7 +115,7 @@ describe('/api/cases/[id]/risk-cockpit', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
-      permission: 'canVisit',
+      permission: 'canViewDashboard',
       message: 'ケースリスク参照の権限がありません',
     });
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {

@@ -157,6 +157,10 @@ describe('/api/cases/[id]', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: 'ケース参照の権限がありません',
+    });
     expect(careCaseFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'case_1',
@@ -336,6 +340,10 @@ describe('/api/cases/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: 'ケース更新の権限がありません',
+    });
     expect(txCareCaseFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'case_1',
