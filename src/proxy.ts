@@ -7,7 +7,7 @@ import {
 } from '@/lib/api/rate-limit';
 import { logSecurityEvent } from '@/lib/auth/security-events';
 import { getClientIp, isProductionLikeRuntime } from '@/lib/api/request-ip';
-import { getAuthSecret } from '@/lib/auth/secret';
+import { getAuthBaseUrl, getAuthSecret } from '@/lib/auth/secret';
 
 /**
  * Next.js 16 proxy.ts — the single Edge middleware entry point.
@@ -70,6 +70,9 @@ const PROTECTED_ROUTE_PREFIXES = [
 // ---------------------------------------------------------------------------
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const SERVER_TO_SERVER_CSRF_EXEMPTIONS = [
+  { method: 'POST', pathname: /^\/api\/jobs\/[^/]+$/ },
+] as const;
 
 function hasValidServerToServerApiKey(request: NextRequest) {
   // SAFETY: proxy.ts runs in the Edge runtime, where the AWS SDK (and therefore
@@ -79,11 +82,52 @@ function hasValidServerToServerApiKey(request: NextRequest) {
   // surfaced to the Edge runtime as an environment variable (Amplify env), and
   // the Node-runtime job route (/api/jobs/*) additionally validates it via the
   // getSecret-backed path. Do NOT introduce an async Secrets Manager call here.
+  const registeredRoute = SERVER_TO_SERVER_CSRF_EXEMPTIONS.some(
+    (entry) => entry.method === request.method && entry.pathname.test(request.nextUrl.pathname),
+  );
   return (
-    request.nextUrl.pathname.startsWith('/api/jobs/') &&
+    registeredRoute &&
     Boolean(process.env.JOB_API_KEY) &&
     request.headers.get('x-api-key') === process.env.JOB_API_KEY
   );
+}
+
+function readCanonicalBrowserOrigin(): string | null {
+  const configuredUrl = isProductionLikeRuntime() ? process.env.NEXTAUTH_URL : getAuthBaseUrl();
+  if (!configuredUrl) return null;
+
+  try {
+    const parsed = new URL(configuredUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+    if (parsed.username || parsed.password) return null;
+    if (isProductionLikeRuntime() && parsed.protocol !== 'https:') return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+function readOriginHeader(value: string): string | null {
+  try {
+    const parsed = new URL(value);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+    if (parsed.username || parsed.password) return null;
+    if (parsed.pathname !== '/' || parsed.search || parsed.hash) return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+function readRefererOrigin(value: string): string | null {
+  try {
+    const parsed = new URL(value);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+    if (parsed.username || parsed.password) return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
 }
 
 function isValidOrigin(request: NextRequest): boolean {
@@ -91,27 +135,16 @@ function isValidOrigin(request: NextRequest): boolean {
 
   const origin = request.headers.get('origin');
   const referer = request.headers.get('referer');
-  const host = request.headers.get('host');
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const canonicalOrigin = readCanonicalBrowserOrigin();
 
-  if (origin) {
-    try {
-      const originHost = new URL(origin).host;
-      if (originHost === host) return true;
-      if (appUrl && originHost === new URL(appUrl).host) return true;
-    } catch {
-      return false;
-    }
+  // Origin is authoritative when present. Never fall through to Referer or an
+  // S2S exception after a malformed or mismatched browser Origin header.
+  if (origin !== null) {
+    return canonicalOrigin !== null && readOriginHeader(origin) === canonicalOrigin;
   }
 
-  if (referer) {
-    try {
-      const refererHost = new URL(referer).host;
-      if (refererHost === host) return true;
-      if (appUrl && refererHost === new URL(appUrl).host) return true;
-    } catch {
-      return false;
-    }
+  if (referer !== null) {
+    return canonicalOrigin !== null && readRefererOrigin(referer) === canonicalOrigin;
   }
 
   // Allow only verified server-to-server job requests (e.g., EventBridge).

@@ -47,6 +47,8 @@ describe('proxy', () => {
     delete process.env.AWS_ACCESS_KEY_ID;
     delete process.env.AWS_SECRET_ACCESS_KEY;
     delete process.env.JOB_API_KEY;
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    process.env.NEXTAUTH_URL = 'https://ph-os.example';
     resetRateLimitStoreForTests();
     process.env.AUTH_SECRET = 'test-secret';
     logSecurityEventMock.mockReset();
@@ -177,6 +179,149 @@ describe('proxy', () => {
     );
   });
 
+  it.each([
+    ['wrong scheme', 'http://ph-os.example'],
+    ['wrong port', 'https://ph-os.example:444'],
+    ['opaque null origin', 'null'],
+    ['multiple origins', 'https://ph-os.example, https://attacker.example'],
+    ['origin with a path', 'https://ph-os.example/api'],
+    ['origin with credentials', 'https://user@ph-os.example'],
+  ])('rejects %s instead of comparing only the host', async (_label, origin) => {
+    const response = await proxy(
+      createRequest({
+        method: 'POST',
+        headers: {
+          host: 'ph-os.example',
+          origin,
+          'x-forwarded-for': '203.0.113.11',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'CSRF_VALIDATION_FAILED',
+    });
+  });
+
+  it('does not fall back to a matching Referer when Origin is present and mismatched', async () => {
+    const response = await proxy(
+      createRequest({
+        method: 'PATCH',
+        headers: {
+          origin: 'https://attacker.example',
+          referer: 'https://ph-os.example/patients',
+          'x-forwarded-for': '203.0.113.12',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it('accepts an exact canonical origin without trusting the raw Host header', async () => {
+    const response = await proxy(
+      createRequest({
+        method: 'POST',
+        headers: {
+          host: 'attacker-controlled.example',
+          origin: 'https://ph-os.example',
+          'x-forwarded-for': '203.0.113.13',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it('uses Referer only when Origin is absent and compares its complete origin', async () => {
+    const accepted = await proxy(
+      createRequest({
+        method: 'POST',
+        headers: {
+          referer: 'https://ph-os.example/patients?tab=active',
+          'x-forwarded-for': '203.0.113.14',
+        },
+      }),
+    );
+    const rejected = await proxy(
+      createRequest({
+        method: 'POST',
+        headers: {
+          referer: 'http://ph-os.example/patients',
+          'x-forwarded-for': '203.0.113.15',
+        },
+      }),
+    );
+
+    expect(accepted.status).toBe(200);
+    expect(rejected.status).toBe(403);
+  });
+
+  it('prefers the server auth URL over a conflicting public app URL', async () => {
+    process.env.NEXT_PUBLIC_APP_URL = 'https://public-alias.example';
+
+    const canonicalResponse = await proxy(
+      createRequest({
+        method: 'POST',
+        headers: {
+          origin: 'https://ph-os.example',
+          'x-forwarded-for': '203.0.113.16',
+        },
+      }),
+    );
+    const publicAliasResponse = await proxy(
+      createRequest({
+        method: 'POST',
+        headers: {
+          origin: 'https://public-alias.example',
+          'x-forwarded-for': '203.0.113.17',
+        },
+      }),
+    );
+
+    expect(canonicalResponse.status).toBe(200);
+    expect(publicAliasResponse.status).toBe(403);
+  });
+
+  it.each([
+    ['an invalid canonical URL', 'not a url'],
+    ['an insecure production canonical URL', 'http://ph-os.example'],
+  ])('fails closed for %s', async (_label, nextAuthUrl) => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.NEXTAUTH_URL = nextAuthUrl;
+
+    const response = await proxy(
+      createRequest({
+        method: 'POST',
+        headers: {
+          origin: 'https://ph-os.example',
+          'x-forwarded-for': '203.0.113.18',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it('does not use the public app URL as the production CSRF authority', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    delete process.env.NEXTAUTH_URL;
+    process.env.NEXT_PUBLIC_APP_URL = 'https://ph-os.example';
+
+    const response = await proxy(
+      createRequest({
+        method: 'POST',
+        headers: {
+          origin: 'https://ph-os.example',
+          'x-forwarded-for': '203.0.113.20',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
   it('redacts dynamic API path segments in CSRF security events', async () => {
     const response = await proxy(
       createRequest({
@@ -223,6 +368,44 @@ describe('proxy', () => {
     expect(response.status).toBe(200);
     // POST uses RATE_LIMIT_WRITE_MAX; first request consumes one slot
     expect(response.headers.get('X-RateLimit-Remaining')).toBe(String(RATE_LIMIT_WRITE_MAX - 1));
+  });
+
+  it('rejects a server-to-server API key request when it carries a mismatched browser Origin', async () => {
+    process.env.JOB_API_KEY = 'job-secret';
+
+    const response = await proxy(
+      createRequest({
+        method: 'POST',
+        pathname: '/api/jobs/daily',
+        headers: {
+          origin: 'https://attacker.example',
+          'x-api-key': 'job-secret',
+          'x-forwarded-for': '203.0.113.19',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it.each([
+    ['a non-POST method', 'DELETE', '/api/jobs/daily'],
+    ['an unregistered nested path', 'POST', '/api/jobs/daily/run'],
+  ])('does not apply the job S2S exception to %s', async (_label, method, pathname) => {
+    process.env.JOB_API_KEY = 'job-secret';
+
+    const response = await proxy(
+      createRequest({
+        method,
+        pathname,
+        headers: {
+          'x-api-key': 'job-secret',
+          'x-forwarded-for': '203.0.113.21',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(403);
   });
 
   it('does not let arbitrary API key headers bypass CSRF on normal API routes', async () => {
