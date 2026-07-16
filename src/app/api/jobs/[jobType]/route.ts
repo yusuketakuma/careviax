@@ -6,7 +6,7 @@ import {
   withRequestTraceHeaders,
   type RequestTraceContext,
 } from '@/lib/api/request-correlation';
-import { registeredError, success, validationError } from '@/lib/api/response';
+import { forbiddenResponse, registeredError, success, validationError } from '@/lib/api/response';
 import { requireApiKeyOrAuthContext } from '@/lib/auth/context';
 import { logger } from '@/lib/utils/logger';
 import {
@@ -63,6 +63,17 @@ type JobHandler = (context: JobExecutionContext) => Promise<{
   [key: string]: unknown;
 }>;
 
+type JobExecutionScope = 'global_only' | 'tenant_or_global';
+
+type JobRegistration = {
+  executionScope: JobExecutionScope;
+  handler: JobHandler;
+};
+
+function registerJob(executionScope: JobExecutionScope, handler: JobHandler): JobRegistration {
+  return { executionScope, handler };
+}
+
 const RAW_VAULT_PURGE_SAFE_ERROR_CODES = new Set([
   'org_scope_required',
   'invalid_limit',
@@ -77,79 +88,99 @@ function safeRawVaultPurgeErrors(errors: unknown): string[] {
   );
 }
 
-const JOB_HANDLERS: Record<string, JobHandler> = {
-  daily: runDailyOperations,
-  evening: runEveningOperations,
-  'daily-medication-check': checkMedicationDeadlines,
-  'daily-refill-check': checkRefillPrescriptions,
-  'daily-prescription-expiry': checkPrescriptionExpiry,
-  'daily-visit-demand': generateVisitDemands,
-  'daily-management-plan-review': checkManagementPlanReviews,
-  'daily-callback-followups': checkCallbackFollowups,
-  'daily-geocode-review': checkResidenceGeocodeQuality,
-  'daily-preparation-check': checkPreparationBacklog,
-  'daily-initial-home-visit-assessment': checkInitialHomeVisitAssessmentBacklog,
-  'daily-billing-evidence': generateBillingEvidenceDaily,
-  'daily-visit-support-sync': syncVisitSupportFeatureTasks,
-  'daily-case-risk-task-sync': (context) =>
+const JOB_REGISTRY: Record<string, JobRegistration> = {
+  daily: registerJob('global_only', runDailyOperations),
+  evening: registerJob('global_only', runEveningOperations),
+  'daily-medication-check': registerJob('global_only', checkMedicationDeadlines),
+  'daily-refill-check': registerJob('global_only', checkRefillPrescriptions),
+  'daily-prescription-expiry': registerJob('global_only', checkPrescriptionExpiry),
+  'daily-visit-demand': registerJob('global_only', generateVisitDemands),
+  'daily-management-plan-review': registerJob('global_only', checkManagementPlanReviews),
+  'daily-callback-followups': registerJob('global_only', checkCallbackFollowups),
+  'daily-geocode-review': registerJob('global_only', checkResidenceGeocodeQuality),
+  'daily-preparation-check': registerJob('global_only', checkPreparationBacklog),
+  'daily-initial-home-visit-assessment': registerJob(
+    'global_only',
+    checkInitialHomeVisitAssessmentBacklog,
+  ),
+  'daily-billing-evidence': registerJob('global_only', generateBillingEvidenceDaily),
+  'daily-visit-support-sync': registerJob('global_only', syncVisitSupportFeatureTasks),
+  'daily-case-risk-task-sync': registerJob('tenant_or_global', (context) =>
     syncCaseRiskCockpitRiskTasks(
       context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
     ),
-  'evening-unrecorded-visits': checkUnrecordedVisits,
-  'next-day': runNextDayOperations,
-  monthly: runMonthlyOperations,
-  'drug-master-refresh': refreshSskDrugMaster,
-  'drug-reference-refresh': refreshMhlwDrugReferences,
-  'drug-master-auto-refresh': refreshAllFreeDrugMasters,
-  'drug-master-freshness-check': checkDrugMasterFreshness,
-  'medical-institution-master-auto-refresh': (context) =>
+  ),
+  'evening-unrecorded-visits': registerJob('global_only', checkUnrecordedVisits),
+  'next-day': registerJob('global_only', runNextDayOperations),
+  monthly: registerJob('global_only', runMonthlyOperations),
+  'drug-master-refresh': registerJob('global_only', refreshSskDrugMaster),
+  'drug-reference-refresh': registerJob('global_only', refreshMhlwDrugReferences),
+  'drug-master-auto-refresh': registerJob('global_only', refreshAllFreeDrugMasters),
+  'drug-master-freshness-check': registerJob('global_only', checkDrugMasterFreshness),
+  'medical-institution-master-auto-refresh': registerJob('tenant_or_global', (context) =>
     refreshMedicalInstitutionMaster(
       context.authType === 'auth' && context.orgId ? { targetOrgIds: [context.orgId] } : undefined,
     ),
-  'care-service-office-master-auto-refresh': (context) =>
+  ),
+  'care-service-office-master-auto-refresh': registerJob('tenant_or_global', (context) =>
     refreshCareServiceOfficeMaster(
       context.authType === 'auth' && context.orgId ? { targetOrgIds: [context.orgId] } : undefined,
     ),
-  'pmda-package-insert-refresh': refreshPmdaPackageInsertsDelta,
-  'medication-history-bulk-export-drain': (context) =>
+  ),
+  'pmda-package-insert-refresh': registerJob('global_only', refreshPmdaPackageInsertsDelta),
+  'medication-history-bulk-export-drain': registerJob('tenant_or_global', (context) =>
     drainMedicationHistoryBulkExportJobs(
       context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
     ),
-  'bulk-export-artifact-cleanup': (context) =>
+  ),
+  'bulk-export-artifact-cleanup': registerJob('tenant_or_global', (context) =>
     cleanupExpiredBulkExportArtifacts(
       context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
     ),
-  'webhook-delivery-retry': (context) =>
+  ),
+  'webhook-delivery-retry': registerJob('tenant_or_global', (context) =>
     retryWebhookDeliveries(
       context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
     ),
-  'notification-delivery-drain': (context) =>
+  ),
+  'notification-delivery-drain': registerJob('tenant_or_global', (context) =>
     drainNotificationDeliveries(
       context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
     ),
-  'yrese-clinical-sync-queue-drain': (context) =>
+  ),
+  'yrese-clinical-sync-queue-drain': registerJob('tenant_or_global', (context) =>
     drainYreseClinicalSyncQueueJob(
       context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
     ),
-  'clinical-fhir-raw-vault-retention-purge': (context) =>
+  ),
+  'clinical-fhir-raw-vault-retention-purge': registerJob('tenant_or_global', (context) =>
     purgeExpiredClinicalFhirRawResourceVaultJob(
       context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
     ),
-  'credential-revocation-reconcile': (context) =>
+  ),
+  'credential-revocation-reconcile': registerJob('tenant_or_global', (context) =>
     reconcileCredentialRevocationIntents(
       context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
     ),
-  'daily-facility-standard-expiry': checkFacilityStandardExpiry,
-  'daily-credential-expiry': checkCredentialExpiry,
-  'daily-consent-expiry': checkConsentExpiry,
-  'daily-public-subsidy-expiry': (context) =>
+  ),
+  'daily-facility-standard-expiry': registerJob('global_only', checkFacilityStandardExpiry),
+  'daily-credential-expiry': registerJob('global_only', checkCredentialExpiry),
+  'daily-consent-expiry': registerJob('global_only', checkConsentExpiry),
+  'daily-public-subsidy-expiry': registerJob('tenant_or_global', (context) =>
     checkPublicSubsidyExpiry(
       context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
     ),
-  'daily-visit-record-retention': checkVisitRecordRetention,
-  'daily-prescription-original-retention': checkPrescriptionOriginalRetention,
-  'daily-pca-pump-rental-overdue': checkPcaPumpRentalOverdues,
-  'daily-pca-pump-return-inspection-pending': checkPcaPumpReturnInspectionPending,
+  ),
+  'daily-visit-record-retention': registerJob('global_only', checkVisitRecordRetention),
+  'daily-prescription-original-retention': registerJob(
+    'global_only',
+    checkPrescriptionOriginalRetention,
+  ),
+  'daily-pca-pump-rental-overdue': registerJob('tenant_or_global', checkPcaPumpRentalOverdues),
+  'daily-pca-pump-return-inspection-pending': registerJob(
+    'tenant_or_global',
+    checkPcaPumpReturnInspectionPending,
+  ),
 };
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ jobType: string }> }) {
@@ -176,8 +207,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
     return tracedResponse(validationError('ジョブタイプが不正です') as NextResponse);
   }
 
-  const handler = JOB_HANDLERS[jobType];
-  if (!handler) {
+  const registration = JOB_REGISTRY[jobType];
+  if (!registration) {
     return tracedResponse(
       registeredError(
         'WORKFLOW_NOT_FOUND',
@@ -186,9 +217,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
     );
   }
 
+  if (authResult.authType === 'auth' && registration.executionScope === 'global_only') {
+    return tracedResponse(await forbiddenResponse('このジョブはシステム実行専用です'));
+  }
+
   try {
     const result = await runWithRequestTraceContext(trace, () =>
-      handler({
+      registration.handler({
         authType: authResult.authType,
         orgId: authResult.authType === 'auth' ? authResult.ctx.orgId : undefined,
       }),

@@ -418,28 +418,34 @@ describe('/api/jobs/[jobType] POST', () => {
     expect(cleanupExpiredBulkExportArtifactsMock).not.toHaveBeenCalled();
   });
 
-  it('returns 200 when authenticated admin executes the job', async () => {
+  it('rejects authenticated tenant admins from global-only jobs before handler execution', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
-    let capturedTrace: RequestTraceContext | undefined;
-    checkMedicationDeadlinesMock.mockImplementationOnce(async () => {
-      capturedTrace = getRequestTraceContext();
-      return { processedCount: 3 };
-    });
-
     const response = await POST(
       createRequest({ 'x-org-id': 'org_1', 'x-correlation-id': 'admin_job_trace' }),
       { params: Promise.resolve({ jobType: 'daily-medication-check' }) },
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(403);
     expect(response.headers.get('X-Request-Id')).toMatch(/^[0-9a-f-]{36}$/);
     expect(response.headers.get('X-Correlation-Id')).toBe('admin_job_trace');
-    expect(capturedTrace).toEqual({
-      requestId: response.headers.get('X-Request-Id'),
-      correlationId: 'admin_job_trace',
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: 'このジョブはシステム実行専用です',
     });
-    expect(checkMedicationDeadlinesMock).toHaveBeenCalledOnce();
+    expect(checkMedicationDeadlinesMock).not.toHaveBeenCalled();
+  });
+
+  it('does not treat a legacy tenant owner as a global job operator', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'owner' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'monthly' }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(runMonthlyOperationsMock).not.toHaveBeenCalled();
   });
 
   it.each(['patient@example.test', 'contains spaces', 'a'.repeat(129)])(
@@ -464,7 +470,7 @@ describe('/api/jobs/[jobType] POST', () => {
     },
   );
 
-  it('returns 200 when admin executes visit support sync', async () => {
+  it('rejects authenticated tenant admins from unscoped composite jobs', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
@@ -472,12 +478,12 @@ describe('/api/jobs/[jobType] POST', () => {
       params: Promise.resolve({ jobType: 'daily-visit-support-sync' }),
     });
 
-    expect(response.status).toBe(200);
-    expect(syncVisitSupportFeatureTasksMock).toHaveBeenCalledOnce();
-    await expectJobSuccessData(response, {
-      jobType: 'daily-visit-support-sync',
-      processedCount: 2,
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: 'このジョブはシステム実行専用です',
     });
+    expect(syncVisitSupportFeatureTasksMock).not.toHaveBeenCalled();
   });
 
   it('scopes public subsidy expiry checks to the authenticated admin org', async () => {
@@ -933,7 +939,7 @@ describe('/api/jobs/[jobType] POST', () => {
     expect(serialized).not.toContain('sha256:abc');
   });
 
-  it('returns 200 when admin executes visit record retention checks', async () => {
+  it('rejects tenant admin execution of the unscoped visit record retention job', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
@@ -941,15 +947,11 @@ describe('/api/jobs/[jobType] POST', () => {
       params: Promise.resolve({ jobType: 'daily-visit-record-retention' }),
     });
 
-    expect(response.status).toBe(200);
-    expect(checkVisitRecordRetentionMock).toHaveBeenCalledOnce();
-    await expectJobSuccessData(response, {
-      jobType: 'daily-visit-record-retention',
-      processedCount: 1,
-    });
+    expect(response.status).toBe(403);
+    expect(checkVisitRecordRetentionMock).not.toHaveBeenCalled();
   });
 
-  it('returns 200 when admin executes prescription original retention checks', async () => {
+  it('rejects tenant admin execution of the unscoped prescription retention job', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
@@ -957,12 +959,8 @@ describe('/api/jobs/[jobType] POST', () => {
       params: Promise.resolve({ jobType: 'daily-prescription-original-retention' }),
     });
 
-    expect(response.status).toBe(200);
-    expect(checkPrescriptionOriginalRetentionMock).toHaveBeenCalledOnce();
-    await expectJobSuccessData(response, {
-      jobType: 'daily-prescription-original-retention',
-      processedCount: 1,
-    });
+    expect(response.status).toBe(403);
+    expect(checkPrescriptionOriginalRetentionMock).not.toHaveBeenCalled();
   });
 
   it('returns 200 when admin executes PCA pump rental overdue checks scoped to their org', async () => {
