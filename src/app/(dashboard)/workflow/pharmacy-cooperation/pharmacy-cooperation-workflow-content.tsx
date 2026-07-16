@@ -27,6 +27,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
+import { PatientPinnedHeader } from '@/components/ui/patient-pinned-header';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
@@ -41,7 +42,9 @@ import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   partnerPharmacySummarySchema,
+  patientSafeDisplaySchema,
   pharmacyCooperationNamedEntitySchema as namedEntitySchema,
+  type PatientSafeDisplay,
 } from '@/lib/pharmacy-cooperation/api-contracts';
 import { buildPartnerVisitRecordApiPath } from '@/lib/pharmacy-cooperation/navigation';
 import {
@@ -64,6 +67,7 @@ type PatientShareCaseRow = {
   starts_at: string | null;
   ends_at: string | null;
   updated_at: string;
+  patient_safe_display: PatientSafeDisplay;
   partnership: {
     id: string;
     status: string;
@@ -222,6 +226,7 @@ type PharmacyVisitRequestRow = {
   declined_at: string | null;
   completed_at: string | null;
   updated_at: string;
+  patient_safe_display: PatientSafeDisplay;
   partner_pharmacy: { id: string; name: string; status: string };
   partnership: { id: string; base_site: { id: string; name: string } };
   has_request_reason: boolean;
@@ -242,6 +247,7 @@ type PartnerVisitRecordRow = {
   submitted_at: string | null;
   confirmed_at: string | null;
   updated_at: string;
+  patient_safe_display: PatientSafeDisplay;
   owner_partner_pharmacy: { id: string; name: string; status: string };
   visit_request: { id: string; status: string; urgency: string };
   claim_note: {
@@ -319,6 +325,7 @@ const patientShareCaseRowSchema = z.object({
   starts_at: z.string().nullable(),
   ends_at: z.string().nullable(),
   updated_at: z.string(),
+  patient_safe_display: patientSafeDisplaySchema,
   partnership: z.object({
     id: z.string(),
     status: z.string(),
@@ -376,6 +383,7 @@ const pharmacyVisitRequestRowSchema = z.object({
   declined_at: z.string().nullable(),
   completed_at: z.string().nullable(),
   updated_at: z.string(),
+  patient_safe_display: patientSafeDisplaySchema,
   partner_pharmacy: partnerPharmacySummarySchema,
   partnership: z.object({
     id: z.string(),
@@ -399,6 +407,7 @@ const partnerVisitRecordRowSchema = z.object({
   submitted_at: z.string().nullable(),
   confirmed_at: z.string().nullable(),
   updated_at: z.string(),
+  patient_safe_display: patientSafeDisplaySchema,
   owner_partner_pharmacy: partnerPharmacySummarySchema,
   visit_request: z.object({
     id: z.string(),
@@ -1010,6 +1019,76 @@ function workflowActionDescription(action: PendingWorkflowAction) {
     : 'この操作は薬局間連携の状態を更新します。対象が正しいことを確認してください。';
 }
 
+function workflowActionPatient(action: PendingWorkflowAction): PatientSafeDisplay | null {
+  switch (action.kind) {
+    case 'activateShareCase':
+    case 'baseApproveLink':
+    case 'acceptLink':
+    case 'declineLink':
+      return action.shareCase.patient_safe_display;
+    case 'revokePatientShareConsent':
+      return action.shareCase?.patient_safe_display ?? null;
+    case 'acceptVisitRequest':
+    case 'declineVisitRequest':
+      return action.request.patient_safe_display;
+    case 'submitPartnerVisitRecord':
+    case 'confirmPartnerVisitRecord':
+    case 'returnPartnerVisitRecord':
+    case 'createReportDraft':
+      return action.record.patient_safe_display;
+  }
+}
+
+function PatientSafeDisplayBand({
+  patient,
+  label = '対象患者',
+  className,
+}: {
+  patient: PatientSafeDisplay;
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <div className={cn('min-w-0', className)}>
+      <p className="mb-1 text-xs font-semibold text-muted-foreground">{label}</p>
+      <PatientPinnedHeader
+        sticky={false}
+        name={patient.name}
+        kana={patient.name_kana}
+        birthDate={patient.birth_date}
+        meta={<span className="tabular-nums">患者番号: {patient.display_id ?? '未採番'}</span>}
+        className="rounded-md border"
+      />
+    </div>
+  );
+}
+
+function PatientSafeDisplayCell({ patient }: { patient: PatientSafeDisplay }) {
+  return (
+    <div className="min-w-44">
+      <p className="font-medium text-foreground">{patient.name}</p>
+      <p className="text-xs text-muted-foreground">{patient.name_kana}</p>
+      <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+        {formatDate(patient.birth_date)} / {patient.display_id ?? '未採番'}
+      </p>
+    </div>
+  );
+}
+
+function PartnerIdentityBand({ form }: { form: LinkAcceptForm }) {
+  return (
+    <section aria-label="協力薬局側患者情報" className="rounded-md border bg-card px-4 py-3">
+      <p className="text-xs font-semibold text-muted-foreground">協力薬局側患者</p>
+      <p className="mt-1 font-heading text-base font-semibold">{form.name || '氏名未入力'}</p>
+      {form.nameKana ? <p className="text-xs text-muted-foreground">{form.nameKana}</p> : null}
+      <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+        <span className="tabular-nums">生年月日: {formatDate(form.birthDate)}</span>
+        <span className="tabular-nums">患者番号: {form.partnerPatientId || '未入力'}</span>
+      </div>
+    </section>
+  );
+}
+
 function workflowActionDetails(action: PendingWorkflowAction) {
   switch (action.kind) {
     case 'activateShareCase':
@@ -1555,6 +1634,13 @@ function ShareCasesTable({
       enableSorting: false,
     },
     {
+      id: 'patient',
+      header: '対象患者',
+      meta: { label: '対象患者' },
+      cell: ({ row }) => <PatientSafeDisplayCell patient={row.original.patient_safe_display} />,
+      enableSorting: false,
+    },
+    {
       id: 'partner_pharmacy',
       header: '協力薬局',
       meta: { label: '協力薬局' },
@@ -1624,7 +1710,7 @@ function ShareCasesTable({
       caption="患者共有ケース一覧"
       getRowId={(row) => row.id}
       getRowA11yLabel={(row) =>
-        `${row.id} ${row.partnership.partner_pharmacy.name} ${statusLabel(row.status)}`
+        `${row.patient_safe_display.name} ${formatDate(row.patient_safe_display.birth_date)} ${row.patient_safe_display.display_id ?? '未採番'} ${row.partnership.partner_pharmacy.name} ${statusLabel(row.status)}`
       }
       emptyMessage="患者共有ケースはまだありません"
     />
@@ -1713,6 +1799,13 @@ function ShareCaseActionCell({
 
       {isPendingLink ? (
         <div className="grid gap-2 rounded-md border border-border/60 bg-muted/30 p-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2 xl:col-span-3">
+            <PatientSafeDisplayBand
+              patient={row.patient_safe_display}
+              label="基幹薬局側患者（正本）"
+            />
+            <PartnerIdentityBand form={acceptForm} />
+          </div>
           <label className="flex flex-col gap-1">
             <FieldLabel>協力側ID</FieldLabel>
             <Input
@@ -1934,7 +2027,8 @@ function PatientShareConsentsPanel({
             {shareCases.length === 0 ? <option value="">未選択</option> : null}
             {shareCases.map((row) => (
               <option key={row.id} value={row.id}>
-                {row.id} / {statusLabel(row.status)}
+                {row.patient_safe_display.name} / {formatDate(row.patient_safe_display.birth_date)}{' '}
+                / {row.patient_safe_display.display_id ?? '未採番'} / {statusLabel(row.status)}
               </option>
             ))}
           </NativeSelect>
@@ -2024,6 +2118,12 @@ function PatientShareConsentsPanel({
           </label>
         </div>
         <div className="lg:col-span-2">
+          {selectedShareCase ? (
+            <PatientSafeDisplayBand
+              patient={selectedShareCase.patient_safe_display}
+              className="mb-3"
+            />
+          ) : null}
           <Button
             type="button"
             disabled={isBusy || !canCreate}
@@ -2084,6 +2184,13 @@ function VisitRequestsTable({
       enableSorting: false,
     },
     {
+      id: 'patient',
+      header: '対象患者',
+      meta: { label: '対象患者' },
+      cell: ({ row }) => <PatientSafeDisplayCell patient={row.original.patient_safe_display} />,
+      enableSorting: false,
+    },
+    {
       id: 'partner_pharmacy',
       header: '協力薬局',
       meta: { label: '協力薬局' },
@@ -2128,7 +2235,9 @@ function VisitRequestsTable({
       data={rows}
       caption="協力薬局訪問依頼一覧"
       getRowId={(row) => row.id}
-      getRowA11yLabel={(row) => `${row.id} ${row.partner_pharmacy.name} ${statusLabel(row.status)}`}
+      getRowA11yLabel={(row) =>
+        `${row.patient_safe_display.name} ${formatDate(row.patient_safe_display.birth_date)} ${row.patient_safe_display.display_id ?? '未採番'} ${row.partner_pharmacy.name} ${statusLabel(row.status)}`
+      }
       emptyMessage="協力薬局への訪問依頼はまだありません"
     />
   );
@@ -2178,7 +2287,9 @@ function VisitRequestCreatePanel({
             {activeShareCases.length === 0 ? <option value="">未選択</option> : null}
             {activeShareCases.map((row) => (
               <option key={row.id} value={row.id}>
-                {row.id} / {row.partnership.partner_pharmacy.name}
+                {row.patient_safe_display.name} / {formatDate(row.patient_safe_display.birth_date)}{' '}
+                / {row.patient_safe_display.display_id ?? '未採番'} /{' '}
+                {row.partnership.partner_pharmacy.name}
               </option>
             ))}
           </NativeSelect>
@@ -2292,6 +2403,9 @@ function VisitRequestCreatePanel({
           </label>
         </div>
       </div>
+      {selectedShareCase ? (
+        <PatientSafeDisplayBand patient={selectedShareCase.patient_safe_display} className="mt-3" />
+      ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button type="button" disabled={isBusy || !canCreate} onClick={onCreate}>
           <Send className="size-4" aria-hidden="true" />
@@ -2350,7 +2464,8 @@ function PartnerVisitRecordDraftPanel({
             {visitRequests.length === 0 ? <option value="">未選択</option> : null}
             {visitRequests.map((row) => (
               <option key={row.id} value={row.id}>
-                {row.id} / {statusLabel(row.status)}
+                {row.patient_safe_display.name} / {formatDate(row.patient_safe_display.birth_date)}{' '}
+                / {row.patient_safe_display.display_id ?? '未採番'} / {statusLabel(row.status)}
               </option>
             ))}
           </NativeSelect>
@@ -2469,6 +2584,12 @@ function PartnerVisitRecordDraftPanel({
           </label>
         </div>
       </div>
+      {selectedVisitRequest ? (
+        <PatientSafeDisplayBand
+          patient={selectedVisitRequest.patient_safe_display}
+          className="mt-3"
+        />
+      ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button type="button" disabled={isBusy || !canSave} onClick={onSave}>
           <Send className="size-4" aria-hidden="true" />
@@ -2510,6 +2631,13 @@ function PartnerVisitRecordsTable({
       header: '訪問記録',
       meta: { label: '訪問記録' },
       cell: ({ row }) => <PartnerVisitRecordSummaryCell record={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'patient',
+      header: '対象患者',
+      meta: { label: '対象患者' },
+      cell: ({ row }) => <PatientSafeDisplayCell patient={row.original.patient_safe_display} />,
       enableSorting: false,
     },
     {
@@ -2562,7 +2690,7 @@ function PartnerVisitRecordsTable({
       caption="協力訪問記録一覧"
       getRowId={(row) => row.id}
       getRowA11yLabel={(row) =>
-        `${row.id} ${row.owner_partner_pharmacy.name} ${statusLabel(row.status)}`
+        `${row.patient_safe_display.name} ${formatDate(row.patient_safe_display.birth_date)} ${row.patient_safe_display.display_id ?? '未採番'} ${row.owner_partner_pharmacy.name} ${statusLabel(row.status)}`
       }
       emptyMessage="協力訪問記録はまだありません"
     />
@@ -2627,7 +2755,8 @@ function CorrectionRequestsPanel({
             {shareCases.length === 0 ? <option value="">未選択</option> : null}
             {shareCases.map((row) => (
               <option key={row.id} value={row.id}>
-                {row.id} / {statusLabel(row.status)}
+                {row.patient_safe_display.name} / {formatDate(row.patient_safe_display.birth_date)}{' '}
+                / {row.patient_safe_display.display_id ?? '未採番'} / {statusLabel(row.status)}
               </option>
             ))}
           </NativeSelect>
@@ -2723,6 +2852,12 @@ function CorrectionRequestsPanel({
           </label>
         </div>
         <div className="lg:col-span-2">
+          {selectedShareCase ? (
+            <PatientSafeDisplayBand
+              patient={selectedShareCase.patient_safe_display}
+              className="mb-3"
+            />
+          ) : null}
           <Button type="button" disabled={isBusy || !canCreate} onClick={onCreate}>
             <PencilLine className="size-4" aria-hidden="true" />
             修正依頼を作成
@@ -2802,6 +2937,8 @@ function MessageThreadsPanel({
   const visitRequestOptions = visitRequests.filter(
     (request) => request.share_case_id === selectedShareCaseId,
   );
+  const selectedShareCase =
+    activeShareCases.find((shareCase) => shareCase.id === selectedShareCaseId) ?? null;
   const canCreate =
     activeShareCases.some((shareCase) => shareCase.id === selectedShareCaseId) &&
     form.body.trim().length > 0;
@@ -2830,7 +2967,10 @@ function MessageThreadsPanel({
             >
               {activeShareCases.map((row) => (
                 <option key={row.id} value={row.id}>
-                  {row.id} / {row.partnership.partner_pharmacy.name}
+                  {row.patient_safe_display.name} /{' '}
+                  {formatDate(row.patient_safe_display.birth_date)} /{' '}
+                  {row.patient_safe_display.display_id ?? '未採番'} /{' '}
+                  {row.partnership.partner_pharmacy.name}
                 </option>
               ))}
             </NativeSelect>
@@ -2846,7 +2986,9 @@ function MessageThreadsPanel({
               <option value="">患者共有ケース全体</option>
               {visitRequestOptions.map((row) => (
                 <option key={row.id} value={row.id}>
-                  {row.id} / {statusLabel(row.status)}
+                  {row.patient_safe_display.name} /{' '}
+                  {formatDate(row.patient_safe_display.birth_date)} /{' '}
+                  {row.patient_safe_display.display_id ?? '未採番'} / {statusLabel(row.status)}
                 </option>
               ))}
             </NativeSelect>
@@ -2868,6 +3010,10 @@ function MessageThreadsPanel({
           </Button>
         </div>
       </div>
+
+      {selectedShareCase ? (
+        <PatientSafeDisplayBand patient={selectedShareCase.patient_safe_display} />
+      ) : null}
 
       <QueryFallback isLoading={isLoading} isError={isError} error={error} onRetry={onRetry}>
         {messageThreads.length === 0 ? (
@@ -3878,15 +4024,37 @@ export function PharmacyCooperationWorkflowContent() {
           pendingWorkflowAction ? workflowActionConfirmLabel(pendingWorkflowAction) : '実行する'
         }
         variant={pendingWorkflowAction ? workflowActionVariant(pendingWorkflowAction) : 'default'}
-        confirmDisabled={isBusy}
+        confirmDisabled={
+          isBusy ||
+          (pendingWorkflowAction !== null && !workflowActionPatient(pendingWorkflowAction))
+        }
         onConfirm={executePendingWorkflowAction}
       >
         {pendingWorkflowAction ? (
-          <ul className="space-y-1 rounded-md border border-border/70 bg-muted/30 p-3 text-sm text-foreground">
-            {workflowActionDetails(pendingWorkflowAction).map((detail) => (
-              <li key={detail}>{detail}</li>
-            ))}
-          </ul>
+          <div className="space-y-3">
+            {workflowActionPatient(pendingWorkflowAction) ? (
+              pendingWorkflowAction.kind === 'acceptLink' ? (
+                <div className="grid gap-3 sm:grid-cols-2" aria-label="患者照合">
+                  <PatientSafeDisplayBand
+                    patient={pendingWorkflowAction.shareCase.patient_safe_display}
+                    label="基幹薬局側患者（正本）"
+                  />
+                  <PartnerIdentityBand form={pendingWorkflowAction.acceptForm} />
+                </div>
+              ) : (
+                <PatientSafeDisplayBand patient={workflowActionPatient(pendingWorkflowAction)!} />
+              )
+            ) : (
+              <div role="alert" className="rounded-md border border-state-blocked/40 p-3 text-sm">
+                対象患者を正本から確認できません。画面を更新してからやり直してください。
+              </div>
+            )}
+            <ul className="space-y-1 rounded-md border border-border/70 bg-muted/30 p-3 text-sm text-foreground">
+              {workflowActionDetails(pendingWorkflowAction).map((detail) => (
+                <li key={detail}>{detail}</li>
+              ))}
+            </ul>
+          </div>
         ) : null}
       </ConfirmDialog>
     </div>

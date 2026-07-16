@@ -18,6 +18,14 @@ vi.mock('sonner', async () => {
 
 setupDomTestEnv();
 
+const patientSafeDisplay = {
+  display_id: 'PT-0001',
+  name: '山田 花子',
+  name_kana: 'ヤマダ ハナコ',
+  birth_date: '1950-01-02',
+  updated_at: '2026-06-18T00:00:00.000Z',
+};
+
 function renderContent() {
   return render(<PharmacyCooperationWorkflowContent />, { wrapper: createQueryClientWrapper() });
 }
@@ -49,6 +57,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   starts_at: '2026-06-01T00:00:00.000Z',
                   ends_at: null,
                   updated_at: '2026-06-18T00:00:00.000Z',
+                  patient_safe_display: patientSafeDisplay,
                   partnership: {
                     id: 'partnership_1',
                     status: 'active',
@@ -74,6 +83,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   starts_at: '2026-06-01T00:00:00.000Z',
                   ends_at: null,
                   updated_at: '2026-06-18T00:00:00.000Z',
+                  patient_safe_display: patientSafeDisplay,
                   partnership: {
                     id: 'partnership_1',
                     status: 'active',
@@ -99,6 +109,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   starts_at: '2026-06-01T00:00:00.000Z',
                   ends_at: null,
                   updated_at: '2026-06-18T00:00:00.000Z',
+                  patient_safe_display: patientSafeDisplay,
                   partnership: {
                     id: 'partnership_1',
                     status: 'active',
@@ -124,6 +135,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   starts_at: '2026-06-01T00:00:00.000Z',
                   ends_at: null,
                   updated_at: '2026-06-18T00:00:00.000Z',
+                  patient_safe_display: patientSafeDisplay,
                   partnership: {
                     id: 'partnership_1',
                     status: 'active',
@@ -253,6 +265,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   declined_at: null,
                   completed_at: null,
                   updated_at: '2026-06-18T00:00:00.000Z',
+                  patient_safe_display: patientSafeDisplay,
                   partner_pharmacy: {
                     id: 'partner_pharmacy_1',
                     name: '協力薬局',
@@ -289,6 +302,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   declined_at: null,
                   completed_at: null,
                   updated_at: '2026-06-18T01:00:00.000Z',
+                  patient_safe_display: patientSafeDisplay,
                   partner_pharmacy: {
                     id: 'partner_pharmacy_1',
                     name: '協力薬局',
@@ -325,6 +339,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   submitted_at: '2026-06-20T03:00:00.000Z',
                   confirmed_at: null,
                   updated_at: '2026-06-20T03:00:00.000Z',
+                  patient_safe_display: patientSafeDisplay,
                   owner_partner_pharmacy: {
                     id: 'partner_pharmacy_1',
                     name: '協力薬局',
@@ -356,6 +371,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   submitted_at: '2026-06-19T03:00:00.000Z',
                   confirmed_at: '2026-06-19T04:00:00.000Z',
                   updated_at: '2026-06-19T04:00:00.000Z',
+                  patient_safe_display: patientSafeDisplay,
                   owner_partner_pharmacy: {
                     id: 'partner_pharmacy_1',
                     name: '協力薬局',
@@ -390,6 +406,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   submitted_at: null,
                   confirmed_at: null,
                   updated_at: '2026-06-20T01:30:00.000Z',
+                  patient_safe_display: patientSafeDisplay,
                   owner_partner_pharmacy: {
                     id: 'partner_pharmacy_1',
                     name: '協力薬局',
@@ -955,7 +972,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(screen.queryByText('患者共有同意はまだありません')).toBeNull();
   });
 
-  it('renders PHI-minimized share cases, visit requests, and partner visit records', async () => {
+  it('renders authorized patient identity while keeping clinical payloads out of list rows', async () => {
     renderContent();
 
     expect(await screen.findByText('有効化待ち共有')).toBeTruthy();
@@ -974,7 +991,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(within(shareCasesTable).getByRole('columnheader', { name: '操作' })).toBeTruthy();
     expect(screen.getAllByText('患者リンク').length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText('協力薬局').length).toBeGreaterThanOrEqual(1);
-    expect(document.body.textContent).not.toContain('山田');
+    expect(document.body.textContent).toContain('山田 花子');
+    expect(document.body.textContent).toContain('1950-01-02');
+    expect(document.body.textContent).toContain('PT-0001');
     expect(document.body.textContent).not.toContain('訪問本文');
     expect(document.body.textContent).not.toContain('訪問記録本文');
     expect(document.body.textContent).not.toContain('服薬指導詳細');
@@ -1125,6 +1144,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                 starts_at: '2026-06-01T00:00:00.000Z',
                 ends_at: null,
                 updated_at: '2026-06-18T00:00:00.000Z',
+                patient_safe_display: patientSafeDisplay,
                 partnership: {
                   id: 'partnership_1',
                   status: 'active',
@@ -1184,6 +1204,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                 starts_at: '2026-06-01T00:00:00.000Z',
                 ends_at: null,
                 updated_at: '2026-06-18T00:00:00.000Z',
+                patient_safe_display: patientSafeDisplay,
                 partnership: {
                   id: 'partnership_1',
                   status: 'active',
@@ -1502,6 +1523,13 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(screen.getByRole('heading', { name: '患者リンクを協力受諾します' })).toBeTruthy();
     expect(screen.getByText('共有ケース: share_case_accept_ready')).toBeTruthy();
     expect(screen.getByText('協力側ID: partner_patient_1')).toBeTruthy();
+    const identityDialog = screen.getByRole('dialog');
+    expect(within(identityDialog).getByText('基幹薬局側患者（正本）')).toBeTruthy();
+    expect(within(identityDialog).getByText('協力薬局側患者')).toBeTruthy();
+    expect(within(identityDialog).getByText('山田 花子')).toBeTruthy();
+    expect(within(identityDialog).getByText('佐藤 花子')).toBeTruthy();
+    expect(within(identityDialog).getByText('生年月日: 1940-01-02')).toBeTruthy();
+    expect(within(identityDialog).getByText('患者番号: partner_patient_1')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '協力受諾する' }));
 
     await waitFor(() => {
@@ -1638,9 +1666,10 @@ describe('PharmacyCooperationWorkflowContent', () => {
       });
     });
 
-    expect(document.body.textContent).not.toContain('退院直後の服薬確認が必要です');
-    expect(document.body.textContent).not.toContain('血圧と副作用を確認');
-    expect(document.body.textContent).not.toContain('玄関暗証番号');
+    const visitRequestsTable = screen.getByRole('table', { name: '協力薬局訪問依頼一覧' });
+    expect(visitRequestsTable.textContent).not.toContain('退院直後の服薬確認が必要です');
+    expect(visitRequestsTable.textContent).not.toContain('血圧と副作用を確認');
+    expect(visitRequestsTable.textContent).not.toContain('玄関暗証番号');
     expect(screen.getAllByText(/契約 contract_1/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/1訪問固定/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/単価 5,500円/).length).toBeGreaterThan(0);

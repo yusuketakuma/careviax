@@ -115,6 +115,19 @@ function activeShareCaseMutationWhere(asOf = new Date('2026-06-19T00:00:00.000Z'
 }
 
 describe('/api/pharmacy-visit-requests', () => {
+  const patientSafeRelation = {
+    display_id: 'PT-0001',
+    name: '山田 花子',
+    name_kana: 'ヤマダ ハナコ',
+    birth_date: new Date('1950-01-02T00:00:00.000Z'),
+    updated_at: new Date('2026-06-18T00:00:00.000Z'),
+  };
+
+  const withPatientSafeRelation = <T extends object>(row: T) => ({
+    ...row,
+    share_case: { base_patient: patientSafeRelation },
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-19T00:00:00.000Z'));
@@ -203,8 +216,12 @@ describe('/api/pharmacy-visit-requests', () => {
           findFirst: pharmacyContractVersionFindFirstMock,
         },
         pharmacyVisitRequest: {
-          findMany: pharmacyVisitRequestFindManyMock,
-          create: pharmacyVisitRequestCreateMock,
+          findMany: async (...args: unknown[]) =>
+            ((await pharmacyVisitRequestFindManyMock(...args)) as object[]).map(
+              withPatientSafeRelation,
+            ),
+          create: async (...args: unknown[]) =>
+            withPatientSafeRelation((await pharmacyVisitRequestCreateMock(...args)) as object),
         },
       }),
     );

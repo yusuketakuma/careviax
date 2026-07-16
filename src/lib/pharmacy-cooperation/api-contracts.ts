@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { formatUtcDateKey } from '@/lib/date-key';
 
 /**
  * Client-view response contracts for pharmacy-cooperation dashboards.
@@ -17,6 +18,32 @@ export const pharmacySiteRowSchema = pharmacyCooperationNamedEntitySchema.extend
 export const partnerPharmacySummarySchema = pharmacyCooperationNamedEntitySchema.extend({
   status: z.string(),
 });
+
+export const patientSafeDisplaySchema = z.object({
+  display_id: z.string().nullable(),
+  name: z.string(),
+  name_kana: z.string(),
+  birth_date: z.string(),
+  updated_at: z.string(),
+});
+
+export type PatientSafeDisplay = z.infer<typeof patientSafeDisplaySchema>;
+
+export function toPatientSafeDisplay(patient: {
+  display_id: string | null;
+  name: string;
+  name_kana: string;
+  birth_date: Date;
+  updated_at: Date;
+}): PatientSafeDisplay {
+  return {
+    display_id: patient.display_id,
+    name: patient.name,
+    name_kana: patient.name_kana,
+    birth_date: formatUtcDateKey(patient.birth_date),
+    updated_at: patient.updated_at.toISOString(),
+  };
+}
 
 export const partnerPharmacyRowSchema = partnerPharmacySummarySchema.extend({
   pharmacy_code: z.string().nullable(),

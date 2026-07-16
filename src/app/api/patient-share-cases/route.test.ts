@@ -81,6 +81,18 @@ const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
+const patientSafeRelation = {
+  display_id: 'PT-0001',
+  name: '山田 花子',
+  name_kana: 'ヤマダ ハナコ',
+  birth_date: new Date('1950-01-02T00:00:00.000Z'),
+  updated_at: new Date('2026-06-18T00:00:00.000Z'),
+};
+
+function withPatientSafeRelation<T extends object>(row: T) {
+  return { ...row, base_patient: patientSafeRelation };
+}
+
 function createPostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/patient-share-cases', {
     method: 'POST',
@@ -204,10 +216,14 @@ describe('/api/patient-share-cases', () => {
           findFirst: managementPlanFindFirstMock,
         },
         patientShareCase: {
-          findMany: patientShareCaseFindManyMock,
+          findMany: async (...args: unknown[]) =>
+            ((await patientShareCaseFindManyMock(...args)) as object[]).map(
+              withPatientSafeRelation,
+            ),
           count: patientShareCaseCountMock,
           groupBy: patientShareCaseGroupByMock,
-          create: patientShareCaseCreateMock,
+          create: async (...args: unknown[]) =>
+            withPatientSafeRelation((await patientShareCaseCreateMock(...args)) as object),
         },
       }),
     );
@@ -278,7 +294,13 @@ describe('/api/patient-share-cases', () => {
     expect(bodyText).not.toContain('base_patient_snapshot');
     expect(bodyText).not.toContain('partner_patient_snapshot');
     expect(bodyText).not.toContain('別人でした');
-    expect(bodyText).not.toContain('山田 花子');
+    expect(body.data[0].patient_safe_display).toEqual({
+      display_id: 'PT-0001',
+      name: '山田 花子',
+      name_kana: 'ヤマダ ハナコ',
+      birth_date: '1950-01-02',
+      updated_at: '2026-06-18T00:00:00.000Z',
+    });
     expect(bodyText).not.toContain('東京都港区1-2-3');
     expect(bodyText).not.toContain('share_scope');
     expect(bodyText).not.toContain('memo');
@@ -915,7 +937,13 @@ describe('/api/patient-share-cases', () => {
     expect(bodyText).not.toContain('partner_patient_snapshot');
     expect(bodyText).not.toContain('share_scope');
     expect(bodyText).not.toContain('memo');
-    expect(bodyText).not.toContain('山田 花子');
+    expect(body.data.patient_safe_display).toEqual({
+      display_id: 'PT-0001',
+      name: '山田 花子',
+      name_kana: 'ヤマダ ハナコ',
+      birth_date: '1950-01-02',
+      updated_at: '2026-06-18T00:00:00.000Z',
+    });
     expect(bodyText).not.toContain('東京都港区1-2-3');
     expect(bodyText).toContain('scope_keys');
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('山田 花子');

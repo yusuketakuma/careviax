@@ -5,6 +5,7 @@ import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { toPatientSafeDisplay } from '@/lib/pharmacy-cooperation/api-contracts';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -184,11 +185,18 @@ function toSafePatientShareCase<T extends object>(row: T) {
   const source = row as T & {
     share_scope?: unknown;
     patient_link?: Parameters<typeof toSafePatientLink>[0];
+    base_patient: Parameters<typeof toPatientSafeDisplay>[0];
   };
-  const { share_scope: shareScope, patient_link: patientLink, ...safe } = source;
+  const {
+    share_scope: shareScope,
+    patient_link: patientLink,
+    base_patient: basePatient,
+    ...safe
+  } = source;
   return {
     ...safe,
     scope_keys: enabledPatientShareScopeKeys(shareScope),
+    patient_safe_display: toPatientSafeDisplay(basePatient),
     patient_link: toSafePatientLink(patientLink ?? null),
   };
 }
@@ -263,6 +271,15 @@ export const GET = withAuthContext(
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
         include: {
+          base_patient: {
+            select: {
+              display_id: true,
+              name: true,
+              name_kana: true,
+              birth_date: true,
+              updated_at: true,
+            },
+          },
           partnership: {
             select: {
               id: true,
@@ -508,6 +525,15 @@ export const POST = withAuthContext(
           },
         },
         include: {
+          base_patient: {
+            select: {
+              display_id: true,
+              name: true,
+              name_kana: true,
+              birth_date: true,
+              updated_at: true,
+            },
+          },
           patient_link: {
             select: {
               id: true,

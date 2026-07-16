@@ -7,6 +7,7 @@ import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { toPatientSafeDisplay } from '@/lib/pharmacy-cooperation/api-contracts';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { withOrgContext } from '@/lib/db/rls';
@@ -109,6 +110,7 @@ function toSafeVisitRequest<T extends object>(row: T) {
     carry_items?: unknown;
     patient_home_notes?: unknown;
     decline_reason?: unknown;
+    share_case: { base_patient: Parameters<typeof toPatientSafeDisplay>[0] };
   };
   const {
     request_reason: requestReason,
@@ -116,11 +118,13 @@ function toSafeVisitRequest<T extends object>(row: T) {
     carry_items: carryItems,
     patient_home_notes: patientHomeNotes,
     decline_reason: declineReason,
+    share_case: shareCase,
     ...safe
   } = source;
 
   return {
     ...safe,
+    patient_safe_display: toPatientSafeDisplay(shareCase.base_patient),
     has_request_reason: requestReason !== undefined && requestReason !== null,
     has_physician_instruction: physicianInstruction !== undefined && physicianInstruction !== null,
     has_carry_items: carryItems !== undefined && carryItems !== null,
@@ -326,6 +330,19 @@ const authenticatedGET = withAuthContext(
               base_site: { select: { id: true, name: true } },
             },
           },
+          share_case: {
+            select: {
+              base_patient: {
+                select: {
+                  display_id: true,
+                  name: true,
+                  name_kana: true,
+                  birth_date: true,
+                  updated_at: true,
+                },
+              },
+            },
+          },
         },
       }),
     );
@@ -392,6 +409,15 @@ const authenticatedPOST = withAuthContext(
           starts_at: true,
           ends_at: true,
           partnership_id: true,
+          base_patient: {
+            select: {
+              display_id: true,
+              name: true,
+              name_kana: true,
+              birth_date: true,
+              updated_at: true,
+            },
+          },
           partnership: {
             select: {
               id: true,
@@ -452,6 +478,19 @@ const authenticatedPOST = withAuthContext(
         },
         include: {
           partner_pharmacy: { select: { id: true, name: true, status: true } },
+          share_case: {
+            select: {
+              base_patient: {
+                select: {
+                  display_id: true,
+                  name: true,
+                  name_kana: true,
+                  birth_date: true,
+                  updated_at: true,
+                },
+              },
+            },
+          },
           partnership: {
             select: {
               id: true,

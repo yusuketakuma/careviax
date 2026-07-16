@@ -6,6 +6,7 @@ import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { toPatientSafeDisplay } from '@/lib/pharmacy-cooperation/api-contracts';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { buildActivePatientShareCaseReadWhere } from '@/server/services/patient-share-access';
@@ -80,17 +81,20 @@ function toSafePartnerVisitRecord<T extends object>(row: T) {
     attachments?: unknown;
     returned_reason?: unknown;
     base_confirmation_snapshot?: unknown;
+    share_case: { base_patient: Parameters<typeof toPatientSafeDisplay>[0] };
   };
   const {
     record_content: recordContent,
     attachments,
     returned_reason: returnedReason,
     base_confirmation_snapshot: baseConfirmationSnapshot,
+    share_case: shareCase,
     ...safe
   } = source;
 
   return {
     ...safe,
+    patient_safe_display: toPatientSafeDisplay(shareCase.base_patient),
     has_record_content: recordContent !== undefined && recordContent !== null,
     attachment_count: attachmentCount(attachments),
     has_returned_reason: returnedReason !== undefined && returnedReason !== null,
@@ -169,6 +173,19 @@ const authenticatedGET = withAuthContext(
             created_at: true,
             updated_at: true,
             owner_partner_pharmacy: { select: { id: true, name: true, status: true } },
+            share_case: {
+              select: {
+                base_patient: {
+                  select: {
+                    display_id: true,
+                    name: true,
+                    name_kana: true,
+                    birth_date: true,
+                    updated_at: true,
+                  },
+                },
+              },
+            },
             visit_request: { select: { id: true, status: true, urgency: true } },
             claim_note: {
               select: {
@@ -337,6 +354,19 @@ const authenticatedPOST = withAuthContext(
                 where: { id_org_id: { id: latestRecord.id, org_id: ctx.orgId } },
                 include: {
                   owner_partner_pharmacy: { select: { id: true, name: true, status: true } },
+                  share_case: {
+                    select: {
+                      base_patient: {
+                        select: {
+                          display_id: true,
+                          name: true,
+                          name_kana: true,
+                          birth_date: true,
+                          updated_at: true,
+                        },
+                      },
+                    },
+                  },
                   visit_request: { select: { id: true, status: true, urgency: true } },
                   claim_note: true,
                 },
@@ -354,6 +384,19 @@ const authenticatedPOST = withAuthContext(
               },
               include: {
                 owner_partner_pharmacy: { select: { id: true, name: true, status: true } },
+                share_case: {
+                  select: {
+                    base_patient: {
+                      select: {
+                        display_id: true,
+                        name: true,
+                        name_kana: true,
+                        birth_date: true,
+                        updated_at: true,
+                      },
+                    },
+                  },
+                },
                 visit_request: { select: { id: true, status: true, urgency: true } },
                 claim_note: true,
               },
