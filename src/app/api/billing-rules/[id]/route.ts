@@ -1,25 +1,15 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
-import {
-  conflict,
-  forbidden,
-  internalError,
-  notFound,
-  success,
-  validationError,
-} from '@/lib/api/response';
+import { conflict, forbidden, notFound, success, validationError } from '@/lib/api/response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { logger } from '@/lib/utils/logger';
 
-const BILLING_RULE_ROUTE = '/api/billing-rules/:id';
 const payerBasisSchema = z.enum(['medical', 'care', 'self_pay', 'non_billable']);
 const ruleTypeSchema = z.enum(['base', 'addition', 'regional_addition', 'reduction']);
 const serviceTypeSchema = z.enum(['medical_home_visit', 'care_home_management', 'generic']);
@@ -98,253 +88,220 @@ function serializeRule(
   };
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
-    if ('response' in authResult) return withSensitiveNoStore(authResult.response);
-    const { ctx } = authResult;
-    const { id } = await params;
-    const ruleId = normalizeRequiredRouteParam(id);
-    if (!ruleId) return withSensitiveNoStore(validationError('算定ルールIDが不正です'));
+async function billingRuleGET(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
+  const { id } = await params;
+  const ruleId = normalizeRequiredRouteParam(id);
+  if (!ruleId) return withSensitiveNoStore(validationError('算定ルールIDが不正です'));
 
-    const rule = await withOrgContext(ctx.orgId, (tx) =>
-      tx.billingRule.findFirst({
+  const rule = await withOrgContext(ctx.orgId, (tx) =>
+    tx.billingRule.findFirst({
+      where: { id: ruleId, org_id: ctx.orgId },
+    }),
+  );
+
+  if (!rule) return withSensitiveNoStore(notFound('算定ルールが見つかりません'));
+  return withSensitiveNoStore(success({ data: serializeRule(rule) }));
+}
+
+export const GET = withAuthContext(billingRuleGET, { permission: 'canAdmin' });
+
+async function billingRulePATCH(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
+  const { id } = await params;
+  const ruleId = normalizeRequiredRouteParam(id);
+  if (!ruleId) return withSensitiveNoStore(validationError('算定ルールIDが不正です'));
+
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return withSensitiveNoStore(validationError('リクエストボディが不正です'));
+
+  const parsed = updateBillingRuleSchema.safeParse(payload);
+  if (!parsed.success) {
+    return withSensitiveNoStore(
+      validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
+    );
+  }
+
+  const result = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const existing = await tx.billingRule.findFirst({
         where: { id: ruleId, org_id: ctx.orgId },
+      });
+      if (!existing) return { status: 'not_found' as const };
+
+      const {
+        expected_updated_at: expectedUpdatedAtRaw,
+        conditions,
+        evidence_requirements,
+        effective_from,
+        effective_to,
+        ...rest
+      } = parsed.data;
+      const expectedUpdatedAt = new Date(expectedUpdatedAtRaw);
+      if (existing.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
+        return {
+          status: 'stale' as const,
+          currentUpdatedAt: existing.updated_at,
+        };
+      }
+
+      if (existing.is_system) {
+        const forbiddenKeys = Object.entries(parsed.data)
+          .filter(
+            ([key, value]) =>
+              key !== 'is_active' && key !== 'expected_updated_at' && value !== undefined,
+          )
+          .map(([key]) => key);
+        if (forbiddenKeys.length > 0) {
+          return { status: 'system_forbidden_fields' as const, forbiddenKeys };
+        }
+      }
+
+      const claimed = await tx.billingRule.updateMany({
+        where: { id: ruleId, org_id: ctx.orgId, updated_at: expectedUpdatedAt },
+        data: {
+          ...rest,
+          ...(conditions !== undefined ? { conditions: toPrismaJsonInput(conditions) } : {}),
+          ...(evidence_requirements !== undefined
+            ? { evidence_requirements: toPrismaJsonInput(evidence_requirements) }
+            : {}),
+          ...(effective_from !== undefined
+            ? { effective_from: parseEffectiveDate(effective_from) }
+            : {}),
+          ...(effective_to !== undefined ? { effective_to: parseEffectiveDate(effective_to) } : {}),
+        },
+      });
+      if (claimed.count !== 1) {
+        const current = await tx.billingRule.findFirst({
+          where: { id: ruleId, org_id: ctx.orgId },
+          select: { updated_at: true },
+        });
+        return {
+          status: 'stale' as const,
+          currentUpdatedAt: current?.updated_at ?? null,
+        };
+      }
+
+      const updated = await tx.billingRule.findFirst({
+        where: { id: ruleId, org_id: ctx.orgId },
+      });
+      if (!updated) return { status: 'not_found' as const };
+
+      await createAuditLogEntry(tx, ctx, {
+        action: 'billing_rule_updated',
+        targetType: 'BillingRule',
+        targetId: updated.id,
+        changes: {
+          before: buildBillingRuleAuditSnapshot(existing),
+          after: buildBillingRuleAuditSnapshot(updated),
+        },
+      });
+      return { status: 'updated' as const, updated };
+    },
+    { requestContext: ctx },
+  );
+
+  if (result.status === 'not_found') {
+    return withSensitiveNoStore(notFound('算定ルールが見つかりません'));
+  }
+  if (result.status === 'stale') {
+    return withSensitiveNoStore(
+      staleBillingRuleConflict(parsed.data.expected_updated_at, result.currentUpdatedAt),
+    );
+  }
+  if (result.status === 'system_forbidden_fields') {
+    return withSensitiveNoStore(
+      validationError('SSOTの公式ルールは有効/無効以外を変更できません', {
+        fields: result.forbiddenKeys,
       }),
     );
-
-    if (!rule) return withSensitiveNoStore(notFound('算定ルールが見つかりません'));
-    return withSensitiveNoStore(success({ data: serializeRule(rule) }));
-  } catch (err) {
-    unstable_rethrow(err);
-    logger.error(
-      {
-        event: 'billing_rules_id_get_unhandled_error',
-        route: BILLING_RULE_ROUTE,
-        method: req.method,
-        status: 500,
-      },
-      err,
-    );
-    return withSensitiveNoStore(internalError());
   }
+  return withSensitiveNoStore(success({ data: serializeRule(result.updated) }));
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
-    if ('response' in authResult) return withSensitiveNoStore(authResult.response);
-    const { ctx } = authResult;
-    const { id } = await params;
-    const ruleId = normalizeRequiredRouteParam(id);
-    if (!ruleId) return withSensitiveNoStore(validationError('算定ルールIDが不正です'));
+export const PATCH = withAuthContext(billingRulePATCH, { permission: 'canAdmin' });
 
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return withSensitiveNoStore(validationError('リクエストボディが不正です'));
+async function billingRuleDELETE(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
+  const { id } = await params;
+  const ruleId = normalizeRequiredRouteParam(id);
+  if (!ruleId) return withSensitiveNoStore(validationError('算定ルールIDが不正です'));
 
-    const parsed = updateBillingRuleSchema.safeParse(payload);
-    if (!parsed.success) {
-      return withSensitiveNoStore(
-        validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
-      );
-    }
-
-    const result = await withOrgContext(
-      ctx.orgId,
-      async (tx) => {
-        const existing = await tx.billingRule.findFirst({
-          where: { id: ruleId, org_id: ctx.orgId },
-        });
-        if (!existing) return { status: 'not_found' as const };
-
-        const {
-          expected_updated_at: expectedUpdatedAtRaw,
-          conditions,
-          evidence_requirements,
-          effective_from,
-          effective_to,
-          ...rest
-        } = parsed.data;
-        const expectedUpdatedAt = new Date(expectedUpdatedAtRaw);
-        if (existing.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
-          return {
-            status: 'stale' as const,
-            currentUpdatedAt: existing.updated_at,
-          };
-        }
-
-        if (existing.is_system) {
-          const forbiddenKeys = Object.entries(parsed.data)
-            .filter(
-              ([key, value]) =>
-                key !== 'is_active' && key !== 'expected_updated_at' && value !== undefined,
-            )
-            .map(([key]) => key);
-          if (forbiddenKeys.length > 0) {
-            return { status: 'system_forbidden_fields' as const, forbiddenKeys };
-          }
-        }
-
-        const claimed = await tx.billingRule.updateMany({
-          where: { id: ruleId, org_id: ctx.orgId, updated_at: expectedUpdatedAt },
-          data: {
-            ...rest,
-            ...(conditions !== undefined ? { conditions: toPrismaJsonInput(conditions) } : {}),
-            ...(evidence_requirements !== undefined
-              ? { evidence_requirements: toPrismaJsonInput(evidence_requirements) }
-              : {}),
-            ...(effective_from !== undefined
-              ? { effective_from: parseEffectiveDate(effective_from) }
-              : {}),
-            ...(effective_to !== undefined
-              ? { effective_to: parseEffectiveDate(effective_to) }
-              : {}),
-          },
-        });
-        if (claimed.count !== 1) {
-          const current = await tx.billingRule.findFirst({
-            where: { id: ruleId, org_id: ctx.orgId },
-            select: { updated_at: true },
-          });
-          return {
-            status: 'stale' as const,
-            currentUpdatedAt: current?.updated_at ?? null,
-          };
-        }
-
-        const updated = await tx.billingRule.findFirst({
-          where: { id: ruleId, org_id: ctx.orgId },
-        });
-        if (!updated) return { status: 'not_found' as const };
-
-        await createAuditLogEntry(tx, ctx, {
-          action: 'billing_rule_updated',
-          targetType: 'BillingRule',
-          targetId: updated.id,
-          changes: {
-            before: buildBillingRuleAuditSnapshot(existing),
-            after: buildBillingRuleAuditSnapshot(updated),
-          },
-        });
-        return { status: 'updated' as const, updated };
-      },
-      { requestContext: ctx },
+  const expectedUpdatedAtValues = req.nextUrl.searchParams.getAll('expected_updated_at');
+  const parsedQuery = deleteBillingRuleQuerySchema.safeParse({
+    expected_updated_at:
+      expectedUpdatedAtValues.length === 1 ? expectedUpdatedAtValues[0] : undefined,
+  });
+  if (!parsedQuery.success) {
+    return withSensitiveNoStore(
+      validationError('クエリパラメータが不正です', parsedQuery.error.flatten().fieldErrors),
     );
-
-    if (result.status === 'not_found') {
-      return withSensitiveNoStore(notFound('算定ルールが見つかりません'));
-    }
-    if (result.status === 'stale') {
-      return withSensitiveNoStore(
-        staleBillingRuleConflict(parsed.data.expected_updated_at, result.currentUpdatedAt),
-      );
-    }
-    if (result.status === 'system_forbidden_fields') {
-      return withSensitiveNoStore(
-        validationError('SSOTの公式ルールは有効/無効以外を変更できません', {
-          fields: result.forbiddenKeys,
-        }),
-      );
-    }
-    return withSensitiveNoStore(success({ data: serializeRule(result.updated) }));
-  } catch (err) {
-    unstable_rethrow(err);
-    logger.error(
-      {
-        event: 'billing_rules_id_patch_unhandled_error',
-        route: BILLING_RULE_ROUTE,
-        method: req.method,
-        status: 500,
-      },
-      err,
-    );
-    return withSensitiveNoStore(internalError());
   }
+
+  const result = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const existing = await tx.billingRule.findFirst({
+        where: { id: ruleId, org_id: ctx.orgId },
+      });
+      if (!existing) return { status: 'not_found' as const };
+      if (existing.is_system) return { status: 'system_rule' as const };
+
+      const expectedUpdatedAt = new Date(parsedQuery.data.expected_updated_at);
+      if (existing.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
+        return {
+          status: 'stale' as const,
+          currentUpdatedAt: existing.updated_at,
+        };
+      }
+
+      const deleted = await tx.billingRule.deleteMany({
+        where: { id: ruleId, org_id: ctx.orgId, updated_at: expectedUpdatedAt },
+      });
+      if (deleted.count !== 1) {
+        const current = await tx.billingRule.findFirst({
+          where: { id: ruleId, org_id: ctx.orgId },
+          select: { updated_at: true },
+        });
+        return {
+          status: 'stale' as const,
+          currentUpdatedAt: current?.updated_at ?? null,
+        };
+      }
+
+      await createAuditLogEntry(tx, ctx, {
+        action: 'billing_rule_deleted',
+        targetType: 'BillingRule',
+        targetId: existing.id,
+        changes: { before: buildBillingRuleAuditSnapshot(existing) },
+      });
+      return { status: 'deleted' as const };
+    },
+    { requestContext: ctx },
+  );
+
+  if (result.status === 'not_found') {
+    return withSensitiveNoStore(notFound('算定ルールが見つかりません'));
+  }
+  if (result.status === 'system_rule') {
+    return withSensitiveNoStore(forbidden('SSOTの公式ルールは削除できません'));
+  }
+  if (result.status === 'stale') {
+    return withSensitiveNoStore(
+      staleBillingRuleConflict(parsedQuery.data.expected_updated_at, result.currentUpdatedAt),
+    );
+  }
+  return withSensitiveNoStore(success({ data: { id: ruleId } }));
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
-    if ('response' in authResult) return withSensitiveNoStore(authResult.response);
-    const { ctx } = authResult;
-    const { id } = await params;
-    const ruleId = normalizeRequiredRouteParam(id);
-    if (!ruleId) return withSensitiveNoStore(validationError('算定ルールIDが不正です'));
-
-    const parsedQuery = deleteBillingRuleQuerySchema.safeParse(
-      Object.fromEntries(new URL(req.url).searchParams.entries()),
-    );
-    if (!parsedQuery.success) {
-      return withSensitiveNoStore(
-        validationError('クエリパラメータが不正です', parsedQuery.error.flatten().fieldErrors),
-      );
-    }
-
-    const result = await withOrgContext(
-      ctx.orgId,
-      async (tx) => {
-        const existing = await tx.billingRule.findFirst({
-          where: { id: ruleId, org_id: ctx.orgId },
-        });
-        if (!existing) return { status: 'not_found' as const };
-        if (existing.is_system) return { status: 'system_rule' as const };
-
-        const expectedUpdatedAt = new Date(parsedQuery.data.expected_updated_at);
-        if (existing.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
-          return {
-            status: 'stale' as const,
-            currentUpdatedAt: existing.updated_at,
-          };
-        }
-
-        const deleted = await tx.billingRule.deleteMany({
-          where: { id: ruleId, org_id: ctx.orgId, updated_at: expectedUpdatedAt },
-        });
-        if (deleted.count !== 1) {
-          const current = await tx.billingRule.findFirst({
-            where: { id: ruleId, org_id: ctx.orgId },
-            select: { updated_at: true },
-          });
-          return {
-            status: 'stale' as const,
-            currentUpdatedAt: current?.updated_at ?? null,
-          };
-        }
-
-        await createAuditLogEntry(tx, ctx, {
-          action: 'billing_rule_deleted',
-          targetType: 'BillingRule',
-          targetId: existing.id,
-          changes: { before: buildBillingRuleAuditSnapshot(existing) },
-        });
-        return { status: 'deleted' as const };
-      },
-      { requestContext: ctx },
-    );
-
-    if (result.status === 'not_found') {
-      return withSensitiveNoStore(notFound('算定ルールが見つかりません'));
-    }
-    if (result.status === 'system_rule') {
-      return withSensitiveNoStore(forbidden('SSOTの公式ルールは削除できません'));
-    }
-    if (result.status === 'stale') {
-      return withSensitiveNoStore(
-        staleBillingRuleConflict(parsedQuery.data.expected_updated_at, result.currentUpdatedAt),
-      );
-    }
-    return withSensitiveNoStore(success({ data: { id: ruleId } }));
-  } catch (err) {
-    unstable_rethrow(err);
-    logger.error(
-      {
-        event: 'billing_rules_id_delete_unhandled_error',
-        route: BILLING_RULE_ROUTE,
-        method: req.method,
-        status: 500,
-      },
-      err,
-    );
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const DELETE = withAuthContext(billingRuleDELETE, { permission: 'canAdmin' });

@@ -25,7 +25,51 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: string },
+      routeContext: { params: Promise<{ id: string }> },
+    ) => Promise<Response>,
+    options: unknown,
+  ) => {
+    return async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      let response: Response;
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        response =
+          authResult && typeof authResult === 'object' && 'response' in authResult
+            ? authResult.response
+            : await handler(req, authResult.ctx, routeContext);
+      } catch (error) {
+        loggerErrorMock(
+          {
+            event: 'route_handler_unhandled_error',
+            route: req.nextUrl.pathname,
+            method: req.method,
+            requestId: '00000000-0000-4000-8000-000000000001',
+            correlationId: req.headers.get('x-correlation-id') ?? 'billing_rule_test',
+          },
+          error,
+        );
+        response = new Response(
+          JSON.stringify({
+            code: 'INTERNAL_ERROR',
+            message: 'サーバー内部でエラーが発生しました',
+          }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('X-Request-Id', '00000000-0000-4000-8000-000000000001');
+      response.headers.set(
+        'X-Correlation-Id',
+        req.headers.get('x-correlation-id') ?? 'billing_rule_test',
+      );
+      return response;
+    };
+  },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -54,6 +98,7 @@ function createRequest(method: 'DELETE' | 'GET' | 'PATCH', body?: unknown) {
     method,
     headers: {
       'x-org-id': 'org_1',
+      'x-correlation-id': 'billing_rule_test',
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
   };
@@ -72,6 +117,17 @@ function createDeleteRequestWithoutExpectedUpdatedAt() {
     method: 'DELETE',
     headers: { 'x-org-id': 'org_1' },
   });
+}
+
+function createDeleteRequestWithDuplicateExpectedUpdatedAt() {
+  const value = encodeURIComponent(CURRENT_UPDATED_AT);
+  return new NextRequest(
+    `http://localhost/api/billing-rules/rule_1?expected_updated_at=${value}&expected_updated_at=${value}`,
+    {
+      method: 'DELETE',
+      headers: { 'x-org-id': 'org_1', 'x-correlation-id': 'billing_rule_test' },
+    },
+  );
 }
 
 function createMalformedJsonPatchRequest() {
@@ -147,6 +203,10 @@ describe('/api/billing-rules/[id]', () => {
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
     expectNoStore(resolvedResponse);
+    expect(resolvedResponse.headers.get('X-Request-Id')).toBe(
+      '00000000-0000-4000-8000-000000000001',
+    );
+    expect(resolvedResponse.headers.get('X-Correlation-Id')).toBe('billing_rule_test');
     const body = await resolvedResponse.json();
     expect(body).toMatchObject({
       data: {
@@ -186,9 +246,9 @@ describe('/api/billing-rules/[id]', () => {
     await expectInternalError(response as Response, rawMessage);
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'billing_rules_id_get_unhandled_error',
-        route: '/api/billing-rules/:id',
-        status: 500,
+        event: 'route_handler_unhandled_error',
+        route: '/api/billing-rules/rule_1',
+        method: 'GET',
       }),
       expect.any(Error),
     );
@@ -490,9 +550,9 @@ describe('/api/billing-rules/[id]', () => {
     await expectInternalError(response as Response, rawMessage);
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'billing_rules_id_patch_unhandled_error',
-        route: '/api/billing-rules/:id',
-        status: 500,
+        event: 'route_handler_unhandled_error',
+        route: '/api/billing-rules/rule_1',
+        method: 'PATCH',
       }),
       expect.any(Error),
     );
@@ -574,6 +634,24 @@ describe('/api/billing-rules/[id]', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
     expect(billingRuleDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate expected_updated_at values before DELETE lookup or delete', async () => {
+    const response = await DELETE(createDeleteRequestWithDuplicateExpectedUpdatedAt(), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { expected_updated_at: expect.any(Array) },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingRuleFindFirstMock).not.toHaveBeenCalled();
+    expect(billingRuleDeleteManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('deletes custom rules with an audit entry', async () => {
@@ -692,9 +770,9 @@ describe('/api/billing-rules/[id]', () => {
     await expectInternalError(response as Response, rawMessage);
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'billing_rules_id_delete_unhandled_error',
-        route: '/api/billing-rules/:id',
-        status: 500,
+        event: 'route_handler_unhandled_error',
+        route: '/api/billing-rules/rule_1',
+        method: 'DELETE',
       }),
       expect.any(Error),
     );
