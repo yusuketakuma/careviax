@@ -18,6 +18,7 @@ import { buildVisitHref } from '@/lib/visits/navigation';
 export type TaskPriority = 'urgent' | 'high' | 'normal' | 'low';
 
 export type TaskLike = {
+  id?: string;
   task_type: string;
   related_entity_type: string | null;
   related_entity_id: string | null;
@@ -828,11 +829,13 @@ const TASK_TYPE_DEFINITION_SEEDS = [
     description: '処方供給量を外用薬・頓服薬残数台帳へ紐づける。',
     defaultPriority: 'high',
     allowedRelatedEntityTypes: ['patient', 'prescription_line', 'prescription_intake'],
-    actionBuilder: (task) =>
-      buildMedicationStockTaskPresentation(task, {
-        actionLabel: '処方供給を確認',
-        queueLabel: '処方供給未紐づけ',
-      }),
+    actionBuilder: (task) => ({
+      actionHref: task.id
+        ? `/tasks/${encodeURIComponent(task.id)}/prescription-supply`
+        : buildTasksHref({ status: '', taskType: task.task_type }),
+      actionLabel: '処方供給を確認',
+      queueLabel: '処方供給未紐づけ',
+    }),
   }),
   pharmacyTask('pharmacy.medication_stock_external_observation_review_required', {
     label: '他職種残数報告',

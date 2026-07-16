@@ -10,8 +10,10 @@ const {
   buildDashboardTaskAssignmentWhereMock,
   taskFindFirstMock,
   lineFindFirstMock,
+  patientFindFirstMock,
   requireWritablePatientMock,
   applyPrescriptionSupplyForIntakeMock,
+  previewPrescriptionSupplyReviewMock,
   createAuditLogEntryMock,
   resolveOperationalTasksMock,
 } = vi.hoisted(() => ({
@@ -22,8 +24,10 @@ const {
   buildDashboardTaskAssignmentWhereMock: vi.fn(),
   taskFindFirstMock: vi.fn(),
   lineFindFirstMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
   requireWritablePatientMock: vi.fn(),
   applyPrescriptionSupplyForIntakeMock: vi.fn(),
+  previewPrescriptionSupplyReviewMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
 }));
@@ -58,14 +62,15 @@ vi.mock('@/server/services/operational-tasks', () => ({
 }));
 vi.mock('@/modules/pharmacy/medication-stock/application/apply-prescription-supply', () => ({
   applyPrescriptionSupplyForIntake: applyPrescriptionSupplyForIntakeMock,
+  previewPrescriptionSupplyReview: previewPrescriptionSupplyReviewMock,
 }));
 
-import { POST } from './route';
+import { GET, POST } from './route';
 
 const tx = {
   task: { findFirst: taskFindFirstMock },
   prescriptionLine: { findFirst: lineFindFirstMock },
-  patient: {},
+  patient: { findFirst: patientFindFirstMock },
   auditLog: {},
 };
 
@@ -79,6 +84,11 @@ function request(body: unknown = { stock_item_id: 'stock_1' }, id = 'task_1') {
 
 function post(body?: unknown, id?: string) {
   return POST(request(body, id), { params: Promise.resolve({ id: id ?? 'task_1' }) });
+}
+
+function get(id = 'task_1') {
+  const req = new NextRequest(`http://localhost/api/tasks/${id}/prescription-supply/resolve`);
+  return GET(req, { params: Promise.resolve({ id }) });
 }
 
 function expectNoStore(response: Response) {
@@ -105,6 +115,30 @@ describe('POST /api/tasks/[id]/prescription-supply/resolve', () => {
       intake: { cycle: { patient_id: 'patient_1' } },
     });
     requireWritablePatientMock.mockResolvedValue({ patient: { id: 'patient_1' } });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      display_id: 'PAT-001',
+      name: '山田 花子',
+      name_kana: 'ヤマダ ハナコ',
+      birth_date: new Date('1940-01-02T00:00:00.000Z'),
+    });
+    previewPrescriptionSupplyReviewMock.mockResolvedValue({
+      kind: 'reviewable',
+      line: {
+        id: 'line_1',
+        drug_name: '湿布A',
+        drug_code: '2649735S1010',
+        dosage_form: '貼付剤',
+        dose: '1回1枚',
+        frequency: '疼痛時',
+        days: 7,
+        quantity: 10,
+        unit: '枚',
+        route: 'external',
+      },
+      normalized_supply: { quantity: 10, unit: 'sheet' },
+      candidates: [],
+    });
     applyPrescriptionSupplyForIntakeMock.mockResolvedValue({
       intake_id: 'intake_1',
       applied_count: 1,
@@ -128,6 +162,46 @@ describe('POST /api/tasks/[id]/prescription-supply/resolve', () => {
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(tx));
+  });
+
+  it('returns an assignment-scoped, writable-patient review preview', async () => {
+    const response = await get();
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        task: { id: 'task_1', reason_code: null },
+        patient: {
+          id: 'patient_1',
+          display_id: 'PAT-001',
+          name: '山田 花子',
+          birth_date: '1940-01-02T00:00:00.000Z',
+        },
+        preview: { kind: 'reviewable', normalized_supply: { quantity: 10, unit: 'sheet' } },
+      },
+    });
+    expect(previewPrescriptionSupplyReviewMock).toHaveBeenCalledWith(tx, {
+      orgId: 'org_1',
+      intakeId: 'intake_1',
+      patientId: 'patient_1',
+      prescriptionLineId: 'line_1',
+    });
+    expect(registeredAuthOptions).toContainEqual({
+      permission: 'canDispense',
+      message: '処方供給の残数台帳紐づけを確認する権限がありません',
+    });
+  });
+
+  it('does not disclose a review task outside the assignment scope', async () => {
+    taskFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await get();
+
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(previewPrescriptionSupplyReviewMock).not.toHaveBeenCalled();
   });
 
   it('applies the reviewed stock item and completes the exact task atomically', async () => {

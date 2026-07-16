@@ -12,6 +12,7 @@ import { prisma } from '@/lib/db/client';
 import { readJsonObjectString } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { applyPrescriptionSupplyForIntake } from '@/modules/pharmacy/medication-stock/application/apply-prescription-supply';
+import { previewPrescriptionSupplyReview } from '@/modules/pharmacy/medication-stock/application/apply-prescription-supply';
 import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
@@ -30,6 +31,109 @@ const resolvePrescriptionSupplySchema = z
   .strict();
 
 class PrescriptionSupplyReviewConflict extends Error {}
+
+const authenticatedGET = withAuthContext(
+  async (_req: NextRequest, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
+    const { id: rawId } = await routeContext.params;
+    const taskId = normalizeRequiredRouteParam(rawId);
+    if (!taskId) return validationError('タスクIDが不正です');
+
+    const assignmentScope = await resolveDashboardAssignmentScope({
+      db: prisma,
+      orgId: ctx.orgId,
+      accessContext: ctx,
+    });
+    const outcome = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const task = await tx.task.findFirst({
+          where: {
+            id: taskId,
+            org_id: ctx.orgId,
+            task_type: TASK_TYPE,
+            status: { in: ['pending', 'in_progress'] },
+            ...buildDashboardTaskAssignmentWhere(assignmentScope),
+          },
+          select: {
+            id: true,
+            related_entity_type: true,
+            related_entity_id: true,
+            metadata: true,
+          },
+        });
+        if (!task || task.related_entity_type !== 'prescription_line' || !task.related_entity_id) {
+          return { kind: 'not_found' as const };
+        }
+
+        const intakeId = readJsonObjectString(task.metadata, 'prescription_intake_id');
+        if (!intakeId) return { kind: 'not_found' as const };
+        const line = await tx.prescriptionLine.findFirst({
+          where: {
+            id: task.related_entity_id,
+            org_id: ctx.orgId,
+            intake_id: intakeId,
+            intake: { org_id: ctx.orgId },
+          },
+          select: {
+            id: true,
+            intake_id: true,
+            intake: { select: { cycle: { select: { patient_id: true } } } },
+          },
+        });
+        const patientId = line?.intake.cycle.patient_id;
+        if (!line || !patientId) return { kind: 'not_found' as const };
+
+        const writablePatient = await requireWritablePatient(tx, ctx, patientId);
+        if ('response' in writablePatient) {
+          return { kind: 'response' as const, response: writablePatient.response };
+        }
+        const patient = await tx.patient.findFirst({
+          where: { id: patientId, org_id: ctx.orgId },
+          select: {
+            id: true,
+            display_id: true,
+            name: true,
+            name_kana: true,
+            birth_date: true,
+          },
+        });
+        if (!patient) return { kind: 'not_found' as const };
+
+        const preview = await previewPrescriptionSupplyReview(tx, {
+          orgId: ctx.orgId,
+          intakeId: line.intake_id,
+          patientId,
+          prescriptionLineId: line.id,
+        });
+        if (preview.kind === 'not_found') return { kind: 'not_found' as const };
+
+        return {
+          kind: 'found' as const,
+          data: {
+            task: {
+              id: task.id,
+              reason_code: readJsonObjectString(task.metadata, 'reason_code'),
+            },
+            patient: {
+              ...patient,
+              birth_date: patient.birth_date.toISOString(),
+            },
+            preview,
+          },
+        };
+      },
+      { requestContext: ctx },
+    );
+
+    if (outcome.kind === 'not_found') return notFound('タスクが見つかりません');
+    if (outcome.kind === 'response') return outcome.response;
+    return success({ data: outcome.data });
+  },
+  {
+    permission: 'canDispense',
+    message: '処方供給の残数台帳紐づけを確認する権限がありません',
+  },
+);
 
 const authenticatedPOST = withAuthContext(
   async (req: NextRequest, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
@@ -198,4 +302,8 @@ const authenticatedPOST = withAuthContext(
 
 export async function POST(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
   return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+}
+
+export async function GET(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
+  return withSensitiveNoStore(await authenticatedGET(req, routeContext));
 }

@@ -150,6 +150,68 @@ type DrugPackageIdentityRow = {
 
 type DrugPackageIndexes = Map<string, DrugPackageIdentityRow[]>;
 
+type ResolvedPrescriptionSupplyTarget =
+  | {
+      ok: true;
+      quantity: number;
+      unit: string;
+      drugMasterId: string;
+      drugPackage: DrugPackageIdentityRow | null;
+      unitSupported: true;
+      quantityPresent: true;
+    }
+  | {
+      ok: false;
+      reasonCode: PrescriptionSupplyReviewReason;
+      candidateCount: number;
+      unitSupported: boolean;
+      quantityPresent: boolean;
+    };
+
+export type PrescriptionSupplyReviewPreview =
+  | {
+      kind: 'not_found';
+      reason_code: 'intake_not_found' | 'prescription_line_not_found';
+    }
+  | {
+      kind: 'blocked';
+      reason_code: PrescriptionSupplyReviewReason | PrescriptionSupplySkipReason;
+      line: PrescriptionSupplyReviewLine;
+    }
+  | {
+      kind: 'reviewable';
+      line: PrescriptionSupplyReviewLine;
+      normalized_supply: { quantity: number; unit: string };
+      candidates: PrescriptionSupplyReviewCandidate[];
+    };
+
+export type PrescriptionSupplyReviewLine = {
+  id: string;
+  drug_name: string;
+  drug_code: string | null;
+  dosage_form: string | null;
+  dose: string;
+  frequency: string;
+  days: number;
+  quantity: number | null;
+  unit: string | null;
+  route: string | null;
+};
+
+export type PrescriptionSupplyReviewCandidate = {
+  id: string;
+  display_id: string | null;
+  display_name: string;
+  case_id: string | null;
+  unit: string;
+  dosage_form: string | null;
+  route: string | null;
+  equivalence_review_status: string;
+  applicable: boolean;
+  current_quantity: number | null;
+  snapshot_calculated_at: string | null;
+};
+
 type DrugMasterIndexes = {
   byId: Map<string, DrugMasterIdentityRow>;
   byYj: Map<string, DrugMasterIdentityRow[]>;
@@ -607,6 +669,105 @@ function convertPackageSupplyQuantity(args: {
   return { ok: true, quantity: converted.toNumber(), unit: packageUnit };
 }
 
+function resolvePrescriptionSupplyTarget(args: {
+  line: PrescriptionSupplyLineRow;
+  drugMasters: DrugMasterIndexes;
+  drugPackages: DrugPackageIndexes;
+}): ResolvedPrescriptionSupplyTarget {
+  const parsedQuantity = readSupplyQuantity(args.line);
+  let unit = normalizePrescriptionSupplyUnit(args.line);
+  const quantityPresent = parsedQuantity != null;
+  let unitSupported = unit != null || isSalesPackageCountUnit(args.line.unit);
+
+  if (parsedQuantity == null) {
+    return {
+      ok: false,
+      reasonCode: 'quantity_missing',
+      candidateCount: 0,
+      unitSupported,
+      quantityPresent,
+    };
+  }
+  if (parsedQuantity <= 0) {
+    return {
+      ok: false,
+      reasonCode: 'quantity_non_positive',
+      candidateCount: 0,
+      unitSupported,
+      quantityPresent,
+    };
+  }
+
+  let quantity = parsedQuantity;
+  let drugPackage: DrugPackageIdentityRow | null = null;
+  let drugMasterId: string | null = null;
+  if (isPackageOnlyIdentity(args.line)) {
+    const packageCandidates = resolveLineDrugPackage(args.line, args.drugPackages);
+    if (packageCandidates.length !== 1) {
+      return {
+        ok: false,
+        reasonCode:
+          packageCandidates.length > 1 ? 'ambiguous_package_identity' : 'package_only_identity',
+        candidateCount: packageCandidates.length,
+        unitSupported,
+        quantityPresent,
+      };
+    }
+    drugPackage = packageCandidates[0];
+    const conversion = convertPackageSupplyQuantity({
+      line: args.line,
+      packageRow: drugPackage,
+      quantity,
+    });
+    if (!conversion.ok) {
+      return {
+        ok: false,
+        reasonCode: conversion.reasonCode,
+        candidateCount: 1,
+        unitSupported,
+        quantityPresent,
+      };
+    }
+    quantity = conversion.quantity;
+    unit = conversion.unit;
+    unitSupported = true;
+    drugMasterId = drugPackage.drug_master_id;
+  } else {
+    if (!unitSupported || !unit) {
+      return {
+        ok: false,
+        reasonCode: 'unsupported_unit',
+        candidateCount: 0,
+        unitSupported,
+        quantityPresent,
+      };
+    }
+    drugMasterId = resolveLineDrugMaster(args.line, args.drugMasters)?.id ?? null;
+  }
+
+  if (!drugMasterId || !unit) {
+    return {
+      ok: false,
+      reasonCode: normalizeText(args.line.drug_name)
+        ? 'name_only_identity'
+        : 'unresolved_drug_identity',
+      candidateCount: 0,
+      unitSupported,
+      quantityPresent,
+    };
+  }
+
+  return {
+    ok: true,
+    quantity,
+    unit,
+    drugMasterId,
+    drugPackage,
+    unitSupported: true,
+    quantityPresent: true,
+  };
+}
+
 async function findExactStockItemCandidates(args: {
   db: ApplyPrescriptionSupplyDb;
   orgId: string;
@@ -727,87 +888,18 @@ async function applyPrescriptionSupplyLine(args: {
     };
   }
 
-  const parsedQuantity = readSupplyQuantity(args.line);
-  let unit = normalizePrescriptionSupplyUnit(args.line);
-  const quantityPresent = parsedQuantity != null;
-  let unitSupported = unit != null || isSalesPackageCountUnit(args.line.unit);
-
-  if (parsedQuantity == null) {
+  const target = resolvePrescriptionSupplyTarget(args);
+  if (!target.ok) {
     return createReviewTask({
       ...args,
-      reasonCode: 'quantity_missing',
-      candidateCount: 0,
-      unitSupported,
-      quantityPresent,
+      reasonCode: target.reasonCode,
+      candidateCount: target.candidateCount,
+      unitSupported: target.unitSupported,
+      quantityPresent: target.quantityPresent,
     });
-  }
-  if (parsedQuantity <= 0) {
-    return createReviewTask({
-      ...args,
-      reasonCode: 'quantity_non_positive',
-      candidateCount: 0,
-      unitSupported,
-      quantityPresent,
-    });
-  }
-  let quantity = parsedQuantity;
-  let drugPackage: DrugPackageIdentityRow | null = null;
-  let drugMasterId: string | null = null;
-  if (isPackageOnlyIdentity(args.line)) {
-    const packageCandidates = resolveLineDrugPackage(args.line, args.drugPackages);
-    if (packageCandidates.length !== 1) {
-      return createReviewTask({
-        ...args,
-        reasonCode:
-          packageCandidates.length > 1 ? 'ambiguous_package_identity' : 'package_only_identity',
-        candidateCount: packageCandidates.length,
-        unitSupported,
-        quantityPresent,
-      });
-    }
-    drugPackage = packageCandidates[0];
-    const conversion = convertPackageSupplyQuantity({
-      line: args.line,
-      packageRow: drugPackage,
-      quantity,
-    });
-    if (!conversion.ok) {
-      return createReviewTask({
-        ...args,
-        reasonCode: conversion.reasonCode,
-        candidateCount: 1,
-        unitSupported,
-        quantityPresent,
-      });
-    }
-    quantity = conversion.quantity;
-    unit = conversion.unit;
-    unitSupported = true;
-    drugMasterId = drugPackage.drug_master_id;
-  } else {
-    if (!unitSupported || !unit) {
-      return createReviewTask({
-        ...args,
-        reasonCode: 'unsupported_unit',
-        candidateCount: 0,
-        unitSupported,
-        quantityPresent,
-      });
-    }
-    drugMasterId = resolveLineDrugMaster(args.line, args.drugMasters)?.id ?? null;
   }
 
-  if (!drugMasterId || !unit) {
-    return createReviewTask({
-      ...args,
-      reasonCode: normalizeText(args.line.drug_name)
-        ? 'name_only_identity'
-        : 'unresolved_drug_identity',
-      candidateCount: 0,
-      unitSupported,
-      quantityPresent,
-    });
-  }
+  const { drugMasterId, drugPackage, quantity, unit, unitSupported, quantityPresent } = target;
 
   const candidates = await findExactStockItemCandidates({
     db: args.db,
@@ -960,6 +1052,122 @@ async function applyPrescriptionSupplyLine(args: {
     stock_event_id: stockEvent.id,
     snapshot,
     idempotent_replay: false,
+  };
+}
+
+function toPrescriptionSupplyReviewLine(
+  line: PrescriptionSupplyLineRow,
+): PrescriptionSupplyReviewLine {
+  return {
+    id: line.id,
+    drug_name: line.drug_name,
+    drug_code: line.drug_code,
+    dosage_form: line.dosage_form,
+    dose: line.dose,
+    frequency: line.frequency,
+    days: line.days,
+    quantity: line.quantity,
+    unit: line.unit,
+    route: line.route,
+  };
+}
+
+export async function previewPrescriptionSupplyReview(
+  db: ApplyPrescriptionSupplyDb,
+  args: {
+    orgId: string;
+    intakeId: string;
+    patientId: string;
+    prescriptionLineId: string;
+  },
+): Promise<PrescriptionSupplyReviewPreview> {
+  const intake = await loadPrescriptionSupplyIntake(db, args);
+  if (!intake) return { kind: 'not_found', reason_code: 'intake_not_found' };
+
+  const line = intake.lines.find((candidate) => candidate.id === args.prescriptionLineId);
+  if (!line) return { kind: 'not_found', reason_code: 'prescription_line_not_found' };
+
+  const reviewLine = toPrescriptionSupplyReviewLine(line);
+  if (!isStockRelevantLine(line)) {
+    return { kind: 'blocked', reason_code: 'non_stock_relevant_line', line: reviewLine };
+  }
+
+  const drugMasters = await loadDrugMasterIndexes(db, [line]);
+  const drugPackages = await loadDrugPackageIndexes(db, [line], intake.prescribed_date);
+  const target = resolvePrescriptionSupplyTarget({ line, drugMasters, drugPackages });
+  if (!target.ok) {
+    return { kind: 'blocked', reason_code: target.reasonCode, line: reviewLine };
+  }
+
+  const matchingItems = await findExactStockItemCandidates({
+    db,
+    orgId: args.orgId,
+    patientId: args.patientId,
+    caseId: intake.cycle.case_id,
+    drugMasterId: target.drugMasterId,
+    ...(target.drugPackage ? { drugPackageId: target.drugPackage.id } : {}),
+  });
+  const itemIds = matchingItems.map((item) => item.id);
+  if (itemIds.length === 0) {
+    return {
+      kind: 'reviewable',
+      line: reviewLine,
+      normalized_supply: { quantity: target.quantity, unit: target.unit },
+      candidates: [],
+    };
+  }
+
+  const [items, snapshots] = await Promise.all([
+    db.patientMedicationStockItem.findMany({
+      where: { org_id: args.orgId, id: { in: itemIds } },
+      orderBy: [{ case_id: 'desc' }, { created_at: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        display_id: true,
+        display_name: true,
+        case_id: true,
+        unit: true,
+        dosage_form: true,
+        route: true,
+        equivalence_review_status: true,
+      },
+    }),
+    db.medicationStockSnapshot.findMany({
+      where: { org_id: args.orgId, stock_item_id: { in: itemIds } },
+      select: {
+        stock_item_id: true,
+        current_quantity: true,
+        unit: true,
+        calculated_at: true,
+      },
+    }),
+  ]);
+  const snapshotByItemId = new Map(snapshots.map((snapshot) => [snapshot.stock_item_id, snapshot]));
+
+  return {
+    kind: 'reviewable',
+    line: reviewLine,
+    normalized_supply: { quantity: target.quantity, unit: target.unit },
+    candidates: items.map((item) => {
+      const snapshot = snapshotByItemId.get(item.id);
+      const applicable =
+        item.unit === target.unit &&
+        isMedicationStockItemWriteAllowed(item.equivalence_review_status);
+      return {
+        id: item.id,
+        display_id: item.display_id,
+        display_name: item.display_name,
+        case_id: item.case_id,
+        unit: item.unit,
+        dosage_form: item.dosage_form,
+        route: item.route,
+        equivalence_review_status: item.equivalence_review_status,
+        applicable,
+        current_quantity:
+          snapshot?.unit === item.unit ? decimalToNumber(snapshot.current_quantity) : null,
+        snapshot_calculated_at: snapshot?.calculated_at.toISOString() ?? null,
+      };
+    }),
   };
 }
 

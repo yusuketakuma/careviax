@@ -41,7 +41,7 @@ describe('task-registry', () => {
     });
   });
 
-  it('registers medication stock task types with patient-scoped action links only', () => {
+  it('registers medication stock task types with bounded operational action links', () => {
     const medicationStockTaskTypes = [
       {
         taskType: 'pharmacy.medication_stock_shortage_expected',
@@ -98,6 +98,8 @@ describe('task-registry', () => {
         allowedRelatedEntityTypes: taskType.allowedRelatedEntityTypes,
       });
 
+      const isPrescriptionSupply =
+        taskType.taskType === 'pharmacy.medication_stock_unlinked_prescription_supply';
       expect(
         describeRegisteredOperationalTask({
           task_type: taskType.taskType,
@@ -105,7 +107,9 @@ describe('task-registry', () => {
           related_entity_id: 'patient/1?x=y#frag',
         }),
       ).toMatchObject({
-        actionHref: '/patients/patient%2F1%3Fx%3Dy%23frag#medication-stock-events',
+        actionHref: isPrescriptionSupply
+          ? `/tasks?status=&task_type=${taskType.taskType}`
+          : '/patients/patient%2F1%3Fx%3Dy%23frag#medication-stock-events',
         actionLabel: taskType.actionLabel,
         queueLabel: taskType.queueLabel,
       });
@@ -131,6 +135,19 @@ describe('task-registry', () => {
         expect(JSON.stringify(presentation)).not.toContain('湿布');
       }
     }
+
+    expect(
+      describeRegisteredOperationalTask({
+        id: 'task/1?x=y#frag',
+        task_type: 'pharmacy.medication_stock_unlinked_prescription_supply',
+        related_entity_type: 'prescription_line',
+        related_entity_id: 'line_1',
+      }),
+    ).toMatchObject({
+      actionHref: '/tasks/task%2F1%3Fx%3Dy%23frag/prescription-supply',
+      actionLabel: '処方供給を確認',
+      queueLabel: '処方供給未紐づけ',
+    });
   });
 
   it('registers inbound interprofessional task types with patient-scoped action links only', () => {

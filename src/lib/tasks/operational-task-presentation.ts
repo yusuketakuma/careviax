@@ -8,6 +8,7 @@ export type OperationalTaskPresentation = {
 };
 
 export type OperationalTaskPresentationInput = {
+  id?: string;
   task_type: string;
   related_entity_type: string | null;
   related_entity_id: string | null;
