@@ -642,6 +642,7 @@ async function syncServiceManagerUsage(
         where: { id: careCase.id },
         data: {
           required_visit_support: requiredVisitSupportPatch ?? Prisma.JsonNull,
+          version: { increment: 1 },
         },
       });
       careCase.required_visit_support = toStoredJsonValue(requiredVisitSupportPatch);

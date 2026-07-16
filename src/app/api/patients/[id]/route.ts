@@ -2207,6 +2207,7 @@ async function authenticatedPATCH(
                     }
                   : {}),
                 required_visit_support: normalizeInputJsonObject(nextRequiredVisitSupport),
+                version: { increment: 1 },
               },
             });
 

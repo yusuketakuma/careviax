@@ -27,6 +27,7 @@ export const createCaseSchema = z.object({
 });
 
 export const updateCaseSchema = z.object({
+  version: z.number().int().min(1, 'バージョンは1以上です'),
   referral_source: z.string().optional(),
   notes: z.string().optional(),
   primary_pharmacist_id: z.string().optional(),
@@ -42,6 +43,7 @@ export const updateCaseSchema = z.object({
 export const caseTransitionSchema = z.object({
   from: z.enum(caseStatusValues),
   to: z.enum(caseStatusValues),
+  version: z.number().int().min(1, 'バージョンは1以上です'),
 });
 
 export type CreateCaseInput = z.infer<typeof createCaseSchema>;

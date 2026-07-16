@@ -3,22 +3,26 @@ import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
-  careCaseFindFirstMock,
+  membershipFindFirstMock,
   firstVisitDocFindFirstMock,
   careCaseUpdateManyMock,
   txCareCaseFindFirstMock,
   taskUpsertMock,
   withOrgContextMock,
   upsertOperationalTaskMock,
+  writePatientFieldRevisionsMock,
+  createAuditLogEntryMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
-  careCaseFindFirstMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
   firstVisitDocFindFirstMock: vi.fn(),
   careCaseUpdateManyMock: vi.fn(),
   txCareCaseFindFirstMock: vi.fn(),
   taskUpsertMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
+  writePatientFieldRevisionsMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -32,17 +36,6 @@ vi.mock('@/lib/auth/context', () => ({
     },
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    careCase: {
-      findFirst: careCaseFindFirstMock,
-    },
-    firstVisitDocument: {
-      findFirst: firstVisitDocFindFirstMock,
-    },
-  },
-}));
-
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
@@ -51,13 +44,25 @@ vi.mock('@/server/services/operational-tasks', () => ({
   upsertOperationalTask: upsertOperationalTaskMock,
 }));
 
+vi.mock('@/server/services/patient-field-revision', () => ({
+  writePatientFieldRevisions: writePatientFieldRevisionsMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
+}));
+
 import { PATCH } from './route';
 
 function createTransitionRequest(caseId: string, body: unknown) {
+  const versionedBody =
+    body != null && typeof body === 'object' && !Array.isArray(body)
+      ? { version: 1, ...body }
+      : body;
   return new NextRequest(`http://localhost/api/cases/${caseId}/transition`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(versionedBody),
   });
 }
 
@@ -79,10 +84,13 @@ describe('/api/cases/[id]/transition', () => {
         role: 'pharmacist',
       },
     });
-    careCaseFindFirstMock.mockResolvedValue({
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    txCareCaseFindFirstMock.mockReset().mockResolvedValueOnce({
       id: 'case_1',
+      org_id: 'org_1',
       status: 'assessment',
       patient_id: 'patient_1',
+      version: 1,
     });
     firstVisitDocFindFirstMock.mockResolvedValue({
       id: 'fvd_1',
@@ -91,17 +99,28 @@ describe('/api/cases/[id]/transition', () => {
     careCaseUpdateManyMock.mockResolvedValue({ count: 1 });
     txCareCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
+      org_id: 'org_1',
       status: 'active',
+      patient_id: 'patient_1',
+      version: 2,
     });
     upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
+    writePatientFieldRevisionsMock.mockResolvedValue(undefined);
+    createAuditLogEntryMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        membership: {
+          findFirst: membershipFindFirstMock,
+        },
         careCase: {
           updateMany: careCaseUpdateManyMock,
           findFirst: txCareCaseFindFirstMock,
         },
         task: {
           upsert: taskUpsertMock,
+        },
+        firstVisitDocument: {
+          findFirst: firstVisitDocFindFirstMock,
         },
       }),
     );
@@ -119,7 +138,7 @@ describe('/api/cases/[id]/transition', () => {
     });
 
     expect(response).toBe(deniedResponse);
-    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(firstVisitDocFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
@@ -145,7 +164,13 @@ describe('/api/cases/[id]/transition', () => {
       }),
     );
     await expect(response.json()).resolves.toEqual({
-      data: { id: 'case_1', status: 'active' },
+      data: {
+        id: 'case_1',
+        org_id: 'org_1',
+        status: 'active',
+        patient_id: 'patient_1',
+        version: 2,
+      },
       meta: { warnings: [] },
     });
     expect(careCaseUpdateManyMock).toHaveBeenCalledWith({
@@ -153,8 +178,9 @@ describe('/api/cases/[id]/transition', () => {
         id: 'case_1',
         org_id: 'org_1',
         status: 'assessment',
+        version: 1,
       }),
-      data: { status: 'active' },
+      data: { status: 'active', version: { increment: 1 } },
     });
     expect(txCareCaseFindFirstMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
@@ -162,6 +188,15 @@ describe('/api/cases/[id]/transition', () => {
         org_id: 'org_1',
       }),
     });
+    expect(writePatientFieldRevisionsMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ caseId: 'case_1', source: 'care_case_transition' }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ action: 'care_case_transitioned', targetId: 'case_1' }),
+    );
   });
 
   it('adds a warning and creates a task when transitioning to active with undelivered first visit doc', async () => {
@@ -186,8 +221,9 @@ describe('/api/cases/[id]/transition', () => {
         id: 'case_1',
         org_id: 'org_1',
         status: 'assessment',
+        version: 1,
       }),
-      data: { status: 'active' },
+      data: { status: 'active', version: { increment: 1 } },
     });
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -209,7 +245,7 @@ describe('/api/cases/[id]/transition', () => {
       },
     ))!;
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(409);
     expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
   });
 
@@ -236,10 +272,13 @@ describe('/api/cases/[id]/transition', () => {
         id: 'case_1',
         org_id: 'org_1',
         status: 'assessment',
+        version: 1,
       }),
-      data: { status: 'active' },
+      data: { status: 'active', version: { increment: 1 } },
     });
-    expect(txCareCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(txCareCaseFindFirstMock).toHaveBeenCalledTimes(1);
+    expect(writePatientFieldRevisionsMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
@@ -249,7 +288,7 @@ describe('/api/cases/[id]/transition', () => {
     }))!;
 
     expect(response.status).toBe(400);
-    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(firstVisitDocFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
@@ -272,7 +311,7 @@ describe('/api/cases/[id]/transition', () => {
       code: 'VALIDATION_ERROR',
       message: 'ケースIDが不正です',
     });
-    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(firstVisitDocFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
@@ -288,7 +327,7 @@ describe('/api/cases/[id]/transition', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
-    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(firstVisitDocFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
@@ -296,7 +335,7 @@ describe('/api/cases/[id]/transition', () => {
   });
 
   it('does not transition an unassigned case', async () => {
-    careCaseFindFirstMock.mockResolvedValue(null);
+    txCareCaseFindFirstMock.mockReset().mockResolvedValue(null);
 
     const response = (await PATCH(
       createTransitionRequest('case_2', {
@@ -312,5 +351,44 @@ describe('/api/cases/[id]/transition', () => {
     expect(firstVisitDocFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an inactive membership inside the transaction', async () => {
+    membershipFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH(
+      createTransitionRequest('case_1', { from: 'assessment', to: 'active' }),
+      { params: Promise.resolve({ id: 'case_1' }) },
+    ))!;
+
+    expect(response.status).toBe(403);
+    expect(txCareCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
+    expect(writePatientFieldRevisionsMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale version before mutating the case', async () => {
+    txCareCaseFindFirstMock.mockReset().mockResolvedValue({
+      id: 'case_1',
+      org_id: 'org_1',
+      status: 'assessment',
+      patient_id: 'patient_1',
+      version: 4,
+    });
+
+    const response = (await PATCH(
+      createTransitionRequest('case_1', { from: 'assessment', to: 'active' }),
+      { params: Promise.resolve({ id: 'case_1' }) },
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: { expected_version: 1, current_version: 4 },
+    });
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
+    expect(writePatientFieldRevisionsMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 });

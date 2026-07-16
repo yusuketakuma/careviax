@@ -6,16 +6,24 @@ const {
   careCaseFindFirstMock,
   firstVisitDocumentFindFirstMock,
   recordPhiReadAuditForRequestMock,
-  validateOrgReferencesMock,
-  careCaseUpdateMock,
+  txCareCaseFindFirstMock,
+  careCaseUpdateManyMock,
+  membershipFindFirstMock,
+  membershipFindManyMock,
+  writePatientFieldRevisionsMock,
+  createAuditLogEntryMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   firstVisitDocumentFindFirstMock: vi.fn(),
   recordPhiReadAuditForRequestMock: vi.fn(),
-  validateOrgReferencesMock: vi.fn(),
-  careCaseUpdateMock: vi.fn(),
+  txCareCaseFindFirstMock: vi.fn(),
+  careCaseUpdateManyMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
+  membershipFindManyMock: vi.fn(),
+  writePatientFieldRevisionsMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -38,8 +46,12 @@ vi.mock('@/lib/audit/phi-read-audit', () => ({
   recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
-vi.mock('@/lib/api/org-reference', () => ({
-  validateOrgReferences: validateOrgReferencesMock,
+vi.mock('@/server/services/patient-field-revision', () => ({
+  writePatientFieldRevisions: writePatientFieldRevisionsMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -53,10 +65,14 @@ function createGetRequest() {
 }
 
 function createPatchRequest(body: unknown) {
+  const payload =
+    typeof body === 'object' && body !== null && !Array.isArray(body)
+      ? { version: 1, ...body }
+      : body;
   return new NextRequest('http://localhost/api/cases/case_1', {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -87,18 +103,47 @@ describe('/api/cases/[id]', () => {
         name_kana: 'カンジャ タロウ',
       },
     });
+    txCareCaseFindFirstMock
+      .mockReset()
+      .mockResolvedValueOnce({
+        id: 'case_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        status: 'active',
+        version: 1,
+        primary_pharmacist_id: null,
+        backup_pharmacist_id: null,
+        primary_staff_id: null,
+        backup_staff_id: null,
+        required_visit_support: {},
+      })
+      .mockResolvedValue({
+        id: 'case_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        status: 'active',
+        version: 2,
+        primary_pharmacist_id: null,
+        backup_pharmacist_id: 'pharmacist_2',
+        required_visit_support: { escort: true },
+      });
     firstVisitDocumentFindFirstMock.mockResolvedValue(null);
-    validateOrgReferencesMock.mockResolvedValue({ ok: true });
-    careCaseUpdateMock.mockResolvedValue({
-      id: 'case_1',
-      primary_pharmacist_id: null,
-      backup_pharmacist_id: 'pharmacist_2',
-      required_visit_support: { escort: true },
-    });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    membershipFindManyMock.mockImplementation(async ({ where }) =>
+      (where.user_id.in as string[]).map((userId) => ({ user_id: userId, role: 'pharmacist' })),
+    );
+    careCaseUpdateManyMock.mockResolvedValue({ count: 1 });
+    writePatientFieldRevisionsMock.mockResolvedValue(1);
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        membership: {
+          findFirst: membershipFindFirstMock,
+          findMany: membershipFindManyMock,
+        },
         careCase: {
-          update: careCaseUpdateMock,
+          findFirst: txCareCaseFindFirstMock,
+          updateMany: careCaseUpdateManyMock,
         },
       }),
     );
@@ -291,26 +336,32 @@ describe('/api/cases/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    expect(careCaseFindFirstMock).toHaveBeenCalledWith({
+    expect(txCareCaseFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'case_1',
         org_id: 'org_1',
       },
     });
-    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
-      pharmacist_ids: ['pharmacist_2'],
+    expect(membershipFindManyMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', user_id: { in: ['pharmacist_2'] }, is_active: true },
+      select: { user_id: true, role: true },
     });
-    expect(careCaseUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'case_1' },
+    expect(careCaseUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'case_1', org_id: 'org_1', status: 'active', version: 1 },
       data: expect.objectContaining({
         primary_pharmacist_id: null,
         backup_pharmacist_id: 'pharmacist_2',
         required_visit_support: { escort: true },
+        version: { increment: 1 },
       }),
     });
     expect(
-      (careCaseUpdateMock.mock.calls[0][0].data.required_visit_support as Record<string, unknown>)
-        .internal_note,
+      (
+        careCaseUpdateManyMock.mock.calls[0][0].data.required_visit_support as Record<
+          string,
+          unknown
+        >
+      ).internal_note,
     ).toBeUndefined();
     const body = await response.json();
     expect(body).toMatchObject({
@@ -324,6 +375,15 @@ describe('/api/cases/[id]', () => {
     expect(body).not.toHaveProperty('id');
     expect(body).not.toHaveProperty('primary_pharmacist_id');
     expect(body).not.toHaveProperty('required_visit_support');
+    expect(writePatientFieldRevisionsMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ caseId: 'case_1', source: 'care_case_edit' }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ action: 'care_case_updated', targetId: 'case_1' }),
+    );
   });
 
   it('validates both primary and backup pharmacist ids together', async () => {
@@ -339,19 +399,18 @@ describe('/api/cases/[id]', () => {
 
     expect(response.status).toBe(200);
     // both ids must be validated — not just one (regression guard against same-key spread)
-    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
-      pharmacist_ids: ['pharmacist_1', 'pharmacist_2'],
+    expect(membershipFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        user_id: { in: ['pharmacist_1', 'pharmacist_2'] },
+        is_active: true,
+      },
+      select: { user_id: true, role: true },
     });
   });
 
   it('rejects pharmacist assignment when a pharmacist id is not an eligible org member', async () => {
-    validateOrgReferencesMock.mockResolvedValueOnce({
-      ok: false,
-      response: Response.json(
-        { error: '指定された薬剤師はこの組織に所属していません' },
-        { status: 400 },
-      ),
-    });
+    membershipFindManyMock.mockResolvedValueOnce([{ user_id: 'pharmacist_2', role: 'pharmacist' }]);
     const response = (await PATCH(
       createPatchRequest({
         primary_pharmacist_id: 'outsider',
@@ -362,7 +421,7 @@ describe('/api/cases/[id]', () => {
       },
     ))!;
     expect(response.status).toBe(400);
-    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('assigns staff, normalizes empty staff ids to null, and validates only the supplied staff ids', async () => {
@@ -378,11 +437,12 @@ describe('/api/cases/[id]', () => {
 
     expect(response.status).toBe(200);
     // empty primary -> excluded from validation; backup is validated as an org member
-    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
-      staff_ids: ['staff_2'],
+    expect(membershipFindManyMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', user_id: { in: ['staff_2'] }, is_active: true },
+      select: { user_id: true, role: true },
     });
-    expect(careCaseUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'case_1' },
+    expect(careCaseUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'case_1', org_id: 'org_1', status: 'active', version: 1 },
       data: expect.objectContaining({
         primary_staff_id: null,
         backup_staff_id: 'staff_2',
@@ -391,18 +451,12 @@ describe('/api/cases/[id]', () => {
   });
 
   it('rejects staff assignment when the staff id is not an org member', async () => {
-    validateOrgReferencesMock.mockResolvedValueOnce({
-      ok: false,
-      response: Response.json(
-        { error: '指定されたスタッフはこの組織に所属していません' },
-        { status: 400 },
-      ),
-    });
+    membershipFindManyMock.mockResolvedValueOnce([]);
     const response = (await PATCH(createPatchRequest({ primary_staff_id: 'outsider' }), {
       params: Promise.resolve({ id: 'case_1' }),
     }))!;
     expect(response.status).toBe(400);
-    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object patch payloads before loading the case', async () => {
@@ -412,9 +466,8 @@ describe('/api/cases/[id]', () => {
 
     expect(response.status).toBe(400);
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank case ids before loading or updating the case', async () => {
@@ -433,9 +486,8 @@ describe('/api/cases/[id]', () => {
       message: 'ケースIDが不正です',
     });
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON before loading the case', async () => {
@@ -448,13 +500,12 @@ describe('/api/cases/[id]', () => {
       message: 'リクエストボディが不正です',
     });
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('denies unassigned case PATCH before reference validation or updates', async () => {
-    careCaseFindFirstMock.mockResolvedValue(null);
+    txCareCaseFindFirstMock.mockReset().mockResolvedValue(null);
 
     const response = (await PATCH(
       createPatchRequest({
@@ -466,9 +517,77 @@ describe('/api/cases/[id]', () => {
     ))!;
 
     expect(response.status).toBe(404);
-    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an inactive membership inside the write transaction', async () => {
+    membershipFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH(createPatchRequest({ notes: 'updated' }), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+
+    expect(response.status).toBe(403);
+    expect(txCareCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
+    expect(writePatientFieldRevisionsMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale version before mutating the case', async () => {
+    txCareCaseFindFirstMock.mockReset().mockResolvedValue({
+      id: 'case_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      status: 'active',
+      version: 4,
+    });
+
+    const response = (await PATCH(createPatchRequest({ notes: 'stale' }), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: { expected_version: 1, current_version: 4 },
+    });
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
+    expect(writePatientFieldRevisionsMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects writes to a terminal case', async () => {
+    txCareCaseFindFirstMock.mockReset().mockResolvedValue({
+      id: 'case_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      status: 'discharged',
+      version: 1,
+    });
+
+    const response = (await PATCH(createPatchRequest({ notes: 'late update' }), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expect(careCaseUpdateManyMock).not.toHaveBeenCalled();
+    expect(writePatientFieldRevisionsMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('does not write revisions or audit data after a compare-and-swap conflict', async () => {
+    careCaseUpdateManyMock.mockResolvedValue({ count: 0 });
+
+    const response = (await PATCH(createPatchRequest({ notes: 'racing update' }), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expect(txCareCaseFindFirstMock).toHaveBeenCalledTimes(1);
+    expect(writePatientFieldRevisionsMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('clears optional dates and text fields when empty strings are provided', async () => {
@@ -486,14 +605,15 @@ describe('/api/cases/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    expect(careCaseUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'case_1' },
+    expect(careCaseUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'case_1', org_id: 'org_1', status: 'active', version: 1 },
       data: expect.objectContaining({
         referral_source: null,
         start_date: null,
         end_date: null,
         end_reason: null,
         notes: null,
+        version: { increment: 1 },
       }),
     });
   });

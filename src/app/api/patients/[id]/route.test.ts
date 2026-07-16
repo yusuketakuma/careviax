@@ -2055,6 +2055,7 @@ describe('/api/patients/[id]', () => {
     expect(careCaseUpdateMock).toHaveBeenCalledWith({
       where: { id: 'case_1' },
       data: {
+        version: { increment: 1 },
         referral_source: '新しい紹介元',
         required_visit_support: {
           home_visit_intake: expect.objectContaining({
@@ -2169,6 +2170,7 @@ describe('/api/patients/[id]', () => {
     expect(careCaseUpdateMock).toHaveBeenCalledWith({
       where: { id: 'case_unassigned_latest' },
       data: {
+        version: { increment: 1 },
         referral_source: '新しい紹介元',
         required_visit_support: {
           home_visit_intake: expect.objectContaining({
@@ -2212,6 +2214,7 @@ describe('/api/patients/[id]', () => {
     expect(careCaseUpdateMock).toHaveBeenCalledWith({
       where: { id: 'case_1' },
       data: {
+        version: { increment: 1 },
         referral_source: '新しい紹介元',
         required_visit_support: {
           home_visit_intake: expect.objectContaining({

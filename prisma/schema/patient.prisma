@@ -196,6 +196,7 @@ model CareCase {
   backup_staff_id        String?
   required_visit_support Json?
   notes                  String?
+  version                Int        @default(1)
   created_at             DateTime   @default(now())
   updated_at             DateTime   @updatedAt
 
