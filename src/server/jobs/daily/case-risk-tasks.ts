@@ -3,6 +3,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { syncCaseRiskCockpitOperationalTasks } from '@/server/services/case-risk-task-sync';
 import { runJob } from '../runner';
+import { listOrganizationIds } from '../organization-iteration';
 
 export const DAILY_CASE_RISK_TASK_SYNC_JOB_TYPE = 'daily-case-risk-task-sync';
 export const CASE_RISK_TASK_SYNC_SYSTEM_USER_ID = 'system:case-risk-task-sync';
@@ -54,33 +55,49 @@ export async function syncCaseRiskCockpitRiskTasks(
   return runJob(
     DAILY_CASE_RISK_TASK_SYNC_JOB_TYPE,
     async () => {
-      const cases = await prisma.careCase.findMany({
-        where: {
-          status: { in: [...CASE_RISK_TASK_SYNC_STATUSES] },
-          ...(options.orgId ? { org_id: options.orgId } : {}),
-        },
-        orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
-        take: limit,
-        select: {
-          id: true,
-          org_id: true,
-        },
-      });
-
       const result: CaseRiskTaskSyncJobResult = {
         processedCount: 0,
-        scannedCount: cases.length,
+        scannedCount: 0,
         upsertedTaskCount: 0,
         resolvedStaleTaskCount: 0,
         taskableFindingCount: 0,
         skippedFindingCount: 0,
         skippedCaseCount: 0,
         errorCount: 0,
-        limited: cases.length >= limit,
+        limited: false,
         limit,
       };
 
-      for (const careCase of cases) {
+      const orgIds = options.orgId ? [options.orgId] : await listOrganizationIds(prisma);
+      const casesToSync: Array<{ id: string; org_id: string }> = [];
+      for (const orgId of orgIds) {
+        let cursor: string | undefined;
+        for (;;) {
+          const cases = await withOrgContext(orgId, (tx) =>
+            tx.careCase.findMany({
+              where: {
+                org_id: orgId,
+                status: { in: [...CASE_RISK_TASK_SYNC_STATUSES] },
+              },
+              orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+              take: limit,
+              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+              select: {
+                id: true,
+                org_id: true,
+              },
+            }),
+          );
+          if (cases.length === 0) break;
+          result.scannedCount += cases.length;
+          casesToSync.push(...cases);
+
+          if (cases.length < limit) break;
+          cursor = cases.at(-1)?.id;
+        }
+      }
+
+      for (const careCase of casesToSync) {
         try {
           const syncResult = await withOrgContext(careCase.org_id, (tx) =>
             syncCaseRiskCockpitOperationalTasks(tx, {

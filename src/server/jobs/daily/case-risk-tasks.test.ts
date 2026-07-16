@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   careCaseFindManyMock,
+  organizationFindManyMock,
   withOrgContextMock,
   runJobMock,
   syncCaseRiskCockpitOperationalTasksMock,
 } = vi.hoisted(() => ({
   careCaseFindManyMock: vi.fn(),
+  organizationFindManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   runJobMock: vi.fn(async (_jobType: string, fn: () => Promise<unknown>) => fn()),
   syncCaseRiskCockpitOperationalTasksMock: vi.fn(),
@@ -14,9 +16,7 @@ const {
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
-    careCase: {
-      findMany: careCaseFindManyMock,
-    },
+    organization: { findMany: organizationFindManyMock },
   },
 }));
 
@@ -44,7 +44,8 @@ describe('syncCaseRiskCockpitRiskTasks', () => {
     vi.clearAllMocks();
     runJobMock.mockImplementation(async (_jobType: string, fn: () => Promise<unknown>) => fn());
     withOrgContextMock.mockImplementation(
-      async (orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn({ orgId }),
+      async (orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+        fn({ orgId, careCase: { findMany: careCaseFindManyMock } }),
     );
     syncCaseRiskCockpitOperationalTasksMock.mockResolvedValue({
       upserted_task_count: 1,
@@ -82,9 +83,9 @@ describe('syncCaseRiskCockpitRiskTasks', () => {
         org_id: true,
       },
     });
-    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
     expect(syncCaseRiskCockpitOperationalTasksMock).toHaveBeenCalledWith(
-      { orgId: 'org_1' },
+      expect.objectContaining({ orgId: 'org_1' }),
       {
         orgId: 'org_1',
         caseId: 'case_1',
@@ -109,10 +110,10 @@ describe('syncCaseRiskCockpitRiskTasks', () => {
   });
 
   it('runs across organizations for API-key jobs while keeping per-case RLS context', async () => {
-    careCaseFindManyMock.mockResolvedValue([
-      { id: 'case_a', org_id: 'org_a' },
-      { id: 'case_b', org_id: 'org_b' },
-    ]);
+    organizationFindManyMock.mockResolvedValue([{ id: 'org_a' }, { id: 'org_b' }]);
+    careCaseFindManyMock
+      .mockResolvedValueOnce([{ id: 'case_a', org_id: 'org_a' }])
+      .mockResolvedValueOnce([{ id: 'case_b', org_id: 'org_b' }]);
 
     await syncCaseRiskCockpitRiskTasks();
 
@@ -124,19 +125,23 @@ describe('syncCaseRiskCockpitRiskTasks', () => {
     expect(careCaseFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
+          org_id: 'org_a',
           status: { in: ['assessment', 'active', 'on_hold'] },
         },
       }),
     );
-    expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_a', expect.any(Function));
-    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_b', expect.any(Function));
+    expect(
+      withOrgContextMock.mock.calls.every(([orgId]) => orgId === 'org_a' || orgId === 'org_b'),
+    ).toBe(true);
   });
 
   it('counts null and failed cases without returning raw ids or raw error details', async () => {
-    careCaseFindManyMock.mockResolvedValue([
-      { id: 'case_null', org_id: 'org_1' },
-      { id: 'case_fail', org_id: 'org_1' },
-    ]);
+    careCaseFindManyMock
+      .mockResolvedValueOnce([
+        { id: 'case_null', org_id: 'org_1' },
+        { id: 'case_fail', org_id: 'org_1' },
+      ])
+      .mockResolvedValueOnce([]);
     syncCaseRiskCockpitOperationalTasksMock
       .mockResolvedValueOnce(null)
       .mockRejectedValueOnce(new Error('患者 山田太郎 token=secret risk:privacy_security:raw'));
@@ -149,7 +154,7 @@ describe('syncCaseRiskCockpitRiskTasks', () => {
       scannedCount: 2,
       skippedCaseCount: 1,
       errorCount: 1,
-      limited: true,
+      limited: false,
       limit: 2,
     });
     expect(serialized).not.toContain('case_null');
@@ -165,5 +170,49 @@ describe('syncCaseRiskCockpitRiskTasks', () => {
     expect(resolveCaseRiskTaskSyncLimit(0)).toBe(100);
     expect(resolveCaseRiskTaskSyncLimit(7.9)).toBe(7);
     expect(resolveCaseRiskTaskSyncLimit(9999)).toBe(500);
+  });
+
+  it('scans 101 cases through a stable second page instead of treating the limit as a total cap', async () => {
+    const cases = Array.from({ length: 101 }, (_, index) => ({
+      id: `case_${String(index).padStart(3, '0')}`,
+      org_id: 'org_1',
+    }));
+    careCaseFindManyMock
+      .mockResolvedValueOnce(cases.slice(0, 100))
+      .mockResolvedValueOnce(cases.slice(100));
+
+    const result = await syncCaseRiskCockpitRiskTasks({ orgId: 'org_1' });
+
+    expect(result).toMatchObject({
+      processedCount: 101,
+      scannedCount: 101,
+      limited: false,
+      limit: 100,
+    });
+    expect(careCaseFindManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: { id: 'case_099' },
+        skip: 1,
+        take: 100,
+      }),
+    );
+    expect(syncCaseRiskCockpitOperationalTasksMock).toHaveBeenCalledTimes(101);
+  });
+
+  it('does not synchronize any case when a later scan page fails', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      id: `case_${String(index).padStart(3, '0')}`,
+      org_id: 'org_1',
+    }));
+    careCaseFindManyMock
+      .mockResolvedValueOnce(firstPage)
+      .mockRejectedValueOnce(new Error('case_page_2_failed'));
+
+    await expect(syncCaseRiskCockpitRiskTasks({ orgId: 'org_1' })).rejects.toThrow(
+      'case_page_2_failed',
+    );
+
+    expect(syncCaseRiskCockpitOperationalTasksMock).not.toHaveBeenCalled();
   });
 });
