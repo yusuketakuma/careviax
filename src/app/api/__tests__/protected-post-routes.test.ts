@@ -259,6 +259,7 @@ const routes: RouteEntry[] = [
       pharmacyPartnershipActivatePost(req, {
         params: Promise.resolve({ id: 'partnership_1' }),
       }),
+    invalidBodyStatus: 501,
   },
 ];
 

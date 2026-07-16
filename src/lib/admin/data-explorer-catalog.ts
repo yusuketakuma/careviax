@@ -110,6 +110,9 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'ContractDocument',
   ],
   backend_only: [
+    'DomainEventOutbox',
+    'PharmacyInvoiceTransitionIntent',
+    'ProviderDeliveryReceipt',
     'IntegrationJob',
     'LabelDictionary',
     'SourceOfTruthMatrix',

@@ -1070,6 +1070,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/visit-schedules/reorder',
   '/api/visit-schedules/day-board',
   '/api/visits/today-preparation',
+  '/api/webhooks/twilio/message-status',
   '/api/webhooks/yrese',
   '/api/workflow-exceptions/:id',
 ] as const;

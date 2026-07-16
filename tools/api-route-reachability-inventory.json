@@ -2,8 +2,8 @@
   "version": 1,
   "owner": "API-REACHABILITY-RATCHET-001",
   "source": "src/app/api/**/route.ts",
-  "route_file_count": 402,
-  "route_method_count": 559,
+  "route_file_count": 403,
+  "route_method_count": 560,
   "entries": [
     {
       "key": "DELETE /api/admin/data-explorer/:table/:id",
@@ -10169,6 +10169,23 @@
       "review_state": "pending",
       "owner": "API-REACHABILITY-RATCHET-001",
       "expiry": "2026-10-15"
+    },
+    {
+      "key": "POST /api/webhooks/twilio/message-status",
+      "route": "/api/webhooks/twilio/message-status",
+      "method": "POST",
+      "file": "src/app/api/webhooks/twilio/message-status/route.ts",
+      "export_kind": "direct",
+      "classification": "internal_job_webhook_bff_auth",
+      "reason": "Reserved internal job, webhook, BFF, metadata, or authentication prefix.",
+      "evidence": [
+        {
+          "path": "src/app/api/webhooks/twilio/message-status/route.ts",
+          "kind": "route_contract",
+          "symbol": "route_export",
+          "reference": "/api/webhooks/twilio/message-status"
+        }
+      ]
     },
     {
       "key": "POST /api/webhooks/yrese",

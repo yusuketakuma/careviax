@@ -1,6 +1,11 @@
 export const DISPLAY_ID_GLOBAL_ORG_ID = '__global__';
 export const DISPLAY_ID_EXCLUDED_MODELS = ['Setting', 'ClinicalFhirRawResourceVault'] as const;
-export const DISPLAY_ID_INFRASTRUCTURE_MODELS = ['IdSequence'] as const;
+export const DISPLAY_ID_INFRASTRUCTURE_MODELS = [
+  'IdSequence',
+  'DomainEventOutbox',
+  'ProviderDeliveryReceipt',
+  'PharmacyInvoiceTransitionIntent',
+] as const;
 export const RESERVED_DISPLAY_ID_PREFIXES = ['cfg'] as const;
 
 export type DisplayIdScope = 'org' | 'global' | 'orgViaParent';

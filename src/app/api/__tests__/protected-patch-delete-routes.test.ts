@@ -205,9 +205,10 @@ const permissionRoutes: RouteEntry[] = [
   {
     name: 'cases/[id] PATCH',
     handler: () =>
-      casePatch(createRequest('http://localhost/api/cases/case_1', { 'x-org-id': 'org_1' }, {}), {
-        params: Promise.resolve({ id: 'case_1' }),
-      }),
+      casePatch(
+        createRequest('http://localhost/api/cases/case_1', { 'x-org-id': 'org_1' }, { version: 1 }),
+        { params: Promise.resolve({ id: 'case_1' }) },
+      ),
   },
   {
     name: 'cases/[id]/transition PATCH',
@@ -216,7 +217,7 @@ const permissionRoutes: RouteEntry[] = [
         createRequest(
           'http://localhost/api/cases/case_1/transition',
           { 'x-org-id': 'org_1' },
-          { from: 'active', to: 'on_hold' },
+          { from: 'active', to: 'on_hold', version: 1 },
         ),
         { params: Promise.resolve({ id: 'case_1' }) },
       ),
@@ -347,7 +348,7 @@ const permissionRoutes: RouteEntry[] = [
         createRequest(
           'http://localhost/api/medication-issues/issue_1',
           { 'x-org-id': 'org_1' },
-          {},
+          { version: 1, priority: 'medium' },
         ),
         { params: Promise.resolve({ id: 'issue_1' }) },
       ),

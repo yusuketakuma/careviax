@@ -1077,6 +1077,7 @@
         "backup_staff_id",
         "required_visit_support",
         "notes",
+        "version",
         "created_at",
         "updated_at",
         "care_team_links",
@@ -1089,7 +1090,7 @@
         "care_reports",
         "patient_share_cases"
       ],
-      "definition_sha256": "ed421df76c460504949eb8bcc1ab24bd77a1a7b46b60c0c01dfb0f3de591dbe1",
+      "definition_sha256": "e0e6ee3e3458e01f5d4214daf0faf2c9766075c8f5b10e72898264b919e5998d",
       "disposition": "replace_at_cutover",
       "table_name": "CareCase",
       "columns": [
@@ -1109,6 +1110,7 @@
         "backup_staff_id:backup_staff_id",
         "required_visit_support:required_visit_support",
         "notes:notes",
+        "version:version",
         "created_at:created_at",
         "updated_at:updated_at"
       ]
@@ -1456,7 +1458,7 @@
         "partner_visit_records",
         "special_patient_statuses"
       ],
-      "definition_sha256": "03868aae8a305da9113cf4c9e0cd870fe9db8958a2826da8e991f75110a59f52",
+      "definition_sha256": "430e9011d522a2a91d55f9a7afec4f926075d2111cf2104e8febf96a6e1956f1",
       "disposition": "replace_at_cutover",
       "table_name": "VisitRecord",
       "columns": [
@@ -2064,6 +2066,7 @@
     "src/app/api/billing-candidates/export/route.ts|patient|findMany|dot|1",
     "src/app/api/billing-candidates/export/route.ts|prescriptionIntake|findMany|dot|1",
     "src/app/api/billing-candidates/route.ts|patient|findMany|dot|1",
+    "src/app/api/billing-candidates/route.ts|visitRecord|findFirst|dot|1",
     "src/app/api/billing-candidates/route.ts|visitRecord|findMany|dot|1",
     "src/app/api/billing-evidence/check/route.ts|medicationCycle|findMany|dot|1",
     "src/app/api/billing-evidence/check/route.ts|patient|findMany|dot|1",
@@ -2101,8 +2104,8 @@
     "src/app/api/care-reports/today-workspace/route.ts|visitSchedule|findMany|dot|1",
     "src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.ts|careCase|findFirst|dot|1",
     "src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.ts|task|findFirst|dot|1",
-    "src/app/api/cases/[id]/route.ts|careCase|findFirst|dot|2",
-    "src/app/api/cases/[id]/route.ts|careCase|update|dot|1",
+    "src/app/api/cases/[id]/route.ts|careCase|findFirst|dot|3",
+    "src/app/api/cases/[id]/route.ts|careCase|updateMany|dot|1",
     "src/app/api/cases/[id]/transition/route.ts|careCase|findFirst|dot|2",
     "src/app/api/cases/[id]/transition/route.ts|careCase|updateMany|dot|1",
     "src/app/api/cases/route.ts|careCase|create|dot|1",
@@ -3272,5 +3275,5 @@
       "disposition": "replace_at_cutover"
     }
   ],
-  "expected_inventory_sha256": "32cd55d94f4068a5275281017613d32a7cbfac409333406bfabc686b66cb63de"
+  "expected_inventory_sha256": "f5b06b151de21421a257c91fea5b3ad63e2ed62ff75818b8cf2b26b1bc2e0346"
 }

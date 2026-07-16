@@ -35,6 +35,27 @@
       "classification": "utc_canonical_month_key",
       "reason": "Billing month parser validates canonical YYYY-MM-01 month keys through UTC round-trip.",
       "expectedCount": 1
+    },
+    {
+      "path": "tools/scripts/check-api-route-reachability.mjs",
+      "needle": "new Date().toISOString().slice(0, 10)",
+      "classification": "utc_canonical_contract_date",
+      "reason": "Route inventory review expiries are canonical repository contract dates and are compared in UTC.",
+      "expectedCount": 1
+    },
+    {
+      "path": "tools/scripts/check-vulnerability-control-parity.mjs",
+      "needle": "now.toISOString().slice(0, 10)",
+      "classification": "utc_canonical_contract_date",
+      "reason": "Vulnerability exception expiry checks compare canonical repository contract dates in UTC.",
+      "expectedCount": 1
+    },
+    {
+      "path": "tools/scripts/check-vulnerability-control-parity.mjs",
+      "needle": "expiry.toISOString().slice(0, 10)",
+      "classification": "utc_canonical_contract_date",
+      "reason": "Vulnerability exception expiry round-trips canonical repository contract dates in UTC.",
+      "expectedCount": 1
     }
   ]
 }

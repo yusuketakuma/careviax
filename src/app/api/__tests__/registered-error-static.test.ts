@@ -97,11 +97,6 @@ const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
     httpStatus: 409,
   },
   {
-    filePath: 'src/app/api/dispense-audits/route.ts',
-    code: 'VALIDATION_ERROR',
-    httpStatus: 422,
-  },
-  {
     filePath: 'src/app/api/external-access/[token]/self-report/route.ts',
     code: 'EXTERNAL_ACCESS_SELF_REPORT_SCOPE_DENIED',
     httpStatus: 403,
@@ -202,6 +197,16 @@ const allowedExternalLiteralErrorUsages: RawLiteralErrorUsage[] = [
   {
     filePath: 'src/app/api/auth/password/reset/confirm/route.ts',
     code: 'EXTERNAL_PASSWORD_RESET_CONFIRM_FAILED',
+    httpStatus: 400,
+  },
+  {
+    filePath: 'src/app/api/auth/password/reset/confirm/route.ts',
+    code: 'EXTERNAL_PASSWORD_RESET_CONFIRM_FAILED',
+    httpStatus: 503,
+  },
+  {
+    filePath: 'src/app/api/auth/password/reset/confirm/route.ts',
+    code: 'EXTERNAL_PASSWORD_RESET_CONFIRM_FAILED',
     httpStatus: null,
   },
   {
@@ -237,7 +242,7 @@ const allowedExternalLiteralErrorUsages: RawLiteralErrorUsage[] = [
   {
     filePath: 'src/app/api/me/password/route.ts',
     code: 'EXTERNAL_PASSWORD_CHANGE_FAILED',
-    httpStatus: 400,
+    httpStatus: null,
   },
   {
     filePath: 'src/app/api/me/profile/route.ts',
@@ -361,8 +366,9 @@ const allowedExternalNonliteralMessageUsages: RawNonliteralMessageUsage[] = [
     helper: 'externalError',
     codeExpression: "'EXTERNAL_PASSWORD_CHANGE_FAILED'",
     messageExpression:
-      "(error as Error).name === 'NotAuthorizedException' ? '現在のパスワードが正しくありません' : 'パスワードの変更に失敗しました'",
-    statusExpression: '400',
+      "error instanceof Error && error.name === 'NotAuthorizedException' ? '現在のパスワードが正しくありません' : 'パスワードの変更に失敗しました'",
+    statusExpression:
+      "error instanceof Error && error.name === 'NotAuthorizedException' ? 400 : 502",
   },
 ];
 
@@ -425,14 +431,7 @@ const allowedRawErrorDetailsUsages: RawErrorDetailsUsage[] = [
   },
 ];
 
-const allowedRawRegisteredErrorUsages: RawRegisteredErrorUsage[] = [
-  {
-    filePath: 'src/app/api/dispense-audits/route.ts',
-    code: 'VALIDATION_ERROR',
-    httpStatus: 422,
-    canonicalHttpStatus: 400,
-  },
-];
+const allowedRawRegisteredErrorUsages: RawRegisteredErrorUsage[] = [];
 
 function collectRouteFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -623,7 +622,7 @@ describe('raw API error usage', () => {
     });
   });
 
-  it('keeps code, message, and details debt exact with one registered 422 bypass', () => {
+  it('keeps code, message, and details debt exact with no registered-status bypasses', () => {
     const rawUsages = collectSortedErrorUsages('error');
     const externalUsages = collectSortedErrorUsages('externalError');
     const registeredRawUsages = rawUsages.literal.flatMap((usage): RawRegisteredErrorUsage[] =>
@@ -653,14 +652,5 @@ describe('raw API error usage', () => {
     expect(externalUsages.namespaceImports).toEqual([]);
     expect(registeredRawUsages).toEqual(allowedRawRegisteredErrorUsages);
     expect(registeredExternalUsages).toEqual([]);
-    expect(registeredRawUsages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: 'VALIDATION_ERROR',
-          httpStatus: 422,
-          canonicalHttpStatus: 400,
-        }),
-      ]),
-    );
   });
 });
