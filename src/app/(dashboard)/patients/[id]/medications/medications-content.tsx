@@ -56,7 +56,7 @@ import { buildPatientHref } from '@/lib/patient/navigation';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import {
-  buildJahisQRText,
+  buildJahisQrExport,
   validateJahisQrPatientIdentity,
   type JahisQrPatientIdentity,
 } from '@/lib/pharmacy/jahis-qr';
@@ -967,12 +967,7 @@ export function MedicationsContent({
     setQrState(null);
 
     try {
-      const QRCode = await import('qrcode');
-      const toSJISModule = await import('qrcode/helper/to-sjis');
-      if (!isCurrentRequest()) return;
-
-      const toSJIS = (toSJISModule.default ?? toSJISModule) as (character: string) => number;
-      const payload = buildJahisQRText({
+      const payload = buildJahisQrExport({
         patient: qrPatientIdentity,
         medications: profiles.map((item) => ({
           drugCode: null,
@@ -983,18 +978,20 @@ export function MedicationsContent({
         prescriptionDate: format(new Date(), 'yyyy-MM-dd'),
         dispensingDate: format(new Date(), 'yyyy-MM-dd'),
       });
-      const dataUrl = await QRCode.toDataURL(payload, {
+      const QRCode = await import('qrcode');
+      if (!isCurrentRequest()) return;
+
+      const dataUrl = await QRCode.toDataURL([{ data: payload.bytes, mode: 'byte' }], {
         errorCorrectionLevel: 'M',
         margin: 2,
         width: 320,
-        toSJISFunc: toSJIS,
       });
       if (!isCurrentRequest()) return;
 
       setQrState({
         ...requestScope,
         dataUrl,
-        payload,
+        payload: payload.text,
         generatedAt: format(new Date(), 'yyyy/MM/dd HH:mm', { locale: ja }),
         patientName: qrPatientIdentity.name,
       });

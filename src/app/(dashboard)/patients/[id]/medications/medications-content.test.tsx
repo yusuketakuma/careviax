@@ -51,10 +51,6 @@ vi.mock('qrcode', () => {
   return { toDataURL: qrToDataUrlMock };
 });
 
-vi.mock('qrcode/helper/to-sjis', () => ({
-  default: vi.fn((character: string) => character.charCodeAt(0)),
-}));
-
 vi.mock('@/components/features/patients/residual-medication-chart', () => ({
   ResidualMedicationChart: () => <div data-testid="residual-chart" />,
 }));
@@ -874,19 +870,22 @@ describe('MedicationsContent JAHIS QR patient identity', () => {
     expect(screen.queryByRole('link', { name: 'PNG保存' })).toBeNull();
   }
 
-  function renderQrState(patientSummary: {
-    data?: {
-      id: string;
-      name: string;
-      name_kana: string;
-      birth_date: string;
-      gender: string;
-      allergy_info: [];
-    };
-    isLoading: boolean;
-    isError: boolean;
-    refetch?: ReturnType<typeof vi.fn>;
-  }) {
+  function renderQrState(
+    patientSummary: {
+      data?: {
+        id: string;
+        name: string;
+        name_kana: string;
+        birth_date: string;
+        gender: string;
+        allergy_info: [];
+      };
+      isLoading: boolean;
+      isError: boolean;
+      refetch?: ReturnType<typeof vi.fn>;
+    },
+    medicationProfile = profile,
+  ) {
     const refetch = patientSummary.refetch ?? vi.fn();
     useOrgIdMock.mockReturnValue('org_1');
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
@@ -895,7 +894,7 @@ describe('MedicationsContent JAHIS QR patient identity', () => {
       const key = String(queryKey[0]);
       if (key === 'medication-profiles') {
         return {
-          data: { data: [profile] },
+          data: { data: [medicationProfile] },
           isLoading: false,
           isError: false,
           refetch: vi.fn(),
@@ -1043,8 +1042,27 @@ describe('MedicationsContent JAHIS QR patient identity', () => {
     expect(screen.queryByText(/JAHIS Ver\.2\.5/)).toBeNull();
     expect(qrModuleLoadMock).toHaveBeenCalledOnce();
     expect(qrToDataUrlMock).toHaveBeenCalledOnce();
-    const payload = qrToDataUrlMock.mock.calls[0]?.[0] as string;
+    const segments = qrToDataUrlMock.mock.calls[0]?.[0] as Array<{
+      data: Uint8Array;
+      mode: string;
+    }>;
+    expect(segments).toHaveLength(1);
+    expect(segments[0]?.mode).toBe('byte');
+    const payload = new TextDecoder('shift_jis').decode(segments[0]?.data);
     expect(payload.split('\r\n')[1]).toBe('1,山田花子,2,19500401,,,,,,,ヤマダハナコ');
+    expect(qrToDataUrlMock.mock.calls[0]?.[1]).not.toHaveProperty('toSJISFunc');
+  });
+
+  it('fails before QR rendering when a medication contains an unsupported character', async () => {
+    renderQrState(validPatientSummary(), { ...profile, drug_name: '薬剤😀' });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'お薬手帳QRを生成' }));
+    });
+
+    expect(qrToDataUrlMock).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith('QRコードの生成に失敗しました');
+    expectQrOutputUnreachable();
   });
 
   it('clears generated QR output when the route patient changes', async () => {

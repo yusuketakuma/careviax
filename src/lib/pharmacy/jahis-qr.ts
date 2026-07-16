@@ -1,4 +1,5 @@
 import { isValidDateKey, parseSourceDate } from '@/lib/validations/date-key';
+import { assertJahisShiftJisByteLimit, encodeJahisShiftJis } from '@/lib/pharmacy/jahis-shift-jis';
 
 /**
  * JAHIS お薬手帳データフォーマット ver.2.6 (JAHISTC08) パーサー
@@ -455,7 +456,10 @@ export function validateJahisQrPatientIdentity(
   };
 }
 
-export function buildJahisQRText(input: JahisQrExportInput): string {
+export function buildJahisQrExport(input: JahisQrExportInput): {
+  text: string;
+  bytes: Uint8Array;
+} {
   const patientIdentity = validateJahisQrPatientIdentity(input.patient);
   if (!patientIdentity.success) {
     throw new RangeError(`JAHIS_PATIENT_IDENTITY_INVALID:${patientIdentity.reason}`);
@@ -469,7 +473,7 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
   lines.push(
     [
       '1',
-      sanitizeJahisField(patient.name),
+      sanitizeJahisField(patient.name, 40),
       toJahisGenderCode(patient.gender),
       formatJahisExportDate(patient.birthDate),
       '', // zip
@@ -478,7 +482,7 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
       '', // emergency
       '', // blood_type
       '', // weight
-      sanitizeJahisField(patient.nameKana),
+      sanitizeJahisField(patient.nameKana, 40),
     ].join(','),
   );
 
@@ -499,10 +503,10 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
     lines.push(
       [
         '51',
-        sanitizeJahisField(presInstName),
+        sanitizeJahisField(presInstName, 120),
         '', // pref_code
         '', // score_table_code
-        sanitizeJahisField(presInstCode),
+        sanitizeJahisField(presInstCode, 7),
         '1', // creator
       ].join(','),
     );
@@ -514,8 +518,8 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
     lines.push(
       [
         '55',
-        sanitizeJahisField(doctorName),
-        sanitizeJahisField(input.prescribingDepartment),
+        sanitizeJahisField(doctorName, 40),
+        sanitizeJahisField(input.prescribingDepartment, 80),
         '1',
       ].join(','),
     );
@@ -529,11 +533,11 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
       [
         '201',
         String(rp),
-        sanitizeJahisField(medication.drugName),
-        sanitizeJahisField(medication.dose),
-        sanitizeJahisField(medication.unit),
+        sanitizeJahisField(medication.drugName, 120),
+        sanitizeJahisField(medication.dose, 12),
+        sanitizeJahisField(medication.unit, 12),
         '1', // code_type: none (簡易エクスポート)
-        sanitizeJahisField(medication.drugCode),
+        sanitizeJahisField(medication.drugCode, 13),
         '1', // creator
       ].join(','),
     );
@@ -544,8 +548,8 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
         [
           '301',
           String(rp),
-          sanitizeJahisField(medication.frequency),
-          sanitizeJahisField(medication.daysOrTimes),
+          sanitizeJahisField(medication.frequency, 100),
+          sanitizeJahisField(medication.daysOrTimes, 100),
           '', // unit
           '1', // form_code: 内服
           '', // usage_code_type
@@ -556,7 +560,12 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
     }
   }
 
-  return `${lines.join('\r\n')}\r\n`;
+  const payload = `${lines.join('\r\n')}\r\n`;
+  return { text: payload, bytes: encodeJahisShiftJis(payload) };
+}
+
+export function buildJahisQRText(input: JahisQrExportInput): string {
+  return buildJahisQrExport(input).text;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1302,13 +1311,15 @@ function appendPrescriptionMedicationSupplement(
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-function sanitizeJahisField(value: string | null | undefined): string {
+function sanitizeJahisField(value: string | null | undefined, maxBytes: number): string {
   const rawValue = value ?? '';
   if (JAHIS_FORBIDDEN_FIELD_CONTROL_PATTERN.test(rawValue)) {
     throw new RangeError('JAHIS_FIELD_CONTROL_CHARACTER_INVALID');
   }
 
-  return rawValue.replace(/,/g, '，').trim();
+  const sanitized = rawValue.replace(/,/g, '，').trim();
+  assertJahisShiftJisByteLimit(sanitized, maxBytes);
+  return sanitized;
 }
 
 function toJahisGenderCode(gender: JahisPatient['gender']): string {

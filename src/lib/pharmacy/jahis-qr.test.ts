@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildJahisQRText, parseJahisQR, validateJahisQrPatientIdentity } from './jahis-qr';
+import {
+  buildJahisQrExport,
+  buildJahisQRText,
+  parseJahisQR,
+  validateJahisQrPatientIdentity,
+} from './jahis-qr';
 
 describe('buildJahisQRText', () => {
   it('builds export text that can be parsed back for the main patient and medication fields', () => {
@@ -101,6 +106,21 @@ describe('buildJahisQRText', () => {
     expect(text).not.toContain('\u001a');
   });
 
+  it('returns the validated canonical bytes together with the display text', () => {
+    const payload = buildJahisQrExport({
+      patient: {
+        name: '山田 花子',
+        nameKana: 'ﾔﾏﾀﾞ ﾊﾅｺ',
+        gender: 'female',
+        birthDate: '1950-04-01',
+      },
+      medications: [],
+    });
+
+    expect(new TextDecoder('shift_jis').decode(payload.bytes)).toBe(payload.text);
+    expect([...payload.bytes]).toContain(0xd4);
+  });
+
   it.each([
     ['lone CR in name', { name: '山田花子\r' }, 'name'],
     ['LF in birth date', { name: '山田花子', birthDate: '1950-04-01\n' }, 'birth_date'],
@@ -148,6 +168,44 @@ describe('buildJahisQRText', () => {
     expect(text).toContain('1,山田，花子,2,19500401');
     expect(text).toContain('201,1,薬剤，5mg,1錠');
   });
+
+  it('enforces patient and medication limits in Shift-JIS bytes', () => {
+    expect(() =>
+      buildJahisQRText({
+        patient: { name: '漢'.repeat(20), gender: 'female', birthDate: '1950-04-01' },
+        medications: [{ drugName: '薬'.repeat(60), dose: '1', unit: '錠' }],
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      buildJahisQRText({
+        patient: { name: `${'漢'.repeat(20)}A`, gender: 'female', birthDate: '1950-04-01' },
+        medications: [],
+      }),
+    ).toThrow('JAHIS_FIELD_BYTE_LIMIT_EXCEEDED');
+    expect(() =>
+      buildJahisQRText({
+        patient: { name: '山田花子', gender: 'female', birthDate: '1950-04-01' },
+        medications: [{ drugName: `${'薬'.repeat(60)}A`, dose: '1', unit: '錠' }],
+      }),
+    ).toThrow('JAHIS_FIELD_BYTE_LIMIT_EXCEEDED');
+  });
+
+  it.each(['😀', '髙', '■'])(
+    'rejects unsupported or replacement characters before QR rendering: %s',
+    (unsafeCharacter) => {
+      expect(() =>
+        buildJahisQRText({
+          patient: {
+            name: `山田${unsafeCharacter}花子`,
+            gender: 'female',
+            birthDate: '1950-04-01',
+          },
+          medications: [],
+        }),
+      ).toThrow('JAHIS_SHIFT_JIS_UNREPRESENTABLE');
+    },
+  );
 
   it.each([
     [{ name: '患者', gender: 'female', birthDate: '1950-04-01' }, 'name'],

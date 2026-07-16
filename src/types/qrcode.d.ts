@@ -7,8 +7,13 @@ declare module 'qrcode' {
     toSJISFunc?: (character: string) => number;
   };
 
+  export type QRCodeByteSegment = {
+    data: Uint8Array;
+    mode: 'byte';
+  };
+
   export function toDataURL(
-    text: string,
-    options?: QRCodeToDataURLOptions
+    text: string | QRCodeByteSegment[],
+    options?: QRCodeToDataURLOptions,
   ): Promise<string>;
 }
