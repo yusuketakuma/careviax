@@ -27,6 +27,12 @@ export type JahisExportRecordType =
   | '301'
   | '311'
   | '391'
+  | '401'
+  | '411'
+  | '421'
+  | '501'
+  | '601'
+  | '701'
   | '911';
 
 export type JahisExportRecordContract = {
@@ -44,6 +50,7 @@ const INSTITUTION_CODE = /^\d{7}$/u;
 const DECIMAL = /^(?:0|[1-9]\d{0,5})(?:\.\d{1,5})?$/u;
 const POSITIVE_THREE_DIGITS = /^(?:[1-9]|[1-9]\d|[1-9]\d{2})$/u;
 const JAN_CODE = /^\d{13}$/u;
+const FORBIDDEN_FIELD_CHARACTERS = /[,\r\n\u001a]/u;
 
 function createRpTextRecordContract<const T extends '281' | '291' | '311' | '391'>(
   recordType: T,
@@ -66,11 +73,49 @@ function createRpTextRecordContract<const T extends '281' | '291' | '311' | '391
   } as const satisfies JahisExportRecordContract;
 }
 
+function createTextRecordContract<const T extends '401' | '421' | '501'>(
+  recordType: T,
+  key: string,
+) {
+  return {
+    recordType,
+    fields: [
+      { key, type: 'N', maxBytes: 400, required: true },
+      { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
+    ],
+  } as const satisfies JahisExportRecordContract;
+}
+
 export const JAHIS_EXPORT_CONTRACT_V2_6 = {
   documentId: 'JAHIS-24-104',
   version: '2.6',
   header: 'JAHISTC08',
   outputType: '1',
+  recordTypes: [
+    '1',
+    '2',
+    '3',
+    '31',
+    '4',
+    '5',
+    '11',
+    '15',
+    '51',
+    '55',
+    '201',
+    '281',
+    '291',
+    '301',
+    '311',
+    '391',
+    '401',
+    '411',
+    '421',
+    '501',
+    '601',
+    '701',
+    '911',
+  ] as const satisfies readonly JahisExportRecordType[],
   recordOrder: ['1', '5', '11', '51', '55', '201', '301'] as const,
   records: {
     '1': {
@@ -262,6 +307,53 @@ export const JAHIS_EXPORT_CONTRACT_V2_6 = {
     },
     '311': createRpTextRecordContract('311', 'usage_supplement', 100),
     '391': createRpTextRecordContract('391', 'prescription_usage_note', 400),
+    '401': createTextRecordContract('401', 'usage_note'),
+    '411': {
+      recordType: '411',
+      fields: [
+        { key: 'provided_information', type: 'N', maxBytes: 400, required: true },
+        {
+          key: 'provided_information_type',
+          type: '9',
+          maxBytes: 2,
+          required: true,
+          pattern: /^(?:30|31|99)$/u,
+        },
+        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
+      ],
+    },
+    '421': createTextRecordContract('421', 'remaining_medication'),
+    '501': createTextRecordContract('501', 'remark'),
+    '601': {
+      recordType: '601',
+      fields: [
+        { key: 'patient_entry', type: 'N', maxBytes: 400, required: true },
+        { key: 'input_date', type: 'X', maxBytes: 8, required: false, pattern: JAHIS_DATE },
+      ],
+    },
+    '701': {
+      recordType: '701',
+      fields: [
+        { key: 'primary_pharmacist_name', type: 'N', maxBytes: 40, required: true },
+        { key: 'pharmacy_name', type: 'N', maxBytes: 120, required: true },
+        { key: 'contact', type: 'N', maxBytes: 800, required: true },
+        {
+          key: 'assignment_start_date',
+          type: 'X',
+          maxBytes: 8,
+          required: false,
+          pattern: JAHIS_DATE,
+        },
+        {
+          key: 'assignment_end_date',
+          type: 'X',
+          maxBytes: 8,
+          required: false,
+          pattern: JAHIS_DATE,
+        },
+        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
+      ],
+    },
     '911': {
       recordType: '911',
       fields: [
@@ -293,6 +385,10 @@ function validateField(recordType: string, contract: JahisExportFieldContract, v
   if (!value) {
     if (contract.required) throwFieldError('JAHIS_FIELD_REQUIRED', recordType, contract.key);
     return;
+  }
+
+  if (FORBIDDEN_FIELD_CHARACTERS.test(value) || value !== value.trim()) {
+    throwFieldError('JAHIS_FIELD_FORMAT_INVALID', recordType, contract.key);
   }
 
   try {

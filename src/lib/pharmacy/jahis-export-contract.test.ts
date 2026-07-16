@@ -14,6 +14,9 @@ describe('JAHIS_EXPORT_CONTRACT_V2_6', () => {
       outputType: '1',
       recordOrder: ['1', '5', '11', '51', '55', '201', '301'],
     });
+    expect(Object.keys(JAHIS_EXPORT_CONTRACT_V2_6.records).sort()).toEqual(
+      [...JAHIS_EXPORT_CONTRACT_V2_6.recordTypes].sort(),
+    );
   });
 
   it('serializes an exact medication record including trailing generic fields', () => {
@@ -118,6 +121,70 @@ describe('JAHIS_EXPORT_CONTRACT_V2_6', () => {
       ['1', '', '1'],
     ],
   ] as const)('rejects an invalid RP detail record: %s', (message, contract, values) => {
+    expect(() => serializeJahisExportRecord(contract, values)).toThrow(message);
+  });
+
+  it.each([
+    [
+      '401',
+      ['他の薬を併用する際は、相談してください。', '1'],
+      '401,他の薬を併用する際は、相談してください。,1',
+    ],
+    [
+      '411',
+      ['嚥下困難が見られるため、錠剤は粉砕して投与する。', '31', '1'],
+      '411,嚥下困難が見られるため、錠剤は粉砕して投与する。,31,1',
+    ],
+    ['421', ['ロキソプロフェンが10錠残薬。', '1'], '421,ロキソプロフェンが10錠残薬。,1'],
+    [
+      '501',
+      ['正しい飲み方は薬袋等をご覧下さい。', '1'],
+      '501,正しい飲み方は薬袋等をご覧下さい。,1',
+    ],
+    ['601', ['昼に眠くなるようになった。', 'H280411'], '601,昼に眠くなるようになった。,H280411'],
+    [
+      '701',
+      ['工業会 次郎', '工業会薬局 駅前店', '03-3506-8010', 'H280411', '', '1'],
+      '701,工業会 次郎,工業会薬局 駅前店,03-3506-8010,H280411,,1',
+    ],
+  ] as const)('serializes the official global Record %s shape', (recordType, values, expected) => {
+    expect(serializeJahisExportRecord(JAHIS_EXPORT_CONTRACT_V2_6.records[recordType], values)).toBe(
+      expected,
+    );
+  });
+
+  it.each([
+    [
+      'JAHIS_FIELD_VALUE_INVALID:411:provided_information_type',
+      JAHIS_EXPORT_CONTRACT_V2_6.records['411'],
+      ['提供情報', '32', '1'],
+    ],
+    [
+      'JAHIS_FIELD_REQUIRED:701:contact',
+      JAHIS_EXPORT_CONTRACT_V2_6.records['701'],
+      ['工業会 次郎', '工業会薬局', '', '', '', '1'],
+    ],
+    [
+      'JAHIS_FIELD_VALUE_INVALID:601:input_date',
+      JAHIS_EXPORT_CONTRACT_V2_6.records['601'],
+      ['患者記入', 'H28041'],
+    ],
+    [
+      'JAHIS_FIELD_FORMAT_INVALID:501:remark',
+      JAHIS_EXPORT_CONTRACT_V2_6.records['501'],
+      ['項目を,分割', '1'],
+    ],
+    [
+      'JAHIS_FIELD_FORMAT_INVALID:421:remaining_medication',
+      JAHIS_EXPORT_CONTRACT_V2_6.records['421'],
+      ['残薬\r\n911,12345678901234,1,1', '1'],
+    ],
+    [
+      'JAHIS_FIELD_FORMAT_INVALID:401:usage_note',
+      JAHIS_EXPORT_CONTRACT_V2_6.records['401'],
+      [' 前後空白', '1'],
+    ],
+  ] as const)('rejects an invalid global record: %s', (message, contract, values) => {
     expect(() => serializeJahisExportRecord(contract, values)).toThrow(message);
   });
 
