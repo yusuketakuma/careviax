@@ -807,7 +807,7 @@
     {
       "path": "src/app/api/patients/[id]/care-team/route.ts",
       "expectedCount": 2,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard", "canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
@@ -818,7 +818,7 @@
     {
       "path": "src/app/api/patients/[id]/conditions/route.ts",
       "expectedCount": 2,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard", "canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
@@ -829,7 +829,7 @@
     {
       "path": "src/app/api/patients/[id]/contacts/route.ts",
       "expectedCount": 2,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard", "canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
@@ -862,7 +862,7 @@
     {
       "path": "src/app/api/patients/[id]/insurance/route.ts",
       "expectedCount": 2,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard", "canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
@@ -873,7 +873,7 @@
     {
       "path": "src/app/api/patients/[id]/labs/route.ts",
       "expectedCount": 2,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard", "canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
@@ -939,7 +939,7 @@
     {
       "path": "src/app/api/patients/[id]/packaging/route.ts",
       "expectedCount": 2,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard", "canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",

@@ -15,7 +15,7 @@ import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '患者配薬設定の閲覧権限がありません',
   });
   if ('response' in authResult) return authResult.response;
