@@ -41,7 +41,6 @@ vi.mock('@/lib/audit/audit-entry', () => ({
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
-import { pharmacyContractRowSchema } from '@/lib/pharmacy-cooperation/api-contracts';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
@@ -172,149 +171,99 @@ describe('/api/pharmacy-contracts POST', () => {
     );
   });
 
-  it('creates an active contract with initial active version and fixed-per-visit fee rule', async () => {
-    const response = await POST(
-      createRequest({
-        partnership_id: ' partnership_1 ',
-        status: 'active',
-        effective_from: '2026-06-01',
-        effective_to: '2026-12-31',
-        closing_day: 20,
-        payment_due_rule: { month_offset: 1, day: 10 },
-        terms_snapshot: { liability: 'base-partner agreement text' },
-        base_approved_by: 'base-manager',
-        partner_approved_by: 'partner-manager',
-        fee_rule: {
-          billing_model: 'fixed_per_visit',
-          unit_price: 5500,
-          tax_category: 'taxable',
-          tax_rate_bp: 1000,
-        },
-      }),
-    );
-
-    expect(response.status).toBe(201);
-    expect(pharmacyPartnershipFindFirstMock).toHaveBeenCalledWith({
-      where: { id: 'partnership_1', org_id: 'org_1' },
-      select: {
-        id: true,
-        status: true,
-        partner_pharmacy: { select: { status: true } },
-      },
-    });
-    expect(pharmacyContractFindFirstMock).toHaveBeenCalledWith({
-      where: expect.objectContaining({
-        org_id: 'org_1',
-        partnership_id: 'partnership_1',
-        status: 'active',
-      }),
-      select: { id: true },
-    });
-    expect(pharmacyContractCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        org_id: 'org_1',
-        partnership_id: 'partnership_1',
-        status: 'active',
-        effective_from: new Date('2026-06-01T00:00:00.000Z'),
-        effective_to: new Date('2026-12-31T00:00:00.000Z'),
-        closing_day: 20,
-        base_approved_by: 'base-manager',
-        partner_approved_by: 'partner-manager',
-        created_by: 'user_1',
-        versions: {
-          create: expect.objectContaining({
-            org_id: 'org_1',
-            version_no: 1,
-            status: 'active',
-            effective_from: new Date('2026-06-01T00:00:00.000Z'),
-            effective_to: new Date('2026-12-31T00:00:00.000Z'),
-            fee_rules: {
-              create: expect.objectContaining({
-                org_id: 'org_1',
-                billing_model: 'fixed_per_visit',
-                unit_price: 5500,
-                tax_category: 'taxable',
-                tax_rate_bp: 1000,
-                is_active: true,
-              }),
-            },
-          }),
-        },
-      }),
-      include: expect.any(Object),
-    });
-    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
-      expect.objectContaining({
-        action: 'pharmacy_contract_created',
-        targetType: 'PharmacyContract',
-        targetId: 'contract_1',
-        changes: expect.objectContaining({
-          partnership_id: 'partnership_1',
-          status: 'active',
-          version_no: 1,
-          billing_model: 'fixed_per_visit',
-          unit_price: 5500,
-          tax_category: 'taxable',
-        }),
-      }),
-    );
-    const auditText = JSON.stringify(createAuditLogEntryMock.mock.calls);
-    expect(auditText).not.toContain('base-partner agreement text');
-    const body = await response.json();
-    expect(pharmacyContractRowSchema.safeParse(body.data).success).toBe(true);
-    expect(body).toMatchObject({
-      data: {
-        id: 'contract_1',
-        has_payment_due_rule: true,
-        latest_version: {
-          id: 'contract_version_1',
-          has_terms_snapshot: true,
-          active_fee_rule: {
-            id: 'fee_rule_1',
-            billing_model: 'fixed_per_visit',
-            unit_price: 5500,
-          },
-        },
-      },
-    });
-  });
-
-  it('rejects active contract creation without both approval records before side effects', async () => {
+  it('fails closed when caller-supplied approval strings request active creation', async () => {
     const response = await POST(
       createRequest({
         partnership_id: 'partnership_1',
         status: 'active',
         effective_from: '2026-06-01',
+        base_approved_by: 'caller-controlled-base',
+        partner_approved_by: 'caller-controlled-partner',
         fee_rule: { billing_model: 'free' },
       }),
     );
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(501);
+    await expect(response.json()).resolves.toEqual({
+      code: 'BILLING_PARTNER_APPROVAL_NOT_IMPLEMENTED',
+      message: '認証済みの両薬局による個別承認が実装されるまで契約を有効化できません',
+    });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(pharmacyContractCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
-  it('rejects overlapping active contracts before create or audit side effects', async () => {
-    pharmacyContractFindFirstMock.mockResolvedValue({ id: 'existing_contract' });
-
+  it('fails closed for active creation even when approval strings are omitted', async () => {
     const response = await POST(
       createRequest({
         partnership_id: 'partnership_1',
         status: 'active',
         effective_from: '2026-06-01',
-        effective_to: '2026-06-30',
+        fee_rule: { billing_model: 'free' },
+      }),
+    );
+
+    expect(response.status).toBe(501);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacyContractCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('does not persist caller approval strings on a draft contract', async () => {
+    const response = await POST(
+      createRequest({
+        partnership_id: 'partnership_1',
+        status: 'draft',
+        effective_from: '2026-06-01',
         base_approved_by: 'base-manager',
         partner_approved_by: 'partner-manager',
         fee_rule: { billing_model: 'free' },
       }),
     );
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(501);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(pharmacyContractCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves draft creation with null approval evidence', async () => {
+    const response = await POST(
+      createRequest({
+        partnership_id: 'partnership_1',
+        status: 'draft',
+        effective_from: '2026-06-01',
+        fee_rule: { billing_model: 'free' },
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(pharmacyContractCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'draft',
+          base_approved_by: null,
+          base_approved_at: null,
+          partner_approved_by: null,
+          partner_approved_at: null,
+          versions: {
+            create: expect.objectContaining({
+              status: 'draft',
+              approved_by_base: null,
+              approved_by_partner: null,
+              approved_at: null,
+            }),
+          },
+        }),
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        changes: expect.objectContaining({ base_approved: false, partner_approved: false }),
+      }),
+    );
   });
 
   it('rejects fixed fee rules without a positive unit price before transaction side effects', async () => {

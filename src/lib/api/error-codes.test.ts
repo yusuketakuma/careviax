@@ -51,6 +51,13 @@ describe('API error code registry', () => {
           "recoveryAction": "return_to_previous",
           "retryable": false,
         },
+        "BILLING_PARTNER_APPROVAL_NOT_IMPLEMENTED": {
+          "httpStatus": 501,
+          "logLevel": "info",
+          "messageLabel": "api.error.billing.partner_approval_not_implemented",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
         "CARE_REPORT_PDF_EXPORT_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",

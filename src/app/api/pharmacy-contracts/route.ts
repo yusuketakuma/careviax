@@ -3,7 +3,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, notFound, registeredError, success, validationError } from '@/lib/api/response';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -81,8 +81,6 @@ const createPharmacyContractSchema = z
     closing_day: z.number().int().min(1).max(31).nullable().optional(),
     payment_due_rule: z.record(z.string(), z.unknown()).optional(),
     terms_snapshot: z.record(z.string(), z.unknown()).optional(),
-    base_approved_by: optionalTrimmedString(128),
-    partner_approved_by: optionalTrimmedString(128),
     fee_rule: feeRuleSchema.default({ billing_model: 'free', tax_category: 'tax_pending' }),
   })
   .superRefine((value, ctx) => {
@@ -92,22 +90,6 @@ const createPharmacyContractSchema = z
         path: ['effective_to'],
         message: '終了日は開始日以降を指定してください',
       });
-    }
-    if (value.status === 'active') {
-      if (!value.base_approved_by) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['base_approved_by'],
-          message: '有効化する契約には基幹薬局側の承認記録が必要です',
-        });
-      }
-      if (!value.partner_approved_by) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['partner_approved_by'],
-          message: '有効化する契約には協力薬局側の承認記録が必要です',
-        });
-      }
     }
   });
 
@@ -266,6 +248,17 @@ export const POST = withAuthContext(
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
+    if (
+      payload.status === 'active' ||
+      Object.hasOwn(payload, 'base_approved_by') ||
+      Object.hasOwn(payload, 'partner_approved_by')
+    ) {
+      return registeredError(
+        'BILLING_PARTNER_APPROVAL_NOT_IMPLEMENTED',
+        '認証済みの両薬局による個別承認が実装されるまで契約を有効化できません',
+      );
+    }
+
     const parsed = createPharmacyContractSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
@@ -289,8 +282,8 @@ export const POST = withAuthContext(
       if (!partnership) return { response: notFound('薬局間連携が見つかりません') };
       const contractStatus = resolvePharmacyContractCreationStatus({
         requestedStatus: parsed.data.status,
-        hasBaseApproval: Boolean(parsed.data.base_approved_by),
-        hasPartnerApproval: Boolean(parsed.data.partner_approved_by),
+        hasBaseApproval: false,
+        hasPartnerApproval: false,
         partnershipStatus: partnership.status,
         partnerPharmacyStatus: partnership.partner_pharmacy.status,
       });
@@ -323,10 +316,10 @@ export const POST = withAuthContext(
           effective_to: effectiveTo,
           closing_day: parsed.data.closing_day ?? null,
           payment_due_rule: toJsonInputOrUndefined(parsed.data.payment_due_rule),
-          base_approved_by: parsed.data.base_approved_by ?? null,
-          base_approved_at: parsed.data.base_approved_by ? now : null,
-          partner_approved_by: parsed.data.partner_approved_by ?? null,
-          partner_approved_at: parsed.data.partner_approved_by ? now : null,
+          base_approved_by: null,
+          base_approved_at: null,
+          partner_approved_by: null,
+          partner_approved_at: null,
           created_by: ctx.userId,
           updated_by: ctx.userId,
           versions: {
@@ -337,8 +330,8 @@ export const POST = withAuthContext(
               effective_from: effectiveFrom,
               effective_to: effectiveTo,
               terms_snapshot: toPrismaJsonInput(parsed.data.terms_snapshot ?? {}),
-              approved_by_base: parsed.data.base_approved_by ?? null,
-              approved_by_partner: parsed.data.partner_approved_by ?? null,
+              approved_by_base: null,
+              approved_by_partner: null,
               approved_at: isActive ? now : null,
               created_by: ctx.userId,
               fee_rules: {
@@ -397,8 +390,8 @@ export const POST = withAuthContext(
           unit_price: parsed.data.fee_rule.unit_price ?? null,
           tax_category: parsed.data.fee_rule.tax_category,
           tax_rate_bp: parsed.data.fee_rule.tax_rate_bp ?? null,
-          base_approved: Boolean(parsed.data.base_approved_by),
-          partner_approved: Boolean(parsed.data.partner_approved_by),
+          base_approved: false,
+          partner_approved: false,
         },
       });
 
