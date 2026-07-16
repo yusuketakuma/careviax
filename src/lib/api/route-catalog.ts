@@ -87,7 +87,7 @@ export const routeCatalog: RouteCatalogEntry[] = [
   {
     path: '/api/patients/:id/prescriptions',
     methods: ['GET'],
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     description: '患者別処方履歴と処方差分レビュー取得',
     area: 'prescriptions',
   },
