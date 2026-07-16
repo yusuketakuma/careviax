@@ -337,18 +337,23 @@ export const POST = withAuthContext(
         )
       : [];
 
+    if (generateHomeCare) {
+      for (const visitRecord of visitRecords) {
+        await withOrgContext(
+          ctx.orgId,
+          (tx) =>
+            upsertBillingEvidenceForVisit(tx, {
+              orgId: ctx.orgId,
+              visitRecordId: visitRecord.id,
+            }),
+          { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
+        );
+      }
+    }
+
     const created = await withOrgContext(
       ctx.orgId,
       async (tx) => {
-        if (generateHomeCare) {
-          for (const visitRecord of visitRecords) {
-            await upsertBillingEvidenceForVisit(tx, {
-              orgId: ctx.orgId,
-              visitRecordId: visitRecord.id,
-            });
-          }
-        }
-
         const candidates = generateHomeCare
           ? await generateBillingCandidatesForMonth(tx, {
               orgId: ctx.orgId,

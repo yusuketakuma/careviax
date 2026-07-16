@@ -578,8 +578,20 @@ describe('/api/billing-candidates', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
-    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(4);
     expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_1', expect.any(Function));
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(
+      2,
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({ requestContext: expect.objectContaining({ orgId: 'org_1' }) }),
+    );
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(
+      3,
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({ requestContext: expect.objectContaining({ orgId: 'org_1' }) }),
+    );
     expect(visitRecordFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -664,6 +676,21 @@ describe('/api/billing-candidates', () => {
         pca_rental_generated: 1,
       },
     });
+  });
+
+  it('does not start monthly candidate projection when a per-visit evidence transaction fails', async () => {
+    upsertBillingEvidenceForVisitMock
+      .mockResolvedValueOnce({ id: 'evidence_1' })
+      .mockRejectedValueOnce(new Error('evidence write failed'));
+
+    await expect(POST(createRequest({ billing_month: '2026-03-01' }))).rejects.toThrow(
+      'evidence write failed',
+    );
+
+    expect(upsertBillingEvidenceForVisitMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(generateBillingCandidatesForMonthMock).not.toHaveBeenCalled();
+    expect(generatePcaRentalBillingCandidatesForMonthMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid billing_domain on generation before database work', async () => {
