@@ -36,6 +36,9 @@ function renderManager() {
   return render(<DocumentDeliveryRuleManager />, { wrapper: createQueryClientWrapper() });
 }
 
+const RULE_UPDATED_AT = '2026-07-17T00:00:00.000Z';
+const RULE_VERSION_QUERY = `expected_updated_at=${encodeURIComponent(RULE_UPDATED_AT)}`;
+
 function buildDocumentDeliveryRulesMeta(
   overrides: Partial<{
     total_count: number;
@@ -76,6 +79,7 @@ describe('DocumentDeliveryRuleManager', () => {
                   channel: 'fax',
                   fallback_channels: ['mcs'],
                   is_active: true,
+                  updated_at: RULE_UPDATED_AT,
                   created_at: '2026-07-13T00:00:00.000Z',
                 },
                 {
@@ -85,6 +89,7 @@ describe('DocumentDeliveryRuleManager', () => {
                   channel: 'email',
                   fallback_channels: ['fax'],
                   is_active: true,
+                  updated_at: RULE_UPDATED_AT,
                 },
               ],
               meta: buildDocumentDeliveryRulesMeta({
@@ -96,7 +101,10 @@ describe('DocumentDeliveryRuleManager', () => {
           );
         }
 
-        if (url === '/api/document-delivery-rules/rule_1' && init?.method === 'DELETE') {
+        if (
+          url === `/api/document-delivery-rules/rule_1?${RULE_VERSION_QUERY}` &&
+          init?.method === 'DELETE'
+        ) {
           return new Response(JSON.stringify({ data: { id: 'rule_1' } }), { status: 200 });
         }
 
@@ -140,7 +148,7 @@ describe('DocumentDeliveryRuleManager', () => {
     fireEvent.click(deleteButton);
 
     expect(global.fetch).not.toHaveBeenCalledWith(
-      '/api/document-delivery-rules/rule_1',
+      `/api/document-delivery-rules/rule_1?${RULE_VERSION_QUERY}`,
       expect.objectContaining({ method: 'DELETE' }),
     );
     expect(screen.getByRole('alertdialog', { name: '送達ルールを削除しますか' })).toBeTruthy();
@@ -154,7 +162,7 @@ describe('DocumentDeliveryRuleManager', () => {
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/document-delivery-rules/rule_1',
+        `/api/document-delivery-rules/rule_1?${RULE_VERSION_QUERY}`,
         expect.objectContaining({ method: 'DELETE', headers: { 'x-test-org-id': 'org_1' } }),
       );
     });
@@ -180,6 +188,7 @@ describe('DocumentDeliveryRuleManager', () => {
                   channel: 'fax',
                   fallback_channels: ['mcs'],
                   is_active: true,
+                  updated_at: RULE_UPDATED_AT,
                 },
               ],
               meta: buildDocumentDeliveryRulesMeta(),
@@ -188,7 +197,7 @@ describe('DocumentDeliveryRuleManager', () => {
           );
         }
 
-        if (url === `/api/document-delivery-rules/${encodedId}` && init?.method) {
+        if (url.startsWith(`/api/document-delivery-rules/${encodedId}`) && init?.method) {
           return new Response(JSON.stringify({ data: { id: hostileId } }), { status: 200 });
         }
 
@@ -215,16 +224,16 @@ describe('DocumentDeliveryRuleManager', () => {
       expect(
         vi
           .mocked(global.fetch)
-          .mock.calls.filter(
-            ([url]) => String(url) === `/api/document-delivery-rules/${encodedId}`,
+          .mock.calls.filter(([url]) =>
+            String(url).startsWith(`/api/document-delivery-rules/${encodedId}`),
           ),
       ).toHaveLength(2);
     });
 
     const mutationCalls = vi
       .mocked(global.fetch)
-      .mock.calls.filter(
-        ([url]) => String(url) === `/api/document-delivery-rules/${encodedId}`,
+      .mock.calls.filter(([url]) =>
+        String(url).startsWith(`/api/document-delivery-rules/${encodedId}`),
       ) as Array<[string, RequestInit]>;
     expect(mutationCalls.map(([, init]) => init.method)).toEqual(['PATCH', 'DELETE']);
     expect(mutationCalls[0][1].headers).toEqual({
@@ -233,6 +242,7 @@ describe('DocumentDeliveryRuleManager', () => {
     });
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
     expect(JSON.parse(String(mutationCalls[0][1].body))).toEqual({
+      expected_updated_at: RULE_UPDATED_AT,
       document_type: 'care_report',
       target_role: 'physician',
       channel: 'fax',
@@ -240,6 +250,9 @@ describe('DocumentDeliveryRuleManager', () => {
       is_active: true,
     });
     expect(mutationCalls[1][1].headers).toEqual({ 'x-test-org-id': 'org_1' });
+    expect(mutationCalls[1][0]).toBe(
+      `/api/document-delivery-rules/${encodedId}?${RULE_VERSION_QUERY}`,
+    );
     for (const [url, init] of mutationCalls) {
       expect(url).not.toContain('%25');
       expect(String(init.body ?? '')).not.toContain(hostileId);
@@ -387,6 +400,7 @@ describe('DocumentDeliveryRuleManager', () => {
                   channel: 'fax',
                   fallback_channels: ['mcs'],
                   is_active: true,
+                  updated_at: RULE_UPDATED_AT,
                 },
               ],
               meta: buildDocumentDeliveryRulesMeta(),
@@ -394,7 +408,10 @@ describe('DocumentDeliveryRuleManager', () => {
             { status: 200 },
           );
         }
-        if (url === '/api/document-delivery-rules/rule_1' && init?.method === 'DELETE') {
+        if (
+          url === `/api/document-delivery-rules/rule_1?${RULE_VERSION_QUERY}` &&
+          init?.method === 'DELETE'
+        ) {
           return new Response(JSON.stringify({ message: '文書送達ルールの削除権限がありません' }), {
             status: 403,
           });
@@ -464,6 +481,7 @@ describe('DocumentDeliveryRuleManager', () => {
                   channel: 'fax',
                   fallback_channels: ['mcs'],
                   is_active: true,
+                  updated_at: RULE_UPDATED_AT,
                 },
               ],
               meta: buildDocumentDeliveryRulesMeta({

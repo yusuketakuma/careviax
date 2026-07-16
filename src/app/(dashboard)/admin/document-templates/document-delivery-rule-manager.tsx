@@ -68,6 +68,7 @@ const CHANNEL_LABELS: Record<DeliveryChannel, string> = {
 
 const documentDeliveryRuleFormSchema = z.object({
   id: z.string(),
+  updatedAt: z.string(),
   documentType: z.string(),
   targetRole: z.string(),
   channel: z.enum(['email', 'fax', 'mcs']),
@@ -79,6 +80,7 @@ type DocumentDeliveryRuleFormValues = z.infer<typeof documentDeliveryRuleFormSch
 
 const EMPTY_FORM: DocumentDeliveryRuleFormValues = {
   id: '',
+  updatedAt: '',
   documentType: 'care_report',
   targetRole: 'physician',
   channel: 'fax' as DeliveryChannel,
@@ -179,6 +181,7 @@ export function DocumentDeliveryRuleManager() {
           method: currentForm.id ? 'PATCH' : 'POST',
           headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify({
+            ...(currentForm.id ? { expected_updated_at: currentForm.updatedAt } : {}),
             document_type: currentForm.documentType,
             target_role: currentForm.targetRole,
             channel: currentForm.channel,
@@ -201,16 +204,17 @@ export function DocumentDeliveryRuleManager() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (ruleId: string) => {
-      const res = await fetch(buildDocumentDeliveryRuleApiPath(ruleId), {
+    mutationFn: async (rule: DocumentDeliveryRuleRow) => {
+      const query = new URLSearchParams({ expected_updated_at: rule.updated_at });
+      const res = await fetch(`${buildDocumentDeliveryRuleApiPath(rule.id)}?${query}`, {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
       await readApiAcknowledgement(res, '文書送達ルールの削除に失敗しました');
     },
-    onSuccess: async (_data, ruleId) => {
+    onSuccess: async (_data, rule) => {
       toast.success('文書送達ルールを削除しました');
-      if (getValues().id === ruleId) {
+      if (getValues().id === rule.id) {
         reset(EMPTY_FORM);
       }
       setDeleteTarget(null);
@@ -435,6 +439,7 @@ export function DocumentDeliveryRuleManager() {
                       onClick={() =>
                         reset({
                           id: rule.id,
+                          updatedAt: rule.updated_at,
                           documentType: rule.document_type,
                           targetRole: rule.target_role,
                           channel: rule.channel,
@@ -489,7 +494,7 @@ export function DocumentDeliveryRuleManager() {
         closeOnConfirm={false}
         onConfirm={() => {
           if (deleteTarget) {
-            deleteMutation.mutate(deleteTarget.id);
+            deleteMutation.mutate(deleteTarget);
           }
         }}
       />

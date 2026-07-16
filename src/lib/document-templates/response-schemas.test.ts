@@ -12,6 +12,7 @@ function buildPayload() {
         channel: 'fax',
         fallback_channels: ['email'],
         is_active: true,
+        updated_at: '2026-07-17T00:00:00.000Z',
         created_at: '2026-07-13T00:00:00.000Z',
       },
     ],
@@ -32,6 +33,7 @@ describe('documentDeliveryRulesResponseSchema', () => {
     const parsed = documentDeliveryRulesResponseSchema.parse(buildPayload());
     expect(parsed.data[0]).not.toHaveProperty('org_id');
     expect(parsed.data[0]).not.toHaveProperty('created_at');
+    expect(parsed.data[0]).toHaveProperty('updated_at', '2026-07-17T00:00:00.000Z');
   });
 
   it.each([

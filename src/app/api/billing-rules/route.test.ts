@@ -84,6 +84,7 @@ vi.mock('@/lib/utils/logger', () => ({
 import { GET, POST } from './route';
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 function createRequest(url = 'http://localhost/api/billing-rules', body?: unknown) {
   const init: NextRequestInit = {
@@ -204,6 +205,7 @@ describe('/api/billing-rules', () => {
   it('returns billing SSOT rules without mutating the catalog on GET', async () => {
     const response = await GET(
       createRequest('http://localhost/api/billing-rules?billing_scope=home_care_ssot'),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -259,7 +261,7 @@ describe('/api/billing-rules', () => {
       },
     ]);
 
-    const response = await GET(createRequest());
+    const response = await GET(createRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
@@ -281,6 +283,7 @@ describe('/api/billing-rules', () => {
       createRequest(
         'http://localhost/api/billing-rules?rule_type=bad&billing_scope=%20&service_type=bad',
       ),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -305,6 +308,7 @@ describe('/api/billing-rules', () => {
       createRequest(
         'http://localhost/api/billing-rules?rule_type=base&rule_type=addition&include_inactive=yes',
       ),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -327,7 +331,7 @@ describe('/api/billing-rules', () => {
     const rawMessage = 'raw billing SQL stack';
     getHomeCareBillingSsotSummaryMock.mockRejectedValueOnce(new Error(rawMessage));
 
-    const response = await GET(createRequest());
+    const response = await GET(createRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     await expectInternalError(response as Response, rawMessage);
@@ -342,7 +346,10 @@ describe('/api/billing-rules', () => {
   });
 
   it('rejects non-object POST payloads before SSOT sync or billing rule create', async () => {
-    const response = await POST(createRequest('http://localhost/api/billing-rules', []));
+    const response = await POST(
+      createRequest('http://localhost/api/billing-rules', []),
+      emptyRouteContext,
+    );
 
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
@@ -358,7 +365,7 @@ describe('/api/billing-rules', () => {
   });
 
   it('rejects malformed JSON POST payloads before SSOT sync or billing rule create', async () => {
-    const response = await POST(createMalformedJsonPostRequest());
+    const response = await POST(createMalformedJsonPostRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
@@ -376,6 +383,7 @@ describe('/api/billing-rules', () => {
   it('re-seeds official SSOT via POST action', async () => {
     const response = await POST(
       createRequest('http://localhost/api/billing-rules', { action: 'seed_home_care_ssot' }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -415,6 +423,7 @@ describe('/api/billing-rules', () => {
         evidence_requirements: { required_documents: ['visit_record'] },
         amount: 10,
       }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');
@@ -459,6 +468,7 @@ describe('/api/billing-rules', () => {
         rule_type: 'addition',
         name: '任意加算',
       }),
+      emptyRouteContext,
     );
 
     if (!response) throw new Error('response is required');

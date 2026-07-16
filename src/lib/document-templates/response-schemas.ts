@@ -10,6 +10,7 @@ const documentDeliveryRuleRowSchema = z
     channel: documentDeliveryChannelSchema,
     fallback_channels: z.array(documentDeliveryChannelSchema).max(3).nullable(),
     is_active: z.boolean(),
+    updated_at: z.string().datetime(),
   })
   .strip()
   .superRefine((rule, context) => {
