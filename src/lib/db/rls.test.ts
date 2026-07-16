@@ -155,6 +155,7 @@ const describeProof = proofUrl ? describe : describe.skip;
 const TENANT_ISOLATION_USING = 'org_id = public.app_enforced_org_id()';
 
 const HARDENED_FINAL_STATE_TABLES = [
+  'ClinicalSyncQueueItem',
   'DomainEventOutbox',
   'ProviderDeliveryReceipt',
   'JahisSupplementalRecord',

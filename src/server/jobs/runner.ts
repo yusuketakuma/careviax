@@ -219,7 +219,7 @@ async function runJobOnce(
           jobType,
           operation: 'run_job',
           code: 'JOB_PARTIAL_RESULT',
-          errorCount: result.errors?.length ?? 0,
+          count: result.errors?.length ?? 0,
           ...(orgId ? { orgId } : {}),
           ...jobTraceLogContext(requestTrace),
         });

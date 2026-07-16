@@ -146,18 +146,81 @@ async function recordQueueProvenance(args: {
   });
 }
 
-async function markQueueSucceeded(tx: ClinicalSyncQueueTx, queue: QueueRecord, now: Date) {
-  await tx.clinicalSyncQueueItem.update({
-    where: { id_org_id: { id: queue.id, org_id: queue.org_id } },
+async function assertClaimedTransition(
+  tx: ClinicalSyncQueueTx,
+  queue: QueueRecord,
+  lockedBy: string,
+  data: Prisma.ClinicalSyncQueueItemUpdateManyMutationInput,
+) {
+  const updated = await tx.clinicalSyncQueueItem.updateMany({
+    where: {
+      id: queue.id,
+      org_id: queue.org_id,
+      status: ClinicalQueueStatus.running,
+      locked_by: lockedBy,
+      attempt_count: queue.attempt_count,
+    },
     data: {
-      status: ClinicalQueueStatus.succeeded,
+      ...data,
       locked_at: null,
       locked_by: null,
-      completed_at: now,
-      last_error_code: null,
-      last_error_metadata: PrismaNamespace.JsonNull,
     },
   });
+  if (updated.count !== 1) {
+    throw new Error('Clinical sync queue claim was lost');
+  }
+}
+
+async function markQueueSucceeded(
+  tx: ClinicalSyncQueueTx,
+  queue: QueueRecord,
+  now: Date,
+  lockedBy: string,
+) {
+  await assertClaimedTransition(tx, queue, lockedBy, {
+    status: ClinicalQueueStatus.succeeded,
+    completed_at: now,
+    last_error_code: null,
+    last_error_metadata: PrismaNamespace.JsonNull,
+  });
+}
+
+function failedTransitionData(queue: QueueRecord, now: Date, code: string) {
+  const nextAttemptCount = Math.min(queue.attempt_count + 1, queue.max_attempts);
+  const deadLetter = nextAttemptCount >= queue.max_attempts;
+  return {
+    status: deadLetter ? ClinicalQueueStatus.dead_letter : ClinicalQueueStatus.failed,
+    locked_at: null,
+    locked_by: null,
+    attempt_count: nextAttemptCount,
+    next_attempt_at: deadLetter ? now : new Date(now.getTime() + RETRY_DELAY_MS),
+    completed_at: deadLetter ? now : null,
+    last_error_code: code,
+    last_error_metadata: toPrismaJsonInput({
+      code,
+      retryable: !deadLetter,
+      raw_storage: 'not_persisted',
+    }),
+  } satisfies Prisma.ClinicalSyncQueueItemUpdateManyMutationInput;
+}
+
+async function markUnclaimedQueueFailed(
+  tx: ClinicalSyncQueueTx,
+  queue: QueueRecord,
+  now: Date,
+  code: string,
+) {
+  const updated = await tx.clinicalSyncQueueItem.updateMany({
+    where: {
+      id: queue.id,
+      org_id: queue.org_id,
+      status: queue.status,
+      attempt_count: queue.attempt_count,
+      next_attempt_at: { lte: now },
+    },
+    data: failedTransitionData(queue, now, code),
+  });
+  return updated.count === 1;
 }
 
 async function markQueueConflict(
@@ -165,48 +228,54 @@ async function markQueueConflict(
   queue: QueueRecord,
   now: Date,
   code: string,
+  lockedBy: string,
 ) {
-  await tx.clinicalSyncQueueItem.update({
-    where: { id_org_id: { id: queue.id, org_id: queue.org_id } },
+  await assertClaimedTransition(tx, queue, lockedBy, {
+    status: ClinicalQueueStatus.conflict_requires_review,
+    completed_at: now,
+    last_error_code: code,
+    last_error_metadata: toPrismaJsonInput({
+      code,
+      retryable: false,
+      raw_storage: 'not_persisted',
+    }),
+  });
+}
+
+async function markClaimedQueueFailed(
+  tx: ClinicalSyncQueueTx,
+  queue: QueueRecord,
+  now: Date,
+  code: string,
+  lockedBy: string,
+) {
+  await assertClaimedTransition(tx, queue, lockedBy, failedTransitionData(queue, now, code));
+}
+
+async function markQueueExhausted(tx: ClinicalSyncQueueTx, queue: QueueRecord, now: Date) {
+  const updated = await tx.clinicalSyncQueueItem.updateMany({
+    where: {
+      id: queue.id,
+      org_id: queue.org_id,
+      status: queue.status,
+      attempt_count: queue.attempt_count,
+      next_attempt_at: { lte: now },
+    },
     data: {
-      status: ClinicalQueueStatus.conflict_requires_review,
+      status: ClinicalQueueStatus.dead_letter,
       locked_at: null,
       locked_by: null,
       completed_at: now,
-      last_error_code: code,
+      next_attempt_at: now,
+      last_error_code: 'MAX_ATTEMPTS_EXHAUSTED',
       last_error_metadata: toPrismaJsonInput({
-        code,
+        code: 'MAX_ATTEMPTS_EXHAUSTED',
         retryable: false,
         raw_storage: 'not_persisted',
       }),
     },
   });
-}
-
-async function markQueueFailed(
-  tx: ClinicalSyncQueueTx,
-  queue: QueueRecord,
-  now: Date,
-  code: string,
-) {
-  const nextAttemptCount = queue.attempt_count + 1;
-  const deadLetter = nextAttemptCount >= queue.max_attempts;
-  await tx.clinicalSyncQueueItem.update({
-    where: { id_org_id: { id: queue.id, org_id: queue.org_id } },
-    data: {
-      status: deadLetter ? ClinicalQueueStatus.dead_letter : ClinicalQueueStatus.failed,
-      locked_at: null,
-      locked_by: null,
-      attempt_count: { increment: 1 },
-      next_attempt_at: deadLetter ? now : new Date(now.getTime() + RETRY_DELAY_MS),
-      last_error_code: code,
-      last_error_metadata: toPrismaJsonInput({
-        code,
-        retryable: !deadLetter,
-        raw_storage: 'not_persisted',
-      }),
-    },
-  });
+  return updated.count === 1;
 }
 
 async function claimQueueItem(
@@ -237,21 +306,28 @@ async function projectMedicationTimeline(args: {
   readonly queue: QueueRecord;
   readonly cache: CacheRecord;
   readonly now: Date;
+  readonly lockedBy: string;
 }) {
-  const { tx, queue, cache, now } = args;
+  const { tx, queue, cache, now, lockedBy } = args;
   const sourceKind = sourceKindForResource(cache.resource_type);
   if (!sourceKind) {
-    await markQueueSucceeded(tx, queue, now);
+    await markQueueSucceeded(tx, queue, now, lockedBy);
     return 'succeeded' as const;
   }
 
   if (!cache.patient_id) {
-    await markQueueConflict(tx, queue, now, 'PATIENT_ID_REQUIRED_FOR_TIMELINE_PROJECTION');
+    await markQueueConflict(
+      tx,
+      queue,
+      now,
+      'PATIENT_ID_REQUIRED_FOR_TIMELINE_PROJECTION',
+      lockedBy,
+    );
     return 'conflict' as const;
   }
 
   if (cache.validation_status !== ClinicalFhirValidationStatus.valid) {
-    await markQueueConflict(tx, queue, now, 'FHIR_PROFILE_VALIDATION_REQUIRED');
+    await markQueueConflict(tx, queue, now, 'FHIR_PROFILE_VALIDATION_REQUIRED', lockedBy);
     return 'conflict' as const;
   }
 
@@ -308,7 +384,7 @@ async function projectMedicationTimeline(args: {
     subjectType: ClinicalLocalResourceType.other,
     subjectId: timelineItem.id,
   });
-  await markQueueSucceeded(tx, queue, now);
+  await markQueueSucceeded(tx, queue, now, lockedBy);
   return 'succeeded' as const;
 }
 
@@ -320,8 +396,7 @@ async function processQueueItem(args: {
 }) {
   const { tx, queue, now, lockedBy } = args;
   if (queue.attempt_count >= queue.max_attempts) {
-    await markQueueFailed(tx, queue, now, 'MAX_ATTEMPTS_EXHAUSTED');
-    return 'failed' as const;
+    return (await markQueueExhausted(tx, queue, now)) ? ('failed' as const) : ('skipped' as const);
   }
 
   if (!(await claimQueueItem(tx, queue, now, lockedBy))) {
@@ -329,7 +404,7 @@ async function processQueueItem(args: {
   }
 
   if (!queue.fhir_resource_cache_id) {
-    await markQueueConflict(tx, queue, now, 'FHIR_RESOURCE_CACHE_REQUIRED');
+    await markQueueConflict(tx, queue, now, 'FHIR_RESOURCE_CACHE_REQUIRED', lockedBy);
     return 'conflict' as const;
   }
 
@@ -350,20 +425,20 @@ async function processQueueItem(args: {
     },
   });
   if (!cache) {
-    await markQueueFailed(tx, queue, now, 'FHIR_RESOURCE_CACHE_NOT_FOUND');
+    await markClaimedQueueFailed(tx, queue, now, 'FHIR_RESOURCE_CACHE_NOT_FOUND', lockedBy);
     return 'failed' as const;
   }
 
-  return projectMedicationTimeline({ tx, queue, cache, now });
+  return projectMedicationTimeline({ tx, queue, cache, now, lockedBy });
 }
 
-async function drainWithinOrg(
+async function listDueQueueItems(
   tx: ClinicalSyncQueueTx,
   options: Required<Pick<DrainYreseClinicalSyncQueueOptions, 'orgId' | 'now' | 'lockedBy'>> & {
     limit: number;
   },
-): Promise<DrainYreseClinicalSyncQueueResult> {
-  const dueItems = await tx.clinicalSyncQueueItem.findMany({
+): Promise<QueueRecord[]> {
+  return tx.clinicalSyncQueueItem.findMany({
     where: {
       org_id: options.orgId,
       direction: ClinicalIntegrationDirection.inbound,
@@ -387,44 +462,6 @@ async function drainWithinOrg(
       max_attempts: true,
     },
   });
-
-  const result = {
-    scannedCount: dueItems.length,
-    succeededCount: 0,
-    conflictCount: 0,
-    failedCount: 0,
-    skippedCount: 0,
-    errors: [] as string[],
-  };
-
-  for (const queue of dueItems) {
-    try {
-      const itemResult = await processQueueItem({
-        tx,
-        queue,
-        now: options.now,
-        lockedBy: options.lockedBy,
-      });
-      if (itemResult === 'succeeded') result.succeededCount += 1;
-      if (itemResult === 'conflict') result.conflictCount += 1;
-      if (itemResult === 'failed') result.failedCount += 1;
-      if (itemResult === 'skipped') result.skippedCount += 1;
-    } catch {
-      result.failedCount += 1;
-      result.errors.push('Clinical sync queue item failed');
-      await markQueueFailed(tx, queue, options.now, 'CLINICAL_SYNC_QUEUE_ITEM_FAILED');
-    }
-  }
-
-  return {
-    processedCount: result.succeededCount + result.conflictCount + result.failedCount,
-    scannedCount: result.scannedCount,
-    succeededCount: result.succeededCount,
-    conflictCount: result.conflictCount,
-    failedCount: result.failedCount,
-    skippedCount: result.skippedCount,
-    ...(result.errors.length > 0 ? { errors: result.errors } : {}),
-  };
 }
 
 export async function drainYreseClinicalSyncQueue(
@@ -442,5 +479,56 @@ export async function drainYreseClinicalSyncQueue(
     (<T>(orgId: string, work: (tx: ClinicalSyncQueueTx) => Promise<T>) =>
       withOrgContext(orgId, (tx) => work(tx), { timeoutMs: 10_000 }));
 
-  return runInOrgContext(normalized.orgId, (tx) => drainWithinOrg(tx, normalized));
+  const dueItems = await runInOrgContext(normalized.orgId, (tx) =>
+    listDueQueueItems(tx, normalized),
+  );
+  const result = {
+    succeededCount: 0,
+    conflictCount: 0,
+    failedCount: 0,
+    skippedCount: 0,
+    errors: [] as string[],
+  };
+
+  for (const queue of dueItems) {
+    try {
+      const itemResult = await runInOrgContext(normalized.orgId, (tx) =>
+        processQueueItem({
+          tx,
+          queue,
+          now: normalized.now,
+          lockedBy: normalized.lockedBy,
+        }),
+      );
+      if (itemResult === 'succeeded') result.succeededCount += 1;
+      if (itemResult === 'conflict') result.conflictCount += 1;
+      if (itemResult === 'failed') result.failedCount += 1;
+      if (itemResult === 'skipped') result.skippedCount += 1;
+    } catch {
+      try {
+        const failed = await runInOrgContext(normalized.orgId, (tx) =>
+          markUnclaimedQueueFailed(tx, queue, normalized.now, 'CLINICAL_SYNC_QUEUE_ITEM_FAILED'),
+        );
+        if (failed) {
+          result.failedCount += 1;
+          result.errors.push('Clinical sync queue item failed');
+        } else {
+          result.skippedCount += 1;
+        }
+      } catch {
+        result.failedCount += 1;
+        result.errors.push('Clinical sync queue failure transition failed');
+      }
+    }
+  }
+
+  return {
+    processedCount: result.succeededCount + result.conflictCount + result.failedCount,
+    scannedCount: dueItems.length,
+    succeededCount: result.succeededCount,
+    conflictCount: result.conflictCount,
+    failedCount: result.failedCount,
+    skippedCount: result.skippedCount,
+    ...(result.errors.length > 0 ? { errors: result.errors } : {}),
+  };
 }

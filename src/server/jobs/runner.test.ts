@@ -157,7 +157,7 @@ describe('runJob', () => {
         jobType: 'test_job',
         operation: 'run_job',
         code: 'JOB_PARTIAL_RESULT',
-        errorCount: 2,
+        count: 2,
       }),
     );
     expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain(rawError);
