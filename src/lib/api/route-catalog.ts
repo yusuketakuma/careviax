@@ -302,6 +302,20 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'visits',
   },
   {
+    path: '/api/interventions/:id',
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: '介入記録詳細取得',
+    area: 'visits',
+  },
+  {
+    path: '/api/interventions/:id',
+    methods: ['PATCH'],
+    permission: 'canVisit',
+    description: '介入記録更新',
+    area: 'visits',
+  },
+  {
     path: '/api/residual-medications',
     methods: ['GET', 'POST'],
     permission: 'canVisit',
