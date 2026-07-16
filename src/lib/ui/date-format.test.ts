@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  DATE_LABEL_PLACEHOLDER,
-  formatDateLabel,
-  formatDateTimeLabel,
-} from './date-format';
+import { DATE_LABEL_PLACEHOLDER, formatDateLabel, formatDateTimeLabel } from './date-format';
 
 describe('formatDateLabel', () => {
   it('formats ISO date strings with the default pattern', () => {
@@ -36,6 +32,8 @@ describe('formatDateLabel', () => {
 describe('formatDateTimeLabel', () => {
   it('formats with date and time by default', () => {
     expect(formatDateTimeLabel('2026-06-11T09:05:00+09:00')).toBe('2026/06/11 09:05');
+    expect(formatDateTimeLabel('2026-06-11T00:05:00.000Z')).toBe('2026/06/11 09:05');
+    expect(formatDateTimeLabel('2026-06-11T09:05:00')).toBe('2026/06/11 09:05');
   });
 
   it('returns the placeholder for empty values', () => {
@@ -44,8 +42,8 @@ describe('formatDateTimeLabel', () => {
 
   it('honors custom fallback and pattern overrides', () => {
     expect(formatDateTimeLabel(null, { fallback: '未記録' })).toBe('未記録');
-    expect(
-      formatDateTimeLabel('2026-06-11T09:05:00+09:00', { pattern: 'MM/dd HH:mm' }),
-    ).toBe('06/11 09:05');
+    expect(formatDateTimeLabel('2026-06-11T09:05:00+09:00', { pattern: 'MM/dd HH:mm' })).toBe(
+      '06/11 09:05',
+    );
   });
 });

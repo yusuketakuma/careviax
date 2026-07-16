@@ -1,5 +1,5 @@
 import { createHash, createHmac } from 'node:crypto';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
 const {
@@ -102,6 +102,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
   const updatedAt = new Date(CURRENT_UPDATED_AT);
 
   beforeEach(() => {
+    vi.stubEnv('BILLING_COLLECTION_IDEMPOTENCY_HASH_SECRET', LOCAL_AUTH_SECRET);
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
       ctx: {
@@ -157,6 +158,10 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
         },
       }),
     );
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('records collection metadata in calculation_breakdown and writes an audit log', async () => {

@@ -23,8 +23,8 @@ import {
 
 setupDomTestEnv();
 
-function localIso(year: number, monthIndex: number, day: number, hour: number, minute = 0) {
-  return new Date(year, monthIndex, day, hour, minute).toISOString();
+function japanLocalIso(year: number, monthIndex: number, day: number, hour: number, minute = 0) {
+  return new Date(Date.UTC(year, monthIndex, day, hour - 9, minute)).toISOString();
 }
 
 const WAITING_REPLY_REQUEST_HREF =
@@ -165,7 +165,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       created_at: '2026-06-10T01:00:00.000Z',
       updated_at: '2026-06-11T02:00:00.000Z',
       reported_to_professional: true,
-      last_sent_at: localIso(2026, 5, 11, 11, 10),
+      last_sent_at: japanLocalIso(2026, 5, 11, 11, 10),
       last_recipient_label: '山田 太郎',
       last_channel: 'fax',
       failed_delivery: null,

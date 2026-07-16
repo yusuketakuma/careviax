@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { formatDateKey } from '@/lib/date-key';
+import { formatDateLabel } from '@/lib/ui/date-format';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiAcknowledgement, readApiJson } from '@/lib/api/client-json';
@@ -370,8 +371,7 @@ function emptyMaintenanceCompletionForm(
 
 function formatDate(value: string | null) {
   if (!value) return '—';
-  const dateKey = value.includes('T') ? value.slice(0, 10) : value;
-  return new Date(`${dateKey}T00:00:00+09:00`).toLocaleDateString('ja-JP');
+  return formatDateLabel(value, { pattern: 'yyyy/M/d' });
 }
 
 // ポンプ/貸出の状態セマンティック:

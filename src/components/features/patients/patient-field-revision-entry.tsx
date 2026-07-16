@@ -1,4 +1,4 @@
-import { format } from 'date-fns';
+import { formatDateLabel, formatDateTimeLabel } from '@/lib/ui/date-format';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
@@ -198,7 +198,7 @@ export function PatientFieldRevisionEntry({
         <div className="flex gap-1">
           <dt>記録:</dt>
           <dd className="tabular-nums">
-            {format(new Date(item.created_at), 'yyyy年M月d日 HH:mm')}
+            {formatDateTimeLabel(item.created_at, { pattern: 'yyyy年M月d日 HH:mm' })}
           </dd>
         </div>
         <div className="flex gap-1">
@@ -214,8 +214,10 @@ export function PatientFieldRevisionEntry({
         <div className="flex gap-1">
           <dt>適用:</dt>
           <dd className="tabular-nums">
-            {format(new Date(item.valid_from), 'yyyy年M月d日')}
-            {item.valid_to ? `〜${format(new Date(item.valid_to), 'yyyy年M月d日')}` : '〜現在'}
+            {formatDateLabel(item.valid_from, { pattern: 'yyyy年M月d日' })}
+            {item.valid_to
+              ? `〜${formatDateLabel(item.valid_to, { pattern: 'yyyy年M月d日' })}`
+              : '〜現在'}
           </dd>
         </div>
         {item.confirmed_at ? (
@@ -224,7 +226,7 @@ export function PatientFieldRevisionEntry({
             <dd>
               {item.confirmed_by_name ?? '確認者不明'}・
               <span className="tabular-nums">
-                {format(new Date(item.confirmed_at), 'yyyy年M月d日 HH:mm')}
+                {formatDateTimeLabel(item.confirmed_at, { pattern: 'yyyy年M月d日 HH:mm' })}
               </span>
             </dd>
           </div>

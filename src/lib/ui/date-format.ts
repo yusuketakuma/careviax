@@ -1,5 +1,6 @@
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { japanCivilTimeParts } from '@/lib/utils/date-boundary';
 
 export const DATE_LABEL_PLACEHOLDER = '—';
 
@@ -17,6 +18,26 @@ function parseDateValue(value: string): Date | null {
   return Number.isNaN(reparsed.getTime()) ? null : reparsed;
 }
 
+function toJapanDisplayDate(value: string, parsed: Date): Date {
+  const unzonedMatch = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/,
+  );
+  if (unzonedMatch) {
+    const [, year, month, day, hour = '0', minute = '0', second = '0'] = unzonedMatch;
+    return new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+    );
+  }
+
+  const parts = japanCivilTimeParts(parsed);
+  return new Date(parts.year, parts.monthIndex, parts.day, parts.hour, parts.minute, parts.second);
+}
+
 /**
  * Formats an ISO-ish date string for display. Returns `fallback` for empty
  * values and the raw input for unparseable values, so it never throws.
@@ -28,7 +49,7 @@ export function formatDateLabel(
   if (!value) return fallback;
   const parsed = parseDateValue(value);
   if (!parsed) return value;
-  return format(parsed, pattern, { locale: ja });
+  return format(toJapanDisplayDate(value, parsed), pattern, { locale: ja });
 }
 
 /** Same as {@link formatDateLabel} with a `yyyy/MM/dd HH:mm` default pattern. */

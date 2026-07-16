@@ -21,6 +21,7 @@ import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-c
 import type { GeneratedCareReportSummary } from '@/lib/reports/generate-from-visit-contract';
 import { displayDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
 import { buildReportHref } from '@/lib/reports/navigation';
+import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import {
   buildReportInboundCandidateDecisionResponseSchema,
   reportsTodayWorkspaceResponseSchema,
@@ -110,10 +111,7 @@ const REPORT_INBOUND_CANDIDATE_ACTION_TOASTS: Record<ReportInboundCandidateActio
 };
 
 function formatDateTime(iso: string): string {
-  const date = new Date(iso);
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${month}/${day} ${formatTimeOfDay(iso)}`;
+  return formatDateTimeLabel(iso, { pattern: 'MM/dd HH:mm' });
 }
 
 function deliveryRetryLabel(retryCount: number): string {

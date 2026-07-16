@@ -1,7 +1,12 @@
-import { format, getDay, startOfMonth, startOfYear } from 'date-fns';
+import { getDay } from 'date-fns';
 import { withAuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import {
+  japanCivilTimeParts,
+  japanDateKey,
+  japanMonthInstantRange,
+} from '@/lib/utils/date-boundary';
 
 function countBusinessDays(from: Date, to: Date) {
   const cursor = new Date(from);
@@ -21,8 +26,16 @@ function countBusinessDays(from: Date, to: Date) {
 export const GET = withAuthContext(
   async (_req, ctx) => {
     const now = new Date();
-    const monthStart = startOfMonth(now);
-    const yearStart = startOfYear(now);
+    const referenceDateKey = japanDateKey(now);
+    const referenceMonth = referenceDateKey.slice(0, 7);
+    const referenceYear = referenceDateKey.slice(0, 4);
+    const monthStart = japanMonthInstantRange(referenceMonth).gte;
+    const yearStart = japanMonthInstantRange(`${referenceYear}-01`).gte;
+    const nowInJapan = japanCivilTimeParts(now);
+    const businessDayCursor = new Date(
+      Date.UTC(nowInJapan.year, nowInJapan.monthIndex, nowInJapan.day),
+    );
+    const businessMonthStart = new Date(Date.UTC(nowInJapan.year, nowInJapan.monthIndex, 1));
 
     const [
       prescriptionInstitutionGroups,
@@ -118,7 +131,7 @@ export const GET = withAuthContext(
         ? 0
         : Math.round((genericPrescriptionLines / totalPrescriptionLines) * 100);
     const pharmacistCount = activePharmacistCount.length;
-    const businessDaysElapsed = countBusinessDays(monthStart, now);
+    const businessDaysElapsed = countBusinessDays(businessMonthStart, businessDayCursor);
     const prescriptionsPerPharmacist =
       pharmacistCount === 0
         ? 0
@@ -131,7 +144,7 @@ export const GET = withAuthContext(
         prescriptions_per_pharmacist: prescriptionsPerPharmacist,
         home_visit_count_ytd: homeVisitCountYtd,
         monthly_prescription_count: monthlyPrescriptionCount,
-        reference_month: format(monthStart, 'yyyy-MM'),
+        reference_month: referenceMonth,
         active_pharmacist_count: pharmacistCount,
         business_days_elapsed: businessDaysElapsed,
       },

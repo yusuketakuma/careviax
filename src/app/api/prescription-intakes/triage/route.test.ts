@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
@@ -98,12 +98,16 @@ function buildIntake(args: IntakeFixtureArgs) {
 describe('/api/prescription-intakes/triage', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 5, 11, 9, 42));
+    vi.setSystemTime(new Date('2026-06-11T00:42:00.000Z'));
     vi.clearAllMocks();
     intakeFindManyMock.mockResolvedValue([]);
     qrDraftFindManyMock.mockResolvedValue([]);
     qrDraftCountMock.mockResolvedValue(0);
     qrDraftFindFirstMock.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('経路レーン集約・トリアージ状態・件数サマリを返す', async () => {
@@ -113,7 +117,7 @@ describe('/api/prescription-intakes/triage', () => {
         sourceType: 'fax',
         overallStatus: 'inquiry_resolved',
         patientName: '佐々木 ハル',
-        createdAt: new Date(2026, 5, 11, 9, 35),
+        createdAt: new Date('2026-06-11T00:35:00.000Z'),
       }),
       buildIntake({
         id: 'intake_2',
@@ -121,7 +125,7 @@ describe('/api/prescription-intakes/triage', () => {
         overallStatus: 'intake_received',
         patientName: '鈴木 新',
         institution: 'きたきゅうケアプラン',
-        createdAt: new Date(2026, 5, 11, 9, 12),
+        createdAt: new Date('2026-06-11T00:12:00.000Z'),
       }),
       buildIntake({
         id: 'intake_3',
@@ -129,7 +133,7 @@ describe('/api/prescription-intakes/triage', () => {
         overallStatus: 'intake_received',
         patientName: '渡辺 フミ',
         institution: 'ご家族',
-        createdAt: new Date(2026, 5, 10, 16, 5),
+        createdAt: new Date('2026-06-10T07:05:00.000Z'),
       }),
     ]);
 

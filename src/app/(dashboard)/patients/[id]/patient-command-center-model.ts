@@ -1,5 +1,7 @@
-import { format, formatDistanceToNowStrict, isSameDay, parseISO } from 'date-fns';
+import { formatDistanceToNowStrict, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { formatDateLabel, formatDateTimeLabel } from '@/lib/ui/date-format';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   type CycleWorkspaceAction,
@@ -105,7 +107,9 @@ const UNRESOLVED_CATEGORY_LABELS: Record<VisitBriefUnresolvedItem['source_type']
 export function formatActivityTime(value: string): string {
   const date = parseISO(value);
   if (Number.isNaN(date.getTime())) return value;
-  return isSameDay(date, new Date()) ? format(date, 'HH:mm') : format(date, 'M/d', { locale: ja });
+  return japanDateKey(date) === japanDateKey(new Date())
+    ? formatDateTimeLabel(value, { pattern: 'HH:mm' })
+    : formatDateLabel(value, { pattern: 'M/d' });
 }
 
 /** 経過時間ラベル(「1日」「30分」)。解釈できない値は undefined。 */

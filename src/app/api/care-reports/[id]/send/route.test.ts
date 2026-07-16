@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { createHmac } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -151,6 +151,7 @@ import { POST } from './route';
 
 const REPORT_UPDATED_AT = new Date('2026-05-12T00:00:00.000Z');
 const REPORT_UPDATED_AT_ISO = REPORT_UPDATED_AT.toISOString();
+const TEST_IDEMPOTENCY_HASH_SECRET = 'ph-os-local-auth-secret';
 
 function buildUniqueConstraintError() {
   return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
@@ -216,6 +217,7 @@ function buildExpectedSendRequestFingerprint(
 
 describe('/api/care-reports/[id]/send POST', () => {
   beforeEach(() => {
+    vi.stubEnv('CARE_REPORT_IDEMPOTENCY_HASH_SECRET', TEST_IDEMPOTENCY_HASH_SECRET);
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
       ctx: {
@@ -347,6 +349,10 @@ describe('/api/care-reports/[id]/send POST', () => {
     resolveOperationalTasksMock.mockResolvedValue(undefined);
     learnContactProfileFromCommunicationMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('rejects unconfirmed draft reports before creating delivery side effects', async () => {
