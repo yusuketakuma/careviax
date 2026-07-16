@@ -7,62 +7,110 @@ const {
   withOrgContextMock,
   templateFindFirstMock,
   templateUpdateManyMock,
-  templateUpdateMock,
-  templateDeleteMock,
+  templateDeleteManyMock,
+  acquireAdvisoryTxLockMock,
   loggerErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   templateFindFirstMock: vi.fn(),
   templateUpdateManyMock: vi.fn(),
-  templateUpdateMock: vi.fn(),
-  templateDeleteMock: vi.fn(),
+  templateDeleteManyMock: vi.fn(),
+  acquireAdvisoryTxLockMock: vi.fn(),
   loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
-}));
-
-vi.mock('@/lib/db/rls', () => ({
-  withOrgContext: withOrgContextMock,
-}));
-
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    template: {
-      findFirst: templateFindFirstMock,
-    },
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: string },
+      routeContext: { params: Promise<{ id: string }> },
+    ) => Promise<Response>,
+    options: unknown,
+  ) => {
+    return async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      let response: Response;
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        response =
+          authResult && typeof authResult === 'object' && 'response' in authResult
+            ? authResult.response
+            : await handler(req, authResult.ctx, routeContext);
+      } catch (error) {
+        loggerErrorMock(
+          {
+            event: 'route_handler_unhandled_error',
+            route: req.nextUrl.pathname,
+            method: req.method,
+          },
+          error,
+        );
+        response = new Response(
+          JSON.stringify({
+            code: 'INTERNAL_ERROR',
+            message: 'サーバー内部でエラーが発生しました',
+          }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      return response;
+    };
   },
 }));
 
-vi.mock('@/lib/utils/logger', () => ({
-  logger: {
-    error: loggerErrorMock,
-  },
+vi.mock('@/lib/db/rls', () => ({ withOrgContext: withOrgContextMock }));
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: acquireAdvisoryTxLockMock,
 }));
+vi.mock('@/lib/utils/logger', () => ({ logger: { error: loggerErrorMock } }));
 
 import { DELETE, GET, PATCH } from './route';
 
+const CURRENT_UPDATED_AT = '2026-07-17T00:00:00.000Z';
+const STALE_UPDATED_AT = '2026-07-16T00:00:00.000Z';
+
+function templateRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'template_1',
+    name: '主治医報告 基本',
+    template_type: 'care_report',
+    target_role: 'physician',
+    format: 'html',
+    version: 2,
+    effective_from: new Date('2026-07-01T00:00:00.000Z'),
+    effective_to: new Date('2026-12-31T00:00:00.000Z'),
+    content: { body_text: '固定文面' },
+    is_default: true,
+    created_at: new Date('2026-06-19T10:00:00.000Z'),
+    updated_at: new Date(CURRENT_UPDATED_AT),
+    ...overrides,
+  };
+}
+
+function routeContext(id = 'template_1') {
+  return { params: Promise.resolve({ id }) };
+}
+
 function createGetRequest() {
-  return new NextRequest('http://localhost/api/templates/template_1', {
-    method: 'GET',
-  });
+  return new NextRequest('http://localhost/api/templates/template_1', { method: 'GET' });
 }
 
-function createRequest(body?: unknown) {
-  return new NextRequest('http://localhost/api/templates/template_1', {
-    method: body === undefined ? 'DELETE' : 'PATCH',
-    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-}
-
-function createMalformedJsonPatchRequest() {
+function createPatchRequest(body: unknown) {
   return new NextRequest('http://localhost/api/templates/template_1', {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: '{bad json',
+    body: JSON.stringify(body),
+  });
+}
+
+function createDeleteRequest(
+  query = `?expected_updated_at=${encodeURIComponent(CURRENT_UPDATED_AT)}`,
+) {
+  return new NextRequest(`http://localhost/api/templates/template_1${query}`, {
+    method: 'DELETE',
   });
 }
 
@@ -83,366 +131,295 @@ describe('/api/templates/[id]', () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
     });
-    templateFindFirstMock.mockResolvedValue({
-      id: 'template_1',
-      template_type: 'care_report',
-    });
+    templateFindFirstMock.mockResolvedValue(templateRecord());
     templateUpdateManyMock.mockResolvedValue({ count: 1 });
-    templateUpdateMock.mockResolvedValue({ id: 'template_1', is_default: true });
-    templateDeleteMock.mockResolvedValue({ id: 'template_1' });
+    templateDeleteManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         template: {
           findFirst: templateFindFirstMock,
           updateMany: templateUpdateManyMock,
-          update: templateUpdateMock,
-          delete: templateDeleteMock,
+          deleteMany: templateDeleteManyMock,
         },
       }),
     );
   });
 
-  it('returns a no-store template detail with content scoped to the caller org', async () => {
-    templateFindFirstMock.mockResolvedValue({
-      id: 'template_1',
-      name: '主治医報告 基本',
-      template_type: 'care_report',
-      target_role: 'physician',
-      format: 'html',
-      version: 2,
-      effective_from: null,
-      effective_to: null,
-      content: { body_text: '患者向けではない内部文面', sections: ['summary'] },
-      is_default: true,
-      created_at: '2026-06-19T10:00:00.000Z',
-      updated_at: '2026-06-19T10:30:00.000Z',
-    });
+  it('returns an organization-scoped no-store template detail', async () => {
+    const response = await GET(createGetRequest(), routeContext('  template_1  '));
 
-    const response = await GET(createGetRequest(), {
-      params: Promise.resolve({ id: '  template_1  ' }),
-    });
-
-    if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
-    expect(requireAuthContextMock).toHaveBeenCalledWith(
-      expect.any(NextRequest),
-      expect.objectContaining({
-        permission: 'canAdmin',
-        message: '文書テンプレートの閲覧権限がありません',
-      }),
-    );
+    expect(templateFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'template_1', org_id: 'org_1' },
+      select: expect.objectContaining({ id: true, content: true, updated_at: true }),
+    });
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
       expect.any(Function),
       expect.objectContaining({
-        requestContext: expect.objectContaining({ orgId: 'org_1' }),
+        requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
       }),
     );
-    expect(templateFindFirstMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'template_1', org_id: 'org_1' },
-        select: expect.objectContaining({
-          id: true,
-          name: true,
-          content: true,
-          updated_at: true,
-        }),
-      }),
-    );
-    await expect(response.json()).resolves.toMatchObject({
-      data: {
-        id: 'template_1',
-        content: {
-          body_text: '患者向けではない内部文面',
-          sections: ['summary'],
-        },
-      },
-    });
   });
 
-  it('returns a no-store not-found response for missing or cross-org template details', async () => {
-    templateFindFirstMock.mockResolvedValue(null);
+  it('returns neutral 404 for a missing or cross-organization template', async () => {
+    templateFindFirstMock.mockResolvedValueOnce(null);
+    const response = await GET(createGetRequest(), routeContext('template_other_org'));
 
-    const response = await GET(createGetRequest(), {
-      params: Promise.resolve({ id: 'template_other_org' }),
-    });
-
-    if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
     expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '文書テンプレートが見つかりません',
     });
-    expect(templateFindFirstMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'template_other_org', org_id: 'org_1' },
-      }),
-    );
-    expect(templateUpdateMock).not.toHaveBeenCalled();
-    expect(templateDeleteMock).not.toHaveBeenCalled();
   });
 
-  it('rejects blank get route ids before loading the template', async () => {
-    const response = await GET(createGetRequest(), {
-      params: Promise.resolve({ id: '   ' }),
-    });
+  it('rejects blank GET route ids before opening an organization context', async () => {
+    const response = await GET(createGetRequest(), routeContext('   '));
 
-    if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
-    expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      message: '文書テンプレートIDが不正です',
-    });
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(templateFindFirstMock).not.toHaveBeenCalled();
   });
 
-  it('updates a template and clears other defaults when setting default', async () => {
+  it('claims the target version before clearing other defaults', async () => {
     const response = await PATCH(
-      createRequest({
+      createPatchRequest({
+        expected_updated_at: CURRENT_UPDATED_AT,
         name: '更新版',
         is_default: true,
       }),
-      { params: Promise.resolve({ id: '  template_1  ' }) },
+      routeContext('  template_1  '),
     );
 
-    if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectNoStore(response);
-    expect(templateUpdateManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          org_id: 'org_1',
-          template_type: 'care_report',
-          id: { not: 'template_1' },
-        }),
-      }),
+    expect(templateUpdateManyMock).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: 'template_1',
+        org_id: 'org_1',
+        updated_at: new Date(CURRENT_UPDATED_AT),
+      },
+      data: { name: '更新版', is_default: true },
+    });
+    expect(templateUpdateManyMock).toHaveBeenNthCalledWith(2, {
+      where: {
+        org_id: 'org_1',
+        template_type: 'care_report',
+        is_default: true,
+        id: { not: 'template_1' },
+      },
+      data: { is_default: false },
+    });
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'document_template_default',
+      'org_1:care_report',
     );
-    expect(templateUpdateMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'template_1' },
-        data: expect.objectContaining({
-          name: '更新版',
-          is_default: true,
-        }),
-      }),
+    expect(acquireAdvisoryTxLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      templateUpdateManyMock.mock.invocationCallOrder[0]!,
     );
   });
 
-  it('updates template metadata fields', async () => {
+  it('keeps a moved default unique in the destination template type', async () => {
     const response = await PATCH(
-      createRequest({
-        target_role: 'physician',
-        format: 'pdf',
-        version: 3,
-        effective_to: '2026-12-31',
-        content: { blocks: ['summary', 'signature'] },
+      createPatchRequest({
+        expected_updated_at: CURRENT_UPDATED_AT,
+        template_type: 'important_matters',
       }),
-      { params: Promise.resolve({ id: 'template_1' }) },
+      routeContext(),
     );
 
-    if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(templateUpdateMock).toHaveBeenCalledWith(
+    expect(templateUpdateManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({ template_type: 'important_matters' }),
+      }),
+    );
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'document_template_default',
+      'org_1:important_matters',
+    );
+  });
+
+  it('clears effective dates explicitly and preserves content JSON', async () => {
+    const response = await PATCH(
+      createPatchRequest({
+        expected_updated_at: CURRENT_UPDATED_AT,
+        effective_from: null,
+        effective_to: null,
+        content: { blocks: ['summary', 'signature'] },
+      }),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(templateUpdateManyMock).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         data: expect.objectContaining({
-          target_role: 'physician',
-          format: 'pdf',
-          version: 3,
-          effective_to: new Date('2026-12-31T00:00:00.000Z'),
+          effective_from: null,
+          effective_to: null,
           content: { blocks: ['summary', 'signature'] },
         }),
       }),
     );
   });
 
-  it('updates a template to an important-matters document type', async () => {
+  it.each([
+    ['missing version', { name: '更新版' }],
+    ['invalid version', { expected_updated_at: 'yesterday', name: '更新版' }],
+    ['non-object body', []],
+  ])('rejects %s before opening an organization context', async (_name, body) => {
+    const response = await PATCH(createPatchRequest(body), routeContext());
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a reversed effective period without changing defaults', async () => {
     const response = await PATCH(
-      createRequest({
-        template_type: 'important_matters',
-        name: '重要事項説明書 2026年版',
-        is_default: true,
+      createPatchRequest({
+        expected_updated_at: CURRENT_UPDATED_AT,
+        effective_from: '2027-01-01',
       }),
-      { params: Promise.resolve({ id: 'template_1' }) },
+      routeContext(),
     );
 
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
-    expect(templateUpdateManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          org_id: 'org_1',
-          template_type: 'important_matters',
-          id: { not: 'template_1' },
-        }),
-      }),
-    );
-    expect(templateUpdateMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          template_type: 'important_matters',
-          name: '重要事項説明書 2026年版',
-          is_default: true,
-        }),
-      }),
-    );
-  });
-
-  it('rejects non-object update payloads before loading the template', async () => {
-    const response = await PATCH(createRequest([]), {
-      params: Promise.resolve({ id: 'template_1' }),
-    });
-
-    if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expectNoStore(response);
-    expect(templateFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(templateUpdateManyMock).not.toHaveBeenCalled();
-    expect(templateUpdateMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects malformed JSON update payloads before loading the template', async () => {
-    const response = await PATCH(createMalformedJsonPatchRequest(), {
-      params: Promise.resolve({ id: 'template_1' }),
-    });
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(400);
-    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
-      message: 'リクエストボディが不正です',
+      details: { effective_to: ['適用終了日は適用開始日より後にしてください'] },
     });
-    expect(templateFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(templateUpdateManyMock).not.toHaveBeenCalled();
-    expect(templateUpdateMock).not.toHaveBeenCalled();
   });
 
-  it('rejects blank patch route ids before parsing or loading the template', async () => {
-    const response = await PATCH(createRequest({ name: '更新版' }), {
-      params: Promise.resolve({ id: '   ' }),
-    });
+  it('returns a typed conflict without changing defaults for a stale edit', async () => {
+    const response = await PATCH(
+      createPatchRequest({ expected_updated_at: STALE_UPDATED_AT, is_default: true }),
+      routeContext(),
+    );
 
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(409);
+    expect(templateUpdateManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
-      message: '文書テンプレートIDが不正です',
+      details: {
+        conflict_type: 'stale_document_template',
+        expected_updated_at: STALE_UPDATED_AT,
+        current_updated_at: CURRENT_UPDATED_AT,
+      },
     });
-    expect(templateFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(templateUpdateManyMock).not.toHaveBeenCalled();
-    expect(templateUpdateMock).not.toHaveBeenCalled();
   });
 
-  it('deletes an existing template', async () => {
-    const response = await DELETE(createRequest(), {
-      params: Promise.resolve({ id: '  template_1  ' }),
-    });
+  it('returns a typed conflict without clearing defaults when the atomic claim loses', async () => {
+    templateUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+    templateFindFirstMock
+      .mockResolvedValueOnce(templateRecord())
+      .mockResolvedValueOnce({ updated_at: new Date('2026-07-17T01:00:00.000Z') });
+    const response = await PATCH(
+      createPatchRequest({ expected_updated_at: CURRENT_UPDATED_AT, is_default: true }),
+      routeContext(),
+    );
 
-    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(templateUpdateManyMock).toHaveBeenCalledTimes(1);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { current_updated_at: '2026-07-17T01:00:00.000Z' },
+    });
+  });
+
+  it('returns 404 without mutating a missing template', async () => {
+    templateFindFirstMock.mockResolvedValueOnce(null);
+    const response = await PATCH(
+      createPatchRequest({ expected_updated_at: CURRENT_UPDATED_AT, name: '更新版' }),
+      routeContext('template_missing'),
+    );
+
+    expect(response.status).toBe(404);
+    expect(templateUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('deletes through an organization-scoped version claim', async () => {
+    const response = await DELETE(createDeleteRequest(), routeContext('  template_1  '));
+
     expect(response.status).toBe(200);
     expectNoStore(response);
-    expect(templateDeleteMock).toHaveBeenCalledWith({
-      where: { id: 'template_1' },
+    expect(templateDeleteManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'template_1',
+        org_id: 'org_1',
+        updated_at: new Date(CURRENT_UPDATED_AT),
+      },
     });
     await expect(response.json()).resolves.toEqual({ data: { id: 'template_1' } });
   });
 
-  it('returns a no-store not-found response for missing template updates', async () => {
-    templateFindFirstMock.mockResolvedValue(null);
+  it.each([
+    ['', 'missing'],
+    ['?expected_updated_at=invalid', 'invalid'],
+    [
+      `?expected_updated_at=${encodeURIComponent(CURRENT_UPDATED_AT)}&expected_updated_at=${encodeURIComponent(STALE_UPDATED_AT)}`,
+      'duplicate',
+    ],
+  ])('rejects %s DELETE version query values before DB access', async (query) => {
+    const response = await DELETE(createDeleteRequest(query), routeContext());
 
-    const response = await PATCH(createRequest({ name: '更新版' }), {
-      params: Promise.resolve({ id: 'template_missing' }),
-    });
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(404);
-    expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      message: '文書テンプレートが見つかりません',
-    });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(templateUpdateMock).not.toHaveBeenCalled();
-  });
-
-  it('returns a sanitized no-store 500 when template update fails unexpectedly', async () => {
-    const rawMessage = 'raw patch content 患者C';
-    templateUpdateMock.mockRejectedValue(new Error(rawMessage));
-
-    const response = await PATCH(createRequest({ content: { body_text: rawMessage } }), {
-      params: Promise.resolve({ id: 'template_1' }),
-    });
-
-    if (!response) throw new Error('response is required');
-    await expectInternalError(response, rawMessage);
-    expect(loggerErrorMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: 'templates_id_patch_unhandled_error',
-        route: '/api/templates/:id',
-        method: 'PATCH',
-        status: 500,
-      }),
-      expect.any(Error),
-    );
-  });
-
-  it('returns a sanitized no-store 500 when template detail loading fails unexpectedly', async () => {
-    const rawMessage = 'raw detail content 患者E';
-    templateFindFirstMock.mockRejectedValue(new Error(rawMessage));
-
-    const response = await GET(createGetRequest(), {
-      params: Promise.resolve({ id: 'template_1' }),
-    });
-
-    if (!response) throw new Error('response is required');
-    await expectInternalError(response, rawMessage);
-    expect(loggerErrorMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: 'templates_id_get_unhandled_error',
-        route: '/api/templates/:id',
-        method: 'GET',
-        status: 500,
-      }),
-      expect.any(Error),
-    );
-  });
-
-  it('returns a sanitized no-store 500 when template deletion fails unexpectedly', async () => {
-    const rawMessage = 'raw delete content 患者D';
-    templateDeleteMock.mockRejectedValue(new Error(rawMessage));
-
-    const response = await DELETE(createRequest(), {
-      params: Promise.resolve({ id: 'template_1' }),
-    });
-
-    if (!response) throw new Error('response is required');
-    await expectInternalError(response, rawMessage);
-    expect(loggerErrorMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: 'templates_id_delete_unhandled_error',
-        route: '/api/templates/:id',
-        method: 'DELETE',
-        status: 500,
-      }),
-      expect.any(Error),
-    );
-  });
-
-  it('rejects blank delete route ids before loading the template', async () => {
-    const response = await DELETE(createRequest(), {
-      params: Promise.resolve({ id: '   ' }),
-    });
-
-    if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
-    expectNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      message: '文書テンプレートIDが不正です',
-    });
-    expect(templateFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(templateDeleteMock).not.toHaveBeenCalled();
+    expect(templateDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a typed conflict without deleting a stale template', async () => {
+    const response = await DELETE(
+      createDeleteRequest(`?expected_updated_at=${encodeURIComponent(STALE_UPDATED_AT)}`),
+      routeContext(),
+    );
+
+    expect(response.status).toBe(409);
+    expect(templateDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it('detects a version race at the atomic delete claim', async () => {
+    templateDeleteManyMock.mockResolvedValueOnce({ count: 0 });
+    templateFindFirstMock.mockResolvedValueOnce(templateRecord()).mockResolvedValueOnce(null);
+    const response = await DELETE(createDeleteRequest(), routeContext());
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { current_updated_at: null },
+    });
+  });
+
+  it('adds no-store headers to auth failures before DB access', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      response: new Response(JSON.stringify({ message: '権限がありません' }), { status: 403 }),
+    });
+    const response = await GET(createGetRequest(), routeContext());
+
+    expect(response.status).toBe(403);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes and traces unexpected update failures', async () => {
+    const rawMessage = 'raw patch content patient-secret';
+    const error = new Error(rawMessage);
+    templateUpdateManyMock.mockRejectedValueOnce(error);
+    const response = await PATCH(
+      createPatchRequest({ expected_updated_at: CURRENT_UPDATED_AT, name: '更新版' }),
+      routeContext(),
+    );
+
+    await expectInternalError(response, rawMessage);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
+        route: '/api/templates/template_1',
+        method: 'PATCH',
+      }),
+      error,
+    );
   });
 });

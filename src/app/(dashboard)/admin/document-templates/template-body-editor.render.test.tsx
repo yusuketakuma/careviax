@@ -23,6 +23,8 @@ function renderEditor(templateId = 'template_1') {
   });
 }
 
+const TEMPLATE_UPDATED_AT = '2026-06-19T10:30:00.000Z';
+
 describe('TemplateBodyEditor render hierarchy', () => {
   beforeEach(() => {
     vi.stubGlobal(
@@ -36,6 +38,7 @@ describe('TemplateBodyEditor render hierarchy', () => {
                 id: 'template_1',
                 name: '主治医報告 基本',
                 content: { body_text: '本文', sections: ['summary'] },
+                updated_at: TEMPLATE_UPDATED_AT,
               },
             }),
             { status: 200 },
@@ -47,6 +50,7 @@ describe('TemplateBodyEditor render hierarchy', () => {
               id: url.split('/').pop(),
               name: '主治医報告 基本',
               content: JSON.parse(String(init.body)).content,
+              updated_at: TEMPLATE_UPDATED_AT,
             },
           }),
           { status: 200 },
@@ -89,6 +93,7 @@ describe('TemplateBodyEditor render hierarchy', () => {
                 id: hostileId,
                 name: '主治医報告 基本',
                 content: { body_text: '本文', sections: ['summary'] },
+                updated_at: TEMPLATE_UPDATED_AT,
               },
             }),
             { status: 200 },
@@ -100,6 +105,7 @@ describe('TemplateBodyEditor render hierarchy', () => {
               id: hostileId,
               name: '主治医報告 基本',
               content: JSON.parse(String(init.body)).content,
+              updated_at: TEMPLATE_UPDATED_AT,
             },
           }),
           { status: 200 },
@@ -115,7 +121,10 @@ describe('TemplateBodyEditor render hierarchy', () => {
       expect(global.fetch).toHaveBeenCalledWith(`/api/templates/${encodedId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
-        body: JSON.stringify({ content: { body_text: '本文', sections: ['summary'] } }),
+        body: JSON.stringify({
+          expected_updated_at: TEMPLATE_UPDATED_AT,
+          content: { body_text: '本文', sections: ['summary'] },
+        }),
       });
     });
     expect(String(vi.mocked(global.fetch).mock.calls.at(-1)?.[0])).not.toContain('%25');
@@ -132,6 +141,7 @@ describe('TemplateBodyEditor render hierarchy', () => {
                 id: 'template_1',
                 name: '主治医報告 基本',
                 content: { body_text: '本文', sections: ['summary'] },
+                updated_at: TEMPLATE_UPDATED_AT,
               },
             }),
             { status: 200 },
@@ -186,6 +196,7 @@ describe('TemplateBodyEditor render hierarchy', () => {
                 id: 'template_1',
                 name: '主治医報告 基本',
                 content: { body_text: '本文', sections: ['summary'] },
+                updated_at: TEMPLATE_UPDATED_AT,
               },
             }),
             { status: 200 },
@@ -218,6 +229,7 @@ describe('TemplateBodyEditor render hierarchy', () => {
                 id: 'template_1',
                 name: '主治医報告 基本',
                 content: { body_text: '本文', sections: ['summary'] },
+                updated_at: TEMPLATE_UPDATED_AT,
               },
             }),
             { status: 200 },

@@ -58,6 +58,7 @@ import { TemplateBodyEditor } from './template-body-editor';
 type TemplateFormat = 'html' | 'pdf';
 
 type TemplateForm = {
+  updatedAt: string;
   name: string;
   templateType: TemplateType;
   targetRole: string;
@@ -123,6 +124,7 @@ const TEMPLATE_SAVE_BLOCKER_ID = 'template-save-blocker';
 
 function createEmptyTemplateForm(): TemplateForm {
   return {
+    updatedAt: '',
     name: '',
     templateType: 'care_report',
     targetRole: '',
@@ -137,6 +139,7 @@ function createEmptyTemplateForm(): TemplateForm {
 
 function normalizeTemplateForm(form?: Partial<TemplateForm> | null): TemplateForm {
   return {
+    updatedAt: form?.updatedAt ?? '',
     name: form?.name ?? '',
     templateType: form?.templateType ?? 'care_report',
     targetRole: form?.targetRole ?? '',
@@ -166,6 +169,7 @@ async function fetchDocumentTemplateDetail(orgId: string, templateId: string) {
 
 function toTemplateForm(template: DocumentTemplateDetailRow): TemplateForm {
   return {
+    updatedAt: template.updated_at,
     name: template.name,
     templateType: template.template_type,
     targetRole: template.target_role ?? '',
@@ -203,6 +207,7 @@ function getTemplateFormBlockerPath(
 
 const templateFormSchema = z
   .object({
+    updatedAt: z.string(),
     name: z.string(),
     templateType: z.custom<TemplateType>(),
     targetRole: z.string(),
@@ -308,13 +313,20 @@ export function DocumentTemplateContent() {
       );
 
       const payload = {
+        ...(editingTemplateId ? { expected_updated_at: currentForm.updatedAt } : {}),
         name: currentForm.name.trim(),
         template_type: currentForm.templateType,
-        target_role: currentForm.targetRole.trim() || undefined,
+        target_role: editingTemplateId
+          ? currentForm.targetRole.trim() || null
+          : currentForm.targetRole.trim() || undefined,
         format: currentForm.format,
         version: Number.parseInt(currentForm.version, 10) || 1,
-        effective_from: currentForm.effectiveFrom || undefined,
-        effective_to: currentForm.effectiveTo || undefined,
+        effective_from: editingTemplateId
+          ? currentForm.effectiveFrom || null
+          : currentForm.effectiveFrom || undefined,
+        effective_to: editingTemplateId
+          ? currentForm.effectiveTo || null
+          : currentForm.effectiveTo || undefined,
         is_default: currentForm.isDefault,
         content: parsedContent,
       };
@@ -348,13 +360,14 @@ export function DocumentTemplateContent() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (templateId: string) => {
-      const res = await fetch(buildDocumentTemplateApiPath(templateId), {
+    mutationFn: async (template: DocumentTemplateMetadataRow) => {
+      const query = new URLSearchParams({ expected_updated_at: template.updated_at });
+      const res = await fetch(`${buildDocumentTemplateApiPath(template.id)}?${query}`, {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
       await readApiAcknowledgement(res, 'テンプレートの削除に失敗しました');
-      return templateId;
+      return template.id;
     },
     onSuccess: async (templateId) => {
       toast.success('テンプレートを削除しました');
@@ -766,7 +779,7 @@ export function DocumentTemplateContent() {
         closeOnConfirm={false}
         onConfirm={() => {
           if (deleteTarget) {
-            deleteMutation.mutate(deleteTarget.id);
+            deleteMutation.mutate(deleteTarget);
           }
         }}
       />

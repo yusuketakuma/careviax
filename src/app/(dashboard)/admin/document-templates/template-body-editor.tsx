@@ -127,11 +127,14 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!selected) throw new Error('テンプレートを選択してください');
-      if (!selectedContent) throw new Error('文面の取得が完了していません');
+      if (!selectedDetail || !selectedContent) throw new Error('文面の取得が完了していません');
       const res = await fetch(buildDocumentTemplateApiPath(selected.id), {
         method: 'PATCH',
         headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({ content: { ...selectedContent, body_text: bodyText } }),
+        body: JSON.stringify({
+          expected_updated_at: selectedDetail.updated_at,
+          content: { ...selectedContent, body_text: bodyText },
+        }),
       });
       return readApiJson<DocumentTemplateBodyEditorResponse>(res, {
         fallbackMessage: '文面の保存に失敗しました',

@@ -46,6 +46,7 @@ const documentTemplateBodyEditorDetailSchema = z
     id: nonEmptyText(200),
     name: nonEmptyText(500),
     content: z.record(z.string(), z.unknown()),
+    updated_at: z.string().datetime({ offset: true }),
   })
   .strip();
 

@@ -53,6 +53,9 @@ function renderContent() {
   return render(<DocumentTemplateContent />, { wrapper: createQueryClientWrapper() });
 }
 
+const TEMPLATE_UPDATED_AT = '2026-06-19T10:30:00.000Z';
+const TEMPLATE_VERSION_QUERY = `expected_updated_at=${encodeURIComponent(TEMPLATE_UPDATED_AT)}`;
+
 function createDeferredResponse() {
   let resolve!: (response: Response) => void;
   const promise = new Promise<Response>((promiseResolve) => {
@@ -128,7 +131,10 @@ describe('DocumentTemplateContent', () => {
           );
         }
 
-        if (url === '/api/templates/template_1' && init?.method === 'DELETE') {
+        if (
+          url === `/api/templates/template_1?${TEMPLATE_VERSION_QUERY}` &&
+          init?.method === 'DELETE'
+        ) {
           return new Response(JSON.stringify({ data: { id: 'template_1' } }), {
             status: 200,
           });
@@ -158,7 +164,7 @@ describe('DocumentTemplateContent', () => {
     fireEvent.click(deleteButton);
 
     expect(global.fetch).not.toHaveBeenCalledWith(
-      '/api/templates/template_1',
+      `/api/templates/template_1?${TEMPLATE_VERSION_QUERY}`,
       expect.objectContaining({ method: 'DELETE' }),
     );
     expect(screen.getByRole('alertdialog', { name: 'テンプレートを削除しますか' })).toBeTruthy();
@@ -172,7 +178,7 @@ describe('DocumentTemplateContent', () => {
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/templates/template_1',
+        `/api/templates/template_1?${TEMPLATE_VERSION_QUERY}`,
         expect.objectContaining({ method: 'DELETE', headers: { 'x-test-org-id': 'org_1' } }),
       );
     });
@@ -261,6 +267,7 @@ describe('DocumentTemplateContent', () => {
       });
     });
     await screen.findByDisplayValue(/詳細から取得した本文/);
+    fireEvent.change(screen.getByLabelText('対象ロール'), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: '更新する' }));
 
     await waitFor(() => {
@@ -285,11 +292,14 @@ describe('DocumentTemplateContent', () => {
     });
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
     expect(JSON.parse(String(mutationCalls[0][1].body))).toMatchObject({
+      expected_updated_at: TEMPLATE_UPDATED_AT,
       name: '主治医報告 基本',
       template_type: 'care_report',
-      target_role: 'physician',
+      target_role: null,
       format: 'html',
       version: 2,
+      effective_from: null,
+      effective_to: null,
       is_default: true,
       content: {
         sections: ['summary'],
@@ -458,7 +468,10 @@ describe('DocumentTemplateContent', () => {
             { status: 200 },
           );
         }
-        if (url === '/api/templates/template_1' && init?.method === 'DELETE') {
+        if (
+          url === `/api/templates/template_1?${TEMPLATE_VERSION_QUERY}` &&
+          init?.method === 'DELETE'
+        ) {
           return new Response(
             JSON.stringify({ message: '文書テンプレートの削除権限がありません' }),
             {

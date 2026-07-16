@@ -52,13 +52,18 @@ describe('document template response schemas', () => {
     expect(parsed.data.content).toEqual({ sections: ['summary'] });
   });
 
-  it('projects body-editor responses to id, name, and content', () => {
+  it('projects body-editor responses to the editable content and concurrency version', () => {
     expect(
       buildDocumentTemplateBodyEditorResponseSchema('template_1').parse({
         data: { ...buildMetadata(), content: { body_text: '本文' } },
       }),
     ).toEqual({
-      data: { id: 'template_1', name: '主治医報告 基本', content: { body_text: '本文' } },
+      data: {
+        id: 'template_1',
+        name: '主治医報告 基本',
+        content: { body_text: '本文' },
+        updated_at: '2026-06-19T10:30:00.000Z',
+      },
     });
   });
 
