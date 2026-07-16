@@ -33,14 +33,6 @@
       "plannedAction": "Move response through a care report presenter with PHI masking."
     },
     {
-      "path": "src/app/api/cases/[id]/route.ts",
-      "expectedCount": 1,
-      "owner": "API-DTO-001",
-      "debtId": "DTO-DIRECT-005",
-      "reason": "Existing route returns a Prisma care case row directly through success().",
-      "plannedAction": "Move response through a case presenter."
-    },
-    {
       "path": "src/app/api/communication-requests/[id]/responses/route.ts",
       "expectedCount": 1,
       "owner": "API-DTO-001",

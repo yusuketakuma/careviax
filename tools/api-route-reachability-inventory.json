@@ -1380,7 +1380,7 @@
       "reason": "Production UI, RSC, or shared client source contains a method-matched API reference.",
       "evidence": [
         {
-          "path": "src/app/(dashboard)/reports/print/print-hub-content.tsx",
+          "path": "src/app/(dashboard)/visits/[id]/visit-record-detail.tsx",
           "kind": "network_call",
           "symbol": "fetch",
           "reference": "/api/care-reports"
@@ -4885,19 +4885,16 @@
       "method": "GET",
       "file": "src/app/api/set-plans/[id]/route.ts",
       "export_kind": "direct",
-      "classification": "owner_review_pending_orphan_retire_candidate",
-      "reason": "No production consumer evidence or reserved contract prefix was found; retain only for owner review before retirement.",
+      "classification": "reachable_ui_rsc_client",
+      "reason": "Production UI, RSC, or shared client source contains a method-matched API reference.",
       "evidence": [
         {
-          "path": "src/app/api/set-plans/[id]/route.ts",
-          "kind": "route_contract",
-          "symbol": "route_export",
-          "reference": "/api/set-plans/:id"
+          "path": "src/app/(dashboard)/reports/print/print-hub-content.tsx",
+          "kind": "network_call",
+          "symbol": "fetch",
+          "reference": "/api/set-plans/:param"
         }
-      ],
-      "review_state": "pending",
-      "owner": "API-REACHABILITY-RATCHET-001",
-      "expiry": "2026-10-15"
+      ]
     },
     {
       "key": "GET /api/set-plans/:id/calendar",
