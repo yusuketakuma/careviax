@@ -2,8 +2,8 @@
   "version": 1,
   "owner": "API-REACHABILITY-RATCHET-001",
   "source": "src/app/api/**/route.ts",
-  "route_file_count": 403,
-  "route_method_count": 560,
+  "route_file_count": 405,
+  "route_method_count": 562,
   "entries": [
     {
       "key": "DELETE /api/admin/data-explorer/:table/:id",
@@ -9485,6 +9485,26 @@
       ]
     },
     {
+      "key": "POST /api/prescription-intakes/:id/medication-stock/retry",
+      "route": "/api/prescription-intakes/:id/medication-stock/retry",
+      "method": "POST",
+      "file": "src/app/api/prescription-intakes/[id]/medication-stock/retry/route.ts",
+      "export_kind": "direct",
+      "classification": "owner_review_pending_orphan_retire_candidate",
+      "reason": "No production consumer evidence or reserved contract prefix was found; retain only for owner review before retirement.",
+      "evidence": [
+        {
+          "path": "src/app/api/prescription-intakes/[id]/medication-stock/retry/route.ts",
+          "kind": "route_contract",
+          "symbol": "route_export",
+          "reference": "/api/prescription-intakes/:id/medication-stock/retry"
+        }
+      ],
+      "review_state": "pending",
+      "owner": "API-REACHABILITY-RATCHET-001",
+      "expiry": "2026-10-15"
+    },
+    {
       "key": "POST /api/prescription-intakes/facility-batch",
       "route": "/api/prescription-intakes/facility-batch",
       "method": "POST",
@@ -9762,6 +9782,26 @@
           "reference": "/api/tasks"
         }
       ]
+    },
+    {
+      "key": "POST /api/tasks/:id/prescription-supply/resolve",
+      "route": "/api/tasks/:id/prescription-supply/resolve",
+      "method": "POST",
+      "file": "src/app/api/tasks/[id]/prescription-supply/resolve/route.ts",
+      "export_kind": "direct",
+      "classification": "owner_review_pending_orphan_retire_candidate",
+      "reason": "No production consumer evidence or reserved contract prefix was found; retain only for owner review before retirement.",
+      "evidence": [
+        {
+          "path": "src/app/api/tasks/[id]/prescription-supply/resolve/route.ts",
+          "kind": "route_contract",
+          "symbol": "route_export",
+          "reference": "/api/tasks/:id/prescription-supply/resolve"
+        }
+      ],
+      "review_state": "pending",
+      "owner": "API-REACHABILITY-RATCHET-001",
+      "expiry": "2026-10-15"
     },
     {
       "key": "POST /api/tasks/bulk",
