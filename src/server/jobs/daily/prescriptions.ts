@@ -9,6 +9,7 @@ import { buildIntakeLinkageTaskKey } from '../daily-helpers';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { createManyNotifications } from './shared';
+import { listOrganizationIds } from '../organization-iteration';
 
 /**
  * 服用最終日接近チェック（3日以内）
@@ -18,32 +19,44 @@ export async function checkMedicationDeadlines() {
     const threeDaysFromNow = new Date();
     threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
 
-    const approaching = await prisma.visitSchedule.findMany({
-      where: {
-        medication_end_date: { lte: threeDaysFromNow },
-        schedule_status: { in: ['planned', 'in_preparation', 'ready'] },
-      },
-    });
+    const orgIds = await listOrganizationIds(prisma);
+    let processedCount = 0;
 
-    for (const schedule of approaching) {
-      await withOrgContext(schedule.org_id, (tx) =>
-        dispatchNotificationEvent(tx, {
-          orgId: schedule.org_id,
-          eventType: 'medication_deadline_approaching',
-          type: 'reminder',
-          title: '服用最終日接近',
-          message: '訪問予定の患者の服薬最終日が3日以内です。',
-          link: `/schedules`,
-          explicitUserIds: [schedule.pharmacist_id],
-          dedupeKey: `medication-deadline:${schedule.id}`,
-          metadata: {
-            schedule_id: schedule.id,
+    for (const orgId of orgIds) {
+      processedCount += await withOrgContext(orgId, async (tx) => {
+        const approaching = await tx.visitSchedule.findMany({
+          where: {
+            org_id: orgId,
+            medication_end_date: { lte: threeDaysFromNow },
+            schedule_status: { in: ['planned', 'in_preparation', 'ready'] },
           },
-        }),
-      );
+          select: {
+            id: true,
+            pharmacist_id: true,
+          },
+        });
+
+        for (const schedule of approaching) {
+          await dispatchNotificationEvent(tx, {
+            orgId,
+            eventType: 'medication_deadline_approaching',
+            type: 'reminder',
+            title: '服用最終日接近',
+            message: '訪問予定の患者の服薬最終日が3日以内です。',
+            link: `/schedules`,
+            explicitUserIds: [schedule.pharmacist_id],
+            dedupeKey: `medication-deadline:${schedule.id}`,
+            metadata: {
+              schedule_id: schedule.id,
+            },
+          });
+        }
+
+        return approaching.length;
+      });
     }
 
-    return { processedCount: approaching.length };
+    return { processedCount };
   });
 }
 

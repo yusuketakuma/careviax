@@ -1,31 +1,9 @@
-import type { PrismaClient } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { cleanupExpiredGeneratedFiles } from '@/server/services/file-storage';
 import { drainMedicationHistoryBulkExportQueue } from '@/server/services/pdf-bulk-export';
+import { listOrganizationIds } from './organization-iteration';
 
-const BULK_EXPORT_ORG_PAGE_SIZE = 100;
-
-export async function listMedicationHistoryBulkExportOrgIds(
-  client: Pick<PrismaClient, 'organization'>,
-) {
-  const orgIds: string[] = [];
-  let cursor: string | undefined;
-
-  for (;;) {
-    const organizations = await client.organization.findMany({
-      orderBy: { id: 'asc' },
-      take: BULK_EXPORT_ORG_PAGE_SIZE,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      select: { id: true },
-    });
-
-    orgIds.push(...organizations.map(({ id }) => id));
-    if (organizations.length < BULK_EXPORT_ORG_PAGE_SIZE) break;
-    cursor = organizations.at(-1)?.id;
-  }
-
-  return orgIds;
-}
+export const listMedicationHistoryBulkExportOrgIds = listOrganizationIds;
 
 export async function drainMedicationHistoryBulkExportJobs(args?: { orgId?: string }) {
   const orgIds = args?.orgId ? [args.orgId] : await listMedicationHistoryBulkExportOrgIds(prisma);
