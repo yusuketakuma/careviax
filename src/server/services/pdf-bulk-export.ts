@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { zipSync } from 'fflate';
 import { z } from 'zod';
-import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import type { RequestAuthContext } from '@/lib/auth/request-context';
 import { hasPermission } from '@/lib/auth/permissions';
@@ -1190,16 +1189,16 @@ export async function runMedicationHistoryBulkExportJob(
   }
 }
 
-export async function drainMedicationHistoryBulkExportQueue(args?: { orgId?: string }) {
+export async function drainMedicationHistoryBulkExportQueue(args: { orgId: string }) {
   let processedCount = 0;
   const errors: string[] = [];
   const skippedJobIds = new Set<string>();
 
   for (let iteration = 0; iteration < MAX_DRAIN_ITERATIONS; iteration += 1) {
-    const findNextJob = async (db: BulkExportJobRecoveryDb) => {
+    const nextJob = await withOrgContext(args.orgId, async (db) => {
       await recoverStaleBulkExportRunningJobs({
         db,
-        orgId: args?.orgId,
+        orgId: args.orgId,
       });
 
       return db.integrationJob.findFirst({
@@ -1207,7 +1206,7 @@ export async function drainMedicationHistoryBulkExportQueue(args?: { orgId?: str
           job_type: BULK_EXPORT_JOB_TYPE,
           status: 'pending',
           ...(skippedJobIds.size > 0 ? { id: { notIn: Array.from(skippedJobIds) } } : {}),
-          ...(args?.orgId ? { org_id: args.orgId } : {}),
+          org_id: args.orgId,
         },
         orderBy: {
           created_at: 'asc',
@@ -1217,11 +1216,7 @@ export async function drainMedicationHistoryBulkExportQueue(args?: { orgId?: str
           org_id: true,
         },
       });
-    };
-
-    const nextJob = args?.orgId
-      ? await withOrgContext(args.orgId, findNextJob)
-      : await findNextJob(prisma);
+    });
 
     if (!nextJob) break;
     if (!nextJob.org_id) {

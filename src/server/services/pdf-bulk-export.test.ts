@@ -1131,7 +1131,7 @@ describe('pdf-bulk-export', () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
 
-    const result = await drainMedicationHistoryBulkExportQueue();
+    const result = await drainMedicationHistoryBulkExportQueue({ orgId: 'org_1' });
 
     expect(result).toMatchObject({
       processedCount: 2,
@@ -1156,11 +1156,11 @@ describe('pdf-bulk-export', () => {
     );
   });
 
-  it('skips busy organizations during a global drain and continues with runnable jobs', async () => {
+  it('skips a busy job and continues with another runnable job in the same organization', async () => {
     integrationJobFindFirstMock
       .mockResolvedValueOnce({ id: 'job_busy', org_id: 'org_busy' })
       .mockResolvedValueOnce({ id: 'running_same_org' })
-      .mockResolvedValueOnce({ id: 'job_runnable', org_id: 'org_runnable' })
+      .mockResolvedValueOnce({ id: 'job_runnable', org_id: 'org_busy' })
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
     integrationJobFindUniqueMock
@@ -1177,7 +1177,7 @@ describe('pdf-bulk-export', () => {
       })
       .mockResolvedValueOnce({
         id: 'job_runnable',
-        org_id: 'org_runnable',
+        org_id: 'org_busy',
         status: 'pending',
         job_type: 'medication-history-bulk-export',
         input: {
@@ -1187,7 +1187,7 @@ describe('pdf-bulk-export', () => {
         },
       });
 
-    const result = await drainMedicationHistoryBulkExportQueue();
+    const result = await drainMedicationHistoryBulkExportQueue({ orgId: 'org_busy' });
 
     expect(result).toMatchObject({
       processedCount: 2,
@@ -1225,7 +1225,7 @@ describe('pdf-bulk-export', () => {
     integrationJobFindFirstMock
       .mockResolvedValueOnce({ id: 'job_failed', org_id: 'org_1' })
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'job_success', org_id: 'org_2' })
+      .mockResolvedValueOnce({ id: 'job_success', org_id: 'org_1' })
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
     integrationJobFindUniqueMock
@@ -1242,7 +1242,7 @@ describe('pdf-bulk-export', () => {
       })
       .mockResolvedValueOnce({
         id: 'job_success',
-        org_id: 'org_2',
+        org_id: 'org_1',
         status: 'pending',
         job_type: 'medication-history-bulk-export',
         input: {
@@ -1255,9 +1255,9 @@ describe('pdf-bulk-export', () => {
     storeGeneratedFileMock.mockRejectedValueOnce(new Error(rawFailure)).mockResolvedValueOnce({
       version: 1,
       id: 'file_2',
-      orgId: 'org_2',
+      orgId: 'org_1',
       purpose: 'bulk-export',
-      storageKey: 'bulk-exports/org_2/job_success/file_2-medication-history.zip',
+      storageKey: 'bulk-exports/org_1/job_success/file_2-medication-history.zip',
       originalName: 'medication-history.zip',
       mimeType: 'application/zip',
       sizeBytes: 32,
@@ -1270,7 +1270,7 @@ describe('pdf-bulk-export', () => {
       downloadDisposition: 'attachment',
     });
 
-    const result = await drainMedicationHistoryBulkExportQueue();
+    const result = await drainMedicationHistoryBulkExportQueue({ orgId: 'org_1' });
 
     expect(result).toMatchObject({
       processedCount: 2,
@@ -1283,7 +1283,7 @@ describe('pdf-bulk-export', () => {
   it('recovers stale running jobs but does not auto-retry failed jobs during drain', async () => {
     integrationJobFindFirstMock.mockResolvedValue(null);
 
-    const result = await drainMedicationHistoryBulkExportQueue();
+    const result = await drainMedicationHistoryBulkExportQueue({ orgId: 'org_1' });
 
     expect(result).toMatchObject({
       processedCount: 0,
