@@ -10,21 +10,27 @@ export type JahisExportFieldContract = {
   pattern?: RegExp;
 };
 
+export type JahisExportRecordType =
+  | '1'
+  | '2'
+  | '3'
+  | '31'
+  | '4'
+  | '5'
+  | '11'
+  | '15'
+  | '51'
+  | '55'
+  | '201'
+  | '281'
+  | '291'
+  | '301'
+  | '311'
+  | '391'
+  | '911';
+
 export type JahisExportRecordContract = {
-  recordType:
-    | '1'
-    | '2'
-    | '3'
-    | '31'
-    | '4'
-    | '5'
-    | '11'
-    | '15'
-    | '51'
-    | '55'
-    | '201'
-    | '301'
-    | '911';
+  recordType: JahisExportRecordType;
   fields: readonly JahisExportFieldContract[];
   validateValues?: (values: readonly string[]) => void;
 };
@@ -38,6 +44,27 @@ const INSTITUTION_CODE = /^\d{7}$/u;
 const DECIMAL = /^(?:0|[1-9]\d{0,5})(?:\.\d{1,5})?$/u;
 const POSITIVE_THREE_DIGITS = /^(?:[1-9]|[1-9]\d|[1-9]\d{2})$/u;
 const JAN_CODE = /^\d{13}$/u;
+
+function createRpTextRecordContract<const T extends '281' | '291' | '311' | '391'>(
+  recordType: T,
+  key: string,
+  maxBytes: number,
+) {
+  return {
+    recordType,
+    fields: [
+      {
+        key: 'rp_number',
+        type: '9',
+        maxBytes: 3,
+        required: true,
+        pattern: POSITIVE_THREE_DIGITS,
+      },
+      { key, type: 'N', maxBytes, required: true },
+      { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
+    ],
+  } as const satisfies JahisExportRecordContract;
+}
 
 export const JAHIS_EXPORT_CONTRACT_V2_6 = {
   documentId: 'JAHIS-24-104',
@@ -206,6 +233,8 @@ export const JAHIS_EXPORT_CONTRACT_V2_6 = {
         { key: 'generic_code', type: 'X', maxBytes: 12, required: false },
       ],
     },
+    '281': createRpTextRecordContract('281', 'drug_supplement', 100),
+    '291': createRpTextRecordContract('291', 'drug_usage_note', 400),
     '301': {
       recordType: '301',
       fields: [
@@ -231,6 +260,8 @@ export const JAHIS_EXPORT_CONTRACT_V2_6 = {
         { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
       ],
     },
+    '311': createRpTextRecordContract('311', 'usage_supplement', 100),
+    '391': createRpTextRecordContract('391', 'prescription_usage_note', 400),
     '911': {
       recordType: '911',
       fields: [

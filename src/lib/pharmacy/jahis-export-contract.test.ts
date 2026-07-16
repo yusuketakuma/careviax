@@ -83,6 +83,44 @@ describe('JAHIS_EXPORT_CONTRACT_V2_6', () => {
     expect(() => serializeJahisExportRecord(contract, values)).toThrow(message);
   });
 
+  it.each([
+    ['281', ['1', '朝1錠、夕2錠', '1'], '281,1,朝1錠、夕2錠,1'],
+    [
+      '291',
+      ['1', 'グレープフルーツジュースと一緒に飲まないでください。', '1'],
+      '291,1,グレープフルーツジュースと一緒に飲まないでください。,1',
+    ],
+    ['311', ['1', '一包化', '1'], '311,1,一包化,1'],
+    ['391', ['1', '車の運転は控えてください。', '1'], '391,1,車の運転は控えてください。,1'],
+  ] as const)(
+    'serializes the official RP detail Record %s sample',
+    (recordType, values, expected) => {
+      expect(
+        serializeJahisExportRecord(JAHIS_EXPORT_CONTRACT_V2_6.records[recordType], values),
+      ).toBe(expected);
+    },
+  );
+
+  it.each([
+    [
+      'JAHIS_FIELD_VALUE_INVALID:281:rp_number',
+      JAHIS_EXPORT_CONTRACT_V2_6.records['281'],
+      ['0', '粉砕', '1'],
+    ],
+    [
+      'JAHIS_FIELD_BYTE_LIMIT_EXCEEDED:311:usage_supplement',
+      JAHIS_EXPORT_CONTRACT_V2_6.records['311'],
+      ['1', 'あ'.repeat(51), '1'],
+    ],
+    [
+      'JAHIS_FIELD_REQUIRED:391:prescription_usage_note',
+      JAHIS_EXPORT_CONTRACT_V2_6.records['391'],
+      ['1', '', '1'],
+    ],
+  ] as const)('rejects an invalid RP detail record: %s', (message, contract, values) => {
+    expect(() => serializeJahisExportRecord(contract, values)).toThrow(message);
+  });
+
   it('serializes the official 14-digit and 1-999 split control fields', () => {
     expect(
       serializeJahisExportRecord(JAHIS_EXPORT_CONTRACT_V2_6.records['911'], [
