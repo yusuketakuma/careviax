@@ -1628,9 +1628,24 @@ async function installPharmacyCooperationRouteMocks(
       }
 
       const consent = buildPharmacyCoopConsent(state.consentCreated);
+      const url = new URL(request.url);
+      const statusFilter = url.searchParams.get('status');
+      const rows = consent && (!statusFilter || statusFilter === 'active') ? [consent] : [];
       await fulfillJson(route, {
-        data: consent ? [consent] : [],
-        meta: { has_more: false, next_cursor: null },
+        data: rows,
+        meta: {
+          has_more: false,
+          next_cursor: null,
+          returned_count: rows.length,
+          total_count: rows.length,
+          count_basis: 'filtered_query_exact',
+          filters_applied: {
+            status: statusFilter,
+            share_case_id: PHARMACY_COOP_SHARE_CASE_ID,
+          },
+          request_cursor: url.searchParams.get('cursor'),
+          status_counts: { active: rows.length, revoked: 0 },
+        },
       });
     },
   );
@@ -3781,6 +3796,39 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       .toBe(true);
     await page.getByLabel('共有状態').selectOption('all');
     await expect(shareCaseRow).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const overflowWidth = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflowWidth).toBeLessThanOrEqual(1);
+    expect(errors).toEqual([]);
+  });
+
+  test('keeps patient-share-consent exact counts and server cursor filters accessible', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    const requests = await installPharmacyCooperationRouteMocks(page);
+
+    await openStableRoute(page, '/workflow/pharmacy-cooperation');
+    await expect(page.getByLabel('患者共有同意状態')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('患者共有同意 読込済み 0 / 全 0 件（全件読込済み）')).toBeVisible();
+
+    await page.getByLabel('患者共有同意状態').selectOption('active');
+    await expect
+      .poll(
+        () =>
+          requests.patientShareConsents.some((request) => {
+            if (request.method !== 'GET') return false;
+            const searchParams = new URL(request.url).searchParams;
+            return searchParams.get('status') === 'active' && !searchParams.has('cursor');
+          }),
+        { message: 'consent status changes should start a fresh cursor chain at page one' },
+      )
+      .toBe(true);
 
     await page.setViewportSize({ width: 390, height: 844 });
     const overflowWidth = await page.evaluate(

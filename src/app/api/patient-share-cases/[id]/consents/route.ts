@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -19,6 +20,10 @@ import {
 import { resolvePatientShareCaseTransition } from '@/server/services/pharmacy-partnerships';
 
 const consentMethodSchema = z.enum(['paper_scan', 'digital']);
+const consentStatusSchema = z.enum(['active', 'revoked']);
+const viewContextSchema = z
+  .enum(['pharmacy_cooperation_workflow', 'patient_share_consents_api'])
+  .default('patient_share_consents_api');
 const consentDateSchema = dateKeySchema('同意日が不正です（YYYY-MM-DD）');
 const patientShareConsentScopeSchema = z.partialRecord(
   z.enum(PATIENT_SHARE_SCOPE_KEYS),
@@ -80,6 +85,26 @@ function toSafePatientShareConsent(row: SafePatientShareConsentRow) {
   };
 }
 
+function optionalSearchParam(value: string | null) {
+  const trimmed = value?.trim() ?? '';
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readPresentOptionalSearchParam(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+) {
+  const value = optionalSearchParam(searchParams.get(name));
+  if (searchParams.has(name) && !value) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [name]: [message] }),
+    };
+  }
+  return { ok: true as const, value };
+}
+
 const authenticatedGET = withAuthContext<{ id: string }>(
   async (req, ctx, { params }) => {
     const { id: rawId } = await params;
@@ -88,67 +113,139 @@ const authenticatedGET = withAuthContext<{ id: string }>(
 
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
+    const rawStatusResult = readPresentOptionalSearchParam(
+      searchParams,
+      'status',
+      '同意状態を指定してください',
+    );
+    if (!rawStatusResult.ok) return withSensitiveNoStore(rawStatusResult.response);
+    const status = rawStatusResult.value
+      ? consentStatusSchema.safeParse(rawStatusResult.value)
+      : null;
+    if (status && !status.success) {
+      return withSensitiveNoStore(
+        validationError('検索条件が不正です', { status: ['対応していない同意状態です'] }),
+      );
+    }
+    const rawViewContextResult = readPresentOptionalSearchParam(
+      searchParams,
+      'view_context',
+      '閲覧画面を指定してください',
+    );
+    if (!rawViewContextResult.ok) return withSensitiveNoStore(rawViewContextResult.response);
+    const viewContext = viewContextSchema.safeParse(rawViewContextResult.value ?? undefined);
+    if (!viewContext.success) {
+      return withSensitiveNoStore(
+        validationError('検索条件が不正です', {
+          view_context: ['対応していない閲覧画面です'],
+        }),
+      );
+    }
+    const shouldExposeWorkflowMeta = viewContext.data === 'pharmacy_cooperation_workflow';
 
-    const rows = await withOrgContext(ctx.orgId, async (tx) => {
-      const shareCase = await tx.patientShareCase.findFirst({
-        where: { id, org_id: ctx.orgId },
-        select: { id: true, base_patient_id: true },
-      });
-      if (!shareCase) return null;
+    const result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const shareCase = await tx.patientShareCase.findFirst({
+          where: { id, org_id: ctx.orgId },
+          select: { id: true, base_patient_id: true },
+        });
+        if (!shareCase) return null;
 
-      const consentRows = await tx.patientShareConsent.findMany({
-        where: { org_id: ctx.orgId, share_case_id: id },
-        select: {
-          id: true,
-          share_case_id: true,
-          consent_record_id: true,
-          consent_date: true,
-          consent_method: true,
-          scope: true,
-          file_asset_id: true,
-          valid_until: true,
-          revoked_at: true,
-          revoked_by: true,
-          created_by: true,
-          created_at: true,
-          updated_at: true,
-        },
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-      });
-      const page = buildCursorPage(consentRows, limit, (row) => row.id);
-
-      await createAuditLogEntry(tx, ctx, {
-        action: 'patient_share_consents_viewed',
-        targetType: 'PatientShareConsent',
-        targetId: id,
-        patientId: shareCase.base_patient_id,
-        changes: {
-          target_screen: 'patient_share_case_consents',
-          viewer_role: ctx.role,
+        const consentWhere: Prisma.PatientShareConsentWhereInput = {
+          org_id: ctx.orgId,
           share_case_id: id,
-          viewed_count: page.data.length,
-          consent_ids: page.data.map((row) => row.id),
-          consent_record_count: page.data.filter((row) => row.consent_record_id).length,
-          file_asset_count: page.data.filter((row) => row.file_asset_id).length,
-          revoked_count: page.data.filter((row) => row.revoked_at).length,
-          has_cursor: Boolean(cursor),
-          has_more: page.hasMore,
-          limit,
-        },
-      });
+          ...(status?.data === 'active'
+            ? { revoked_at: null }
+            : status?.data === 'revoked'
+              ? { revoked_at: { not: null } }
+              : {}),
+        };
+        const consentRows = await tx.patientShareConsent.findMany({
+          where: consentWhere,
+          select: {
+            id: true,
+            share_case_id: true,
+            consent_record_id: true,
+            consent_date: true,
+            consent_method: true,
+            scope: true,
+            file_asset_id: true,
+            valid_until: true,
+            revoked_at: true,
+            revoked_by: true,
+            created_by: true,
+            created_at: true,
+            updated_at: true,
+          },
+          take: limit + 1,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        });
+        const page = buildCursorPage(consentRows, limit, (row) => row.id);
+        let countSummary: {
+          totalCount: number;
+          statusCounts: { active: number; revoked: number };
+        } | null = null;
+        if (shouldExposeWorkflowMeta) {
+          const totalCount = await tx.patientShareConsent.count({ where: consentWhere });
+          if (status?.data === 'active') {
+            countSummary = { totalCount, statusCounts: { active: totalCount, revoked: 0 } };
+          } else if (status?.data === 'revoked') {
+            countSummary = { totalCount, statusCounts: { active: 0, revoked: totalCount } };
+          } else {
+            const activeCount = await tx.patientShareConsent.count({
+              where: { org_id: ctx.orgId, share_case_id: id, revoked_at: null },
+            });
+            countSummary = {
+              totalCount,
+              statusCounts: { active: activeCount, revoked: totalCount - activeCount },
+            };
+          }
+        }
 
-      return page;
-    });
+        await createAuditLogEntry(tx, ctx, {
+          action: 'patient_share_consents_viewed',
+          targetType: 'PatientShareConsent',
+          targetId: id,
+          patientId: shareCase.base_patient_id,
+          changes: {
+            target_screen: 'patient_share_case_consents',
+            viewer_role: ctx.role,
+            share_case_id: id,
+            viewed_count: page.data.length,
+            consent_ids: page.data.map((row) => row.id),
+            consent_record_count: page.data.filter((row) => row.consent_record_id).length,
+            file_asset_count: page.data.filter((row) => row.file_asset_id).length,
+            revoked_count: page.data.filter((row) => row.revoked_at).length,
+            has_cursor: Boolean(cursor),
+            has_more: page.hasMore,
+            limit,
+          },
+        });
 
-    if (!rows) return withSensitiveNoStore(notFound('患者共有ケースが見つかりません'));
+        return { page, countSummary };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+
+    if (!result) return withSensitiveNoStore(notFound('患者共有ケースが見つかりません'));
     return withSensitiveNoStore(
       success({
-        data: rows.data.map(toSafePatientShareConsent),
+        data: result.page.data.map(toSafePatientShareConsent),
         meta: {
-          has_more: rows.hasMore,
-          next_cursor: rows.nextCursor ?? null,
+          has_more: result.page.hasMore,
+          next_cursor: result.page.nextCursor ?? null,
+          ...(result.countSummary
+            ? {
+                returned_count: result.page.data.length,
+                total_count: result.countSummary.totalCount,
+                count_basis: 'filtered_query_exact' as const,
+                filters_applied: { status: status?.data ?? null, share_case_id: id },
+                request_cursor: cursor ?? null,
+                status_counts: result.countSummary.statusCounts,
+              }
+            : {}),
         },
       }),
     );

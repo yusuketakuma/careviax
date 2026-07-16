@@ -310,6 +310,57 @@ function createCorrectionRequestRow(id: string, shareCaseId: string, status = 'o
   };
 }
 
+const emptyPatientShareConsentStatusCounts = { active: 0, revoked: 0 };
+
+function patientShareConsentMeta({
+  shareCaseId,
+  returnedCount,
+  totalCount = returnedCount,
+  hasMore = false,
+  nextCursor = null,
+  requestCursor = null,
+  status = null,
+  statusCounts = { ...emptyPatientShareConsentStatusCounts, active: totalCount },
+}: {
+  shareCaseId: string;
+  returnedCount: number;
+  totalCount?: number;
+  hasMore?: boolean;
+  nextCursor?: string | null;
+  requestCursor?: string | null;
+  status?: string | null;
+  statusCounts?: typeof emptyPatientShareConsentStatusCounts;
+}) {
+  return {
+    has_more: hasMore,
+    next_cursor: nextCursor,
+    returned_count: returnedCount,
+    total_count: totalCount,
+    count_basis: 'filtered_query_exact',
+    filters_applied: { status, share_case_id: shareCaseId },
+    request_cursor: requestCursor,
+    status_counts: statusCounts,
+  };
+}
+
+function createPatientShareConsentRow(id: string, shareCaseId: string, revoked = false) {
+  return {
+    id,
+    share_case_id: shareCaseId,
+    consent_record_id: `consent_record_${id}`,
+    consent_date: '2026-06-18T00:00:00.000Z',
+    consent_method: 'paper_scan',
+    scope_keys: ['pdf_output'],
+    has_file_asset: true,
+    valid_until: null,
+    revoked_at: revoked ? '2026-06-20T00:00:00.000Z' : null,
+    revoked_by: revoked ? 'base_user' : null,
+    created_by: 'base_user',
+    created_at: '2026-06-18T00:00:00.000Z',
+    updated_at: '2026-06-18T00:00:00.000Z',
+  };
+}
+
 function renderContent() {
   return render(<PharmacyCooperationWorkflowContent />, { wrapper: createQueryClientWrapper() });
 }
@@ -453,27 +504,17 @@ describe('PharmacyCooperationWorkflowContent', () => {
             { status: 200 },
           );
         }
-        if (url === '/api/patient-share-cases/share_case_1/consents?limit=8') {
+        if (
+          url ===
+          '/api/patient-share-cases/share_case_1/consents?limit=8&view_context=pharmacy_cooperation_workflow'
+        ) {
           return new Response(
             JSON.stringify({
-              data: [
-                {
-                  id: 'share_consent_1',
-                  share_case_id: 'share_case_1',
-                  consent_record_id: 'consent_record_1',
-                  consent_date: '2026-06-18T00:00:00.000Z',
-                  consent_method: 'paper_scan',
-                  scope_keys: ['pdf_output'],
-                  has_file_asset: true,
-                  valid_until: null,
-                  revoked_at: null,
-                  revoked_by: null,
-                  created_by: 'base_user',
-                  created_at: '2026-06-18T00:00:00.000Z',
-                  updated_at: '2026-06-18T00:00:00.000Z',
-                },
-              ],
-              meta: { has_more: false, next_cursor: null },
+              data: [createPatientShareConsentRow('share_consent_1', 'share_case_1')],
+              meta: patientShareConsentMeta({
+                shareCaseId: 'share_case_1',
+                returnedCount: 1,
+              }),
             }),
             { status: 200 },
           );
@@ -1052,7 +1093,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
         );
       }
       if (
-        url === '/api/patient-share-cases/share_case_legacy/consents?limit=8' ||
+        url ===
+          '/api/patient-share-cases/share_case_legacy/consents?limit=8&view_context=pharmacy_cooperation_workflow' ||
         url ===
           '/api/patient-share-cases/share_case_legacy/correction-requests?limit=8&view_context=pharmacy_cooperation_workflow'
       ) {
@@ -1149,6 +1191,190 @@ describe('PharmacyCooperationWorkflowContent', () => {
     });
     expect(screen.queryByTestId('pharmacy-cooperation-report-result')).toBeNull();
     expect(toast.success).not.toHaveBeenCalledWith('医師向け報告書ドラフトを作成しました');
+  });
+
+  it('loads a ninth patient share consent through the exact cursor continuation', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    const firstPageRows = Array.from({ length: 8 }, (_, index) =>
+      createPatientShareConsentRow(
+        `share_consent_page_${String(index + 1).padStart(2, '0')}`,
+        'share_case_1',
+      ),
+    );
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_1/consents?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: firstPageRows,
+            meta: patientShareConsentMeta({
+              shareCaseId: 'share_case_1',
+              returnedCount: 8,
+              totalCount: 9,
+              hasMore: true,
+              nextCursor: 'share_consent_page_08',
+              statusCounts: { active: 9, revoked: 0 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_1/consents?limit=8&view_context=pharmacy_cooperation_workflow&cursor=share_consent_page_08'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [createPatientShareConsentRow('share_consent_page_09', 'share_case_1')],
+            meta: patientShareConsentMeta({
+              shareCaseId: 'share_case_1',
+              returnedCount: 1,
+              totalCount: 9,
+              requestCursor: 'share_consent_page_08',
+              statusCounts: { active: 9, revoked: 0 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    expect(await screen.findByText('患者共有同意 読込済み 8 / 全 9 件')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '患者共有同意をさらに読み込む' }));
+
+    expect((await screen.findAllByText('share_consent_page_09')).length).toBeGreaterThan(0);
+    expect(screen.getByText('患者共有同意 読込済み 9 / 全 9 件（全件読込済み）')).toBeTruthy();
+  });
+
+  it('starts a fresh patient-share-consent scope when the status filter changes', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_1/consents?limit=8&view_context=pharmacy_cooperation_workflow&status=revoked'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [createPatientShareConsentRow('share_consent_revoked', 'share_case_1', true)],
+            meta: patientShareConsentMeta({
+              shareCaseId: 'share_case_1',
+              returnedCount: 1,
+              status: 'revoked',
+              statusCounts: { active: 0, revoked: 1 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    await screen.findAllByText('share_consent_1');
+    fireEvent.change(screen.getByRole('combobox', { name: '患者共有同意状態' }), {
+      target: { value: 'revoked' },
+    });
+
+    expect((await screen.findAllByText('share_consent_revoked')).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('share_consent_1')).toHaveLength(0);
+  });
+
+  it('retains loaded patient share consents and retries a failed continuation', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    const firstPageRows = Array.from({ length: 8 }, (_, index) =>
+      createPatientShareConsentRow(
+        `share_consent_retry_${String(index + 1).padStart(2, '0')}`,
+        'share_case_1',
+      ),
+    );
+    let continuationAttempts = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_1/consents?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: firstPageRows,
+            meta: patientShareConsentMeta({
+              shareCaseId: 'share_case_1',
+              returnedCount: 8,
+              totalCount: 9,
+              hasMore: true,
+              nextCursor: 'share_consent_retry_08',
+              statusCounts: { active: 9, revoked: 0 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_1/consents?limit=8&view_context=pharmacy_cooperation_workflow&cursor=share_consent_retry_08'
+      ) {
+        continuationAttempts += 1;
+        if (continuationAttempts === 1) {
+          return new Response(JSON.stringify({ code: 'TEMPORARY_FAILURE' }), { status: 503 });
+        }
+        return new Response(
+          JSON.stringify({
+            data: [createPatientShareConsentRow('share_consent_retry_09', 'share_case_1')],
+            meta: patientShareConsentMeta({
+              shareCaseId: 'share_case_1',
+              returnedCount: 1,
+              totalCount: 9,
+              requestCursor: 'share_consent_retry_08',
+              statusCounts: { active: 9, revoked: 0 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    await screen.findByText('患者共有同意 読込済み 8 / 全 9 件');
+    fireEvent.click(screen.getByRole('button', { name: '患者共有同意をさらに読み込む' }));
+
+    expect(await screen.findByText('患者共有同意の続きを読み込めませんでした')).toBeTruthy();
+    expect(screen.getAllByText('share_consent_retry_01').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect((await screen.findAllByText('share_consent_retry_09')).length).toBeGreaterThan(0);
+    expect(continuationAttempts).toBe(2);
+  });
+
+  it('rejects legacy patient-share-consent pages without exact workflow metadata', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_1/consents?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
+        return new Response(
+          JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
+    expect(screen.queryByText('患者共有同意 読込済み 0 / 全 0 件')).toBeNull();
   });
 
   it('registers and revokes patient share consents without rendering raw consent person', async () => {
@@ -1257,9 +1483,15 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(originalFetch).toBeTruthy();
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/patient-share-cases/share_case_1/consents?limit=8') {
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_1/consents?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
         return new Response(
-          JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+          JSON.stringify({
+            data: [],
+            meta: patientShareConsentMeta({ shareCaseId: 'share_case_1', returnedCount: 0 }),
+          }),
           { status: 200 },
         );
       }
@@ -1277,7 +1509,10 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(originalFetch).toBeTruthy();
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/patient-share-cases/share_case_1/consents?limit=8') {
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_1/consents?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
         return new Response(JSON.stringify({ error: 'boom' }), { status: 500 });
       }
       return originalFetch!(input, init);
@@ -1906,9 +2141,18 @@ describe('PharmacyCooperationWorkflowContent', () => {
           { status: 200 },
         );
       }
-      if (url === '/api/patient-share-cases/share_case_page_01/consents?limit=8') {
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_page_01/consents?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
         return new Response(
-          JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+          JSON.stringify({
+            data: [],
+            meta: patientShareConsentMeta({
+              shareCaseId: 'share_case_page_01',
+              returnedCount: 0,
+            }),
+          }),
           { status: 200 },
         );
       }
@@ -2034,9 +2278,18 @@ describe('PharmacyCooperationWorkflowContent', () => {
           { status: 200 },
         );
       }
-      if (url === '/api/patient-share-cases/share_case_retry_01/consents?limit=8') {
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_retry_01/consents?limit=8&view_context=pharmacy_cooperation_workflow'
+      ) {
         return new Response(
-          JSON.stringify({ data: [], meta: { has_more: false, next_cursor: null } }),
+          JSON.stringify({
+            data: [],
+            meta: patientShareConsentMeta({
+              shareCaseId: 'share_case_retry_01',
+              returnedCount: 0,
+            }),
+          }),
           { status: 200 },
         );
       }

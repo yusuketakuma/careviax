@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
@@ -7,6 +8,7 @@ const {
   withOrgContextMock,
   patientShareCaseFindFirstMock,
   patientShareConsentFindManyMock,
+  patientShareConsentCountMock,
   patientShareConsentCreateMock,
   patientShareCaseUpdateMock,
   consentRecordFindFirstMock,
@@ -17,6 +19,7 @@ const {
   withOrgContextMock: vi.fn(),
   patientShareCaseFindFirstMock: vi.fn(),
   patientShareConsentFindManyMock: vi.fn(),
+  patientShareConsentCountMock: vi.fn(),
   patientShareConsentCreateMock: vi.fn(),
   patientShareCaseUpdateMock: vi.fn(),
   consentRecordFindFirstMock: vi.fn(),
@@ -101,6 +104,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
         consent_person: '患者家族 山田花子',
       },
     ]);
+    patientShareConsentCountMock.mockResolvedValue(1);
     patientShareConsentCreateMock.mockResolvedValue({
       id: 'share_consent_1',
       share_case_id: 'share_case_1',
@@ -129,6 +133,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
         },
         patientShareConsent: {
           findMany: patientShareConsentFindManyMock,
+          count: patientShareConsentCountMock,
           create: patientShareConsentCreateMock,
         },
         consentRecord: { findFirst: consentRecordFindFirstMock },
@@ -271,6 +276,47 @@ describe('/api/patient-share-cases/[id]/consents', () => {
       }),
     );
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('非表示 同意者');
+  });
+
+  it('returns exact filtered workflow counts in the same repeatable-read snapshot', async () => {
+    patientShareConsentCountMock.mockResolvedValueOnce(9);
+
+    const response = await rawGET(
+      createGetRequest(
+        'http://localhost/api/patient-share-cases/share_case_1/consents?limit=8&status=active&cursor=share_consent_9&view_context=pharmacy_cooperation_workflow',
+      ),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+    });
+    const where = { org_id: 'org_1', share_case_id: 'share_case_1', revoked_at: null };
+    expect(patientShareConsentFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where }),
+    );
+    expect(patientShareConsentCountMock).toHaveBeenCalledWith({ where });
+    await expect(response.json()).resolves.toMatchObject({
+      meta: {
+        returned_count: 1,
+        total_count: 9,
+        count_basis: 'filtered_query_exact',
+        filters_applied: { status: 'active', share_case_id: 'share_case_1' },
+        request_cursor: 'share_consent_9',
+        status_counts: { active: 9, revoked: 0 },
+      },
+    });
+  });
+
+  it('keeps exact workflow counts out of the general consent API response', async () => {
+    const response = await rawGET(createGetRequest(), routeContext);
+
+    expect(response.status).toBe(200);
+    expect(patientShareConsentCountMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.meta).not.toHaveProperty('total_count');
+    expect(body.meta).not.toHaveProperty('status_counts');
   });
 
   it('fails closed when patient share consent list audit cannot be recorded', async () => {

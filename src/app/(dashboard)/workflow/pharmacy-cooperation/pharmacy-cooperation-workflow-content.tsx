@@ -385,6 +385,128 @@ type PatientShareConsentRow = {
   created_at: string;
   updated_at: string;
 };
+const patientShareConsentStatuses = ['active', 'revoked'] as const;
+type PatientShareConsentStatus = (typeof patientShareConsentStatuses)[number];
+type PatientShareConsentStatusCounts = Record<PatientShareConsentStatus, number>;
+type PatientShareConsentPage = CursorPaginatedPage<PatientShareConsentRow> & {
+  total_count: number;
+  returned_count: number;
+  count_basis: 'filtered_query_exact';
+  filters_applied: { status: PatientShareConsentStatus | null; share_case_id: string };
+  request_cursor: string | null;
+  status_counts: PatientShareConsentStatusCounts;
+};
+type PatientShareConsentAggregate = {
+  rows: PatientShareConsentRow[];
+  totalCount: number;
+  statusCounts: PatientShareConsentStatusCounts;
+  scopeComplete: boolean;
+  contractError: string | null;
+};
+
+function aggregatePatientShareConsentPages(
+  pages: PatientShareConsentPage[],
+): PatientShareConsentAggregate {
+  const firstPage = pages[0];
+  if (!firstPage) {
+    return {
+      rows: [],
+      totalCount: 0,
+      statusCounts: { active: 0, revoked: 0 },
+      scopeComplete: false,
+      contractError: null,
+    };
+  }
+  const rows: PatientShareConsentRow[] = [];
+  const seenIds = new Set<string>();
+  const seenCursors = new Set<string>();
+  const expectedCounts = JSON.stringify(firstPage.status_counts);
+  const expectedFilters = JSON.stringify(firstPage.filters_applied);
+  for (const [index, page] of pages.entries()) {
+    const previous = pages[index - 1];
+    if (page.total_count !== firstPage.total_count) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        statusCounts: firstPage.status_counts,
+        scopeComplete: false,
+        contractError: '患者共有同意の総件数がページ間で一致しません。',
+      };
+    }
+    if (
+      JSON.stringify(page.status_counts) !== expectedCounts ||
+      JSON.stringify(page.filters_applied) !== expectedFilters
+    ) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        statusCounts: firstPage.status_counts,
+        scopeComplete: false,
+        contractError: '患者共有同意の検索範囲がページ間で一致しません。',
+      };
+    }
+    if (index === 0 ? page.request_cursor !== null : page.request_cursor !== previous?.nextCursor) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        statusCounts: firstPage.status_counts,
+        scopeComplete: false,
+        contractError: '患者共有同意のカーソル連鎖が一致しません。',
+      };
+    }
+    for (const row of page.data) {
+      if (seenIds.has(row.id)) {
+        return {
+          rows,
+          totalCount: firstPage.total_count,
+          statusCounts: firstPage.status_counts,
+          scopeComplete: false,
+          contractError: '患者共有同意に重複した行が含まれています。',
+        };
+      }
+      seenIds.add(row.id);
+      rows.push(row);
+    }
+    if (page.nextCursor) {
+      if (seenCursors.has(page.nextCursor)) {
+        return {
+          rows,
+          totalCount: firstPage.total_count,
+          statusCounts: firstPage.status_counts,
+          scopeComplete: false,
+          contractError: '患者共有同意のカーソルが循環しています。',
+        };
+      }
+      seenCursors.add(page.nextCursor);
+    }
+  }
+  const lastPage = pages[pages.length - 1];
+  if (rows.length > firstPage.total_count) {
+    return {
+      rows,
+      totalCount: firstPage.total_count,
+      statusCounts: firstPage.status_counts,
+      scopeComplete: false,
+      contractError: '患者共有同意の読込件数が総件数を超えています。',
+    };
+  }
+  if (lastPage && !lastPage.hasMore && rows.length !== firstPage.total_count) {
+    return {
+      rows,
+      totalCount: firstPage.total_count,
+      statusCounts: firstPage.status_counts,
+      scopeComplete: false,
+      contractError: '患者共有同意の終端件数が総件数と一致しません。',
+    };
+  }
+  return {
+    rows,
+    totalCount: firstPage.total_count,
+    statusCounts: firstPage.status_counts,
+    scopeComplete: Boolean(lastPage && !lastPage.hasMore && rows.length === firstPage.total_count),
+    contractError: null,
+  };
+}
 
 type CorrectionForm = {
   targetType: CorrectionTargetType;
@@ -1376,15 +1498,35 @@ const correctionRequestPageSchema: z.ZodType<CorrectionRequestPage> = z
 const correctionRequestResponseSchema = apiDataSchema(
   patientShareCorrectionRequestRowSchema,
 ).transform(({ data }) => data);
-const patientShareConsentPageSchema = z
+const patientShareConsentPageSchema: z.ZodType<PatientShareConsentPage> = z
   .object({
     data: z.array(patientShareConsentRowSchema),
-    meta: z.object({
-      has_more: z.boolean(),
-      next_cursor: z.string().trim().min(1).nullable(),
-    }),
+    meta: z
+      .object({
+        has_more: z.boolean(),
+        next_cursor: z.string().trim().min(1).nullable(),
+        returned_count: z.number().int().nonnegative(),
+        total_count: z.number().int().nonnegative(),
+        count_basis: z.literal('filtered_query_exact'),
+        filters_applied: z
+          .object({
+            status: z.enum(patientShareConsentStatuses).nullable(),
+            share_case_id: z.string().trim().min(1),
+          })
+          .strict(),
+        request_cursor: z.string().trim().min(1).nullable(),
+        status_counts: z
+          .object({
+            active: z.number().int().nonnegative(),
+            revoked: z.number().int().nonnegative(),
+          })
+          .strict(),
+      })
+      .strict(),
   })
+  .strict()
   .superRefine((value, ctx) => {
+    const statusTotal = value.meta.status_counts.active + value.meta.status_counts.revoked;
     if (value.meta.has_more && !value.meta.next_cursor) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -1392,11 +1534,41 @@ const patientShareConsentPageSchema = z
         message: 'next_cursor is required when has_more is true',
       });
     }
+    if (value.meta.next_cursor && value.meta.next_cursor === value.meta.request_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor must advance beyond request_cursor',
+      });
+    }
+    if (value.meta.returned_count !== value.data.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'returned_count'],
+        message: 'returned_count must match data length',
+      });
+    }
+    if (
+      value.meta.total_count < value.meta.returned_count ||
+      statusTotal !== value.meta.total_count
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'total_count'],
+        message: 'total_count must match status counts and returned scope',
+      });
+    }
   })
   .transform(({ data, meta }) => ({
     data,
     hasMore: meta.has_more,
     ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
+    returned_count: meta.returned_count,
+    total_count: meta.total_count,
+    count_basis: meta.count_basis,
+    filters_applied: meta.filters_applied,
+    request_cursor: meta.request_cursor,
+    status_counts: meta.status_counts,
   }));
 const patientShareConsentResponseSchema = apiDataSchema(patientShareConsentRowSchema).transform(
   ({ data }) => data,
@@ -1632,14 +1804,33 @@ async function fetchCorrectionRequests(
   return page;
 }
 
-async function fetchPatientShareConsents(orgId: string, shareCaseId: string) {
-  const response = await fetch(`/api/patient-share-cases/${shareCaseId}/consents?limit=8`, {
+async function fetchPatientShareConsents(
+  orgId: string,
+  shareCaseId: string,
+  cursor: string | null,
+  status: PatientShareConsentStatus | null,
+) {
+  const params = new URLSearchParams({
+    limit: '8',
+    view_context: 'pharmacy_cooperation_workflow',
+  });
+  if (status) params.set('status', status);
+  if (cursor) params.set('cursor', cursor);
+  const response = await fetch(`/api/patient-share-cases/${shareCaseId}/consents?${params}`, {
     headers: buildOrgHeaders(orgId),
   });
-  return readApiJson<CursorPaginatedPage<PatientShareConsentRow>>(response, {
+  const page = await readApiJson<PatientShareConsentPage>(response, {
     fallbackMessage: '患者共有同意の取得に失敗しました',
     schema: patientShareConsentPageSchema,
   });
+  if (
+    page.request_cursor !== cursor ||
+    page.filters_applied.status !== status ||
+    page.filters_applied.share_case_id !== shareCaseId
+  ) {
+    throw new Error('患者共有同意の検索条件が応答と一致しません');
+  }
+  return page;
 }
 
 async function fetchMessageThreads(
@@ -2790,8 +2981,16 @@ function PatientShareConsentsPanel({
   isLoading,
   isError,
   error,
+  statusFilter,
+  setStatusFilter,
+  countLabel,
+  isFetchNextPageError,
+  hasNextPage,
+  isFetchingNextPage,
   isBusy,
   onRetry,
+  onRetryNextPage,
+  onLoadNextPage,
   onCreate,
   onRevoke,
 }: {
@@ -2805,8 +3004,16 @@ function PatientShareConsentsPanel({
   isLoading: boolean;
   isError: boolean;
   error: unknown;
+  statusFilter: PatientShareConsentStatus | 'all';
+  setStatusFilter: (status: PatientShareConsentStatus | 'all') => void;
+  countLabel: string;
+  isFetchNextPageError: boolean;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
   isBusy: boolean;
   onRetry: () => void;
+  onRetryNextPage: () => void;
+  onLoadNextPage: () => void;
   onCreate: () => void;
   onRevoke: (consent: PatientShareConsentRow, reason: string) => void;
 }) {
@@ -3005,22 +3212,60 @@ function PatientShareConsentsPanel({
       </div>
 
       <QueryFallback isLoading={isLoading} isError={isError} error={error} onRetry={onRetry}>
-        {consents.length === 0 ? (
-          <EmptyState title="患者共有同意はまだありません" />
-        ) : (
-          <DataTable
-            columns={consentColumns}
-            data={consents}
-            caption="患者共有同意一覧"
-            getRowId={(row) => row.id}
-            getRowA11yLabel={(row) =>
-              `${row.id} ${row.revoked_at ? '撤回済み' : '有効'} ${
-                row.scope_keys.length > 0 ? row.scope_keys.join(', ') : '-'
-              }`
-            }
-            emptyMessage="患者共有同意はまだありません"
-          />
-        )}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <label className="flex min-w-48 flex-col gap-1">
+              <FieldLabel>患者共有同意状態</FieldLabel>
+              <NativeSelect
+                value={statusFilter}
+                onChange={(value) => setStatusFilter(value as PatientShareConsentStatus | 'all')}
+                ariaLabel="患者共有同意状態"
+              >
+                <option value="all">すべて</option>
+                <option value="active">有効</option>
+                <option value="revoked">撤回済み</option>
+              </NativeSelect>
+            </label>
+            <p className="text-xs text-muted-foreground tabular-nums" role="status">
+              {countLabel}
+            </p>
+          </div>
+          {consents.length === 0 ? (
+            <EmptyState title="患者共有同意はまだありません" />
+          ) : (
+            <DataTable
+              columns={consentColumns}
+              data={consents}
+              caption="患者共有同意一覧"
+              getRowId={(row) => row.id}
+              getRowA11yLabel={(row) =>
+                `${row.id} ${row.revoked_at ? '撤回済み' : '有効'} ${
+                  row.scope_keys.length > 0 ? row.scope_keys.join(', ') : '-'
+                }`
+              }
+              emptyMessage="患者共有同意はまだありません"
+            />
+          )}
+          {isFetchNextPageError ? (
+            <ErrorState
+              title="患者共有同意の続きを読み込めませんでした"
+              description="読み込み済みの患者共有同意は保持されています。"
+              onRetry={onRetryNextPage}
+            />
+          ) : null}
+          {hasNextPage ? (
+            <div className="flex justify-center">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isFetchingNextPage}
+                onClick={onLoadNextPage}
+              >
+                {isFetchingNextPage ? '読み込み中…' : '患者共有同意をさらに読み込む'}
+              </Button>
+            </div>
+          ) : null}
+        </div>
       </QueryFallback>
     </div>
   );
@@ -4033,6 +4278,9 @@ export function PharmacyCooperationWorkflowContent() {
   const [correctionRequestStatusFilter, setCorrectionRequestStatusFilter] = useState<
     CorrectionRequestStatus | 'all'
   >('all');
+  const [patientShareConsentStatusFilter, setPatientShareConsentStatusFilter] = useState<
+    PatientShareConsentStatus | 'all'
+  >('all');
   const enabled = Boolean(orgId);
 
   const shareCasesQuery = useInfiniteQuery({
@@ -4183,9 +4431,22 @@ export function PharmacyCooperationWorkflowContent() {
     staleTime: 20_000,
   });
 
-  const patientShareConsentsQuery = useQuery({
-    queryKey: ['pharmacy-cooperation-share-consents', orgId, effectiveConsentShareCaseId],
-    queryFn: () => fetchPatientShareConsents(orgId, effectiveConsentShareCaseId),
+  const patientShareConsentsQuery = useInfiniteQuery({
+    queryKey: [
+      'pharmacy-cooperation-share-consents',
+      orgId,
+      effectiveConsentShareCaseId,
+      patientShareConsentStatusFilter,
+    ],
+    queryFn: ({ pageParam }) =>
+      fetchPatientShareConsents(
+        orgId,
+        effectiveConsentShareCaseId,
+        pageParam,
+        patientShareConsentStatusFilter === 'all' ? null : patientShareConsentStatusFilter,
+      ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
     enabled: enabled && effectiveConsentShareCaseId.length > 0,
     staleTime: 20_000,
   });
@@ -4781,7 +5042,14 @@ export function PharmacyCooperationWorkflowContent() {
   }`;
   const correctionRequestInitialError =
     correctionRequestsQuery.isError && correctionRequestPages.length === 0;
-  const patientShareConsents = patientShareConsentsQuery.data?.data ?? [];
+  const patientShareConsentPages = patientShareConsentsQuery.data?.pages ?? [];
+  const patientShareConsentAggregate = aggregatePatientShareConsentPages(patientShareConsentPages);
+  const patientShareConsents = patientShareConsentAggregate.rows;
+  const patientShareConsentCountLabel = `患者共有同意 読込済み ${patientShareConsents.length} / 全 ${patientShareConsentAggregate.totalCount} 件${
+    patientShareConsentAggregate.scopeComplete ? '（全件読込済み）' : ''
+  }`;
+  const patientShareConsentInitialError =
+    patientShareConsentsQuery.isError && patientShareConsentPages.length === 0;
   const messageThreads = messageThreadsQuery.data?.data ?? [];
   const submittedRecordCount = partnerVisitRecordAggregate.statusCounts.submitted;
   const requestedVisitCount = visitRequestAggregate.statusCounts.requested;
@@ -4964,10 +5232,22 @@ export function PharmacyCooperationWorkflowContent() {
           revokeReasons={consentRevokeReasons}
           setRevokeReasons={setConsentRevokeReasons}
           isLoading={patientShareConsentsQuery.isLoading}
-          isError={patientShareConsentsQuery.isError}
-          error={patientShareConsentsQuery.error}
+          isError={
+            patientShareConsentInitialError || Boolean(patientShareConsentAggregate.contractError)
+          }
+          error={patientShareConsentAggregate.contractError ?? patientShareConsentsQuery.error}
+          statusFilter={patientShareConsentStatusFilter}
+          setStatusFilter={setPatientShareConsentStatusFilter}
+          countLabel={patientShareConsentCountLabel}
+          isFetchNextPageError={
+            patientShareConsentsQuery.isFetchNextPageError && patientShareConsentPages.length > 0
+          }
+          hasNextPage={Boolean(patientShareConsentsQuery.hasNextPage)}
+          isFetchingNextPage={patientShareConsentsQuery.isFetchingNextPage}
           isBusy={isBusy}
           onRetry={() => void patientShareConsentsQuery.refetch()}
+          onRetryNextPage={() => void patientShareConsentsQuery.fetchNextPage()}
+          onLoadNextPage={() => void patientShareConsentsQuery.fetchNextPage()}
           onCreate={() => createPatientShareConsentMutation.mutate()}
           onRevoke={(consent, reason) =>
             setPendingWorkflowAction({
