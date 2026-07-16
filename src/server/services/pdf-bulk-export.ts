@@ -255,30 +255,9 @@ function assertBulkExportTotalPdfBytes(zipEntries: Record<string, Uint8Array>) {
   }
 }
 
-async function withSerializableRetry<TValue>(
-  work: (tx: Prisma.TransactionClient) => Promise<TValue>,
-): Promise<TValue> {
-  for (let attempt = 0; attempt < SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
-    try {
-      return await prisma.$transaction(work, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      });
-    } catch (cause) {
-      const isRetryableConflict =
-        cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
-
-      if (!isRetryableConflict || attempt === SERIALIZABLE_RETRY_LIMIT - 1) {
-        throw cause;
-      }
-    }
-  }
-
-  throw new Error('bulk export transaction could not be completed');
-}
-
 async function withOrgSerializableRetry<TValue>(args: {
   orgId: string;
-  requestContext: RequestAuthContext;
+  requestContext?: RequestAuthContext;
   work: (tx: Prisma.TransactionClient) => Promise<TValue>;
 }): Promise<TValue> {
   for (let attempt = 0; attempt < SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
@@ -413,10 +392,11 @@ async function assertBulkExportPatientAccess(args: {
 }
 
 async function getRequesterAccessContext(args: {
+  db: Pick<Prisma.TransactionClient, 'membership'>;
   orgId: string;
   requestedBy: string;
 }): Promise<VisitScheduleAccessContext> {
-  const membership = await prisma.membership.findFirst({
+  const membership = await args.db.membership.findFirst({
     where: {
       org_id: args.orgId,
       user_id: args.requestedBy,
@@ -468,6 +448,7 @@ async function recoverStaleBulkExportRunningJobs(args: {
 }
 
 async function notifyBulkExportReady(args: {
+  db: Pick<Prisma.TransactionClient, 'notification'>;
   orgId: string;
   userId: string;
   fileId: string;
@@ -481,7 +462,7 @@ async function notifyBulkExportReady(args: {
       : `${args.patientCount}件の薬歴PDFを ZIP で出力しました。`;
   const downloadHref = buildFileDownloadHref(args.fileId);
 
-  await prisma.notification.upsert({
+  await args.db.notification.upsert({
     where: {
       org_id_user_id_dedupe_key: {
         org_id: args.orgId,
@@ -521,12 +502,13 @@ async function notifyBulkExportReady(args: {
 }
 
 async function notifyBulkExportFailed(args: {
+  db: Pick<Prisma.TransactionClient, 'notification'>;
   orgId: string;
   userId: string;
   jobId: string;
   message: string;
 }) {
-  await prisma.notification.upsert({
+  await args.db.notification.upsert({
     where: {
       org_id_user_id_dedupe_key: {
         org_id: args.orgId,
@@ -579,18 +561,29 @@ async function cleanupStoredBulkExportFile(args: {
   }
 }
 
-async function refreshBulkExportJobLock(args: { jobId: string; lockedAt: Date }) {
+async function refreshBulkExportJobLock(args: {
+  orgId: string;
+  requestContext: RequestAuthContext;
+  jobId: string;
+  lockedAt: Date;
+}) {
   const nextLockedAt = new Date();
-  const refreshed = await prisma.integrationJob.updateMany({
-    where: {
-      id: args.jobId,
-      status: 'running',
-      locked_at: args.lockedAt,
-    },
-    data: {
-      locked_at: nextLockedAt,
-    },
-  });
+  const refreshed = await withOrgContext(
+    args.orgId,
+    (tx) =>
+      tx.integrationJob.updateMany({
+        where: {
+          id: args.jobId,
+          org_id: args.orgId,
+          status: 'running',
+          locked_at: args.lockedAt,
+        },
+        data: {
+          locked_at: nextLockedAt,
+        },
+      }),
+    { requestContext: args.requestContext },
+  );
 
   return refreshed.count > 0 ? nextLockedAt : null;
 }
@@ -777,75 +770,79 @@ export async function queueMedicationHistoryBulkExport(args: QueueMedicationHist
 
 export async function runMedicationHistoryBulkExportJob(
   jobId: string,
+  orgId: string,
 ): Promise<MedicationHistoryBulkExportResult | null> {
-  const job = await withSerializableRetry(async (tx) => {
-    const candidate = await tx.integrationJob.findUnique({
-      where: { id: jobId },
-      select: {
-        id: true,
-        org_id: true,
-        input: true,
-        status: true,
-        job_type: true,
-      },
-    });
+  const job = await withOrgSerializableRetry({
+    orgId,
+    work: async (tx) => {
+      const candidate = await tx.integrationJob.findUnique({
+        where: { id: jobId },
+        select: {
+          id: true,
+          org_id: true,
+          input: true,
+          status: true,
+          job_type: true,
+        },
+      });
 
-    if (!candidate?.org_id || candidate.job_type !== BULK_EXPORT_JOB_TYPE) {
-      throw new MedicationHistoryBulkExportError(
-        'WORKFLOW_NOT_FOUND',
-        '一括出力ジョブが見つかりません',
-        404,
-      );
-    }
+      if (candidate?.org_id !== orgId || candidate.job_type !== BULK_EXPORT_JOB_TYPE) {
+        throw new MedicationHistoryBulkExportError(
+          'WORKFLOW_NOT_FOUND',
+          '一括出力ジョブが見つかりません',
+          404,
+        );
+      }
 
-    if (candidate.status !== 'pending') {
-      return null;
-    }
+      if (candidate.status !== 'pending') {
+        return null;
+      }
 
-    const runningSibling = await tx.integrationJob.findFirst({
-      where: {
-        org_id: candidate.org_id,
-        job_type: BULK_EXPORT_JOB_TYPE,
-        status: 'running',
-        id: { not: jobId },
-        locked_at: { gte: new Date(Date.now() - RUNNING_JOB_LOCK_TIMEOUT_MS) },
-      },
-      select: {
-        id: true,
-      },
-    });
+      const runningSibling = await tx.integrationJob.findFirst({
+        where: {
+          org_id: orgId,
+          job_type: BULK_EXPORT_JOB_TYPE,
+          status: 'running',
+          id: { not: jobId },
+          locked_at: { gte: new Date(Date.now() - RUNNING_JOB_LOCK_TIMEOUT_MS) },
+        },
+        select: {
+          id: true,
+        },
+      });
 
-    if (runningSibling) {
-      return null;
-    }
+      if (runningSibling) {
+        return null;
+      }
 
-    const lockedAt = new Date();
-    const started = await tx.integrationJob.updateMany({
-      where: {
-        id: jobId,
-        org_id: candidate.org_id,
-        job_type: BULK_EXPORT_JOB_TYPE,
-        status: 'pending',
-      },
-      data: {
-        status: 'running',
-        started_at: lockedAt,
-        locked_at: lockedAt,
-        completed_at: null,
-        error_log: null,
-      },
-    });
+      const lockedAt = new Date();
+      const started = await tx.integrationJob.updateMany({
+        where: {
+          id: jobId,
+          org_id: orgId,
+          job_type: BULK_EXPORT_JOB_TYPE,
+          status: 'pending',
+        },
+        data: {
+          status: 'running',
+          started_at: lockedAt,
+          locked_at: lockedAt,
+          completed_at: null,
+          error_log: null,
+        },
+      });
 
-    if (started.count === 0) {
-      return null;
-    }
+      if (started.count === 0) {
+        return null;
+      }
 
-    return {
-      id: candidate.id,
-      org_id: candidate.org_id,
-      input: candidate.input,
-      lockedAt,
-    };
+      return {
+        id: candidate.id,
+        org_id: orgId,
+        input: candidate.input,
+        lockedAt,
+      };
+    },
   });
 
   if (!job) {
@@ -856,27 +853,31 @@ export async function runMedicationHistoryBulkExportJob(
   const parsedInput = bulkExportInputSchema.safeParse(job.input);
   if (!parsedInput.success) {
     const message = '一括出力ジョブの入力が不正です';
-    await prisma.integrationJob.updateMany({
-      where: {
-        id: job.id,
-        status: 'running',
-        locked_at: job.lockedAt,
-      },
-      data: {
-        status: 'failed',
-        error_log: message,
-        input: buildInvalidTerminalBulkExportInput(job.input, requestTrace),
-        completed_at: new Date(),
-        locked_at: null,
-        retry_count: { increment: 1 },
-      },
-    });
+    await withOrgContext(job.org_id, (tx) =>
+      tx.integrationJob.updateMany({
+        where: {
+          id: job.id,
+          org_id: job.org_id,
+          status: 'running',
+          locked_at: job.lockedAt,
+        },
+        data: {
+          status: 'failed',
+          error_log: message,
+          input: buildInvalidTerminalBulkExportInput(job.input, requestTrace),
+          completed_at: new Date(),
+          locked_at: null,
+          retry_count: { increment: 1 },
+        },
+      }),
+    );
     throw new MedicationHistoryBulkExportError('VALIDATION_ERROR', message, 400);
   }
 
   let storedFileForCleanup: Awaited<ReturnType<typeof storeGeneratedFile>> | null = null;
   let currentLockAt = job.lockedAt;
   let lastHeartbeatAt = job.lockedAt;
+  let requestContext: RequestAuthContext | null = null;
 
   const heartbeat = async (opts?: { force?: boolean }) => {
     if (
@@ -886,7 +887,13 @@ export async function runMedicationHistoryBulkExportJob(
       return;
     }
 
+    if (!requestContext) {
+      throw new Error('bulk export requester context is not initialized');
+    }
+
     const refreshedLockAt = await refreshBulkExportJobLock({
+      orgId: job.org_id,
+      requestContext,
       jobId: job.id,
       lockedAt: currentLockAt,
     });
@@ -899,21 +906,38 @@ export async function runMedicationHistoryBulkExportJob(
   };
 
   try {
-    const accessContext = await getRequesterAccessContext({
+    const accessContext = await withOrgContext(job.org_id, (tx) =>
+      getRequesterAccessContext({
+        db: tx,
+        orgId: job.org_id,
+        requestedBy: parsedInput.data.requestedBy,
+      }),
+    );
+    requestContext = {
+      userId: accessContext.userId,
       orgId: job.org_id,
-      requestedBy: parsedInput.data.requestedBy,
-    });
-    await assertPatientsExist({
-      db: prisma,
-      orgId: job.org_id,
-      patientIds: parsedInput.data.patientIds,
-    });
-    await assertBulkExportPatientAccess({
-      db: prisma,
-      orgId: job.org_id,
-      patientIds: parsedInput.data.patientIds,
-      accessContext,
-    });
+      role: accessContext.role,
+      ...(requestTrace
+        ? { requestId: requestTrace.requestId, correlationId: requestTrace.correlationId }
+        : {}),
+    };
+    await withOrgContext(
+      job.org_id,
+      async (tx) => {
+        await assertPatientsExist({
+          db: tx,
+          orgId: job.org_id,
+          patientIds: parsedInput.data.patientIds,
+        });
+        await assertBulkExportPatientAccess({
+          db: tx,
+          orgId: job.org_id,
+          patientIds: parsedInput.data.patientIds,
+          accessContext,
+        });
+      },
+      { requestContext },
+    );
 
     const { zipEntries, errors } = await buildMedicationHistoryArchive(
       job.org_id,
@@ -964,48 +988,53 @@ export async function runMedicationHistoryBulkExportJob(
       requestTrace,
     });
 
-    const completed = await prisma.$transaction(async (tx) => {
-      const updated = await tx.integrationJob.updateMany({
-        where: {
-          id: job.id,
-          status: 'running',
-          locked_at: currentLockAt,
-        },
-        data: {
-          status: 'completed',
-          input: terminalInput,
-          output: result satisfies Prisma.InputJsonValue,
-          completed_at: new Date(),
-          locked_at: null,
-        },
-      });
+    const completed = await withOrgContext(
+      job.org_id,
+      async (tx) => {
+        const updated = await tx.integrationJob.updateMany({
+          where: {
+            id: job.id,
+            org_id: job.org_id,
+            status: 'running',
+            locked_at: currentLockAt,
+          },
+          data: {
+            status: 'completed',
+            input: terminalInput,
+            output: result satisfies Prisma.InputJsonValue,
+            completed_at: new Date(),
+            locked_at: null,
+          },
+        });
 
-      if (updated.count === 0) {
+        if (updated.count === 0) {
+          return updated;
+        }
+
+        await recordDataExportAudit(tx, {
+          orgId: job.org_id,
+          actorId: parsedInput.data.requestedBy,
+          targetType: 'medication_history',
+          targetId: job.id,
+          format: 'zip',
+          recordCount: patientCount,
+          metadata: {
+            job_id: job.id,
+            file_id: storedFile.id,
+            requested_count: parsedInput.data.patientIds.length,
+            success_count: patientCount,
+            failed_count: errors.length,
+            failure_codes: failureCodes,
+            patient_selection_hash: terminalInput.patient_selection_hash,
+          },
+          requestId: requestTrace?.requestId,
+          correlationId: requestTrace?.correlationId,
+        });
+
         return updated;
-      }
-
-      await recordDataExportAudit(tx, {
-        orgId: job.org_id,
-        actorId: parsedInput.data.requestedBy,
-        targetType: 'medication_history',
-        targetId: job.id,
-        format: 'zip',
-        recordCount: patientCount,
-        metadata: {
-          job_id: job.id,
-          file_id: storedFile.id,
-          requested_count: parsedInput.data.patientIds.length,
-          success_count: patientCount,
-          failed_count: errors.length,
-          failure_codes: failureCodes,
-          patient_selection_hash: terminalInput.patient_selection_hash,
-        },
-        requestId: requestTrace?.requestId,
-        correlationId: requestTrace?.correlationId,
-      });
-
-      return updated;
-    });
+      },
+      { requestContext },
+    );
 
     if (completed.count === 0) {
       logger.warn({
@@ -1025,14 +1054,20 @@ export async function runMedicationHistoryBulkExportJob(
     storedFileForCleanup = null;
 
     try {
-      await notifyBulkExportReady({
-        orgId: job.org_id,
-        userId: parsedInput.data.requestedBy,
-        fileId: storedFile.id,
-        patientCount,
-        failedCount: errors.length,
-        jobId: job.id,
-      });
+      await withOrgContext(
+        job.org_id,
+        (tx) =>
+          notifyBulkExportReady({
+            db: tx,
+            orgId: job.org_id,
+            userId: parsedInput.data.requestedBy,
+            fileId: storedFile.id,
+            patientCount,
+            failedCount: errors.length,
+            jobId: job.id,
+          }),
+        { requestContext },
+      );
     } catch (notificationError) {
       logger.warn(
         {
@@ -1081,33 +1116,56 @@ export async function runMedicationHistoryBulkExportJob(
       storedFileForCleanup = null;
     }
 
-    await prisma.integrationJob.updateMany({
-      where: {
-        id: job.id,
-        status: 'running',
-        locked_at: currentLockAt,
-      },
-      data: {
-        status: 'failed',
-        error_log: message,
-        input: buildTerminalBulkExportInput({
-          orgId: job.org_id,
-          requestedBy: parsedInput.data.requestedBy,
-          patientIds: parsedInput.data.patientIds,
-          requestTrace,
+    const failed = await withOrgContext(
+      job.org_id,
+      (tx) =>
+        tx.integrationJob.updateMany({
+          where: {
+            id: job.id,
+            org_id: job.org_id,
+            status: 'running',
+            locked_at: currentLockAt,
+          },
+          data: {
+            status: 'failed',
+            error_log: message,
+            input: buildTerminalBulkExportInput({
+              orgId: job.org_id,
+              requestedBy: parsedInput.data.requestedBy,
+              patientIds: parsedInput.data.patientIds,
+              requestTrace,
+            }),
+            completed_at: new Date(),
+            locked_at: null,
+          },
         }),
-        completed_at: new Date(),
-        locked_at: null,
-      },
-    });
+      requestContext ? { requestContext } : undefined,
+    );
+
+    if (failed.count === 0) {
+      logger.warn({
+        event: 'medication_history_bulk_export.failure_skipped_lock_lost',
+        orgId: job.org_id,
+        targetId: job.id,
+        jobType: BULK_EXPORT_JOB_TYPE,
+        operation: 'fail',
+      });
+      return null;
+    }
 
     try {
-      await notifyBulkExportFailed({
-        orgId: job.org_id,
-        userId: parsedInput.data.requestedBy,
-        jobId: job.id,
-        message,
-      });
+      await withOrgContext(
+        job.org_id,
+        (tx) =>
+          notifyBulkExportFailed({
+            db: tx,
+            orgId: job.org_id,
+            userId: parsedInput.data.requestedBy,
+            jobId: job.id,
+            message,
+          }),
+        requestContext ? { requestContext } : undefined,
+      );
     } catch (notificationError) {
       logger.warn(
         {
@@ -1132,30 +1190,42 @@ export async function drainMedicationHistoryBulkExportQueue(args?: { orgId?: str
   const skippedJobIds = new Set<string>();
 
   for (let iteration = 0; iteration < MAX_DRAIN_ITERATIONS; iteration += 1) {
-    await recoverStaleBulkExportRunningJobs({
-      db: prisma,
-      orgId: args?.orgId,
-    });
+    const findNextJob = async (db: BulkExportJobRecoveryDb) => {
+      await recoverStaleBulkExportRunningJobs({
+        db,
+        orgId: args?.orgId,
+      });
 
-    const nextJob = await prisma.integrationJob.findFirst({
-      where: {
-        job_type: BULK_EXPORT_JOB_TYPE,
-        status: 'pending',
-        ...(skippedJobIds.size > 0 ? { id: { notIn: Array.from(skippedJobIds) } } : {}),
-        ...(args?.orgId ? { org_id: args.orgId } : {}),
-      },
-      orderBy: {
-        created_at: 'asc',
-      },
-      select: {
-        id: true,
-      },
-    });
+      return db.integrationJob.findFirst({
+        where: {
+          job_type: BULK_EXPORT_JOB_TYPE,
+          status: 'pending',
+          ...(skippedJobIds.size > 0 ? { id: { notIn: Array.from(skippedJobIds) } } : {}),
+          ...(args?.orgId ? { org_id: args.orgId } : {}),
+        },
+        orderBy: {
+          created_at: 'asc',
+        },
+        select: {
+          id: true,
+          org_id: true,
+        },
+      });
+    };
+
+    const nextJob = args?.orgId
+      ? await withOrgContext(args.orgId, findNextJob)
+      : await findNextJob(prisma);
 
     if (!nextJob) break;
+    if (!nextJob.org_id) {
+      errors.push('一括出力ジョブの組織情報が不正です');
+      skippedJobIds.add(nextJob.id);
+      continue;
+    }
 
     try {
-      const result = await runMedicationHistoryBulkExportJob(nextJob.id);
+      const result = await runMedicationHistoryBulkExportJob(nextJob.id, nextJob.org_id);
       if (!result) {
         skippedJobIds.add(nextJob.id);
         continue;

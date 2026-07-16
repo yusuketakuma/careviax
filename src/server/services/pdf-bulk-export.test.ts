@@ -129,8 +129,14 @@ describe('pdf-bulk-export', () => {
       careCase: {
         findMany: careCaseFindManyMock,
       },
+      membership: {
+        findFirst: membershipFindFirstMock,
+      },
       auditLog: {
         create: auditLogCreateMock,
+      },
+      notification: {
+        upsert: notificationUpsertMock,
       },
     };
   }
@@ -471,7 +477,7 @@ describe('pdf-bulk-export', () => {
       downloadDisposition: 'attachment',
     });
 
-    const result = await runMedicationHistoryBulkExportJob('job_1');
+    const result = await runMedicationHistoryBulkExportJob('job_1', 'org_1');
 
     expect(result).toMatchObject({
       jobId: 'job_1',
@@ -532,6 +538,36 @@ describe('pdf-bulk-export', () => {
       }),
     });
     expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain(storedFileId);
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock.mock.calls.every(([orgId]) => orgId === 'org_1')).toBe(true);
+  });
+
+  it('does not claim a bulk export job through a different organization context', async () => {
+    integrationJobFindUniqueMock.mockResolvedValueOnce({
+      id: 'job_1',
+      org_id: 'org_2',
+      status: 'pending',
+      job_type: 'medication-history-bulk-export',
+      input: {
+        version: 1,
+        requestedBy: 'user_1',
+        patientIds: ['patient_1'],
+      },
+    });
+
+    await expect(runMedicationHistoryBulkExportJob('job_1', 'org_1')).rejects.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      status: 404,
+    });
+
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({ isolationLevel: 'Serializable' }),
+    );
+    expect(integrationJobUpdateManyMock).not.toHaveBeenCalled();
+    expect(buildMedicationHistoryPdfMock).not.toHaveBeenCalled();
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
   });
 
   it('preserves a valid queued trace in completed terminal input and the export audit', async () => {
@@ -552,7 +588,7 @@ describe('pdf-bulk-export', () => {
       },
     });
 
-    await expect(runMedicationHistoryBulkExportJob('job_1')).resolves.toMatchObject({
+    await expect(runMedicationHistoryBulkExportJob('job_1', 'org_1')).resolves.toMatchObject({
       jobId: 'job_1',
       fileId: 'file_1',
       patientCount: 2,
@@ -602,7 +638,7 @@ describe('pdf-bulk-export', () => {
       },
     });
 
-    await expect(runMedicationHistoryBulkExportJob('job_1')).resolves.toMatchObject({
+    await expect(runMedicationHistoryBulkExportJob('job_1', 'org_1')).resolves.toMatchObject({
       jobId: 'job_1',
       fileId: 'file_1',
       patientCount: 2,
@@ -633,7 +669,7 @@ describe('pdf-bulk-export', () => {
       },
     });
 
-    await expect(runMedicationHistoryBulkExportJob('job_1')).rejects.toMatchObject({
+    await expect(runMedicationHistoryBulkExportJob('job_1', 'org_1')).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
       status: 400,
       message: '一括出力ジョブの入力が不正です',
@@ -681,7 +717,7 @@ describe('pdf-bulk-export', () => {
     });
     storeGeneratedFileMock.mockRejectedValueOnce(new Error(rawFailure));
 
-    await expect(runMedicationHistoryBulkExportJob('job_1')).rejects.toThrow(rawFailure);
+    await expect(runMedicationHistoryBulkExportJob('job_1', 'org_1')).rejects.toThrow(rawFailure);
 
     expect(integrationJobUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -714,7 +750,7 @@ describe('pdf-bulk-export', () => {
       })
       .mockRejectedValueOnce(new Error('database timeout'));
 
-    const result = await runMedicationHistoryBulkExportJob('job_1');
+    const result = await runMedicationHistoryBulkExportJob('job_1', 'org_1');
 
     expect(result).toMatchObject({
       jobId: 'job_1',
@@ -788,7 +824,7 @@ describe('pdf-bulk-export', () => {
         buffer: Buffer.from('%PDF-B'),
       });
 
-    await expect(runMedicationHistoryBulkExportJob('job_1')).rejects.toMatchObject({
+    await expect(runMedicationHistoryBulkExportJob('job_1', 'org_1')).rejects.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       status: 409,
       message: expect.stringContaining('合計サイズが上限'),
@@ -823,7 +859,7 @@ describe('pdf-bulk-export', () => {
     process.env.MEDICATION_HISTORY_BULK_EXPORT_MAX_TOTAL_PDF_BYTES = '0.5';
     integrationJobFindFirstMock.mockResolvedValue(null);
 
-    const result = await runMedicationHistoryBulkExportJob('job_1');
+    const result = await runMedicationHistoryBulkExportJob('job_1', 'org_1');
 
     expect(result).toMatchObject({
       jobId: 'job_1',
@@ -839,7 +875,7 @@ describe('pdf-bulk-export', () => {
     integrationJobFindFirstMock.mockResolvedValue(null);
     auditLogCreateMock.mockRejectedValueOnce(new Error(rawFailure));
 
-    await expect(runMedicationHistoryBulkExportJob('job_1')).rejects.toThrow(rawFailure);
+    await expect(runMedicationHistoryBulkExportJob('job_1', 'org_1')).rejects.toThrow(rawFailure);
     expect(deleteGeneratedFileMock).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'file_1',
@@ -878,7 +914,7 @@ describe('pdf-bulk-export', () => {
     integrationJobFindFirstMock.mockResolvedValue(null);
     notificationUpsertMock.mockRejectedValueOnce(new Error(rawFailure));
 
-    const result = await runMedicationHistoryBulkExportJob('job_1');
+    const result = await runMedicationHistoryBulkExportJob('job_1', 'org_1');
 
     expect(result).toMatchObject({
       jobId: 'job_1',
@@ -916,7 +952,7 @@ describe('pdf-bulk-export', () => {
   it('refreshes the running job lock before expensive terminal phases', async () => {
     integrationJobFindFirstMock.mockResolvedValue(null);
 
-    await runMedicationHistoryBulkExportJob('job_1');
+    await runMedicationHistoryBulkExportJob('job_1', 'org_1');
 
     const heartbeatCalls = integrationJobUpdateManyMock.mock.calls.filter(([args]) => {
       const payload = args as {
@@ -958,7 +994,7 @@ describe('pdf-bulk-export', () => {
       .mockResolvedValueOnce({ count: 0 });
     deleteGeneratedFileMock.mockRejectedValueOnce(new Error(rawCleanupFailure));
 
-    const result = await runMedicationHistoryBulkExportJob('job_1');
+    const result = await runMedicationHistoryBulkExportJob('job_1', 'org_1');
 
     expect(result).toBeNull();
     expect(storeGeneratedFileMock).toHaveBeenCalledOnce();
@@ -1016,7 +1052,7 @@ describe('pdf-bulk-export', () => {
     storeGeneratedFileMock.mockRejectedValueOnce(new Error(rawFailure));
     notificationUpsertMock.mockRejectedValueOnce(new Error(rawNotificationFailure));
 
-    await expect(runMedicationHistoryBulkExportJob('job_1')).rejects.toThrow(rawFailure);
+    await expect(runMedicationHistoryBulkExportJob('job_1', 'org_1')).rejects.toThrow(rawFailure);
     expect(deleteGeneratedFileMock).not.toHaveBeenCalled();
     expect(integrationJobUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1055,9 +1091,31 @@ describe('pdf-bulk-export', () => {
     expect(JSON.stringify(loggerWarnMock.mock.calls[0]?.[0])).not.toContain(rawNotificationFailure);
   });
 
+  it('does not send a failure notification after losing the worker lock', async () => {
+    const rawFailure = 'storage unavailable patient=患者A token=secret';
+    integrationJobFindFirstMock.mockResolvedValue(null);
+    storeGeneratedFileMock.mockRejectedValueOnce(new Error(rawFailure));
+    integrationJobUpdateManyMock.mockImplementation(async (args: { data?: { status?: string } }) =>
+      args.data?.status === 'failed' ? { count: 0 } : { count: 1 },
+    );
+
+    await expect(runMedicationHistoryBulkExportJob('job_1', 'org_1')).resolves.toBeNull();
+
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'medication_history_bulk_export.failure_skipped_lock_lost',
+        orgId: 'org_1',
+        targetId: 'job_1',
+        operation: 'fail',
+      }),
+    );
+    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain(rawFailure);
+  });
+
   it('drains the pending export queue', async () => {
     integrationJobFindFirstMock
-      .mockResolvedValueOnce({ id: 'job_1' })
+      .mockResolvedValueOnce({ id: 'job_1', org_id: 'org_1' })
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
 
@@ -1088,9 +1146,9 @@ describe('pdf-bulk-export', () => {
 
   it('skips busy organizations during a global drain and continues with runnable jobs', async () => {
     integrationJobFindFirstMock
-      .mockResolvedValueOnce({ id: 'job_busy' })
+      .mockResolvedValueOnce({ id: 'job_busy', org_id: 'org_busy' })
       .mockResolvedValueOnce({ id: 'running_same_org' })
-      .mockResolvedValueOnce({ id: 'job_runnable' })
+      .mockResolvedValueOnce({ id: 'job_runnable', org_id: 'org_runnable' })
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
     integrationJobFindUniqueMock
@@ -1153,9 +1211,9 @@ describe('pdf-bulk-export', () => {
         buffer: Buffer.from('%PDF-D'),
       });
     integrationJobFindFirstMock
-      .mockResolvedValueOnce({ id: 'job_failed' })
+      .mockResolvedValueOnce({ id: 'job_failed', org_id: 'org_1' })
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'job_success' })
+      .mockResolvedValueOnce({ id: 'job_success', org_id: 'org_2' })
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
     integrationJobFindUniqueMock
