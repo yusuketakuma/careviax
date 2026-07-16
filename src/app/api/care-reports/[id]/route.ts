@@ -1,12 +1,10 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { canConfirmCareReportClinicalJudgement } from '@/lib/auth/care-report-confirmation';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   conflict,
   forbiddenResponse,
-  internalError,
   success,
   validationError,
   notFound,
@@ -93,14 +91,11 @@ const updateCareReportSchema = z.object({
   template_id: z.string().optional(),
 });
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
-    message: '報告書の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function careReportGET(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return sensitiveResponse(validationError('報告書IDが不正です'));
@@ -306,26 +301,16 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   );
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return sensitiveResponse(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return sensitiveResponse(internalError());
-  }
-}
+export const GET = withAuthContext(careReportGET, {
+  permission: 'canReport',
+  message: '報告書の閲覧権限がありません',
+});
 
-async function authenticatedPATCH(
+async function careReportPATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAuthorReport',
-    message: '報告書の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return sensitiveResponse(validationError('報告書IDが不正です'));
@@ -468,11 +453,7 @@ async function authenticatedPATCH(
   return sensitiveResponse(success({ data: report }));
 }
 
-export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return sensitiveResponse(await authenticatedPATCH(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return sensitiveResponse(internalError());
-  }
-}
+export const PATCH = withAuthContext(careReportPATCH, {
+  permission: 'canAuthorReport',
+  message: '報告書の更新権限がありません',
+});

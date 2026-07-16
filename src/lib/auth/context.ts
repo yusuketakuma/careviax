@@ -388,7 +388,24 @@ export function withAuthContext<
 ) {
   return async (req: NextRequest, routeContext: AuthRouteContext<TParams>) => {
     return withRoutePerformance(req, async () => {
-      const authResult = await requireAuthContext(req, options);
+      let authResult: Awaited<ReturnType<typeof requireAuthContext>>;
+      try {
+        authResult = await requireAuthContext(req, options);
+      } catch (err) {
+        unstable_rethrow(err);
+        const trace = resolveRequestTraceContext(req);
+        logger.error(
+          {
+            event: 'route_auth_unhandled_error',
+            route: req.nextUrl?.pathname,
+            method: req.method,
+            requestId: trace.requestId,
+            correlationId: trace.correlationId,
+          },
+          err,
+        );
+        return withRequestTraceHeaders(withSensitiveNoStore(internalError()), trace);
+      }
       if ('response' in authResult) return withSensitiveNoStore(authResult.response);
 
       const trace: RequestTraceContext = {

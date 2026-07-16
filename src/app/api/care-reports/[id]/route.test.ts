@@ -37,7 +37,41 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: string },
+      routeContext: { params: Promise<{ id: string }> },
+    ) => Promise<Response>,
+    options: unknown,
+  ) => {
+    return async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      let response: Response;
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        response =
+          authResult && typeof authResult === 'object' && 'response' in authResult
+            ? authResult.response
+            : await handler(req, authResult.ctx, routeContext);
+      } catch {
+        response = new Response(
+          JSON.stringify({
+            code: 'INTERNAL_ERROR',
+            message: 'サーバー内部でエラーが発生しました',
+          }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('X-Request-Id', '00000000-0000-4000-8000-000000000001');
+      response.headers.set(
+        'X-Correlation-Id',
+        req.headers.get('x-correlation-id') ?? '00000000-0000-4000-8000-000000000001',
+      );
+      return response;
+    };
+  },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -127,6 +161,7 @@ function createRequest(body?: unknown) {
     method: body === undefined ? 'GET' : 'PATCH',
     headers: {
       'x-org-id': 'org_1',
+      'x-correlation-id': body === undefined ? 'care_report_get_test' : 'care_report_patch_test',
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(effectiveBody) }),
@@ -138,6 +173,7 @@ function createMalformedPatchRequest() {
     method: 'PATCH',
     headers: {
       'x-org-id': 'org_1',
+      'x-correlation-id': 'care_report_patch_test',
       'content-type': 'application/json',
     },
     body: '{"content":',
@@ -262,6 +298,8 @@ describe('care-reports/[id] route', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('00000000-0000-4000-8000-000000000001');
+    expect(response.headers.get('X-Correlation-Id')).toBe('care_report_get_test');
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({
         orgId: 'org_1',
@@ -865,6 +903,8 @@ describe('care-reports/[id] route', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('00000000-0000-4000-8000-000000000001');
+    expect(response.headers.get('X-Correlation-Id')).toBe('care_report_patch_test');
     expect(careReportUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'report_1',

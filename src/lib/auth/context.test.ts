@@ -136,6 +136,38 @@ describe('withAuthContext error envelope', () => {
     expect(JSON.stringify(logContext)).not.toContain('MED-SECRET-1');
   });
 
+  it('converts an unexpected authentication throw into a traced no-store 500', async () => {
+    const rawError = new Error('identity provider failed for patient=青葉 花子');
+    authMock.mockRejectedValueOnce(rawError);
+    const handler = vi.fn().mockResolvedValue(NextResponse.json({ ok: true }));
+
+    const response = await withAuthContext(handler)(
+      authedRequest('auth_failure_workflow_1'),
+      routeContext,
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toMatch(/^[0-9a-f-]{36}$/);
+    expect(response.headers.get('X-Correlation-Id')).toBe('auth_failure_workflow_1');
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(handler).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'route_auth_unhandled_error',
+        route: '/api/x',
+        method: 'GET',
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: 'auth_failure_workflow_1',
+      }),
+      rawError,
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain('青葉');
+  });
+
   it('re-throws Next.js redirect/notFound control-flow errors instead of swallowing them', async () => {
     const redirectError = Object.assign(new Error('NEXT_REDIRECT'), {
       digest: 'NEXT_REDIRECT;replace;/login;307;',
