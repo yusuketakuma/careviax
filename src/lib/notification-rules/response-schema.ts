@@ -30,6 +30,7 @@ const notificationRuleSchema = z
     enabled: z.boolean(),
     recipients: notificationRecipientsSchema,
     created_at: z.string().datetime({ offset: true }),
+    updated_at: z.string().datetime({ offset: true }),
   })
   .strip();
 

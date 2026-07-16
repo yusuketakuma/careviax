@@ -464,7 +464,7 @@ export function NotificationSettingsContent() {
             headers: buildOrgJsonHeaders(orgId),
             body: JSON.stringify(
               existing
-                ? { enabled }
+                ? { enabled, expected_updated_at: existing.updated_at }
                 : {
                     event_type: eventType,
                     channel,

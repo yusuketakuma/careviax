@@ -8,6 +8,7 @@ const RULE = {
   enabled: true,
   recipients: { roles: ['admin'] },
   created_at: '2026-07-16T00:00:00.000Z',
+  updated_at: '2026-07-16T00:02:00.000Z',
 };
 
 const META = {
@@ -30,7 +31,6 @@ describe('notificationRulesResponseSchema', () => {
             ...RULE,
             org_id: 'org_1',
             conditions: { min_priority: 'urgent' },
-            updated_at: '2026-07-16T00:02:00.000Z',
           },
         ],
         meta: META,

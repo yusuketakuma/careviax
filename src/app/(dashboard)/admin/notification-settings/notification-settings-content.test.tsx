@@ -75,6 +75,7 @@ const NOTIFICATION_RULE = {
   enabled: true,
   recipients: {},
   created_at: '2026-06-19T10:00:00.000Z',
+  updated_at: '2026-06-19T10:30:00.000Z',
 };
 
 const NOTIFICATION_RULE_META = {
@@ -454,6 +455,7 @@ describe('NotificationSettingsContent', () => {
                   enabled: true,
                   recipients: {},
                   created_at: '2026-06-19T10:00:00.000Z',
+                  updated_at: '2026-06-19T10:30:00.000Z',
                 },
               ],
               meta: {
@@ -515,7 +517,10 @@ describe('NotificationSettingsContent', () => {
             'Content-Type': 'application/json',
             'x-org-id': 'json-org_1',
           },
-          body: JSON.stringify({ enabled: false }),
+          body: JSON.stringify({
+            enabled: false,
+            expected_updated_at: '2026-06-19T10:30:00.000Z',
+          }),
         }),
       );
     });
@@ -821,6 +826,7 @@ describe('NotificationSettingsContent', () => {
                   enabled: true,
                   recipients: {},
                   created_at: '2026-06-19T10:00:00.000Z',
+                  updated_at: '2026-06-19T10:30:00.000Z',
                 },
               ],
               meta: {
