@@ -104,6 +104,20 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'patients',
         }),
         expect.objectContaining({
+          path: '/api/patients/:id/mcs',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+          description: '患者MCS連携概要取得',
+          area: 'patients',
+        }),
+        expect.objectContaining({
+          path: '/api/patients/:id/mcs',
+          methods: ['PATCH'],
+          permission: 'canVisit',
+          description: '患者MCS連携プロフィール更新',
+          area: 'patients',
+        }),
+        expect.objectContaining({
           path: '/api/patients/:id/prescriptions',
           methods: ['GET'],
           permission: 'canViewDashboard',

@@ -905,8 +905,8 @@
     },
     {
       "path": "src/app/api/patients/[id]/mcs/route.ts",
-      "expectedCount": 1,
-      "permissions": ["canVisit"],
+      "expectedCount": 2,
+      "permissions": ["canViewDashboard", "canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",

@@ -167,6 +167,10 @@ describe('/api/patients/[id]/mcs GET', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: 'MCS 連携の閲覧権限がありません',
+    });
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         id: 'patient_1',
@@ -235,6 +239,24 @@ describe('/api/patients/[id]/mcs GET', () => {
     expectSensitiveNoStore(response);
     expect(getPatientMcsOverviewMock).toHaveBeenCalledTimes(1);
     expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows clerks to read the assigned internal MCS overview', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { orgId: 'org_1', userId: 'clerk_1', role: 'clerk' },
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(getPatientMcsOverviewMock).toHaveBeenCalledTimes(1);
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'clerk_1', role: 'clerk' }),
+      expect.objectContaining({ patientId: 'patient_1', view: 'patient_mcs_overview' }),
+    );
   });
 
   it('passes through a validated limit parameter', async () => {
@@ -397,6 +419,10 @@ describe('/api/patients/[id]/mcs GET', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: 'MCS 連携の更新権限がありません',
+    });
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

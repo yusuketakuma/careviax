@@ -39,17 +39,13 @@ const mcsProfileSchema = z.object({
     .transform((value) => (value && value.length > 0 ? value : null)),
 });
 
-async function authorizeMcsRequest(
-  req: NextRequest,
+type AuthorizedMcsPatient = { response: Response } | { ctx: AuthContext; id: string };
+
+async function authorizeMcsPatient(
+  ctx: AuthContext,
   params: Promise<{ id: string }>,
   message: string,
-) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message,
-  });
-  if ('response' in authResult) return authResult;
-  const ctx = authResult.ctx;
+): Promise<AuthorizedMcsPatient> {
   if (!canViewSensitivePatientData(ctx.role)) {
     return { response: forbidden(message) };
   }
@@ -81,7 +77,13 @@ async function authenticatedGET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const authorized = await authorizeMcsRequest(req, params, 'MCS 連携の閲覧権限がありません');
+  const message = 'MCS 連携の閲覧権限がありません';
+  const authResult = await requireAuthContext(req, {
+    permission: 'canViewDashboard',
+    message,
+  });
+  if ('response' in authResult) return authResult.response;
+  const authorized = await authorizeMcsPatient(authResult.ctx, params, message);
   if ('response' in authorized) return authorized.response;
   const { ctx, id } = authorized;
 
@@ -136,7 +138,13 @@ async function authenticatedPATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const authorized = await authorizeMcsRequest(req, params, 'MCS 連携の更新権限がありません');
+  const message = 'MCS 連携の更新権限がありません';
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message,
+  });
+  if ('response' in authResult) return authResult.response;
+  const authorized = await authorizeMcsPatient(authResult.ctx, params, message);
   if ('response' in authorized) return authorized.response;
   const { ctx, id } = authorized;
 

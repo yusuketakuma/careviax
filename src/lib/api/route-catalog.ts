@@ -71,6 +71,20 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'patients',
   },
   {
+    path: '/api/patients/:id/mcs',
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: '患者MCS連携概要取得',
+    area: 'patients',
+  },
+  {
+    path: '/api/patients/:id/mcs',
+    methods: ['PATCH'],
+    permission: 'canVisit',
+    description: '患者MCS連携プロフィール更新',
+    area: 'patients',
+  },
+  {
     path: '/api/patients/board',
     methods: ['GET'],
     permission: 'canViewDashboard',

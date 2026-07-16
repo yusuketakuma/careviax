@@ -71,6 +71,16 @@ describe('routeCatalog', () => {
           methods: ['GET'],
           permission: 'canViewDashboard',
         }),
+        expect.objectContaining({
+          path: '/api/patients/:id/mcs',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+        }),
+        expect.objectContaining({
+          path: '/api/patients/:id/mcs',
+          methods: ['PATCH'],
+          permission: 'canVisit',
+        }),
       ]),
     );
   });
@@ -266,6 +276,7 @@ describe('routeCatalog', () => {
       '/api/patients/check-duplicate',
       '/api/patients/board',
       '/api/patients/:id/overview',
+      '/api/patients/:id/mcs',
       '/api/patients/:id/prescriptions',
       '/api/patients/:id/prescriptions/export',
       '/api/qr-scan-drafts/:id',
