@@ -283,7 +283,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
 
     const response = await rawGET(
       createGetRequest(
-        'http://localhost/api/patient-share-cases/share_case_1/consents?limit=8&status=active&cursor=share_consent_9&view_context=pharmacy_cooperation_workflow',
+        'http://localhost/api/patient-share-cases/share_case_1/consents?limit=8&id=share_consent_1&status=active&view_context=pharmacy_cooperation_workflow',
       ),
       routeContext,
     );
@@ -292,7 +292,12 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
     });
-    const where = { org_id: 'org_1', share_case_id: 'share_case_1', revoked_at: null };
+    const where = {
+      org_id: 'org_1',
+      share_case_id: 'share_case_1',
+      id: 'share_consent_1',
+      revoked_at: null,
+    };
     expect(patientShareConsentFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({ where }),
     );
@@ -302,8 +307,12 @@ describe('/api/patient-share-cases/[id]/consents', () => {
         returned_count: 1,
         total_count: 9,
         count_basis: 'filtered_query_exact',
-        filters_applied: { status: 'active', share_case_id: 'share_case_1' },
-        request_cursor: 'share_consent_9',
+        filters_applied: {
+          id: 'share_consent_1',
+          status: 'active',
+          share_case_id: 'share_case_1',
+        },
+        request_cursor: null,
         status_counts: { active: 9, revoked: 0 },
       },
     });
@@ -317,6 +326,23 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     const body = await response.json();
     expect(body.meta).not.toHaveProperty('total_count');
     expect(body.meta).not.toHaveProperty('status_counts');
+  });
+
+  it('rejects an exact consent ID combined with a continuation cursor', async () => {
+    const response = await rawGET(
+      createGetRequest(
+        'http://localhost/api/patient-share-cases/share_case_1/consents?id=share_consent_1&cursor=share_consent_8',
+      ),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { cursor: ['患者共有同意ID検索ではカーソルを指定できません'] },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('fails closed when patient share consent list audit cannot be recorded', async () => {

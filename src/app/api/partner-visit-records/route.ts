@@ -143,6 +143,18 @@ const authenticatedGET = withAuthContext(
       });
     }
 
+    const idResult = readPresentOptionalSearchParam(
+      searchParams,
+      'id',
+      '協力訪問記録IDを指定してください',
+    );
+    if (!idResult.ok) return idResult.response;
+    if (idResult.value && cursor) {
+      return validationError('検索条件が不正です', {
+        cursor: ['協力訪問記録ID検索ではカーソルを指定できません'],
+      });
+    }
+
     const visitRequestIdResult = readPresentOptionalSearchParam(
       searchParams,
       'visit_request_id',
@@ -163,6 +175,7 @@ const authenticatedGET = withAuthContext(
     if (!rawViewContextResult.ok) return rawViewContextResult.response;
     const visitRequestId = visitRequestIdResult.value;
     const shareCaseId = shareCaseIdResult.value;
+    const directId = idResult.value;
     const viewContext = viewContextSchema.safeParse(rawViewContextResult.value ?? undefined);
     if (!viewContext.success) {
       return validationError('検索条件が不正です', {
@@ -173,6 +186,7 @@ const authenticatedGET = withAuthContext(
 
     const partnerVisitRecordWhere = {
       org_id: ctx.orgId,
+      ...(directId ? { id: directId } : {}),
       ...(status ? { status: status.data } : {}),
       ...(visitRequestId ? { visit_request_id: visitRequestId } : {}),
       ...(shareCaseId ? { share_case_id: shareCaseId } : {}),
@@ -272,6 +286,7 @@ const authenticatedGET = withAuthContext(
               total_count: result.countSummary.totalCount,
               count_basis: 'filtered_query_exact' as const,
               filters_applied: {
+                id: directId ?? null,
                 status: status?.data ?? null,
                 visit_request_id: visitRequestId ?? null,
                 share_case_id: shareCaseId ?? null,

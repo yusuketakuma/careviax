@@ -306,6 +306,7 @@ describe('/api/partner-visit-records', () => {
       total_count: 9,
       count_basis: 'filtered_query_exact',
       filters_applied: {
+        id: null,
         status: 'submitted',
         visit_request_id: 'visit_request_1',
         share_case_id: 'share_case_1',
@@ -322,6 +323,31 @@ describe('/api/partner-visit-records', () => {
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
       isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+    });
+  });
+
+  it('applies an authorized exact partner visit record ID inside the active share scope', async () => {
+    const response = await GET(
+      createGetRequest(
+        '?limit=8&id=%20partner_visit_record_1%20&view_context=pharmacy_cooperation_workflow',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(partnerVisitRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'partner_visit_record_1',
+          org_id: 'org_1',
+          share_case: expect.any(Object),
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      meta: {
+        filters_applied: { id: 'partner_visit_record_1' },
+        request_cursor: null,
+      },
     });
   });
 
@@ -355,6 +381,7 @@ describe('/api/partner-visit-records', () => {
   });
 
   it.each([
+    ['?id=', 'id', '協力訪問記録IDを指定してください'],
     ['?status=', 'status', 'ステータスを指定してください'],
     ['?status=%20%20', 'status', 'ステータスを指定してください'],
     ['?visit_request_id=', 'visit_request_id', '訪問依頼IDを指定してください'],
@@ -372,6 +399,19 @@ describe('/api/partner-visit-records', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(partnerVisitRecordFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an exact partner visit record ID combined with a continuation cursor', async () => {
+    const response = await GET(
+      createGetRequest('?id=partner_visit_record_1&cursor=partner_visit_record_8'),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { cursor: ['協力訪問記録ID検索ではカーソルを指定できません'] },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('rejects unsupported status values before loading records', async () => {

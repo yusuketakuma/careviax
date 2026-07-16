@@ -222,6 +222,20 @@ export const GET = withAuthContext(
       );
     }
 
+    const idResult = readPresentOptionalSearchParam(
+      searchParams,
+      'id',
+      '患者共有ケースIDを指定してください',
+    );
+    if (!idResult.ok) return idResult.response;
+    if (idResult.value && cursor) {
+      return withSensitiveNoStore(
+        validationError('検索条件が不正です', {
+          cursor: ['患者共有ケースID検索ではカーソルを指定できません'],
+        }),
+      );
+    }
+
     const partnershipIdResult = readPresentOptionalSearchParam(
       searchParams,
       'partnership_id',
@@ -242,6 +256,7 @@ export const GET = withAuthContext(
     if (!rawViewContextResult.ok) return rawViewContextResult.response;
     const partnershipId = partnershipIdResult.value;
     const basePatientId = basePatientIdResult.value;
+    const directId = idResult.value;
     const rawViewContext = rawViewContextResult.value;
     const viewContext = viewContextSchema.safeParse(rawViewContext ?? undefined);
     if (!viewContext.success) {
@@ -254,6 +269,7 @@ export const GET = withAuthContext(
 
     const shareCaseWhere = {
       org_id: ctx.orgId,
+      ...(directId ? { id: directId } : {}),
       ...(status ? { status: status.data } : {}),
       ...(partnershipId ? { partnership_id: partnershipId } : {}),
       ...(basePatientId ? { base_patient_id: basePatientId } : {}),
@@ -350,6 +366,7 @@ export const GET = withAuthContext(
               visibleRows.map((row) => row.partnership.partner_pharmacy.id),
             ).size,
             filters: {
+              has_direct_id: Boolean(directId),
               status: status?.data ?? null,
               has_partnership_id: Boolean(partnershipId),
               has_base_patient_id: Boolean(basePatientId),
@@ -375,6 +392,7 @@ export const GET = withAuthContext(
                 total_count: result.countSummary.totalCount,
                 count_basis: 'filtered_query_exact' as const,
                 filters_applied: {
+                  id: directId ?? null,
                   status: status?.data ?? null,
                   partnership_id: partnershipId ?? null,
                   base_patient_id: basePatientId ?? null,

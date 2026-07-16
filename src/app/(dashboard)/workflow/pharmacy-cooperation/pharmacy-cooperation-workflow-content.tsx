@@ -1,6 +1,6 @@
 'use client';
 
-import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -97,6 +97,7 @@ type PatientShareCasePage = CursorPaginatedPage<PatientShareCaseRow> & {
   returned_count: number;
   count_basis: 'filtered_query_exact';
   filters_applied: {
+    id: string | null;
     status: PatientShareCaseStatus | null;
     partnership_id: string | null;
     base_patient_id: string | null;
@@ -392,7 +393,11 @@ type PatientShareConsentPage = CursorPaginatedPage<PatientShareConsentRow> & {
   total_count: number;
   returned_count: number;
   count_basis: 'filtered_query_exact';
-  filters_applied: { status: PatientShareConsentStatus | null; share_case_id: string };
+  filters_applied: {
+    id: string | null;
+    status: PatientShareConsentStatus | null;
+    share_case_id: string;
+  };
   request_cursor: string | null;
   status_counts: PatientShareConsentStatusCounts;
 };
@@ -619,6 +624,7 @@ type PharmacyVisitRequestPage = CursorPaginatedPage<PharmacyVisitRequestRow> & {
   returned_count: number;
   count_basis: 'filtered_query_exact';
   filters_applied: {
+    id: string | null;
     status: PharmacyVisitRequestStatus | null;
     share_case_id: string | null;
     partner_pharmacy_id: string | null;
@@ -798,6 +804,7 @@ type PartnerVisitRecordPage = CursorPaginatedPage<PartnerVisitRecordRow> & {
   returned_count: number;
   count_basis: 'filtered_query_exact';
   filters_applied: {
+    id: string | null;
     status: PartnerVisitRecordStatus | null;
     visit_request_id: string | null;
     share_case_id: string | null;
@@ -1320,6 +1327,7 @@ const patientShareCasePageSchema: z.ZodType<PatientShareCasePage> = z
         count_basis: z.literal('filtered_query_exact'),
         filters_applied: z
           .object({
+            id: z.string().trim().min(1).nullable(),
             status: z.enum(patientShareCaseStatuses).nullable(),
             partnership_id: z.string().trim().min(1).nullable(),
             base_patient_id: z.string().trim().min(1).nullable(),
@@ -1396,6 +1404,7 @@ const pharmacyVisitRequestPageSchema: z.ZodType<PharmacyVisitRequestPage> = z
         count_basis: z.literal('filtered_query_exact'),
         filters_applied: z
           .object({
+            id: z.string().trim().min(1).nullable(),
             status: z.enum(pharmacyVisitRequestStatuses).nullable(),
             share_case_id: z.string().trim().min(1).nullable(),
             partner_pharmacy_id: z.string().trim().min(1).nullable(),
@@ -1477,6 +1486,7 @@ const partnerVisitRecordPageSchema: z.ZodType<PartnerVisitRecordPage> = z
         count_basis: z.literal('filtered_query_exact'),
         filters_applied: z
           .object({
+            id: z.string().trim().min(1).nullable(),
             status: z.enum(partnerVisitRecordStatuses).nullable(),
             visit_request_id: z.string().trim().min(1).nullable(),
             share_case_id: z.string().trim().min(1).nullable(),
@@ -1634,6 +1644,7 @@ const patientShareConsentPageSchema: z.ZodType<PatientShareConsentPage> = z
         count_basis: z.literal('filtered_query_exact'),
         filters_applied: z
           .object({
+            id: z.string().trim().min(1).nullable(),
             status: z.enum(patientShareConsentStatuses).nullable(),
             share_case_id: z.string().trim().min(1),
           })
@@ -1848,12 +1859,14 @@ async function fetchShareCases(
   orgId: string,
   cursor: string | null,
   status: PatientShareCaseStatus | null,
+  directId: string | null,
 ) {
   const params = new URLSearchParams({
     limit: '8',
     view_context: 'pharmacy_cooperation_workflow',
   });
   if (status) params.set('status', status);
+  if (directId) params.set('id', directId);
   if (cursor) params.set('cursor', cursor);
   const response = await fetch(`/api/patient-share-cases?${params.toString()}`, {
     headers: buildOrgHeaders(orgId),
@@ -1864,6 +1877,7 @@ async function fetchShareCases(
   });
   if (
     page.request_cursor !== cursor ||
+    page.filters_applied.id !== directId ||
     page.filters_applied.status !== status ||
     page.filters_applied.partnership_id !== null ||
     page.filters_applied.base_patient_id !== null
@@ -1877,12 +1891,14 @@ async function fetchVisitRequests(
   orgId: string,
   cursor: string | null,
   status: PharmacyVisitRequestStatus | null,
+  directId: string | null,
 ) {
   const params = new URLSearchParams({
     limit: '8',
     view_context: 'pharmacy_cooperation_workflow',
   });
   if (status) params.set('status', status);
+  if (directId) params.set('id', directId);
   if (cursor) params.set('cursor', cursor);
   const response = await fetch(`/api/pharmacy-visit-requests?${params.toString()}`, {
     headers: buildOrgHeaders(orgId),
@@ -1893,6 +1909,7 @@ async function fetchVisitRequests(
   });
   if (
     page.request_cursor !== cursor ||
+    page.filters_applied.id !== directId ||
     page.filters_applied.status !== status ||
     page.filters_applied.share_case_id !== null ||
     page.filters_applied.partner_pharmacy_id !== null
@@ -1906,12 +1923,14 @@ async function fetchPartnerVisitRecords(
   orgId: string,
   cursor: string | null,
   status: PartnerVisitRecordStatus | null,
+  directId: string | null,
 ) {
   const params = new URLSearchParams({
     limit: '8',
     view_context: 'pharmacy_cooperation_workflow',
   });
   if (status) params.set('status', status);
+  if (directId) params.set('id', directId);
   if (cursor) params.set('cursor', cursor);
   const response = await fetch(`/api/partner-visit-records?${params.toString()}`, {
     headers: buildOrgHeaders(orgId),
@@ -1922,6 +1941,7 @@ async function fetchPartnerVisitRecords(
   });
   if (
     page.request_cursor !== cursor ||
+    page.filters_applied.id !== directId ||
     page.filters_applied.status !== status ||
     page.filters_applied.visit_request_id !== null ||
     page.filters_applied.share_case_id !== null
@@ -1966,12 +1986,14 @@ async function fetchPatientShareConsents(
   shareCaseId: string,
   cursor: string | null,
   status: PatientShareConsentStatus | null,
+  directId: string | null,
 ) {
   const params = new URLSearchParams({
     limit: '8',
     view_context: 'pharmacy_cooperation_workflow',
   });
   if (status) params.set('status', status);
+  if (directId) params.set('id', directId);
   if (cursor) params.set('cursor', cursor);
   const response = await fetch(`/api/patient-share-cases/${shareCaseId}/consents?${params}`, {
     headers: buildOrgHeaders(orgId),
@@ -1982,6 +2004,7 @@ async function fetchPatientShareConsents(
   });
   if (
     page.request_cursor !== cursor ||
+    page.filters_applied.id !== directId ||
     page.filters_applied.status !== status ||
     page.filters_applied.share_case_id !== shareCaseId
   ) {
@@ -2454,6 +2477,60 @@ function SectionShell({
       </div>
       {children}
     </section>
+  );
+}
+
+function DirectIdFilter({
+  label,
+  appliedId,
+  onApply,
+}: {
+  label: string;
+  appliedId: string | null;
+  onApply: (id: string | null) => void;
+}) {
+  const [draftId, setDraftId] = useState(appliedId ?? '');
+
+  const apply = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedId = draftId.trim();
+    onApply(normalizedId || null);
+    setDraftId(normalizedId);
+  };
+
+  return (
+    <form className="grid gap-1 sm:min-w-72" onSubmit={apply}>
+      <label className="text-sm font-medium text-foreground" htmlFor={`${label}-direct-id`}>
+        {label}IDで正本確認
+      </label>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Input
+          id={`${label}-direct-id`}
+          value={draftId}
+          onChange={(event) => setDraftId(event.target.value)}
+          placeholder="完全一致ID"
+          autoComplete="off"
+        />
+        <Button type="submit" variant="outline">
+          絞り込む
+        </Button>
+        {appliedId ? (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              setDraftId('');
+              onApply(null);
+            }}
+          >
+            解除
+          </Button>
+        ) : null}
+      </div>
+      <p className="text-xs text-muted-foreground" aria-live="polite">
+        {appliedId ? `ID ${appliedId} を権限付きで確認中` : '未指定時は更新順の一覧を表示'}
+      </p>
+    </form>
   );
 }
 
@@ -4496,15 +4573,22 @@ export function PharmacyCooperationWorkflowContent() {
   const [patientShareConsentStatusFilter, setPatientShareConsentStatusFilter] = useState<
     PatientShareConsentStatus | 'all'
   >('all');
+  const [shareCaseDirectId, setShareCaseDirectId] = useState<string | null>(null);
+  const [visitRequestDirectId, setVisitRequestDirectId] = useState<string | null>(null);
+  const [partnerVisitRecordDirectId, setPartnerVisitRecordDirectId] = useState<string | null>(null);
+  const [patientShareConsentDirectId, setPatientShareConsentDirectId] = useState<string | null>(
+    null,
+  );
   const enabled = Boolean(orgId);
 
   const shareCasesQuery = useInfiniteQuery({
-    queryKey: ['pharmacy-cooperation-share-cases', orgId, shareCaseStatusFilter],
+    queryKey: ['pharmacy-cooperation-share-cases', orgId, shareCaseStatusFilter, shareCaseDirectId],
     queryFn: ({ pageParam }) =>
       fetchShareCases(
         orgId,
         pageParam,
         shareCaseStatusFilter === 'all' ? null : shareCaseStatusFilter,
+        shareCaseDirectId,
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
@@ -4513,12 +4597,18 @@ export function PharmacyCooperationWorkflowContent() {
   });
 
   const visitRequestsQuery = useInfiniteQuery({
-    queryKey: ['pharmacy-cooperation-visit-requests', orgId, visitRequestStatusFilter],
+    queryKey: [
+      'pharmacy-cooperation-visit-requests',
+      orgId,
+      visitRequestStatusFilter,
+      visitRequestDirectId,
+    ],
     queryFn: ({ pageParam }) =>
       fetchVisitRequests(
         orgId,
         pageParam,
         visitRequestStatusFilter === 'all' ? null : visitRequestStatusFilter,
+        visitRequestDirectId,
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
@@ -4527,12 +4617,18 @@ export function PharmacyCooperationWorkflowContent() {
   });
 
   const partnerVisitRecordsQuery = useInfiniteQuery({
-    queryKey: ['pharmacy-cooperation-partner-visit-records', orgId, partnerVisitRecordStatusFilter],
+    queryKey: [
+      'pharmacy-cooperation-partner-visit-records',
+      orgId,
+      partnerVisitRecordStatusFilter,
+      partnerVisitRecordDirectId,
+    ],
     queryFn: ({ pageParam }) =>
       fetchPartnerVisitRecords(
         orgId,
         pageParam,
         partnerVisitRecordStatusFilter === 'all' ? null : partnerVisitRecordStatusFilter,
+        partnerVisitRecordDirectId,
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
@@ -4652,6 +4748,7 @@ export function PharmacyCooperationWorkflowContent() {
       orgId,
       effectiveConsentShareCaseId,
       patientShareConsentStatusFilter,
+      patientShareConsentDirectId,
     ],
     queryFn: ({ pageParam }) =>
       fetchPatientShareConsents(
@@ -4659,6 +4756,7 @@ export function PharmacyCooperationWorkflowContent() {
         effectiveConsentShareCaseId,
         pageParam,
         patientShareConsentStatusFilter === 'all' ? null : patientShareConsentStatusFilter,
+        patientShareConsentDirectId,
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
@@ -5359,6 +5457,13 @@ export function PharmacyCooperationWorkflowContent() {
       </div>
 
       <SectionShell title="患者共有ケース" description="共有状態と患者リンク承認を確認します。">
+        <div className="mb-4">
+          <DirectIdFilter
+            label="患者共有ケース"
+            appliedId={shareCaseDirectId}
+            onApply={setShareCaseDirectId}
+          />
+        </div>
         <QueryFallback
           isLoading={shareCasesQuery.isLoading}
           isError={shareCaseInitialError || Boolean(shareCaseContractError)}
@@ -5447,6 +5552,13 @@ export function PharmacyCooperationWorkflowContent() {
       </SectionShell>
 
       <SectionShell title="患者共有同意" description="共有開始に必要な同意登録と撤回を扱います。">
+        <div className="mb-4">
+          <DirectIdFilter
+            label="患者共有同意"
+            appliedId={patientShareConsentDirectId}
+            onApply={setPatientShareConsentDirectId}
+          />
+        </div>
         <PatientShareConsentsPanel
           shareCases={shareCases}
           selectedShareCaseId={effectiveConsentShareCaseId}
@@ -5527,6 +5639,13 @@ export function PharmacyCooperationWorkflowContent() {
           isBusy={isBusy}
           onCreate={() => createVisitRequestMutation.mutate()}
         />
+        <div className="my-4">
+          <DirectIdFilter
+            label="訪問依頼"
+            appliedId={visitRequestDirectId}
+            onApply={setVisitRequestDirectId}
+          />
+        </div>
         <QueryFallback
           isLoading={visitRequestsQuery.isLoading}
           isError={visitRequestInitialError || Boolean(visitRequestContractError)}
@@ -5656,6 +5775,13 @@ export function PharmacyCooperationWorkflowContent() {
             setForm={setRecordDraftForm}
             isBusy={isBusy}
             onSave={() => savePartnerVisitRecordDraftMutation.mutate()}
+          />
+        </div>
+        <div className="mb-4">
+          <DirectIdFilter
+            label="協力訪問記録"
+            appliedId={partnerVisitRecordDirectId}
+            onApply={setPartnerVisitRecordDirectId}
           />
         </div>
         <QueryFallback

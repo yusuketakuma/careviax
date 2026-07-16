@@ -328,6 +328,7 @@ describe('/api/pharmacy-visit-requests', () => {
       total_count: 9,
       count_basis: 'filtered_query_exact',
       filters_applied: {
+        id: null,
         status: 'requested',
         share_case_id: 'share_case_1',
         partner_pharmacy_id: 'partner_pharmacy_1',
@@ -362,6 +363,27 @@ describe('/api/pharmacy-visit-requests', () => {
     });
   });
 
+  it('applies an authorized exact visit request ID without relying on the loaded page', async () => {
+    const response = await GET(
+      createGetRequest(
+        '?limit=8&id=%20visit_request_1%20&view_context=pharmacy_cooperation_workflow',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(pharmacyVisitRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'visit_request_1', org_id: 'org_1' }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      meta: {
+        filters_applied: { id: 'visit_request_1' },
+        request_cursor: null,
+      },
+    });
+  });
+
   it('keeps the public API cursor response free of workflow-only exact metadata', async () => {
     const response = await GET(createGetRequest('?limit=8'));
 
@@ -392,6 +414,7 @@ describe('/api/pharmacy-visit-requests', () => {
   });
 
   it.each([
+    ['?id=', 'id', '訪問依頼IDを指定してください'],
     ['?status=', 'status', 'ステータスを指定してください'],
     ['?status=%20%20', 'status', 'ステータスを指定してください'],
     ['?share_case_id=', 'share_case_id', '患者共有ケースIDを指定してください'],
@@ -413,6 +436,17 @@ describe('/api/pharmacy-visit-requests', () => {
       expect(pharmacyVisitRequestFindManyMock).not.toHaveBeenCalled();
     },
   );
+
+  it('rejects an exact visit request ID combined with a continuation cursor', async () => {
+    const response = await GET(createGetRequest('?id=visit_request_1&cursor=visit_request_8'));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { cursor: ['訪問依頼ID検索ではカーソルを指定できません'] },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
 
   it('rejects unsupported status values before loading visit requests', async () => {
     const response = await GET(createGetRequest('?status=deleted'));

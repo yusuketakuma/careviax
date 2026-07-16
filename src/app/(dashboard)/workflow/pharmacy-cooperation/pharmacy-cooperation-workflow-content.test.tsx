@@ -44,6 +44,7 @@ function shareCaseMeta({
   nextCursor = null,
   requestCursor = null,
   status = null,
+  directId = null,
   statusCounts = { ...emptyShareCaseStatusCounts, active: totalCount },
 }: {
   returnedCount: number;
@@ -52,6 +53,7 @@ function shareCaseMeta({
   nextCursor?: string | null;
   requestCursor?: string | null;
   status?: string | null;
+  directId?: string | null;
   statusCounts?: typeof emptyShareCaseStatusCounts;
 }) {
   return {
@@ -61,6 +63,7 @@ function shareCaseMeta({
     total_count: totalCount,
     count_basis: 'filtered_query_exact',
     filters_applied: {
+      id: directId,
       status,
       partnership_id: null,
       base_patient_id: null,
@@ -115,6 +118,7 @@ function visitRequestMeta({
   nextCursor = null,
   requestCursor = null,
   status = null,
+  directId = null,
   statusCounts = { ...emptyVisitRequestStatusCounts, requested: totalCount },
 }: {
   returnedCount: number;
@@ -123,6 +127,7 @@ function visitRequestMeta({
   nextCursor?: string | null;
   requestCursor?: string | null;
   status?: string | null;
+  directId?: string | null;
   statusCounts?: typeof emptyVisitRequestStatusCounts;
 }) {
   return {
@@ -132,6 +137,7 @@ function visitRequestMeta({
     total_count: totalCount,
     count_basis: 'filtered_query_exact',
     filters_applied: {
+      id: directId,
       status,
       share_case_id: null,
       partner_pharmacy_id: null,
@@ -252,6 +258,7 @@ function partnerVisitRecordMeta({
   nextCursor = null,
   requestCursor = null,
   status = null,
+  directId = null,
   statusCounts = { ...emptyPartnerVisitRecordStatusCounts, submitted: totalCount },
 }: {
   returnedCount: number;
@@ -260,6 +267,7 @@ function partnerVisitRecordMeta({
   nextCursor?: string | null;
   requestCursor?: string | null;
   status?: string | null;
+  directId?: string | null;
   statusCounts?: typeof emptyPartnerVisitRecordStatusCounts;
 }) {
   return {
@@ -269,6 +277,7 @@ function partnerVisitRecordMeta({
     total_count: totalCount,
     count_basis: 'filtered_query_exact',
     filters_applied: {
+      id: directId,
       status,
       visit_request_id: null,
       share_case_id: null,
@@ -376,6 +385,7 @@ function patientShareConsentMeta({
   nextCursor = null,
   requestCursor = null,
   status = null,
+  directId = null,
   statusCounts = { ...emptyPatientShareConsentStatusCounts, active: totalCount },
 }: {
   shareCaseId: string;
@@ -385,6 +395,7 @@ function patientShareConsentMeta({
   nextCursor?: string | null;
   requestCursor?: string | null;
   status?: string | null;
+  directId?: string | null;
   statusCounts?: typeof emptyPatientShareConsentStatusCounts;
 }) {
   return {
@@ -393,7 +404,7 @@ function patientShareConsentMeta({
     returned_count: returnedCount,
     total_count: totalCount,
     count_basis: 'filtered_query_exact',
-    filters_applied: { status, share_case_id: shareCaseId },
+    filters_applied: { id: directId, status, share_case_id: shareCaseId },
     request_cursor: requestCursor,
     status_counts: statusCounts,
   };
@@ -1547,6 +1558,126 @@ describe('PharmacyCooperationWorkflowContent', () => {
       });
     });
   }, 15_000);
+
+  it('resolves mutation targets by authorized exact IDs outside the loaded subset', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow&id=share_case_1'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [createShareCaseRow('share_case_1', 'consent_pending')],
+            meta: shareCaseMeta({
+              returnedCount: 1,
+              directId: 'share_case_1',
+              statusCounts: { ...emptyShareCaseStatusCounts, consent_pending: 1 },
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/pharmacy-visit-requests?limit=8&view_context=pharmacy_cooperation_workflow&id=visit_request_1'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [createVisitRequestRow('visit_request_1')],
+            meta: visitRequestMeta({ returnedCount: 1, directId: 'visit_request_1' }),
+          }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/partner-visit-records?limit=8&view_context=pharmacy_cooperation_workflow&id=partner_record_submitted'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [createPartnerVisitRecordRow('partner_record_submitted')],
+            meta: partnerVisitRecordMeta({
+              returnedCount: 1,
+              directId: 'partner_record_submitted',
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/patient-share-cases/share_case_1/consents?limit=8&view_context=pharmacy_cooperation_workflow&id=share_consent_1'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [createPatientShareConsentRow('share_consent_1', 'share_case_1')],
+            meta: patientShareConsentMeta({
+              shareCaseId: 'share_case_1',
+              returnedCount: 1,
+              directId: 'share_consent_1',
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    await screen.findAllByText('share_case_1');
+
+    const exactIds = [
+      ['患者共有ケースIDで正本確認', 'share_case_1'],
+      ['訪問依頼IDで正本確認', 'visit_request_1'],
+      ['協力訪問記録IDで正本確認', 'partner_record_submitted'],
+      ['患者共有同意IDで正本確認', 'share_consent_1'],
+    ] as const;
+
+    for (const [label, id] of exactIds) {
+      const input = screen.getByLabelText(label);
+      fireEvent.change(input, { target: { value: `  ${id}  ` } });
+      fireEvent.click(within(input.closest('form')!).getByRole('button', { name: '絞り込む' }));
+      await waitFor(() => {
+        expect(
+          vi.mocked(fetch).mock.calls.some(([request]) => String(request).includes(`id=${id}`)),
+        ).toBe(true);
+      });
+      expect(screen.getByText(`ID ${id} を権限付きで確認中`)).toBeTruthy();
+    }
+  });
+
+  it('keeps an exact ID filter available for recovery when the authorized lookup fails', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow&id=share_case_unavailable'
+      ) {
+        return new Response(
+          JSON.stringify({ code: 'INTERNAL_ERROR', message: '患者共有ケースの取得に失敗しました' }),
+          { status: 500 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    await screen.findAllByText('share_case_1');
+
+    const input = screen.getByLabelText('患者共有ケースIDで正本確認');
+    fireEvent.change(input, { target: { value: 'share_case_unavailable' } });
+    fireEvent.click(within(input.closest('form')!).getByRole('button', { name: '絞り込む' }));
+
+    expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
+    expect(screen.getByText('ID share_case_unavailable を権限付きで確認中')).toBeTruthy();
+    fireEvent.click(within(input.closest('form')!).getByRole('button', { name: '解除' }));
+    expect((await screen.findAllByText('share_case_1')).length).toBeGreaterThan(0);
+  });
 
   it('shows the patient share consent empty state only for genuine empty results', async () => {
     const originalFetch = vi.mocked(fetch).getMockImplementation();

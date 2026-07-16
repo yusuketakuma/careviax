@@ -292,6 +292,18 @@ const authenticatedGET = withAuthContext(
       });
     }
 
+    const idResult = readPresentOptionalSearchParam(
+      searchParams,
+      'id',
+      '訪問依頼IDを指定してください',
+    );
+    if (!idResult.ok) return idResult.response;
+    if (idResult.value && cursor) {
+      return validationError('検索条件が不正です', {
+        cursor: ['訪問依頼ID検索ではカーソルを指定できません'],
+      });
+    }
+
     const shareCaseIdResult = readPresentOptionalSearchParam(
       searchParams,
       'share_case_id',
@@ -312,6 +324,7 @@ const authenticatedGET = withAuthContext(
     if (!rawViewContextResult.ok) return rawViewContextResult.response;
     const shareCaseId = shareCaseIdResult.value;
     const partnerPharmacyId = partnerPharmacyIdResult.value;
+    const directId = idResult.value;
     const viewContext = viewContextSchema.safeParse(rawViewContextResult.value ?? undefined);
     if (!viewContext.success) {
       return validationError('検索条件が不正です', {
@@ -322,6 +335,7 @@ const authenticatedGET = withAuthContext(
 
     const visitRequestWhere = {
       org_id: ctx.orgId,
+      ...(directId ? { id: directId } : {}),
       ...(status ? { status: status.data } : {}),
       ...(shareCaseId ? { share_case_id: shareCaseId } : {}),
       ...(partnerPharmacyId ? { partner_pharmacy_id: partnerPharmacyId } : {}),
@@ -416,6 +430,7 @@ const authenticatedGET = withAuthContext(
               total_count: result.countSummary.totalCount,
               count_basis: 'filtered_query_exact' as const,
               filters_applied: {
+                id: directId ?? null,
                 status: status?.data ?? null,
                 share_case_id: shareCaseId ?? null,
                 partner_pharmacy_id: partnerPharmacyId ?? null,

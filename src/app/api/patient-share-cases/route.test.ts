@@ -277,6 +277,7 @@ describe('/api/patient-share-cases', () => {
           total_count: 1,
           count_basis: 'filtered_query_exact',
           filters_applied: {
+            id: null,
             status: null,
             partnership_id: null,
             base_patient_id: null,
@@ -447,6 +448,7 @@ describe('/api/patient-share-cases', () => {
           total_count: 12,
           count_basis: 'filtered_query_exact',
           filters_applied: {
+            id: null,
             status: null,
             partnership_id: null,
             base_patient_id: null,
@@ -684,6 +686,7 @@ describe('/api/patient-share-cases', () => {
           total_count: 3,
           count_basis: 'filtered_query_exact',
           filters_applied: {
+            id: null,
             status: null,
             partnership_id: null,
             base_patient_id: null,
@@ -766,7 +769,7 @@ describe('/api/patient-share-cases', () => {
     patientShareCaseGroupByMock.mockResolvedValue([{ status: 'active', _count: { _all: 1 } }]);
     const response = await GET(
       createGetRequest(
-        '?status=%20active%20&partnership_id=%20partnership_1%20&base_patient_id=%20patient_1%20&view_context=%20pharmacy_cooperation_workflow%20',
+        '?id=%20share_case_1%20&status=%20active%20&partnership_id=%20partnership_1%20&base_patient_id=%20patient_1%20&view_context=%20pharmacy_cooperation_workflow%20',
       ),
     );
 
@@ -775,6 +778,7 @@ describe('/api/patient-share-cases', () => {
     expect(where).toEqual(
       expect.objectContaining({
         org_id: 'org_1',
+        id: 'share_case_1',
         status: 'active',
         partnership_id: 'partnership_1',
         base_patient_id: 'patient_1',
@@ -786,6 +790,7 @@ describe('/api/patient-share-cases', () => {
         total_count: 1,
         count_basis: 'filtered_query_exact',
         filters_applied: {
+          id: 'share_case_1',
           status: 'active',
           partnership_id: 'partnership_1',
           base_patient_id: 'patient_1',
@@ -802,6 +807,7 @@ describe('/api/patient-share-cases', () => {
         changes: expect.objectContaining({
           target_screen: 'pharmacy_cooperation_workflow',
           filters: expect.objectContaining({
+            has_direct_id: true,
             status: 'active',
             has_partnership_id: true,
             has_base_patient_id: true,
@@ -812,6 +818,7 @@ describe('/api/patient-share-cases', () => {
   });
 
   it.each([
+    ['?id=', 'id', '患者共有ケースIDを指定してください'],
     ['?status=', 'status', 'ステータスを指定してください'],
     ['?status=%20%20', 'status', 'ステータスを指定してください'],
     ['?partnership_id=', 'partnership_id', '薬局間連携IDを指定してください'],
@@ -834,6 +841,18 @@ describe('/api/patient-share-cases', () => {
       expect(createAuditLogEntryMock).not.toHaveBeenCalled();
     },
   );
+
+  it('rejects an exact share case ID combined with a continuation cursor', async () => {
+    const response = await GET(createGetRequest('?id=share_case_1&cursor=share_case_8'));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { cursor: ['患者共有ケースID検索ではカーソルを指定できません'] },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
 
   it('rejects unsupported status and view context values before loading share cases', async () => {
     const unsupportedStatusResponse = await GET(createGetRequest('?status=archived'));

@@ -5,6 +5,13 @@
 
 ---
 
+## 2026-07-17: Pharmacy cooperation authoritative cursor scope `cc:完了`
+
+- [x] `FE-PHARMACY-COOP-CURSOR-001`
+  - 6 resourceの先頭8件/meta破棄を、exact count・stable cursor・filter echo・明示load/retryへ置換した。message threadは最新bounded windowを時系列表示し、thread/message双方のloaded/total/scope-completeを明示する。
+  - 不可逆mutation対象の共有ケース、訪問依頼、協力訪問記録、患者共有同意は、既存tenant/active-share権限predicate内のexact ID検索で正本確認できる。ID検索とcontinuation cursorの同時指定は400で拒否し、lookup失敗中もfilter解除導線を保持する。
+  - mutation成功時はresource prefixで全filter cursor chainをinvalidateする。Provider/workflow focused 5 files / 145 tests、typecheck、frontend/API/privacy/static gatesで固定した。
+
 ## 2026-07-16: Active queue reconciliation `cc:完了`
 
 - [x] `MEDSAFE-MEDICATION-ISSUE-OCC-001` — fresh transactional authz + durable version CAS (`ea2ba1d3c`)

@@ -127,6 +127,20 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         validationError('検索条件が不正です', { status: ['対応していない同意状態です'] }),
       );
     }
+    const consentIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'id',
+      '患者共有同意IDを指定してください',
+    );
+    if (!consentIdResult.ok) return withSensitiveNoStore(consentIdResult.response);
+    const directId = consentIdResult.value;
+    if (directId && cursor) {
+      return withSensitiveNoStore(
+        validationError('検索条件が不正です', {
+          cursor: ['患者共有同意ID検索ではカーソルを指定できません'],
+        }),
+      );
+    }
     const rawViewContextResult = readPresentOptionalSearchParam(
       searchParams,
       'view_context',
@@ -155,6 +169,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         const consentWhere: Prisma.PatientShareConsentWhereInput = {
           org_id: ctx.orgId,
           share_case_id: id,
+          ...(directId ? { id: directId } : {}),
           ...(status?.data === 'active'
             ? { revoked_at: null }
             : status?.data === 'revoked'
@@ -241,7 +256,11 @@ const authenticatedGET = withAuthContext<{ id: string }>(
                 returned_count: result.page.data.length,
                 total_count: result.countSummary.totalCount,
                 count_basis: 'filtered_query_exact' as const,
-                filters_applied: { status: status?.data ?? null, share_case_id: id },
+                filters_applied: {
+                  id: directId ?? null,
+                  status: status?.data ?? null,
+                  share_case_id: id,
+                },
                 request_cursor: cursor ?? null,
                 status_counts: result.countSummary.statusCounts,
               }
