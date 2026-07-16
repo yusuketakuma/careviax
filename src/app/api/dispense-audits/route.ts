@@ -6,15 +6,7 @@ import { ADMIN_MEMBER_ROLES, DISPENSE_AUDIT_FALLBACK_MEMBER_ROLES } from '@/lib/
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import {
-  success,
-  validationError,
-  notFound,
-  conflict,
-  forbidden,
-  error,
-  internalError,
-} from '@/lib/api/response';
+import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { formatDateKey } from '@/lib/date-key';
 import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
@@ -262,10 +254,8 @@ const createDispenseAuditSchema = z.object({
     )
     .optional(),
   /**
-   * 単独薬剤師の自己監査=限定例外 (D1=B)。
-   * 調剤者=監査者の場合のみ、admin 承認 + 理由必須でツーパーソンルールの限定例外を許可。
-   * 理由は必須入力としてサーバ側で再検証する(空文字は拒否)。承認者(admin)・サーバ時刻は
-   * サーバ側で記録するためクライアントからは受け取らない。
+   * Accepted only for backward-compatible request parsing. Self-audits are denied
+   * regardless of this value until a distinct approver contract is ratified.
    */
   same_operator_reason: z.string().optional(),
 });
@@ -459,8 +449,6 @@ async function validateDispenseAuditDoubleCount(args: {
 
 type DispenseAuditMutationError =
   | { error: 'self_audit' }
-  | { error: 'self_audit_reason_required' }
-  | { error: 'self_audit_not_authorized' }
   | { error: 'already_audited' }
   | { error: 'double_count_invalid'; details: { double_count: DoubleCountValidationIssue[] } }
   | { error: string; conflict?: true; details?: unknown };
@@ -560,10 +548,8 @@ async function authenticatedPOST(req: NextRequest) {
       reject_detail,
       external_audit,
       double_count,
-      same_operator_reason,
       expected_version,
     } = parsed.data;
-    const sameOperatorReason = same_operator_reason?.trim() ?? '';
     const mergedRejectDetail = mergeRejectDetail({
       rejectDetail: reject_detail,
       externalAudit: external_audit,
@@ -626,6 +612,17 @@ async function authenticatedPOST(req: NextRequest) {
           });
           if (!task) return null;
 
+          // A dispenser must never audit their own work. The exception workflow remains
+          // unavailable until a distinct approver contract is explicitly ratified.
+          const dispensedByUsers = await tx.dispenseResult.findMany({
+            where: { task_id, org_id: ctx.orgId },
+            select: { dispensed_by: true },
+            distinct: ['dispensed_by'],
+          });
+          if (dispensedByUsers.some(({ dispensed_by }) => dispensed_by === ctx.userId)) {
+            return { error: 'self_audit' as const };
+          }
+
           const existingAudit = await tx.dispenseAudit.findFirst({
             where: { task_id, result: { in: ['approved', 'emergency_approved'] } },
             select: {
@@ -647,7 +644,7 @@ async function authenticatedPOST(req: NextRequest) {
                 rejectReason: reject_reason,
                 rejectReasonCode: reject_reason_code,
                 rejectDetail: mergedRejectDetail,
-                sameOperatorReason,
+                sameOperatorReason: '',
               })
             ) {
               return { ...existingAudit, idempotent: true } as const;
@@ -665,43 +662,6 @@ async function authenticatedPOST(req: NextRequest) {
                 current_version: task.cycle.version,
               },
             } as const;
-          }
-
-          // S2: Self-audit prevention — dispenser cannot audit their own work.
-          // D1=B: 単独薬剤師の自己監査=限定例外。調剤者=監査者の場合は原則拒否だが、
-          // admin 承認 + same_operator_reason 必須 + サーバ時刻記録 を満たす場合のみ許可する。
-          // two-person rule を形骸化させないため、理由欠如/権限欠如は従来どおり拒否する。
-          const dispensedByUsers = await tx.dispenseResult.findMany({
-            where: { task_id, org_id: ctx.orgId },
-            select: { dispensed_by: true },
-            distinct: ['dispensed_by'],
-          });
-          const dispenserIds = new Set(dispensedByUsers.map((r) => r.dispensed_by));
-          const isSelfAudit = dispenserIds.has(ctx.userId);
-          // 自己監査例外が成立する場合に DispenseAudit へ記録する承認 admin の User ID。
-          let sameOperatorApprovedBy: string | null = null;
-          if (isSelfAudit) {
-            // 理由必須(空文字不可)。欠如は two-person rule 保護のため拒否。
-            if (!sameOperatorReason) {
-              return { error: 'self_audit_reason_required' as const };
-            }
-            // admin 承認: 自己監査を実行する本人が admin(owner/admin) 権限を持つ場合のみ許可。
-            // 既存の emergency_approved と同じ membership ベースの権限判定に厳密準拠する。
-            const adminMembership = await tx.membership.findFirst({
-              where: {
-                org_id: ctx.orgId,
-                user_id: ctx.userId,
-                is_active: true,
-                role: { in: [...ADMIN_MEMBER_ROLES] },
-              },
-              select: {
-                id: true,
-              },
-            });
-            if (!adminMembership) {
-              return { error: 'self_audit_not_authorized' as const };
-            }
-            sameOperatorApprovedBy = ctx.userId;
           }
 
           if (result === 'emergency_approved') {
@@ -759,9 +719,8 @@ async function authenticatedPOST(req: NextRequest) {
                   reject_detail: mergedRejectDetail,
                   audited_by: ctx.userId,
                   audited_at: now,
-                  // D1=B: 自己監査例外のみ理由・承認 admin を記録 (非自己監査時は NULL)。
-                  same_operator_reason: isSelfAudit ? sameOperatorReason : null,
-                  same_operator_approved_by: sameOperatorApprovedBy,
+                  same_operator_reason: null,
+                  same_operator_approved_by: null,
                 },
               });
             } catch (err) {
@@ -787,7 +746,7 @@ async function authenticatedPOST(req: NextRequest) {
                     rejectReason: reject_reason,
                     rejectReasonCode: reject_reason_code,
                     rejectDetail: mergedRejectDetail,
-                    sameOperatorReason,
+                    sameOperatorReason: '',
                   })
                 ) {
                   return { ...concurrentAudit, idempotent: true } as const;
@@ -799,24 +758,6 @@ async function authenticatedPOST(req: NextRequest) {
           })();
           if ('error' in audit) return audit;
           if (isIdempotentDispenseAuditReplay(audit)) return audit;
-
-          // D1=B: 自己監査例外を append-only の操作証跡として記録 (3省2ガイドライン §12-5)。
-          // inputUserId(調剤者=監査者) / approvedBy(承認 admin) / サーバ時刻を残す。
-          if (isSelfAudit) {
-            await createAuditLogEntry(tx, ctx, {
-              action: 'self_audit_exception',
-              targetType: 'DispenseAudit',
-              targetId: audit.id,
-              changes: {
-                task_id,
-                result,
-                same_operator_reason: sameOperatorReason,
-                same_operator_approved_by: sameOperatorApprovedBy,
-                audited_by: ctx.userId,
-                audited_at: now.toISOString(),
-              },
-            });
-          }
 
           // 麻薬ダブルカウントの計数値を監査証跡として保存(操作ログ = AuditLog)
           if (doubleCountEvidence.length > 0) {
@@ -955,18 +896,6 @@ async function authenticatedPOST(req: NextRequest) {
       const auditError = auditResult;
       if (auditError.error === 'self_audit') {
         return validationError('ご自身が調剤した処方の監査はできません');
-      }
-      if (auditError.error === 'self_audit_reason_required') {
-        // two-person rule の限定例外には理由が必須 (内容は不正だが認可は通っている → 422)。
-        return error(
-          'VALIDATION_ERROR',
-          '自己監査（調剤者=監査者）の例外には理由の記録が必須です',
-          422,
-        );
-      }
-      if (auditError.error === 'self_audit_not_authorized') {
-        // 自己監査例外は admin 承認が必要 (権限不足 → 403)。
-        return forbidden('自己監査（調剤者=監査者）の例外は管理者のみ承認できます');
       }
       if (auditError.error === 'already_audited') {
         return conflict('この調剤タスクは既に監査済みです');

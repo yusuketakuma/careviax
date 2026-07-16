@@ -858,7 +858,9 @@ describe('/api/dispense-audits POST', () => {
   });
 
   it('returns an existing matching audit on an exact retry without duplicate side effects', async () => {
-    const dispenseResultFindManyMock = vi.fn();
+    const dispenseResultFindManyMock = vi
+      .fn()
+      .mockResolvedValue([{ dispensed_by: 'user_dispense' }]);
     const dispenseAuditCreateMock = vi.fn();
     const taskUpdateMock = vi.fn();
     const existingAudit = {
@@ -924,7 +926,7 @@ describe('/api/dispense-audits POST', () => {
         idempotent: true,
       },
     });
-    expect(dispenseResultFindManyMock).not.toHaveBeenCalled();
+    expect(dispenseResultFindManyMock).toHaveBeenCalledTimes(1);
     expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
     expect(taskUpdateMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
@@ -1622,19 +1624,20 @@ describe('/api/dispense-audits POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
-  it('allows a self-audit exception when an admin supplies a reason (D1=B)', async () => {
-    // ctx.userId = 'user_1' が調剤者でもある → 自己監査。admin 承認 + 理由ありで許可される。
+  it('denies a self-audit before replay or writes even when an admin supplies a reason', async () => {
     const dispenseAuditCreateMock = vi.fn().mockResolvedValue({
       id: 'audit_self',
       result: 'approved',
     });
+    const dispenseAuditFindFirstMock = vi.fn().mockResolvedValue({
+      id: 'audit_self',
+      result: 'approved',
+      audited_by: 'user_1',
+      same_operator_reason: '単独勤務のため自己監査',
+    });
     const auditLogCreateMock = vi.fn().mockResolvedValue({ id: 'log_1' });
     const membershipFindFirstMock = vi.fn().mockResolvedValue({ id: 'membership_admin' });
-    // 2 回の遷移: audit_pending→audited, audited→visit_ready
-    const cycleFindFirstMock = vi
-      .fn()
-      .mockResolvedValueOnce({ id: 'cycle_self', overall_status: 'audit_pending', version: 1 })
-      .mockResolvedValueOnce({ id: 'cycle_self', overall_status: 'audited', version: 2 });
+    const cycleFindFirstMock = vi.fn();
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -1666,7 +1669,7 @@ describe('/api/dispense-audits POST', () => {
           findMany: vi.fn().mockResolvedValue([]),
         },
         dispenseAudit: {
-          findFirst: vi.fn().mockResolvedValue(null),
+          findFirst: dispenseAuditFindFirstMock,
           create: dispenseAuditCreateMock,
         },
         auditLog: {
@@ -1696,40 +1699,20 @@ describe('/api/dispense-audits POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(201);
-    // admin 承認確認のため membership を参照している
-    expect(membershipFindFirstMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          user_id: 'user_1',
-          role: { in: ['owner', 'admin'] },
-        }),
-      }),
-    );
-    // 例外フィールド(理由・承認 admin)が DispenseAudit に記録される
-    expect(dispenseAuditCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        same_operator_reason: '単独勤務のため自己監査',
-        same_operator_approved_by: 'user_1',
-        audited_by: 'user_1',
-      }),
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'ご自身が調剤した処方の監査はできません',
     });
-    // append-only の操作証跡 (AuditLog self_audit_exception) が残る
-    expect(auditLogCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        action: 'self_audit_exception',
-        target_type: 'DispenseAudit',
-        target_id: 'audit_self',
-        actor_id: 'user_1',
-        changes: expect.objectContaining({
-          same_operator_reason: '単独勤務のため自己監査',
-          same_operator_approved_by: 'user_1',
-        }),
-      }),
-    });
+    expect(dispenseAuditFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(cycleFindFirstMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
-  it('rejects a self-audit with 422 when no reason is supplied', async () => {
+  it('denies a self-audit without consulting an exception approver when no reason is supplied', async () => {
     const dispenseAuditCreateMock = vi.fn();
     const membershipFindFirstMock = vi.fn();
     const auditLogCreateMock = vi.fn();
@@ -1784,17 +1767,17 @@ describe('/api/dispense-audits POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(422);
+    expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      message: '自己監査（調剤者=監査者）の例外には理由の記録が必須です',
+      message: 'ご自身が調剤した処方の監査はできません',
     });
-    // two-person rule 保護: 監査レコード・操作証跡は作らない
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
-  it('rejects a self-audit with 403 when the operator lacks admin approval', async () => {
+  it('denies a self-audit with the same contract regardless of admin approval', async () => {
     const dispenseAuditCreateMock = vi.fn();
     // 自己監査だが admin 権限なし → membership.findFirst が null を返す
     const membershipFindFirstMock = vi.fn().mockResolvedValue(null);
@@ -1851,11 +1834,11 @@ describe('/api/dispense-audits POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      message: '自己監査（調剤者=監査者）の例外は管理者のみ承認できます',
+      message: 'ご自身が調剤した処方の監査はできません',
     });
-    expect(membershipFindFirstMock).toHaveBeenCalled();
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
