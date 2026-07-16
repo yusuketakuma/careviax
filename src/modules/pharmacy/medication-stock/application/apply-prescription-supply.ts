@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 
 import { allocateDisplayId } from '@/lib/db/display-id';
 import { normalizeMedicationCode } from '@/lib/pharmacy/drug-identity-resolution';
+import { buildPackageCodeCandidates, buildPackageLookupOr } from '@/lib/pharmacy/package-code';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { isMedicationStockItemWriteAllowed } from '../domain/medication-equivalence';
 import { resolveConfirmedPrescriptionReplenishmentHorizon } from './prescription-replenishment-horizon';
@@ -19,6 +20,10 @@ export type PrescriptionSupplyReviewReason =
   | 'unresolved_drug_identity'
   | 'name_only_identity'
   | 'package_only_identity'
+  | 'ambiguous_package_identity'
+  | 'package_metadata_missing'
+  | 'package_level_unsupported'
+  | 'package_quantity_invalid'
   | 'unsupported_unit'
   | 'unit_conversion_required'
   | 'quantity_missing'
@@ -73,6 +78,7 @@ export type ApplyPrescriptionSupplyForIntakeResult = {
 export type ApplyPrescriptionSupplyDb = Pick<
   Prisma.TransactionClient,
   | 'drugMaster'
+  | 'drugPackage'
   | 'medicationStockEvent'
   | 'medicationStockSnapshot'
   | 'patientMedicationStockItem'
@@ -126,10 +132,23 @@ type DrugMasterIdentityRow = {
 
 type StockItemRow = MedicationStockSnapshotItem & {
   drug_master_id: string | null;
+  drug_package_id: string | null;
   source_type: string;
   unit: string;
   equivalence_review_status: string;
 };
+
+type DrugPackageIdentityRow = {
+  id: string;
+  drug_master_id: string;
+  gtin: string;
+  jan_code: string | null;
+  package_level: string | null;
+  package_quantity: Prisma.Decimal | null;
+  package_quantity_unit: string | null;
+};
+
+type DrugPackageIndexes = Map<string, DrugPackageIdentityRow[]>;
 
 type DrugMasterIndexes = {
   byId: Map<string, DrugMasterIdentityRow>;
@@ -251,8 +270,11 @@ function isStockRelevantLine(line: PrescriptionSupplyLineRow) {
   return isLikelyExternalLine(line) || isLikelyPrnLine(line);
 }
 
-function normalizePrescriptionSupplyUnit(line: PrescriptionSupplyLineRow) {
-  const raw = normalizeText(line.unit)?.replace(/\s+/g, '');
+function normalizeMedicationStockUnit(
+  value: string | null | undefined,
+  line: Pick<PrescriptionSupplyLineRow, 'dosage_form' | 'drug_name'>,
+) {
+  const raw = normalizeText(value)?.replace(/\s+/g, '');
   if (!raw) return null;
   if (['錠', 'tablet', 'tablets', 'tab'].includes(raw)) return 'tablet';
   if (['カプセル', 'capsule', 'capsules', 'cap'].includes(raw)) return 'capsule';
@@ -271,6 +293,17 @@ function normalizePrescriptionSupplyUnit(line: PrescriptionSupplyLineRow) {
   return null;
 }
 
+function normalizePrescriptionSupplyUnit(line: PrescriptionSupplyLineRow) {
+  return normalizeMedicationStockUnit(line.unit, line);
+}
+
+function isSalesPackageCountUnit(value: string | null | undefined) {
+  const raw = normalizeText(value)?.replace(/\s+/g, '');
+  return (
+    raw != null && ['箱', '販売包装', 'box', 'boxes', 'package', 'packages', 'pkg'].includes(raw)
+  );
+}
+
 function buildSupplyEventIdempotencyKeyHash(args: { orgId: string; prescriptionLineId: string }) {
   return `medication-stock-prescription-supply:v1:${sha256Hex(
     stableStringify({
@@ -287,6 +320,7 @@ function buildSupplyRequestFingerprint(args: {
   drugCode: string | null;
   quantity: number;
   unit: string;
+  drugPackageId?: string;
 }) {
   return `medication-stock-prescription-supply-request:v1:${sha256Hex(
     stableStringify({
@@ -297,6 +331,7 @@ function buildSupplyRequestFingerprint(args: {
       quantity: args.quantity,
       unit: args.unit,
       event_type: 'prescription_supply',
+      ...(args.drugPackageId ? { drug_package_id: args.drugPackageId } : {}),
     }),
   )}`;
 }
@@ -464,12 +499,121 @@ async function loadDrugMasterIndexes(
   return buildDrugMasterIndexes(rows);
 }
 
+function appendPackageIndex(
+  index: DrugPackageIndexes,
+  code: string | null,
+  row: DrugPackageIdentityRow,
+) {
+  for (const candidate of buildPackageCodeCandidates(code)) {
+    const rows = index.get(candidate) ?? [];
+    if (!rows.some((existing) => existing.id === row.id)) rows.push(row);
+    index.set(candidate, rows);
+  }
+}
+
+async function loadDrugPackageIndexes(
+  db: ApplyPrescriptionSupplyDb,
+  lines: PrescriptionSupplyLineRow[],
+  prescribedDate: Date,
+) {
+  const lookupOr = lines
+    .filter(isPackageOnlyIdentity)
+    .flatMap((line) => buildPackageLookupOr(line.source_drug_code));
+  const uniqueLookupOr = [
+    ...new Map(lookupOr.map((condition) => [stableStringify(condition), condition])).values(),
+  ];
+  if (uniqueLookupOr.length === 0) return new Map() as DrugPackageIndexes;
+
+  const rows = (await db.drugPackage.findMany({
+    where: {
+      is_active: true,
+      AND: [
+        { OR: uniqueLookupOr },
+        { OR: [{ effective_from: null }, { effective_from: { lte: prescribedDate } }] },
+        { OR: [{ effective_to: null }, { effective_to: { gte: prescribedDate } }] },
+      ],
+    },
+    select: {
+      id: true,
+      drug_master_id: true,
+      gtin: true,
+      jan_code: true,
+      package_level: true,
+      package_quantity: true,
+      package_quantity_unit: true,
+    },
+  })) as DrugPackageIdentityRow[];
+
+  const indexes: DrugPackageIndexes = new Map();
+  for (const row of rows) {
+    appendPackageIndex(indexes, row.gtin, row);
+    appendPackageIndex(indexes, row.jan_code, row);
+  }
+  return indexes;
+}
+
+function resolveLineDrugPackage(line: PrescriptionSupplyLineRow, indexes: DrugPackageIndexes) {
+  const matches = new Map<string, DrugPackageIdentityRow>();
+  for (const code of buildPackageCodeCandidates(line.source_drug_code)) {
+    for (const row of indexes.get(code) ?? []) matches.set(row.id, row);
+  }
+  return [...matches.values()];
+}
+
+function convertPackageSupplyQuantity(args: {
+  line: PrescriptionSupplyLineRow;
+  packageRow: DrugPackageIdentityRow;
+  quantity: number;
+}):
+  | { ok: true; quantity: number; unit: string }
+  | {
+      ok: false;
+      reasonCode:
+        | 'package_metadata_missing'
+        | 'package_level_unsupported'
+        | 'package_quantity_invalid'
+        | 'unsupported_unit';
+    } {
+  if (args.packageRow.package_level !== 'sales') {
+    return { ok: false, reasonCode: 'package_level_unsupported' };
+  }
+  if (!args.packageRow.package_quantity || !args.packageRow.package_quantity_unit) {
+    return { ok: false, reasonCode: 'package_metadata_missing' };
+  }
+
+  const packageUnit = normalizeMedicationStockUnit(
+    args.packageRow.package_quantity_unit,
+    args.line,
+  );
+  if (!packageUnit) return { ok: false, reasonCode: 'package_metadata_missing' };
+
+  const lineUnit = normalizePrescriptionSupplyUnit(args.line);
+  const sourceQuantity = new Prisma.Decimal(args.quantity);
+  const converted =
+    lineUnit === packageUnit
+      ? sourceQuantity
+      : isSalesPackageCountUnit(args.line.unit)
+        ? sourceQuantity.mul(args.packageRow.package_quantity)
+        : null;
+  if (!converted) return { ok: false, reasonCode: 'unsupported_unit' };
+  if (
+    !converted.isFinite() ||
+    converted.lessThanOrEqualTo(0) ||
+    converted.decimalPlaces() > 4 ||
+    converted.greaterThan('99999999.9999')
+  ) {
+    return { ok: false, reasonCode: 'package_quantity_invalid' };
+  }
+  return { ok: true, quantity: converted.toNumber(), unit: packageUnit };
+}
+
 async function findExactStockItemCandidates(args: {
   db: ApplyPrescriptionSupplyDb;
   orgId: string;
   patientId: string;
   caseId: string | null;
   drugMasterId: string;
+  drugPackageId?: string;
 }) {
   return (await args.db.patientMedicationStockItem.findMany({
     where: {
@@ -477,6 +621,7 @@ async function findExactStockItemCandidates(args: {
       patient_id: args.patientId,
       active: true,
       drug_master_id: args.drugMasterId,
+      ...(args.drugPackageId ? { drug_package_id: args.drugPackageId } : {}),
       ...(args.caseId ? { OR: [{ case_id: args.caseId }, { case_id: null }] } : { case_id: null }),
     },
     orderBy: [{ case_id: 'desc' }, { created_at: 'asc' }, { id: 'asc' }],
@@ -485,6 +630,7 @@ async function findExactStockItemCandidates(args: {
       patient_id: true,
       case_id: true,
       drug_master_id: true,
+      drug_package_id: true,
       source_type: true,
       unit: true,
       default_usage_amount_per_day: true,
@@ -560,6 +706,7 @@ async function applyPrescriptionSupplyLine(args: {
   intake: PrescriptionSupplyIntakeRow;
   line: PrescriptionSupplyLineRow;
   drugMasters: DrugMasterIndexes;
+  drugPackages: DrugPackageIndexes;
   now: Date;
 }): Promise<ApplyPrescriptionSupplyLineResult> {
   if (!args.intake.cycle.patient_id) {
@@ -577,12 +724,12 @@ async function applyPrescriptionSupplyLine(args: {
     };
   }
 
-  const quantity = readSupplyQuantity(args.line);
-  const unit = normalizePrescriptionSupplyUnit(args.line);
-  const quantityPresent = quantity != null;
-  const unitSupported = unit != null;
+  const parsedQuantity = readSupplyQuantity(args.line);
+  let unit = normalizePrescriptionSupplyUnit(args.line);
+  const quantityPresent = parsedQuantity != null;
+  let unitSupported = unit != null || isSalesPackageCountUnit(args.line.unit);
 
-  if (!quantityPresent) {
+  if (parsedQuantity == null) {
     return createReviewTask({
       ...args,
       reasonCode: 'quantity_missing',
@@ -591,7 +738,7 @@ async function applyPrescriptionSupplyLine(args: {
       quantityPresent,
     });
   }
-  if (quantity <= 0) {
+  if (parsedQuantity <= 0) {
     return createReviewTask({
       ...args,
       reasonCode: 'quantity_non_positive',
@@ -600,27 +747,54 @@ async function applyPrescriptionSupplyLine(args: {
       quantityPresent,
     });
   }
-  if (!unitSupported) {
-    return createReviewTask({
-      ...args,
-      reasonCode: 'unsupported_unit',
-      candidateCount: 0,
-      unitSupported,
-      quantityPresent,
-    });
-  }
+  let quantity = parsedQuantity;
+  let drugPackage: DrugPackageIdentityRow | null = null;
+  let drugMasterId: string | null = null;
   if (isPackageOnlyIdentity(args.line)) {
-    return createReviewTask({
-      ...args,
-      reasonCode: 'package_only_identity',
-      candidateCount: 0,
-      unitSupported,
-      quantityPresent,
+    const packageCandidates = resolveLineDrugPackage(args.line, args.drugPackages);
+    if (packageCandidates.length !== 1) {
+      return createReviewTask({
+        ...args,
+        reasonCode:
+          packageCandidates.length > 1 ? 'ambiguous_package_identity' : 'package_only_identity',
+        candidateCount: packageCandidates.length,
+        unitSupported,
+        quantityPresent,
+      });
+    }
+    drugPackage = packageCandidates[0];
+    const conversion = convertPackageSupplyQuantity({
+      line: args.line,
+      packageRow: drugPackage,
+      quantity,
     });
+    if (!conversion.ok) {
+      return createReviewTask({
+        ...args,
+        reasonCode: conversion.reasonCode,
+        candidateCount: 1,
+        unitSupported,
+        quantityPresent,
+      });
+    }
+    quantity = conversion.quantity;
+    unit = conversion.unit;
+    unitSupported = true;
+    drugMasterId = drugPackage.drug_master_id;
+  } else {
+    if (!unitSupported || !unit) {
+      return createReviewTask({
+        ...args,
+        reasonCode: 'unsupported_unit',
+        candidateCount: 0,
+        unitSupported,
+        quantityPresent,
+      });
+    }
+    drugMasterId = resolveLineDrugMaster(args.line, args.drugMasters)?.id ?? null;
   }
 
-  const drugMaster = resolveLineDrugMaster(args.line, args.drugMasters);
-  if (!drugMaster) {
+  if (!drugMasterId || !unit) {
     return createReviewTask({
       ...args,
       reasonCode: normalizeText(args.line.drug_name)
@@ -637,7 +811,8 @@ async function applyPrescriptionSupplyLine(args: {
     orgId: args.orgId,
     patientId: args.intake.cycle.patient_id,
     caseId: args.intake.cycle.case_id,
-    drugMasterId: drugMaster.id,
+    drugMasterId,
+    ...(drugPackage ? { drugPackageId: drugPackage.id } : {}),
   });
   if (candidates.length === 0) {
     return createReviewTask({
@@ -676,10 +851,11 @@ async function applyPrescriptionSupplyLine(args: {
   const requestFingerprintHash = buildSupplyRequestFingerprint({
     prescriptionLineId: args.line.id,
     stockItemId: stockItem.id,
-    drugMasterId: drugMaster.id,
+    drugMasterId,
     drugCode: normalizeMedicationCode(args.line.drug_code),
     quantity,
     unit,
+    ...(drugPackage ? { drugPackageId: drugPackage.id } : {}),
   });
   const existingEvent = await args.db.medicationStockEvent.findFirst({
     where: {
@@ -810,6 +986,7 @@ export async function applyPrescriptionSupplyForIntake(
   }
 
   const drugMasters = await loadDrugMasterIndexes(db, intake.lines);
+  const drugPackages = await loadDrugPackageIndexes(db, intake.lines, intake.prescribed_date);
   const now = new Date();
   const results: ApplyPrescriptionSupplyLineResult[] = [];
   for (const line of intake.lines) {
@@ -821,6 +998,7 @@ export async function applyPrescriptionSupplyForIntake(
         intake,
         line,
         drugMasters,
+        drugPackages,
         now,
       }),
     );

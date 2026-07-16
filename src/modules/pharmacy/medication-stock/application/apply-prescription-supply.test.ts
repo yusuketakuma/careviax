@@ -36,6 +36,7 @@ function buildRequestFingerprint(input: {
   drugCode: string | null;
   quantity: number;
   unit: string;
+  drugPackageId?: string;
 }) {
   return `medication-stock-prescription-supply-request:v1:${createHash('sha256')
     .update(
@@ -47,6 +48,7 @@ function buildRequestFingerprint(input: {
         quantity: input.quantity,
         unit: input.unit,
         event_type: 'prescription_supply',
+        ...(input.drugPackageId ? { drug_package_id: input.drugPackageId } : {}),
       }),
     )
     .digest('hex')}`;
@@ -55,6 +57,9 @@ function buildRequestFingerprint(input: {
 function createDb() {
   return {
     drugMaster: {
+      findMany: vi.fn(),
+    },
+    drugPackage: {
       findMany: vi.fn(),
     },
     medicationStockEvent: {
@@ -148,12 +153,45 @@ function setupSingleStockItem(
       patient_id: 'patient_1',
       case_id: 'case_1',
       drug_master_id: 'drug_master_1',
+      drug_package_id: null,
       source_type: 'prescription',
       unit: 'sheet',
       default_usage_amount_per_day: '1',
       medication_category: 'external',
       equivalence_review_status: 'not_required',
       ...overrides,
+    },
+  ]);
+}
+
+function createPackageLine(overrides: Partial<Record<string, unknown>> = {}) {
+  return createExternalLine({
+    drug_master_id: null,
+    drug_code: null,
+    source_drug_code: '14987000000007',
+    source_drug_code_type: 'gs1',
+    quantity: 1,
+    unit: '箱',
+    ...overrides,
+  });
+}
+
+function setupPackageIdentity(
+  db: ReturnType<typeof createDb>,
+  line = createPackageLine(),
+  packageOverrides: Partial<Record<string, unknown>> = {},
+) {
+  db.prescriptionIntake.findFirst.mockResolvedValue(createIntake(line));
+  db.drugPackage.findMany.mockResolvedValue([
+    {
+      id: 'drug_package_1',
+      drug_master_id: 'drug_master_1',
+      gtin: '14987000000007',
+      jan_code: null,
+      package_level: 'sales',
+      package_quantity: '100',
+      package_quantity_unit: '枚',
+      ...packageOverrides,
     },
   ]);
 }
@@ -554,7 +592,7 @@ describe('applyPrescriptionSupplyForIntake', () => {
     expect(db.medicationStockEvent.create).not.toHaveBeenCalled();
   });
 
-  it('treats GS1/GTIN/JAN package-only evidence as review-only', async () => {
+  it('requires review when GS1/GTIN/JAN package evidence has no exact active package', async () => {
     const db = createDb();
     setupExactIdentity(
       db,
@@ -565,6 +603,7 @@ describe('applyPrescriptionSupplyForIntake', () => {
         source_drug_code_type: 'gs1',
       }),
     );
+    db.drugPackage.findMany.mockResolvedValue([]);
     upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
 
     const result = await applyPrescriptionSupplyForIntake(
@@ -582,6 +621,266 @@ describe('applyPrescriptionSupplyForIntake', () => {
       task_id: 'task_1',
     });
     expect(db.medicationStockEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('converts an exact sales-package count and applies it only to the matching package stock item', async () => {
+    const db = createDb();
+    setupPackageIdentity(db);
+    setupSingleStockItem(db, { drug_package_id: 'drug_package_1' });
+    db.medicationStockEvent.findFirst.mockResolvedValue(null);
+    db.medicationStockEvent.create.mockResolvedValue({ id: 'stock_event_1' });
+    db.medicationStockEvent.findMany.mockResolvedValue([
+      {
+        id: 'stock_event_1',
+        event_at: new Date('2026-07-07T00:00:00.000Z'),
+        created_at: new Date('2026-07-07T09:00:10.000Z'),
+        quantity_kind: 'delta',
+        quantity_delta: '100',
+        observed_quantity: null,
+        usage_quantity: null,
+        usage_period_days: null,
+        unit: 'sheet',
+      },
+    ]);
+    db.medicationStockSnapshot.upsert.mockResolvedValue({
+      current_quantity: '100',
+      stock_risk_level: 'ok',
+      calculated_at: new Date('2026-07-07T09:00:00.000Z'),
+    });
+    allocateDisplayIdMock
+      .mockResolvedValueOnce('msev0000000001')
+      .mockResolvedValueOnce('mss0000000001');
+
+    const result = await applyPrescriptionSupplyForIntake(
+      db as unknown as ApplyPrescriptionSupplyDb,
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        intakeId: 'intake_1',
+      },
+    );
+
+    expect(result.results[0]).toMatchObject({
+      kind: 'applied',
+      stock_item_id: 'stock_item_1',
+      snapshot: { current_quantity: 100 },
+    });
+    expect(db.patientMedicationStockItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          drug_master_id: 'drug_master_1',
+          drug_package_id: 'drug_package_1',
+        }),
+      }),
+    );
+    expect(db.medicationStockEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          quantity_delta: expect.objectContaining({}),
+          unit: 'sheet',
+          request_fingerprint_hash: buildRequestFingerprint({
+            prescriptionLineId: 'line_1',
+            stockItemId: 'stock_item_1',
+            drugMasterId: 'drug_master_1',
+            drugCode: null,
+            quantity: 100,
+            unit: 'sheet',
+            drugPackageId: 'drug_package_1',
+          }),
+        }),
+      }),
+    );
+    const createdQuantity = db.medicationStockEvent.create.mock.calls[0][0].data.quantity_delta;
+    expect(createdQuantity.toString()).toBe('100');
+  });
+
+  it('deduplicates JAN and zero-padded GTIN matches for the same package row', async () => {
+    const db = createDb();
+    setupPackageIdentity(
+      db,
+      createPackageLine({
+        source_drug_code: '4987000000000',
+        unit: '枚',
+        quantity: 14,
+      }),
+      {
+        gtin: '04987000000000',
+        jan_code: '4987000000000',
+      },
+    );
+    setupSingleStockItem(db, { drug_package_id: 'drug_package_1' });
+    db.medicationStockEvent.findFirst.mockResolvedValue({
+      id: 'stock_event_1',
+      stock_item_id: 'stock_item_1',
+      request_fingerprint_hash: buildRequestFingerprint({
+        prescriptionLineId: 'line_1',
+        stockItemId: 'stock_item_1',
+        drugMasterId: 'drug_master_1',
+        drugCode: null,
+        quantity: 14,
+        unit: 'sheet',
+        drugPackageId: 'drug_package_1',
+      }),
+    });
+    db.medicationStockSnapshot.findFirst.mockResolvedValue({
+      current_quantity: '14',
+      stock_risk_level: 'ok',
+      calculated_at: new Date('2026-07-07T09:00:00.000Z'),
+    });
+
+    const result = await applyPrescriptionSupplyForIntake(
+      db as unknown as ApplyPrescriptionSupplyDb,
+      { orgId: 'org_1', userId: 'user_1', intakeId: 'intake_1' },
+    );
+
+    expect(result.results[0]).toMatchObject({ kind: 'applied', idempotent_replay: true });
+    expect(db.drugPackage.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires review for ambiguous package identities without querying stock items', async () => {
+    const db = createDb();
+    setupPackageIdentity(db, createPackageLine({ source_drug_code: '4987000000000' }));
+    db.drugPackage.findMany.mockResolvedValue([
+      {
+        id: 'drug_package_1',
+        drug_master_id: 'drug_master_1',
+        gtin: '14987000000007',
+        jan_code: '4987000000000',
+        package_level: 'sales',
+        package_quantity: '100',
+        package_quantity_unit: '枚',
+      },
+      {
+        id: 'drug_package_2',
+        drug_master_id: 'drug_master_2',
+        gtin: '24987000000004',
+        jan_code: '4987000000000',
+        package_level: 'sales',
+        package_quantity: '50',
+        package_quantity_unit: '枚',
+      },
+    ]);
+    upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
+
+    const result = await applyPrescriptionSupplyForIntake(
+      db as unknown as ApplyPrescriptionSupplyDb,
+      { orgId: 'org_1', userId: 'user_1', intakeId: 'intake_1' },
+    );
+
+    expect(result.results[0]).toMatchObject({
+      kind: 'review_required',
+      reason_code: 'ambiguous_package_identity',
+      candidate_count: 2,
+    });
+    expect(db.patientMedicationStockItem.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ package_level: 'dispensing' }, 'package_level_unsupported'],
+    [{ package_quantity: null }, 'package_metadata_missing'],
+    [{ package_quantity_unit: null }, 'package_metadata_missing'],
+    [{ package_quantity: '0' }, 'package_quantity_invalid'],
+    [{ package_quantity: '0.00001' }, 'package_quantity_invalid'],
+    [{ package_quantity: '100000000' }, 'package_quantity_invalid'],
+  ])('requires review for unsafe package metadata %j', async (packageOverrides, reasonCode) => {
+    const db = createDb();
+    setupPackageIdentity(db, createPackageLine(), packageOverrides);
+    upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
+
+    const result = await applyPrescriptionSupplyForIntake(
+      db as unknown as ApplyPrescriptionSupplyDb,
+      { orgId: 'org_1', userId: 'user_1', intakeId: 'intake_1' },
+    );
+
+    expect(result.results[0]).toMatchObject({
+      kind: 'review_required',
+      reason_code: reasonCode,
+    });
+    expect(db.medicationStockEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('does not apply a package conversion to a stock item without the exact package link', async () => {
+    const db = createDb();
+    setupPackageIdentity(db);
+    db.patientMedicationStockItem.findMany.mockResolvedValue([]);
+    upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
+
+    const result = await applyPrescriptionSupplyForIntake(
+      db as unknown as ApplyPrescriptionSupplyDb,
+      { orgId: 'org_1', userId: 'user_1', intakeId: 'intake_1' },
+    );
+
+    expect(result.results[0]).toMatchObject({
+      kind: 'review_required',
+      reason_code: 'existing_stock_item_missing',
+    });
+    expect(db.patientMedicationStockItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ drug_package_id: 'drug_package_1' }),
+      }),
+    );
+  });
+
+  it('batches package lookup across prescription lines', async () => {
+    const db = createDb();
+    const firstLine = createPackageLine({ id: 'line_1' });
+    const secondLine = createPackageLine({
+      id: 'line_2',
+      source_drug_code: '24987000000004',
+    });
+    db.prescriptionIntake.findFirst.mockResolvedValue(
+      createIntake(firstLine, { lines: [firstLine, secondLine] }),
+    );
+    db.drugPackage.findMany.mockResolvedValue([
+      {
+        id: 'drug_package_1',
+        drug_master_id: 'drug_master_1',
+        gtin: '14987000000007',
+        jan_code: null,
+        package_level: 'sales',
+        package_quantity: '100',
+        package_quantity_unit: '枚',
+      },
+      {
+        id: 'drug_package_2',
+        drug_master_id: 'drug_master_2',
+        gtin: '24987000000004',
+        jan_code: null,
+        package_level: 'sales',
+        package_quantity: '50',
+        package_quantity_unit: '枚',
+      },
+    ]);
+    db.patientMedicationStockItem.findMany.mockResolvedValue([]);
+    upsertOperationalTaskMock
+      .mockResolvedValueOnce({ id: 'task_1' })
+      .mockResolvedValueOnce({ id: 'task_2' });
+
+    const result = await applyPrescriptionSupplyForIntake(
+      db as unknown as ApplyPrescriptionSupplyDb,
+      { orgId: 'org_1', userId: 'user_1', intakeId: 'intake_1' },
+    );
+
+    expect(result.review_required_count).toBe(2);
+    expect(db.drugPackage.findMany).toHaveBeenCalledTimes(1);
+    expect(db.patientMedicationStockItem.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires review when a package line uses an ambiguous non-container unit', async () => {
+    const db = createDb();
+    setupPackageIdentity(db, createPackageLine({ unit: '箱詰' }));
+    upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
+
+    const result = await applyPrescriptionSupplyForIntake(
+      db as unknown as ApplyPrescriptionSupplyDb,
+      { orgId: 'org_1', userId: 'user_1', intakeId: 'intake_1' },
+    );
+
+    expect(result.results[0]).toMatchObject({
+      kind: 'review_required',
+      reason_code: 'unsupported_unit',
+    });
+    expect(db.patientMedicationStockItem.findMany).not.toHaveBeenCalled();
   });
 
   it('requires review for unsupported units and does not leak drug name or dose text into task metadata', async () => {
