@@ -44,6 +44,33 @@ describe('SmsNotificationAdapter', () => {
     );
   });
 
+  it('adds a tenant-bound signed callback URL without placing delivery data in the body', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        Response.json({ sid: TWILIO_MESSAGE_SID, status: 'queued' }, { status: 201 }),
+      );
+    const adapter = new SmsNotificationAdapter({
+      provider: 'twilio',
+      accountSid: 'AC123',
+      authToken: 'auth-token',
+      fromNumber: '+819012345678',
+      statusCallbackUrl: 'https://app.example.test/api/webhooks/twilio/message-status',
+    });
+
+    await adapter.sendSms('+819011111111', '通知本文', {
+      callbackContext: { orgId: 'org_1', deliveryId: '4fda4c0e-95c0-4a38-8e8f-75822b5e55fb' },
+    });
+
+    const request = fetchMock.mock.calls[0]?.[1];
+    const body = new URLSearchParams(String(request?.body));
+    expect(body.get('StatusCallback')).toBe(
+      'https://app.example.test/api/webhooks/twilio/message-status?org_id=org_1&delivery_id=4fda4c0e-95c0-4a38-8e8f-75822b5e55fb',
+    );
+    expect(body.get('Body')).toBe('通知本文');
+    expect(body.get('Body')).not.toContain('org_1');
+  });
+
   it('uses an unrefed cleanup timer for Twilio delivery requests', async () => {
     vi.stubEnv('SMS_DELIVERY_TIMEOUT_MS', '2200');
     const unref = vi.fn();
@@ -103,6 +130,18 @@ describe('SmsNotificationAdapter', () => {
       provider: 'twilio',
       providerMessageId: null,
     });
+  });
+
+  it('fails closed when the configured callback URL is not the exact HTTPS route', async () => {
+    vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC123');
+    vi.stubEnv('TWILIO_AUTH_TOKEN', 'auth-token');
+    vi.stubEnv('TWILIO_FROM_NUMBER', '+819012345678');
+    vi.stubEnv('TWILIO_STATUS_CALLBACK_URL', 'http://attacker.test/callback');
+
+    expect(getSmsProviderReadiness()).toEqual({ status: 'misconfigured' });
+    await expect(
+      new SmsNotificationAdapter().sendSms('+819011111111', '通知本文'),
+    ).resolves.toMatchObject({ status: 'failed', provider: 'twilio' });
   });
 
   it.each([

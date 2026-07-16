@@ -1,5 +1,9 @@
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import { createFetchTimeout } from '@/server/services/fetch-timeout';
+import {
+  buildTwilioStatusCallbackUrl,
+  isValidTwilioStatusCallbackUrl,
+} from '@/server/services/twilio-status-callback';
 import type { ProviderDeliveryResult } from '../delivery-result';
 
 type SmsAdapterConfig =
@@ -14,7 +18,12 @@ type SmsAdapterConfig =
       accountSid: string;
       authToken: string;
       fromNumber: string;
+      statusCallbackUrl?: string;
     };
+
+type SmsDeliveryOptions = {
+  callbackContext?: { orgId: string; deliveryId: string };
+};
 
 const DEFAULT_SMS_DELIVERY_TIMEOUT_MS = 10_000;
 const TWILIO_MESSAGE_SID_RE = /^(?:SM|MM)[0-9a-fA-F]{32}$/;
@@ -49,14 +58,19 @@ function resolveSmsConfig(): SmsAdapterConfig {
   const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
   const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
   const fromNumber = process.env.TWILIO_FROM_NUMBER?.trim();
+  const statusCallbackUrl = process.env.TWILIO_STATUS_CALLBACK_URL?.trim();
   const configuredCount = [accountSid, authToken, fromNumber].filter(Boolean).length;
 
   if (accountSid && authToken && fromNumber) {
+    if (statusCallbackUrl && !isValidTwilioStatusCallbackUrl(statusCallbackUrl)) {
+      return { provider: 'misconfigured' };
+    }
     return {
       provider: 'twilio',
       accountSid,
       authToken,
       fromNumber,
+      ...(statusCallbackUrl ? { statusCallbackUrl } : {}),
     };
   }
   return { provider: configuredCount === 0 ? 'not_configured' : 'misconfigured' };
@@ -94,7 +108,11 @@ async function readTwilioAcceptance(response: Response) {
 export class SmsNotificationAdapter {
   constructor(private readonly config: SmsAdapterConfig = resolveSmsConfig()) {}
 
-  async sendSms(phoneNumber: string, message: string): Promise<ProviderDeliveryResult> {
+  async sendSms(
+    phoneNumber: string,
+    message: string,
+    options: SmsDeliveryOptions = {},
+  ): Promise<ProviderDeliveryResult> {
     if (phoneNumber.trim().length === 0) {
       throw new SmsNotificationAdapterError('SMS delivery target is required');
     }
@@ -110,6 +128,10 @@ export class SmsNotificationAdapter {
     }
 
     if (this.config.provider === 'twilio') {
+      const statusCallbackUrl = buildTwilioStatusCallbackUrl(
+        this.config.statusCallbackUrl,
+        options.callbackContext,
+      );
       const abort = createFetchTimeout(resolveSmsDeliveryTimeoutMs());
       let response: Response;
       try {
@@ -127,6 +149,7 @@ export class SmsNotificationAdapter {
               To: phoneNumber,
               From: this.config.fromNumber,
               Body: message,
+              ...(statusCallbackUrl ? { StatusCallback: statusCallbackUrl } : {}),
             }).toString(),
             signal: abort.signal,
           },

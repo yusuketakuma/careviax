@@ -75,6 +75,7 @@ model Organization {
   webhook_registrations        WebhookRegistration[]
   webhook_deliveries           WebhookDelivery[]
   domain_event_outbox          DomainEventOutbox[]
+  provider_delivery_receipts   ProviderDeliveryReceipt[]
   drug_alert_rules             DrugAlertRule[]
   file_assets                  FileAsset[]
   visitScheduleProposalBatches VisitScheduleProposalBatch[]

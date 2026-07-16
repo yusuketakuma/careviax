@@ -282,8 +282,12 @@ model DomainEventOutbox {
   locked_until        DateTime?
   provider            String?
   provider_message_id String?
+  provider_status     String?
+  provider_status_at  DateTime?
   last_error_code     String?
   accepted_at         DateTime?
+  delivered_at        DateTime?
+  failed_at           DateTime?
   completed_at        DateTime?
   created_at          DateTime  @default(now())
   updated_at          DateTime  @updatedAt
@@ -295,6 +299,26 @@ model DomainEventOutbox {
   @@index([org_id, status, next_attempt_at, created_at], map: "DomainEventOutbox_org_drain_idx")
   @@index([org_id, locked_until], map: "DomainEventOutbox_org_lease_idx")
   @@index([aggregate_type, aggregate_id])
+}
+
+/// Reference-only provider callback inbox. It deliberately excludes phone
+/// numbers, message bodies, and raw callback payloads.
+model ProviderDeliveryReceipt {
+  id                       String    @id @default(cuid())
+  org_id                   String
+  delivery_idempotency_key String
+  provider_message_id      String
+  provider_status          String
+  provider_error_code      String?
+  received_at              DateTime  @default(now())
+  applied_at               DateTime?
+  created_at               DateTime  @default(now())
+  updated_at               DateTime  @updatedAt
+
+  organization Organization @relation(fields: [org_id], references: [id])
+
+  @@unique([org_id, provider_message_id, provider_status])
+  @@index([org_id, delivery_idempotency_key, applied_at, received_at], map: "ProviderDeliveryReceipt_pending_idx")
 }
 
 model Template {

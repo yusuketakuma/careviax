@@ -296,6 +296,27 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "TWILIO_DELIVERY_CALLBACK_CONFIGURATION_UNAVAILABLE": {
+          "httpStatus": 503,
+          "logLevel": "error",
+          "messageLabel": "api.error.webhook.twilio_configuration_unavailable",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
+        "TWILIO_DELIVERY_CALLBACK_PROCESSING_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.webhook.twilio_processing_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
+        "TWILIO_DELIVERY_CALLBACK_SIGNATURE_INVALID": {
+          "httpStatus": 401,
+          "logLevel": "warn",
+          "messageLabel": "api.error.webhook.twilio_signature_invalid",
+          "recoveryAction": "correct_input",
+          "retryable": false,
+        },
         "VALIDATION_ERROR": {
           "httpStatus": 400,
           "logLevel": "info",

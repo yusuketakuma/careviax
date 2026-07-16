@@ -28,7 +28,7 @@ function createWorkerTx(
   overrides: {
     attemptCount?: number;
     maxAttempts?: number;
-    channel?: 'line' | 'web_push';
+    channel?: 'sms' | 'line' | 'web_push';
   } = {},
 ) {
   const channel = overrides.channel ?? 'line';
@@ -42,6 +42,7 @@ function createWorkerTx(
   const tx = {
     domainEventOutbox: {
       findMany: vi.fn().mockResolvedValue([{ id: 'outbox_1' }]),
+      findFirst: vi.fn().mockResolvedValue({ id: 'outbox_1' }),
       updateMany,
       findUnique: vi.fn().mockResolvedValue({
         id: 'outbox_1',
@@ -65,6 +66,10 @@ function createWorkerTx(
     pushSubscription: {
       findFirst: pushSubscriptionFindFirst,
       deleteMany: pushSubscriptionDeleteMany,
+    },
+    providerDeliveryReceipt: {
+      findMany: vi.fn().mockResolvedValue([]),
+      update: vi.fn().mockResolvedValue({}),
     },
   };
   return { tx, updateMany, pushSubscriptionFindFirst, pushSubscriptionDeleteMany };
@@ -211,6 +216,45 @@ describe('notification delivery outbox', () => {
           completed_at: null,
           last_error_code: 'provider_unknown',
         }),
+      }),
+    );
+  });
+
+  it('projects a callback that raced provider acceptance after the Twilio ack commits', async () => {
+    const { tx, updateMany } = createWorkerTx({ channel: 'sms' });
+    tx.providerDeliveryReceipt.findMany.mockResolvedValue([
+      {
+        id: 'receipt_1',
+        provider_message_id: `SM${'a'.repeat(32)}`,
+        provider_status: 'delivered',
+        provider_error_code: null,
+        received_at: NOW,
+      },
+    ]);
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (scopedTx: typeof tx) => Promise<unknown>) => work(tx),
+    );
+    const sendSms = vi.fn().mockResolvedValue({
+      status: 'accepted',
+      provider: 'twilio',
+      providerMessageId: `SM${'a'.repeat(32)}`,
+    });
+
+    const result = await drainNotificationDeliveryOutbox(
+      'org_1',
+      {},
+      { now: () => NOW, smsAdapter: { sendSms } },
+    );
+
+    expect(result.acceptedCount).toBe(1);
+    expect(sendSms).toHaveBeenCalledWith(
+      '09000000001',
+      'PH-OS通知\nアプリで詳細を確認してください',
+      { callbackContext: { orgId: 'org_1', deliveryId: RETRY_KEY } },
+    );
+    expect(updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'delivered', provider_status: 'delivered' }),
       }),
     );
   });

@@ -354,6 +354,27 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'return_to_previous',
     messageLabel: 'api.error.workflow.not_found',
   },
+  TWILIO_DELIVERY_CALLBACK_CONFIGURATION_UNAVAILABLE: {
+    httpStatus: 503,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.webhook.twilio_configuration_unavailable',
+  },
+  TWILIO_DELIVERY_CALLBACK_PROCESSING_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.webhook.twilio_processing_failed',
+  },
+  TWILIO_DELIVERY_CALLBACK_SIGNATURE_INVALID: {
+    httpStatus: 401,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'correct_input',
+    messageLabel: 'api.error.webhook.twilio_signature_invalid',
+  },
   YRESE_WEBHOOK_IMPORT_FAILED: {
     httpStatus: 500,
     logLevel: 'error',

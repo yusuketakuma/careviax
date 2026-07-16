@@ -10,6 +10,7 @@ import {
 } from '@/server/adapters/delivery-result';
 import { LineNotificationAdapter } from '@/server/adapters/line';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
+import { projectPendingTwilioDeliveryReceipts } from '@/server/services/twilio-delivery-receipts';
 
 const DELIVERY_EVENT_TYPE = 'notification.delivery.requested';
 const DELIVERY_AGGREGATE_TYPE = 'user';
@@ -255,8 +256,8 @@ async function persistDeliveryResult(
         ? 'dead_letter'
         : 'retry';
 
-  const updated = await withOrgContext(delivery.orgId, (tx) =>
-    tx.domainEventOutbox.updateMany({
+  const updated = await withOrgContext(delivery.orgId, async (tx) => {
+    const acknowledged = await tx.domainEventOutbox.updateMany({
       where: {
         id: delivery.id,
         org_id: delivery.orgId,
@@ -279,8 +280,12 @@ async function persistDeliveryResult(
             ? nextRetryAt(now, delivery.attemptCount)
             : now,
       },
-    }),
-  );
+    });
+    if (acknowledged.count === 1 && isAccepted && result.provider === 'twilio') {
+      await projectPendingTwilioDeliveryReceipts(tx, delivery.orgId, delivery.idempotencyKey, now);
+    }
+    return acknowledged;
+  });
   if (updated.count !== 1) throw new Error('notification_delivery_ack_conflict');
   return status;
 }
@@ -336,6 +341,12 @@ export async function drainNotificationDeliveryOutbox(
         result = await smsAdapter.sendSms(
           delivery.target,
           `${EXTERNAL_NOTIFICATION_TITLE}\n${EXTERNAL_NOTIFICATION_MESSAGE}`,
+          {
+            callbackContext: {
+              orgId: delivery.orgId,
+              deliveryId: delivery.idempotencyKey,
+            },
+          },
         );
       } else if (delivery.channel === 'line') {
         result = await lineAdapter.sendMessage(
