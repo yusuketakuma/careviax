@@ -78,6 +78,34 @@ function createInvoiceFixture(overrides: Partial<InvoiceFixture> = {}): InvoiceF
   return { ...base, ...overrides, partnership: overrides.partnership ?? base.partnership };
 }
 
+function createCandidateFixture(id = 'candidate_1', partnerPharmacyName = '協力薬局') {
+  return {
+    id,
+    billing_month: '2026-06-01T00:00:00.000Z',
+    billing_status: 'candidate',
+    is_billable: true,
+    exclusion_reason: null,
+    amount_summary: {
+      billing_model: 'fixed_per_visit',
+      amount: 5500,
+      tax_category: 'taxable',
+      blocker_codes: [],
+    },
+    partner_visit_record: {
+      id: `partner_visit_record_${id}`,
+      visit_at: '2026-06-18T01:30:00.000Z',
+      status: 'confirmed',
+      confirmed_at: '2026-06-18T03:00:00.000Z',
+      owner_partner_pharmacy: { name: partnerPharmacyName, status: 'active' },
+    },
+    contract_version: {
+      id: 'contract_version_1',
+      version_no: 2,
+      effective_from: '2026-06-01T00:00:00.000Z',
+    },
+  };
+}
+
 describe('PartnerCooperationBillingContent', () => {
   let invoiceRows: InvoiceFixture[];
 
@@ -154,33 +182,7 @@ describe('PartnerCooperationBillingContent', () => {
         if (url.startsWith('/api/visit-billing-candidates?')) {
           return new Response(
             JSON.stringify({
-              data: [
-                {
-                  id: 'candidate_1',
-                  billing_month: '2026-06-01T00:00:00.000Z',
-                  billing_status: 'candidate',
-                  is_billable: true,
-                  exclusion_reason: null,
-                  amount_summary: {
-                    billing_model: 'fixed_per_visit',
-                    amount: 5500,
-                    tax_category: 'taxable',
-                    blocker_codes: [],
-                  },
-                  partner_visit_record: {
-                    id: 'partner_visit_record_1',
-                    visit_at: '2026-06-18T01:30:00.000Z',
-                    status: 'confirmed',
-                    confirmed_at: '2026-06-18T03:00:00.000Z',
-                    owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
-                  },
-                  contract_version: {
-                    id: 'contract_version_1',
-                    version_no: 2,
-                    effective_from: '2026-06-01T00:00:00.000Z',
-                  },
-                },
-              ],
+              data: [createCandidateFixture()],
               meta: { limit: 20, has_more: false, next_cursor: null },
             }),
             { status: 200 },
@@ -586,6 +588,150 @@ describe('PartnerCooperationBillingContent', () => {
         .getAttribute('href'),
     ).toBe('/api/pharmacy-invoices/invoice_existing/pdf?purpose=partner_cooperation_monthly_pdf');
     expect(JSON.stringify(document.body.textContent)).not.toContain('山田');
+  });
+
+  it('loads page 2 on demand for candidates and invoices without eager fetching', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/visit-billing-candidates?')) {
+        const cursor = new URL(url, 'http://localhost').searchParams.get('cursor');
+        return new Response(
+          JSON.stringify(
+            cursor === 'candidate_cursor_1'
+              ? {
+                  data: [createCandidateFixture('candidate_2', '協力薬局B')],
+                  meta: { limit: 20, has_more: false, next_cursor: null },
+                }
+              : {
+                  data: [createCandidateFixture('candidate_1', '協力薬局A')],
+                  meta: { limit: 20, has_more: true, next_cursor: 'candidate_cursor_1' },
+                },
+          ),
+          { status: 200 },
+        );
+      }
+      if (url.startsWith('/api/pharmacy-invoices?')) {
+        const cursor = new URL(url, 'http://localhost').searchParams.get('cursor');
+        return new Response(
+          JSON.stringify(
+            cursor === 'invoice_cursor_1'
+              ? {
+                  data: [createInvoiceFixture({ id: 'invoice_2', invoice_no: 'INV-002' })],
+                  meta: { has_more: false, next_cursor: null },
+                }
+              : {
+                  data: [createInvoiceFixture()],
+                  meta: { has_more: true, next_cursor: 'invoice_cursor_1' },
+                },
+          ),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect((await screen.findAllByText('協力薬局A')).length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText('INV-001')).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('協力薬局B')).toBeNull();
+    expect(screen.queryByText('INV-002')).toBeNull();
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([input]) => String(input).includes('cursor=')).length,
+    ).toBe(0);
+
+    fireEvent.click(screen.getByRole('button', { name: '請求候補をさらに読み込む' }));
+    expect((await screen.findAllByText('協力薬局B')).length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(screen.getByRole('button', { name: '月次ドキュメントをさらに読み込む' }));
+    expect((await screen.findAllByText('INV-002')).length).toBeGreaterThanOrEqual(1);
+
+    const candidatePage2Call = vi
+      .mocked(fetch)
+      .mock.calls.find(([input]) => String(input).includes('cursor=candidate_cursor_1'));
+    const invoicePage2Call = vi
+      .mocked(fetch)
+      .mock.calls.find(([input]) => String(input).includes('cursor=invoice_cursor_1'));
+    expect(candidatePage2Call).toBeTruthy();
+    expect(invoicePage2Call).toBeTruthy();
+    expect(String(candidatePage2Call?.[0])).toContain('billing_month=2026-06-01');
+    expect(String(candidatePage2Call?.[0])).toContain('limit=20');
+    expect(String(invoicePage2Call?.[0])).toContain('billing_month=2026-06-01');
+    expect(String(invoicePage2Call?.[0])).toContain('limit=20');
+    expect(
+      screen.getByText('2件の請求候補を読み込み済みです。対象月の候補一覧は確認済みです。'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('2件の月次ドキュメントを読み込み済みです。対象月の出力履歴は確認済みです。'),
+    ).toBeTruthy();
+  });
+
+  it('keeps partial candidates visible and reports a repeated cursor instead of completing', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/visit-billing-candidates?')) {
+        const cursor = new URL(url, 'http://localhost').searchParams.get('cursor');
+        return new Response(
+          JSON.stringify({
+            data: [
+              createCandidateFixture(
+                cursor === 'repeated_cursor' ? 'candidate_2' : 'candidate_1',
+                cursor === 'repeated_cursor' ? '協力薬局B' : '協力薬局A',
+              ),
+            ],
+            meta: { limit: 20, has_more: true, next_cursor: 'repeated_cursor' },
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '請求候補をさらに読み込む' }));
+    expect((await screen.findAllByText('協力薬局B')).length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText('続きの読み込み位置が重複しました')).toBeTruthy();
+    expect(
+      screen.getByText('2件の請求候補を読み込み済みです。未読込または要確認の候補があります。'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '請求候補をさらに読み込む' })).toBeNull();
+  });
+
+  it('does not render duplicate candidate identities from later cursor pages', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/visit-billing-candidates?')) {
+        const cursor = new URL(url, 'http://localhost').searchParams.get('cursor');
+        return new Response(
+          JSON.stringify(
+            cursor
+              ? {
+                  data: [createCandidateFixture('candidate_1', '重複してはいけない薬局')],
+                  meta: { limit: 20, has_more: false, next_cursor: null },
+                }
+              : {
+                  data: [createCandidateFixture('candidate_1', '協力薬局A')],
+                  meta: { limit: 20, has_more: true, next_cursor: 'candidate_cursor_1' },
+                },
+          ),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    fireEvent.click(await screen.findByRole('button', { name: '請求候補をさらに読み込む' }));
+
+    expect(await screen.findByText('請求候補の重複を検出しました')).toBeTruthy();
+    expect(screen.getAllByText('協力薬局A').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('重複してはいけない薬局')).toBeNull();
   });
 
   it('posts the selected billing month when generating visit billing candidates', async () => {

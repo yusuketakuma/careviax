@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import {
   CalendarClock,
@@ -28,7 +28,7 @@ import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-import { apiCursorPageSchema, apiDataSchema } from '@/lib/api/response-schemas';
+import { apiDataSchema } from '@/lib/api/response-schemas';
 import { PHARMACY_INVOICE_PDF_EXPORT_PURPOSE } from '@/lib/audit/export-purpose-codes';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { formatYen } from '@/lib/format/currency';
@@ -266,11 +266,89 @@ const billingCandidatesResponseSchema = z
         message: 'next_cursor is required when has_more is true',
       });
     }
+    if (!value.meta.has_more && value.meta.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor must be null when has_more is false',
+      });
+    }
   });
-const pharmacyInvoicesResponseSchema = apiCursorPageSchema(pharmacyInvoiceRowSchema);
+const pharmacyInvoicesResponseSchema = z
+  .object({
+    data: z.array(pharmacyInvoiceRowSchema),
+    meta: z
+      .object({
+        has_more: z.boolean(),
+        next_cursor: z.string().trim().min(1).nullable(),
+      })
+      .passthrough(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.meta.has_more && !value.meta.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor is required when has_more is true',
+      });
+    }
+    if (!value.meta.has_more && value.meta.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor must be null when has_more is false',
+      });
+    }
+  });
 const pharmacyInvoiceTransitionResponseSchema = apiDataSchema(
   pharmacyInvoiceTransitionResultSchema,
 );
+
+type CursorPage<T> = {
+  data: T[];
+  meta: { has_more: boolean; next_cursor: string | null };
+};
+
+function hasRepeatedCursor(pages: readonly CursorPage<unknown>[], pageParams: readonly unknown[]) {
+  const lastPage = pages.at(-1);
+  if (!lastPage?.meta.has_more || !lastPage.meta.next_cursor) return false;
+  const consumed = new Set(
+    pageParams.flatMap((value) => (typeof value === 'string' && value ? [value] : [])),
+  );
+  const offered = new Set(
+    pages.slice(0, -1).flatMap((page) => (page.meta.next_cursor ? [page.meta.next_cursor] : [])),
+  );
+  return consumed.has(lastPage.meta.next_cursor) || offered.has(lastPage.meta.next_cursor);
+}
+
+function getNextCursor<T>(
+  lastPage: CursorPage<T>,
+  allPages: CursorPage<T>[],
+  _lastPageParam: string | undefined,
+  allPageParams: Array<string | undefined>,
+  errorMessage: string,
+) {
+  if (!lastPage.meta.has_more) return undefined;
+  if (!lastPage.meta.next_cursor) throw new Error(errorMessage);
+  if (hasRepeatedCursor(allPages, allPageParams)) return undefined;
+  return lastPage.meta.next_cursor;
+}
+
+function collectUniqueRows<T extends { id: string }>(pages: readonly CursorPage<T>[]) {
+  const seenIds = new Set<string>();
+  const rows: T[] = [];
+  let hasDuplicateId = false;
+  for (const row of pages.flatMap((page) => page.data)) {
+    if (seenIds.has(row.id)) {
+      hasDuplicateId = true;
+      continue;
+    }
+    seenIds.add(row.id);
+    rows.push(row);
+  }
+  return { rows, hasDuplicateId };
+}
 
 const EMPTY_CONTRACTS: PharmacyContractRow[] = [];
 
@@ -349,31 +427,34 @@ async function fetchActiveContracts(orgId: string) {
   return json.data;
 }
 
-async function fetchCandidates(orgId: string, billingMonth: string) {
-  const response = await fetch(
-    `/api/visit-billing-candidates?billing_month=${encodeURIComponent(billingMonth)}&limit=20`,
-    { headers: buildOrgHeaders(orgId) },
-  );
-  const json = await readApiJson<{
+async function fetchCandidates(orgId: string, billingMonth: string, cursor?: string) {
+  const params = new URLSearchParams({ billing_month: billingMonth, limit: '20' });
+  if (cursor) params.set('cursor', cursor);
+  const response = await fetch(`/api/visit-billing-candidates?${params.toString()}`, {
+    headers: buildOrgHeaders(orgId),
+  });
+  return readApiJson<{
     data: VisitBillingCandidateRow[];
     meta: { limit: number; has_more: boolean; next_cursor: string | null };
   }>(response, {
     fallbackMessage: '請求候補の取得に失敗しました',
     schema: billingCandidatesResponseSchema,
   });
-  return json.data;
 }
 
-async function fetchInvoices(orgId: string, billingMonth: string) {
-  const response = await fetch(
-    `/api/pharmacy-invoices?billing_month=${encodeURIComponent(billingMonth)}&limit=20`,
-    { headers: buildOrgHeaders(orgId) },
-  );
-  const json = await readApiJson<{ data: PharmacyInvoiceRow[] }>(response, {
+async function fetchInvoices(orgId: string, billingMonth: string, cursor?: string) {
+  const params = new URLSearchParams({ billing_month: billingMonth, limit: '20' });
+  if (cursor) params.set('cursor', cursor);
+  const response = await fetch(`/api/pharmacy-invoices?${params.toString()}`, {
+    headers: buildOrgHeaders(orgId),
+  });
+  return readApiJson<{
+    data: PharmacyInvoiceRow[];
+    meta: { has_more: boolean; next_cursor: string | null };
+  }>(response, {
     fallbackMessage: '月次ドキュメントの取得に失敗しました',
     schema: pharmacyInvoicesResponseSchema,
   });
-  return json.data;
 }
 
 async function patchInvoiceStatus(
@@ -485,7 +566,13 @@ function ContractSelector({
   );
 }
 
-function CandidateTable({ candidates }: { candidates: VisitBillingCandidateRow[] }) {
+function CandidateTable({
+  candidates,
+  isComplete,
+}: {
+  candidates: VisitBillingCandidateRow[];
+  isComplete: boolean;
+}) {
   const columns = useMemo<ColumnDef<VisitBillingCandidateRow>[]>(
     () => [
       {
@@ -585,8 +672,16 @@ function CandidateTable({ candidates }: { candidates: VisitBillingCandidateRow[]
   if (candidates.length === 0) {
     return (
       <EmptyState
-        title="薬局間協力の請求候補はまだありません"
-        description="対象月の確認済み協力訪問記録から、請求候補を生成してください。"
+        title={
+          isComplete
+            ? '薬局間協力の請求候補はまだありません'
+            : '読み込み済みの範囲に請求候補はありません'
+        }
+        description={
+          isComplete
+            ? '対象月の確認済み協力訪問記録から、請求候補を生成してください。'
+            : '未読込の候補があるため、続きの読み込みまたは再読み込みを行ってください。'
+        }
       />
     );
   }
@@ -762,12 +857,14 @@ function invoiceTransitionDescription({
 
 function InvoiceHistoryTable({
   invoices,
+  isComplete,
   scheduledDates,
   onScheduledDateChange,
   onTransition,
   pendingInvoiceId,
 }: {
   invoices: PharmacyInvoiceRow[];
+  isComplete: boolean;
   scheduledDates: Record<string, string>;
   onScheduledDateChange: (invoiceId: string, value: string) => void;
   onTransition: (invoice: PharmacyInvoiceRow, action: InvoiceTransitionAction) => void;
@@ -929,7 +1026,20 @@ function InvoiceHistoryTable({
   );
 
   if (invoices.length === 0) {
-    return <EmptyState title="対象月の薬局間月次ドキュメントはまだありません" />;
+    return (
+      <EmptyState
+        title={
+          isComplete
+            ? '対象月の薬局間月次ドキュメントはまだありません'
+            : '読み込み済みの範囲に月次ドキュメントはありません'
+        }
+        description={
+          isComplete
+            ? undefined
+            : '未読込のドキュメントがあるため、続きの読み込みまたは再読み込みを行ってください。'
+        }
+      />
+    );
   }
 
   return (
@@ -993,19 +1103,52 @@ export function PartnerCooperationBillingContent() {
     staleTime: 60_000,
   });
 
-  const candidatesQuery = useQuery({
+  const candidatesQuery = useInfiniteQuery({
     queryKey: ['partner-cooperation-candidates', orgId, billingMonth],
-    queryFn: () => fetchCandidates(orgId, billingMonth),
+    queryFn: ({ pageParam }) => fetchCandidates(orgId, billingMonth, pageParam),
+    getNextPageParam: (lastPage, allPages, lastPageParam, allPageParams) =>
+      getNextCursor(
+        lastPage,
+        allPages,
+        lastPageParam,
+        allPageParams,
+        '請求候補の取得に失敗しました',
+      ),
+    initialPageParam: undefined as string | undefined,
     enabled,
     staleTime: 20_000,
   });
 
-  const invoicesQuery = useQuery({
+  const invoicesQuery = useInfiniteQuery({
     queryKey: ['partner-cooperation-invoices', orgId, billingMonth],
-    queryFn: () => fetchInvoices(orgId, billingMonth),
+    queryFn: ({ pageParam }) => fetchInvoices(orgId, billingMonth, pageParam),
+    getNextPageParam: (lastPage, allPages, lastPageParam, allPageParams) =>
+      getNextCursor(
+        lastPage,
+        allPages,
+        lastPageParam,
+        allPageParams,
+        '月次ドキュメントの取得に失敗しました',
+      ),
+    initialPageParam: undefined as string | undefined,
     enabled,
     staleTime: 20_000,
   });
+
+  const candidateCollection = collectUniqueRows(candidatesQuery.data?.pages ?? []);
+  const invoiceCollection = collectUniqueRows(invoicesQuery.data?.pages ?? []);
+  const candidates = candidateCollection.rows;
+  const invoices = invoiceCollection.rows;
+  const candidateCursorCycle = hasRepeatedCursor(
+    candidatesQuery.data?.pages ?? [],
+    candidatesQuery.data?.pageParams ?? [],
+  );
+  const invoiceCursorCycle = hasRepeatedCursor(
+    invoicesQuery.data?.pages ?? [],
+    invoicesQuery.data?.pageParams ?? [],
+  );
+  const candidateInitialError = candidatesQuery.isError && candidates.length === 0;
+  const invoiceInitialError = invoicesQuery.isError && invoices.length === 0;
 
   const contracts = contractsQuery.data ?? EMPTY_CONTRACTS;
   const selectedContract =
@@ -1292,7 +1435,7 @@ export function PartnerCooperationBillingContent() {
         </div>
         {candidatesQuery.isLoading ? (
           <Skeleton className="h-72 rounded-lg" />
-        ) : candidatesQuery.isError ? (
+        ) : candidateInitialError ? (
           <ErrorState
             variant="server"
             title="薬局間協力の請求候補を表示できません"
@@ -1301,7 +1444,71 @@ export function PartnerCooperationBillingContent() {
             onRetry={() => void candidatesQuery.refetch()}
           />
         ) : (
-          <CandidateTable candidates={candidatesQuery.data ?? []} />
+          <div className="space-y-4">
+            <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+              {candidates.length}件の請求候補を読み込み済みです。
+              {candidatesQuery.hasNextPage ||
+              candidateCursorCycle ||
+              candidateCollection.hasDuplicateId ||
+              candidatesQuery.isError
+                ? '未読込または要確認の候補があります。'
+                : '対象月の候補一覧は確認済みです。'}
+            </p>
+            <CandidateTable
+              candidates={candidates}
+              isComplete={
+                !candidatesQuery.hasNextPage &&
+                !candidateCursorCycle &&
+                !candidatesQuery.isError &&
+                !candidateCollection.hasDuplicateId
+              }
+            />
+            {candidatesQuery.isFetchNextPageError ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="続きの請求候補を取得できませんでした"
+                description="読み込み済みの候補は保持しています。通信状態を確認して再試行してください。"
+                onRetry={() => void candidatesQuery.fetchNextPage()}
+                retryLabel="続きを再試行"
+              />
+            ) : candidateCursorCycle ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="続きの読み込み位置が重複しました"
+                description="読み込み済みの候補は保持しています。候補一覧を再読み込みしてください。"
+                onRetry={() => void candidatesQuery.refetch()}
+                retryLabel="再読み込み"
+              />
+            ) : candidateCollection.hasDuplicateId ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="請求候補の重複を検出しました"
+                description="重複行は表示していません。候補一覧を再読み込みしてください。"
+                onRetry={() => void candidatesQuery.refetch()}
+                retryLabel="再読み込み"
+              />
+            ) : null}
+            {candidatesQuery.hasNextPage &&
+            !candidateCursorCycle &&
+            !candidateCollection.hasDuplicateId &&
+            !candidatesQuery.isFetchNextPageError ? (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11"
+                  onClick={() => void candidatesQuery.fetchNextPage()}
+                  disabled={candidatesQuery.isFetchingNextPage}
+                  aria-label="請求候補をさらに読み込む"
+                >
+                  {candidatesQuery.isFetchingNextPage ? '請求候補を追加読込中…' : 'さらに読み込む'}
+                </Button>
+              </div>
+            ) : null}
+          </div>
         )}
       </section>
 
@@ -1330,7 +1537,7 @@ export function PartnerCooperationBillingContent() {
         </div>
         {invoicesQuery.isLoading ? (
           <Skeleton className="h-52 rounded-lg" />
-        ) : invoicesQuery.isError ? (
+        ) : invoiceInitialError ? (
           <ErrorState
             variant="server"
             title="薬局間月次ドキュメントを表示できません"
@@ -1339,29 +1546,93 @@ export function PartnerCooperationBillingContent() {
             onRetry={() => void invoicesQuery.refetch()}
           />
         ) : (
-          <InvoiceHistoryTable
-            invoices={invoicesQuery.data ?? []}
-            scheduledDates={scheduledDates}
-            onScheduledDateChange={(invoiceId, value) =>
-              setScheduledDates((current) => ({ ...current, [invoiceId]: value }))
-            }
-            onTransition={(invoice, action) =>
-              setPendingInvoiceTransition({
-                invoice,
-                action,
-                idempotencyKey: createClientIdempotencyKey(
-                  'pharmacy-invoice-transition',
-                  invoice.id,
+          <div className="space-y-4">
+            <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+              {invoices.length}件の月次ドキュメントを読み込み済みです。
+              {invoicesQuery.hasNextPage ||
+              invoiceCursorCycle ||
+              invoiceCollection.hasDuplicateId ||
+              invoicesQuery.isError
+                ? '未読込または要確認のドキュメントがあります。'
+                : '対象月の出力履歴は確認済みです。'}
+            </p>
+            <InvoiceHistoryTable
+              invoices={invoices}
+              isComplete={
+                !invoicesQuery.hasNextPage &&
+                !invoiceCursorCycle &&
+                !invoicesQuery.isError &&
+                !invoiceCollection.hasDuplicateId
+              }
+              scheduledDates={scheduledDates}
+              onScheduledDateChange={(invoiceId, value) =>
+                setScheduledDates((current) => ({ ...current, [invoiceId]: value }))
+              }
+              onTransition={(invoice, action) =>
+                setPendingInvoiceTransition({
+                  invoice,
                   action,
-                ),
-              })
-            }
-            pendingInvoiceId={
-              transitionInvoiceMutation.isPending
-                ? (transitionInvoiceMutation.variables?.invoice.id ?? null)
-                : null
-            }
-          />
+                  idempotencyKey: createClientIdempotencyKey(
+                    'pharmacy-invoice-transition',
+                    invoice.id,
+                    action,
+                  ),
+                })
+              }
+              pendingInvoiceId={
+                transitionInvoiceMutation.isPending
+                  ? (transitionInvoiceMutation.variables?.invoice.id ?? null)
+                  : null
+              }
+            />
+            {invoicesQuery.isFetchNextPageError ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="続きの月次ドキュメントを取得できませんでした"
+                description="読み込み済みのドキュメントは保持しています。通信状態を確認して再試行してください。"
+                onRetry={() => void invoicesQuery.fetchNextPage()}
+                retryLabel="続きを再試行"
+              />
+            ) : invoiceCursorCycle ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="続きの読み込み位置が重複しました"
+                description="読み込み済みのドキュメントは保持しています。出力履歴を再読み込みしてください。"
+                onRetry={() => void invoicesQuery.refetch()}
+                retryLabel="再読み込み"
+              />
+            ) : invoiceCollection.hasDuplicateId ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="月次ドキュメントの重複を検出しました"
+                description="重複行は表示していません。出力履歴を再読み込みしてください。"
+                onRetry={() => void invoicesQuery.refetch()}
+                retryLabel="再読み込み"
+              />
+            ) : null}
+            {invoicesQuery.hasNextPage &&
+            !invoiceCursorCycle &&
+            !invoiceCollection.hasDuplicateId &&
+            !invoicesQuery.isFetchNextPageError ? (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11"
+                  onClick={() => void invoicesQuery.fetchNextPage()}
+                  disabled={invoicesQuery.isFetchingNextPage}
+                  aria-label="月次ドキュメントをさらに読み込む"
+                >
+                  {invoicesQuery.isFetchingNextPage
+                    ? '月次ドキュメントを追加読込中…'
+                    : 'さらに読み込む'}
+                </Button>
+              </div>
+            ) : null}
+          </div>
         )}
       </section>
 
