@@ -10,3 +10,5 @@ ac41f74f90393b5e193e090618e343eb7bfebbe5:projects/careviax/decisions/2026-07-14/
 6e10b93a7f431ff5453b1af4c489fee0a98aa0f2:projects/careviax/decisions/2026-07-13/validate-task-related-entity-contract-before-write.md:generic-api-key:19
 cee804d3643267bcaaef72edd4c3f88e80176344:projects/careviax/decisions/2026-07-13/share-followup-task-eligibility-and-drift-recovery.md:generic-api-key:24
 9ffb3cb472f462296a1ce2c784cca334b62a5f5d:projects/careviax/decisions/2026-07-13/task-assignee-eligibility-and-idempotent-recovery.md:generic-api-key:25
+08ef0ca81a13441f55265057d5ea93440e586672:projects/careviax/decisions/2026-07-16/pharmacy-invoice-transition-idempotency.md:generic-api-key:43
+08ef0ca81a13441f55265057d5ea93440e586672:projects/careviax/decisions/2026-07-16/care-case-write-occ.md:generic-api-key:44
