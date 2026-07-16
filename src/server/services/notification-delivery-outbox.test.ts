@@ -4,19 +4,41 @@ import {
   enqueueNotificationDeliveries,
 } from './notification-delivery-outbox';
 
-const { withOrgContextMock } = vi.hoisted(() => ({
+const { withOrgContextMock, sendWebPushMock, setVapidDetailsMock } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
+  sendWebPushMock: vi.fn(),
+  setVapidDetailsMock: vi.fn(),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('web-push', () => ({
+  default: {
+    sendNotification: sendWebPushMock,
+    setVapidDetails: setVapidDetailsMock,
+  },
+}));
+
 const NOW = new Date('2026-07-16T04:00:00.000Z');
 const RETRY_KEY = '4fda4c0e-95c0-4a38-8e8f-75822b5e55fb';
 
-function createWorkerTx(overrides: { attemptCount?: number; maxAttempts?: number } = {}) {
+function createWorkerTx(
+  overrides: {
+    attemptCount?: number;
+    maxAttempts?: number;
+    channel?: 'line' | 'web_push';
+  } = {},
+) {
+  const channel = overrides.channel ?? 'line';
   const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+  const pushSubscriptionFindFirst = vi.fn().mockResolvedValue({
+    endpoint: 'https://push.example.test/subscription',
+    p256dh: 'p256dh-key',
+    auth: 'auth-secret',
+  });
+  const pushSubscriptionDeleteMany = vi.fn().mockResolvedValue({ count: 1 });
   const tx = {
     domainEventOutbox: {
       findMany: vi.fn().mockResolvedValue([{ id: 'outbox_1' }]),
@@ -25,9 +47,13 @@ function createWorkerTx(overrides: { attemptCount?: number; maxAttempts?: number
         id: 'outbox_1',
         org_id: 'org_1',
         event_type: 'notification.delivery.requested',
-        aggregate_type: 'user',
-        aggregate_id: 'user_1',
-        metadata: { channel: 'line', source_event_type: 'visit_due' },
+        aggregate_type: channel === 'web_push' ? 'push_subscription' : 'user',
+        aggregate_id: channel === 'web_push' ? 'push_subscription_1' : 'user_1',
+        metadata: {
+          channel,
+          source_event_type: 'visit_due',
+          ...(channel === 'web_push' ? { notification_type: 'urgent' } : {}),
+        },
         idempotency_key: RETRY_KEY,
         attempt_count: overrides.attemptCount ?? 1,
         max_attempts: overrides.maxAttempts ?? 5,
@@ -36,13 +62,20 @@ function createWorkerTx(overrides: { attemptCount?: number; maxAttempts?: number
     user: {
       findFirst: vi.fn().mockResolvedValue({ id: 'user_1', phone: '09000000001' }),
     },
+    pushSubscription: {
+      findFirst: pushSubscriptionFindFirst,
+      deleteMany: pushSubscriptionDeleteMany,
+    },
   };
-  return { tx, updateMany };
+  return { tx, updateMany, pushSubscriptionFindFirst, pushSubscriptionDeleteMany };
 }
 
 describe('notification delivery outbox', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sendWebPushMock.mockReset();
+    setVapidDetailsMock.mockReset();
+    vi.unstubAllEnvs();
   });
 
   it('persists only tenant-bound aggregate references and channel metadata', async () => {
@@ -56,9 +89,9 @@ describe('notification delivery outbox', () => {
           sourceEventType: 'patient_followup_due',
           dedupeKey: 'followup_1',
           targets: [
-            { channel: 'sms', userId: 'user_1' },
-            { channel: 'sms', userId: 'user_1' },
-            { channel: 'line', userId: 'user_1' },
+            { channel: 'sms', aggregateType: 'user', aggregateId: 'user_1' },
+            { channel: 'sms', aggregateType: 'user', aggregateId: 'user_1' },
+            { channel: 'line', aggregateType: 'user', aggregateId: 'user_1' },
           ],
         },
       ),
@@ -258,5 +291,202 @@ describe('notification delivery outbox', () => {
 
     expect(result.processedCount).toBe(0);
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('resolves a Web Push subscription under RLS and sends only the redacted payload', async () => {
+    vi.stubEnv('NEXT_PUBLIC_VAPID_PUBLIC_KEY', 'public-key');
+    vi.stubEnv('VAPID_PRIVATE_KEY', 'private-key');
+    vi.stubEnv('VAPID_SUBJECT', 'mailto:test@example.com');
+    const { tx, updateMany, pushSubscriptionFindFirst } = createWorkerTx({
+      channel: 'web_push',
+    });
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (scopedTx: typeof tx) => Promise<unknown>) => work(tx),
+    );
+    sendWebPushMock.mockResolvedValue({ statusCode: 201 });
+
+    const result = await drainNotificationDeliveryOutbox('org_1', {}, { now: () => NOW });
+
+    expect(result.acceptedCount).toBe(1);
+    expect(pushSubscriptionFindFirst).toHaveBeenCalledWith({
+      where: { id: 'push_subscription_1', org_id: 'org_1' },
+      select: { endpoint: true, p256dh: true, auth: true },
+    });
+    expect(setVapidDetailsMock).toHaveBeenCalledWith(
+      'mailto:test@example.com',
+      'public-key',
+      'private-key',
+    );
+    expect(sendWebPushMock).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse(sendWebPushMock.mock.calls[0]?.[1] as string) as Record<
+      string,
+      unknown
+    >;
+    expect(payload).toEqual({
+      type: 'urgent',
+      title: 'PH-OS 通知',
+      body: '新しい緊急通知があります',
+      link: '/notifications',
+    });
+    expect(JSON.stringify(payload)).not.toContain('/patients/');
+    expect(updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'accepted',
+          provider: 'web_push',
+          provider_message_id: null,
+        }),
+      }),
+    );
+  });
+
+  it('keeps an unconfigured Web Push intent retryable without calling the provider', async () => {
+    vi.stubEnv('NEXT_PUBLIC_VAPID_PUBLIC_KEY', '');
+    vi.stubEnv('VAPID_PRIVATE_KEY', '');
+    const { tx, updateMany } = createWorkerTx({ channel: 'web_push' });
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (scopedTx: typeof tx) => Promise<unknown>) => work(tx),
+    );
+
+    const result = await drainNotificationDeliveryOutbox('org_1', {}, { now: () => NOW });
+
+    expect(result.retryCount).toBe(1);
+    expect(sendWebPushMock).not.toHaveBeenCalled();
+    expect(updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'retry',
+          provider: 'web_push',
+          last_error_code: 'provider_not_configured',
+        }),
+      }),
+    );
+  });
+
+  it('keeps invalid VAPID configuration retryable without reporting an unknown send outcome', async () => {
+    vi.stubEnv('NEXT_PUBLIC_VAPID_PUBLIC_KEY', 'invalid-public-key');
+    vi.stubEnv('VAPID_PRIVATE_KEY', 'invalid-private-key');
+    setVapidDetailsMock.mockImplementation(() => {
+      throw new Error('invalid VAPID configuration');
+    });
+    const { tx, updateMany } = createWorkerTx({ channel: 'web_push' });
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (scopedTx: typeof tx) => Promise<unknown>) => work(tx),
+    );
+
+    const result = await drainNotificationDeliveryOutbox('org_1', {}, { now: () => NOW });
+
+    expect(result.retryCount).toBe(1);
+    expect(result.unknownCount).toBe(0);
+    expect(sendWebPushMock).not.toHaveBeenCalled();
+    expect(updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'retry',
+          last_error_code: 'push_vapid_configuration_invalid',
+        }),
+      }),
+    );
+  });
+
+  it('does not report Web Push accepted without the RFC 8030 201 response', async () => {
+    vi.stubEnv('NEXT_PUBLIC_VAPID_PUBLIC_KEY', 'public-key');
+    vi.stubEnv('VAPID_PRIVATE_KEY', 'private-key');
+    const { tx, updateMany } = createWorkerTx({ channel: 'web_push' });
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (scopedTx: typeof tx) => Promise<unknown>) => work(tx),
+    );
+    sendWebPushMock.mockResolvedValue({ statusCode: 202 });
+
+    const result = await drainNotificationDeliveryOutbox('org_1', {}, { now: () => NOW });
+
+    expect(result.retryCount).toBe(1);
+    expect(updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'retry',
+          last_error_code: 'push_service_unexpected_response',
+        }),
+      }),
+    );
+  });
+
+  it('records a Web Push network outcome as unknown without automatic resend', async () => {
+    vi.stubEnv('NEXT_PUBLIC_VAPID_PUBLIC_KEY', 'public-key');
+    vi.stubEnv('VAPID_PRIVATE_KEY', 'private-key');
+    const { tx, updateMany } = createWorkerTx({ channel: 'web_push' });
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (scopedTx: typeof tx) => Promise<unknown>) => work(tx),
+    );
+    sendWebPushMock.mockRejectedValue(new Error('response lost'));
+
+    const result = await drainNotificationDeliveryOutbox('org_1', {}, { now: () => NOW });
+
+    expect(result.unknownCount).toBe(1);
+    expect(updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'unknown',
+          completed_at: null,
+          last_error_code: 'push_service_outcome_unknown',
+        }),
+      }),
+    );
+  });
+
+  it('deletes an expired Web Push subscription and dead-letters the intent', async () => {
+    vi.stubEnv('NEXT_PUBLIC_VAPID_PUBLIC_KEY', 'public-key');
+    vi.stubEnv('VAPID_PRIVATE_KEY', 'private-key');
+    const { tx, updateMany, pushSubscriptionDeleteMany } = createWorkerTx({
+      channel: 'web_push',
+    });
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (scopedTx: typeof tx) => Promise<unknown>) => work(tx),
+    );
+    sendWebPushMock.mockRejectedValue(
+      Object.assign(new Error('expired endpoint'), { statusCode: 410 }),
+    );
+
+    const result = await drainNotificationDeliveryOutbox('org_1', {}, { now: () => NOW });
+
+    expect(result.deadLetterCount).toBe(1);
+    expect(pushSubscriptionDeleteMany).toHaveBeenCalledWith({
+      where: { id: 'push_subscription_1', org_id: 'org_1' },
+    });
+    expect(updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'dead_letter',
+          last_error_code: 'push_subscription_expired',
+        }),
+      }),
+    );
+  });
+
+  it('retries instead of dead-lettering when expired-subscription cleanup is not durable', async () => {
+    vi.stubEnv('NEXT_PUBLIC_VAPID_PUBLIC_KEY', 'public-key');
+    vi.stubEnv('VAPID_PRIVATE_KEY', 'private-key');
+    const { tx, updateMany, pushSubscriptionDeleteMany } = createWorkerTx({
+      channel: 'web_push',
+    });
+    pushSubscriptionDeleteMany.mockRejectedValue(new Error('database unavailable'));
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (scopedTx: typeof tx) => Promise<unknown>) => work(tx),
+    );
+    sendWebPushMock.mockRejectedValue(
+      Object.assign(new Error('expired endpoint'), { statusCode: 410 }),
+    );
+
+    const result = await drainNotificationDeliveryOutbox('org_1', {}, { now: () => NOW });
+
+    expect(result.retryCount).toBe(1);
+    expect(updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'retry',
+          last_error_code: 'push_subscription_cleanup_failed',
+        }),
+      }),
+    );
   });
 });

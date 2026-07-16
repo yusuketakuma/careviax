@@ -49,12 +49,6 @@ vi.mock('@/server/adapters/line', () => ({
   },
 }));
 
-async function runScheduledDeliveries() {
-  await vi.runOnlyPendingTimersAsync();
-  await Promise.resolve();
-  await Promise.resolve();
-}
-
 async function waitForAsyncAssertion(assertion: () => void) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -75,7 +69,7 @@ function createTx() {
   const membershipFindMany = vi.fn();
   const notificationCreate = vi.fn();
   const notificationUpsert = vi.fn();
-  const pushSubscriptionFindMany = vi.fn();
+  const pushSubscriptionFindMany = vi.fn().mockResolvedValue([]);
   const userFindMany = vi.fn();
 
   return {
@@ -1015,6 +1009,7 @@ describe('dispatchNotificationEvent', () => {
       membershipFindMany,
       notificationCreate,
       pushSubscriptionFindMany,
+      domainEventOutboxCreateMany,
     } = createTx();
 
     notificationRuleFindMany.mockResolvedValue([]);
@@ -1027,9 +1022,7 @@ describe('dispatchNotificationEvent', () => {
     }));
     pushSubscriptionFindMany.mockResolvedValue([
       {
-        endpoint: 'https://push.example.test/subscription',
-        p256dh: 'p256dh-key',
-        auth: 'auth-secret',
+        id: 'push_subscription_1',
       },
     ]);
 
@@ -1054,33 +1047,24 @@ describe('dispatchNotificationEvent', () => {
       );
       expect(pushSubscriptionFindMany).toHaveBeenCalledWith({
         where: { org_id: 'org_1', user_id: { in: ['user_1'] } },
-        select: { endpoint: true, p256dh: true, auth: true },
+        select: { id: true },
       });
-
-      await runScheduledDeliveries();
-
-      expect(setVapidDetailsMock).toHaveBeenCalledWith(
-        'mailto:test@example.com',
-        'public-key',
-        'private-key',
-      );
-      expect(sendWebPushMock).toHaveBeenCalledTimes(1);
-      const pushBody = JSON.parse(sendWebPushMock.mock.calls[0]?.[1] as string) as {
-        type: string;
-        title: string;
-        body: string;
-        link: string | null;
-      };
-      // OS/プッシュ層へは患者ディープリンク(患者 ID = PHI)を渡さず、汎用ランディング
-      // /notifications のみを送る。title/body も種別ベースの汎用文言。
-      expect(pushBody).toEqual({
-        type: 'urgent',
-        title: 'PH-OS 通知',
-        body: '新しい緊急通知があります',
-        link: '/notifications',
+      expect(domainEventOutboxCreateMany).toHaveBeenCalledWith({
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            aggregate_type: 'push_subscription',
+            aggregate_id: 'push_subscription_1',
+            metadata: {
+              channel: 'web_push',
+              source_event_type: 'patient_self_report_followup_due',
+              notification_type: 'urgent',
+            },
+          }),
+        ]),
+        skipDuplicates: true,
       });
-      expect(Object.keys(pushBody).sort()).toEqual(['body', 'link', 'title', 'type']);
-      const payloadJson = JSON.stringify(pushBody);
+      expect(sendWebPushMock).not.toHaveBeenCalled();
+      const payloadJson = JSON.stringify(domainEventOutboxCreateMany.mock.calls);
       expect(payloadJson).not.toContain('田中');
       expect(payloadJson).not.toContain('一郎');
       expect(payloadJson).not.toContain('モルヒネ');
@@ -1088,7 +1072,6 @@ describe('dispatchNotificationEvent', () => {
       // 患者 ID を含む生ディープリンクがプッシュ基盤へ漏れないことを明示的に検証する。
       expect(payloadJson).not.toContain('patient_1');
       expect(payloadJson).not.toContain('/patients/');
-      expect(payloadJson).not.toContain('metadata');
       expect(payloadJson).not.toContain('provider_error');
       expect(payloadJson).not.toContain('token=secret');
     } finally {
@@ -1129,6 +1112,7 @@ describe('dispatchNotificationEvent', () => {
       membershipFindMany,
       notificationCreate,
       pushSubscriptionFindMany,
+      domainEventOutboxCreateMany,
     } = createTx();
 
     notificationRuleFindMany.mockResolvedValue([]);
@@ -1141,9 +1125,7 @@ describe('dispatchNotificationEvent', () => {
     }));
     pushSubscriptionFindMany.mockResolvedValue([
       {
-        endpoint: 'https://push.example.test/subscription',
-        p256dh: 'p256dh-key',
-        auth: 'auth-secret',
+        id: 'push_subscription_1',
       },
     ]);
 
@@ -1158,22 +1140,21 @@ describe('dispatchNotificationEvent', () => {
         explicitUserIds: ['user_1'],
       });
 
-      await runScheduledDeliveries();
-
-      expect(sendWebPushMock).toHaveBeenCalledTimes(1);
-      const pushBody = JSON.parse(sendWebPushMock.mock.calls[0]?.[1] as string) as {
-        type: string;
-        title: string;
-        body: string;
-        link: string | null;
-      };
-      expect(pushBody).toEqual({
-        type: 'system',
-        title: 'PH-OS 通知',
-        body: '新しいシステム通知があります',
-        link: '/notifications',
+      expect(domainEventOutboxCreateMany).toHaveBeenCalledWith({
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            aggregate_type: 'push_subscription',
+            aggregate_id: 'push_subscription_1',
+            metadata: expect.objectContaining({
+              channel: 'web_push',
+              notification_type: 'system',
+            }),
+          }),
+        ]),
+        skipDuplicates: true,
       });
-      const payloadJson = JSON.stringify(pushBody);
+      expect(sendWebPushMock).not.toHaveBeenCalled();
+      const payloadJson = JSON.stringify(domainEventOutboxCreateMany.mock.calls);
       expect(payloadJson).not.toContain('patient_specific_future_type');
       expect(payloadJson).not.toContain('田中');
       expect(payloadJson).not.toContain('一郎');

@@ -1,10 +1,10 @@
-export type DeliveryProvider = 'twilio' | 'line';
+export type DeliveryProvider = 'twilio' | 'line' | 'web_push';
 
 export type ProviderDeliveryResult =
   | {
       status: 'accepted';
       provider: DeliveryProvider;
-      providerMessageId: string;
+      providerMessageId: string | null;
     }
   | {
       status: 'not_configured' | 'failed' | 'unknown';

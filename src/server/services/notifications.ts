@@ -1,36 +1,22 @@
 import { Prisma, type MemberRole, type NotificationType } from '@prisma/client';
-import webpush from 'web-push';
 import { isMemberRole } from '@/lib/auth/member-roles';
 import { readJsonObject } from '@/lib/db/json';
 import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { logger } from '@/lib/utils/logger';
-import { redactNotificationForOsBridge } from '@/lib/notifications/os-bridge-redaction';
 import { normalizeNotificationStreamItem } from '@/lib/notifications/stream-payload';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
-import { isProviderDeliveryResult } from '@/server/adapters/delivery-result';
 import { enqueueNotificationDeliveries } from '@/server/services/notification-delivery-outbox';
 
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? 'mailto:noreply@ph-os.jp';
 const DEFAULT_NOTIFICATION_DELIVERY_CONCURRENCY = 16;
 const MAX_NOTIFICATION_DELIVERY_CONCURRENCY = 32;
 const EXTERNAL_NOTIFICATION_TITLE = 'PH-OS通知';
 const EXTERNAL_NOTIFICATION_MESSAGE = 'アプリで詳細を確認してください';
-
-function getWebPushEnabled() {
-  return Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
-}
 
 function resolveNotificationDeliveryConcurrency() {
   return normalizeConcurrencyLimit(process.env.NOTIFICATION_DELIVERY_CONCURRENCY, {
     defaultValue: DEFAULT_NOTIFICATION_DELIVERY_CONCURRENCY,
     max: MAX_NOTIFICATION_DELIVERY_CONCURRENCY,
   });
-}
-
-if (getWebPushEnabled()) {
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY!, VAPID_PRIVATE_KEY!);
 }
 
 type Tx = {
@@ -44,7 +30,6 @@ type Tx = {
 type NotificationChannel = 'in_app' | 'sms' | 'line' | 'email' | 'fax' | 'mcs';
 const DISPATCHED_NOTIFICATION_CHANNELS = ['in_app', 'sms', 'line', 'fax', 'mcs'] as const;
 const dispatchedNotificationChannelSet = new Set<string>(DISPATCHED_NOTIFICATION_CHANNELS);
-type NotificationDeliveryTask = () => Promise<unknown>;
 type PersistedNotification = {
   id: string;
   user_id: string;
@@ -90,29 +75,6 @@ function readRecipientUserIds(recipients: Prisma.JsonValue) {
   return Array.isArray(userIds)
     ? userIds.filter((userId): userId is string => typeof userId === 'string')
     : [];
-}
-
-function scheduleNotificationDeliveries(tasks: NotificationDeliveryTask[]) {
-  if (tasks.length === 0) return;
-
-  setTimeout(() => {
-    void mapWithConcurrency(tasks, resolveNotificationDeliveryConcurrency(), async (task) => {
-      try {
-        const result = await task();
-        if (isProviderDeliveryResult(result) && result.status !== 'accepted') {
-          return new Error(`External delivery was not accepted: ${result.status}`);
-        }
-        return null;
-      } catch (error) {
-        return error;
-      }
-    }).then((results) => {
-      const failedCount = results.filter((result) => result !== null).length;
-      if (failedCount > 0) {
-        logger.warn('[notifications] background delivery failed', { failedCount });
-      }
-    });
-  }, 0);
 }
 
 function buildNotificationUserChannel(userId: string) {
@@ -360,43 +322,35 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
 
   const smsUserIds = resolveTargetUserIds(input, rules, 'sms', eligibleRecipients);
   const lineUserIds = resolveTargetUserIds(input, rules, 'line', eligibleRecipients);
-  // Web Push — send to all subscriptions for in-app notification recipients
-  if (getWebPushEnabled() && targetUserIds.length > 0) {
-    const pushSubscriptions = await tx.pushSubscription.findMany({
-      where: { org_id: input.orgId, user_id: { in: targetUserIds } },
-      select: { endpoint: true, p256dh: true, auth: true },
-    });
-
-    // OS 層(ブラウザ Notification API / プッシュ基盤 = FCM/Mozilla/Apple)へは
-    // 患者ディープリンク(例 /patients/<patient_id>/...)を渡さない。raw な link は
-    // 患者 ID を含み PHI に相当するため、クライアント OS ブリッジと同じ汎用ランディング
-    // (/notifications) のみを送り、詳細はアプリ内で開かせる。
-    const redacted = redactNotificationForOsBridge({ type: input.type });
-    const pushPayload = JSON.stringify({
-      type: redacted.type,
-      title: redacted.title,
-      body: redacted.body,
-      link: redacted.url,
-    });
-
-    scheduleNotificationDeliveries(
-      pushSubscriptions.map(
-        (sub) => () =>
-          webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-            pushPayload,
-          ),
-      ),
-    );
-  }
+  const pushSubscriptions =
+    targetUserIds.length > 0
+      ? await tx.pushSubscription.findMany({
+          where: { org_id: input.orgId, user_id: { in: targetUserIds } },
+          select: { id: true },
+        })
+      : [];
 
   await enqueueNotificationDeliveries(tx, {
     orgId: input.orgId,
     sourceEventType: input.eventType,
+    notificationType: input.type,
     dedupeKey: input.dedupeKey,
     targets: [
-      ...smsUserIds.map((userId) => ({ channel: 'sms' as const, userId })),
-      ...lineUserIds.map((userId) => ({ channel: 'line' as const, userId })),
+      ...smsUserIds.map((userId) => ({
+        channel: 'sms' as const,
+        aggregateType: 'user' as const,
+        aggregateId: userId,
+      })),
+      ...lineUserIds.map((userId) => ({
+        channel: 'line' as const,
+        aggregateType: 'user' as const,
+        aggregateId: userId,
+      })),
+      ...pushSubscriptions.map((subscription) => ({
+        channel: 'web_push' as const,
+        aggregateType: 'push_subscription' as const,
+        aggregateId: subscription.id,
+      })),
     ],
   });
 
